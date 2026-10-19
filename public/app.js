@@ -48,7 +48,7 @@ let D = {}; let company = {};
 const TECH_DATA = ['clients', 'staff', 'jobs'];
 async function loadAll() {
   const names = ['clients', 'services', 'staff', 'quotes', 'jobs', 'invoices', 'expenses'];
-  const res = await Promise.all(names.map((n) => (isTech() && !TECH_DATA.includes(n) ? [] : api('GET', '/api/' + n))));
+  const res = await Promise.all(names.map((n) => (isTech() && !TECH_DATA.includes(n) ? [] : api('GET', './api/' + n))));
   const out = {}; names.forEach((n, i) => { out[n] = res[i]; }); return out;
 }
 const clientName = (id) => (byId(D.clients, id) || {}).name || '—';
