@@ -9,7 +9,7 @@
   <script>/* apply the saved theme before first paint; a client's portal link (/client-portal?c=…) is always light */
   if(/^\/client-portal\/?$/.test(location.pathname)&&/[?&]c=/.test(location.search)){document.documentElement.dataset.theme="light";document.querySelector('meta[name="color-scheme"]').content="light"}
   else try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
-  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
   <div id="app">
@@ -18,7 +18,7 @@
     <main id="main"><p class="muted">Loading…</p></main>
   </div>
   <div id="toast"></div>
-  <script src="/app.js"></script>
-  <script src="/pages.js"></script>
+  <script src="./app.js"></script>
+  <script src="./pages.js"></script>
 </body>
 </html>
