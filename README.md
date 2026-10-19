@@ -1,4 +1,4 @@
-# Fieldwork – quotes, jobs, invoices and online payments
+# Worklio Pro – quotes, jobs, invoices and online payments
 
 Run it (Node 18+, no `npm install` needed):
 
