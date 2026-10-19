@@ -37,12 +37,12 @@ function authView(state, err) {
   $('#af input').focus();
   $('#af').addEventListener('submit', async (e) => {
     e.preventDefault(); const b = Object.fromEntries(new FormData(e.target));
-    try { await api('POST', setup ? '/api/platform/setup' : '/api/platform/login', b); boot(); } catch (x) { authView(state, x.message); }
+    try { await api('POST', setup ? './api/platform/setup' : './api/platform/login', b); boot(); } catch (x) { authView(state, x.message); }
   });
 }
 
 /* ===== shell ===== */
-async function load() { D = await api('GET', '/api/platform/overview'); if (!draftPlans) draftPlans = structuredClone(D.plans); }
+async function load() { D = await api('GET', './api/platform/overview'); if (!draftPlans) draftPlans = structuredClone(D.plans); }
 function render() {
   const tabs = [['accounts', 'Accounts'], ['plans', 'Plans & features'], ['settings', 'Settings']];
   document.title = `${tabs.find((t) => t[0] === tab)[1]} · ${D.settings.productName} platform`;
@@ -85,7 +85,7 @@ function slugField(name, value) {
 function wireSlug(form, initial) {
   const i = $('[name=slug]', form); const hint = $('[data-hint]', form); let t;
   const check = () => { clearTimeout(t); const v = i.value.trim().toLowerCase(); if (!v || v === initial) { hint.textContent = ''; return; }
-    t = setTimeout(async () => { const r = await api('GET', '/api/site/slug-check?slug=' + encodeURIComponent(v)); hint.className = 'hint ' + (r.ok ? 'good' : 'bad'); hint.textContent = r.ok ? `${v}.${D.rootDomain} is available` : r.error; }, 250); };
+    t = setTimeout(async () => { const r = await api('GET', './api/site/slug-check?slug=' + encodeURIComponent(v)); hint.className = 'hint ' + (r.ok ? 'good' : 'bad'); hint.textContent = r.ok ? `${v}.${D.rootDomain} is available` : r.error; }, 250); };
   i.addEventListener('input', () => { i.dataset.touched = '1'; check(); }); return check;
 }
 const A = {};
@@ -101,7 +101,7 @@ A.newAccount = () => {
   f.addEventListener('submit', async (e) => {
     e.preventDefault(); const b = Object.fromEntries(new FormData(f)); b.demo = !!b.demo;
     try {
-      const r = await api('POST', '/api/platform/accounts', b); await load(); render();
+      const r = await api('POST', './api/platform/accounts', b); await load(); render();
       showLink(`${r.account.name} is ready`, r.emailed ? `We emailed ${b.ownerEmail} a link to set their password. You can also send it yourself:` : `Email isn’t set up, so send ${b.ownerEmail} this link to set their password (it works for 7 days):`, r.link);
     } catch (x) { toast(x.message, true); }
   });
@@ -188,7 +188,7 @@ A.addPlan = () => {
 A.rmPlan = (d) => { const p = draftPlans[d.i]; if (!confirm(`Remove the ${p.name} plan?`)) return; draftPlans.splice(Number(d.i), 1); render(); };
 A.discardPlans = () => { draftPlans = structuredClone(D.plans); render(); };
 A.savePlans = async () => {
-  try { await api('PUT', '/api/platform/plans', { plans: draftPlans }); await load(); draftPlans = structuredClone(D.plans); toast('Plans saved'); render(); } catch (x) { toast(x.message, true); }
+  try { await api('PUT', './api/platform/plans', { plans: draftPlans }); await load(); draftPlans = structuredClone(D.plans); toast('Plans saved'); render(); } catch (x) { toast(x.message, true); }
 };
 window.addEventListener('beforeunload', (e) => { if (D && draftPlans && JSON.stringify(draftPlans) !== JSON.stringify(D.plans)) e.preventDefault(); });
 
@@ -210,13 +210,13 @@ ${D.devMode ? `<p>You’re running without <code>PLATFORM_DOMAIN</code>, so this
 <p class="muted" style="font-size:14px">To go live: point <code>*.yourapp.com</code> and <code>yourapp.com</code> at this server in DNS, set <code>PLATFORM_DOMAIN=yourapp.com</code> and <code>BASE_URL=https://yourapp.com</code>, and put an HTTPS proxy in front (the README has a Caddy example that also issues certificates for custom domains).</p></div>`;
   $('#sf').addEventListener('submit', async (e) => {
     e.preventDefault(); const b = Object.fromEntries(new FormData(e.target)); b.allowSignups = !!b.allowSignups;
-    try { await api('PUT', '/api/platform/settings', b); await load(); toast('Settings saved'); render(); } catch (x) { toast(x.message, true); }
+    try { await api('PUT', './api/platform/settings', b); await load(); toast('Settings saved'); render(); } catch (x) { toast(x.message, true); }
   });
   integrationsCard($('#integ', main));
 }
 // the server-wide services every account uses: set in the .env file next to server.js, checked and tested here
 async function integrationsCard(box) {
-  let I; try { I = await api('GET', '/api/platform/integrations'); } catch (x) { box.innerHTML = `<h2>Integrations</h2><p class="muted">${esc(x.message)}</p>`; return; }
+  let I; try { I = await api('GET', './api/platform/integrations'); } catch (x) { box.innerHTML = `<h2>Integrations</h2><p class="muted">${esc(x.message)}</p>`; return; }
   const on = (ok, yes = 'Connected', no = 'Not set up') => `<span class="cstatus ${ok ? 'active' : ''}">${ok ? yes : no}</span>`;
   const S = I.stripe; const copy = (v, label) => `<div class="linkbox"><input readonly value="${esc(v)}" aria-label="${esc(label)}"><button type="button" class="btn alt" data-act="copy">Copy</button></div>`;
   box.innerHTML = `<h2>Integrations</h2><p class="muted" style="font-size:13px;margin-top:0">Shared by every account. Set these in the <code>.env</code> file next to <code>server.js</code> and restart. Keys are never shown here.</p>
@@ -241,18 +241,18 @@ ${I.email ? '<form id="tEmail" class="inline-form"><label>Test email to<input na
 ${I.sms ? '<form id="tSms" class="inline-form"><label>Test text to<input name="to" required placeholder="+17135550100"></label><button class="btn alt">Send test text</button></form>' : ''}
 ${!I.email && !I.sms ? '<p class="muted" style="font-size:14px;margin:0">Connect email or text messages to send a test. Until then, messages are recorded in each account’s Notifications Log but not delivered.</p>' : ''}`;
   $('#feeForm', box).addEventListener('submit', async (e) => {
-    e.preventDefault(); try { await api('PUT', '/api/platform/settings', Object.fromEntries(new FormData(e.target))); await load(); toast('Platform fee saved'); } catch (x) { toast(x.message, true); }
+    e.preventDefault(); try { await api('PUT', './api/platform/settings', Object.fromEntries(new FormData(e.target))); await load(); toast('Platform fee saved'); } catch (x) { toast(x.message, true); }
   });
   [['#tEmail', 'test-email', 'Test email sent'], ['#tSms', 'test-sms', 'Test text sent']].forEach(([sel, path, ok]) => {
     const f = $(sel, box); if (f) f.addEventListener('submit', async (e) => {
-      e.preventDefault(); try { const r = await api('POST', '/api/platform/' + path, Object.fromEntries(new FormData(f))); toast(r.status === 'sent' ? ok : r.detail || 'Not delivered', r.status !== 'sent'); } catch (x) { toast(x.message, true); }
+      e.preventDefault(); try { const r = await api('POST', './api/platform/' + path, Object.fromEntries(new FormData(f))); toast(r.status === 'sent' ? ok : r.detail || 'Not delivered', r.status !== 'sent'); } catch (x) { toast(x.message, true); }
     });
   });
 }
 
 /* ===== actions ===== */
 A.closeModal = closeModal;
-A.logout = async () => { await api('POST', '/api/platform/logout', {}); D = null; draftPlans = null; boot(); };
+A.logout = async () => { await api('POST', './api/platform/logout', {}); D = null; draftPlans = null; boot(); };
 document.addEventListener('click', (e) => {
   const el = e.target.closest('[data-act]'); if (!el || el.disabled) return;
   const fn = A[el.dataset.act]; if (!fn) return; e.preventDefault();
@@ -260,7 +260,7 @@ document.addEventListener('click', (e) => {
 });
 
 async function boot() {
-  const state = await api('GET', '/api/platform/state');
+  const state = await api('GET', './api/platform/state');
   if (!state.admin) { document.title = 'Platform console'; return authView(state); }
   tab = ['accounts', 'plans', 'settings'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'accounts';
   await load(); render();
