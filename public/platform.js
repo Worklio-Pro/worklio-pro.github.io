@@ -260,7 +260,7 @@ document.addEventListener('click', (e) => {
 });
 
 async function boot() {
-  const state = await api('GET', '/api/platform/state');
+  const state = await api('GET', './api/platform/state');
   if (!state.admin) { document.title = 'Platform console'; return authView(state); }
   tab = ['accounts', 'plans', 'settings'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'accounts';
   await load(); render();
