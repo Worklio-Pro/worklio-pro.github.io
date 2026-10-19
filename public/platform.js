@@ -6,7 +6,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 async function api(method, url, body) {
   const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
   const j = await r.json().catch(() => ({}));
-  if (r.status === 401 && !url.includes('/login') && !url.includes('/setup')) { boot(); throw new Error('Please log in'); }
+  if (r.status === 401 && !url.includes('./login') && !url.includes('./setup')) { boot(); throw new Error('Please log in'); }
   if (!r.ok) throw new Error(j.error || 'Something went wrong');
   return j;
 }
