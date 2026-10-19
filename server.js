@@ -1,0 +1,1488 @@
+const express = require('./lib/mini-express');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const tls = require('tls');
+
+// load settings such as Twilio credentials from .env next to this file (values already in the environment win)
+if (fs.existsSync(path.join(__dirname, '.env'))) process.loadEnvFile(path.join(__dirname, '.env'));
+
+const PORT = process.env.PORT || 3000;
+const BASE_URL = process.env.BASE_URL || `https://workliopro.com`;
+// many companies (accounts) on one server: see lib/tenancy.js. `db` below is the data of the account the current request is for.
+const tenancy = require('./lib/tenancy');
+const stripeLib = require('./lib/stripe');
+const { db, uploadDir } = tenancy;
+const baseUrl = () => tenancy.tenantUrl(tenancy.current()); // this account's web address, for links in messages
+
+// ---------- tiny JSON store ----------
+const uid = () => crypto.randomBytes(5).toString('hex');
+const token = () => crypto.randomBytes(12).toString('hex');
+const iso = (d) => d.toISOString().slice(0, 10);
+const daysFromNow = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return iso(d); };
+
+function seed() {
+  const staff = [
+    { id: 's1', name: 'Marcus Reed', role: 'Lead Technician', phone: '+17135550101', email: 'marcus@example.com', color: '#2563eb' },
+    { id: 's2', name: 'Priya Nair', role: 'Technician', phone: '+17135550102', email: 'priya@example.com', color: '#16a34a' },
+    { id: 's3', name: 'Tom Alvarez', role: 'Installer', phone: '+17135550103', email: 'tom@example.com', color: '#d97706' },
+  ];
+  const services = [
+    { id: 'v1', name: 'Lawn Maintenance', description: 'Mow, edge, blow and haul clippings.', price: 65, unit: 'visit' },
+    { id: 'v2', name: 'Gutter Cleaning', description: 'Clear gutters and downspouts, flush and inspect.', price: 140, unit: 'job' },
+    { id: 'v3', name: 'Pressure Washing', description: 'Driveway, patio or siding wash.', price: 220, unit: 'job' },
+    { id: 'v4', name: 'Sprinkler Repair', description: 'Diagnose and repair zone issues.', price: 95, unit: 'hour' },
+    { id: 'v5', name: 'Tree Trimming', description: 'Prune and remove branches up to 6 inches.', price: 350, unit: 'job' },
+  ];
+  const clients = [
+    { id: 'c1', name: 'Hannah Brooks', email: 'hannah@example.com', phone: '+17135550201', address: '412 Willow Creek Dr, Houston, TX 77008', notes: 'Gate code 4412', createdAt: daysFromNow(-120), portalToken: token() },
+    { id: 'c2', name: 'Delgado Dental', email: 'office@delgadodental.example', phone: '+17135550202', address: '88 Main St, Houston, TX 77002', notes: '', createdAt: daysFromNow(-75), portalToken: token() },
+    { id: 'c3', name: 'Oakridge HOA', email: 'board@oakridgehoa.example', phone: '+17135550203', address: '1 Oakridge Blvd, Houston, TX 77024', notes: 'Monthly contract', createdAt: daysFromNow(-40), portalToken: token() },
+    { id: 'c4', name: 'Samir Patel', email: 'samir@example.com', phone: '+17135550204', address: '2290 Bayou Ln, Houston, TX 77019', notes: '', createdAt: daysFromNow(-8), portalToken: token() },
+  ];
+  const mk = (items, taxRate) => {
+    const subtotal = items.reduce((s, i) => s + i.qty * i.price, 0);
+    const tax = Math.round(subtotal * taxRate) / 100;
+    return { items, taxRate, subtotal, tax, total: Math.round((subtotal + tax) * 100) / 100 };
+  };
+  const quotes = [
+    { id: 'q1', number: 'Q-1001', clientId: 'c4', title: 'Backyard refresh', status: 'sent', createdAt: daysFromNow(-5), token: token(), notes: 'Valid for 30 days.', depositFee: 0, depositStatus: null, signedAt: null, depositPaidAt: null, ...mk([{ desc: 'Tree Trimming', qty: 1, price: 350 }, { desc: 'Lawn Maintenance', qty: 1, price: 65 }], 8.25) },
+    { id: 'q2', number: 'Q-1002', clientId: 'c3', title: 'Spring pressure wash', status: 'approved', createdAt: daysFromNow(-20), token: token(), notes: '', depositFee: 200, depositStatus: 'pending', signedAt: daysFromNow(-19), depositPaidAt: null, ...mk([{ desc: 'Pressure Washing', qty: 2, price: 220 }], 8.25) },
+  ];
+  const jobs = [
+    { id: 'j1', number: 'J-2001', clientId: 'c1', title: 'Weekly lawn care', description: 'Standard mow and edge.', date: daysFromNow(0), startTime: '09:00', endTime: '10:30', staffIds: ['s1'], status: 'scheduled', quoteId: null, address: '412 Willow Creek Dr, Houston, TX 77008', createdAt: daysFromNow(-30) },
+    { id: 'j2', number: 'J-2002', clientId: 'c2', title: 'Gutter cleaning', description: '', date: daysFromNow(1), startTime: '13:00', endTime: '15:00', staffIds: ['s2'], status: 'scheduled', quoteId: null, address: '88 Main St, Houston, TX 77002', createdAt: daysFromNow(-10) },
+    { id: 'j3', number: 'J-2003', clientId: 'c3', title: 'Spring pressure wash', description: 'Clubhouse and walkways.', date: daysFromNow(2), startTime: '08:00', endTime: '14:00', staffIds: ['s1', 's3'], status: 'scheduled', quoteId: 'q2', address: '1 Oakridge Blvd, Houston, TX 77024', createdAt: daysFromNow(-15) },
+    { id: 'j4', number: 'J-2004', clientId: 'c1', title: 'Sprinkler repair', description: 'Zone 3 not firing.', date: daysFromNow(-12), startTime: '10:00', endTime: '12:00', staffIds: ['s2'], status: 'completed', quoteId: null, address: '412 Willow Creek Dr, Houston, TX 77008', createdAt: daysFromNow(-20) },
+    { id: 'j5', number: 'J-2005', clientId: 'c2', title: 'Lawn maintenance', description: '', date: daysFromNow(-35), startTime: '09:00', endTime: '10:00', staffIds: ['s3'], status: 'completed', quoteId: null, address: '88 Main St, Houston, TX 77002', createdAt: daysFromNow(-40) },
+    { id: 'j6', number: 'J-2006', clientId: 'c3', title: 'Tree trimming', description: '', date: daysFromNow(-50), startTime: '08:00', endTime: '12:00', staffIds: ['s1', 's3'], status: 'completed', quoteId: null, address: '1 Oakridge Blvd, Houston, TX 77024', createdAt: daysFromNow(-55) },
+  ];
+  const invoices = [
+    { id: 'i1', number: 'INV-3001', clientId: 'c1', jobId: 'j4', status: 'paid', issueDate: daysFromNow(-11), dueDate: daysFromNow(3), paidAt: daysFromNow(-9), token: token(), createdAt: daysFromNow(-11), notes: '', ...mk([{ desc: 'Sprinkler Repair', qty: 2, price: 95 }], 8.25) },
+    { id: 'i2', number: 'INV-3002', clientId: 'c2', jobId: 'j5', status: 'paid', issueDate: daysFromNow(-34), dueDate: daysFromNow(-20), paidAt: daysFromNow(-30), token: token(), createdAt: daysFromNow(-34), notes: '', ...mk([{ desc: 'Lawn Maintenance', qty: 1, price: 65 }], 8.25) },
+    { id: 'i3', number: 'INV-3003', clientId: 'c3', jobId: 'j6', status: 'paid', issueDate: daysFromNow(-49), dueDate: daysFromNow(-35), paidAt: daysFromNow(-44), token: token(), createdAt: daysFromNow(-49), notes: '', ...mk([{ desc: 'Tree Trimming', qty: 1, price: 350 }], 8.25) },
+    { id: 'i4', number: 'INV-3004', clientId: 'c3', jobId: null, status: 'sent', issueDate: daysFromNow(-6), dueDate: daysFromNow(8), paidAt: null, token: token(), createdAt: daysFromNow(-6), notes: 'Monthly contract, October', ...mk([{ desc: 'Lawn Maintenance', qty: 4, price: 65 }], 8.25) },
+  ];
+  const expenses = [
+    { id: 'e1', date: daysFromNow(-11), category: 'Materials', vendor: 'Home Depot', description: 'Sprinkler heads and fittings', amount: 38.4, jobId: 'j4' },
+    { id: 'e2', date: daysFromNow(-48), category: 'Subcontractor', vendor: 'Lone Star Chipping', description: 'Debris haul-off', amount: 120, jobId: 'j6' },
+    { id: 'e3', date: daysFromNow(-3), category: 'Fuel', vendor: 'Shell', description: 'Truck fuel', amount: 74.15, jobId: null },
+  ];
+  return {
+    company: { name: 'Your Business Name', email: 'hello@example.com', phone: '+17135550100', website: '', address: '100 Commerce St, Houston, TX 77002', logo: '', icon: '', taxRate: 8.25, paymentTermsDays: 14, invoiceFooter: 'Thank you for your business!', brandColor: '#0f766e' },
+    clients, services, staff, quotes, jobs, invoices, expenses, notifications: [], photos: [],
+    counters: { quote: 1002, job: 2006, invoice: 3004 },
+  };
+}
+// a new account that starts without demo data
+function emptySeed() {
+  return {
+    company: { name: '', email: '', phone: '', website: '', address: '', logo: '', icon: '', taxRate: 0, paymentTermsDays: 14, invoiceFooter: 'Thank you for your business!', brandColor: '#0f766e' },
+    clients: [], services: [], staff: [], quotes: [], jobs: [], invoices: [], expenses: [], notifications: [], photos: [],
+    counters: { quote: 1000, job: 2000, invoice: 3000 }, users: [], sessions: {}, resetTokens: {},
+  };
+}
+const save = () => tenancy.saveStore();
+// run once each time an account's data is loaded: brings data saved by older versions up to date
+function migrate() {
+  ensureAuthStore();
+  for (const u of db.users) if (u.role === 'member') u.role = 'technician'; // the old "team member" role is now Technician
+  [...db.quotes, ...db.invoices].forEach(computeTotals); // cost/markup fields, deposit amount
+  // the first client importer stored the company as a "Company: …" line in notes; move it to the company field
+  db.clients.forEach((c) => {
+    const m = !c.company && /^Company: (.+)$/m.exec(c.notes || '');
+    if (m) { c.company = m[1].trim(); c.notes = c.notes.replace(m[0], '').trim(); }
+  });
+}
+tenancy.init({ seed, emptySeed, migrate });
+
+// ---------- company settings: address parts, regional settings, business hours ----------
+const ADDRESS_PARTS = ['addrStreet1', 'addrStreet2', 'addrCity', 'addrState', 'addrZip', 'addrCountry'];
+const composeAddress = (c) => [c.addrStreet1, c.addrStreet2, [c.addrCity, [c.addrState, c.addrZip].filter(Boolean).join(' ')].filter(Boolean).join(', ')].filter(Boolean).join(', ');
+const TIMEZONES = new Set(Intl.supportedValuesOf('timeZone'));
+const REGIONAL = {
+  timezone: (v) => v === '' || TIMEZONES.has(v),
+  dateFormat: (v) => ['MMM D, YYYY', 'MM/DD/YYYY', 'DD/MM/YYYY', 'YYYY-MM-DD'].includes(v),
+  timeFormat: (v) => ['12', '24'].includes(v),
+  weekStart: (v) => ['sun', 'mon'].includes(v),
+};
+// dates like "today" and "due in 14 days" follow the business's time zone, not the server's (set at the start of each request)
+const SERVER_TZ = process.env.TZ;
+const applyTimezone = () => { const tz = db.company.timezone || SERVER_TZ; if (tz) process.env.TZ = tz; else delete process.env.TZ; };
+function readHours(raw) { // uses DAYS / HHMM from the team-hours code below (only called from request handlers)
+  let h = raw; if (typeof h === 'string') { try { h = JSON.parse(h); } catch (e) { return null; } }
+  if (!h || typeof h !== 'object') return null;
+  const t = (s) => HHMM.test(s || '');
+  const out = {};
+  for (const d of DAYS) { const x = h[d] || {}; const on = !!x.on; if (on && !(t(x.start) && t(x.end) && x.end > x.start)) return null; out[d] = { on, start: t(x.start) ? x.start : '09:00', end: t(x.end) ? x.end : '17:00' }; }
+  return out;
+}
+
+// ---------- helpers ----------
+const round2 = (n) => Math.round(n * 100) / 100;
+function computeTotals(doc) {
+  // price is the client-facing unit price: cost plus a markup (% of cost, or a flat $ per unit). Older items without a cost use their price as the cost.
+  doc.items = (doc.items || []).filter((i) => i.desc).map((i) => {
+    const cost = Number(i.cost ?? i.price) || 0; const markup = Number(i.markup) || 0; const markupType = i.markupType === 'flat' ? 'flat' : 'percent';
+    return { desc: String(i.desc), details: i.details ? String(i.details) : '', qty: Number(i.qty) || 0, cost, markup, markupType, price: round2(markupType === 'flat' ? cost + markup : cost * (1 + markup / 100)) };
+  });
+  doc.taxRate = Number(doc.taxRate) || 0;
+  doc.subtotal = round2(doc.items.reduce((s, i) => s + i.qty * i.price, 0));
+  // optional discount before tax: a flat amount or a percentage of the subtotal
+  doc.discountType = doc.discountType === 'percent' ? 'percent' : 'flat';
+  doc.discountValue = Math.max(0, Number(doc.discountValue) || 0);
+  doc.discount = Math.min(doc.subtotal, round2(doc.discountType === 'percent' ? doc.subtotal * doc.discountValue / 100 : doc.discountValue));
+  doc.tax = round2((doc.subtotal - doc.discount) * doc.taxRate / 100);
+  doc.total = round2(doc.subtotal - doc.discount + doc.tax);
+  // deposit: a flat fee or a percentage of the total. Older quotes only have depositFee, treated as flat.
+  doc.depositType = doc.depositType === 'percent' ? 'percent' : 'flat';
+  doc.depositValue = Math.max(0, Number(doc.depositValue ?? doc.depositFee) || 0);
+  doc.depositFee = Math.min(doc.total, round2(doc.depositType === 'percent' ? doc.total * doc.depositValue / 100 : doc.depositValue));
+  return doc;
+}
+// admin edits to a recorded deposit payment from the quote editor: change amount/date, or remove the payment
+function applyDepositPaymentEdit(doc, upd) {
+  const action = upd.depositPayment; delete doc.depositPayment;
+  if (action === 'delete') {
+    doc.depositPaidAt = null; doc.depositPaidAmount = null; doc.depositMethod = null; doc.depositReference = null; doc.zelleSentAt = null;
+    doc.depositStatus = doc.signedAt ? 'pending' : null;
+  } else if (doc.depositPaidAt) {
+    doc.depositPaidAmount = Math.max(0, round2(Number(doc.depositPaidAmount ?? doc.depositFee) || 0));
+    if ('depositMethod' in upd && !PAY_METHODS[upd.depositMethod]) doc.depositMethod = db.quotes.find((x) => x.id === doc.id)?.depositMethod || 'other'; // only listed methods can be chosen
+    if ('depositReference' in upd) doc.depositReference = String(upd.depositReference || '').trim().slice(0, 120);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(doc.depositPaidAt))) doc.depositPaidAt = iso(new Date());
+  } else { delete doc.depositPaidAmount; } // no payment recorded: ignore stray fields
+}
+const money = (n) => '$' + Number(n).toFixed(2);
+const findClient = (id) => db.clients.find((c) => c.id === id);
+function invoiceStatus(inv) {
+  if (inv.status === 'paid') return 'paid';
+  if (inv.status !== 'draft' && inv.dueDate && inv.dueDate < iso(new Date())) return 'overdue';
+  if (inv.status !== 'draft' && (inv.payments || []).length) return 'partial'; // some paid, balance remaining
+  return inv.status;
+}
+// A deposit paid on the quote behind this invoice's job is credited against it (only on the job's first invoice).
+// Computed on read, never stored, so it follows later edits to the deposit payment.
+// balanceDue = total − deposit credit − recorded payments (0 once paid, unless ignoreStatus)
+function invoiceCredits(inv, ignoreStatus) {
+  const job = inv.jobId && db.jobs.find((j) => j.id === inv.jobId);
+  const q = job && job.quoteId && db.quotes.find((x) => x.id === job.quoteId);
+  const first = job && db.invoices.filter((i) => i.jobId === job.id).sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || '') || String(a.number).localeCompare(String(b.number)))[0];
+  // inv.depositCreditRemoved: the admin deleted the deposit line from this invoice, so it isn't credited here
+  const credit = q && q.depositPaidAt && first && first.id === inv.id && !inv.depositCreditRemoved ? Math.min(inv.total || 0, round2(Number(q.depositPaidAmount ?? q.depositFee) || 0)) : 0;
+  const paid = round2((inv.payments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0));
+  const balance = Math.max(0, round2((inv.total || 0) - credit - paid));
+  return { depositApplied: credit, depositAppliedAt: credit ? q.depositPaidAt : null, depositQuote: credit ? q.number : null, amountPaid: paid, balanceDue: !ignoreStatus && inv.status === 'paid' ? 0 : balance };
+}
+const withStatus = (inv) => ({ ...inv, displayStatus: invoiceStatus(inv), ...invoiceCredits(inv) });
+
+// ---------- messaging adapters (email / SMS) ----------
+// minimal SMTP client over TLS (port 465): enough to send through Gmail with an app password, no npm packages
+function smtpSend({ host, port, user, pass }, { from, fromName, to, replyTo, subject, text }) {
+  const clean = (s) => String(s || '').replace(/[\r\n]+/g, ' ').trim(); // no header injection
+  const word = (s) => (/[^\x20-\x7e]/.test(s) ? `=?UTF-8?B?${Buffer.from(s).toString('base64')}?=` : s);
+  const msg = [
+    `From: ${/[^\x20-\x7e]/.test(clean(fromName)) ? word(clean(fromName)) : `"${clean(fromName).replace(/["\\]/g, '')}"`} <${clean(from)}>`,
+    `To: <${clean(to)}>`, ...(replyTo ? [`Reply-To: <${clean(replyTo)}>`] : []),
+    `Subject: ${word(clean(subject))}`, `Date: ${new Date().toUTCString()}`,
+    `Message-ID: <${crypto.randomUUID()}@${clean(from).split('@')[1] || 'localhost'}>`,
+    'MIME-Version: 1.0', 'Content-Type: text/plain; charset=UTF-8', 'Content-Transfer-Encoding: base64', '',
+    Buffer.from(String(text)).toString('base64').replace(/.{76}/g, '$&\r\n'),
+  ].join('\r\n');
+  return new Promise((resolve, reject) => {
+    const sock = tls.connect({ host, port, servername: host });
+    let buf = ''; let waiting = null; const ready = [];
+    const fail = (e) => { sock.destroy(); reject(e); };
+    sock.setTimeout(20000, () => fail(new Error('Email server timed out')));
+    sock.on('error', fail);
+    sock.on('data', (d) => {
+      buf += d.toString('utf8'); let m;
+      while ((m = buf.match(/^(?:\d{3}-[^\r\n]*\r\n)*(\d{3}) [^\r\n]*\r\n/))) { // full (possibly multi-line) reply
+        buf = buf.slice(m[0].length); const r = { code: Number(m[1]), text: m[0].trim().split('\r\n').pop() };
+        if (waiting) { const w = waiting; waiting = null; w(r); } else ready.push(r);
+      }
+    });
+    const reply = () => new Promise((r) => { if (ready.length) r(ready.shift()); else waiting = r; });
+    const step = async (line, expect) => { if (line) sock.write(line + '\r\n'); const r = await reply(); if (r.code !== expect) throw new Error(r.text); };
+    (async () => {
+      await step(null, 220); await step('EHLO localhost', 250);
+      await step('AUTH PLAIN ' + Buffer.from(`\0${user}\0${pass}`).toString('base64'), 235);
+      await step(`MAIL FROM:<${clean(from)}>`, 250); await step(`RCPT TO:<${clean(to)}>`, 250); await step('DATA', 354);
+      sock.write(msg + '\r\n.\r\n'); await step(null, 250);
+      sock.end('QUIT\r\n');
+    })().then(resolve, fail);
+  });
+}
+const emailProvider = () => (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD ? 'Gmail' : process.env.SENDGRID_API_KEY && process.env.EMAIL_FROM ? 'SendGrid' : '');
+async function sendEmail(to, subject, body) {
+  if (!to) return { status: 'failed', detail: 'Client has no email address' };
+  const { SENDGRID_API_KEY: key, EMAIL_FROM: from, GMAIL_USER: gUser, GMAIL_APP_PASSWORD: gPass } = process.env;
+  // the email service is shared by every account; only the default account uses EMAIL_FROM_NAME / EMAIL_REPLY_TO, the others send as themselves
+  const own = tenancy.isDefault(); const fromName = own ? process.env.EMAIL_FROM_NAME : db.company.name; const replyTo = own ? process.env.EMAIL_REPLY_TO : db.company.email;
+  if (emailProvider() === 'Gmail') {
+    try {
+      await smtpSend({ host: 'smtp.gmail.com', port: 465, user: gUser, pass: gPass.replace(/\s/g, '') },
+        { from: from || gUser, fromName: fromName || db.company.name, to, replyTo: replyTo || db.company.email, subject, text: body });
+      return { status: 'sent', detail: 'Gmail' };
+    } catch (e) {
+      return { status: 'failed', detail: `Gmail: ${e.message}${/^535/.test(e.message) ? ' (check GMAIL_USER and use a Google app password, not your normal password)' : ''}` };
+    }
+  }
+  if (key && from) {
+    try {
+      const msg = { personalizations: [{ to: [{ email: to }] }], from: { email: from, name: fromName || db.company.name }, subject, content: [{ type: 'text/plain', value: body }] };
+      if (replyTo || db.company.email) msg.reply_to = { email: replyTo || db.company.email };
+      const r = await fetch('https://api.sendgrid.com/v3/mail/send', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(msg),
+      });
+      if (r.ok) return { status: 'sent', detail: 'SendGrid' };
+      const j = await r.json().catch(() => ({}));
+      return { status: 'failed', detail: `SendGrid ${r.status}: ${(j.errors || []).map((e) => e.message).join('; ') || 'request rejected'}` };
+    } catch (e) { return { status: 'failed', detail: e.message }; }
+  }
+  return { status: 'simulated', detail: 'No email provider configured (set GMAIL_USER and GMAIL_APP_PASSWORD, or SENDGRID_API_KEY and EMAIL_FROM)' };
+}
+// Twilio needs E.164 numbers (+17135550100); assume US/Canada for bare 10-digit numbers
+function toE164(phone) {
+  const s = String(phone || '').trim(); const digits = s.replace(/\D/g, '');
+  if (s.startsWith('+')) return '+' + digits;
+  if (digits.length === 10) return '+1' + digits;
+  if (digits.length === 11 && digits.startsWith('1')) return '+' + digits;
+  return digits ? '+' + digits : '';
+}
+async function sendSms(to, body) {
+  if (!to) return { status: 'failed', detail: 'Client has no phone number' };
+  const { TWILIO_ACCOUNT_SID: sid, TWILIO_AUTH_TOKEN: auth, TWILIO_FROM: from } = process.env;
+  if (sid && auth && from) {
+    try {
+      // TWILIO_FROM can be a Twilio phone number or a Messaging Service SID (starts with MG)
+      const params = { To: toE164(to), Body: body, ...(from.startsWith('MG') ? { MessagingServiceSid: from } : { From: toE164(from) }) };
+      const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+        method: 'POST',
+        headers: { Authorization: 'Basic ' + Buffer.from(`${sid}:${auth}`).toString('base64'), 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams(params),
+      });
+      const j = await r.json().catch(() => ({}));
+      return r.ok ? { status: 'sent', detail: `Twilio ${j.sid || ''}`.trim() } : { status: 'failed', detail: `Twilio ${r.status}${j.code ? ' (error ' + j.code + ')' : ''}: ${j.message || 'request rejected'}` };
+    } catch (e) { return { status: 'failed', detail: e.message }; }
+  }
+  return { status: 'simulated', detail: 'No SMS provider configured (set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM)' };
+}
+async function notify({ clientId, channel, kind, refId, refNumber, subject, body }) {
+  const c = findClient(clientId);
+  if (channel === 'sms' && !tenancy.has('sms')) return { id: uid(), at: new Date().toISOString(), clientId, channel, kind, status: 'failed', detail: 'Text messages aren’t included in your plan' };
+  const res = channel === 'email' ? await sendEmail(c && c.email, subject, body) : await sendSms(c && c.phone, body);
+  const entry = { id: uid(), at: new Date().toISOString(), clientId, clientName: c ? c.name : 'Unknown', channel, kind, refId, refNumber, to: channel === 'email' ? (c && c.email) : (c && c.phone), subject: subject || '', body, status: res.status, detail: res.detail };
+  db.notifications.unshift(entry);
+  return entry;
+}
+
+// ---------- app ----------
+const app = express();
+app.use(express.json({ limit: '15mb' }));
+// pick the account from the web address and run the rest of the request inside it
+const notice = (title, text) => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title></head>
+<body style="font-family:system-ui,sans-serif;background:#f4f6f8;color:#111827;margin:0"><div style="max-width:520px;margin:64px auto;background:#fff;border-radius:12px;padding:28px;box-shadow:0 1px 4px rgba(0,0,0,.08)"><h1 style="margin:0 0 8px;font-size:22px">${esc(title)}</h1><p style="color:#4b5563;line-height:1.5">${text}</p></div></body></html>`;
+app.use((req, res, next) => {
+  const r = tenancy.resolve(req.headers.host);
+  const isApi = req.path.startsWith('/api/'); const P = tenancy.platform().settings;
+  if (r.kind !== 'tenant') return isApi ? res.status(404).json({ error: 'No account at this address' }) : res.status(404).send(notice('No account here', `There’s no ${esc(P.productName)} account at this address. Check the link you were given.`));
+  if (r.tenant.status === 'pending') { // signed up for a paid plan but hasn't finished checkout
+    const msg = `This account is waiting for its first payment. Use the checkout link from your sign-up to finish, or sign up again at <a href="${esc(tenancy.platformUrl())}/pricing">${esc(tenancy.platformUrl().replace(/^https?:\/\//, ''))}/pricing</a>.${P.contactEmail ? ` Questions? Contact ${esc(P.contactEmail)}.` : ''}`;
+    return isApi ? res.status(403).json({ error: 'This account isn’t paid for yet' }) : res.status(403).send(notice('Finish your checkout', msg));
+  }
+  if (r.tenant.status === 'suspended') {
+    const msg = `This account is paused.${P.contactEmail ? ` Contact ${esc(P.contactEmail)} for help.` : ''}`;
+    return isApi ? res.status(403).json({ error: 'This account is paused' }) : res.status(403).send(notice('Account paused', msg));
+  }
+  tenancy.run(r.tenant, () => { applyTimezone(); next(); });
+});
+
+// ---------- staff accounts + login ----------
+// Passwords: scrypt with a per-user salt. Sessions: random token in an HttpOnly cookie; only its SHA-256 is stored.
+const SESSION_DAYS = 30;
+const sha = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
+const hashPassword = (pw, salt = crypto.randomBytes(16).toString('hex')) => ({ salt, hash: crypto.scryptSync(String(pw), salt, 64).toString('hex') });
+const checkPassword = (pw, u) => { const a = Buffer.from(hashPassword(pw, u.salt).hash, 'hex'); const b = Buffer.from(u.passwordHash, 'hex'); return a.length === b.length && crypto.timingSafeEqual(a, b); };
+const normEmail = (e) => String(e || '').trim().toLowerCase();
+// linked team member: by staffId, or by matching email (e.g. an owner who is also on the team)
+const staffOfUser = (u) => (db.staff || []).find((s) => s.id === u.staffId) || (db.staff || []).find((s) => normEmail(s.email) === u.email);
+const publicUser = (u) => u && { id: u.id, name: u.name, email: u.email, role: u.role, photo: (staffOfUser(u) || u).photo || '' };
+// a login linked to a team member stops working when that member is deactivated
+const staffBlocked = (u) => { const st = u.staffId && db.staff.find((x) => x.id === u.staffId); return !!(st && st.status === 'deactivated'); };
+const isAdmin = (u) => !!u && (u.role === 'owner' || u.role === 'admin');
+function ensureAuthStore() { db.users = db.users || []; db.sessions = db.sessions || {}; db.resetTokens = db.resetTokens || {}; }
+function cookies(req) { return Object.fromEntries(String(req.headers.cookie || '').split(';').map((c) => c.trim().split('=')).filter((p) => p[0]).map(([k, ...v]) => [k, decodeURIComponent(v.join('='))])); }
+function currentUser(req) {
+  if (req._user !== undefined) return req._user;
+  const s = db.sessions[sha(cookies(req).sid || '')];
+  const u = s && s.expires > Date.now() ? db.users.find((x) => x.id === s.userId) : null;
+  req._user = u && u.passwordHash && !staffBlocked(u) ? u : null; // invited-but-unfinished and deactivated members can't use sessions
+  return req._user;
+}
+function startSession(res, user) {
+  const token = crypto.randomBytes(32).toString('hex');
+  const now = Date.now(); for (const [k, s] of Object.entries(db.sessions)) if (s.expires < now) delete db.sessions[k]; // prune old ones
+  db.sessions[sha(token)] = { userId: user.id, expires: now + SESSION_DAYS * 864e5 }; save();
+  res.setHeader('Set-Cookie', `sid=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_DAYS * 86400}${BASE_URL.startsWith('https') ? '; Secure' : ''}`);
+}
+// simple brute-force guard: 10 failed logins per email+IP in 15 minutes
+const failures = new Map();
+const tooMany = (key) => { const f = failures.get(key); return f && f.n >= 10 && Date.now() - f.t < 15 * 60e3; };
+const recordFailure = (key) => { const f = failures.get(key); failures.set(key, f && Date.now() - f.t < 15 * 60e3 ? { n: f.n + 1, t: f.t } : { n: 1, t: Date.now() }); };
+
+// Everything requires login except what clients use (quote/pay pages, client portal), the login page, and static assets.
+const PUBLIC_API = (req) => req.path === '/api/stripe/webhook' || req.path.startsWith('/api/auth/') || req.path.startsWith('/api/portal/') || (req.method === 'GET' && req.path === '/api/company');
+app.use((req, res, next) => {
+  const p = req.path;
+  if (p.startsWith('/api/')) return PUBLIC_API(req) || currentUser(req) ? next() : res.status(401).json({ error: 'Please log in' });
+  if (p === '/login' || p === '/client-portal' || p.startsWith('/p/') || p.startsWith('/pay/') || p.startsWith('/refer/') || p.startsWith('/uploads/') || /\.(js|css|png|jpe?g|gif|webp|svg|ico)$/i.test(p)) return next();
+  if (currentUser(req)) return next();
+  res.redirect('/login' + (p !== '/' ? '?next=' + encodeURIComponent(req.url) : ''));
+});
+// Access levels: owner/admin can do everything. Others only reach the routes listed for their role:
+//  technician: view jobs (no prices), clients and the schedule
+//  manager: add/edit/delete jobs, quotes and invoices, the Money section (products & services, expenses, reports, tax), add/edit clients
+const ROLES = ['admin', 'manager', 'technician']; // assignable to team members (the owner role is fixed)
+const ID = '[^/]+';
+const route = (method, re) => [method, new RegExp('^/api/' + re + '$')];
+const ROLE_API = {
+  technician: [route('GET', '(jobs|clients|staff|company)'), route('GET', 'auth/.+'), route('POST', 'auth/.+'), route('POST', `jobs/${ID}/signature`)],
+  manager: [
+    route('GET', 'auth/.+'), route('POST', 'auth/.+'),
+    route('GET', '(jobs|clients|staff|services|photos|company|quotes|invoices|expenses|reports|tax-summary|overview|email-templates)'),
+    route('POST', '(jobs|quotes|invoices|expenses|services|clients|photos)'), route('POST', 'services/describe'), route('PUT', `(jobs|quotes|invoices|expenses|services|clients)/${ID}`),
+    route('DELETE', `(jobs|quotes|invoices|expenses|services|photos)/${ID}`),
+    route('POST', `quotes/${ID}/(send|approve|convert-to-job|mark-deposit-paid|set-deposit)`), route('POST', `invoices/${ID}/(send|mark-paid|payments)`), route('DELETE', `invoices/${ID}/payments/${ID}`), route('POST', `jobs/${ID}/(create-invoice|remind|signature)`), route('DELETE', `jobs/${ID}/signature`),
+  ],
+};
+app.use('/api', (req, res, next) => {
+  const u = currentUser(req); if (!u || isAdmin(u)) return next();
+  if ((ROLE_API[u.role] || []).some(([m, re]) => m === req.method && re.test(req.path))) return next();
+  res.status(403).json({ error: 'Your access level doesn’t include this. Ask the account owner.' });
+});
+// features the account's plan doesn't include: lists come back empty (so pages still load), everything else is refused
+app.use('/api', (req, res, next) => {
+  const f = tenancy.lockedFeatureFor(tenancy.current(), req.method, req.path); if (!f) return next();
+  if (req.method === 'GET' && /^\/api\/[a-z-]+$/.test(req.path) && COLLECTIONS.includes(req.path.slice(5))) return res.json([]);
+  res.status(403).json({ error: `${f.label} isn’t included in your ${tenancy.planOf(tenancy.current()).name} plan`, upgrade: f.key });
+});
+// technicians see jobs without prices, totals or line items
+const isMemberReq = (req) => { const u = currentUser(req); return !!u && u.role === 'technician'; };
+// what a team member may see/change on a job: no prices, totals or line items
+const MONEY_KEYS = ['items', 'subtotal', 'discount', 'discountType', 'discountValue', 'tax', 'total', 'taxRate', 'depositType', 'depositValue', 'depositFee'];
+const jobForMember = (j) => Object.fromEntries(Object.entries(j).filter(([k]) => !MONEY_KEYS.includes(k)));
+const MEMBER_JOB_FIELDS = ['title', 'clientId', 'address', 'date', 'startTime', 'endTime', 'staffIds', 'status', 'description', 'internalNotes'];
+
+// ---------- team logins (owner/admin only; the /api guard above blocks members) ----------
+const INVITE_DAYS = 7;
+const userRow = (u) => ({ ...publicUser(u), staffId: u.staffId || null, status: u.passwordHash ? 'active' : 'invited', invitedAt: u.invitedAt || null, lastLoginAt: u.lastLoginAt || null });
+app.get('/api/users', (req, res) => res.json(db.users.map(userRow)));
+app.post('/api/users/invite', async (req, res) => { // invite (or re-invite) a team member; returns the link so it can also be shared by hand
+  const st = db.staff.find((x) => x.id === (req.body && req.body.staffId)); if (!st) return res.status(404).json({ error: 'Team member not found' });
+  const email = normEmail(st.email); if (!email.includes('@')) return res.status(400).json({ error: 'Add an email address for this team member first' });
+  const role = ROLES.includes(req.body.role) ? req.body.role : 'technician';
+  let user = db.users.find((u) => u.staffId === st.id) || db.users.find((u) => u.email === email);
+  if (user && user.role === 'owner') return res.status(400).json({ error: 'This email belongs to the account owner' });
+  if (user && user.passwordHash) return res.status(400).json({ error: 'They already have a login' });
+  const max = tenancy.planOf(tenancy.current()).maxUsers || 0;
+  if (max && !user && db.users.length >= max) return res.status(403).json({ error: `Your ${tenancy.planOf(tenancy.current()).name} plan includes ${max} login${max === 1 ? '' : 's'}. Upgrade to add more of your team.`, upgrade: 'users' });
+  if (!user) { user = { id: uid(), createdAt: iso(new Date()) }; db.users.push(user); }
+  Object.assign(user, { name: st.name, email, role, staffId: st.id, invitedAt: iso(new Date()), invitedBy: currentUser(req).id });
+  for (const [k, t] of Object.entries(db.resetTokens)) if (t.userId === user.id) delete db.resetTokens[k]; // old invite links stop working
+  const tok = crypto.randomBytes(32).toString('hex'); db.resetTokens[sha(tok)] = { userId: user.id, expires: Date.now() + INVITE_DAYS * 864e5, invite: true }; save();
+  const link = `${baseUrl()}/login?invite=${tok}`;
+  const sent = await sendEmail(email, `You're invited to ${db.company.name}`, `Hi ${st.name},\n\n${currentUser(req).name} invited you to log in to ${db.company.name}'s scheduling and jobs app.\n\nSet your password here (the link works for ${INVITE_DAYS} days):\n${link}\n\n${db.company.name}`);
+  res.json({ user: userRow(user), link, emailed: sent.status === 'sent', detail: sent.detail });
+});
+app.put('/api/users/:id', (req, res) => {
+  const u = db.users.find((x) => x.id === req.params.id); if (!u) return res.status(404).json({ error: 'Not found' });
+  if (u.role === 'owner') return res.status(400).json({ error: 'The owner’s role can’t be changed' });
+  u.role = ROLES.includes(req.body && req.body.role) ? req.body.role : 'technician'; save(); res.json(userRow(u));
+});
+function removeUser(u) {
+  db.users = db.users.filter((x) => x.id !== u.id);
+  for (const [k, s] of Object.entries(db.sessions)) if (s.userId === u.id) delete db.sessions[k]; // signs them out right away
+  for (const [k, t] of Object.entries(db.resetTokens)) if (t.userId === u.id) delete db.resetTokens[k];
+}
+app.delete('/api/users/:id', (req, res) => {
+  const u = db.users.find((x) => x.id === req.params.id); if (!u) return res.status(404).json({ error: 'Not found' });
+  if (u.role === 'owner') return res.status(400).json({ error: 'The owner’s login can’t be removed' });
+  if (u.id === currentUser(req).id) return res.status(400).json({ error: 'You can’t remove your own login' });
+  removeUser(u); save(); res.json({ ok: true });
+});
+// invite acceptance (public: the token is the proof)
+app.get('/api/auth/invite', (req, res) => {
+  const t = db.resetTokens[sha(req.query.token || '')]; const u = t && t.invite && t.expires > Date.now() && db.users.find((x) => x.id === t.userId);
+  if (!u) return res.status(400).json({ error: 'This invite link has expired or was replaced. Ask for a new one.' });
+  res.json({ name: u.name, email: u.email });
+});
+app.post('/api/auth/accept-invite', (req, res) => {
+  const k = sha((req.body && req.body.token) || ''); const t = db.resetTokens[k]; const u = t && t.invite && t.expires > Date.now() && db.users.find((x) => x.id === t.userId);
+  if (!u) return res.status(400).json({ error: 'This invite link has expired or was replaced. Ask for a new one.' });
+  if (String((req.body && req.body.password) || '').length < 8) return res.status(400).json({ error: 'Use a password with at least 8 characters' });
+  if (staffBlocked(u)) return res.status(403).json({ error: 'Your login access is turned off. Ask the account owner.' });
+  const { salt, hash } = hashPassword(req.body.password); Object.assign(u, { salt, passwordHash: hash, lastLoginAt: new Date().toISOString() }); delete db.resetTokens[k];
+  startSession(res, u); res.json(publicUser(u));
+});
+app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
+app.get('/api/auth/state', (req, res) => res.json({ needsSetup: !db.users.length, user: publicUser(currentUser(req)), company: { name: db.company.name, logo: db.company.logo, brandColor: db.company.brandColor }, emailReady: !!emailProvider() }));
+app.get('/api/auth/me', (req, res) => (currentUser(req) ? res.json(publicUser(currentUser(req))) : res.status(401).json({ error: 'Please log in' })));
+app.post('/api/auth/setup', (req, res) => { // first run only: create the owner account
+  if (db.users.length) return res.status(403).json({ error: 'An account already exists. Log in instead.' });
+  const { name, email, password } = req.body || {};
+  if (!String(name || '').trim() || !normEmail(email).includes('@')) return res.status(400).json({ error: 'Enter your name and email address' });
+  if (String(password || '').length < 8) return res.status(400).json({ error: 'Use a password with at least 8 characters' });
+  const { salt, hash } = hashPassword(password);
+  const user = { id: uid(), name: String(name).trim(), email: normEmail(email), role: 'owner', salt, passwordHash: hash, createdAt: iso(new Date()) };
+  db.users.push(user); startSession(res, user); res.json(publicUser(user));
+});
+app.post('/api/auth/login', (req, res) => {
+  const email = normEmail(req.body && req.body.email); const key = tenancy.current().id + '|' + email + '|' + req.socket.remoteAddress;
+  if (tooMany(key)) return res.status(429).json({ error: 'Too many attempts. Try again in 15 minutes or reset your password.' });
+  const user = db.users.find((u) => u.email === email);
+  if (!user || !user.passwordHash || !checkPassword(String((req.body && req.body.password) || ''), user)) { recordFailure(key); return res.status(401).json({ error: 'That email and password don’t match an account' }); }
+  if (staffBlocked(user)) return res.status(403).json({ error: 'Your login access is turned off. Ask the account owner.' });
+  failures.delete(key); user.lastLoginAt = new Date().toISOString(); startSession(res, user); res.json(publicUser(user));
+});
+app.post('/api/auth/logout', (req, res) => {
+  delete db.sessions[sha(cookies(req).sid || '')]; save();
+  res.setHeader('Set-Cookie', 'sid=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0'); res.json({ ok: true });
+});
+app.post('/api/auth/forgot', async (req, res) => { // always answers the same, so it doesn't reveal which emails have accounts
+  const user = db.users.find((u) => u.email === normEmail(req.body && req.body.email));
+  if (user) {
+    const token = crypto.randomBytes(32).toString('hex'); db.resetTokens[sha(token)] = { userId: user.id, expires: Date.now() + 60 * 60e3 }; save();
+    await sendEmail(user.email, `Reset your ${db.company.name} password`, `Hi ${user.name},\n\nUse this link to choose a new password. It works for 1 hour:\n${baseUrl()}/login?reset=${token}\n\nIf you didn't ask for this, you can ignore this email.`);
+  }
+  res.json({ ok: true });
+});
+app.post('/api/auth/reset', (req, res) => {
+  const k = sha((req.body && req.body.token) || ''); const t = db.resetTokens[k];
+  if (!t || t.expires < Date.now()) return res.status(400).json({ error: 'This reset link has expired. Ask for a new one.' });
+  if (String((req.body && req.body.password) || '').length < 8) return res.status(400).json({ error: 'Use a password with at least 8 characters' });
+  const user = db.users.find((u) => u.id === t.userId); if (!user) return res.status(400).json({ error: 'Account not found' });
+  const { salt, hash } = hashPassword(req.body.password); user.salt = salt; user.passwordHash = hash; delete db.resetTokens[k];
+  for (const [sk, s] of Object.entries(db.sessions)) if (s.userId === user.id) delete db.sessions[sk]; // sign out everywhere
+  startSession(res, user); res.json(publicUser(user));
+});
+
+// ---- my profile: any logged-in user edits their own name, contact info, photo and password ----
+// Photo and contact details live on the linked team member record (so they show on schedules); an owner without one keeps them on the user.
+const PROFILE_FIELDS = ['phone', 'street', 'city', 'state', 'zip', 'country'];
+const profileOf = (u) => { const st = staffOfUser(u); const src = st || u; return { ...publicUser(u), ...Object.fromEntries(PROFILE_FIELDS.map((k) => [k, src[k] || ''])), color: (st && st.color) || '', jobTitle: (st && st.role) || '', linked: !!st, hours: (st && st.hours) || null }; };
+app.get('/api/auth/profile', (req, res) => { const u = currentUser(req); if (!u) return res.status(401).json({ error: 'Please log in' }); res.json(profileOf(u)); });
+app.post('/api/auth/profile', (req, res) => {
+  const u = currentUser(req); if (!u) return res.status(401).json({ error: 'Please log in' });
+  const b = req.body || {}; const name = String(b.name || '').trim(); const email = normEmail(b.email);
+  if (!name) return res.status(400).json({ error: 'Enter your name' });
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Enter a valid email address' });
+  if (email !== u.email) { // the email is the login, so changing it needs the current password
+    if (db.users.some((x) => x.id !== u.id && x.email === email)) return res.status(400).json({ error: 'Another login already uses that email' });
+    const key = 'pw|' + u.id; if (tooMany(key)) return res.status(429).json({ error: 'Too many attempts. Try again in 15 minutes.' });
+    if (!checkPassword(String(b.currentPassword || ''), u)) { recordFailure(key); return res.status(400).json({ error: 'Your current password is incorrect' }); }
+  }
+  const st = staffOfUser(u); const src = st || u;
+  if ('photo' in b && b.photo && b.photo !== src.photo) {
+    if (!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(b.photo)) return res.status(400).json({ error: 'Use a PNG, JPG or WebP image' });
+    if (b.photo.length > 2e6) return res.status(400).json({ error: 'That image is too large' });
+  }
+  for (const k of PROFILE_FIELDS) if (k in b) src[k] = String(b[k] || '').trim();
+  if ('photo' in b) src.photo = b.photo || '';
+  if (st) { st.name = name; st.email = email; }
+  u.name = name; u.email = email; save(); res.json(profileOf(u));
+});
+// a team member sets their own weekly availability (shown on Staff Schedules, used for booking warnings)
+const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']; const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+app.post('/api/auth/hours', (req, res) => {
+  const u = currentUser(req); if (!u) return res.status(401).json({ error: 'Please log in' });
+  const st = staffOfUser(u); if (!st) return res.status(400).json({ error: 'Your login isn’t linked to a team member, so there are no hours to set.' });
+  const h = (req.body && req.body.hours) || {}; const hours = {};
+  for (const d of DAYS) {
+    const x = h[d] || {}; if (!HHMM.test(x.start || '') || !HHMM.test(x.end || '')) return res.status(400).json({ error: 'Enter a start and end time for every day' });
+    if (x.on && x.end <= x.start) return res.status(400).json({ error: 'Each end time must be after its start time' });
+    hours[d] = { on: !!x.on, start: x.start, end: x.end };
+  }
+  st.hours = hours; save(); res.json(profileOf(u));
+});
+app.post('/api/auth/password', (req, res) => {
+  const u = currentUser(req); if (!u) return res.status(401).json({ error: 'Please log in' });
+  const { currentPassword, newPassword } = req.body || {}; const key = 'pw|' + u.id;
+  if (tooMany(key)) return res.status(429).json({ error: 'Too many attempts. Try again in 15 minutes.' });
+  if (!checkPassword(String(currentPassword || ''), u)) { recordFailure(key); return res.status(400).json({ error: 'Your current password is incorrect' }); }
+  if (String(newPassword || '').length < 8) return res.status(400).json({ error: 'Use a new password with at least 8 characters' });
+  const { salt, hash } = hashPassword(newPassword); u.salt = salt; u.passwordHash = hash; failures.delete(key);
+  const mine = sha(cookies(req).sid || ''); // keep this session, sign out everywhere else
+  for (const [sk, s] of Object.entries(db.sessions)) if (s.userId === u.id && sk !== mine) delete db.sessions[sk];
+  save(); res.json({ ok: true });
+});
+
+app.use('/uploads', (req, res, next) => express.static(uploadDir())(req, res, next)); // each account's own uploads folder
+app.use(express.static(path.join(__dirname, 'public')));
+
+const COLLECTIONS = ['clients', 'services', 'staff', 'quotes', 'jobs', 'invoices', 'expenses', 'photos'];
+
+// the account's plan: which features it has, which pages are locked, its web addresses
+function accountInfo() {
+  const t = tenancy.current(); const plan = tenancy.planOf(t);
+  return {
+    slug: t.slug, plan: { id: plan.id, name: plan.name }, features: plan.features, lockedPages: tenancy.lockedPages(t), maxUsers: plan.maxUsers || 0,
+    url: tenancy.tenantUrl(t), subdomainUrl: tenancy.subdomainUrl(t), rootDomain: tenancy.ROOT_DOMAIN, serverIp: process.env.SERVER_IP || '',
+    domains: (t.domains || []).map(({ host, verified, primary, addedAt, verifiedAt }) => ({ host, verified: !!verified, primary: !!primary, addedAt, verifiedAt: verifiedAt || null })),
+    productName: tenancy.platform().settings.productName, contactEmail: tenancy.platform().settings.contactEmail, managed: !tenancy.isDefault(),
+    featureList: tenancy.FEATURES.map(({ key, label, desc }) => ({ key, label, desc, included: plan.features.includes(key) })), alwaysIncluded: tenancy.ALWAYS_INCLUDED,
+  };
+}
+app.get('/api/company', (req, res) => res.json({ ...db.company, account: accountInfo() }));
+app.put('/api/company', (req, res) => {
+  if (!tenancy.has('branding')) delete req.body.brandColor; // custom branding is a plan feature
+  for (const k of Object.keys(PREFIX_DEFAULTS)) if (k in req.body) {
+    const v = String(req.body[k] ?? '').trim();
+    if (v.length > 10 || !/^[A-Za-z0-9 #._\/-]*$/.test(v)) return res.status(400).json({ error: 'Number prefixes can be up to 10 letters, numbers, spaces or # . _ / -' });
+    req.body[k] = v;
+  }
+  const b = req.body;
+  for (const [k, ok] of Object.entries(REGIONAL)) if (k in b && !ok(b[k])) return res.status(400).json({ error: `Choose a valid ${k === 'timezone' ? 'time zone' : k === 'dateFormat' ? 'date format' : k === 'timeFormat' ? 'time format' : 'first day of the week'}` });
+  if ('hours' in b) { const h = readHours(b.hours); if (!h) return res.status(400).json({ error: 'Check the business hours: each open day needs an end time after its start time' }); b.hours = h; }
+  const allowed = ['name', 'email', 'phone', 'website', 'address', 'logo', 'taxRate', 'paymentTermsDays', 'invoiceFooter', 'brandColor', 'zelleRecipient', 'zelleName', 'quoteDisclaimer', 'invoiceDisclaimer', ...Object.keys(PREFIX_DEFAULTS),
+    ...ADDRESS_PARTS, 'taxIdName', 'taxIdNumber', 'taxName', 'taxDescription', 'hours', ...Object.keys(REGIONAL)];
+  for (const k of allowed) if (k in b) db.company[k] = k === 'taxRate' || k === 'paymentTermsDays' ? Number(b[k]) || 0 : typeof b[k] === 'string' ? b[k].trim().slice(0, 500) : b[k];
+  for (const k of ['aiEnabled', 'addressPrivate', 'showHours']) if (k in b) db.company[k] = b[k] === true || b[k] === 'on' || b[k] === 'true';
+  if (ADDRESS_PARTS.some((k) => k in b)) db.company.address = composeAddress(db.company); // the one-line address used everywhere else
+  if ('timezone' in b) applyTimezone();
+  save(); res.json({ ...db.company, account: accountInfo() });
+});
+app.post('/api/company/logo', (req, res) => {
+  const { dataUrl } = req.body;
+  const m = /^data:image\/(png|jpeg|jpg|gif|webp|svg\+xml);base64,(.+)$/.exec(dataUrl || '');
+  if (!m) return res.status(400).json({ error: 'Invalid image' });
+  const ext = m[1] === 'svg+xml' ? 'svg' : m[1] === 'jpeg' ? 'jpg' : m[1];
+  const file = `logo-${Date.now()}.${ext}`;
+  fs.writeFileSync(path.join(uploadDir(), file), Buffer.from(m[2], 'base64'));
+  db.company.logo = `/uploads/${file}`; save(); res.json(db.company);
+});
+app.delete('/api/company/logo', (req, res) => {
+  const old = /^\/uploads\/(logo-[\w-]+\.\w+)$/.exec(db.company.logo || '');
+  if (old) fs.rm(path.join(uploadDir(), old[1]), () => {});
+  db.company.logo = ''; save(); res.json(db.company);
+});
+app.post('/api/company/icon', (req, res) => {
+  const { dataUrl } = req.body;
+  const m = /^data:image\/(png|jpeg|jpg|webp|svg\+xml);base64,([A-Za-z0-9+/]+=*)$/.exec(dataUrl || '');
+  if (!m || dataUrl.length > 2e6) return res.status(400).json({ error: 'Invalid icon image' });
+  const ext = m[1] === 'svg+xml' ? 'svg' : m[1] === 'jpeg' ? 'jpg' : m[1];
+  const file = `icon-${Date.now()}-${uid()}.${ext}`;
+  fs.writeFileSync(path.join(uploadDir(), file), Buffer.from(m[2], 'base64'));
+  const old = /^\/uploads\/(icon-[\w-]+\.\w+)$/.exec(db.company.icon || '');
+  if (old) fs.rm(path.join(uploadDir(), old[1]), () => {});
+  db.company.icon = `/uploads/${file}`; save(); res.json(db.company);
+});
+app.get('/favicon.ico', (req, res) => {
+  const m = /^\/uploads\/(icon-[\w-]+\.\w+)$/.exec(db.company.icon || '');
+  if (!m) { res.statusCode = 404; return res.end(); }
+  res.setHeader('Cache-Control', 'no-cache'); // browsers recheck, so a new icon shows on the next page load
+  res.sendFile(path.join(uploadDir(), m[1]));
+});
+
+app.get('/api/notifications', (req, res) => res.json(db.notifications));
+
+// ---------- the account's own domain (Custom domain feature) ----------
+// Add a domain, point its DNS at the platform, then Check: once the DNS points here it's verified and starts working.
+const accountDomain = (req) => { const t = tenancy.current(); const host = tenancy.hostOnly(String(req.params.host || '').trim()); return { t, host, d: (t.domains || []).find((x) => x.host === host) }; };
+app.post('/api/account/domains', (req, res) => {
+  const t = tenancy.current(); const host = tenancy.hostOnly(String((req.body && req.body.host) || '').trim().replace(/^https?:\/\//, '').replace(/\/.*$/, ''));
+  const bad = tenancy.domainProblem(host, t); if (bad) return res.status(400).json({ error: bad });
+  t.domains = t.domains || [];
+  if (t.domains.some((d) => d.host === host)) return res.status(400).json({ error: 'You already added that domain' });
+  if (t.domains.length >= 5) return res.status(400).json({ error: 'You can add up to 5 domains' });
+  t.domains.push({ host, verified: false, primary: false, addedAt: new Date().toISOString() }); tenancy.savePlatform(); res.status(201).json(accountInfo());
+});
+app.post('/api/account/domains/:host/check', async (req, res) => {
+  const { t, d } = accountDomain(req); if (!d) return res.status(404).json({ error: 'Domain not found' });
+  const r = await tenancy.checkDns(d.host, t);
+  if (r.ok && !d.verified) { d.verified = true; d.verifiedAt = new Date().toISOString(); if (!t.domains.some((x) => x.primary)) d.primary = true; tenancy.savePlatform(); }
+  res.json({ ...r, account: accountInfo() });
+});
+app.post('/api/account/domains/:host/primary', (req, res) => {
+  const { t, d } = accountDomain(req); if (!d) return res.status(404).json({ error: 'Domain not found' });
+  if (!d.verified) return res.status(400).json({ error: 'Verify the domain before making it the main address' });
+  t.domains.forEach((x) => { x.primary = x === d; }); tenancy.savePlatform(); res.json(accountInfo());
+});
+app.delete('/api/account/domains/:host', (req, res) => {
+  const { t, d } = accountDomain(req); if (!d) return res.status(404).json({ error: 'Domain not found' });
+  t.domains = t.domains.filter((x) => x !== d);
+  if (d.primary) { const next = t.domains.find((x) => x.verified); if (next) next.primary = true; }
+  tenancy.savePlatform(); res.json(accountInfo());
+});
+// "Connect with Stripe" (Online card payments feature): the business signs up for or finishes its Stripe account on Stripe's own pages
+const connectReturn = () => `${baseUrl()}/settings?stripe=connected`;
+async function stripeOnboardingLink() {
+  const key = stripeLib.platformKey(); const sec = { ...secrets() }; const t = tenancy.current();
+  if (!sec.stripeAccountId) {
+    const a = await stripeLib.request(key, 'POST', 'accounts', { type: 'standard', ...(db.company.email ? { email: db.company.email } : {}), 'business_profile[name]': db.company.name || t.name, 'metadata[tenantId]': t.id });
+    sec.stripeAccountId = a.id; sec.stripeChargesEnabled = !!a.charges_enabled; db.secrets = sec; save();
+    t.stripeAccountId = a.id; tenancy.savePlatform(); // so the platform's Connect webhook can find this account
+  }
+  const l = await stripeLib.request(key, 'POST', 'account_links', { account: sec.stripeAccountId, type: 'account_onboarding', refresh_url: `${baseUrl()}/stripe/connect`, return_url: connectReturn() });
+  return l.url;
+}
+// read the connected account's status from Stripe (charges switch on once Stripe has verified the business)
+async function syncStripeAccount() {
+  const sec = { ...secrets() }; if (!sec.stripeAccountId || !stripeLib.platformKey()) return;
+  try {
+    const a = await stripeLib.request(stripeLib.platformKey(), 'GET', 'accounts/' + encodeURIComponent(sec.stripeAccountId));
+    Object.assign(sec, { stripeChargesEnabled: !!a.charges_enabled, stripeDetailsSubmitted: !!a.details_submitted, stripeAccountName: (a.settings && a.settings.dashboard && a.settings.dashboard.display_name) || (a.business_profile && a.business_profile.name) || a.email || '' });
+    db.secrets = sec; save();
+  } catch (e) { console.error('Stripe account check failed:', e.message); }
+}
+app.post('/api/integrations/stripe/connect', async (req, res) => {
+  if (!stripeLib.platformKey()) return res.status(503).json({ error: 'Card payments aren’t available on this server yet. Contact support.' });
+  try { res.json({ url: await stripeOnboardingLink() }); } catch (e) { console.error('Stripe Connect failed:', e.message); res.status(502).json({ error: `Stripe couldn’t start the setup: ${e.message}` }); }
+});
+// Stripe sends people here when an onboarding link has expired: make a fresh one
+app.get('/stripe/connect', async (req, res) => {
+  if (!isAdmin(currentUser(req)) || !tenancy.has('onlinePayments') || !stripeLib.platformKey()) return res.redirect('/settings');
+  try { res.redirect(await stripeOnboardingLink()); } catch (e) { res.redirect('/settings?stripe=error'); }
+});
+// forget the connected account (and any older pasted keys); the business keeps its Stripe account and its money
+app.post('/api/integrations/stripe/disconnect', (req, res) => {
+  const t = tenancy.current(); delete t.stripeAccountId; tenancy.savePlatform();
+  const sec = { ...secrets() }; for (const k of ['stripeAccountId', 'stripeChargesEnabled', 'stripeDetailsSubmitted', 'stripeAccountName', 'stripeSecretKey', 'stripeWebhookSecret']) delete sec[k];
+  db.secrets = sec; save(); res.json({ ok: true });
+});
+
+// ---------- AI: draft a product/service description from its name (needs ANTHROPIC_API_KEY) ----------
+let anthropic = null;
+const aiClient = () => {
+  if (!process.env.ANTHROPIC_API_KEY) return null;
+  if (!anthropic) { const Anthropic = require('@anthropic-ai/sdk'); anthropic = new Anthropic(); }
+  return anthropic;
+};
+app.post('/api/services/describe', async (req, res) => {
+  const name = String(req.body.name || '').trim().slice(0, 200);
+  const kind = req.body.type === 'product' ? 'product' : 'service';
+  if (!name) return res.status(400).json({ error: 'Enter a name first' });
+  if (db.company.aiEnabled === false) return res.status(403).json({ error: 'AI assistance is turned off in App Settings' });
+  const client = aiClient();
+  if (!client) return res.status(503).json({ error: 'AI descriptions need ANTHROPIC_API_KEY in the .env file' });
+  const Anthropic = require('@anthropic-ai/sdk');
+  try {
+    const r = await client.beta.messages.create({
+      model: 'claude-opus-5-5',
+      max_tokens: 16000,
+      betas: ['server-side-fallback-2026-07-01'],
+      fallbacks: 'default', // if the request is declined, the API retries it on a suitable fallback model
+      output_config: { effort: 'low' },
+      system: `You write line-item descriptions for the quotes and invoices of ${db.company.name || 'a field service business'}, a field service business. The customer reads them.
+Given the name of a ${kind}, write one or two plain sentences (under 40 words) saying what it includes or what the customer gets.
+Plain text only: no markdown, no quotes, no price, no heading. Don't invent specifics such as brands, warranties, durations or quantities that the name doesn't state.`,
+      messages: [{ role: 'user', content: `${kind === 'product' ? 'Product' : 'Service'} name: ${name}` }],
+    });
+    if (r.stop_reason === 'refusal') return res.status(422).json({ error: 'The AI couldn\u2019t write a description for that name. Try rewording it.' });
+    const description = r.content.filter((b) => b.type === 'text').map((b) => b.text).join('').trim();
+    if (!description) return res.status(502).json({ error: 'The AI returned an empty description. Try again.' });
+    res.json({ description });
+  } catch (err) {
+    console.error('AI description failed:', err.message);
+    if (err instanceof Anthropic.AuthenticationError) return res.status(502).json({ error: 'Your ANTHROPIC_API_KEY was rejected. Check it in the .env file.' });
+    if (err instanceof Anthropic.RateLimitError) return res.status(503).json({ error: 'The AI is busy right now. Try again in a minute.' });
+    if (err instanceof Anthropic.APIError && err.status) return res.status(502).json({ error: `The AI service returned an error (${err.status}). Try again.` });
+    res.status(502).json({ error: 'Couldn\u2019t reach the AI service. Check your internet connection.' });
+  }
+});
+
+// generic list / get
+app.get('/api/:col', (req, res, next) => {
+  const col = req.params.col;
+  if (!COLLECTIONS.includes(col)) return next();
+  if (col === 'jobs' && isMemberReq(req)) return res.json(db.jobs.map(jobForMember));
+  res.json(col === 'invoices' ? db.invoices.map(withStatus) : db[col]);
+});
+
+// quote / job / invoice numbers: automatic (Q-1001, J-2001, INV-3001…), or typed in by an admin for quotes and invoices; always unique.
+// The prefixes are set in App Settings; changing one only affects numbers made afterwards.
+// A typed number in the usual format (e.g. Q-2000) moves the counter on, so the next automatic one follows it.
+const PREFIX_DEFAULTS = { quotePrefix: 'Q-', jobPrefix: 'J-', invoicePrefix: 'INV-' };
+const docPrefix = (k) => db.company[k] ?? PREFIX_DEFAULTS[k];
+const NUMBERING = { quotes: ['quotePrefix', 'quote'], jobs: ['jobPrefix', 'job'], invoices: ['invoicePrefix', 'invoice'] };
+const DOC_NUM = { quotes: NUMBERING.quotes, invoices: NUMBERING.invoices }; // the ones that can be typed in
+const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function nextNumber(col) {
+  const [pk, key] = NUMBERING[col]; const prefix = docPrefix(pk); let n;
+  do n = prefix + ++db.counters[key]; while (db[col].some((d) => String(d.number).toLowerCase() === n.toLowerCase()));
+  return n;
+}
+function customNumber(col, raw, id) {
+  const num = String(raw || '').trim().replace(/\s+/g, ' ');
+  if (!num) return { error: 'Enter a number' };
+  if (num.length > 30) return { error: 'Keep the number to 30 characters or fewer' };
+  const label = col === 'quotes' ? 'quote' : 'invoice';
+  if (db[col].some((d) => d.id !== id && String(d.number).toLowerCase() === num.toLowerCase())) return { error: `Another ${label} already uses number ${num}` };
+  const [pk, key] = DOC_NUM[col]; const m = new RegExp('^' + escRe(docPrefix(pk)) + '(\\d+)$', 'i').exec(num);
+  if (m && Number(m[1]) > db.counters[key]) db.counters[key] = Number(m[1]);
+  return { number: num };
+}
+
+// create
+app.post('/api/:col', (req, res, next) => {
+  const col = req.params.col;
+  if (!COLLECTIONS.includes(col) || col === 'photos') return next();
+  let b = req.body || {};
+  if (col === 'jobs' && isMemberReq(req)) b = Object.fromEntries(Object.entries(b).filter(([k]) => MEMBER_JOB_FIELDS.includes(k)));
+  let doc = { ...b, id: uid(), createdAt: iso(new Date()) };
+  if (DOC_NUM[col] && String(b.number || '').trim()) { const r = customNumber(col, b.number); if (r.error) return res.status(400).json({ error: r.error }); doc.number = r.number; }
+  if (col === 'clients') { doc.portalToken = token(); }
+  if (col === 'quotes') {
+    doc.number = doc.number || nextNumber('quotes'); doc.status = b.status || 'draft'; doc.token = token();
+    if (b.taxRate === undefined) doc.taxRate = db.company.taxRate; computeTotals(doc);
+  }
+  if (col === 'invoices') {
+    doc.number = doc.number || nextNumber('invoices'); doc.status = b.status || 'draft'; doc.token = token(); doc.paidAt = null;
+    doc.issueDate = b.issueDate || iso(new Date());
+    doc.dueDate = b.dueDate || doc.issueDate; // default terms: due upon receipt
+    if (b.taxRate === undefined) doc.taxRate = db.company.taxRate; computeTotals(doc);
+  }
+  if (col === 'jobs') {
+    delete doc.signature;
+    doc.number = nextNumber('jobs'); doc.status = b.status || 'scheduled'; doc.staffIds = b.staffIds || [];
+    if (!doc.address && b.clientId) { const c = findClient(b.clientId); if (c) doc.address = c.address; }
+    if (Array.isArray(b.items)) { if (b.taxRate === undefined) doc.taxRate = db.company.taxRate; computeTotals(doc); }
+  }
+  if (col === 'expenses') doc.amount = Number(b.amount) || 0;
+  if (col === 'services') doc.price = Number(b.price) || 0;
+  db[col].push(doc); save(); res.status(201).json(col === 'invoices' ? withStatus(doc) : col === 'jobs' && isMemberReq(req) ? jobForMember(doc) : doc);
+});
+
+// update
+app.put('/api/:col/:id', (req, res, next) => {
+  const col = req.params.col;
+  if (!COLLECTIONS.includes(col)) return next();
+  const i = db[col].findIndex((x) => x.id === req.params.id);
+  if (i < 0) return res.status(404).json({ error: 'Not found' });
+  const protectedKeys = ['id', 'number', 'token', 'portalToken', 'createdAt'];
+  let upd = { ...req.body }; protectedKeys.forEach((k) => delete upd[k]);
+  if (DOC_NUM[col] && String((req.body || {}).number || '').trim() && req.body.number !== db[col][i].number) { // renumber a quote / invoice
+    const r = customNumber(col, req.body.number, req.params.id); if (r.error) return res.status(400).json({ error: r.error }); upd.number = r.number;
+  }
+  if (col === 'jobs' && isMemberReq(req)) upd = Object.fromEntries(Object.entries(upd).filter(([k]) => MEMBER_JOB_FIELDS.includes(k)));
+  let doc = { ...db[col][i], ...upd };
+  if (col === 'quotes') applyDepositPaymentEdit(doc, upd);
+  if (col === 'quotes' || col === 'invoices' || (col === 'jobs' && Array.isArray(doc.items))) computeTotals(doc); // jobs are priced once they have line items
+  if (col === 'jobs') { if (db.jobs[i].signature) doc.signature = db.jobs[i].signature; else delete doc.signature; } // signatures only via /signature
+  if (col === 'invoices') { // payments change only through their own endpoints, never through an invoice edit
+    if (db.invoices[i].payments) doc.payments = db.invoices[i].payments; else delete doc.payments;
+    if ((doc.payments || []).length) settleInvoice(doc);
+  }
+  if (col === 'expenses') doc.amount = Number(doc.amount) || 0;
+  if (col === 'services') doc.price = Number(doc.price) || 0;
+  db[col][i] = doc; save(); res.json(col === 'invoices' ? withStatus(doc) : col === 'jobs' && isMemberReq(req) ? jobForMember(doc) : doc);
+});
+
+app.delete('/api/:col/:id', (req, res, next) => {
+  const col = req.params.col;
+  if (!COLLECTIONS.includes(col)) return next();
+  const i = db[col].findIndex((x) => x.id === req.params.id);
+  if (i < 0) return res.status(404).json({ error: 'Not found' });
+  const [removed] = db[col].splice(i, 1);
+  if (col === 'staff') db.users.filter((u) => u.staffId === removed.id && u.role !== 'owner').forEach(removeUser);
+  if (col === 'photos' && removed.file) fs.rmSync(path.join(uploadDir(), path.basename(removed.file)), { force: true });
+  save(); res.json({ ok: true });
+});
+
+// photos
+// ---- client signature on a job: collected on the team member's device (finger or mouse), saved as a PNG ----
+// Anyone who can open the job may collect it; only managers / admins can remove one (so a technician can't overwrite it).
+app.post('/api/jobs/:id/signature', (req, res) => {
+  const j = db.jobs.find((x) => x.id === req.params.id); if (!j) return res.status(404).json({ error: 'Job not found' });
+  const u = currentUser(req);
+  if (j.signature && !isAdmin(u) && u.role !== 'manager') return res.status(400).json({ error: 'This job is already signed. Ask a manager to remove the signature first.' });
+  const b = req.body || {}; const name = String(b.name || '').trim().slice(0, 100);
+  if (!name) return res.status(400).json({ error: 'Enter the name of the person signing' });
+  const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(b.dataUrl || '');
+  if (!m || m[1].length < 200) return res.status(400).json({ error: 'Please sign in the box first' });
+  if (m[1].length > 2e6) return res.status(400).json({ error: 'That signature image is too large' });
+  const file = `sig-${token()}.png`; // unguessable name: uploads are served without login
+  fs.writeFileSync(path.join(uploadDir(), file), Buffer.from(m[1], 'base64'));
+  removeSignatureFile(j);
+  j.signature = { file: `/uploads/${file}`, name, statement: String(b.statement || '').trim().slice(0, 300), signedAt: new Date().toISOString(), collectedBy: u ? u.name : '' };
+  save(); res.status(201).json(isMemberReq(req) ? jobForMember(j) : j);
+});
+app.delete('/api/jobs/:id/signature', (req, res) => {
+  const j = db.jobs.find((x) => x.id === req.params.id); if (!j) return res.status(404).json({ error: 'Job not found' });
+  removeSignatureFile(j); delete j.signature; save(); res.json(j);
+});
+function removeSignatureFile(j) {
+  const f = j.signature && /^\/uploads\/(sig-[a-f0-9]+\.png)$/.exec(j.signature.file || '');
+  if (f) fs.rm(path.join(uploadDir(), f[1]), () => {});
+}
+
+app.post('/api/photos', (req, res) => {
+  const { dataUrl, jobId, caption, type } = req.body;
+  const m = /^data:image\/(png|jpeg|jpg|gif|webp);base64,(.+)$/.exec(dataUrl || '');
+  if (!m) return res.status(400).json({ error: 'Invalid image' });
+  const file = `photo-${Date.now()}-${uid()}.${m[1] === 'jpeg' ? 'jpg' : m[1]}`;
+  fs.writeFileSync(path.join(uploadDir(), file), Buffer.from(m[2], 'base64'));
+  const doc = { id: uid(), jobId, caption: caption || '', type: type || 'progress', file: `/uploads/${file}`, createdAt: iso(new Date()) };
+  db.photos.push(doc); save(); res.status(201).json(doc);
+});
+
+// ---------- workflow ----------
+const quoteLink = (q) => `${baseUrl()}/p/quote/${q.token}`;
+const invoiceLink = (inv) => `${baseUrl()}/pay/${inv.token}`;
+
+// ---------- email templates (edited on Settings → Email Templates, stored in db.emailTemplates) ----------
+const EMAIL_TEMPLATES = {
+  quote: {
+    label: 'Quote', description: 'Sent when you send a quote to a client.',
+    subject: 'Quote {{quote_number}} from {{company_name}}',
+    body: 'Hello {{client_name}},\n\nYour quote {{quote_number}} for {{total}} is ready.\nView and approve it here: {{link}}\n\n{{company_name}}',
+    vars: { client_name: 'Client name', company_name: 'Your business name', quote_number: 'Quote number', quote_title: 'Quote title', total: 'Quote total', link: 'Link to view and approve' },
+  },
+  invoice: {
+    label: 'Invoice', description: 'Sent when you send an invoice to a client.',
+    subject: 'Invoice {{invoice_number}} from {{company_name}}',
+    body: 'Hello {{client_name}},\n\nInvoice {{invoice_number}} for {{total}} is due {{due_date}}.\nPay securely online: {{link}}\n\n{{company_name}}',
+    vars: { client_name: 'Client name', company_name: 'Your business name', invoice_number: 'Invoice number', total: 'Invoice total', due_date: 'Due date', link: 'Link to view and pay' },
+  },
+  reminder: {
+    label: 'Appointment reminder', description: 'Sent when you send a job reminder by email.',
+    subject: 'Appointment reminder from {{company_name}}',
+    body: 'Hello {{client_name}},\n\nThis is a reminder of your appointment "{{job_title}}" on {{date}} at {{time}}.\nAddress: {{address}}\n\n{{company_name}}',
+    vars: { client_name: 'Client name', company_name: 'Your business name', job_number: 'Job number', job_title: 'Job title', date: 'Appointment date', time: 'Start time', address: 'Job address' },
+  },
+};
+const emailTemplate = (key) => ({ subject: EMAIL_TEMPLATES[key].subject, body: EMAIL_TEMPLATES[key].body, ...((db.emailTemplates || {})[key] || {}) });
+const fillTemplate = (text, vars) => String(text).replace(/\{\{\s*(\w+)\s*\}\}/g, (m, k) => (k in vars ? String(vars[k] ?? '') : m));
+const niceDate = (s) => {
+  if (!s) return '';
+  const [y, m, d] = String(s).slice(0, 10).split('-'); const f = db.company.dateFormat;
+  return f === 'MM/DD/YYYY' ? `${m}/${d}/${y}` : f === 'DD/MM/YYYY' ? `${d}/${m}/${y}` : f === 'YYYY-MM-DD' ? `${y}-${m}-${d}` : new Date(s.slice(0, 10) + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+};
+function renderEmail(key, vars) { const t = emailTemplate(key); return { subject: fillTemplate(t.subject, vars), body: fillTemplate(t.body, vars) }; }
+
+app.get('/api/email-templates', (req, res) => res.json(Object.entries(EMAIL_TEMPLATES).map(([key, d]) => {
+  const t = emailTemplate(key);
+  return { key, label: d.label, description: d.description, vars: d.vars, subject: t.subject, body: t.body, defaultSubject: d.subject, defaultBody: d.body, custom: !!(db.emailTemplates || {})[key] };
+})));
+app.put('/api/email-templates/:key', (req, res) => {
+  const key = req.params.key; if (!EMAIL_TEMPLATES[key]) return res.status(404).json({ error: 'Unknown template' });
+  const subject = String((req.body && req.body.subject) || '').trim(); const body = String((req.body && req.body.body) || '').trim();
+  if (!subject || !body) return res.status(400).json({ error: 'Subject and message are required' });
+  db.emailTemplates = { ...(db.emailTemplates || {}), [key]: { subject, body } }; save(); res.json({ ok: true });
+});
+app.delete('/api/email-templates/:key', (req, res) => {
+  if (db.emailTemplates) delete db.emailTemplates[req.params.key]; save(); res.json({ ok: true });
+});
+
+app.post('/api/quotes/:id/send', async (req, res) => {
+  const q = db.quotes.find((x) => x.id === req.params.id);
+  if (!q) return res.status(404).json({ error: 'Not found' });
+  const channels = (req.body.channels && req.body.channels.length) ? req.body.channels : ['email'];
+  const link = quoteLink(q); const co = db.company.name;
+  const results = [];
+  const email = renderEmail('quote', { client_name: findClient(q.clientId)?.name || '', company_name: co, quote_number: q.number, quote_title: q.title || '', total: money(q.total), link });
+  for (const ch of channels) {
+    results.push(await notify({ clientId: q.clientId, channel: ch, kind: 'quote', refId: q.id, refNumber: q.number,
+      subject: email.subject, body: ch === 'email' ? email.body : `${co}: Quote ${q.number} (${money(q.total)}) is ready: ${link}` }));
+  }
+  if (q.status === 'draft') q.status = 'sent'; if (!q.sentAt) q.sentAt = iso(new Date());
+  save(); res.json({ quote: q, results });
+});
+
+app.post('/api/quotes/:id/approve', (req, res) => {
+  const q = db.quotes.find((x) => x.id === req.params.id);
+  if (!q) return res.status(404).json({ error: 'Not found' });
+  q.status = req.body.status === 'declined' ? 'declined' : 'approved'; q.respondedAt = iso(new Date()); save(); res.json(q);
+});
+
+app.post('/api/quotes/:id/convert-to-job', (req, res) => {
+  const q = db.quotes.find((x) => x.id === req.params.id);
+  if (!q) return res.status(404).json({ error: 'Not found' });
+  const c = findClient(q.clientId);
+  const job = { id: uid(), number: nextNumber('jobs'), clientId: q.clientId, title: q.title || 'Job from ' + q.number, description: q.items.map((i) => `${i.qty} x ${i.desc}`).join(', '), date: req.body.date || daysFromNow(1), startTime: req.body.startTime || '09:00', endTime: req.body.endTime || '11:00', staffIds: req.body.staffIds || [], status: 'scheduled', quoteId: q.id, address: c ? c.address : '', createdAt: iso(new Date()), items: q.items.map((i) => ({ ...i })), taxRate: q.taxRate, discountType: q.discountType, discountValue: q.discountValue };
+  computeTotals(job);
+  db.jobs.push(job); if (q.status !== 'approved') q.status = 'approved'; save(); res.status(201).json(job);
+});
+
+app.post('/api/jobs/:id/create-invoice', (req, res) => {
+  const j = db.jobs.find((x) => x.id === req.params.id);
+  if (!j) return res.status(404).json({ error: 'Not found' });
+  const q = j.quoteId && db.quotes.find((x) => x.id === j.quoteId);
+  const items = j.items && j.items.length ? j.items : q ? q.items : [{ desc: j.title, qty: 1, price: 0 }]; // the job's own lines win
+  const inv = computeTotals({ id: uid(), number: nextNumber('invoices'), clientId: j.clientId, jobId: j.id, subject: j.title, status: 'draft', issueDate: iso(new Date()), dueDate: iso(new Date()), paymentTerms: '0', paidAt: null, token: token(), createdAt: iso(new Date()), notes: '', items: items.map((i) => ({ ...i })), taxRate: j.items && j.items.length ? j.taxRate : q ? q.taxRate : db.company.taxRate, ...(() => { const src = j.items && j.items.length ? j : q || {}; return { discountType: src.discountType, discountValue: src.discountValue }; })() });
+  db.invoices.push(inv); save(); res.status(201).json(withStatus(inv));
+});
+
+app.post('/api/invoices/:id/send', async (req, res) => {
+  const inv = db.invoices.find((x) => x.id === req.params.id);
+  if (!inv) return res.status(404).json({ error: 'Not found' });
+  const channels = (req.body.channels && req.body.channels.length) ? req.body.channels : ['email'];
+  const link = invoiceLink(inv); const co = db.company.name;
+  const results = [];
+  const email = renderEmail('invoice', { client_name: findClient(inv.clientId)?.name || '', company_name: co, invoice_number: inv.number, total: money(inv.total), due_date: niceDate(inv.dueDate), link });
+  for (const ch of channels) {
+    results.push(await notify({ clientId: inv.clientId, channel: ch, kind: 'invoice', refId: inv.id, refNumber: inv.number,
+      subject: email.subject, body: ch === 'email' ? email.body : `${co}: Invoice ${inv.number} (${money(inv.total)}) due ${inv.dueDate}. Pay online: ${link}` }));
+  }
+  if (inv.status === 'draft') inv.status = 'sent';
+  save(); res.json({ invoice: withStatus(inv), results });
+});
+
+// ---------- payments recorded by staff (owner, admin, manager) ----------
+// An invoice keeps a list of payments (part payments allowed); it becomes "paid" once they cover the balance.
+// A quote deposit records one payment. Online card payments through Stripe use the method "stripe".
+const PAY_METHODS = { other: 'Other', bank: 'Bank payment', cash: 'Cash', check: 'Check', card: 'Credit/debit card', cashapp: 'Cash App', paypal: 'PayPal', venmo: 'Venmo', zelle: 'Zelle' };
+function readPayment(b, max) {
+  const amount = round2(Number(b.amount));
+  if (!(amount > 0)) return { error: 'Enter the amount received' };
+  if (max !== undefined && amount > round2(max) + 0.004) return { error: `That's more than the ${money(max)} still owed` };
+  if (!PAY_METHODS[b.method]) return { error: 'Choose how the payment was made' };
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(b.date || '') ? b.date : iso(new Date());
+  if (date > iso(new Date())) return { error: 'The payment date can’t be in the future' };
+  return { payment: { amount, method: b.method, date, reference: String(b.reference || '').trim().slice(0, 120) } };
+}
+// paid / reopened from the payments list (keeps the most recent payment's date and method on the invoice)
+function settleInvoice(inv) {
+  const { balanceDue } = invoiceCredits(inv, true);
+  if (balanceDue <= 0.004 && (inv.payments || []).length) {
+    const last = [...inv.payments].sort((a, b) => a.date.localeCompare(b.date)).pop();
+    Object.assign(inv, { status: 'paid', paidAt: last.date, paymentMethod: last.method });
+  } else if (inv.status === 'paid') { Object.assign(inv, { status: 'sent', paidAt: null, paymentMethod: null }); }
+  else if (inv.status === 'draft' && (inv.payments || []).length) inv.status = 'sent';
+}
+app.post('/api/invoices/:id/payments', (req, res) => {
+  const inv = db.invoices.find((x) => x.id === req.params.id); if (!inv) return res.status(404).json({ error: 'Not found' });
+  const owed = invoiceCredits(inv, true).balanceDue;
+  if (!(owed > 0)) return res.status(400).json({ error: 'This invoice has nothing left to pay' });
+  const r = readPayment(req.body || {}, owed); if (r.error) return res.status(400).json({ error: r.error });
+  const u = currentUser(req);
+  inv.payments = [...(inv.payments || []), { id: uid(), ...r.payment, recordedBy: u ? u.name : '', createdAt: new Date().toISOString() }];
+  settleInvoice(inv); save(); res.status(201).json(withStatus(inv));
+});
+app.delete('/api/invoices/:id/payments/:pid', (req, res) => {
+  const inv = db.invoices.find((x) => x.id === req.params.id); if (!inv) return res.status(404).json({ error: 'Not found' });
+  const before = (inv.payments || []).length; inv.payments = (inv.payments || []).filter((p) => p.id !== req.params.pid);
+  if (inv.payments.length === before) return res.status(404).json({ error: 'Payment not found' });
+  settleInvoice(inv); save(); res.json(withStatus(inv));
+});
+
+app.post('/api/invoices/:id/mark-paid', (req, res) => {
+  const inv = db.invoices.find((x) => x.id === req.params.id);
+  if (!inv) return res.status(404).json({ error: 'Not found' });
+  const method = PAY_METHODS[req.body.method] ? req.body.method : 'other'; const owed = invoiceCredits(inv, true).balanceDue; const u = currentUser(req);
+  if (owed > 0) inv.payments = [...(inv.payments || []), { id: uid(), amount: owed, method, date: iso(new Date()), reference: '', recordedBy: u ? u.name : '', createdAt: new Date().toISOString() }];
+  settleInvoice(inv); if (inv.status !== 'paid') Object.assign(inv, { status: 'paid', paidAt: iso(new Date()), paymentMethod: method });
+  save(); res.json(withStatus(inv));
+});
+
+app.post('/api/jobs/:id/remind', async (req, res) => {
+  const j = db.jobs.find((x) => x.id === req.params.id);
+  if (!j) return res.status(404).json({ error: 'Not found' });
+  const co = db.company.name;
+  const channels = (req.body.channels && req.body.channels.length) ? req.body.channels : [tenancy.has('sms') ? 'sms' : 'email'];
+  const email = renderEmail('reminder', { client_name: findClient(j.clientId)?.name || '', company_name: co, job_number: j.number, job_title: j.title, date: niceDate(j.date), time: j.startTime, address: j.address || '' });
+  const results = [];
+  for (const ch of channels) {
+    results.push(await notify({ clientId: j.clientId, channel: ch, kind: 'job', refId: j.id, refNumber: j.number,
+      subject: email.subject, body: ch === 'email' ? email.body : `${co}: reminder for "${j.title}" on ${j.date} at ${j.startTime}.` }));
+  }
+  res.json({ results }); save();
+});
+
+// ---------- public payment + quote pages ----------
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function shell(title, inner) {
+  const co = db.company;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><link rel="icon" href="/favicon.ico">
+<style>body{font-family:system-ui,sans-serif;background:#f4f6f8;margin:0;color:#111827}.card{max-width:640px;margin:24px auto;background:#fff;border-radius:12px;padding:28px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+h1{margin:0 0 4px;font-size:22px}table{width:100%;border-collapse:collapse;margin:16px 0}td,th{padding:8px 4px;border-bottom:1px solid #e5e7eb;text-align:left}.r{text-align:right}
+.btn{background:${esc(co.brandColor)};color:#fff;border:0;border-radius:8px;padding:12px 20px;font-size:16px;cursor:pointer}.btn.alt{background:#fff;color:#111;border:1px solid #d1d5db}.muted{color:#6b7280;font-size:14px}.badge{display:inline-block;padding:2px 10px;border-radius:99px;background:#e5e7eb;font-size:13px}.paid{background:#dcfce7;color:#166534}
+input{padding:10px;border:1px solid #d1d5db;border-radius:8px;width:100%;box-sizing:border-box;margin:4px 0 10px}</style></head><body><div class="card">
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">${co.logo ? `<img src="${esc(co.logo)}" style="height:48px">` : ''}<div><strong>${esc(co.name)}</strong><div class="muted">${esc(co.email)} · ${esc(co.phone)}</div></div></div>${inner}</div></body></html>`;
+}
+// o.qty / o.unit / o.line = false hide those columns (invoice "Client view" switches); o.invoice shows the deposit credit
+function itemsTable(d, o = {}) {
+  const qty = o.qty !== false; const unit = o.unit !== false; const line = o.line !== false; const span = 1 + qty + unit;
+  const row = (label, value) => `<tr><td colspan="${span}" class="r">${label}</td><td class="r">${value}</td></tr>`;
+  return `<table><tr><th>Description</th>${qty ? '<th class="r">Qty</th>' : ''}${unit ? '<th class="r">Price</th>' : ''}<th class="r">${line ? 'Amount' : ''}</th></tr>${d.items.map((i) => `<tr><td>${esc(i.desc)}${i.details ? `<div class="muted" style="white-space:pre-line">${esc(i.details)}</div>` : ''}</td>${qty ? `<td class="r">${i.qty}</td>` : ''}${unit ? `<td class="r">${money(i.price)}</td>` : ''}<td class="r">${line ? money(i.qty * i.price) : ''}</td></tr>`).join('')}
+${row('Subtotal', money(d.subtotal))}${d.discount > 0 ? row(`Discount${d.discountType === 'percent' ? ` (${d.discountValue}%)` : ''}`, '−' + money(d.discount)) : ''}${row(`${esc(Number(d.taxRate) === Number(db.company.taxRate) && db.company.taxName ? db.company.taxName : 'Tax')} (${d.taxRate}%)`, money(d.tax))}${row('<strong>Total</strong>', `<strong>${money(d.total)}</strong>`)}
+${o.invoice ? (d.depositApplied > 0 ? row(`Deposit collected (quote ${esc(d.depositQuote)}, ${esc(niceDate(d.depositAppliedAt))})`, '−' + money(d.depositApplied)) + row('<strong>Balance due</strong>', `<strong>${money(d.balanceDue)}</strong>`) : '')
+    : d.depositFee > 0 ? row(`Deposit${d.depositType === 'percent' ? ` (${d.depositValue}%)` : ''}`, money(d.depositFee)) + row('Balance after deposit', money(d.total - d.depositFee)) : ''}</table>`;
+}
+
+// Zelle has no API for receiving payments: show the business's Zelle details, let the client report they sent it,
+// and the business confirms it (Mark paid / Mark deposit paid) once it shows up in their bank.
+function zelleBox(amount, memo, action, sentAt) {
+  const z = db.company.zelleRecipient; if (!z || !tenancy.has('zelle')) return '';
+  return `<div style="background:#f5f3ff;padding:16px;border-radius:8px;margin-top:16px;border:1px solid #c4b5fd">
+<h3 style="margin-top:0">Pay with Zelle</h3>
+<p style="margin:0 0 6px">Send <strong>${money(amount)}</strong> with Zelle to:</p>
+<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><strong style="font-size:18px">${esc(z)}</strong><button type="button" class="btn alt" style="padding:6px 12px;font-size:14px" data-v="${esc(z)}" onclick="navigator.clipboard.writeText(this.dataset.v);this.textContent='Copied'">Copy</button></div>
+${db.company.zelleName ? `<div class="muted">Registered to ${esc(db.company.zelleName)}. Check this name before you send.</div>` : ''}
+<p class="muted">Use your bank's app or the Zelle app, and put <strong>${esc(memo)}</strong> in the memo.</p>
+${sentAt ? `<p style="margin-bottom:0">✓ You told us you sent this payment on ${esc(niceDate(sentAt))}. We'll confirm it once it arrives.</p>`
+    : `<form method="post" action="${esc(action)}"><button class="btn alt">I've sent the payment by Zelle</button></form>`}
+</div>`;
+}
+// ---------- Stripe (online card payments) ----------
+// Each business takes card payments into its own Stripe account, connected with "Connect with Stripe" in App Settings (Stripe Connect):
+// the platform's key (BILLING_STRIPE_SECRET_KEY or STRIPE_SECRET_KEY) acts on the business's account, so the money goes straight to it.
+// Older setups that pasted their own secret key keep working, and the default account can still use STRIPE_SECRET_KEY on its own.
+// Payments are confirmed when the client returns to the success URL, and by a webhook, which also catches clients who close the tab:
+// STRIPE_CONNECT_WEBHOOK_SECRET for connected accounts (lib/platform.js), or the account's own STRIPE_WEBHOOK_SECRET / saved secret.
+const secrets = () => db.secrets || {};
+const connectedAccount = () => { const s = secrets(); return s.stripeAccountId && s.stripeChargesEnabled && stripeLib.platformKey() ? s.stripeAccountId : ''; };
+const stripeKey = () => (!tenancy.has('onlinePayments') ? '' : connectedAccount() ? stripeLib.platformKey() : secrets().stripeSecretKey || (tenancy.isDefault() ? process.env.STRIPE_SECRET_KEY : '') || '');
+const stripeWebhookSecret = () => secrets().stripeWebhookSecret || (tenancy.isDefault() ? process.env.STRIPE_WEBHOOK_SECRET : '') || '';
+const stripeMode = () => stripeLib.modeOf(stripeKey());
+const stripeApi = (method, endpoint, params) => stripeLib.request(stripeKey(), method, endpoint, params, connectedAccount());
+// a Checkout page for one amount; meta = { invoiceId } or { quoteId }
+async function stripeCheckout({ amount, name, client, meta, successUrl, cancelUrl }) {
+  const p = {
+    mode: 'payment', 'line_items[0][quantity]': '1', 'line_items[0][price_data][currency]': 'usd',
+    'line_items[0][price_data][unit_amount]': String(Math.round(amount * 100)), 'line_items[0][price_data][product_data][name]': name,
+    success_url: successUrl + (successUrl.includes('?') ? '&' : '?') + 'session_id={CHECKOUT_SESSION_ID}', cancel_url: cancelUrl,
+    'payment_intent_data[description]': `${db.company.name}: ${name}`,
+  };
+  for (const [k, v] of Object.entries(meta)) { p[`metadata[${k}]`] = v; p[`payment_intent_data[metadata][${k}]`] = v; }
+  const fee = Number(tenancy.platform().settings.platformFeePercent) || 0; // your cut of each card payment, through Stripe Connect only
+  if (connectedAccount() && fee > 0) p['payment_intent_data[application_fee_amount]'] = String(Math.round(amount * fee)); // amount is dollars, fee is %
+  if (client && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(client.email || '')) p.customer_email = client.email; // Stripe emails the receipt
+  return stripeApi('POST', 'checkout/sessions', p);
+}
+// record a paid Checkout session on its invoice or quote (safe to call more than once for the same session)
+function applyStripeSession(s) {
+  if (!s || s.payment_status !== 'paid') return null;
+  const amount = round2((Number(s.amount_total) || 0) / 100); const meta = s.metadata || {};
+  const tell = (what, clientId) => {
+    const c = findClient(clientId); if (!db.company.email) return;
+    const body = `${c ? c.name : 'A client'} paid ${money(amount)} by card for ${what}.\n\nStripe payment: ${s.payment_intent || s.id}`;
+    sendEmail(db.company.email, `Card payment received: ${what}`, body).then((sent) => {
+      db.notifications.unshift({ id: uid(), at: new Date().toISOString(), clientId, clientName: c ? c.name : '', channel: 'email', kind: 'payment', refId: meta.invoiceId || meta.quoteId, refNumber: '', to: db.company.email, subject: `Card payment received: ${what}`, body, status: sent.status, detail: sent.detail }); save();
+    }).catch(() => {});
+  };
+  if (meta.invoiceId) {
+    const inv = db.invoices.find((x) => x.id === meta.invoiceId);
+    if (!inv || inv.stripeSessionId === s.id) return inv;
+    inv.payments = [...(inv.payments || []), { id: uid(), amount, method: 'stripe', date: iso(new Date()), reference: s.payment_intent || s.id, recordedBy: 'Stripe', createdAt: new Date().toISOString() }];
+    Object.assign(inv, { paidAmount: amount, stripeSessionId: s.id, stripePaymentIntent: s.payment_intent || null }); settleInvoice(inv);
+    save(); tell(`invoice ${inv.number}`, inv.clientId); return inv;
+  }
+  if (meta.quoteId) {
+    const q = db.quotes.find((x) => x.id === meta.quoteId);
+    if (!q || q.stripeSessionId === s.id) return q;
+    Object.assign(q, { depositPaidAt: iso(new Date()), depositStatus: 'paid', depositPaidAmount: amount, depositMethod: 'stripe', depositReference: s.payment_intent || s.id, stripeSessionId: s.id, stripePaymentIntent: s.payment_intent || null });
+    save(); tell(`the deposit on quote ${q.number}`, q.clientId); return q;
+  }
+  return null;
+}
+async function confirmStripeReturn(sessionId) {
+  if (!stripeKey() || !/^cs_[A-Za-z0-9_]+$/.test(sessionId || '')) return;
+  try { applyStripeSession(await stripeApi('GET', 'checkout/sessions/' + encodeURIComponent(sessionId))); } catch (e) { console.error('Stripe confirm failed:', e.message); }
+}
+// webhook for an account's own Stripe keys (connected accounts use the platform's Connect webhook instead)
+app.post('/api/stripe/webhook', (req, res) => {
+  const secret = stripeWebhookSecret();
+  if (!secret) return res.status(503).json({ error: 'Webhook not configured' });
+  if (!stripeLib.signatureOk(req._raw || '', req.headers['stripe-signature'], secret)) return res.status(400).json({ error: 'Invalid signature' });
+  const ev = req.body || {};
+  if (ev.type === 'checkout.session.completed' || ev.type === 'checkout.session.async_payment_succeeded') applyStripeSession(ev.data && ev.data.object);
+  res.json({ received: true });
+});
+function tellBusinessZelle(what, amount, clientName) {
+  if (!db.company.email) return;
+  sendEmail(db.company.email, `Zelle payment reported: ${what}`, `${clientName || 'A client'} says they sent ${money(amount)} by Zelle for ${what}.\n\nCheck your bank, then mark it paid in the app.`).catch(() => {});
+}
+
+app.get('/pay/:token', (req, res) => {
+  const inv = db.invoices.find((x) => x.token === req.params.token);
+  if (!inv) return res.status(404).send(shell('Not found', '<h1>Invoice not found</h1>'));
+  const c = findClient(inv.clientId); const x = withStatus(inv); const st = x.displayStatus; const due = x.balanceDue;
+  const live = !!stripeKey(); const on = (k) => inv[k] !== 'off' && (k !== 'allowCard' || tenancy.has('onlinePayments'));
+  const account = db.invoices.filter((i) => i.clientId === inv.clientId && i.status !== 'paid' && i.status !== 'draft').reduce((s, i) => s + withStatus(i).balanceDue, 0);
+  const card = !on('allowCard') ? '' : live
+    ? `<form method="post" action="/pay/${esc(inv.token)}/checkout"><button class="btn">Pay ${money(due)} with card</button></form>`
+    : `<p class="muted">Demo mode: card payments aren’t connected yet, so this simulates a card payment and nobody is charged.</p>
+<form method="post" action="/pay/${esc(inv.token)}/demo"><label>Name on card<input name="name" required value="${esc(c?.name)}"></label><label>Card number<input name="card" required placeholder="4242 4242 4242 4242"></label><button class="btn">Pay ${money(due)}</button></form>`;
+  const zelle = on('allowZelle') ? zelleBox(due, `Invoice ${inv.number}`, `/pay/${inv.token}/zelle-sent`, inv.zelleSentAt) : '';
+  res.send(shell(`Invoice ${inv.number}`, `<h1>Invoice ${esc(inv.number)} <span class="badge ${st === 'paid' ? 'paid' : ''}">${esc(st === 'overdue' ? 'past due' : st)}</span></h1>
+${st === 'overdue' && on('showLateStamp') ? '<div style="display:inline-block;margin:8px 0;padding:4px 14px;border:2px solid #dc2626;color:#dc2626;border-radius:6px;font-weight:800;letter-spacing:.08em;transform:rotate(-2deg)">PAST DUE</div>' : ''}
+${db.company.taxIdNumber ? `<div class="muted">${esc(db.company.taxIdName || 'Tax ID')}: ${esc(db.company.taxIdNumber)}</div>` : ''}<div class="muted">Billed to ${esc(c?.name)}${inv.subject ? ` · ${esc(inv.subject)}` : ''} · Issued ${esc(niceDate(inv.issueDate))} · Due ${inv.dueDate && inv.dueDate <= inv.issueDate ? 'upon receipt' : esc(niceDate(inv.dueDate))}</div>
+${itemsTable(x, { qty: on('showQty'), unit: on('showUnit'), line: on('showLineTotals'), invoice: true })}
+${on('showAccountBalance') && st !== 'paid' && account > 0 ? `<p class="muted" style="text-align:right">Account balance (all open invoices): <strong>${money(account)}</strong></p>` : ''}
+${inv.notes ? `<p style="white-space:pre-wrap">${esc(inv.notes)}</p>` : ''}
+${st === 'paid' ? `<p>Paid on ${esc(niceDate(inv.paidAt))}. Thank you!</p>` : card + zelle + (!card && !zelle ? `<p class="muted">Please contact ${esc(db.company.name)} at ${esc(db.company.phone || db.company.email)} to arrange payment.</p>` : '')}
+${inv.disclaimer ? `<div style="margin:16px 0;padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px;white-space:pre-wrap" class="muted">${esc(inv.disclaimer)}</div>` : `<p class="muted">${esc(db.company.invoiceFooter)}</p>`}`));
+});
+app.use('/pay', express.urlencoded({ extended: false }));
+app.post('/pay/:token/zelle-sent', (req, res) => {
+  const inv = db.invoices.find((x) => x.token === req.params.token);
+  if (!inv) return res.status(404).send('Not found');
+  if (inv.status !== 'paid' && !inv.zelleSentAt) { inv.zelleSentAt = iso(new Date()); save(); tellBusinessZelle(`invoice ${inv.number}`, withStatus(inv).balanceDue, findClient(inv.clientId)?.name); }
+  res.redirect(`/pay/${inv.token}`);
+});
+app.post('/pay/:token/demo', (req, res) => {
+  const inv = db.invoices.find((x) => x.token === req.params.token);
+  if (!inv) return res.status(404).send('Not found');
+  if (stripeKey()) return res.status(400).send('Demo payments are disabled when Stripe is configured');
+  if (inv.allowCard === 'off' || !tenancy.has('onlinePayments')) return res.status(400).send('Card payment is not available for this invoice');
+  inv.status = 'paid'; inv.paidAt = iso(new Date()); inv.paymentMethod = 'demo-card'; save(); res.redirect(`/pay/${inv.token}`);
+});
+app.post('/pay/:token/checkout', async (req, res) => {
+  const inv = db.invoices.find((x) => x.token === req.params.token);
+  if (!inv || !stripeKey() || inv.allowCard === 'off') return res.status(400).send('Payments unavailable');
+  const due = withStatus(inv).balanceDue;
+  if (inv.status === 'paid' || !(due > 0)) return res.redirect(`/pay/${inv.token}`);
+  try {
+    const s = await stripeCheckout({ amount: due, name: `Invoice ${inv.number}`, client: findClient(inv.clientId), meta: { invoiceId: inv.id }, successUrl: `${baseUrl()}/pay/${inv.token}/success`, cancelUrl: `${baseUrl()}/pay/${inv.token}` });
+    res.redirect(303, s.url);
+  } catch (e) { res.status(502).send(shell('Payment error', `<h1>Payment error</h1><p>${esc(e.message)}</p><p><a href="/pay/${esc(inv.token)}">Back to the invoice</a></p>`)); }
+});
+app.get('/pay/:token/success', async (req, res) => {
+  const inv = db.invoices.find((x) => x.token === req.params.token);
+  if (!inv) return res.status(404).send('Not found');
+  await confirmStripeReturn(req.query.session_id);
+  res.redirect(`/pay/${inv.token}`);
+});
+
+app.get('/p/quote/:token', (req, res) => {
+  const q = db.quotes.find((x) => x.token === req.params.token);
+  if (!q) return res.status(404).send(shell('Not found', '<h1>Quote not found</h1>'));
+  const c = findClient(q.clientId);
+  let depositSection = '';
+  if (q.status === 'approved' && q.depositFee > 0) {
+    if (!q.signedAt) {
+      depositSection = `<div style="background:#f0fdf4;padding:16px;border-radius:8px;margin-top:16px;border:1px solid #86efac">
+<h3 style="margin-top:0">Next step: Review and sign</h3>
+<p>To proceed with this quote, please review the terms and provide your electronic signature below.</p>
+<form method="post" action="/p/quote/${esc(q.token)}/sign" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+<input type="text" name="fullName" placeholder="Full name (signature)" required style="flex:1;min-width:200px">
+<button class="btn">Sign agreement</button>
+</form>
+</div>`;
+    } else if (!q.depositPaidAt) {
+      depositSection = `<div style="background:#fef3c7;padding:16px;border-radius:8px;margin-top:16px;border:1px solid #fcd34d">
+<h3 style="margin-top:0">Deposit required: ${money(q.depositFee)}</h3>
+<p>Your quote has been signed. A deposit of ${money(q.depositFee)} is required to proceed with the work.</p>
+${q.allowCard !== 'off' && tenancy.has('onlinePayments') ? `<form method="post" action="/p/quote/${esc(q.token)}/pay-deposit" style="display:flex;gap:8px">
+<button class="btn">Pay deposit with card</button>
+</form>` : ''}
+${q.allowZelle !== 'off' ? zelleBox(q.depositFee, `Deposit for quote ${q.number}`, `/p/quote/${q.token}/zelle-sent`, q.zelleSentAt) : ''}
+${(q.allowCard === 'off' || !tenancy.has('onlinePayments')) && (q.allowZelle === 'off' || !db.company.zelleRecipient || !tenancy.has('zelle')) ? `<p class="muted">Please contact ${esc(db.company.name)} at ${esc(db.company.phone || db.company.email)} to arrange your deposit payment.</p>` : ''}
+</div>`;
+    } else {
+      depositSection = `<div style="background:#f0fdf4;padding:16px;border-radius:8px;margin-top:16px;border:1px solid #86efac">
+<h3 style="margin-top:0">✓ Deposit paid</h3>
+<p>Thank you! Your deposit of ${money(q.depositPaidAmount ?? q.depositFee)} has been received. We will begin work shortly.</p>
+</div>`;
+    }
+  }
+  res.send(shell(`Quote ${q.number}`, `<h1>Quote ${esc(q.number)} <span class="badge">${esc(q.status)}</span></h1><div class="muted">Prepared for ${esc(c?.name)} · ${esc(q.title)}</div>${itemsTable(q)}${q.notes ? `<p style="white-space:pre-wrap">${esc(q.notes)}</p>` : ''}
+${q.disclaimer ? `<div style="margin:16px 0;padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px"><strong>Contract / Disclaimer</strong><p class="muted" style="margin:6px 0 0;white-space:pre-wrap">${esc(q.disclaimer)}</p></div>` : ''}
+${(q.status === 'sent' || q.status === 'draft') && q.depositFee > 0 ? `<div style="background:#eff6ff;padding:14px 16px;border-radius:8px;margin-bottom:16px;border:1px solid #bfdbfe"><strong>Deposit required: ${money(q.depositFee)}</strong>${q.depositType === 'percent' ? ` (${q.depositValue}% of the total)` : ''}<div class="muted" style="margin-top:4px">After you approve, you'll sign the quote and pay this deposit online before work begins.</div></div>` : ''}
+${q.status === 'sent' || q.status === 'draft' ? `<form method="post" action="/p/quote/${esc(q.token)}/respond" style="display:flex;gap:8px"><button class="btn" name="r" value="approved">Approve quote</button><button class="btn alt" name="r" value="declined">Decline</button></form>` : ''}${depositSection}`));
+});
+app.use('/p', express.urlencoded({ extended: false }));
+app.post('/p/quote/:token/respond', (req, res) => {
+  const q = db.quotes.find((x) => x.token === req.params.token);
+  if (!q) return res.status(404).send('Not found');
+  if (['sent', 'draft'].includes(q.status)) { q.status = req.body.r === 'declined' ? 'declined' : 'approved'; q.respondedAt = iso(new Date()); save(); }
+  res.redirect(`/p/quote/${q.token}`);
+});
+app.post('/p/quote/:token/sign', (req, res) => {
+  const q = db.quotes.find((x) => x.token === req.params.token);
+  if (!q || q.status !== 'approved') return res.status(400).send('Quote not available for signing');
+  q.signedAt = iso(new Date()); q.signedName = String(req.body.fullName || '');
+  if (!q.depositStatus) q.depositStatus = 'pending';
+  save();
+  res.redirect(`/p/quote/${q.token}`);
+});
+app.post('/p/quote/:token/zelle-sent', (req, res) => {
+  const q = db.quotes.find((x) => x.token === req.params.token);
+  if (!q) return res.status(404).send('Not found');
+  if (q.depositFee > 0 && !q.depositPaidAt && !q.zelleSentAt) { q.zelleSentAt = iso(new Date()); save(); tellBusinessZelle(`the deposit on quote ${q.number}`, q.depositFee, findClient(q.clientId)?.name); }
+  res.redirect(`/p/quote/${q.token}`);
+});
+app.post('/api/quotes/:id/mark-deposit-paid', (req, res) => {
+  const q = db.quotes.find((x) => x.id === req.params.id);
+  if (!q) return res.status(404).json({ error: 'Not found' });
+  const b = { amount: q.depositFee, method: 'other', ...(req.body || {}) }; if (b.method === 'manual') b.method = 'other';
+  const r = readPayment(b, q.total); if (r.error) return res.status(400).json({ error: r.error });
+  Object.assign(q, { depositPaidAt: r.payment.date, depositStatus: 'paid', depositMethod: r.payment.method, depositPaidAmount: r.payment.amount, depositReference: r.payment.reference });
+  save(); res.json(q);
+});
+app.post('/p/quote/:token/pay-deposit', (req, res) => {
+  const q = db.quotes.find((x) => x.token === req.params.token);
+  if (!q || !q.depositFee) return res.status(400).send('No deposit required');
+  if (q.allowCard === 'off' || !tenancy.has('onlinePayments')) return res.status(400).send('Card payment is not available for this quote');
+  if (q.depositPaidAt) return res.redirect(`/p/quote/${q.token}`);
+  if (stripeKey()) {
+    stripeCheckout({ amount: q.depositFee, name: `Deposit for Quote ${q.number}`, client: findClient(q.clientId), meta: { quoteId: q.id }, successUrl: `${baseUrl()}/p/quote/${q.token}/deposit-success`, cancelUrl: `${baseUrl()}/p/quote/${q.token}` })
+      .then((s) => res.redirect(303, s.url))
+      .catch((e) => res.status(502).send(shell('Payment error', `<h1>Payment error</h1><p>${esc(e.message)}</p><p><a href="/p/quote/${esc(q.token)}">Back to the quote</a></p>`)));
+  } else {
+    q.depositPaidAt = iso(new Date()); q.depositStatus = 'paid'; q.depositPaidAmount = q.depositFee; q.depositMethod = 'demo';
+    save();
+    res.redirect(`/p/quote/${q.token}`);
+  }
+});
+app.get('/p/quote/:token/deposit-success', async (req, res) => {
+  const q = db.quotes.find((x) => x.token === req.params.token);
+  if (!q) return res.status(404).send('Not found');
+  await confirmStripeReturn(req.query.session_id);
+  res.redirect(`/p/quote/${q.token}`);
+});
+
+// ---------- set deposit fee ----------
+app.post('/api/quotes/:id/set-deposit', (req, res) => {
+  const q = db.quotes.find((x) => x.id === req.params.id);
+  if (!q) return res.status(404).json({ error: 'Not found' });
+  if (q.status !== 'approved') return res.status(400).json({ error: 'Quote must be approved first' });
+  q.depositType = 'flat'; q.depositValue = Number(req.body.depositFee) || 0; computeTotals(q);
+  if (!q.depositStatus) q.depositStatus = q.depositFee > 0 ? 'pending' : null;
+  save();
+  res.json(q);
+});
+
+// ---------- client portal data ----------
+// strip what clients must not see: internal notes and the business's cost/markup per line
+function forClient(doc) {
+  const { internalNotes, ...rest } = doc;
+  return { ...rest, items: (doc.items || []).map(({ cost, markup, markupType, ...it }) => it) };
+}
+// a client's visits: schedule details only (no internal notes, prices or line items)
+const PORTAL_JOB_FIELDS = ['id', 'number', 'title', 'description', 'date', 'startTime', 'endTime', 'address', 'status'];
+const jobForClient = (j) => Object.fromEntries(PORTAL_JOB_FIELDS.map((k) => [k, j[k]]));
+const REQ_FIELDS = ['id', 'title', 'details', 'address', 'preferredDate', 'preferredTime', 'status', 'createdAt'];
+const requestForClient = (r) => Object.fromEntries(REQ_FIELDS.map((k) => [k, r[k]]));
+app.get('/api/portal/:token', (req, res) => {
+  const c = db.clients.find((x) => x.portalToken === req.params.token);
+  if (!c) return res.status(404).json({ error: 'Invalid portal link' });
+  res.json({
+    company: { name: db.company.name, logo: db.company.logo, email: db.company.email, phone: db.company.phone, brandColor: db.company.brandColor, address: db.company.addressPrivate ? '' : db.company.address, website: db.company.website, hours: db.company.showHours ? db.company.hours || null : null },
+    client: { id: c.id, name: c.name, email: c.email, phone: c.phone, address: c.address },
+    referralLink: tenancy.has('referrals') ? referralLink(c) : null,
+    requests: (db.requests || []).filter((r) => r.clientId === c.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(requestForClient),
+    jobs: db.jobs.filter((j) => j.clientId === c.id).sort((a, b) => b.date.localeCompare(a.date)).map(jobForClient),
+    quotes: db.quotes.filter((q) => q.clientId === c.id).map((q) => ({ ...forClient(q), link: quoteLink(q) })),
+    invoices: db.invoices.filter((i) => i.clientId === c.id).map((i) => ({ ...forClient(withStatus(i)), link: invoiceLink(i) })),
+  });
+});
+
+// ---------- referrals ----------
+// Each client gets a public referral link (/refer/<code>) to share. It is separate from their private portal link.
+// A friend who opens it can send a work request: they're added as a new client (a lead) marked "referred by", and the business is emailed.
+const referralCode = (c) => { if (!c.referralCode) { c.referralCode = crypto.randomBytes(5).toString('hex'); save(); } return c.referralCode; };
+const referralLink = (c) => `${baseUrl()}/refer/${referralCode(c)}`;
+const referHits = new Map(); // ip -> [timestamps]: at most 5 referral requests per hour per address
+app.use('/refer', express.urlencoded({ extended: false }));
+app.use('/refer', (req, res, next) => (tenancy.has('referrals') ? next() : res.status(404).send(shell('Link not found', '<h1>Link not found</h1><p class="muted">This referral link is no longer valid.</p>'))));
+function referPage(c, { error, values = {} } = {}) {
+  const v = (k) => esc(values[k] || '');
+  const first = String(c.name || '').trim().split(/\s+/)[0];
+  return shell(`${db.company.name}: request service`, `<h1>Get work done with ${esc(db.company.name)}</h1>
+<p class="muted">${first ? `${esc(first)} recommended us. ` : ''}Tell us what you need and we'll get back to you${db.company.phone ? `, or call <a href="tel:${esc(db.company.phone)}">${esc(db.company.phone)}</a>` : ''}.</p>
+${error ? `<p style="color:#b91c1c;font-weight:600">${esc(error)}</p>` : ''}
+<form method="post" style="margin-top:16px">
+<label>Your name*<input name="name" required maxlength="100" value="${v('name')}" autocomplete="name"></label>
+<label>Email<input name="email" type="email" maxlength="120" value="${v('email')}" autocomplete="email"></label>
+<label>Phone<input name="phone" maxlength="40" value="${v('phone')}" autocomplete="tel"></label>
+<label>Service address<input name="address" maxlength="300" value="${v('address')}" autocomplete="street-address"></label>
+<label>What do you need done?*<input name="title" required maxlength="120" value="${v('title')}"></label>
+<label>Details<textarea name="details" rows="4" maxlength="4000" style="padding:10px;border:1px solid #d1d5db;border-radius:8px;width:100%;box-sizing:border-box;margin:4px 0 10px;font:inherit">${v('details')}</textarea></label>
+<input name="website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">
+<button class="btn">Send request</button></form>`);
+}
+app.get('/refer/:code', (req, res) => {
+  const c = db.clients.find((x) => x.referralCode && x.referralCode === req.params.code);
+  if (!c) return res.status(404).send(shell('Link not found', '<h1>Link not found</h1><p class="muted">This referral link is no longer valid.</p>'));
+  res.send(referPage(c));
+});
+app.post('/refer/:code', async (req, res) => {
+  const c = db.clients.find((x) => x.referralCode && x.referralCode === req.params.code);
+  if (!c) return res.status(404).send(shell('Link not found', '<h1>Link not found</h1>'));
+  const b = req.body || {}; const clip = (k, n) => String(b[k] || '').trim().slice(0, n);
+  const done = shell('Request sent', `<h1>Thanks${clip('name', 100) ? ', ' + esc(clip('name', 100).split(/\s+/)[0]) : ''}!</h1><p class="muted">We got your request and will be in touch soon.</p>`);
+  if (b.website) return res.send(done); // honeypot: bots fill every field
+  const ip = req.socket.remoteAddress; const now = Date.now(); const hits = (referHits.get(ip) || []).filter((t) => now - t < 3600e3);
+  if (hits.length >= 5) return res.status(429).send(referPage(c, { error: 'Too many requests from this connection. Please call or email us instead.', values: b }));
+  const name = clip('name', 100); const title = clip('title', 120); const email = clip('email', 120).toLowerCase(); const phone = clip('phone', 40);
+  if (!name || !title) return res.status(400).send(referPage(c, { error: 'Please enter your name and what you need done.', values: b }));
+  if (!email && !phone) return res.status(400).send(referPage(c, { error: 'Please give us an email or phone number so we can reach you.', values: b }));
+  hits.push(now); referHits.set(ip, hits);
+  const created = iso(new Date());
+  const lead = { id: uid(), name, email, phone, address: clip('address', 300), company: '', tags: ['Referral'], notes: `Referred by ${c.name}`, referredBy: c.id, portalToken: token(), createdAt: created };
+  db.clients.push(lead);
+  db.requests = db.requests || [];
+  const r = { id: uid(), clientId: lead.id, title, details: clip('details', 4000), address: lead.address, preferredDate: '', preferredTime: 'any', status: 'new', referredBy: c.id, createdAt: new Date().toISOString() };
+  db.requests.push(r);
+  const body = `New referral request from ${name}${phone ? ' (' + phone + ')' : ''}${email ? ' <' + email + '>' : ''}\nReferred by ${c.name}\n\n${title}\n${r.details ? '\n' + r.details + '\n' : ''}\nAddress: ${r.address || 'not given'}\n\nThey've been added to your clients as a lead.`;
+  const sent = await sendEmail(db.company.email, `Referral from ${c.name}: ${name} needs ${title}`, body);
+  db.notifications.unshift({ id: uid(), at: r.createdAt, clientId: lead.id, clientName: name, channel: 'email', kind: 'referral', refId: r.id, refNumber: '', to: db.company.email || '', subject: `Referral: ${title}`, body, status: sent.status, detail: sent.detail });
+  save(); res.send(done);
+});
+
+// a client asks for work from their portal: saved as a request and emailed to the business
+app.post('/api/portal/:token/requests', async (req, res) => {
+  const c = db.clients.find((x) => x.portalToken === req.params.token);
+  if (!c) return res.status(404).json({ error: 'Invalid portal link' });
+  db.requests = db.requests || [];
+  const b = req.body || {}; const clip = (v, n) => String(v || '').trim().slice(0, n);
+  const title = clip(b.title, 120); if (!title) return res.status(400).json({ error: 'Tell us what you need done' });
+  const dayAgo = new Date(Date.now() - 864e5).toISOString();
+  if (db.requests.filter((r) => r.clientId === c.id && r.createdAt > dayAgo).length >= 10) return res.status(429).json({ error: 'You’ve sent several requests today. Please call or email us instead.' });
+  const preferredDate = /^\d{4}-\d{2}-\d{2}$/.test(b.preferredDate || '') ? b.preferredDate : '';
+  const preferredTime = ['morning', 'afternoon', 'evening'].includes(b.preferredTime) ? b.preferredTime : 'any';
+  const r = { id: uid(), clientId: c.id, title, details: clip(b.details, 4000), address: clip(b.address, 300) || c.address || '', preferredDate, preferredTime, status: 'new', createdAt: new Date().toISOString() };
+  db.requests.push(r);
+  const body = `New work request from ${c.name}${c.phone ? ' (' + c.phone + ')' : ''}${c.email ? ' <' + c.email + '>' : ''}\n\n${title}\n${r.details ? '\n' + r.details + '\n' : ''}\nAddress: ${r.address || 'not given'}\nPreferred: ${preferredDate || 'any day'}, ${preferredTime === 'any' ? 'any time' : preferredTime}`;
+  const sent = await sendEmail(db.company.email, `New request from ${c.name}: ${title}`, body);
+  db.notifications.unshift({ id: uid(), at: r.createdAt, clientId: c.id, clientName: c.name, channel: 'email', kind: 'request', refId: r.id, refNumber: '', to: db.company.email || '', subject: `New request: ${title}`, body, status: sent.status, detail: sent.detail });
+  save(); res.status(201).json(requestForClient(r));
+});
+
+// ---------- reports ----------
+const monthKey = (d) => String(d).slice(0, 7);
+function lastMonths(n) {
+  const out = []; const now = new Date();
+  for (let i = n - 1; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`); }
+  return out;
+}
+app.get('/api/reports', (req, res) => {
+  const months = lastMonths(12);
+  const paid = db.invoices.filter((i) => i.status === 'paid');
+  const pending = db.invoices.filter((i) => i.status !== 'paid' && i.status !== 'draft');
+  const revenueByMonth = months.map((m) => ({ month: m, revenue: round2(paid.filter((i) => monthKey(i.paidAt) === m).reduce((s, i) => s + i.total, 0)) }));
+  const svc = {};
+  db.invoices.filter((i) => i.status !== 'draft').forEach((i) => i.items.forEach((it) => { const s = svc[it.desc] || (svc[it.desc] = { name: it.desc, count: 0, revenue: 0 }); s.count += it.qty; s.revenue += it.qty * it.price; }));
+  const popularServices = Object.values(svc).map((s) => ({ ...s, revenue: round2(s.revenue) })).sort((a, b) => b.count - a.count || b.revenue - a.revenue);
+  const thisMonth = months[months.length - 1];
+  const totalExpenses = round2(db.expenses.reduce((s, e) => s + e.amount, 0));
+  res.json({
+    revenueByMonth, popularServices,
+    thisMonthRevenue: revenueByMonth[revenueByMonth.length - 1].revenue,
+    paidTotal: round2(paid.reduce((s, i) => s + i.total, 0)), paidCount: paid.length,
+    pendingTotal: round2(pending.reduce((s, i) => s + i.total, 0)), pendingCount: pending.length,
+    overdueTotal: round2(pending.filter((i) => invoiceStatus(i) === 'overdue').reduce((s, i) => s + i.total, 0)),
+    totalExpenses, thisMonth,
+  });
+});
+
+app.get('/api/tax-summary', (req, res) => {
+  const year = String(req.query.year || new Date().getFullYear());
+  const paid = db.invoices.filter((i) => i.status === 'paid' && String(i.paidAt).startsWith(year));
+  const byMonth = Array.from({ length: 12 }, (_, k) => { const m = `${year}-${String(k + 1).padStart(2, '0')}`; const list = paid.filter((i) => monthKey(i.paidAt) === m); return { month: m, invoices: list.length, taxable: round2(list.reduce((s, i) => s + i.subtotal - (i.discount || 0), 0)), tax: round2(list.reduce((s, i) => s + i.tax, 0)), total: round2(list.reduce((s, i) => s + i.total, 0)) }; });
+  const years = [...new Set(db.invoices.filter((i) => i.status === 'paid').map((i) => String(i.paidAt).slice(0, 4)).concat([String(new Date().getFullYear())]))].sort();
+  res.json({ year, years, byMonth, totalTax: round2(paid.reduce((s, i) => s + i.tax, 0)), totalTaxable: round2(paid.reduce((s, i) => s + i.subtotal - (i.discount || 0), 0)), invoices: paid.map((i) => ({ number: i.number, client: findClient(i.clientId)?.name, paidAt: i.paidAt, subtotal: i.subtotal, taxRate: i.taxRate, tax: i.tax, total: i.total })) });
+});
+
+app.get('/api/overview', (req, res) => {
+  const months = lastMonths(6);
+  const paid = db.invoices.filter((i) => i.status === 'paid');
+  const revenue = months.map((m) => round2(paid.filter((i) => monthKey(i.paidAt) === m).reduce((s, i) => s + i.total, 0)));
+  const growth = revenue.map((r, i) => (i === 0 ? null : revenue[i - 1] > 0 ? round2(((r - revenue[i - 1]) / revenue[i - 1]) * 100) : null));
+  const newClients = months.map((m) => db.clients.filter((c) => monthKey(c.createdAt) === m).length);
+  const productivity = db.staff.map((s) => ({ id: s.id, name: s.name, color: s.color, completedByMonth: months.map((m) => db.jobs.filter((j) => j.status === 'completed' && j.staffIds.includes(s.id) && monthKey(j.date) === m).length), upcoming: db.jobs.filter((j) => j.status === 'scheduled' && j.staffIds.includes(s.id) && j.date >= iso(new Date())).length }));
+  res.json({ months, revenue, growth, newClients, totalClients: db.clients.length, productivity, openQuotes: db.quotes.filter((q) => q.status === 'sent').length, jobsThisMonth: db.jobs.filter((j) => monthKey(j.date) === months[months.length - 1]).length });
+});
+
+// bulk client import (rows are parsed and column-matched in the browser on /clients/import)
+app.post('/api/clients/import', (req, res) => {
+  const rows = Array.isArray(req.body && req.body.clients) ? req.body.clients : [];
+  if (rows.length > 5000) return res.status(400).json({ error: 'Import up to 5,000 clients at a time' });
+  const str = (v, max) => String(v ?? '').trim().slice(0, max);
+  let added = 0;
+  for (const r of rows) {
+    const name = str(r.name, 200); if (!name) continue;
+    db.clients.push({ id: uid(), name, company: str(r.company, 200), tags: [], email: str(r.email, 200), phone: str(r.phone, 50), address: str(r.address, 500), notes: str(r.notes, 5000), createdAt: iso(new Date()), portalToken: token() });
+    added++;
+  }
+  save(); res.json({ added });
+});
+// merge duplicate clients into one profile: move their records over, fill empty details, combine tags and notes
+app.post('/api/clients/merge', (req, res) => {
+  const keep = findClient(req.body && req.body.keepId);
+  const others = [...new Set((req.body && req.body.mergeIds) || [])].filter((id) => id !== (keep && keep.id)).map(findClient).filter(Boolean);
+  if (!keep || !others.length) return res.status(400).json({ error: 'Choose a client to keep and at least one to merge into it' });
+  const ids = new Set(others.map((c) => c.id));
+  for (const col of ['quotes', 'jobs', 'invoices', 'notifications']) (db[col] || []).forEach((x) => { if (ids.has(x.clientId)) { x.clientId = keep.id; if (col === 'notifications') x.clientName = keep.name; } });
+  const tags = (c) => (Array.isArray(c.tags) ? c.tags : String(c.tags || '').split(',')).map((t) => t.trim()).filter(Boolean);
+  for (const o of others) {
+    for (const k of ['email', 'phone', 'address', 'company']) if (!keep[k] && o[k]) keep[k] = o[k];
+    keep.tags = [...new Set([...tags(keep), ...tags(o)])];
+    if (o.notes && !(keep.notes || '').includes(o.notes)) keep.notes = [keep.notes, o.notes].filter(Boolean).join('\n\n');
+    if (o.createdAt && (!keep.createdAt || o.createdAt < keep.createdAt)) keep.createdAt = o.createdAt; // client since the earliest profile
+  }
+  db.clients = db.clients.filter((c) => !ids.has(c.id)); save(); res.json(keep);
+});
+// what this account's App Settings shows: which messages work, and the state of its card payments
+app.get('/api/integrations', async (req, res) => {
+  const sec = secrets(); if (sec.stripeAccountId && !sec.stripeChargesEnabled) await syncStripeAccount(); // e.g. just back from Stripe
+  const s = secrets(); const pay = tenancy.has('onlinePayments');
+  res.json({
+    email: !!emailProvider(), sms: !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM), ai: !!process.env.ANTHROPIC_API_KEY,
+    payments: !!stripeKey(), paymentsMode: stripeKey() ? stripeMode() : null,
+    stripe: pay ? {
+      available: !!stripeLib.platformKey(), accountId: s.stripeAccountId || null, chargesEnabled: !!s.stripeChargesEnabled, detailsSubmitted: !!s.stripeDetailsSubmitted, name: s.stripeAccountName || '',
+      ownKeys: !!s.stripeSecretKey && !connectedAccount(), serverKey: tenancy.isDefault() && !s.stripeSecretKey && !connectedAccount() && !!process.env.STRIPE_SECRET_KEY,
+      feePercent: Number(tenancy.platform().settings.platformFeePercent) || 0, // charged only on payments through Connect
+    } : null,
+  });
+});
+
+// SPA fallback for every other page route
+app.get('*', (req, res) => {
+  if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'Not found' });
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// ---------- platform console + pricing/sign-up (lib/platform.js) ----------
+// the owner login of a new account: with a password (self sign-up) or invited to choose one (created from the console). Runs inside the account.
+function createOwner(t, { name, email, password }) {
+  const user = { id: uid(), name, email: normEmail(email), role: 'owner', createdAt: iso(new Date()) };
+  if (password) { const { salt, hash } = hashPassword(password); Object.assign(user, { salt, passwordHash: hash }); }
+  db.users.push(user); save(); return user;
+}
+// a fresh link for the owner: choose a password (not set yet) or reset it
+function ownerLink(t) {
+  const u = db.users.find((x) => x.role === 'owner'); if (!u) return null;
+  for (const [k, x] of Object.entries(db.resetTokens)) if (x.userId === u.id) delete db.resetTokens[k];
+  const tok = crypto.randomBytes(32).toString('hex'); const invite = !u.passwordHash;
+  db.resetTokens[sha(tok)] = { userId: u.id, expires: Date.now() + INVITE_DAYS * 864e5, invite }; save();
+  return { owner: publicUser(u), invite, link: `${baseUrl()}/login?${invite ? 'invite' : 'reset'}=${tok}` };
+}
+// platform console → account → Reset to demo data (logins and keys survive)
+const resetDemo = () => { const keep = { users: db.users, sessions: db.sessions, resetTokens: db.resetTokens, secrets: db.secrets }; tenancy.replaceStore({ ...seed(), ...keep }); };
+const tenantStats = (t) => tenancy.run(t, () => {
+  const owner = db.users.find((u) => u.role === 'owner');
+  return { owner: owner ? { name: owner.name, email: owner.email, active: !!owner.passwordHash } : null, users: db.users.length, clients: db.clients.length, jobs: db.jobs.length, invoices: db.invoices.length,
+    lastLoginAt: db.users.map((u) => u.lastLoginAt || '').sort().pop() || null };
+});
+const platformApp = require('./lib/platform')({
+  hashPassword, checkPassword, sha, normEmail, cookies, tooMany, recordFailure, clearFailures: (k) => failures.delete(k),
+  createOwner, ownerLink, tenantStats, sendEmail, sendSms, emailProvider, applyStripeSession, syncStripeAccount, resetDemo, setCompanyEmail: (e) => { if (!db.company.email) { db.company.email = e; save(); } },
+});
+// which app answers: the platform's (its own domain, or /platform… while developing) or an account's
+const PLATFORM_PATHS = /^\/(platform(\/.*)?|pricing|signup|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;
+function dispatch(req, res) {
+  const p = req.url.split('?')[0]; const r = tenancy.resolve(req.headers.host);
+  if (r.kind === 'platform' || p === '/api/site/domain-allowed' || (r.dev && PLATFORM_PATHS.test(p))) return platformApp(req, res);
+  app(req, res);
+}
+
+const rp = process.argv.indexOf('--reset-password');
+if (rp > 0) { // emergency reset from the terminal: node server.js --reset-password you@example.com NewPassword [account-address]
+  const slug = process.argv[rp + 3]; const t = slug ? tenancy.platform().tenants.find((x) => x.slug === slug) : tenancy.platform().tenants.find((x) => tenancy.isDefault(x));
+  if (!t) { console.error(`No account with the address ${slug}`); process.exit(1); }
+  tenancy.run(t, () => {
+    const u = db.users.find((x) => x.email === normEmail(process.argv[rp + 1])); const pw = process.argv[rp + 2] || '';
+    if (!u || pw.length < 8) { console.error(u ? 'Password must be at least 8 characters' : `No login with that email in ${t.name}`); process.exit(1); }
+    Object.assign(u, (({ salt, hash }) => ({ salt, passwordHash: hash }))(hashPassword(pw))); save(); console.log(`Password updated for ${u.email} (${t.name})`); process.exit(0);
+  });
+}
+require('http').createServer(dispatch).listen(PORT, () => {
+  console.log(`App running at ${BASE_URL}`);
+  console.log(tenancy.devMode ? `Platform console: ${BASE_URL}/platform (set PLATFORM_DOMAIN to host accounts on their own addresses)` : `Platform: ${tenancy.platformUrl()}  ·  accounts at <address>.${tenancy.PLATFORM_DOMAIN}`);
+});

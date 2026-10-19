@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Pricing</title>
+  <meta name="color-scheme" content="light dark">
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    body{background:var(--bg)}
+    .s-top{max-width:1120px;margin:0 auto;padding:18px 16px;display:flex;justify-content:space-between;align-items:center;gap:12px}
+    .s-brand{font-weight:800;font-size:20px;letter-spacing:.01em}
+    .s-hero{max-width:760px;margin:0 auto;padding:40px 16px 28px;text-align:center}
+    .s-hero h1{font-size:clamp(28px,5vw,42px);line-height:1.1;margin:0 0 12px;letter-spacing:-.01em}
+    .s-hero p{font-size:17px;color:var(--muted);margin:0}
+    .s-plans{max-width:1120px;margin:0 auto;padding:12px 16px 24px;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;align-items:stretch}
+    .s-plan{display:flex;flex-direction:column;margin:0;padding:22px;border:1px solid var(--line)}
+    .s-plan.pop{border:2px solid var(--brand)}
+    .s-plan h2{margin:0;font-size:20px}.s-plan .price{font-size:28px;font-weight:800;margin:10px 0 4px;font-variant-numeric:tabular-nums}
+    .s-plan .desc{color:var(--muted);font-size:14px;min-height:40px;margin:0 0 14px}
+    .s-plan ul{list-style:none;margin:0 0 18px;padding:0;display:grid;align-content:start;gap:6px;font-size:14px;flex:1}
+    .s-plan li{display:flex;gap:8px}.s-plan li::before{content:'✓';color:var(--ok);font-weight:700;width:14px;flex-shrink:0}
+    .s-plan li.base{color:var(--muted)}
+    .s-plan .btn{text-align:center;height:44px;line-height:26px;font-size:15px}
+    .s-tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--brand);margin-bottom:6px;min-height:14px}
+    .s-signup{max-width:520px;margin:12px auto 64px;padding:0 16px}
+    .s-signup .card{padding:24px}.s-signup h2{margin:0 0 4px}
+    .slug{display:flex;align-items:center;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-top:4px;background:var(--card)}
+    .slug input{border:0;border-radius:0;margin:0!important;min-width:0}.slug span{padding:0 10px;color:var(--muted);font-size:13px;white-space:nowrap;background:var(--surface-2);align-self:stretch;display:flex;align-items:center}
+    .hint{font-size:12px;margin-top:4px;min-height:16px}.hint.bad{color:var(--danger)}.hint.good{color:var(--ok)}
+    .msg{padding:10px 12px;border-radius:8px;font-size:14px;margin-bottom:12px}.msg.err{background:var(--bad-bg);color:var(--bad-fg)}
+    .s-signup .go{width:100%;height:46px;font-size:16px;margin-top:6px}
+    .s-foot{text-align:center;color:var(--muted);font-size:14px;padding:0 16px 40px}
+  </style>
+</head>
+<body>
+  <header class="s-top"><div class="s-brand" id="brand"></div><a class="btn alt" href="#signup" id="topCta" hidden>Get started</a></header>
+  <section class="s-hero"><h1>Run your service business from one place</h1><p>Quotes, scheduling, invoices and payments for you, your team and your clients.</p></section>
+  <section class="s-plans" id="plans" aria-label="Plans"><p class="muted" style="text-align:center">Loading…</p></section>
+  <section class="s-signup" id="signup"></section>
+  <footer class="s-foot" id="foot"></footer>
+  <script src="/site.js"></script>
+</body>
+</html>

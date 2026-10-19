@@ -1,0 +1,15 @@
+{
+  "name": "fieldwork-service-app",
+  "version": "1.0.0",
+  "description": "Field service management: quotes, clients, jobs, invoices, online payments",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.135.0"
+  }
+}
