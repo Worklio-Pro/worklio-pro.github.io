@@ -8,7 +8,7 @@ const tls = require('tls');
 if (fs.existsSync(path.join(__dirname, '.env'))) process.loadEnvFile(path.join(__dirname, '.env'));
 
 const PORT = process.env.PORT || 3000;
-const BASE_URL = process.env.BASE_URL || `https://workliopro.com`;
+const BASE_URL = process.env.BASE_URL || `https://workliopro.com/public`;
 // many companies (accounts) on one server: see lib/tenancy.js. `db` below is the data of the account the current request is for.
 const tenancy = require('./lib/tenancy');
 const stripeLib = require('./lib/stripe');
