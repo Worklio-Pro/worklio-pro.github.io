@@ -811,7 +811,7 @@ A.resetTpl = async (d) => { if (!confirm('Replace your wording with the original
 
 render();
 /* ===== /profile: anyone signed in edits their own info, photo and password ===== */
-PAGES['/profile'] = {
+PAGES['./profile'] = {
   title: 'My profile',
   async render(main) {
     const p = await api('GET', './api/auth/profile'); let photo = p.photo || '';
