@@ -2,7 +2,7 @@
 
 Run it (Node 18+, no `npm install` needed):
 
-    node server.js          # http://localhost:3000
+    node server.js          # http://workliopro.com
 
 Data is stored in `data/db.json` (created with demo data on first start). Uploaded logos, app icons and photos go in `data/uploads/`. Set the app's browser-tab icon under **App Settings → App icon**.
 
