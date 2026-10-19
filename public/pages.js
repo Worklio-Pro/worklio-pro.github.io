@@ -811,10 +811,10 @@ A.resetTpl = async (d) => { if (!confirm('Replace your wording with the original
 
 render();
 /* ===== /profile: anyone signed in edits their own info, photo and password ===== */
-PAGES['./profile'] = {
+PAGES['/profile'] = {
   title: 'My profile',
   async render(main) {
-    const p = await api('GET', './api/auth/profile'); let photo = p.photo || '';
+    const p = await api('GET', '/api/auth/profile'); let photo = p.photo || '';
     const pw = (name, label, ac) => `<label class="fl pwf"><span>${label}</span><input name="${name}" type="password" autocomplete="${ac}"><button type="button" class="eye" data-act="pfEye" aria-label="Show password">Show</button></label>`;
     main.innerHTML = `<h1 class="tm-title">My profile</h1>
 <form class="tmform" id="pfInfo"><div class="qcard"><div class="qcard-h"><h2>Personal info</h2>${loginBadge({ role: p.role })}</div>
