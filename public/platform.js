@@ -162,6 +162,7 @@ function plansView(main) {
 <div class="card" style="padding-bottom:18px"><div class="tablewrap"><table class="matrix"><thead><tr><th><span class="muted" style="font-weight:400;font-size:13px">Plan details</span></th>
 ${P.map((p, i) => `<th><label>Name<input class="pn" data-i="${i}" data-k="name" value="${esc(p.name)}" maxlength="40" aria-label="Plan name"></label><label>Price<input data-i="${i}" data-k="price" value="${esc(p.price)}" maxlength="40" placeholder="$49/month" aria-label="Price for ${esc(p.name)}"></label>
 <label>Team logins (0 = unlimited)<input type="number" min="0" data-i="${i}" data-k="maxUsers" value="${p.maxUsers || 0}" aria-label="Team logins for ${esc(p.name)}"></label><label>Short description<input data-i="${i}" data-k="description" value="${esc(p.description)}" maxlength="200" aria-label="Description for ${esc(p.name)}"></label>
+<label class="switchline" style="font-size:13px"><input type="checkbox" data-hide="${i}" ${p.hidden ? 'checked' : ''}> Hidden from public</label>
 <div class="muted" style="font-size:12px">${used(p.id)} account${used(p.id) === 1 ? '' : 's'}</div>${P.length > 1 ? `<button type="button" class="rm-plan" data-act="rmPlan" data-i="${i}" ${used(p.id) ? `disabled title="Move its accounts to another plan first"` : ''}>Remove plan</button>` : ''}</th>`).join('')}</tr></thead>
 <tbody><tr class="grp"><td>Always included</td>${P.map(() => '<td></td>').join('')}</tr>
 ${D.alwaysIncluded.map((l) => `<tr><td><div class="mx-l">${esc(l)}</div></td>${P.map(() => '<td class="always" aria-label="Included">✓</td>').join('')}</tr>`).join('')}
@@ -169,7 +170,9 @@ ${groups.map((g) => `<tr class="grp"><td>${esc(g)}</td>${P.map(() => '<td></td>'
 ${P.map((p, i) => `<td><input type="checkbox" data-i="${i}" data-f="${f.key}" ${p.features.includes(f.key) ? 'checked' : ''} aria-label="${esc(f.label)} in ${esc(p.name)}"></td>`).join('')}</tr>`).join('')).join('')}
 <tr class="count"><td>Features ticked</td>${P.map((p) => `<td>${p.features.length} of ${D.features.length}</td>`).join('')}</tr></tbody></table></div>
 <div class="savebar"><span class="muted">${dirty ? 'Unsaved changes' : 'All changes saved'}</span>${dirty ? '<button type="button" class="btn alt" data-act="discardPlans">Discard</button>' : ''}<button type="button" class="btn" data-act="savePlans" ${dirty ? '' : 'disabled'}>Save plans</button></div></div>`;
-  $$('thead input', main).forEach((i) => i.addEventListener('input', () => { const p = P[i.dataset.i]; p[i.dataset.k] = i.dataset.k === 'maxUsers' ? Math.max(0, parseInt(i.value, 10) || 0) : i.value; markDirty(main); }));
+  // hidden plans stay off the pricing page and checkout; you can still put an account on one
+  $$('thead input[data-hide]', main).forEach((c) => c.addEventListener('change', () => { const p = P[c.dataset.hide]; if (c.checked) p.hidden = true; else delete p.hidden; markDirty(main); }));
+  $$('thead input:not([data-hide])', main).forEach((i) => i.addEventListener('input', () => { const p = P[i.dataset.i]; p[i.dataset.k] = i.dataset.k === 'maxUsers' ? Math.max(0, parseInt(i.value, 10) || 0) : i.value; markDirty(main); }));
   $$('tbody input[type=checkbox]', main).forEach((c) => c.addEventListener('change', () => {
     const p = P[c.dataset.i]; p.features = c.checked ? [...new Set([...p.features, c.dataset.f])] : p.features.filter((k) => k !== c.dataset.f);
     const cnt = $$('.count td', main)[Number(c.dataset.i) + 1]; cnt.textContent = `${p.features.length} of ${D.features.length}`; markDirty(main);
@@ -201,7 +204,7 @@ function settingsView(main) {
 <p class="muted" style="font-size:13px;margin-top:-4px">The product name appears on the pricing page and in account emails. Accounts see the contact email when they want to change plans, and new sign-ups are reported to it.</p>
 <h2 style="margin-top:20px">Sign-ups</h2>
 <label class="switchline"><input type="checkbox" name="allowSignups" ${s.allowSignups ? 'checked' : ''}> Let businesses create an account themselves on the pricing page</label>
-<label style="max-width:320px">Plan for businesses that sign up without choosing one<select name="signupPlan">${D.plans.map((p) => `<option value="${esc(p.id)}" ${p.id === s.signupPlan ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
+<label style="max-width:320px">Plan for businesses that sign up without choosing one<select name="signupPlan">${D.plans.filter((p) => !p.hidden).map((p) => `<option value="${esc(p.id)}" ${p.id === s.signupPlan ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
 <p class="muted" style="font-size:13px">Pricing page: <a href="${esc(site)}" target="_blank" rel="noopener">${esc(site)}</a>. Businesses that choose a paid plan pay for it at checkout before their account opens (see Integrations → Stripe below).</p>
 <div class="foot" style="display:flex;justify-content:flex-end"><button class="btn">Save settings</button></div></form>
 <div class="card" style="max-width:720px" id="reserved"></div>
