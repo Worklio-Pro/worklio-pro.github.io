@@ -1482,6 +1482,15 @@ if (rp > 0) { // emergency reset from the terminal: node server.js --reset-passw
     Object.assign(u, (({ salt, hash }) => ({ salt, passwordHash: hash }))(hashPassword(pw))); save(); console.log(`Password updated for ${u.email} (${t.name})`); process.exit(0);
   });
 }
+const rpp = process.argv.indexOf('--reset-platform-password');
+if (rpp > 0) { // same for the platform console login: node server.js --reset-platform-password you@example.com NewPassword
+  const P = tenancy.platform(); const a = P.admins.find((x) => x.email === normEmail(process.argv[rpp + 1])); const pw = process.argv[rpp + 2] || '';
+  if (!a) { console.error(P.admins.length ? `No platform login with that email. Platform logins: ${P.admins.map((x) => x.email).join(', ')}` : 'There is no platform login yet: open /platform to create one'); process.exit(1); }
+  if (pw.length < 10) { console.error('Password must be at least 10 characters'); process.exit(1); }
+  Object.assign(a, (({ salt, hash }) => ({ salt, passwordHash: hash }))(hashPassword(pw)));
+  for (const [k, s] of Object.entries(P.sessions)) if (s.adminId === a.id) delete P.sessions[k]; // log out everywhere
+  tenancy.savePlatform(); console.log(`Platform password updated for ${a.email}`); process.exit(0);
+}
 require('http').createServer(dispatch).listen(PORT, () => {
   console.log(`App running at ${BASE_URL}`);
   console.log(tenancy.devMode ? `Platform console: ${BASE_URL}/platform (set PLATFORM_DOMAIN to host accounts on their own addresses)` : `Platform: ${tenancy.platformUrl()}  ·  accounts at <address>.${tenancy.PLATFORM_DOMAIN}`);

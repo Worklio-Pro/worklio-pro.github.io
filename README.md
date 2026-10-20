@@ -33,6 +33,7 @@ Check them in the platform console under **Settings → Integrations**, which sh
   Invite team members from Manage Team. Access levels: Technician (view jobs, clients and the schedule; no prices),
   Manager (jobs, quotes, invoices and the Money section), Admin (everything). The server enforces these.
   Locked out with no email? Stop the server and run `node server.js --reset-password you@example.com NewPassword`.
+  Locked out of the platform console? Run `node server.js --reset-platform-password you@example.com NewPassword`.
 - Card payments are confirmed when the client returns from Stripe Checkout and, once the Connect webhook is set up, directly by Stripe.
 - The JSON file store suits a small business; move to a real database if volume grows.
 
