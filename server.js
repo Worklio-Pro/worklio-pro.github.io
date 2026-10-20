@@ -371,7 +371,7 @@ const ROLE_API = {
   technician: [route('GET', '(jobs|clients|staff|company)'), route('GET', 'auth/.+'), route('POST', 'auth/.+'), route('POST', `jobs/${ID}/signature`)],
   manager: [
     route('GET', 'auth/.+'), route('POST', 'auth/.+'),
-    route('GET', '(jobs|clients|staff|services|photos|company|quotes|invoices|expenses|reports|tax-summary|overview|email-templates)'),
+    route('GET', '(jobs|clients|staff|services|photos|company|quotes|invoices|expenses|reports|tax-summary|overview|email-templates)'), route('GET', 'payments/stripe'),
     route('POST', '(jobs|quotes|invoices|expenses|services|clients|photos)'), route('POST', 'services/describe'), route('PUT', `(jobs|quotes|invoices|expenses|services|clients)/${ID}`),
     route('DELETE', `(jobs|quotes|invoices|expenses|services|photos)/${ID}`),
     route('POST', `quotes/${ID}/(send|approve|convert-to-job|mark-deposit-paid|set-deposit)`), route('POST', `invoices/${ID}/(send|mark-paid|payments)`), route('DELETE', `invoices/${ID}/payments/${ID}`), route('POST', `jobs/${ID}/(create-invoice|remind|signature)`), route('DELETE', `jobs/${ID}/signature`),
@@ -1101,8 +1101,17 @@ const stripeKey = () => (!tenancy.has('onlinePayments') ? '' : connectedAccount(
 const stripeWebhookSecret = () => secrets().stripeWebhookSecret || (tenancy.isDefault() ? process.env.STRIPE_WEBHOOK_SECRET : '') || '';
 const stripeMode = () => stripeLib.modeOf(stripeKey());
 const stripeApi = (method, endpoint, params) => stripeLib.request(stripeKey(), method, endpoint, params, connectedAccount());
-// a Checkout page for one amount; meta = { invoiceId } or { quoteId }
-async function stripeCheckout({ amount, name, client, meta, successUrl, cancelUrl }) {
+// ---------- payment settings (Payments → Settings) ----------
+const PAY_DEFAULTS = { quoteCard: true, quoteAch: false, invoiceCard: true, invoiceAch: false, notifyEmail: true, emailReceipts: true, disabled: false };
+const paySettings = () => ({ ...PAY_DEFAULTS, ...(db.company.paySettings || {}) });
+// the online methods a client can use for an invoice or a quote deposit ([] = none); bank (ACH) needs a live Stripe connection
+function onlineMethods(kind, doc) {
+  const s = paySettings(); if (s.disabled || !tenancy.has('onlinePayments') || doc.allowCard === 'off') return [];
+  return [s[kind + 'Card'] && 'card', s[kind + 'Ach'] && stripeKey() && 'us_bank_account'].filter(Boolean);
+}
+const payButtonLabel = (methods, amount, what = '') => (methods.length > 1 ? `Pay ${what}${money(amount)} online` : methods[0] === 'us_bank_account' ? `Pay ${what}${money(amount)} from your bank` : `Pay ${what}${money(amount)} with card`);
+// a Checkout page for one amount; meta = { invoiceId } or { quoteId }; methods = Stripe payment method types
+async function stripeCheckout({ amount, name, client, meta, successUrl, cancelUrl, methods = ['card'] }) {
   const p = {
     mode: 'payment', 'line_items[0][quantity]': '1', 'line_items[0][price_data][currency]': 'usd',
     'line_items[0][price_data][unit_amount]': String(Math.round(amount * 100)), 'line_items[0][price_data][product_data][name]': name,
@@ -1113,17 +1122,27 @@ async function stripeCheckout({ amount, name, client, meta, successUrl, cancelUr
   const fee = Number(tenancy.platform().settings.platformFeePercent) || 0; // your cut of each card payment, through Stripe Connect only
   if (connectedAccount() && fee > 0) p['payment_intent_data[application_fee_amount]'] = String(Math.round(amount * fee)); // amount is dollars, fee is %
   if (client && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(client.email || '')) p.customer_email = client.email; // Stripe emails the receipt
-  return stripeApi('POST', 'checkout/sessions', p);
+  methods.forEach((m, i) => { p[`payment_method_types[${i}]`] = m; });
+  try { return await stripeApi('POST', 'checkout/sessions', p); } catch (e) {
+    if (methods.length < 2 || !/payment method type|us_bank_account/i.test(e.message)) throw e;
+    for (const k of Object.keys(p)) if (k.startsWith('payment_method_types')) delete p[k]; // bank payments not switched on in their Stripe account: card only
+    p['payment_method_types[0]'] = 'card'; return stripeApi('POST', 'checkout/sessions', p);
+  }
 }
 // record a paid Checkout session on its invoice or quote (safe to call more than once for the same session)
 function applyStripeSession(s) {
   if (!s || s.payment_status !== 'paid') return null;
   const amount = round2((Number(s.amount_total) || 0) / 100); const meta = s.metadata || {};
   const tell = (what, clientId) => {
-    const c = findClient(clientId); if (!db.company.email) return;
-    const body = `${c ? c.name : 'A client'} paid ${money(amount)} by card for ${what}.\n\nStripe payment: ${s.payment_intent || s.id}`;
-    sendEmail(db.company.email, `Card payment received: ${what}`, body).then((sent) => {
-      db.notifications.unshift({ id: uid(), at: new Date().toISOString(), clientId, clientName: c ? c.name : '', channel: 'email', kind: 'payment', refId: meta.invoiceId || meta.quoteId, refNumber: '', to: db.company.email, subject: `Card payment received: ${what}`, body, status: sent.status, detail: sent.detail }); save();
+    const c = findClient(clientId); const set = paySettings();
+    if (set.emailReceipts && c && c.email) { // receipt to the client, from the business
+      const rb = `Hi ${c.name},\n\nThank you for your payment of ${money(amount)} for ${what}.\n\nPaid on ${niceDate(iso(new Date()))}\nPayment reference: ${s.payment_intent || s.id}\n\n${db.company.name}`;
+      notify({ clientId, channel: 'email', kind: 'receipt', refId: meta.invoiceId || meta.quoteId, refNumber: '', subject: `Receipt from ${db.company.name}`, body: rb }).then(() => save()).catch(() => {});
+    }
+    if (!set.notifyEmail || !db.company.email) return;
+    const body = `${c ? c.name : 'A client'} paid ${money(amount)} ${(s.payment_method_types || []).includes('us_bank_account') && !(s.payment_method_types || []).includes('card') ? 'from their bank account' : 'online'} for ${what}.\n\nStripe payment: ${s.payment_intent || s.id}`;
+    sendEmail(db.company.email, `Online payment received: ${what}`, body).then((sent) => {
+      db.notifications.unshift({ id: uid(), at: new Date().toISOString(), clientId, clientName: c ? c.name : '', channel: 'email', kind: 'payment', refId: meta.invoiceId || meta.quoteId, refNumber: '', to: db.company.email, subject: `Online payment received: ${what}`, body, status: sent.status, detail: sent.detail }); save();
     }).catch(() => {});
   };
   if (meta.invoiceId) {
@@ -1154,6 +1173,31 @@ app.post('/api/stripe/webhook', (req, res) => {
   if (ev.type === 'checkout.session.completed' || ev.type === 'checkout.session.async_payment_succeeded') applyStripeSession(ev.data && ev.data.object);
   res.json({ received: true });
 });
+// ---------- Payments page ----------
+// settings (owner/admin only: not in ROLE_API)
+app.put('/api/payments/settings', (req, res) => {
+  const b = req.body || {}; const s = paySettings();
+  for (const k of Object.keys(PAY_DEFAULTS)) if (k in b) s[k] = b[k] === true;
+  db.company.paySettings = s; save(); res.json(s);
+});
+// what Stripe knows: balance, payouts, disputes, and each charge's status and payout date (keyed by payment intent, the reference on recorded payments)
+app.get('/api/payments/stripe', async (req, res) => {
+  if (!tenancy.has('onlinePayments') || !stripeKey()) return res.json({ connected: false });
+  const get = (ep) => stripeApi('GET', ep).catch((e) => { console.error('Stripe:', e.message); return null; });
+  const [bal, charges, payouts, disputes] = await Promise.all([get('balance'), get('charges?limit=100&expand[]=data.balance_transaction'), get('payouts?limit=50&expand[]=data.destination'), get('disputes?limit=100')]);
+  const day = (t) => (t ? iso(new Date(t * 1000)) : null); const usd = (l) => round2((l || []).filter((x) => x.currency === 'usd').reduce((s, x) => s + x.amount, 0) / 100);
+  const acct = (d) => (d && typeof d === 'object' ? { name: d.bank_name || d.brand || 'Bank account', last4: d.last4 || '' } : null);
+  const charge = {};
+  for (const c of (charges && charges.data) || []) if (c.payment_intent) {
+    charge[c.payment_intent] = { payoutDate: day(c.balance_transaction && c.balance_transaction.available_on),
+      status: c.disputed ? 'disputed' : c.refunded ? 'refunded' : c.amount_refunded ? 'partly refunded' : c.status === 'failed' ? 'failed' : c.status === 'pending' ? 'processing' : 'succeeded' };
+  }
+  const pl = (payouts && payouts.data) || []; const dl = (disputes && disputes.data) || [];
+  res.json({ connected: true, mode: stripeMode(), feePercent: connectedAccount() ? Number(tenancy.platform().settings.platformFeePercent) || 0 : 0, balance: bal ? { available: usd(bal.available), pending: usd(bal.pending) } : null, charges: charge,
+    payouts: pl.map((p) => ({ id: p.id, amount: round2(p.amount / 100), arrival: day(p.arrival_date), status: p.status, bank: acct(p.destination) })),
+    bank: (pl.map((p) => acct(p.destination)).find(Boolean)) || null,
+    disputes: { open: dl.filter((d) => /needs_response|under_review/.test(d.status)).length, total: dl.length } });
+});
 function tellBusinessZelle(what, amount, clientName) {
   if (!db.company.email) return;
   sendEmail(db.company.email, `Zelle payment reported: ${what}`, `${clientName || 'A client'} says they sent ${money(amount)} by Zelle for ${what}.\n\nCheck your bank, then mark it paid in the app.`).catch(() => {});
@@ -1163,11 +1207,11 @@ app.get('/pay/:token', (req, res) => {
   const inv = db.invoices.find((x) => x.token === req.params.token);
   if (!inv) return res.status(404).send(shell('Not found', '<h1>Invoice not found</h1>'));
   const c = findClient(inv.clientId); const x = withStatus(inv); const st = x.displayStatus; const due = x.balanceDue;
-  const live = !!stripeKey(); const on = (k) => inv[k] !== 'off' && (k !== 'allowCard' || tenancy.has('onlinePayments'));
+  const live = !!stripeKey(); const on = (k) => inv[k] !== 'off'; const methods = onlineMethods('invoice', inv);
   const account = db.invoices.filter((i) => i.clientId === inv.clientId && i.status !== 'paid' && i.status !== 'draft').reduce((s, i) => s + withStatus(i).balanceDue, 0);
-  const card = !on('allowCard') ? '' : live
-    ? `<form method="post" action="/pay/${esc(inv.token)}/checkout"><button class="btn">Pay ${money(due)} with card</button></form>`
-    : `<p class="muted">Demo mode: card payments aren’t connected yet, so this simulates a card payment and nobody is charged.</p>
+  const card = !methods.length ? '' : live
+    ? `<form method="post" action="/pay/${esc(inv.token)}/checkout"><button class="btn">${payButtonLabel(methods, due)}</button></form>${methods.length > 1 ? '<p class="muted">Card or bank account (ACH)</p>' : ''}`
+    : !methods.includes('card') ? '' : `<p class="muted">Demo mode: card payments aren’t connected yet, so this simulates a card payment and nobody is charged.</p>
 <form method="post" action="/pay/${esc(inv.token)}/demo"><label>Name on card<input name="name" required value="${esc(c?.name)}"></label><label>Card number<input name="card" required placeholder="4242 4242 4242 4242"></label><button class="btn">Pay ${money(due)}</button></form>`;
   const zelle = on('allowZelle') ? zelleBox(due, `Invoice ${inv.number}`, `/pay/${inv.token}/zelle-sent`, inv.zelleSentAt) : '';
   res.send(shell(`Invoice ${inv.number}`, `<h1>Invoice ${esc(inv.number)} <span class="badge ${st === 'paid' ? 'paid' : ''}">${esc(st === 'overdue' ? 'past due' : st)}</span></h1>
@@ -1190,16 +1234,16 @@ app.post('/pay/:token/demo', (req, res) => {
   const inv = db.invoices.find((x) => x.token === req.params.token);
   if (!inv) return res.status(404).send('Not found');
   if (stripeKey()) return res.status(400).send('Demo payments are disabled when Stripe is configured');
-  if (inv.allowCard === 'off' || !tenancy.has('onlinePayments')) return res.status(400).send('Card payment is not available for this invoice');
+  if (!onlineMethods('invoice', inv).includes('card')) return res.status(400).send('Card payment is not available for this invoice');
   inv.status = 'paid'; inv.paidAt = iso(new Date()); inv.paymentMethod = 'demo-card'; save(); res.redirect(`/pay/${inv.token}`);
 });
 app.post('/pay/:token/checkout', async (req, res) => {
   const inv = db.invoices.find((x) => x.token === req.params.token);
-  if (!inv || !stripeKey() || inv.allowCard === 'off') return res.status(400).send('Payments unavailable');
+  if (!inv || !stripeKey() || !onlineMethods('invoice', inv).length) return res.status(400).send('Payments unavailable');
   const due = withStatus(inv).balanceDue;
   if (inv.status === 'paid' || !(due > 0)) return res.redirect(`/pay/${inv.token}`);
   try {
-    const s = await stripeCheckout({ amount: due, name: `Invoice ${inv.number}`, client: findClient(inv.clientId), meta: { invoiceId: inv.id }, successUrl: `${baseUrl()}/pay/${inv.token}/success`, cancelUrl: `${baseUrl()}/pay/${inv.token}` });
+    const s = await stripeCheckout({ amount: due, name: `Invoice ${inv.number}`, client: findClient(inv.clientId), meta: { invoiceId: inv.id }, successUrl: `${baseUrl()}/pay/${inv.token}/success`, cancelUrl: `${baseUrl()}/pay/${inv.token}`, methods: onlineMethods('invoice', inv) });
     res.redirect(303, s.url);
   } catch (e) { res.status(502).send(shell('Payment error', `<h1>Payment error</h1><p>${esc(e.message)}</p><p><a href="/pay/${esc(inv.token)}">Back to the invoice</a></p>`)); }
 });
@@ -1229,11 +1273,11 @@ app.get('/p/quote/:token', (req, res) => {
       depositSection = `<div style="background:#fef3c7;padding:16px;border-radius:8px;margin-top:16px;border:1px solid #fcd34d">
 <h3 style="margin-top:0">Deposit required: ${money(q.depositFee)}</h3>
 <p>Your quote has been signed. A deposit of ${money(q.depositFee)} is required to proceed with the work.</p>
-${q.allowCard !== 'off' && tenancy.has('onlinePayments') ? `<form method="post" action="/p/quote/${esc(q.token)}/pay-deposit" style="display:flex;gap:8px">
-<button class="btn">Pay deposit with card</button>
+${onlineMethods('quote', q).length && (stripeKey() || onlineMethods('quote', q).includes('card')) ? `<form method="post" action="/p/quote/${esc(q.token)}/pay-deposit" style="display:flex;gap:8px">
+<button class="btn">${payButtonLabel(onlineMethods('quote', q), q.depositFee, 'deposit of ')}</button>
 </form>` : ''}
 ${q.allowZelle !== 'off' ? zelleBox(q.depositFee, `Deposit for quote ${q.number}`, `/p/quote/${q.token}/zelle-sent`, q.zelleSentAt) : ''}
-${(q.allowCard === 'off' || !tenancy.has('onlinePayments')) && (q.allowZelle === 'off' || !db.company.zelleRecipient || !tenancy.has('zelle')) ? `<p class="muted">Please contact ${esc(db.company.name)} at ${esc(db.company.phone || db.company.email)} to arrange your deposit payment.</p>` : ''}
+${!onlineMethods('quote', q).length && (q.allowZelle === 'off' || !db.company.zelleRecipient || !tenancy.has('zelle')) ? `<p class="muted">Please contact ${esc(db.company.name)} at ${esc(db.company.phone || db.company.email)} to arrange your deposit payment.</p>` : ''}
 </div>`;
     } else {
       depositSection = `<div style="background:#f0fdf4;padding:16px;border-radius:8px;margin-top:16px;border:1px solid #86efac">
@@ -1279,10 +1323,10 @@ app.post('/api/quotes/:id/mark-deposit-paid', (req, res) => {
 app.post('/p/quote/:token/pay-deposit', (req, res) => {
   const q = db.quotes.find((x) => x.token === req.params.token);
   if (!q || !q.depositFee) return res.status(400).send('No deposit required');
-  if (q.allowCard === 'off' || !tenancy.has('onlinePayments')) return res.status(400).send('Card payment is not available for this quote');
+  const methods = onlineMethods('quote', q); if (!methods.length || (!stripeKey() && !methods.includes('card'))) return res.status(400).send('Online payment is not available for this quote');
   if (q.depositPaidAt) return res.redirect(`/p/quote/${q.token}`);
   if (stripeKey()) {
-    stripeCheckout({ amount: q.depositFee, name: `Deposit for Quote ${q.number}`, client: findClient(q.clientId), meta: { quoteId: q.id }, successUrl: `${baseUrl()}/p/quote/${q.token}/deposit-success`, cancelUrl: `${baseUrl()}/p/quote/${q.token}` })
+    stripeCheckout({ amount: q.depositFee, name: `Deposit for Quote ${q.number}`, client: findClient(q.clientId), meta: { quoteId: q.id }, successUrl: `${baseUrl()}/p/quote/${q.token}/deposit-success`, cancelUrl: `${baseUrl()}/p/quote/${q.token}`, methods })
       .then((s) => res.redirect(303, s.url))
       .catch((e) => res.status(502).send(shell('Payment error', `<h1>Payment error</h1><p>${esc(e.message)}</p><p><a href="/p/quote/${esc(q.token)}">Back to the quote</a></p>`)));
   } else {

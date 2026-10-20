@@ -957,3 +957,119 @@ ${pw('currentPassword', 'Current password', 'current-password')}${pw('newPasswor
 };
 A.pfPhotoRemove = (d, el) => el.closest('form')._clearPhoto();
 A.pfEye = (d, el) => { const i = el.parentElement.querySelector('input'); const showing = i.type === 'text'; i.type = showing ? 'password' : 'text'; el.textContent = showing ? 'Show' : 'Hide'; el.setAttribute('aria-label', showing ? 'Show password' : 'Hide password'); i.focus(); };
+
+/* ===== /payments: payment history, payouts and payment settings ===== */
+// every payment the business has received: invoice payments, quote deposits, and older invoices marked paid without a payment record
+function paymentRows() {
+  const rows = [];
+  for (const i of D.invoices) {
+    for (const p of i.payments || []) rows.push({ id: p.id, clientId: i.clientId, doc: ['invoice', i], date: (p.date || '').slice(0, 10), method: p.method, amount: Number(p.amount) || 0, reference: p.reference || '' });
+    if (!(i.payments || []).length && i.status === 'paid' && i.paidAt) rows.push({ id: 'i-' + i.id, clientId: i.clientId, doc: ['invoice', i], date: i.paidAt.slice(0, 10), method: i.paymentMethod || 'other', amount: Number(i.paidAmount || i.total) || 0, reference: '' });
+  }
+  for (const q of D.quotes) if (q.depositPaidAt) rows.push({ id: 'q-' + q.id, clientId: q.clientId, doc: ['quote', q], date: q.depositPaidAt.slice(0, 10), method: q.depositMethod || 'other', amount: Number(q.depositPaidAmount ?? q.depositFee) || 0, reference: q.depositReference || '' });
+  return rows;
+}
+const PAY_STATUS = { succeeded: ['Succeeded', 'paid'], processing: ['Processing', 'sent'], refunded: ['Refunded', 'draft'], 'partly refunded': ['Partly refunded', 'draft'], disputed: ['Disputed', 'overdue'], failed: ['Failed', 'failed'] };
+const online = (m) => m === 'stripe' || m === 'demo' || m === 'demo-card';
+let payView = { tab: 'overview', status: 'all', method: 'all', date: 'all', q: '', sort: 'date', dir: -1 };
+PAGES['/payments'] = {
+  title: 'Payments',
+  async render(main) {
+    const v = payView; const S = planHas('onlinePayments') ? await api('GET', '/api/payments/stripe').catch(() => ({ connected: false })) : { connected: false };
+    const day = (s) => (s || '').slice(0, 10); const ago = (n) => ymd(addDays(new Date(), -n)); const tomorrow = ymd(addDays(new Date(), 1));
+    const rows = paymentRows().map((r) => {
+      const ch = r.method === 'stripe' && S.charges ? S.charges[r.reference] : null;
+      return { ...r, status: (ch && ch.status) || 'succeeded', payout: r.method === 'stripe' ? (ch && ch.payoutDate ? fmtDate(ch.payoutDate) : 'In Stripe') : online(r.method) ? 'Demo: no payout' : 'Manually deposited',
+        payoutKey: ch && ch.payoutDate ? ch.payoutDate : '', methodLabel: r.method === 'stripe' ? 'Online (Stripe)' : online(r.method) ? 'Demo checkout' : payLabel(r.method) };
+    });
+    const cname = (r) => { const c = byId(D.clients, r.clientId); return c ? c.company || c.name : 'Unknown client'; };
+    const change = (now, prev, lowerIsBetter) => { if (now === null || !prev) return '<span class="chg flat">—%</span>'; const up = now >= prev; const good = lowerIsBetter ? !up : up; return `<span class="chg ${now === prev ? 'flat' : good ? 'up' : 'down'}">${up ? '↑' : '↓'} ${Math.abs(Math.round(((now - prev) / prev) * 100))}%</span>`; };
+    const commercialOf = (i) => !!(byId(D.clients, i.clientId) || {}).company;
+    // average days from issue to payment (invoices paid in the window), and the share of invoices paid by their due date
+    const paidIn = (from, to, commercial) => D.invoices.filter((i) => i.status === 'paid' && day(i.paidAt) >= from && day(i.paidAt) < to && commercialOf(i) === commercial);
+    const payDays = (l) => (l.length ? Math.round(l.reduce((s, i) => s + Math.max(0, (parseD(day(i.paidAt)) - parseD(day(i.issueDate))) / 864e5), 0) / l.length) : null);
+    const onTime = (l) => (l.length ? Math.round((l.filter((i) => !i.dueDate || day(i.paidAt) <= i.dueDate).length / l.length) * 100) : null);
+    const stat = (fn, n, lowerIsBetter, fmt) => [false, true].map((com) => { const now = fn(paidIn(ago(n), tomorrow, com)); const prev = fn(paidIn(ago(2 * n), ago(n), com));
+      return `<div class="pt"><div class="cs-v sm">${now === null ? '—' : fmt(now)} ${change(now, prev, lowerIsBetter)}</div><div class="muted">${com ? 'Commercial' : 'Residential'}</div></div>`; }).join('');
+    const upcoming = S.balance ? S.balance.pending + S.balance.available : 0;
+    const since = { '30': ago(30), '90': ago(90), year: new Date().getFullYear() + '-01-01' }[v.date] || '';
+    const list = rows.filter((r) => (v.status === 'all' || r.status === v.status) && (v.method === 'all' || (v.method === 'online' ? online(r.method) : r.method === v.method)) && (!since || r.date >= since)
+      && (!v.q || [cname(r), r.doc[1].number, r.methodLabel, money(r.amount), r.reference].join(' ').toLowerCase().includes(v.q.toLowerCase())));
+    const key = { client: (r) => cname(r).toLowerCase(), date: (r) => r.date, status: (r) => r.status, method: (r) => r.methodLabel, payout: (r) => r.payoutKey || r.payout, amount: (r) => r.amount }[v.sort];
+    list.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0) * v.dir);
+    const th = (k, label, cls = '') => `<th class="${cls}"><button class="th-btn" data-act="paySort" data-k="${k}">${label} <span class="sort ${v.sort === k ? 'on' : ''}">${v.sort === k ? (v.dir > 0 ? '▲' : '▼') : '⇅'}</span></button></th>`;
+    const methods = [...new Set(rows.filter((r) => !online(r.method)).map((r) => r.method))];
+    const docLink = ([kind, d]) => `<a href="/${kind}s/edit?id=${d.id}" data-link>${kind === 'quote' ? 'Quote' : 'Invoice'} ${esc(d.number)}</a>`;
+    const admin = !me || ['owner', 'admin'].includes(me.role);
+    const overview = `<div class="cstats pay-stats">
+<div class="cstat"><div class="cs-h"><strong>Upcoming payouts</strong></div><div class="cs-v">${money(upcoming)}</div><div class="muted">${!S.connected ? 'Payouts appear here once you connect Stripe and collect online payments' : upcoming ? `${S.balance.available ? `${money(S.balance.available)} ready to pay out · ` : ''}${money(S.balance.pending)} on its way` : 'Upcoming payouts appear after you collect payments'}</div></div>
+<button class="cstat" data-act="payInvoices"><div class="cs-h"><strong>Invoice payment time</strong><span>↗</span></div><div class="muted">Past 30 days</div><div class="pts">${stat(payDays, 30, true, (d) => `${d} ${d === 1 ? 'day' : 'days'}`)}</div></button>
+<div class="cstat"><div class="cs-h"><strong>Invoices paid on time</strong></div><div class="muted">Last 60 days</div><div class="pts">${stat(onTime, 60, false, (p) => p + '%')}</div></div></div>
+<h2 class="ftitle">All payments <span class="muted">(${list.length} result${list.length === 1 ? '' : 's'})</span></h2>
+<div class="cfilters"><label class="pill">Status<select data-pv="status"><option value="all">All</option>${Object.entries(PAY_STATUS).map(([k, [l]]) => `<option value="${k}" ${v.status === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+<label class="pill">Method<select data-pv="method"><option value="all">All</option><option value="online" ${v.method === 'online' ? 'selected' : ''}>Online</option>${methods.map((m) => `<option value="${esc(m)}" ${v.method === m ? 'selected' : ''}>${esc(payLabel(m))}</option>`).join('')}</select></label>
+<label class="pill">📅 Date<select data-pv="date">${[['all', 'All'], ['30', 'Past 30 days'], ['90', 'Past 90 days'], ['year', 'This year']].map(([k, l]) => `<option value="${k}" ${v.date === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+<input id="pq" class="csearch" type="search" placeholder="Search payments…" value="${esc(v.q)}"></div>
+<div class="card ctable"><div class="tablewrap"><table><tr>${th('client', 'Client')}${th('date', 'Payment date')}${th('status', 'Payment status')}${th('method', 'Method')}${th('payout', 'Payout date')}${th('amount', 'Amount', 'r')}</tr>
+${list.map((r) => `<tr><td><strong>${esc(cname(r))}</strong><div class="pay-ref">${docLink(r.doc)}</div></td><td style="white-space:nowrap">${fmtDate(r.date)}</td>
+<td><span class="badge ${PAY_STATUS[r.status][1]}">${PAY_STATUS[r.status][0]}</span></td><td>${r.method === 'stripe' ? '💳 ' : ''}${esc(r.methodLabel)}</td><td style="white-space:nowrap">${esc(r.payout)}</td><td class="r"><strong>${money(r.amount)}</strong></td></tr>`).join('')
+  || `<tr><td colspan="6" class="empty">${rows.length ? 'No payments match these filters' : 'No payments yet. Payments show up here when clients pay online or you record a payment on an invoice.'}</td></tr>`}</table></div></div>`;
+    const payouts = !S.connected ? `<div class="card"><h2>Payouts</h2><p class="muted">When clients pay online, Stripe sends the money to your bank account. ${admin ? '<a href="/settings/connections" data-link>Connect Stripe</a> to start taking online payments.' : 'Ask the account owner to connect Stripe.'}</p></div>`
+      : `<div class="card ctable"><div class="tablewrap"><table><tr><th>Arrival date</th><th>Status</th><th>Bank account</th><th class="r">Amount</th></tr>
+${S.payouts.map((p) => `<tr><td>${fmtDate(p.arrival)}</td><td><span class="badge ${p.status === 'paid' ? 'paid' : p.status === 'failed' || p.status === 'canceled' ? 'failed' : 'sent'}">${esc({ paid: 'Paid', pending: 'Pending', in_transit: 'In transit', canceled: 'Canceled', failed: 'Failed' }[p.status] || p.status)}</span></td><td>${p.bank ? `${esc(p.bank.name)} •••• ${esc(p.bank.last4)}` : '—'}</td><td class="r"><strong>${money(p.amount)}</strong></td></tr>`).join('')
+  || '<tr><td colspan="4" class="empty">No payouts yet. Stripe pays out after your first online payments clear.</td></tr>'}</table></div></div>`;
+    main.innerHTML = `<div class="head"><h1>Payments</h1><div class="actions">${admin ? '<a class="btn alt" href="/payments/settings" data-link>Settings</a>' : ''}${S.connected ? `<a class="btn alt" href="https://dashboard.stripe.com/disputes" target="_blank" rel="noopener">Disputes${S.disputes.open ? ` (${S.disputes.open})` : ''}</a>` : ''}</div></div>
+<nav class="ptabs">${[['overview', 'Overview'], ['payouts', 'Payouts']].map(([k, l]) => `<button type="button" class="${v.tab === k ? 'on' : ''}" data-act="payTab" data-t="${k}">${l}</button>`).join('')}</nav>
+${v.tab === 'payouts' ? payouts : overview}`;
+    $$('[data-pv]', main).forEach((s) => s.addEventListener('change', (e) => { payView[e.target.dataset.pv] = e.target.value; refresh(); }));
+    let t; const q = $('#pq', main); if (q) q.addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(async () => { payView.q = e.target.value; await refresh(); const n = $('#pq'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 250); });
+  },
+};
+A.payTab = (d) => { payView.tab = d.t; refresh(); };
+A.paySort = (d) => { if (payView.sort === d.k) payView.dir *= -1; else { payView.sort = d.k; payView.dir = d.k === 'client' || d.k === 'method' ? 1 : -1; } refresh(); };
+A.payInvoices = () => navigate('/invoices');
+
+PAGES['/payments/settings'] = {
+  title: 'Payment settings',
+  async render(main) {
+    const S = planHas('onlinePayments') ? await api('GET', '/api/payments/stripe').catch(() => ({ connected: false })) : { connected: false };
+    const P = { ...{ quoteCard: true, quoteAch: false, invoiceCard: true, invoiceAch: false, notifyEmail: true, emailReceipts: true, disabled: false }, ...(company.paySettings || {}) };
+    const can = planHas('onlinePayments');
+    const sw = (k, label, note, icon, disabled) => `<label class="sw-row pay-sw">${icon ? `<span class="pay-ic" aria-hidden="true">${icon}</span>` : ''}<span class="grow">${label}${note ? `<small class="muted">${note}</small>` : ''}</span><input type="checkbox" class="sw" data-pay="${k}" ${P[k] ? 'checked' : ''} ${disabled ? 'disabled' : ''}><i></i></label>`;
+    const off = !can || P.disabled;
+    const methodRows = (kind) => sw(kind + 'Card', 'Card payments', 'Credit or debit cards, Apple Pay, or Google Pay', '💳', off)
+      + sw(kind + 'Ach', 'Bank payments (ACH)', S.connected ? 'Clients pay directly from their bank account. Turn on ACH Direct Debit in your Stripe account too.' : 'Clients pay directly from their bank account. Needs Stripe connected.', '🏦', off || !S.connected);
+    const bal = S.balance ? S.balance.pending + S.balance.available : 0;
+    main.innerHTML = `<div class="head"><div><a href="/payments" data-link class="muted">← Payments</a><h1>Payment settings</h1></div></div>
+<div class="pay-grid"><div>
+${!can ? '<div class="notice">Online payments aren’t included in your plan. You can still record cash, check and other payments on invoices.</div>' : !S.connected ? `<div class="notice">Connect Stripe in <a href="/settings/connections" data-link>Account Connections</a> to take online payments. Until then, the pay page runs a demo checkout that charges nobody.</div>` : ''}
+<div class="card"><h2>Client payments</h2>
+<h3 class="pay-h">Quote payments<small class="muted">Let clients pay deposits online when viewing quotes</small></h3>${methodRows('quote')}
+<h3 class="pay-h">Invoice payments<small class="muted">Let clients pay online when viewing invoices</small></h3>${methodRows('invoice')}</div>
+<div class="card"><h2>Notifications</h2>${sw('notifyEmail', 'Get notified of payments by email', `Sent to ${esc(company.email || 'your company email')} when a client pays online`)}${sw('emailReceipts', 'Automatically email receipts to clients', 'Sent from your business when a client pays online')}</div>
+${can ? `<div class="card pay-off"><div><h2>${P.disabled ? 'Payments are disabled' : 'Disable payments'}</h2><p class="muted">${P.disabled ? 'Clients can’t pay quotes and invoices online. Zelle details and recorded payments still work.' : 'Clients can’t pay outstanding or new quotes and invoices online.'}</p></div>
+<button type="button" class="btn ${P.disabled ? '' : 'danger'}" data-act="payDisable" data-on="${P.disabled ? '0' : '1'}">${P.disabled ? 'Turn payments back on' : 'Disable payments'}</button></div>` : ''}
+</div><aside>
+<div class="card"><h2>Standard payouts</h2>
+<div class="pay-side"><div><strong>Upcoming payouts</strong><div class="muted">${money(bal)}</div></div>${S.connected ? '<button type="button" class="btn alt sm" data-act="payTabPayouts">View payouts</button>' : ''}</div>
+<div class="pay-side"><div><strong>Payout to</strong><div class="muted">${S.bank ? `${esc(S.bank.name)} • Ending in ${esc(S.bank.last4)}` : S.connected ? 'Your bank account in Stripe' : 'No bank account yet'}</div></div>${can ? '<button type="button" class="btn alt sm" data-act="payBank" aria-label="Update bank account">⋯</button>' : ''}</div></div>
+${S.connected ? `<div class="card"><h2>Disputes</h2><div class="pay-side"><div><strong>${S.disputes.open ? 'Action required' : 'No action required'}</strong><div class="muted">${S.disputes.open} open dispute${S.disputes.open === 1 ? '' : 's'}</div></div><a class="btn alt sm" href="https://dashboard.stripe.com/disputes" target="_blank" rel="noopener">View disputes</a></div></div>` : ''}
+<div class="card"><h2>Processing rates</h2><table class="pay-rates"><tr><td>Credit / debit cards</td><td class="r">2.9% + 30¢</td></tr><tr><td>Bank payments (ACH)</td><td class="r">0.8%, max $5</td></tr></table>
+<p class="muted" style="font-size:12px;margin:8px 0 0">Stripe’s standard US rates${S.feePercent ? `, plus a ${S.feePercent}% platform fee` : ''}. Your Stripe account shows your exact rates.</p></div>
+</aside></div>`;
+    $$('[data-pay]', main).forEach((c) => c.addEventListener('change', async () => {
+      try { company.paySettings = await api('PUT', '/api/payments/settings', { [c.dataset.pay]: c.checked }); toast('Saved'); } catch (err) { c.checked = !c.checked; toast(err.message, true); }
+    }));
+  },
+};
+A.payTabPayouts = () => { payView.tab = 'payouts'; navigate('/payments'); };
+A.payDisable = async (d) => {
+  const on = d.on === '1'; if (on && !confirm('Disable online payments? Clients won’t be able to pay quotes or invoices online until you turn them back on.')) return;
+  company.paySettings = await api('PUT', '/api/payments/settings', { disabled: on }); toast(on ? 'Online payments disabled' : 'Online payments are back on'); refresh();
+};
+// bank details live in the business's own Stripe account (Stripe verifies and pays out to it)
+A.payBank = () => {
+  const m = modal('Update bank account', `<p>Payouts go to the bank account in your Stripe account. Stripe verifies it and keeps it secure, so you add or change it there, using your online banking login or your account and routing numbers.</p>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><a class="btn" href="https://dashboard.stripe.com/settings/payouts" target="_blank" rel="noopener">Update in Stripe</a></div>`);
+  return m;
+};

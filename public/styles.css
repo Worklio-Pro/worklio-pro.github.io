@@ -462,3 +462,18 @@ table.domains td{vertical-align:middle}.dom-acts{display:flex;gap:6px;justify-co
 .conn-chip.on i{background:var(--ok)}
 .conn-chip.wait i{background:var(--warn)}
 @media (max-width:640px){.conn-list{padding:0 16px}.conn{grid-template-columns:36px minmax(0,1fr);column-gap:12px}.conn-ic svg{width:32px;height:32px}.conn-act{grid-column:2;margin-top:10px}.conn-body{grid-column:1/-1}}
+/* Payments */
+.ptabs{display:flex;gap:24px;border-bottom:1px solid var(--line);margin:0 0 18px}
+.ptabs button{background:none;border:0;border-bottom:3px solid transparent;padding:8px 2px 10px;font:inherit;font-size:16px;font-weight:600;color:var(--muted);cursor:pointer;margin-bottom:-1px}
+.ptabs button.on{color:var(--text);border-bottom-color:var(--brand)}
+.pay-stats{grid-template-columns:repeat(3,1fr)}.pay-stats .cs-v{margin-top:8px}
+.pay-ref{font-size:13px;margin-top:2px}
+.chg.flat{background:var(--surface-2);color:var(--muted)}
+.pay-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(260px,1fr);gap:16px;align-items:start}
+.pay-grid .card h2{margin-top:0}
+.pay-h{display:flex;flex-direction:column;margin:16px 0 4px;font-size:15px}.pay-h small{font-weight:400;font-size:13px}
+.pay-sw .grow{flex:1}.pay-ic{width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:var(--surface-2);font-size:16px}
+.pay-off{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}.pay-off h2{margin:0 0 4px}.pay-off p{margin:0}
+.pay-side{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line)}.pay-side:first-of-type{border-top:0;padding-top:0}
+.pay-rates{width:100%;font-size:14px}.pay-rates td{padding:8px 0;border-bottom:1px solid var(--line)}
+@media (max-width:1000px){.pay-stats{grid-template-columns:1fr}.pay-grid{grid-template-columns:1fr}}

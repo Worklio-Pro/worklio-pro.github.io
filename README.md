@@ -7,7 +7,7 @@ Run it (Node 18+, no `npm install` needed):
 Data is stored in `data/db.json` (created with demo data on first start). Uploaded logos, app icons and photos go in `data/uploads/`. Set the app's browser-tab icon under **App Settings → App icon**.
 
 ## Pages
-/business-overview, /calendar, /staff-schedules, /clients, /quotes, /jobs, /invoices, /services, /expenses,
+/business-overview, /calendar, /staff-schedules, /clients, /quotes, /jobs, /invoices, /payments, /payments/settings, /services, /expenses,
 /reports, /tax-summary, /project-gallery, /notifications, /settings/company, /settings
 
 Clients get public links (no login): `/p/quote/<token>` to approve a quote, `/pay/<token>` to pay an invoice,

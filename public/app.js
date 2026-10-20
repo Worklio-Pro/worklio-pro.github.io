@@ -76,7 +76,7 @@ const clientOptions = (sel) => `<option value="">Select client…</option>` + D.
 const PAGES = {};
 const NAV = [
   ['Operations', [['/business-overview', 'Home'], ['/calendar', 'Job Calendar'], ['/staff-schedules', 'Staff Schedules'], ['/clients', 'Clients'], ['/quotes', 'Quotes'], ['/jobs', 'Jobs'], ['/invoices', 'Invoices']]],
-  ['Money', [['/services', 'Products & Services'], ['/expenses', 'Expenses'], ['/reports', 'Financial Reports'], ['/tax-summary', 'Tax Summary']]],
+  ['Money', [['/payments', 'Payments'], ['/services', 'Products & Services'], ['/expenses', 'Expenses'], ['/reports', 'Financial Reports'], ['/tax-summary', 'Tax Summary']]],
   ['Records', [['/project-gallery', 'Project Gallery'], ['/notifications', 'Notifications Log']]],
   ['Settings', [['/settings/company', 'Company Profile'], ['/team', 'Manage Team'], ['/settings/emails', 'Email Templates'], ['/settings', 'App Settings'], ['/settings/connections', 'Account Connections']]],
 ];
@@ -104,7 +104,7 @@ const isTech = () => role() === 'technician';
 const ROLE_PAGES = {
   technician: ['/calendar', '/staff-schedules', '/clients', '/jobs', '/jobs/edit', '/profile'],
   manager: ['/business-overview', '/calendar', '/staff-schedules', '/clients', '/quotes', '/quotes/new', '/quotes/edit', '/jobs', '/jobs/new', '/jobs/edit',
-    '/invoices', '/invoices/new', '/invoices/edit', '/services', '/expenses', '/reports', '/tax-summary', '/project-gallery', '/profile'],
+    '/invoices', '/invoices/new', '/invoices/edit', '/payments', '/services', '/expenses', '/reports', '/tax-summary', '/project-gallery', '/profile'],
 };
 const memberCan = (path) => !ROLE_PAGES[role()] || ROLE_PAGES[role()].includes(path);
 // the account's plan (from /api/company): features it includes and pages it doesn't. The server enforces the same.
