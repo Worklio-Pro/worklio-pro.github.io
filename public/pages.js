@@ -171,11 +171,11 @@ function teamMemberPage(main, s) {
 <div class="addr"><input name="street" value="${esc(s.street)}" placeholder="Street address" aria-label="Street address"><input name="city" value="${esc(s.city)}" placeholder="City" aria-label="City">
 <input name="state" value="${esc(s.state)}" placeholder="State" aria-label="State"><div class="addr-row"><input name="zip" value="${esc(s.zip)}" placeholder="ZIP code" aria-label="ZIP code"><input name="country" value="${esc(s.country || 'United States')}" placeholder="Country" aria-label="Country"></div></div></div>
 <div class="row tm-extra"><label>Calendar color<input name="color" type="color" value="${esc(s.color || palette[D.staff.length % palette.length])}"></label>
-<label>Status<select name="status"><option value="active">Active</option><option value="deactivated" ${s.status === 'deactivated' ? 'selected' : ''}>Deactivated (hidden from scheduling)</option></select></label></div>
+${isOwnerMember(s) ? '' : `<label>Status<select name="status"><option value="active">Active</option><option value="deactivated" ${s.status === 'deactivated' ? 'selected' : ''}>Deactivated (hidden from scheduling)</option></select></label>`}</div>
 <hr class="tm-hr"><h2>Schedule</h2><h3>Working hours</h3>
 <p class="muted">Working hours show on Staff Schedules (days off are marked) and you'll get a warning when a job is booked outside them.</p>
 ${hoursHtml(hours)}</div>
-<div class="foot">${s.id ? `<button type="button" class="btn danger" data-act="delStaff" data-id="${s.id}">Remove team member</button>` : ''}<a class="btn alt" href="/team" data-link>Cancel</a><button class="btn">${s.id ? 'Save' : 'Add team member'}</button></div></form>${s.id ? '<div class="qcard login-card" id="loginCard"><h2>Login access</h2><p class="muted">Loading…</p></div>' : ''}`;
+<div class="foot">${s.id && !isOwnerMember(s) ? `<button type="button" class="btn danger" data-act="delStaff" data-id="${s.id}">Remove team member</button>` : ''}<a class="btn alt" href="/team" data-link>Cancel</a><button class="btn">${s.id ? 'Save' : 'Add team member'}</button></div></form>${s.id ? '<div class="qcard login-card" id="loginCard"><h2>Login access</h2><p class="muted">Loading…</p></div>' : ''}`;
   const form = $('form', main); if (s.id) renderLoginCard(s);
   const readHours = () => readHoursFrom(form); wireHours(form);
   $('#tmPhoto').addEventListener('change', async (e) => {
@@ -194,6 +194,7 @@ ${hoursHtml(hours)}</div>
 // ---- team logins: who can sign in, and with what access ----
 let teamUsers = [];
 const userFor = (s) => teamUsers.find((u) => u.staffId === s.id) || (s.email ? teamUsers.find((u) => u.email === String(s.email).trim().toLowerCase()) : null);
+const isOwnerMember = (s) => !!(s && s.id && teamUsers.some((u) => u.role === 'owner' && u.staffId === s.id));
 const ROLE_LABEL = { owner: 'Owner', admin: 'Admin', manager: 'Manager', technician: 'Technician' };
 const ROLE_CLASS = { owner: 'active', admin: 'active', manager: 'q-approved', technician: 'q-converted' };
 // what each access level can do; the server enforces the same rules
@@ -238,8 +239,9 @@ A.tmPhotoRemove = (d, el) => el.closest('form')._clearPhoto();
 PAGES['/team/new'] = { title: 'Add team member', render: (main) => teamMemberPage(main) };
 PAGES['/team/edit'] = {
   title: 'Team member',
-  render(main) {
+  async render(main) {
     const s = byId(D.staff, new URLSearchParams(location.search).get('id'));
+    teamUsers = await api('GET', '/api/users').catch(() => teamUsers); // to tell whether this is the owner
     if (!s) { main.innerHTML = '<div class="card"><h1>Team member not found</h1><p><a href="/team" data-link>Back to Manage team</a></p></div>'; return; }
     teamMemberPage(main, s);
   },

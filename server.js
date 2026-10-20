@@ -85,7 +85,7 @@ function emptySeed() {
 const save = () => tenancy.saveStore();
 // run once each time an account's data is loaded: brings data saved by older versions up to date
 function migrate() {
-  ensureAuthStore();
+  ensureAuthStore(); ensureOwnerStaff();
   for (const u of db.users) if (u.role === 'member') u.role = 'technician'; // the old "team member" role is now Technician
   [...db.quotes, ...db.invoices].forEach(computeTotals); // cost/markup fields, deposit amount
   // the first client importer stored the company as a "Company: …" line in notes; move it to the company field
@@ -332,6 +332,16 @@ const publicUser = (u) => u && { id: u.id, name: u.name, email: u.email, role: u
 // a login linked to a team member stops working when that member is deactivated
 const staffBlocked = (u) => { const st = u.staffId && db.staff.find((x) => x.id === u.staffId); return !!(st && st.status === 'deactivated'); };
 const isAdmin = (u) => !!u && (u.role === 'owner' || u.role === 'admin');
+const isOwnerStaff = (s) => (db.users || []).some((u) => u.role === 'owner' && u.staffId === s.id);
+// the owner is always on the team: link their login to a team member record (matching email), or create one
+function ensureOwnerStaff() {
+  const u = (db.users || []).find((x) => x.role === 'owner'); if (!u) return;
+  db.staff = db.staff || [];
+  let st = db.staff.find((s) => s.id === u.staffId) || db.staff.find((s) => String(s.email || '').trim().toLowerCase() === u.email);
+  if (!st) { st = { id: uid(), name: u.name, email: u.email, phone: '', role: 'Owner', color: '#2563eb', status: 'active', createdAt: iso(new Date()) }; db.staff.unshift(st); }
+  if (st.status === 'deactivated') st.status = 'active';
+  u.staffId = st.id;
+}
 function ensureAuthStore() { db.users = db.users || []; db.sessions = db.sessions || {}; db.resetTokens = db.resetTokens || {}; }
 function cookies(req) { return Object.fromEntries(String(req.headers.cookie || '').split(';').map((c) => c.trim().split('=')).filter((p) => p[0]).map(([k, ...v]) => [k, decodeURIComponent(v.join('='))])); }
 function currentUser(req) {
@@ -456,7 +466,7 @@ app.post('/api/auth/setup', (req, res) => { // first run only: create the owner 
   if (String(password || '').length < 8) return res.status(400).json({ error: 'Use a password with at least 8 characters' });
   const { salt, hash } = hashPassword(password);
   const user = { id: uid(), name: String(name).trim(), email: normEmail(email), role: 'owner', salt, passwordHash: hash, createdAt: iso(new Date()) };
-  db.users.push(user); startSession(res, user); res.json(publicUser(user));
+  db.users.push(user); ensureOwnerStaff(); save(); startSession(res, user); res.json(publicUser(user));
 });
 app.post('/api/auth/login', (req, res) => {
   const email = normEmail(req.body && req.body.email); const key = tenancy.current().id + '|' + email + '|' + req.socket.remoteAddress;
@@ -838,6 +848,7 @@ app.put('/api/:col/:id', (req, res, next) => {
     if (db.invoices[i].payments) doc.payments = db.invoices[i].payments; else delete doc.payments;
     if ((doc.payments || []).length) settleInvoice(doc);
   }
+  if (col === 'staff' && isOwnerStaff(doc) && doc.status === 'deactivated') return res.status(400).json({ error: 'The account owner can’t be deactivated' });
   if (col === 'expenses') doc.amount = Number(doc.amount) || 0;
   if (col === 'services') doc.price = Number(doc.price) || 0;
   db[col][i] = doc; save(); res.json(col === 'invoices' ? withStatus(doc) : col === 'jobs' && isMemberReq(req) ? jobForMember(doc) : doc);
@@ -848,6 +859,7 @@ app.delete('/api/:col/:id', (req, res, next) => {
   if (!COLLECTIONS.includes(col)) return next();
   const i = db[col].findIndex((x) => x.id === req.params.id);
   if (i < 0) return res.status(404).json({ error: 'Not found' });
+  if (col === 'staff' && isOwnerStaff(db.staff[i])) return res.status(400).json({ error: 'The account owner can’t be removed from the team' });
   const [removed] = db[col].splice(i, 1);
   if (col === 'staff') db.users.filter((u) => u.staffId === removed.id && u.role !== 'owner').forEach(removeUser);
   if (col === 'photos' && removed.file) fs.rmSync(path.join(uploadDir(), path.basename(removed.file)), { force: true });
@@ -1554,7 +1566,7 @@ app.get('*', (req, res) => {
 function createOwner(t, { name, email, password }) {
   const user = { id: uid(), name, email: normEmail(email), role: 'owner', createdAt: iso(new Date()) };
   if (password) { const { salt, hash } = hashPassword(password); Object.assign(user, { salt, passwordHash: hash }); }
-  db.users.push(user); save(); return user;
+  db.users.push(user); ensureOwnerStaff(); save(); return user;
 }
 // a fresh link for the owner: choose a password (not set yet) or reset it
 function ownerLink(t) {
