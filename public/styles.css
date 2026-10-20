@@ -490,3 +490,4 @@ table.domains td{vertical-align:middle}.dom-acts{display:flex;gap:6px;justify-co
 .bill-plans{display:grid;gap:8px;margin-bottom:12px}.bill-plan{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--border);border-radius:10px;cursor:pointer}
 .bill-plan small{display:block;font-size:13px}.bill-plan:has(input:checked){border-color:var(--brand);background:var(--tint)}
 @media (max-width:900px){.bill-grid,.bill-dl{grid-template-columns:1fr}.bill-cancel{margin-left:0}}
+.bill-cardrow{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 12px;margin:4px 0 8px;border:1px solid var(--line);border-radius:10px;font-size:14px}

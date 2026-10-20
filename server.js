@@ -308,6 +308,7 @@ app.use((req, res, next) => {
   const r = tenancy.resolve(req.headers.host);
   const isApi = req.path.startsWith('/api/'); const P = tenancy.platform().settings;
   if (r.kind !== 'tenant') return isApi ? res.status(404).json({ error: 'No account at this address' }) : res.status(404).send(notice('No account here', `There’s no ${esc(P.productName)} account at this address. Check the link you were given.`));
+  if (r.tenant.billing && r.tenant.billing.endsAt && iso(new Date()) > r.tenant.billing.endsAt) tenancy.endSubscription(r.tenant); // cancelled period is over (the webhook usually does this first)
   if (r.tenant.status === 'pending') { // signed up for a paid plan but hasn't finished checkout
     const msg = `This account is waiting for its first payment. Use the checkout link from your sign-up to finish, or sign up again at <a href="${esc(tenancy.platformUrl())}/pricing">${esc(tenancy.platformUrl().replace(/^https?:\/\//, ''))}/pricing</a>.${P.contactEmail ? ` Questions? Contact ${esc(P.contactEmail)}.` : ''}`;
     return isApi ? res.status(403).json({ error: 'This account isn’t paid for yet' }) : res.status(403).send(notice('Finish your checkout', msg));
@@ -1557,7 +1558,7 @@ app.get('/api/integrations', async (req, res) => {
 
 // ---------- Account and billing: the business's own subscription to this service (owner only) ----------
 // Plans are billed by the platform's Stripe account (lib/platform.js sign-up checkout); t.billing holds the Stripe customer and subscription.
-// Card, address and invoices are changed in Stripe's billing portal (Settings → Billing → Customer portal must be saved once in Stripe).
+// The owner changes the plan, card and billing details here; Stripe charges the subscription automatically.
 const ownerOnly = (req, res) => { const u = currentUser(req); if (u && u.role === 'owner') return true; res.status(403).json({ error: 'Only the account owner can manage billing' }); return false; };
 const billingCall = (method, endpoint, params) => stripeLib.request(stripeLib.platformKey(), method, endpoint, params);
 const unix = (t) => (t ? iso(new Date(t * 1000)) : null);
@@ -1567,11 +1568,11 @@ app.get('/api/account/billing', async (req, res) => {
   const out = { activeSince: (b.paidAt || t.createdAt || '').slice(0, 10), status: t.status, plan: { id: plan.id, name: plan.name, price: plan.price || '', charge },
     productName: P.settings.productName, contactEmail: P.settings.contactEmail, live: !!stripeLib.platformKey(), billed: !!(b.customerId && stripeLib.platformKey()),
     demo: !!b.demo, managed: !tenancy.isDefault(), plans: P.plans.filter((p) => !p.hidden || p.id === plan.id).map((p) => ({ id: p.id, name: p.name, price: p.price || '', description: p.description || '' })),
-    card: null, customer: null, subscription: null, invoices: [] };
+    card: null, customer: null, subscription: null, invoices: [], endsAt: b.endsAt || null, pendingPlan: b.pendingPlanId ? (P.plans.find((p) => p.id === b.pendingPlanId) || {}).name || null : null };
   if (out.billed) {
     const get = (ep) => billingCall('GET', ep).catch((e) => { console.error('Billing:', e.message); return null; });
     const [cust, sub, inv] = await Promise.all([get(`customers/${encodeURIComponent(b.customerId)}?expand[]=invoice_settings.default_payment_method`),
-      b.subscriptionId ? get(`subscriptions/${encodeURIComponent(b.subscriptionId)}?expand[]=default_payment_method`) : null, get(`invoices?customer=${encodeURIComponent(b.customerId)}&limit=12`)]);
+      b.subscriptionId ? get(`subscriptions/${encodeURIComponent(b.subscriptionId)}?expand[]=default_payment_method`) : null, get(`invoices?customer=${encodeURIComponent(b.customerId)}&limit=24`)]);
     const pm = (sub && typeof sub.default_payment_method === 'object' && sub.default_payment_method) || (cust && cust.invoice_settings && typeof cust.invoice_settings.default_payment_method === 'object' && cust.invoice_settings.default_payment_method);
     if (pm && pm.card) out.card = { brand: pm.card.brand, last4: pm.card.last4, expMonth: pm.card.exp_month, expYear: pm.card.exp_year };
     if (cust && !cust.deleted) out.customer = { name: cust.name || (pm && pm.billing_details && pm.billing_details.name) || b.ownerName || '', email: cust.email || b.email || '', address: cust.address || (pm && pm.billing_details && pm.billing_details.address) || null };
@@ -1588,38 +1589,132 @@ app.get('/api/account/billing', async (req, res) => {
   }
   res.json(out);
 });
-// Stripe's billing portal: update the card or billing address, see every invoice, download receipts
-app.post('/api/account/billing/portal', async (req, res) => {
+// one Stripe product per plan (per test/live mode), so subscriptions and invoices show the plan's name
+async function planProduct(plan) {
+  const P = tenancy.platform(); P.stripeProducts = P.stripeProducts || {}; const k = `${stripeLib.modeOf(stripeLib.platformKey())}:${plan.id}`;
+  if (P.stripeProducts[k]) return P.stripeProducts[k];
+  const p = await billingCall('POST', 'products', { name: `${P.settings.productName} ${plan.name}`, 'metadata[planId]': plan.id });
+  P.stripeProducts[k] = p.id; tenancy.savePlatform(); return p.id;
+}
+const periodEndOf = (sub) => unix(sub.current_period_end || (sub.items && sub.items.data[0] && sub.items.data[0].current_period_end));
+const tellPlatform = (subject, body) => { const to = tenancy.platform().settings.contactEmail; if (to) sendEmail(to, subject, `${body}\n\n${tenancy.tenantUrl(tenancy.current())}`, { server: true }).catch(() => {}); };
+const stripeError = (res, what, e) => { console.error(`Billing ${what}:`, e.message); res.status(502).json({ error: /card|declin|insufficient|authentication/i.test(e.message) ? `Your card couldn’t be charged: ${e.message} Update your card and try again.` : `Stripe couldn’t ${what}: ${e.message}` }); };
+async function liveSubscription(b) {
+  if (!b.subscriptionId) return null;
+  const sub = await billingCall('GET', `subscriptions/${encodeURIComponent(b.subscriptionId)}`).catch(() => null);
+  return sub && !['canceled', 'incomplete_expired'].includes(sub.status) ? sub : null;
+}
+// switch plan: paid → paid changes the subscription price now (difference charged or credited, prorated);
+// → free takes effect when the paid period ends; free/no subscription → paid goes through Stripe Checkout
+app.post('/api/account/billing/plan', async (req, res) => {
   if (!ownerOnly(req, res)) return;
-  const b = tenancy.current().billing || {};
-  if (!b.customerId || !stripeLib.platformKey()) return res.status(400).json({ error: 'There’s no card on file for this account' });
-  try { const s = await billingCall('POST', 'billing_portal/sessions', { customer: b.customerId, return_url: `${baseUrl()}/settings/billing` }); res.json({ url: s.url }); }
-  catch (e) { console.error('Billing portal:', e.message); res.status(502).json({ error: /configuration/i.test(e.message) ? 'Billing management isn’t set up yet. Contact us to update your card.' : `Stripe couldn’t open billing: ${e.message}` }); }
+  const t = tenancy.current(); const P = tenancy.platform(); const u = currentUser(req);
+  if (tenancy.isDefault(t)) return res.status(400).json({ error: 'Your platform’s own account doesn’t have a plan to change' });
+  const to = P.plans.find((p) => p.id === (req.body && req.body.planId) && !p.hidden); if (!to) return res.status(400).json({ error: 'Choose a plan' });
+  const from = tenancy.planOf(t); const b = t.billing || (t.billing = {});
+  if (to.id === t.planId && !b.pendingPlanId) return res.status(400).json({ error: `You’re already on ${to.name}` });
+  const c = stripeLib.planCharge(to);
+  const switched = (message) => { tenancy.savePlatform(); tellPlatform(`Plan changed: ${t.name} → ${to.name}`, `${u.name} (${u.email}) changed ${t.name} from ${from.name} to ${to.name}. ${message}`); res.json({ ok: true, message }); };
+  if (!stripeLib.platformKey()) { t.planId = to.id; delete b.pendingPlanId; delete b.endsAt; return switched(`You’re now on ${to.name}.`); } // no Stripe on this server: demo
+  try {
+    const sub = await liveSubscription(b);
+    if (!c) { // free plan
+      if (!sub) { t.planId = to.id; delete b.pendingPlanId; delete b.endsAt; return switched(`You’re now on ${to.name}.`); }
+      if (to.id === t.planId) { delete b.pendingPlanId; delete b.endsAt; await billingCall('POST', `subscriptions/${sub.id}`, { cancel_at_period_end: 'false' }); return switched(`You’ll stay on ${to.name}.`); }
+      await billingCall('POST', `subscriptions/${sub.id}`, { cancel_at_period_end: 'true' });
+      b.pendingPlanId = to.id; b.endsAt = periodEndOf(sub);
+      return switched(`You’ll move to ${to.name} on ${niceDate(b.endsAt)}, when your paid period ends. You won’t be charged again.`);
+    }
+    if (sub) {
+      const item = sub.items.data[0];
+      const s2 = await billingCall('POST', `subscriptions/${sub.id}`, { 'items[0][id]': item.id, 'items[0][price_data][currency]': 'usd', 'items[0][price_data][product]': await planProduct(to),
+        'items[0][price_data][unit_amount]': String(c.cents), 'items[0][price_data][recurring][interval]': c.interval, proration_behavior: 'always_invoice', payment_behavior: 'error_if_incomplete',
+        cancel_at_period_end: 'false', 'metadata[planId]': to.id });
+      t.planId = to.id; delete b.pendingPlanId; delete b.endsAt; b.subscriptionStatus = s2.status;
+      return switched(`You’re now on ${to.name}. Any difference for the rest of this billing period is charged or credited now, and you’ll pay ${money(c.cents / 100)} each ${c.interval} from your next bill.`);
+    }
+    // no paid subscription yet: pay at Stripe Checkout; the plan switches when the payment goes through
+    const p = { mode: 'subscription', client_reference_id: t.id, 'metadata[tenantId]': t.id, 'metadata[planId]': to.id, 'subscription_data[metadata][tenantId]': t.id,
+      'line_items[0][quantity]': '1', 'line_items[0][price_data][currency]': 'usd', 'line_items[0][price_data][product]': await planProduct(to),
+      'line_items[0][price_data][unit_amount]': String(c.cents), 'line_items[0][price_data][recurring][interval]': c.interval,
+      success_url: `${baseUrl()}/settings/billing?checkout={CHECKOUT_SESSION_ID}`, cancel_url: `${baseUrl()}/settings/billing` };
+    if (b.customerId) p.customer = b.customerId; else p.customer_email = u.email;
+    const s = await billingCall('POST', 'checkout/sessions', p); res.json({ redirect: s.url });
+  } catch (e) { stripeError(res, 'change the plan', e); }
 });
-// cancel at the end of the paid period (the platform's billing webhook pauses the account when it ends), or undo that
+// back from Checkout (new subscription) or the card page (new card): check the session with Stripe, then apply it
+app.post('/api/account/billing/return', async (req, res) => {
+  if (!ownerOnly(req, res)) return;
+  const t = tenancy.current(); const b = t.billing || (t.billing = {}); const id = String((req.body && req.body.sessionId) || '');
+  if (!/^cs_[A-Za-z0-9_]+$/.test(id) || !stripeLib.platformKey()) return res.status(400).json({ error: 'That payment link isn’t valid' });
+  try {
+    const s = await billingCall('GET', `checkout/sessions/${encodeURIComponent(id)}?expand[]=setup_intent`);
+    if (!s.metadata || s.metadata.tenantId !== t.id || s.status !== 'complete') return res.status(400).json({ error: 'That payment wasn’t completed' });
+    if (s.mode === 'subscription') {
+      const to = tenancy.platform().plans.find((p) => p.id === s.metadata.planId);
+      if (to && s.subscription && b.subscriptionId !== s.subscription) {
+        const from = tenancy.planOf(t); t.planId = to.id;
+        Object.assign(b, { customerId: s.customer, subscriptionId: s.subscription, status: 'paid', subscriptionStatus: 'active' }); delete b.pendingPlanId; delete b.endsAt; delete b.demo;
+        if (b.pausedForBilling) { t.status = 'active'; delete b.pausedForBilling; }
+        tenancy.savePlatform(); tellPlatform(`New subscription: ${t.name} → ${to.name}`, `${currentUser(req).name} subscribed ${t.name} to ${to.name} (was ${from.name}).`);
+      }
+      return res.json({ ok: true, message: to ? `You’re now on ${to.name}. Thank you!` : 'Payment received' });
+    }
+    const pm = s.setup_intent && s.setup_intent.payment_method; if (!pm) return res.status(400).json({ error: 'No card was saved' });
+    await useCard(b, typeof pm === 'string' ? pm : pm.id);
+    res.json({ ok: true, message: 'Your card is updated' });
+  } catch (e) { stripeError(res, 'finish', e); }
+});
+// make a card the one every future charge uses, and retry any bill that's still unpaid
+async function useCard(b, pm) {
+  await billingCall('POST', `customers/${encodeURIComponent(b.customerId)}`, { 'invoice_settings[default_payment_method]': pm });
+  if (b.subscriptionId) await billingCall('POST', `subscriptions/${encodeURIComponent(b.subscriptionId)}`, { default_payment_method: pm }).catch(() => {});
+  const open = await billingCall('GET', `invoices?customer=${encodeURIComponent(b.customerId)}&status=open&limit=10`).catch(() => null);
+  for (const i of (open && open.data) || []) await billingCall('POST', `invoices/${i.id}/pay`, { payment_method: pm }).catch((e) => console.error('Billing retry:', e.message));
+}
+async function ensureCustomer(t, u) {
+  const b = t.billing || (t.billing = {}); if (b.customerId) return b.customerId;
+  const c = await billingCall('POST', 'customers', { email: u.email, name: u.name, 'metadata[tenantId]': t.id, description: t.name });
+  b.customerId = c.id; tenancy.savePlatform(); return c.id;
+}
+// new card: Stripe's secure card page (Checkout in setup mode), so card numbers never touch this server
+app.post('/api/account/billing/card', async (req, res) => {
+  if (!ownerOnly(req, res)) return;
+  if (!stripeLib.platformKey()) return res.status(400).json({ error: 'Card payments aren’t set up on this server' });
+  const t = tenancy.current();
+  try {
+    const customer = await ensureCustomer(t, currentUser(req));
+    const s = await billingCall('POST', 'checkout/sessions', { mode: 'setup', customer, currency: 'usd', 'payment_method_types[0]': 'card', 'metadata[tenantId]': t.id,
+      success_url: `${baseUrl()}/settings/billing?card={CHECKOUT_SESSION_ID}`, cancel_url: `${baseUrl()}/settings/billing` });
+    res.json({ redirect: s.url });
+  } catch (e) { stripeError(res, 'open the card page', e); }
+});
+// name, email and address on bills and receipts
+app.put('/api/account/billing/details', async (req, res) => {
+  if (!ownerOnly(req, res)) return;
+  if (!stripeLib.platformKey()) return res.status(400).json({ error: 'Billing isn’t set up on this server' });
+  const b = req.body || {}; const str = (k, n = 200) => String(b[k] || '').trim().slice(0, n);
+  if (!str('name')) return res.status(400).json({ error: 'Enter the name for your bills' });
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(str('email'))) return res.status(400).json({ error: 'Enter the email address for receipts' });
+  try {
+    const customer = await ensureCustomer(tenancy.current(), currentUser(req));
+    await billingCall('POST', `customers/${encodeURIComponent(customer)}`, { name: str('name'), email: str('email').toLowerCase(), 'address[line1]': str('line1'), 'address[line2]': str('line2'),
+      'address[city]': str('city', 100), 'address[state]': str('state', 100), 'address[postal_code]': str('postal_code', 20), 'address[country]': str('country', 2).toUpperCase() || 'US' });
+    res.json({ ok: true });
+  } catch (e) { stripeError(res, 'save your billing details', e); }
+});
+// cancel at the end of the paid period (the account keeps working until then), or undo that
 app.post('/api/account/billing/cancel', async (req, res) => {
   if (!ownerOnly(req, res)) return;
-  const t = tenancy.current(); const b = t.billing || {}; const undo = !!(req.body && req.body.undo);
-  if (!b.subscriptionId || !stripeLib.platformKey()) return res.status(400).json({ error: 'This account doesn’t have a subscription to cancel. Contact us to close it.' });
+  const t = tenancy.current(); const b = t.billing || {}; const undo = !!(req.body && req.body.undo); const u = currentUser(req);
+  if (!stripeLib.platformKey()) return res.status(400).json({ error: 'This account doesn’t have a subscription to cancel. Contact us to close it.' });
   try {
-    const s = await billingCall('POST', `subscriptions/${encodeURIComponent(b.subscriptionId)}`, { cancel_at_period_end: undo ? 'false' : 'true', ...(undo ? {} : { 'cancellation_details[comment]': String((req.body && req.body.reason) || '').slice(0, 500) }) });
-    b.cancelRequestedAt = undo ? null : new Date().toISOString(); tenancy.savePlatform();
-    const P = tenancy.platform().settings;
-    if (P.contactEmail) sendEmail(P.contactEmail, `${undo ? 'Cancellation withdrawn' : 'Subscription cancelled'}: ${t.name}`, `${currentUser(req).name} (${currentUser(req).email}) ${undo ? 'kept their subscription' : `cancelled the ${tenancy.planOf(t).name} plan for ${t.name}. Access ends ${niceDate(unix(s.current_period_end || (s.items && s.items.data[0] && s.items.data[0].current_period_end)) || iso(new Date()))}`}.${req.body && req.body.reason ? `\n\nReason: ${req.body.reason}` : ''}\n\n${tenancy.tenantUrl(t)}`, { server: true }).catch(() => {});
-    res.json({ ok: true });
-  } catch (e) { console.error('Billing cancel:', e.message); res.status(502).json({ error: `Stripe couldn’t update the subscription: ${e.message}` }); }
-});
-// plan changes go to the platform owner (Platform → Settings → Contact requests, and by email), who switches the plan in the console
-app.post('/api/account/billing/plan-request', async (req, res) => {
-  if (!ownerOnly(req, res)) return;
-  const t = tenancy.current(); const P = tenancy.platform(); const u = currentUser(req); const b = req.body || {};
-  const to = P.plans.find((p) => p.id === b.planId && !p.hidden); if (!to) return res.status(400).json({ error: 'Choose a plan' });
-  if (to.id === t.planId) return res.status(400).json({ error: `You’re already on ${to.name}` });
-  const m = { id: crypto.randomBytes(6).toString('hex'), at: new Date().toISOString(), name: u.name, email: u.email, phone: db.company.phone || '', company: t.name, plan: to.name,
-    message: `Plan change request for ${t.name} (${tenancy.subdomainUrl(t).replace(/^https?:\/\//, '')}): from ${tenancy.planOf(t).name} to ${to.name}.${b.note ? `\n\n${String(b.note).slice(0, 2000)}` : ''}` };
-  P.inquiries = P.inquiries || []; P.inquiries.unshift(m); tenancy.savePlatform();
-  if (P.settings.contactEmail) { const sent = await sendEmail(P.settings.contactEmail, `Plan change request: ${t.name} → ${to.name}`, m.message + `\n\nReply to this email to answer ${u.name}.`, { server: true, replyTo: u.email }); m.emailed = sent.status === 'sent'; tenancy.savePlatform(); }
-  res.json({ ok: true });
+    const sub = await liveSubscription(b); if (!sub) return res.status(400).json({ error: 'This account doesn’t have a subscription to cancel. Contact us to close it.' });
+    const s = await billingCall('POST', `subscriptions/${sub.id}`, { cancel_at_period_end: undo ? 'false' : 'true', ...(undo ? {} : { 'cancellation_details[comment]': String((req.body && req.body.reason) || '').slice(0, 500) }) });
+    delete b.pendingPlanId; if (undo) delete b.endsAt; else b.endsAt = periodEndOf(s); tenancy.savePlatform();
+    tellPlatform(`${undo ? 'Cancellation withdrawn' : 'Subscription cancelled'}: ${t.name}`, `${u.name} (${u.email}) ${undo ? 'kept the subscription' : `cancelled the ${tenancy.planOf(t).name} plan for ${t.name}. It keeps working until ${niceDate(b.endsAt)}, then it’s paused`}.${!undo && req.body && req.body.reason ? `\n\nReason: ${req.body.reason}` : ''}`);
+    res.json({ ok: true, endsAt: b.endsAt || null });
+  } catch (e) { stripeError(res, 'update the subscription', e); }
 });
 
 // SPA fallback for every other page route

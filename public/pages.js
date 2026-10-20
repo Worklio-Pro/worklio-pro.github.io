@@ -1077,63 +1077,95 @@ A.payBank = () => {
 };
 
 /* ===== /settings/billing: Account and billing (the business's subscription to this service; owner only) ===== */
+// Plan changes, cancelling, the card and billing details all go through Stripe from here; Stripe charges the plan automatically.
 const CARD_BRANDS = { visa: 'Visa', mastercard: 'Mastercard', amex: 'American Express', discover: 'Discover', diners: 'Diners Club', jcb: 'JCB', unionpay: 'UnionPay' };
-let billingData = null;
+let billingData = null; let billingAll = false;
 PAGES['/settings/billing'] = {
   title: 'Account and billing',
   async render(main) {
+    const qs = new URLSearchParams(location.search); const back = qs.get('checkout') || qs.get('card');
+    if (back) { // back from Stripe's payment or card page
+      history.replaceState(null, '', location.pathname);
+      try { const r = await api('POST', '/api/account/billing/return', { sessionId: back }); toast(r.message); company = await api('GET', '/api/company'); } catch (err) { toast(err.message, true); }
+    } else if (qs.has('canceled')) history.replaceState(null, '', location.pathname);
     const B = billingData = await api('GET', '/api/account/billing'); const sub = B.subscription;
     const per = (i) => (i === 'year' ? 'yearly' : 'monthly');
-    const statusText = sub && sub.cancelAtPeriodEnd ? `Active until ${fmtDate(sub.periodEnd)}` : sub && sub.status === 'past_due' ? 'Payment past due' : sub && sub.status === 'trialing' ? 'Free trial' : B.status === 'suspended' ? 'Paused' : 'Active';
+    const ending = sub && sub.cancelAtPeriodEnd;
+    const statusText = ending ? `Active until ${fmtDate(sub.periodEnd)}` : sub && sub.status === 'past_due' ? 'Payment past due' : B.status === 'suspended' ? 'Paused' : 'Active';
     const contact = B.contactEmail ? `<a class="btn alt" href="mailto:${esc(B.contactEmail)}?subject=${encodeURIComponent(`${B.productName} account: ${company.name || ''}`)}">Email us</a>` : '';
-    const addr = (a) => (a ? [a.line1, a.line2, [a.city, a.state].filter(Boolean).join(', ') + (a.postal_code ? ' ' + a.postal_code : ''), a.country].filter((x) => x && x.trim()).map(esc).join('<br>') : '<span class="muted">—</span>');
+    const addr = (a) => (a && a.line1 ? [a.line1, a.line2, [a.city, a.state].filter(Boolean).join(', ') + (a.postal_code ? ' ' + a.postal_code : ''), a.country].filter((x) => x && x.trim()).map(esc).join('<br>') : '<span class="muted">No address yet</span>');
     const subText = !B.managed ? '<p class="muted">This is your platform’s own account, so it has no subscription.</p>'
-      : sub ? (sub.cancelAtPeriodEnd ? `<p>Your subscription is cancelled. You can use ${esc(B.productName)} until <strong>${fmtDate(sub.periodEnd)}</strong>, then the account is paused.</p><button type="button" class="btn" data-act="billKeep">Keep my subscription</button>`
-        : `<p>You will be charged <strong>${money(sub.amount)} USD</strong> for your ${per(sub.interval)} ${esc(B.plan.name)} subscription on ${fmtDate(sub.periodEnd)}. Plus taxes where applicable.</p>${sub.status === 'past_due' ? '<p class="bill-warn">Your last payment didn’t go through. Update your card to keep your account active.</p>' : ''}`)
-      : B.demo ? '<p class="muted">Your account was started with a demo checkout, so nothing is charged.</p>'
+      : ending && B.pendingPlan ? `<p>Your plan changes to <strong>${esc(B.pendingPlan)}</strong> on ${fmtDate(sub.periodEnd)}. You won’t be charged again.</p><button type="button" class="btn alt sm" data-act="billKeep">Stay on ${esc(B.plan.name)}</button>`
+      : ending ? `<p>Your subscription is cancelled. You can keep using ${esc(B.productName)} until <strong>${fmtDate(sub.periodEnd)}</strong>, then the account is paused.</p><button type="button" class="btn" data-act="billKeep">Keep my subscription</button>`
+      : sub ? `<p>You will be charged <strong>${money(sub.amount)} USD</strong> for your ${per(sub.interval)} ${esc(B.plan.name)} subscription on ${fmtDate(sub.periodEnd)}, and every ${sub.interval} after that. Plus taxes where applicable.</p>${sub.status === 'past_due' ? '<p class="bill-warn">Your last payment didn’t go through. Update your card and we’ll retry it right away.</p>' : ''}`
+      : B.demo ? '<p class="muted">Your account was started with a demo checkout, so nothing is charged. Pick a plan to start a paid subscription.</p>'
       : !B.plan.charge ? `<p>You’re on the ${esc(B.plan.name)} plan${B.plan.price ? ` (${esc(B.plan.price)})` : ''}. There’s nothing to pay.</p>`
-      : `<p class="muted">Your ${esc(B.plan.name)} plan (${esc(B.plan.price)}) is billed outside the app. Contact us with any billing questions.</p>`;
+      : `<p class="muted">Your ${esc(B.plan.name)} plan isn’t billed automatically yet. Choose it under Change plan to set up automatic payments.</p>`;
+    const inv = billingAll ? B.invoices : B.invoices.slice(0, 6);
     main.innerHTML = `<div class="head"><h1>Account and billing</h1></div>
-<div class="card bill-ov"><div class="bill-h"><h2>Account overview</h2><div class="actions">${B.managed ? '<button type="button" class="btn" data-act="billPlans">Change plan</button>' : ''}${B.card || B.billed ? '<button type="button" class="btn alt" data-act="billPortal">Manage billing</button>' : ''}</div></div>
+<div class="card bill-ov"><div class="bill-h"><h2>Account overview</h2><div class="actions">${B.managed ? '<button type="button" class="btn" data-act="billPlans">Change plan</button>' : ''}${B.live && B.managed ? '<button type="button" class="btn alt" data-act="billCard">Update card</button>' : ''}</div></div>
 <dl class="bill-dl"><div><dt>Active since</dt><dd>${B.activeSince ? fmtDate(B.activeSince) : '—'}</dd></div><div><dt>Account status</dt><dd>${esc(statusText)}</dd></div>
 <div><dt>Current plan</dt><dd>${esc(B.plan.name)}${B.plan.price ? ` <span class="muted">(${esc(B.plan.price)})</span>` : ''}</dd></div></dl></div>
 <div class="bill-grid">
-<div class="card"><div class="bill-h"><h2>Billing details</h2>${B.billed ? '<button type="button" class="btn alt sm" data-act="billPortal">Edit</button>' : ''}</div>
-${B.card ? `<div class="bill-card"><span class="bill-brand">${esc(CARD_BRANDS[B.card.brand] || B.card.brand)}</span><div><small class="muted">CARD NUMBER</small><div>•••• ${esc(B.card.last4)}</div></div><div class="r"><small class="muted">EXPIRY</small><div>${String(B.card.expMonth).padStart(2, '0')}/${String(B.card.expYear).slice(-2)}</div></div></div>` : `<p class="muted">${B.billed ? 'No card on file.' : 'No card on file for this account.'}</p>`}
-${B.customer ? `<div class="bill-two"><div><strong>Name</strong><div>${esc(B.customer.name) || '<span class="muted">—</span>'}</div></div><div><strong>Address</strong><div>${addr(B.customer.address)}</div></div></div>` : ''}
+<div class="card"><div class="bill-h"><h2>Billing details</h2>${B.live && B.managed ? '<button type="button" class="btn alt sm" data-act="billEdit">Edit</button>' : ''}</div>
+${B.card ? `<div class="bill-card"><span class="bill-brand">${esc(CARD_BRANDS[B.card.brand] || B.card.brand)}</span><div><small class="muted">CARD NUMBER</small><div>•••• ${esc(B.card.last4)}</div></div><div class="r"><small class="muted">EXPIRY</small><div>${String(B.card.expMonth).padStart(2, '0')}/${String(B.card.expYear).slice(-2)}</div></div></div>`
+  : `<div class="bill-card"><span class="muted">No card on file.</span>${B.live && B.managed ? '<span></span><button type="button" class="btn alt sm" data-act="billCard">Add card</button>' : ''}</div>`}
+${B.managed ? `<div class="bill-two"><div><strong>Name</strong><div>${esc(B.customer && B.customer.name) || '<span class="muted">—</span>'}</div>${B.customer && B.customer.email ? `<div class="muted" style="font-size:13px">${esc(B.customer.email)}</div>` : ''}</div><div><strong>Address</strong><div>${addr(B.customer && B.customer.address)}</div></div></div>` : ''}
 <div class="bill-sub"><strong>Plan subscription</strong>${subText}</div></div>
-<div class="card"><h2>Payment history</h2>${B.invoices.length ? `<table class="bill-hist">${B.invoices.map((i) => `<tr><td>${fmtDate(i.date)}</td><td class="r">${money(i.amount)} ${esc(i.currency)}</td>
-<td><span class="badge ${i.status === 'paid' ? 'paid' : i.status === 'open' ? 'sent' : 'draft'}">${esc({ paid: 'Paid', open: 'Due', void: 'Void', uncollectible: 'Unpaid' }[i.status] || i.status)}</span></td>
-<td class="r">${i.receiptUrl ? `<a class="btn alt sm" href="${esc(i.receiptUrl)}" target="_blank" rel="noopener">Receipt</a>` : ''}</td></tr>`).join('')}</table>${B.moreInvoices ? '<button type="button" class="link-btn" data-act="billPortal">View more payments</button>' : ''}`
+<div class="card"><h2>Payment history</h2>${inv.length ? `<table class="bill-hist">${inv.map((i) => `<tr><td>${fmtDate(i.date)}</td><td class="r">${money(i.amount)} ${esc(i.currency)}</td>
+<td><span class="badge ${i.status === 'paid' ? 'paid' : i.status === 'open' ? 'overdue' : 'draft'}">${esc({ paid: 'Paid', open: 'Unpaid', void: 'Void', uncollectible: 'Unpaid' }[i.status] || i.status)}</span></td>
+<td class="r">${i.receiptUrl ? `<a class="btn alt sm" href="${esc(i.receiptUrl)}" target="_blank" rel="noopener">${i.status === 'open' ? 'Pay' : 'Receipt'}</a>` : ''}</td></tr>`).join('')}</table>${!billingAll && B.invoices.length > inv.length ? '<button type="button" class="link-btn" data-act="billMore">View more payments</button>' : ''}`
   : '<p class="muted">No payments yet.</p>'}</div>
-${B.managed ? `<div class="card bill-change"><h2>Change subscription</h2><p>To change your plan, choose a new one and we’ll switch it for you, usually within one business day. Questions about billing? Get in touch any time.</p>
-${sub && !sub.cancelAtPeriodEnd ? `<p class="muted">You can also cancel anytime. You keep access until the end of the period you’ve paid for; after that the account is paused and your team can’t log in.</p>` : ''}
-<div class="bill-acts">${contact}<button type="button" class="btn alt" data-act="billPlans">Change plan</button>${sub && !sub.cancelAtPeriodEnd ? '<button type="button" class="link-btn bill-cancel" data-act="billCancel">Cancel subscription</button>' : ''}</div></div>` : ''}
+${B.managed ? `<div class="card bill-change"><h2>Change subscription</h2><p>Switch plans any time. Moving to a bigger plan takes effect right away and you’re charged the difference for the rest of this billing period; moving to a smaller plan credits the difference to your next bill.</p>
+${sub && !ending ? `<p class="muted">You can also cancel anytime. You keep using ${esc(B.productName)} until the end of the period you’ve paid for; after that the account is paused and your team can’t log in.</p>` : ''}
+<div class="bill-acts">${contact}<button type="button" class="btn alt" data-act="billPlans">Change plan</button>${sub && !ending ? '<button type="button" class="link-btn bill-cancel" data-act="billCancel">Cancel subscription</button>' : ''}</div></div>` : ''}
 </div>`;
   },
 };
-A.billPortal = async (d, el) => {
+const billGo = async (url, body, el) => { // POST, then follow Stripe's page or show the result
   if (el) el.disabled = true;
-  try { const r = await api('POST', '/api/account/billing/portal', {}); location.href = r.url; } catch (err) { toast(err.message, true); if (el) el.disabled = false; }
+  try { const r = await api('POST', url, body); if (r.redirect) { location.href = r.redirect; return; } closeModal(); toast(r.message || 'Saved'); refresh(); }
+  catch (err) { toast(err.message, true); if (el) el.disabled = false; }
 };
+A.billMore = () => { billingAll = true; refresh(); };
+A.billCard = (d, el) => billGo('/api/account/billing/card', {}, el);
 A.billPlans = () => {
-  const B = billingData; const m = modal('Change plan', `<form id="bpf"><p class="muted" style="margin-top:0">Pick the plan you’d like. We’ll confirm the change and any difference in price by email.</p>
-<div class="bill-plans">${B.plans.filter((p) => p.id !== B.plan.id).map((p, i) => `<label class="bill-plan"><input type="radio" name="planId" value="${esc(p.id)}" ${i === 0 ? 'checked' : ''}><span><strong>${esc(p.name)}</strong>${p.price ? ` · ${esc(p.price)}` : ''}<small class="muted">${esc(p.description)}</small></span></label>`).join('') || '<p class="muted">There are no other plans to switch to.</p>'}</div>
-<label>Anything we should know? (optional)<textarea name="note" rows="3" maxlength="2000"></textarea></label>
-<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Request plan change</button></div></form>`);
-  $('#bpf', m).addEventListener('submit', async (e) => {
-    e.preventDefault(); const b = Object.fromEntries(new FormData(e.target)); if (!b.planId) return toast('Choose a plan', true);
-    try { await api('POST', '/api/account/billing/plan-request', b); closeModal(); toast('Request sent. We’ll be in touch shortly.'); } catch (err) { toast(err.message, true); }
+  const B = billingData; const sub = B.subscription; const cur = B.pendingPlan ? null : B.plan.id;
+  const m = modal('Change plan', `<form id="bpf"><div class="bill-plans">${B.plans.map((p) => `<label class="bill-plan"><input type="radio" name="planId" value="${esc(p.id)}" ${p.id === B.plan.id ? 'checked' : ''} ${p.id === cur ? 'disabled' : ''}>
+<span><strong>${esc(p.name)}</strong>${p.price ? ` · ${esc(p.price)}` : ''}${p.id === B.plan.id ? ' <span class="cstatus active">Current plan</span>' : ''}<small class="muted">${esc(p.description)}</small></span></label>`).join('')}</div>
+<p class="muted" id="bpNote" style="font-size:13px"></p>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn" id="bpGo" disabled>Switch plan</button></div></form>`);
+  const f = $('#bpf', m); const go = $('#bpGo', m); const note = $('#bpNote', m);
+  const paid = (p) => /\$\s*\d/.test(p.price || '') && !/^\$\s*0+(\.0+)?\b/.test(p.price);
+  const sync = () => {
+    const p = B.plans.find((x) => x.id === (new FormData(f)).get('planId')); go.disabled = !p || p.id === cur;
+    if (!p || p.id === cur) { note.textContent = ''; return; }
+    go.textContent = `Switch to ${p.name}`;
+    note.textContent = !paid(p) ? (sub ? `You’ll keep ${B.plan.name} until ${fmtDate(sub.periodEnd)}, then move to ${p.name}. You won’t be charged again.` : `You’ll move to ${p.name} right away.`)
+      : sub ? `Your card${B.card ? ` ending in ${B.card.last4}` : ''} is charged or credited the difference for the rest of this billing period, then ${p.price} from your next bill.`
+      : `You’ll go to Stripe’s secure checkout to pay ${p.price}. After that, Stripe charges your card automatically.`;
+  };
+  f.addEventListener('change', sync); sync();
+  f.addEventListener('submit', (e) => { e.preventDefault(); billGo('/api/account/billing/plan', { planId: (new FormData(f)).get('planId') }, go); });
+};
+A.billEdit = () => {
+  const C = (billingData.customer || {}); const a = C.address || {};
+  const m = modal('Billing details', `<form id="bdf"><div class="row"><label>Name on bills<input name="name" required maxlength="200" value="${esc(C.name || company.name || '')}"></label><label>Email for receipts<input name="email" type="email" required value="${esc(C.email || (me && me.email) || '')}"></label></div>
+<label>Address<input name="line1" maxlength="200" value="${esc(a.line1 || '')}" autocomplete="address-line1"></label><label>Apartment, suite (optional)<input name="line2" maxlength="200" value="${esc(a.line2 || '')}" autocomplete="address-line2"></label>
+<div class="row3"><label>City<input name="city" maxlength="100" value="${esc(a.city || '')}"></label><label>State<input name="state" maxlength="100" value="${esc(a.state || '')}"></label><label>ZIP code<input name="postal_code" maxlength="20" value="${esc(a.postal_code || '')}"></label></div>
+<label>Country<select name="country">${[['US', 'United States'], ['CA', 'Canada'], ['GB', 'United Kingdom'], ['AU', 'Australia'], ['MX', 'Mexico']].map(([k, l]) => `<option value="${k}" ${(a.country || 'US') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+<div class="bill-cardrow"><span>Card: ${billingData.card ? `${esc(CARD_BRANDS[billingData.card.brand] || billingData.card.brand)} •••• ${esc(billingData.card.last4)}` : 'none on file'}</span><button type="button" class="btn alt sm" data-act="billCard">${billingData.card ? 'Update card' : 'Add card'}</button></div>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save</button></div></form>`);
+  $('#bdf', m).addEventListener('submit', async (e) => {
+    e.preventDefault(); const btn = $('button.btn:not(.alt)', e.target); btn.disabled = true;
+    try { await api('PUT', '/api/account/billing/details', Object.fromEntries(new FormData(e.target))); closeModal(); toast('Billing details saved'); refresh(); } catch (err) { toast(err.message, true); btn.disabled = false; }
   });
 };
 A.billCancel = () => {
-  const B = billingData; const m = modal('Cancel subscription', `<form id="bcf"><p style="margin-top:0">Your ${esc(B.plan.name)} subscription will end on <strong>${fmtDate(B.subscription.periodEnd)}</strong>. You won’t be charged again.</p>
+  const B = billingData; const m = modal('Cancel subscription', `<form id="bcf"><p style="margin-top:0">Your ${esc(B.plan.name)} subscription will end on <strong>${fmtDate(B.subscription.periodEnd)}</strong>, and you won’t be charged again. Until then, everything keeps working as normal.</p>
 <p class="muted">After that, the account is paused: you and your team can’t log in, and clients can’t open their quotes, invoices or portal. Your data is kept, so you can come back.</p>
 <label>Why are you leaving? (optional)<textarea name="reason" rows="3" maxlength="500"></textarea></label>
 <div class="foot"><button type="button" class="btn alt" data-act="closeModal">Keep subscription</button><button class="btn danger">Cancel subscription</button></div></form>`);
-  $('#bcf', m).addEventListener('submit', async (e) => {
-    e.preventDefault();
-    try { await api('POST', '/api/account/billing/cancel', Object.fromEntries(new FormData(e.target))); closeModal(); toast('Your subscription is cancelled'); refresh(); } catch (err) { toast(err.message, true); }
-  });
+  $('#bcf', m).addEventListener('submit', (e) => { e.preventDefault(); billGo('/api/account/billing/cancel', Object.fromEntries(new FormData(e.target)), $('.btn.danger', e.target)); });
 };
-A.billKeep = async () => { try { await api('POST', '/api/account/billing/cancel', { undo: true }); toast('Your subscription will continue'); refresh(); } catch (err) { toast(err.message, true); } };
+A.billKeep = (d, el) => billGo('/api/account/billing/cancel', { undo: true }, el);

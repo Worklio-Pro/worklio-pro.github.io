@@ -25,7 +25,7 @@ Each business can instead send through its own email (Gmail, SendGrid or an SMTP
 | Text messages (Twilio) | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM`: only for the platform console's test text. Every business, including yours, texts clients through its own Twilio account (Settings → Account Connections) | Texts are logged as "simulated" |
 | Stripe (your account) | `BILLING_STRIPE_SECRET_KEY` or `STRIPE_SECRET_KEY` (sk_test_… or sk_live_…). Turn on **Connect** in your Stripe dashboard | Sign-up checkout and invoice pay pages run demo payments that charge nobody, and businesses can't connect Stripe |
 | Card payment confirmations | `STRIPE_CONNECT_WEBHOOK_SECRET`, a Connect webhook at `<platform address>/api/site/stripe-connect-webhook` | Payments are still confirmed when the client returns from Stripe |
-| Account and Billing page (card updates, all invoices) | In your Stripe dashboard, open **Settings → Billing → Customer portal** and save it once | **Manage billing** and **Edit** show an error; the rest of the page still works |
+| Self-service plans (Settings → Account and Billing) | Uses your billing key above. Add `customer.subscription.updated` and `customer.subscription.deleted` to the plan-payments webhook | Plan changes, cancelling and card updates still work; a cancelled account is paused the day after its paid period ends |
 | Plan payment confirmations | `BILLING_STRIPE_WEBHOOK_SECRET` (see *Taking payment at sign-up*) | Plan payments are still confirmed when the business returns from Stripe |
 | Links in messages | `BASE_URL` (your public address) | Links point at http://localhost:3000 |
 
