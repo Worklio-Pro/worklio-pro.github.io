@@ -587,3 +587,19 @@ table.domains td{vertical-align:middle}.dom-acts{display:flex;gap:6px;justify-co
 a.hp-nav{color:var(--text);text-decoration:none;padding:6px 8px;margin:0 -8px 10px;border-radius:8px}a.hp-nav:hover{background:var(--surface-2)}
 @media (max-width:900px){#supportBar{padding:8px 14px;flex-wrap:wrap}}
 .hp-legal{margin:10px 0 0;text-align:center;font-size:13px}.hp-legal a{color:var(--muted)}
+/* Feedback button (top bar) and form */
+.tb-fb{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 12px;margin-right:4px;border:1px solid var(--border);border-radius:99px;background:var(--card);color:var(--text);font:inherit;font-size:14px;font-weight:600;cursor:pointer;flex-shrink:0}
+.tb-fb:hover{border-color:var(--brand);color:var(--link)}.tb-fb svg{color:var(--brand)}
+@media (max-width:760px){.tb-fb{width:40px;height:40px;padding:0;justify-content:center;border:0;margin-right:0;background:none}.tb-fb span{display:none}}
+.fb-rate{border:0;padding:0;margin:0 0 14px}.fb-rate legend{font-weight:600;margin-bottom:8px;padding:0}
+.fb-rate>div{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.fb-rate label{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;margin:0;padding:10px 4px;border:1px solid var(--border);border-radius:12px;cursor:pointer;text-align:center}
+.fb-rate input{position:absolute;opacity:0;pointer-events:none}
+.fb-rate span{font-size:28px;line-height:1;filter:grayscale(.6);transition:transform .12s,filter .12s}
+.fb-rate small{font-size:11px;color:var(--muted);line-height:1.2}
+.fb-rate label:hover span{filter:none;transform:scale(1.12)}
+.fb-rate label:has(input:checked){border-color:var(--brand);background:var(--tint);box-shadow:0 0 0 1px var(--brand)}.fb-rate label:has(input:checked) span{filter:none}
+.fb-rate label:has(input:focus-visible){outline:2px solid var(--brand);outline-offset:2px}
+.fb-check{display:flex;align-items:center;gap:8px;font-size:14px;margin:4px 0 12px}.fb-check input{width:auto;margin:0}
+.fb-err{background:var(--bad-bg);color:var(--bad-fg);padding:8px 12px;border-radius:8px;font-size:14px;margin-bottom:10px}.fb-err[hidden]{display:none}
+@media (max-width:420px){.fb-rate small{display:none}}

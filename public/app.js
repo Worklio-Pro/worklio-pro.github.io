@@ -147,6 +147,7 @@ const ICONS = {
   book: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5V21h16"/>',
   chat: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  feedback: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M12 7v4M12 14h.01"/>',
   shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
 };
 const settingsFor = () => SETTINGS_NAV.filter(([p]) => memberCan(p) && !planLocked(p));
@@ -173,6 +174,7 @@ function searchFeatures(q) {
 }
 function buildTopbar() {
   $('#topbar').innerHTML = `<div class="tb-search" role="search">${svgIcon(ICONS.search, 18)}<input id="featSearch" type="search" placeholder="Press / to search" autocomplete="off" spellcheck="false" aria-label="Search features" role="combobox" aria-autocomplete="list" aria-controls="featResults" aria-expanded="false"><div id="featResults" class="tb-results" role="listbox" hidden></div></div>
+<button type="button" class="tb-fb" data-act="feedbackForm" title="Send feedback about the app">${svgIcon(ICONS.feedback, 18)}<span>Feedback</span></button>
 <button type="button" class="tb-icon" data-act="openHelp" title="Help and support" aria-label="Help and support">${svgIcon(ICONS.help)}</button>
 <details class="menu tb-gear"><summary class="tb-icon" title="Settings" aria-label="Settings">${svgIcon(ICONS.gear)}</summary><div class="menu-list" id="gearMenu"></div></details>`;
   const input = $('#featSearch'); const box = $('#featResults'); let hits = []; let sel = 0;
@@ -277,6 +279,31 @@ function supportForm() {
     body.innerHTML = `<div class="support-sent"><h2>Message sent</h2><p class="muted">Thanks, ${esc((f.name || '').split(' ')[0] || 'we got it')}. We’ll reply to ${esc(f.email)} as soon as we can.</p><div class="foot"><button type="button" class="btn" data-act="closeModal">Done</button></div></div>`;
   });
 }
+// "Feedback" in the top bar: a 1–5 rating, what kind of feedback, and a message; goes to the platform console (User feedback) with the account and page attached
+const FEEDBACK_KINDS = ['Idea or suggestion', 'Something isn’t working', 'Something I like', 'Other'];
+const FEEDBACK_FACES = [['1', '😞', 'Very unhappy'], ['2', '🙁', 'Unhappy'], ['3', '😐', 'Okay'], ['4', '🙂', 'Happy'], ['5', '😍', 'Love it']];
+function feedbackForm() {
+  const page = location.href; closeHelp();
+  const product = (company.account && company.account.productName) || 'the app';
+  const body = modal('Send feedback', `<form class="fb-form" data-sticky>
+<p class="muted" style="margin:0 0 14px">Tell us what’s working and what isn’t. Every message is read by the people who build ${esc(product)}.</p>
+<fieldset class="fb-rate"><legend>How do you feel about ${esc(product)}?</legend><div>${FEEDBACK_FACES.map(([v, f, l]) => `<label title="${l}"><input type="radio" name="rating" value="${v}"><span aria-hidden="true">${f}</span><small>${l}</small></label>`).join('')}</div></fieldset>
+<label>What’s it about?<select name="kind">${FEEDBACK_KINDS.map((k) => `<option>${esc(k)}</option>`).join('')}</select></label>
+<label>Your feedback<textarea name="message" rows="5" maxlength="4000" placeholder="What would make your day easier? What got in your way?"></textarea></label>
+<label class="fb-check"><input type="checkbox" name="contactOk" checked> You can email me at ${esc(me ? me.email : 'my login email')} about this</label>
+<div class="fb-err" role="alert" hidden></div>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn" type="submit">Send feedback</button></div></form>`);
+  const form = $('form', body);
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault(); const f = Object.fromEntries(new FormData(form)); const err = $('.fb-err', form);
+    if (!f.rating && !String(f.message || '').trim()) { err.hidden = false; err.textContent = 'Pick a face or write a few words first.'; return; }
+    const btn = $('[type=submit]', form); btn.disabled = true; btn.textContent = 'Sending…';
+    try { await api('POST', '/api/feedback', { ...f, contactOk: !!f.contactOk, page }); }
+    catch (x) { btn.disabled = false; btn.textContent = 'Send feedback'; throw x; }
+    body.innerHTML = `<div class="support-sent"><div style="font-size:40px" aria-hidden="true">🙏</div><h2>Thanks for the feedback!</h2><p class="muted">It helps us decide what to improve next.</p><div class="foot"><button type="button" class="btn" data-act="closeModal">Done</button></div></div>`;
+  });
+  $('input[name=rating]', form).focus();
+}
 // "/" (or Ctrl/⌘ K) jumps to the search box from anywhere except while typing
 document.addEventListener('keydown', (e) => {
   const typing = e.target.closest('input, textarea, select, [contenteditable]');
@@ -339,6 +366,7 @@ A.closeModal = closeModal;
 document.addEventListener('click', (e) => $$('details.menu[open]').forEach((m) => { if (!m.contains(e.target)) m.open = false; }));
 A.logout = async () => { await api('POST', '/api/auth/logout', {}); location.href = '/login'; };
 A.openHelp = () => openHelp();
+A.feedbackForm = () => feedbackForm();
 A.closeHelp = closeHelp;
 A.helpTopic = (d) => openHelp(d.id);
 A.supportForm = supportForm;

@@ -382,9 +382,9 @@ const ID = '[^/]+';
 const route = (method, re) => [method, new RegExp('^/api/' + re + '$')];
 const SUPPORT_API = [route('GET', 'account/support-access'), route('POST', `account/support-access/${ID}/(grant|decline|revoke)`)];
 const ROLE_API = {
-  technician: [route('GET', '(jobs|clients|staff|company)'), route('GET', 'auth/.+'), route('POST', 'auth/.+'), route('POST', 'support'), ...SUPPORT_API, route('POST', `jobs/${ID}/signature`)],
+  technician: [route('GET', '(jobs|clients|staff|company)'), route('GET', 'auth/.+'), route('POST', 'auth/.+'), route('POST', 'support'), route('POST', 'feedback'), ...SUPPORT_API, route('POST', `jobs/${ID}/signature`)],
   manager: [
-    route('GET', 'auth/.+'), route('POST', 'auth/.+'), route('POST', 'support'), ...SUPPORT_API,
+    route('GET', 'auth/.+'), route('POST', 'auth/.+'), route('POST', 'support'), route('POST', 'feedback'), ...SUPPORT_API,
     route('GET', '(jobs|clients|staff|services|photos|company|quotes|invoices|expenses|reports|tax-summary|overview|email-templates)'), route('GET', 'payments/stripe'),
     route('POST', '(jobs|quotes|invoices|expenses|services|clients|photos)'), route('POST', 'services/describe'), route('PUT', `(jobs|quotes|invoices|expenses|services|clients)/${ID}`),
     route('DELETE', `(jobs|quotes|invoices|expenses|services|photos)/${ID}`),
@@ -1628,6 +1628,28 @@ app.post('/api/support', async (req, res) => {
   if (to) {
     const body = `${m.name} asked for help from ${m.company}.\n\nName: ${m.name} (${u.role})\nEmail: ${m.email}${m.phone ? `\nPhone: ${m.phone}` : ''}\nBusiness: ${m.company}\nPlan: ${m.plan}\nAccount: ${m.account}${m.topic ? `\nTopic: ${m.topic}` : ''}${m.page ? `\nPage: ${m.page}` : ''}\n\n${m.message}\n\nReply to this email to answer ${m.name}.`;
     const sent = await sendEmail(to, `Support request from ${m.company}: ${subject || m.topic || 'Help needed'}`, body, { server: true, replyTo: m.email }).catch((e) => ({ status: 'failed', detail: e.message }));
+    m.emailed = sent.status === 'sent'; tenancy.savePlatform();
+  }
+  res.json({ ok: true });
+});
+// "Feedback" in the app's top bar: a rating and a message from any login, saved for the platform console (Settings → User feedback) and emailed to the contact address
+const FEEDBACK_KINDS = ['Idea or suggestion', 'Something isn’t working', 'Something I like', 'Other'];
+const feedbackHits = new Map(); // account+user -> timestamps: 10 per hour
+app.post('/api/feedback', async (req, res) => {
+  const u = currentUser(req); const t = tenancy.current(); const b = req.body || {};
+  const key = `${t.slug}|${u.id}`; const now = Date.now(); const hits = (feedbackHits.get(key) || []).filter((x) => now - x < 3600e3);
+  if (hits.length >= 10) return res.status(429).json({ error: 'Thanks! You’ve sent a lot of feedback in the last hour. Try again a little later.' });
+  const message = String(b.message || '').trim().slice(0, 4000); const rating = Math.round(Number(b.rating)) || 0;
+  if (!message && !rating) return res.status(400).json({ error: 'Pick a rating or write a few words' });
+  hits.push(now); feedbackHits.set(key, hits);
+  const P = tenancy.platform(); const plan = tenancy.planOf(t); const page = String(b.page || '').slice(0, 300);
+  const m = { id: crypto.randomBytes(6).toString('hex'), at: new Date().toISOString(), name: u.name, email: u.email, role: u.role, company: db.company.name || t.slug, plan: plan.name, account: tenancy.tenantUrl(t),
+    rating: rating >= 1 && rating <= 5 ? rating : 0, kind: FEEDBACK_KINDS.includes(b.kind) ? b.kind : 'Other', message, contactOk: !!b.contactOk, page: /^https?:\/\//i.test(page) ? page : '' };
+  P.feedback = P.feedback || []; P.feedback.unshift(m); P.feedback.length = Math.min(P.feedback.length, 1000); tenancy.savePlatform();
+  const to = P.settings.contactEmail;
+  if (to) {
+    const body = `${m.name} (${m.role}) at ${m.company} sent feedback.\n\nRating: ${m.rating ? `${m.rating}/5` : 'none'}\nType: ${m.kind}\nPlan: ${m.plan}\nAccount: ${m.account}${m.page ? `\nPage: ${m.page}` : ''}\nOK to contact: ${m.contactOk ? `yes, ${m.email}` : 'no'}\n\n${m.message || '(no message)'}`;
+    const sent = await sendEmail(to, `Feedback from ${m.company}${m.rating ? ` (${m.rating}/5)` : ''}: ${m.kind}`, body, { server: true, ...(m.contactOk ? { replyTo: m.email } : {}) }).catch((e) => ({ status: 'failed', detail: e.message }));
     m.emailed = sent.status === 'sent'; tenancy.savePlatform();
   }
   res.json({ ok: true });
