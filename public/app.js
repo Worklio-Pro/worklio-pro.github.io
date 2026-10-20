@@ -103,11 +103,11 @@ let me = null; // the logged-in staff account
 const role = () => (me && me.role) || 'owner';
 const isTech = () => role() === 'technician';
 const ROLE_PAGES = {
-  technician: ['/calendar', '/staff-schedules', '/clients', '/jobs', '/jobs/edit', '/profile'],
+  technician: ['/calendar', '/staff-schedules', '/clients', '/jobs', '/jobs/edit', '/profile', '/settings/support-access'],
   manager: ['/business-overview', '/calendar', '/staff-schedules', '/clients', '/quotes', '/quotes/new', '/quotes/edit', '/jobs', '/jobs/new', '/jobs/edit',
-    '/invoices', '/invoices/new', '/invoices/edit', '/payments', '/services', '/expenses', '/reports', '/tax-summary', '/project-gallery', '/profile'],
+    '/invoices', '/invoices/new', '/invoices/edit', '/payments', '/services', '/expenses', '/reports', '/tax-summary', '/project-gallery', '/profile', '/settings/support-access'],
 };
-const OWNER_PAGES = ['/settings/billing', '/settings/support-access']; // the business's subscription and who else gets in: the owner only
+const OWNER_PAGES = ['/settings/billing']; // the business's subscription: the owner only
 const memberCan = (path) => (OWNER_PAGES.includes(path) ? role() === 'owner' : !ROLE_PAGES[role()] || ROLE_PAGES[role()].includes(path));
 // the account's plan (from /api/company): features it includes and pages it doesn't. The server enforces the same.
 const planHas = (f) => !(company.account && company.account.features) || company.account.features.includes(f);

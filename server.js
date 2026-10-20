@@ -380,10 +380,11 @@ app.use((req, res, next) => {
 const ROLES = ['admin', 'manager', 'technician']; // assignable to team members (the owner role is fixed)
 const ID = '[^/]+';
 const route = (method, re) => [method, new RegExp('^/api/' + re + '$')];
+const SUPPORT_API = [route('GET', 'account/support-access'), route('POST', `account/support-access/${ID}/(grant|decline|revoke)`)];
 const ROLE_API = {
-  technician: [route('GET', '(jobs|clients|staff|company)'), route('GET', 'auth/.+'), route('POST', 'auth/.+'), route('POST', 'support'), route('POST', `jobs/${ID}/signature`)],
+  technician: [route('GET', '(jobs|clients|staff|company)'), route('GET', 'auth/.+'), route('POST', 'auth/.+'), route('POST', 'support'), ...SUPPORT_API, route('POST', `jobs/${ID}/signature`)],
   manager: [
-    route('GET', 'auth/.+'), route('POST', 'auth/.+'), route('POST', 'support'),
+    route('GET', 'auth/.+'), route('POST', 'auth/.+'), route('POST', 'support'), ...SUPPORT_API,
     route('GET', '(jobs|clients|staff|services|photos|company|quotes|invoices|expenses|reports|tax-summary|overview|email-templates)'), route('GET', 'payments/stripe'),
     route('POST', '(jobs|quotes|invoices|expenses|services|clients|photos)'), route('POST', 'services/describe'), route('PUT', `(jobs|quotes|invoices|expenses|services|clients)/${ID}`),
     route('DELETE', `(jobs|quotes|invoices|expenses|services|photos)/${ID}`),
@@ -1631,33 +1632,40 @@ app.post('/api/support', async (req, res) => {
   }
   res.json({ ok: true });
 });
-// ---------- Support Access (lib/support.js): the owner grants the platform's support team access for four weeks ----------
-// the console's one-time link: signs the support admin in as the owner, until the grant ends or is revoked
+// ---------- Support Access (lib/support.js): any login can grant the platform's support team access for four weeks ----------
+support.setOwnerLookup((t) => tenancy.run(t, () => { const o = db.users.find((u) => u.role === 'owner'); return o && { id: o.id, name: o.name }; }));
+// the console's one-time link: signs the support admin in as the person who granted access, until the grant ends or is revoked
 app.get('/support-login', (req, res) => {
   const t = tenancy.current(); const s = support.redeem(t, req.query.token);
-  const owner = s && db.users.find((u) => u.role === 'owner' && u.passwordHash);
-  if (!owner) return res.status(400).send(notice('This support link doesn’t work', 'It was already used, is more than a few minutes old, or the account’s support access has ended. Get a new link from the platform console.'));
-  startSession(res, owner, { expires: s.expires, support: { requestId: s.requestId, adminName: s.adminName, expires: s.expires } });
+  const user = s && db.users.find((u) => u.id === s.userId && u.passwordHash && !staffBlocked(u));
+  if (!user) return res.status(400).send(notice('This support link doesn’t work', 'It was already used, is more than a few minutes old, or support access has ended. Get a new link from the platform console.'));
+  startSession(res, user, { expires: s.expires, support: { requestId: s.requestId, adminName: s.adminName, expires: s.expires } });
   res.redirect('/');
 });
 // signs out every support session of one grant (runs inside the account)
 const endSupportSessions = (requestId) => { for (const [k, s] of Object.entries(db.sessions)) if (s.support && s.support.requestId === requestId) delete db.sessions[k]; save(); };
-const supportOwner = (req, res) => { const u = currentUser(req); if (u && u.role === 'owner') return u; res.status(403).json({ error: 'Only the account owner can manage support access' }); return null; };
-const supportRow = ({ id, adminName, reason, requestedAt, status, grantedAt, grantedBy, expiresAt, endedAt, endedBy, lastUsedAt }) => ({ id, adminName, reason, requestedAt, status, grantedAt, grantedBy, expiresAt, endedAt, endedBy, lastUsedAt });
-const supportState = (t) => { const all = support.requests(t); const cur = support.pending(t) || support.active(t); return { current: cur ? supportRow(cur) : null, history: all.filter((r) => r !== cur).map(supportRow), grantDays: support.GRANT_DAYS, productName: tenancy.platform().settings.productName }; };
+const supportRow = ({ id, userId, userName, adminName, reason, requestedAt, status, grantedAt, grantedBy, expiresAt, endedAt, endedBy, lastUsedAt }) => ({ id, userId, userName, adminName, reason, requestedAt, status, grantedAt, grantedBy, expiresAt, endedAt, endedBy, lastUsedAt });
+// each person sees their own requests; the owner also sees (and can revoke) everyone else's
+const supportState = (t, u) => {
+  const all = support.requests(t); const mine = all.filter((r) => r.userId === u.id); const cur = mine.find(support.isOpen) || null;
+  const owner = u.role === 'owner'; const others = owner ? all.filter((r) => r.userId !== u.id) : [];
+  return { current: cur ? supportRow(cur) : null, team: others.filter(support.isOpen).map(supportRow), history: [...mine.filter((r) => r !== cur), ...others.filter((r) => !support.isOpen(r))].sort((a, b) => (b.requestedAt > a.requestedAt ? 1 : -1)).map(supportRow),
+    isOwner: owner, grantDays: support.GRANT_DAYS, productName: tenancy.platform().settings.productName };
+};
 const tellSupportAdmin = (r, subject, body) => { if (r.adminEmail) sendEmail(r.adminEmail, subject, `${body}\n\n${tenancy.platformUrl()}/platform`, { server: true }).catch(() => {}); };
-app.get('/api/account/support-access', (req, res) => { if (supportOwner(req, res)) res.json(supportState(tenancy.current())); });
+app.get('/api/account/support-access', (req, res) => res.json(supportState(tenancy.current(), currentUser(req))));
 app.post('/api/account/support-access/:id/:action', (req, res) => {
-  const u = supportOwner(req, res); if (!u) return;
-  const t = tenancy.current(); const { id, action } = req.params; let r;
+  const u = currentUser(req); const t = tenancy.current(); const { id, action } = req.params; let r;
   try {
     if (action === 'grant' || action === 'decline') r = support.answer(t, id, u, action === 'grant');
-    else if (action === 'revoke') { r = support.end(t, id, u.name); endSupportSessions(r.id); }
-    else return res.status(404).json({ error: 'Not found' });
+    else if (action === 'revoke') {
+      const x = support.requests(t).find((y) => y.id === id); if (x && x.userId !== u.id && u.role !== 'owner') return res.status(403).json({ error: 'Only the account owner can revoke someone else’s support access' });
+      r = support.end(t, id, u.name); endSupportSessions(r.id);
+    } else return res.status(404).json({ error: 'Not found' });
   } catch (e) { return res.status(400).json({ error: e.message }); }
-  const what = { granted: `granted support access until ${niceDate(r.expiresAt.slice(0, 10))}`, declined: 'declined your support access request', revoked: 'revoked support access' }[r.status];
-  tellSupportAdmin(r, `${t.name}: support access ${r.status}`, `${u.name} ${what} for ${t.name}.`);
-  res.json(supportState(t));
+  const what = { granted: `granted support access to ${r.userName === u.name ? 'their login' : `${r.userName}’s login`} until ${niceDate(r.expiresAt.slice(0, 10))}`, declined: 'declined your support access request', revoked: `revoked support access to ${r.userName === u.name ? 'their login' : `${r.userName}’s login`}`, cancelled: `withdrew the request for ${r.userName}’s login` }[r.status];
+  tellSupportAdmin(r, `${t.name}: support access ${r.status}`, `${u.name} ${what} at ${t.name}.`);
+  res.json(supportState(t, u));
 });
 const stripeError = (res, what, e) => { console.error(`Billing ${what}:`, e.message); res.status(502).json({ error: /card|declin|insufficient|authentication/i.test(e.message) ? `Your card couldn’t be charged: ${e.message} Update your card and try again.` : `Stripe couldn’t ${what}: ${e.message}` }); };
 async function liveSubscription(b) {
@@ -1807,7 +1815,8 @@ function ownerLink(t) {
 const resetDemo = () => { const keep = { users: db.users, sessions: db.sessions, resetTokens: db.resetTokens, secrets: db.secrets }; tenancy.replaceStore({ ...seed(), ...keep }); };
 const tenantStats = (t) => tenancy.run(t, () => {
   const owner = db.users.find((u) => u.role === 'owner');
-  return { owner: owner ? { name: owner.name, email: owner.email, active: !!owner.passwordHash } : null, users: db.users.length, clients: db.clients.length, jobs: db.jobs.length, invoices: db.invoices.length,
+  return { owner: owner ? { name: owner.name, email: owner.email, active: !!owner.passwordHash } : null, users: db.users.length,
+    logins: db.users.map((u) => ({ id: u.id, name: u.name, email: u.email, role: u.role, active: !!u.passwordHash && !staffBlocked(u) })), clients: db.clients.length, jobs: db.jobs.length, invoices: db.invoices.length,
     lastLoginAt: db.users.map((u) => u.lastLoginAt || '').sort().pop() || null };
 });
 const platformApp = require('./lib/platform')({

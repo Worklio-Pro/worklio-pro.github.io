@@ -77,7 +77,7 @@ ${D.devMode ? `<div class="note">Running locally: accounts open at <code>&lt;add
 ${D.accounts.map((a) => `<tr data-id="${a.id}"><td><div class="nm">${esc(a.name)}${a.isDefault ? ' <span class="pf-chip">Your own account</span>' : ''}</div><div class="sm">${a.owner ? `${esc(a.owner.name)} · ${esc(a.owner.email)}${a.owner.active ? '' : ' · <em>invite not accepted</em>'}` : 'No owner login yet'}</div></td>
 <td><a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(host(a.url))}</a>${a.domains.length ? `<div class="chips">${a.domains.map((d) => `<span class="pf-chip ${d.verified ? 'ok' : 'wait'}" title="${d.verified ? 'Connected' : 'Waiting for DNS'}">${esc(d.host)}</span>`).join('')}</div>` : ''}</td>
 <td><select data-plan="${a.id}" aria-label="Plan for ${esc(a.name)}">${D.plans.map((p) => `<option value="${esc(p.id)}" ${p.id === a.planId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></td>
-<td>${statusChip(a)}${a.support ? ` <span class="pf-chip ${a.support.status === 'granted' ? 'ok' : 'wait'}" title="Support Access">${a.support.status === 'granted' ? 'Support access' : 'Access requested'}</span>` : ''}</td>
+<td>${statusChip(a)}${a.support.length ? ` <span class="pf-chip ${a.support.some((r) => r.status === 'granted') ? 'ok' : 'wait'}" title="Support Access">${a.support.some((r) => r.status === 'granted') ? 'Support access' : 'Access requested'}</span>` : ''}</td>
 <td class="sm">${a.users} login${a.users === 1 ? '' : 's'} · ${a.clients} clients · ${a.jobs} jobs${a.lastLoginAt ? `<br>Last login ${fmtDate(a.lastLoginAt)}` : ''}</td>
 <td class="sm">${fmtDate(a.createdAt)}</td>
 <td><div class="acts"><button class="btn alt sm" data-act="editAccount" data-id="${a.id}">Manage</button></div></td></tr>`).join('') || '<tr><td colspan="7" class="muted">No accounts yet.</td></tr>'}
@@ -141,28 +141,32 @@ ${a.status === 'active' ? '' : a.status === 'pending' ? '<p class="muted" style=
   const sf = $('#saf', m);
   if (sf) sf.addEventListener('submit', async (e) => {
     e.preventDefault(); const b = $('button', sf); b.disabled = true;
-    try { const r = await api('POST', `/api/platform/accounts/${a.id}/support-access`, { reason: sf.reason.value }); toast(r.emailed ? `Request sent to ${a.owner.email}` : 'Request saved. The owner wasn’t emailed (email isn’t connected), so let them know to check Settings → Support Access.'); await load(); render(); A.editAccount({ id: a.id }); }
+    try { const who = a.logins.find((u) => u.id === sf.userId.value); const r = await api('POST', `/api/platform/accounts/${a.id}/support-access`, { userId: sf.userId.value, reason: sf.reason.value }); toast(r.emailed ? `Request sent to ${who.email}` : `Request saved. ${who.name} wasn’t emailed (email isn’t connected), so let them know to check Settings → Support Access.`); await load(); render(); A.editAccount({ id: a.id }); }
     catch (x) { b.disabled = false; toast(x.message, true); }
   });
   f.addEventListener('submit', async (e) => { e.preventDefault(); try { await api('PUT', `/api/platform/accounts/${a.id}`, Object.fromEntries(new FormData(f))); toast('Saved'); await load(); render(); A.editAccount({ id: a.id }); } catch (x) { toast(x.message, true); } });
 };
-// Support Access: the owner approves a request on their Support Access page; while it's granted you can open the account as the owner
+// Support Access: ask any of the account's logins; they approve it on their Support Access page, and while it's granted
+// you can open the account as them (with their access level). They, or the account owner, can revoke it any time.
+const ROLE_NAMES = { owner: 'Owner', admin: 'Admin', manager: 'Manager', technician: 'Technician' };
 function supportSection(a) {
-  const s = a.support;
-  if (!s) return `<p class="muted" style="font-size:14px;margin:0 0 8px">${a.owner && a.owner.active ? 'Ask the owner to let you into the account to troubleshoot. They get an email and approve it on their Support Access page; access lasts four weeks unless they revoke it.' : 'The owner needs a login before they can approve access.'}</p>
-${a.owner && a.owner.active ? `<form id="saf" class="linkbox"><input name="reason" maxlength="500" placeholder="Reason, shown to the owner (optional)" aria-label="Reason for access"><button class="btn alt">Request access</button></form>` : ''}`;
-  if (s.status === 'pending') return `<p class="muted" style="font-size:14px;margin:0 0 8px">Waiting for ${esc(a.owner ? a.owner.name : 'the owner')} to approve. Requested by ${esc(s.adminName)} on ${fmtDate(s.requestedAt)}.</p><button type="button" class="btn alt sm" data-act="supportEnd" data-id="${a.id}">Withdraw request</button>`;
-  return `<p class="muted" style="font-size:14px;margin:0 0 8px">Granted until <strong>${fmtDate(s.expiresAt)}</strong>. Opening the account signs you in as the owner in a new tab; the owner can revoke access any time.</p>
-<div class="acts" style="justify-content:flex-start"><button type="button" class="btn sm" data-act="supportOpen" data-id="${a.id}">Open account</button><button type="button" class="btn alt sm" data-act="supportEnd" data-id="${a.id}">End access</button></div>`;
+  const rows = a.support.map((r) => `<tr><td><strong>${esc(r.userName)}</strong><div class="sm">${r.status === 'granted' ? `Granted until ${fmtDate(r.expiresAt)}` : `Waiting for approval · requested ${fmtDate(r.requestedAt)} by ${esc(r.adminName)}`}</div></td>
+<td><div class="acts">${r.status === 'granted' ? `<button type="button" class="btn sm" data-act="supportOpen" data-id="${a.id}" data-r="${esc(r.id)}">Open account</button>` : ''}<button type="button" class="btn alt sm" data-act="supportEnd" data-id="${a.id}" data-r="${esc(r.id)}">${r.status === 'granted' ? 'End access' : 'Withdraw'}</button></div></td></tr>`).join('');
+  const busy = new Set(a.support.map((r) => r.userId)); const free = a.logins.filter((u) => u.active && !busy.has(u.id));
+  return `<p class="muted" style="font-size:14px;margin:0 0 8px">Ask someone on the account to let you in as them to troubleshoot. They get an email and approve it on their Support Access page. Access lasts four weeks unless they or the owner revoke it, and you sign in with their access level.</p>
+${rows ? `<table class="acc" style="margin-bottom:10px">${rows}</table>` : ''}
+${free.length ? `<form id="saf"><div class="linkbox" style="margin-bottom:8px"><select name="userId" aria-label="Who to ask">${free.map((u) => `<option value="${esc(u.id)}">${esc(u.name)} · ${ROLE_NAMES[u.role] || esc(u.role)} · ${esc(u.email)}</option>`).join('')}</select></div>
+<div class="linkbox"><input name="reason" maxlength="500" placeholder="Reason, shown to them (optional)" aria-label="Reason for access"><button class="btn alt">Request access</button></div></form>`
+    : `<p class="muted" style="font-size:13px;margin:0">${a.logins.some((u) => u.active) ? 'Everyone who can sign in already has an open request or grant.' : 'Nobody on this account can sign in yet, so there’s no one to approve a request.'}</p>`}`;
 }
 A.supportEnd = async (d) => {
-  const a = D.accounts.find((x) => x.id === d.id); const granted = a.support && a.support.status === 'granted';
-  if (!confirm(granted ? `End support access to ${a.name}? Open support sessions are signed out.` : 'Withdraw this access request?')) return;
-  try { await api('DELETE', `/api/platform/accounts/${a.id}/support-access`); toast(granted ? 'Support access ended' : 'Request withdrawn'); await load(); render(); A.editAccount({ id: a.id }); } catch (x) { toast(x.message, true); }
+  const a = D.accounts.find((x) => x.id === d.id); const r = a.support.find((x) => x.id === d.r); const granted = r && r.status === 'granted';
+  if (!confirm(granted ? `End support access to ${r.userName}’s login? Open support sessions are signed out.` : `Withdraw the request to ${r ? r.userName : 'them'}?`)) return;
+  try { await api('DELETE', `/api/platform/accounts/${a.id}/support-access/${encodeURIComponent(d.r)}`); toast(granted ? 'Support access ended' : 'Request withdrawn'); await load(); render(); A.editAccount({ id: a.id }); } catch (x) { toast(x.message, true); }
 };
 A.supportOpen = async (d) => {
   const w = window.open('', '_blank'); // open the tab now, while the click still counts, so it isn't blocked as a pop-up
-  try { const r = await api('POST', `/api/platform/accounts/${d.id}/support-login`, {}); if (w) { w.opener = null; w.location = r.link; } else location.href = r.link; }
+  try { const r = await api('POST', `/api/platform/accounts/${d.id}/support-login`, { requestId: d.r }); if (w) { w.opener = null; w.location = r.link; } else location.href = r.link; }
   catch (x) { if (w) w.close(); toast(x.message, true); }
 };
 A.domain = async (d, el) => {
