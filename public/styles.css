@@ -323,6 +323,12 @@ a.side-user-name .avatar{flex-shrink:0;margin:0}
 .t-rm{display:inline-flex;background:none;border:0;padding:4px;border-radius:6px;color:var(--danger);cursor:pointer}.t-rm:hover{background:var(--tint)}
 .qtotals [hidden]{display:none!important}
 @media (max-width:600px){.qtotals .tl{grid-template-columns:72px 1fr 96px 24px;gap:8px}.qtotals .unit input{width:72px}}
+/* deposit, payment and balance rows: amounts right-aligned in the same column as Subtotal / Total (112px amount, 12px gap, 28px remove column) */
+.qtotals .crow-line>:nth-child(2),.ibal div>:last-child{min-width:112px;text-align:right;font-variant-numeric:tabular-nums}
+.qtotals .crow-line>:nth-child(2):last-child{margin-right:40px}.ibal div>:last-child{margin-right:28px}
+.qtotals .crow-line .t-rm{width:28px;justify-content:center;margin-left:2px}
+.qtotals .tl>:nth-child(3),.qtotals .opt-amt{font-variant-numeric:tabular-nums}
+@media (max-width:600px){.qtotals .crow-line>:nth-child(2){min-width:96px}.qtotals .crow-line>:nth-child(2):last-child{margin-right:32px}.ibal div>:last-child{margin-right:20px}.qtotals .crow-line .t-rm{width:24px;margin-left:0}}
 /* line items (modeled on Jobber): Name | Quantity | Unit cost | Markup | Total | ⋯ across the top, Description full width below */
 .item-row.qi{grid-template-columns:minmax(0,2fr) minmax(0,.8fr) minmax(0,1.1fr) minmax(0,1.2fr) minmax(112px,1.2fr) 28px;gap:8px;padding:14px 0}
 .item-row.qi .qi-desc{grid-column:1/6}
@@ -336,7 +342,7 @@ a.side-user-name .avatar{flex-shrink:0;margin:0}
 .fl.mk .pre{display:none}.fl.mk.flat .pre{display:inline}
 .fl.mk select{flex:none;width:auto;height:24px;border:0;padding:0 18px 0 4px;margin:0;background-color:transparent;box-shadow:none;background-position:right 2px center;color:var(--muted)}
 .fl.amt-box{cursor:default}
-.item-row.qi .amt{padding-top:0;line-height:24px;height:24px;font-weight:400;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item-row.qi .amt{padding-top:0;line-height:24px;height:24px;font-weight:400;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .row-menu{align-self:start;margin-top:8px}
 .row-menu summary{width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:6px;color:var(--text);font-size:20px;font-weight:700;cursor:pointer;line-height:1}
 .row-menu summary:hover,.row-menu[open] summary{background:var(--tint)}
