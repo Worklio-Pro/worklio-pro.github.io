@@ -48,6 +48,24 @@
     .rm-plan{background:none;border:0;color:var(--muted);font:inherit;font-size:12px;cursor:pointer;padding:2px 4px}.rm-plan:hover{color:var(--danger)}
     .savebar{position:sticky;bottom:0;background:var(--card);border-top:1px solid var(--line);padding:12px 18px;margin:0 -18px -18px;display:flex;gap:10px;align-items:center;justify-content:flex-end;border-radius:0 0 12px 12px}
     .savebar .muted{margin-right:auto;font-size:13px}
+    /* plans on phones: one plan at a time */
+    .pl-pick{display:flex;gap:6px;overflow-x:auto;margin:0 -16px 12px;padding:2px 16px;scrollbar-width:none}.pl-pick::-webkit-scrollbar{display:none}
+    .pl-pick button{flex:none;border:1px solid var(--border);background:var(--card);color:var(--text);font:inherit;font-size:14px;font-weight:600;padding:8px 14px;border-radius:99px;cursor:pointer}
+    .pl-pick button.on{background:var(--brand);border-color:var(--brand);color:#fff}.pl-pick small{font-weight:400;opacity:.75}
+    .pl-card{padding:0 16px 16px}
+    .pl-det{border-bottom:1px solid var(--line);margin:0 -16px}
+    .pl-det summary{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:14px 16px;cursor:pointer;list-style:none}.pl-det summary::-webkit-details-marker{display:none}
+    .pl-det summary>span:first-child{display:flex;flex-direction:column;gap:2px;font-size:15px}.pl-det summary .muted{font-size:12px}
+    .pl-det summary::after{content:"";width:8px;height:8px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg);margin:-4px 4px 0 0;flex:none}
+    .pl-det[open] summary::after{transform:rotate(225deg);margin-top:4px}.pl-det[open] summary>span:first-child .muted{display:none}
+    .pl-form{padding:0 16px 14px}.pl-form .pr-pair label,.pl-form>label{margin-bottom:8px}
+    .pl-h{display:flex;justify-content:space-between;align-items:baseline;font-weight:700;font-size:15px;padding:14px 0 4px}.pl-h .muted{font-weight:400;font-size:13px}
+    .pl-always{font-size:12px;color:var(--muted);margin:0 0 6px}
+    .pl-grp{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;padding:14px 0 4px}
+    .pl-row{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:0;padding:10px 0;border-top:1px solid var(--line);color:var(--text);cursor:pointer;-webkit-tap-highlight-color:transparent}
+    .pl-row>span{display:flex;flex-direction:column;gap:2px;min-width:0}.pl-row .mx-l{font-weight:600;font-size:14px}.pl-row .mx-d{font-size:12px;color:var(--muted)}
+    .pl-row input{width:22px;height:22px;margin:0;flex:none;accent-color:var(--brand)}
+    .pl-card .savebar{margin:12px -16px -16px;padding:12px 16px}
     .switchline{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text);margin:6px 0 14px}
     .note{padding:12px 14px;border-radius:8px;background:var(--info-bg);color:var(--info-fg);font-size:14px;margin-bottom:14px}
     .note code{background:rgba(0,0,0,.08);padding:1px 6px;border-radius:5px}
@@ -83,6 +101,6 @@
 <body>
   <div id="root"><p class="muted" style="text-align:center;margin-top:20vh">Loading…</p></div>
   <div id="toast"></div>
-  <script src="/platform.js?v=3"></script>
+  <script src="/platform.js?v=4"></script>
 </body>
 </html>
