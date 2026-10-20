@@ -166,6 +166,7 @@ table.mini th,table.mini td{padding:9px 8px;font-size:14px;vertical-align:middle
 .pager{display:flex;align-items:center;gap:8px}.pager select{width:auto}.pager .btn{width:36px;height:36px;padding:0}
 .btn[disabled]{opacity:.5;cursor:not-allowed}
 .ctable{padding:0}.ctable th{padding:12px;white-space:nowrap}.ctable td{padding:12px;vertical-align:middle}
+@media (max-width:760px){.clist .m-hide{display:none!important}}
 .crow{cursor:pointer}.crow:hover td{background:var(--tint)}
 .th-btn{background:none;border:0;padding:0;font:inherit;font-weight:inherit;color:inherit;cursor:pointer;text-transform:inherit;letter-spacing:inherit}
 .sort{color:var(--muted);margin-left:2px}.sort.on{color:var(--link)}
