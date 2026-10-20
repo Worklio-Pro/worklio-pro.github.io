@@ -281,6 +281,20 @@ details.menu{position:relative}details.menu summary{list-style:none}details.menu
 .sched td{min-width:120px}
 .sched .person{font-weight:600}
 .sched .today{background:var(--tint)}
+/* phones: compact week grid that fits the screen: short day headers, start-time-only chips, slim sticky name column */
+.sched .c-short{display:none}
+@media (max-width:760px){
+ .sched-card{margin:0 -14px 18px;border-radius:0;padding:12px 8px}
+ .sched-card>.head h2{font-size:16px}
+ .sched .c-full,.sched .p-role{display:none}.sched .c-short{display:inline}
+ .sched th,.sched td{padding:5px 1px;min-width:42px}
+ .sched th{text-align:center;letter-spacing:0}
+ .sched th .c-short{display:flex;flex-direction:column;align-items:center;line-height:1.2}.sched th .c-short b{font-size:14px;color:var(--text)}
+ .sched .person{position:sticky;left:0;z-index:1;background:var(--card);width:66px;min-width:66px;max-width:66px;padding:5px 4px 5px 2px;text-align:left;font-size:12px;overflow-wrap:anywhere}
+ .sched .p-load{font-size:11px;font-weight:400}
+ .sched .chip{padding:1px 2px;border-left-width:2px;font-size:10px;text-overflow:clip}
+ .sched .off-l{display:block;text-align:center;font-size:10px}
+}
 .gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px}
 .gallery figure{margin:0;background:var(--card);border-radius:10px;overflow:hidden;box-shadow:var(--shadow-sm)}
 .gallery img{width:100%;height:160px;object-fit:cover;display:block;cursor:zoom-in}

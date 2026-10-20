@@ -75,20 +75,22 @@ A.calView = (d) => { cal.view = d.v; refresh(); };
 
 /* ===== /staff-schedules ===== */
 let staffWeek = startOfWeek(new Date());
+// compact start time for the phone layout: 9a, 1:30p (12-hour) or 09:30 (24-hour)
+const shortTime = (t) => { const [h, m] = String(t || '0:0').split(':').map(Number); return company.timeFormat === '24' ? fmtTime(t) : `${((h + 11) % 12) + 1}${m ? ':' + String(m).padStart(2, '0') : ''}${h < 12 ? 'a' : 'p'}`; };
 PAGES['/staff-schedules'] = {
   title: 'Staff Schedules',
   async render(main) {
     const days = Array.from({ length: 7 }, (_, i) => addDays(staffWeek, i)); const today = ymd(new Date());
-    const cell = (list) => list.map((j) => `<button class="chip ${j.status === 'completed' ? 'done' : ''}" data-act="editJob" data-id="${j.id}" title="${esc(clientName(j.clientId))}">${esc(j.startTime)}–${esc(j.endTime)}<br>${esc(j.title)}</button>`).join('');
+    const cell = (list) => list.map((j) => `<button class="chip ${j.status === 'completed' ? 'done' : ''}" data-act="editJob" data-id="${j.id}" title="${esc(fmtTime(j.startTime))} · ${esc(j.title)} · ${esc(clientName(j.clientId))}"><span class="c-full">${esc(j.startTime)}–${esc(j.endTime)}<br>${esc(j.title)}</span><span class="c-short">${shortTime(j.startTime)}</span></button>`).join('');
     const forPerson = (sid, s) => D.jobs.filter((j) => j.date === s && j.status !== 'cancelled' && (sid ? (j.staffIds || []).includes(sid) : !(j.staffIds || []).length)).sort((a, b) => a.startTime.localeCompare(b.startTime));
     const row = (s) => {
       const week = days.map((d) => forPerson(s && s.id, ymd(d))); const h = week.flat().reduce((t, j) => t + hoursOf(j), 0);
-      return `<tr><td class="person">${s ? `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${esc(s.color)};margin-right:6px"></span>${esc(s.name)}<div class="muted">${esc(s.role)}</div>` : 'Unassigned'}<div class="muted">${week.flat().length} jobs · ${h.toFixed(1)}h</div></td>${week.map((l, i) => { const off = s && !staffHours(s)[WEEK[days[i].getDay()][0]].on; return `<td class="${ymd(days[i]) === today ? 'today' : ''} ${off ? 'off' : ''}">${cell(l) || (off ? '<span class="off-l">Off</span>' : '')}</td>`; }).join('')}</tr>`;
+      return `<tr><td class="person">${s ? `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${esc(s.color)};margin-right:6px"></span><span class="p-name">${esc(s.name)}</span><div class="muted p-role">${esc(s.role)}</div>` : 'Unassigned'}<div class="muted p-load">${week.flat().length} jobs · ${h.toFixed(1)}h</div></td>${week.map((l, i) => { const off = s && !staffHours(s)[WEEK[days[i].getDay()][0]].on; return `<td class="${ymd(days[i]) === today ? 'today' : ''} ${off ? 'off' : ''}">${cell(l) || (off ? '<span class="off-l">Off</span>' : '')}</td>`; }).join('')}</tr>`;
     };
     const unassigned = days.some((d) => forPerson(null, ymd(d)).length);
     main.innerHTML = `<div class="head"><div><h1>Staff Schedules</h1><p class="sub">Weekly workload and upcoming appointments for each team member.</p></div><div class="actions"><button class="btn alt admin-only" data-act="manageStaff">Manage staff</button><button class="btn no-tech" data-act="newJob">+ New job</button></div></div>
-<div class="card"><div class="head" style="margin-bottom:10px"><div class="actions"><button class="btn alt sm" data-act="swPrev">‹</button><button class="btn alt sm" data-act="swToday">This week</button><button class="btn alt sm" data-act="swNext">›</button></div><h2 style="margin:0">Week of ${fmtDate(ymd(staffWeek))}</h2></div>
-<div class="tablewrap"><table class="sched"><tr><th>Team member</th>${days.map((d) => `<th class="${ymd(d) === today ? 'today' : ''}">${d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</th>`).join('')}</tr>
+<div class="card sched-card"><div class="head" style="margin-bottom:10px"><div class="actions"><button class="btn alt sm" data-act="swPrev">‹</button><button class="btn alt sm" data-act="swToday">This week</button><button class="btn alt sm" data-act="swNext">›</button></div><h2 style="margin:0">Week of ${fmtDate(ymd(staffWeek))}</h2></div>
+<div class="tablewrap"><table class="sched"><tr><th class="person"><span class="c-full">Team member</span><span class="c-short">Team</span></th>${days.map((d) => `<th class="${ymd(d) === today ? 'today' : ''}"><span class="c-full">${d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span><span class="c-short">${d.toLocaleDateString('en-US', { weekday: 'narrow' })}<b>${d.getDate()}</b></span></th>`).join('')}</tr>
 ${D.staff.filter((s) => staffActive(s) || days.some((d) => forPerson(s.id, ymd(d)).length)).map(row).join('') || '<tr><td colspan="8" class="empty">No staff yet. Use “Manage staff” to add your team.</td></tr>'}${unassigned ? row(null) : ''}</table></div></div>`;
   },
 };
