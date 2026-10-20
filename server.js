@@ -218,7 +218,8 @@ const EMAIL_LABELS = { gmail: 'Gmail', sendgrid: 'SendGrid', smtp: 'SMTP' };
 const ownEmail = () => { const e = secrets().email; return e && EMAIL_LABELS[e.provider] ? e : null; };
 const envTwilio = () => { const { TWILIO_ACCOUNT_SID: sid, TWILIO_AUTH_TOKEN: token, TWILIO_FROM: from } = process.env; return sid && token && from ? { sid, token, from } : null; };
 const ownTwilio = () => { const t = secrets().twilio; return t && t.sid && t.token && t.from ? t : null; };
-const smsReady = () => !!(ownTwilio() || envTwilio());
+// texts to clients go only through the business's own Twilio account; the server's TWILIO_* settings are for platform tests
+const smsReady = () => !!ownTwilio();
 const serverEmailProvider = () => (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD ? 'Gmail' : process.env.SENDGRID_API_KEY && process.env.EMAIL_FROM ? 'SendGrid' : '');
 const emailProvider = () => { const e = ownEmail(); return e ? EMAIL_LABELS[e.provider] : serverEmailProvider(); };
 async function sendgridSend(key, { from, fromName, to, replyTo, subject, text }) {
@@ -272,7 +273,7 @@ function toE164(phone) {
 }
 async function sendSms(to, body, { server = false } = {}) {
   if (!to) return { status: 'failed', detail: 'Client has no phone number' };
-  const mine = !server && ownTwilio(); const { sid, token: auth, from } = mine || envTwilio() || {};
+  const mine = !server && ownTwilio(); const { sid, token: auth, from } = (server ? envTwilio() : mine) || {};
   if (sid && auth && from) {
     try {
       // TWILIO_FROM can be a Twilio phone number or a Messaging Service SID (starts with MG)
@@ -286,7 +287,7 @@ async function sendSms(to, body, { server = false } = {}) {
       return r.ok ? { status: 'sent', detail: `Twilio ${j.sid || ''}${mine ? ' (your account)' : ''}`.trim() } : { status: 'failed', detail: `Twilio ${r.status}${j.code ? ' (error ' + j.code + ')' : ''}: ${j.message || 'request rejected'}` };
     } catch (e) { return { status: 'failed', detail: e.message }; }
   }
-  return { status: 'simulated', detail: 'No SMS provider configured (set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM)' };
+  return { status: 'simulated', detail: server ? 'No SMS provider configured (set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM)' : 'Texting isn’t connected: connect your Twilio account in Settings → Account Connections' };
 }
 async function notify({ clientId, channel, kind, refId, refNumber, subject, body }) {
   const c = findClient(clientId);
@@ -1485,7 +1486,7 @@ app.get('/api/integrations', async (req, res) => {
   const s = secrets(); const pay = tenancy.has('onlinePayments');
   res.json({
     email: !!emailProvider(), sms: smsReady(), ai: !!process.env.ANTHROPIC_API_KEY,
-    serverEmail: !!serverEmailProvider(), serverSms: !!envTwilio(),
+    serverEmail: !!serverEmailProvider(),
     // the account's own senders, without passwords, tokens or keys
     ownEmail: (({ provider, user, from, fromName, host, port } = {}) => (provider ? { provider, user: user || '', from: from || '', fromName: fromName || '', host: host || '', port: port || '' } : null))(ownEmail() || undefined),
     ownTwilio: ownTwilio() ? { sid: ownTwilio().sid, from: ownTwilio().from } : null,

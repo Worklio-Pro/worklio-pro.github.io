@@ -660,13 +660,13 @@ function twilioConn(integ) {
   const T = integ.ownTwilio || {};
   const base = { id: 'twilio', icon: 'twilio', title: 'Twilio text messages' };
   if (!planHas('sms')) return { ...base, status: connChip('off', 'Not in your plan'), button: '', body: '', desc: 'Send quotes, invoices and appointment reminders by text. Text messages are included on other plans.' };
-  const status = integ.ownTwilio ? connChip('on', 'Connected') : integ.serverSms ? connChip('on', 'Using our texting service') : connChip('off', 'Not connected');
+  const status = integ.ownTwilio ? connChip('on', 'Connected') : connChip('off', 'Not connected');
   return { ...base, status, button: integ.ownTwilio ? 'Manage' : 'Connect',
-    desc: `Send quotes, invoices and appointment reminders by text from your own Twilio number. ${integ.ownTwilio ? `Texts come from ${esc(T.from)}.` : integ.serverSms ? 'Until you connect, texts are sent for you from our number.' : 'Until texting is connected, messages are kept in the Notifications Log but not delivered.'}`,
+    desc: `Send quotes, invoices and appointment reminders by text from your own Twilio number. ${integ.ownTwilio ? `Texts come from ${esc(T.from)}.` : 'Connect your Twilio account to start texting clients. Until then, texts are kept in the Notifications Log but not delivered.'}`,
     body: `<p class="muted" style="font-size:13px;margin-top:0">Find these at <a href="https://console.twilio.com" target="_blank" rel="noopener">console.twilio.com</a> → Account Info.</p>
 <form id="twilioForm"><div class="row"><label>Account SID<input name="sid" value="${esc(T.sid)}" placeholder="AC…" autocomplete="off" spellcheck="false"></label><label>Auth Token<input name="token" type="password" autocomplete="new-password" ${integ.ownTwilio ? 'placeholder="Saved. Leave blank to keep it."' : ''}></label></div>
 <div class="row"><label>Twilio phone number<input name="from" value="${esc(T.from)}" placeholder="(713) 555-0100 or MG…"></label></div>
-<div class="sms-test"><button class="btn">Save Twilio settings</button>${integ.sms ? '<button type="button" class="btn alt" data-act="testMsg" data-ch="sms">Send a test text</button>' : ''}${integ.ownTwilio ? `<button type="button" class="btn danger sm" data-act="rmSender" data-kind="twilio">${integ.serverSms ? 'Use our texting service instead' : 'Disconnect'}</button>` : ''}</div></form>` };
+<div class="sms-test"><button class="btn">Save Twilio settings</button>${integ.sms ? '<button type="button" class="btn alt" data-act="testMsg" data-ch="sms">Send a test text</button>' : ''}${integ.ownTwilio ? '<button type="button" class="btn danger sm" data-act="rmSender" data-kind="twilio">Disconnect</button>' : ''}</div></form>` };
 }
 async function connectionsPage(main) {
   const integ = await api('GET', '/api/integrations');

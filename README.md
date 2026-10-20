@@ -16,13 +16,13 @@ and `/client-portal?c=<token>` for their portal. Copy each client's portal link 
 ## Going live (environment variables)
 Put these in the `.env` file next to `server.js` (loaded automatically at startup) or set them in the environment.
 Check them in the platform console under **Settings → Integrations**, which shows what's connected and can send a test email or text.
-Each business can instead send through its own email (Gmail, SendGrid or an SMTP server) and its own Twilio account under **App Settings → Email to clients / Text messages**; the settings here are used for any business that doesn't, and always for platform emails such as sign-up alerts and owner invites.
+Each business can instead send through its own email (Gmail, SendGrid or an SMTP server) under **Settings → Account Connections**, and must connect its own Twilio account there to send texts; the email settings here are used for any business that doesn't connect its own email, and always for platform emails such as sign-up alerts and owner invites.
 
 | Feature | Variables | Without them |
 |---|---|---|
 | Email (Gmail) | `GMAIL_USER`, `GMAIL_APP_PASSWORD` (a Google app password); used first when set | Falls back to SendGrid |
 | Email (SendGrid) | `SENDGRID_API_KEY`, `EMAIL_FROM` | Messages are logged as "simulated", not delivered |
-| Text messages (Twilio) | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM` | Logged as "simulated" |
+| Text messages (Twilio) | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM`: only for the platform console's test text. Every business, including yours, texts clients through its own Twilio account (Settings → Account Connections) | Texts are logged as "simulated" |
 | Stripe (your account) | `BILLING_STRIPE_SECRET_KEY` or `STRIPE_SECRET_KEY` (sk_test_… or sk_live_…). Turn on **Connect** in your Stripe dashboard | Sign-up checkout and invoice pay pages run demo payments that charge nobody, and businesses can't connect Stripe |
 | Card payment confirmations | `STRIPE_CONNECT_WEBHOOK_SECRET`, a Connect webhook at `<platform address>/api/site/stripe-connect-webhook` | Payments are still confirmed when the client returns from Stripe |
 | Plan payment confirmations | `BILLING_STRIPE_WEBHOOK_SECRET` (see *Taking payment at sign-up*) | Plan payments are still confirmed when the business returns from Stripe |
