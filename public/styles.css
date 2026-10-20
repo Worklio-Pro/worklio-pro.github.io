@@ -448,3 +448,17 @@ table.domains td{vertical-align:middle}.dom-acts{display:flex;gap:6px;justify-co
 
 /* App Settings → Card payments (Stripe Connect) */
 .pay-card{margin-top:18px}.pay-card p{line-height:1.5}.pay-steps{margin:12px 0;padding-left:22px;line-height:1.7}
+/* Account Connections */
+.conn-list{padding:0 24px}
+.conn{display:grid;grid-template-columns:44px minmax(0,1fr) auto;column-gap:20px;align-items:start;padding:22px 0;border-top:1px solid var(--line)}
+.conn:first-child{border-top:0}
+.conn-ic svg{width:40px;height:40px;display:block}
+.conn-main h2{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;margin:6px 0 6px;font-size:17px}
+.conn-main p{margin:0;color:var(--muted);font-size:14px;line-height:1.5}
+.conn-act .btn{min-width:96px}
+.conn-body{grid-column:2/-1;margin-top:14px;padding-top:14px;border-top:1px dashed var(--line)}
+.conn-chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;background:var(--surface-2);color:var(--text);font-size:13px;font-weight:500;white-space:nowrap}
+.conn-chip i{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+.conn-chip.on i{background:var(--ok)}
+.conn-chip.wait i{background:var(--warn)}
+@media (max-width:640px){.conn-list{padding:0 16px}.conn{grid-template-columns:36px minmax(0,1fr);column-gap:12px}.conn-ic svg{width:32px;height:32px}.conn-act{grid-column:2;margin-top:10px}.conn-body{grid-column:1/-1}}

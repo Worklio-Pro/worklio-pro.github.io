@@ -635,7 +635,7 @@ app.delete('/api/account/domains/:host', (req, res) => {
   tenancy.savePlatform(); res.json(accountInfo());
 });
 // "Connect with Stripe" (Online card payments feature): the business signs up for or finishes its Stripe account on Stripe's own pages
-const connectReturn = () => `${baseUrl()}/settings?stripe=connected`;
+const connectReturn = () => `${baseUrl()}/settings/connections?stripe=connected`;
 async function stripeOnboardingLink() {
   const key = stripeLib.platformKey(); const sec = { ...secrets() }; const t = tenancy.current();
   if (!sec.stripeAccountId) {
@@ -662,7 +662,7 @@ app.post('/api/integrations/stripe/connect', async (req, res) => {
 // Stripe sends people here when an onboarding link has expired: make a fresh one
 app.get('/stripe/connect', async (req, res) => {
   if (!isAdmin(currentUser(req)) || !tenancy.has('onlinePayments') || !stripeLib.platformKey()) return res.redirect('/settings');
-  try { res.redirect(await stripeOnboardingLink()); } catch (e) { res.redirect('/settings?stripe=error'); }
+  try { res.redirect(await stripeOnboardingLink()); } catch (e) { res.redirect('/settings/connections?stripe=error'); }
 });
 // forget the connected account (and any older pasted keys); the business keeps its Stripe account and its money
 app.post('/api/integrations/stripe/disconnect', (req, res) => {

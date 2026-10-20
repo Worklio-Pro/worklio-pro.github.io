@@ -78,7 +78,7 @@ const NAV = [
   ['Operations', [['/business-overview', 'Home'], ['/calendar', 'Job Calendar'], ['/staff-schedules', 'Staff Schedules'], ['/clients', 'Clients'], ['/quotes', 'Quotes'], ['/jobs', 'Jobs'], ['/invoices', 'Invoices']]],
   ['Money', [['/services', 'Products & Services'], ['/expenses', 'Expenses'], ['/reports', 'Financial Reports'], ['/tax-summary', 'Tax Summary']]],
   ['Records', [['/project-gallery', 'Project Gallery'], ['/notifications', 'Notifications Log']]],
-  ['Settings', [['/settings/company', 'Company Profile'], ['/team', 'Manage Team'], ['/settings/emails', 'Email Templates'], ['/settings', 'App Settings']]],
+  ['Settings', [['/settings/company', 'Company Profile'], ['/team', 'Manage Team'], ['/settings/emails', 'Email Templates'], ['/settings', 'App Settings'], ['/settings/connections', 'Account Connections']]],
 ];
 const navPaths = NAV.flatMap(([, items]) => items.map(([p]) => p));
 const curPath = () => location.pathname.replace(/\/+$/, '') || '/';

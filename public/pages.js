@@ -555,7 +555,7 @@ ${full ? `<div class="card"><h2>${planHas('branding') ? 'Branding and defaults' 
 ${planHas('ai') ? `<div class="card"><h2>AI assistance</h2><p class="muted" style="margin-top:0">Shows a “Write with AI” button that drafts product and service descriptions from their name.${integ.ai ? '' : ' AI isn’t available on this service yet.'}</p>
 <div class="ai-toggle"><span class="cstatus ${c.aiEnabled !== false ? 'active' : ''}">${c.aiEnabled !== false ? 'On' : 'Off'}</span><button type="button" class="btn alt sm" data-act="toggleAi">${c.aiEnabled !== false ? 'Turn off AI assistance' : 'Turn on AI assistance'}</button></div></div>` : ''}` : ''}
 ${full ? '<button class="btn">Save changes</button>' : '<div class="cs-foot"><button class="btn">Update settings</button></div>'}</form>
-${full ? paymentsCard(integ) + messagesCard(integ) : ''}`;
+${full ? `<div class="card"><h2>Payments and messages</h2><p class="muted" style="margin:0">Card payments (Stripe), text messages (Twilio) and your own email are set up in <a href="/settings/connections" data-link>Account Connections</a>.</p></div>` : ''}`;
   $$('.prefix-row input').forEach((i) => i.addEventListener('input', () => { i.nextElementSibling.textContent = 'e.g. ' + i.value.trim() + i.dataset.sample; }));
   if (!full) { wireHours(main); phoneMask($('#cf input[name=phone]', main)); }
   $('#cf').addEventListener('submit', async (e) => {
@@ -568,8 +568,7 @@ ${full ? paymentsCard(integ) + messagesCard(integ) : ''}`;
     if (!confirm('Delete your logo? It will be removed from quotes, invoices and the client portal.')) return;
     try { await api('DELETE', '/api/company/logo'); toast('Logo deleted'); refresh(); } catch (err) { toast(err.message, true); }
   };
-  wireAccountCards(main); if (full) wireMessages(main);
-  if (full) stripeReturnNotice(integ);
+  wireAccountCards(main);
   if ($('#logoFile')) $('#logoFile').addEventListener('change', async (e) => {
     const f = e.target.files[0]; if (!f) return; if (f.size > 4e6) return toast('Logo must be under 4 MB', true);
     const dataUrl = f.type === 'image/svg+xml' ? await readFileAsDataUrl(f) : await resizeImage(f, 600);
@@ -608,31 +607,42 @@ ${a.serverIp ? `<li>For a domain without a prefix (yourbusiness.com), add an <st
 <li>Come back and press <strong>Check now</strong>. DNS changes can take up to a few hours.</li></ol></div>`
     : `<p class="muted">Want to use your own domain, like app.yourbusiness.com? Custom domains are included on other plans.</p>`}</div>`;
 }
+/* ===== /settings/connections: Account Connections ===== */
+const connChip = (kind, text) => `<span class="conn-chip ${kind}"><i></i>${text}</span>`;
+const CONN_ICONS = {
+  google: '<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.6-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.6-.4-3.5z"/></svg>',
+  facebook: '<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="22" fill="#1877F2"/><path fill="#fff" d="M26.6 46V30.2h5.3l.8-6.2h-6.1v-3.9c0-1.8.5-3 3.1-3H33v-5.5c-.6-.1-2.5-.3-4.7-.3-4.6 0-7.8 2.8-7.8 8V24h-5.2v6.2h5.2V46z"/></svg>',
+  instagram: '<svg viewBox="0 0 48 48" aria-hidden="true"><defs><radialGradient id="igg" cx="30%" cy="107%" r="150%"><stop offset="0" stop-color="#fdf497"/><stop offset=".05" stop-color="#fdf497"/><stop offset=".45" stop-color="#fd5949"/><stop offset=".6" stop-color="#d6249f"/><stop offset=".9" stop-color="#285AEB"/></radialGradient></defs><rect x="3" y="3" width="42" height="42" rx="11" fill="url(#igg)"/><rect x="12" y="12" width="24" height="24" rx="7" fill="none" stroke="#fff" stroke-width="3"/><circle cx="24" cy="24" r="5.5" fill="none" stroke="#fff" stroke-width="3"/><circle cx="31" cy="17" r="1.8" fill="#fff"/></svg>',
+  stripe: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#635BFF"/><path fill="#fff" d="M22.4 19.6c0-1.2 1-1.7 2.6-1.7 2.3 0 5.2.7 7.5 1.9v-7c-2.5-1-5-1.4-7.5-1.4-6.1 0-10.2 3.2-10.2 8.6 0 8.4 11.5 7 11.5 10.7 0 1.4-1.2 1.9-2.9 1.9-2.5 0-5.7-1-8.3-2.4v7.1c2.8 1.2 5.6 1.7 8.3 1.7 6.3 0 10.6-3.1 10.6-8.6 0-9-11.6-7.4-11.6-10.8z"/></svg>',
+  twilio: '<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="21" fill="#F22F46"/><circle cx="24" cy="24" r="13" fill="none" stroke="#fff" stroke-width="3.2"/><circle cx="19.6" cy="19.6" r="3.1" fill="#fff"/><circle cx="28.4" cy="19.6" r="3.1" fill="#fff"/><circle cx="19.6" cy="28.4" r="3.1" fill="#fff"/><circle cx="28.4" cy="28.4" r="3.1" fill="#fff"/></svg>',
+  email: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="var(--brand)"/><rect x="11" y="15" width="26" height="18" rx="2.5" fill="none" stroke="#fff" stroke-width="2.6"/><path d="M12 17l12 9 12-9" fill="none" stroke="#fff" stroke-width="2.6" stroke-linejoin="round"/></svg>',
+  ai: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#7C3AED"/><path fill="#fff" d="M22 11l2.6 7.4L32 21l-7.4 2.6L22 31l-2.6-7.4L12 21l7.4-2.6zM33 27l1.3 3.7L38 32l-3.7 1.3L33 37l-1.3-3.7L28 32l3.7-1.3z"/></svg>',
+};
 // card payments go to the business's own Stripe account, connected with Stripe Connect (Stripe hosts the sign-up and verification)
-function paymentsCard(integ) {
-  const S = integ.stripe; const mode = integ.paymentsMode === 'live' ? '<span class="cstatus active">Live</span>' : '<span class="cstatus q-sent">Test mode</span>';
-  const head = (status) => `<div class="card pay-card"><div class="plan-head"><div><h2>Card payments</h2><p class="muted" style="margin:0">Clients pay invoices and quote deposits by card. The money goes straight to your Stripe account.</p></div><div>${status}</div></div>`;
-  if (!S) return head('<span class="cstatus">Not in your plan</span>') + '<p class="muted">Online card payments are included on other plans. Clients can still pay you by Zelle, cash or check.</p></div>';
-  if (S.chargesEnabled && integ.payments) return head(`<span class="cstatus active">Connected</span> ${mode}`) + `<p>Connected to <strong>${esc(S.name || 'your Stripe account')}</strong>. Payouts, refunds and receipts are managed in Stripe.${S.feePercent ? ` A ${S.feePercent}% platform fee applies to each card payment.` : ''}</p>
-<div class="sms-test"><a class="btn alt" href="https://dashboard.stripe.com" target="_blank" rel="noopener">Open Stripe dashboard</a><button type="button" class="btn danger sm" data-act="rmStripe">Disconnect</button></div></div>`;
-  if (S.ownKeys || S.serverKey) return head(`<span class="cstatus active">Connected</span> ${mode}`) + `<p>Card payments use ${S.serverKey ? 'the Stripe key in the server settings' : 'the Stripe API keys you saved earlier'}.${S.available ? ' You can switch to Connect with Stripe, which is simpler to look after.' : ''}</p>
-<div class="sms-test">${S.available ? '<button type="button" class="btn" data-act="connectStripe">Connect with Stripe</button>' : ''}${S.ownKeys ? '<button type="button" class="btn danger sm" data-act="rmStripe">Remove saved keys</button>' : ''}</div></div>`;
-  if (!S.available) return head('<span class="cstatus">Not available yet</span>') + '<p class="muted">Card payments aren’t switched on for this service yet. Until then, the pay page runs a demo checkout that charges nobody.</p></div>';
-  if (S.accountId) return head('<span class="cstatus q-sent">Setup not finished</span>') + `<p>${S.detailsSubmitted ? 'Stripe is reviewing your details. This usually takes a few minutes; you’ll be able to take card payments once it’s done.' : 'You started connecting Stripe but didn’t finish. Pick up where you left off: it takes about 5 minutes.'}</p>
-<div class="sms-test"><button type="button" class="btn" data-act="connectStripe">${S.detailsSubmitted ? 'Review details in Stripe' : 'Finish setting up Stripe'}</button><button type="button" class="btn alt" data-act="refreshStripe">Check again</button><button type="button" class="btn danger sm" data-act="rmStripe">Cancel</button></div></div>`;
-  return head('<span class="cstatus">Not connected</span>') + `<ol class="pay-steps"><li>Click <strong>Connect with Stripe</strong>. You’ll go to Stripe’s secure site.</li><li>Set up your Stripe account: your business details and the bank account for payouts.</li><li>You come back here, and clients can pay you by card.</li></ol>
+function stripeConn(integ) {
+  const S = integ.stripe; const mode = integ.paymentsMode === 'live' ? connChip('on', 'Live') : connChip('wait', 'Test mode');
+  const base = { id: 'stripe', icon: 'stripe', title: 'Stripe', desc: 'Let clients pay invoices and quote deposits by card. The money goes straight to your Stripe account.' };
+  if (!S) return { ...base, status: connChip('off', 'Not in your plan'), button: '', body: '' , desc: base.desc + ' Card payments are included on other plans.' };
+  if (S.chargesEnabled && integ.payments) return { ...base, status: connChip('on', 'Connected') + mode, button: 'Manage', body: `<p>Connected to <strong>${esc(S.name || 'your Stripe account')}</strong>. Payouts, refunds and receipts are managed in Stripe.${S.feePercent ? ` A ${S.feePercent}% platform fee applies to each card payment.` : ''}</p>
+<div class="sms-test"><a class="btn alt" href="https://dashboard.stripe.com" target="_blank" rel="noopener">Open Stripe dashboard</a><button type="button" class="btn danger sm" data-act="rmStripe">Disconnect</button></div>` };
+  if (S.ownKeys || S.serverKey) return { ...base, status: connChip('on', 'Connected') + mode, button: 'Manage', body: `<p>Card payments use ${S.serverKey ? 'the Stripe key in the server settings' : 'the Stripe API keys you saved earlier'}.${S.available ? ' You can switch to Connect with Stripe, which is simpler to look after.' : ''}</p>
+<div class="sms-test">${S.available ? '<button type="button" class="btn" data-act="connectStripe">Connect with Stripe</button>' : ''}${S.ownKeys ? '<button type="button" class="btn danger sm" data-act="rmStripe">Remove saved keys</button>' : ''}</div>` };
+  if (!S.available) return { ...base, status: connChip('off', 'Not available yet'), button: '', body: '', desc: base.desc + ' Until card payments are switched on for this service, the pay page runs a demo checkout that charges nobody.' };
+  if (S.accountId) return { ...base, status: connChip('wait', 'Setup not finished'), button: 'Manage', open: true, body: `<p>${S.detailsSubmitted ? 'Stripe is reviewing your details. This usually takes a few minutes; you’ll be able to take card payments once it’s done.' : 'You started connecting Stripe but didn’t finish. Pick up where you left off: it takes about 5 minutes.'}</p>
+<div class="sms-test"><button type="button" class="btn" data-act="connectStripe">${S.detailsSubmitted ? 'Review details in Stripe' : 'Finish setting up Stripe'}</button><button type="button" class="btn alt" data-act="refreshStripe">Check again</button><button type="button" class="btn danger sm" data-act="rmStripe">Cancel</button></div>` };
+  return { ...base, status: connChip('off', 'Not connected'), button: 'Connect', body: `<ol class="pay-steps"><li>Click <strong>Connect with Stripe</strong>. You’ll go to Stripe’s secure site.</li><li>Set up your Stripe account: your business details and the bank account for payouts.</li><li>You come back here, and clients can pay you by card.</li></ol>
 <p class="muted" style="font-size:13px">Stripe charges its standard card processing fees${S.feePercent ? `, plus a ${S.feePercent}% platform fee on each payment` : ''}. Until you connect, the pay page runs a demo checkout that charges nobody.</p>
-<button type="button" class="btn" data-act="connectStripe">Connect with Stripe</button></div>`;
+<button type="button" class="btn" data-act="connectStripe">Connect with Stripe</button>` };
 }
-// Messages: send through the business's own email and Twilio accounts, or the service's (set up by the platform)
-function messagesCard(integ) {
-  const on = (ok, yes, no) => `<span class="cstatus ${ok ? 'active' : ''}">${ok ? yes : no}</span>`;
-  const E = integ.ownEmail || {}; const T = integ.ownTwilio || {}; const p = E.provider || 'gmail';
+// email and texts: the business's own Gmail/SendGrid/SMTP and Twilio accounts, or the service's (set up by the platform)
+function emailConn(integ) {
+  const E = integ.ownEmail || {}; const p = E.provider || 'gmail';
   const saved = (has) => (has ? 'placeholder="Saved. Leave blank to keep it."' : '');
   const show = (k) => (p === k ? '' : ' hidden');
-  const email = `<div class="card"><div class="plan-head"><div><h2>Email to clients</h2><p class="muted" style="margin:0">Quotes, invoices, reminders and password resets.</p></div>
-<div>${integ.ownEmail ? on(true, `Your ${esc({ gmail: 'Gmail', sendgrid: 'SendGrid', smtp: 'mail server' }[E.provider])}`) : on(integ.serverEmail, 'Using our email service', 'Not set up')}</div></div>
-<p class="muted" style="font-size:13px">${integ.ownEmail ? `Emails come from <strong>${esc(E.from || E.user)}</strong>.` : integ.serverEmail ? 'Emails are sent for you, in your business name.' : 'Emails are kept in the Notifications Log but not delivered until email is set up.'} Client replies go to ${esc(company.email || 'your company email')}. To send from your own mailbox instead, fill this in:</p>
+  const status = integ.ownEmail ? connChip('on', `Your ${esc({ gmail: 'Gmail', sendgrid: 'SendGrid', smtp: 'mail server' }[E.provider])}`) : integ.serverEmail ? connChip('on', 'Using our email service') : connChip('off', 'Not connected');
+  return { id: 'email', icon: 'email', title: 'Email', status, button: integ.ownEmail ? 'Manage' : 'Connect',
+    desc: `Send quotes, invoices, reminders and password resets from your own mailbox. ${integ.ownEmail ? `Emails come from ${esc(E.from || E.user)}.` : integ.serverEmail ? 'Until you connect, emails are sent for you in your business name.' : 'Until email is connected, messages are kept in the Notifications Log but not delivered.'}`,
+    body: `<p class="muted" style="font-size:13px;margin-top:0">Client replies go to ${esc(company.email || 'your company email')}.</p>
 <form id="emailForm"><div class="row"><label>Send with<select name="provider">${[['gmail', 'Gmail or Google Workspace'], ['sendgrid', 'SendGrid'], ['smtp', 'Another mail server (SMTP)']].map(([v, l]) => `<option value="${v}" ${v === p ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
 <label>Sender name<input name="fromName" maxlength="100" value="${esc(E.fromName)}" placeholder="${esc(company.name || 'Your business')}"></label></div>
 <div class="row" data-for="gmail"${show('gmail')}><label>Gmail address<input name="user" type="email" value="${esc(E.provider === 'gmail' ? E.user : '')}" placeholder="you@gmail.com"></label>
@@ -644,16 +654,44 @@ function messagesCard(integ) {
 <div class="row" data-for="smtp"${show('smtp')}><label>SMTP server<input name="host" value="${esc(E.host)}" placeholder="smtp.yourmailhost.com"></label><label>Port (SSL/TLS)<input name="port" type="number" value="465" readonly></label></div>
 <div class="row" data-for="smtp"${show('smtp')}><label>Username<input name="user" value="${esc(E.provider === 'smtp' ? E.user : '')}"></label><label>Password<input name="pass" type="password" autocomplete="new-password" ${saved(E.provider === 'smtp')}></label></div>
 <div class="row" data-for="smtp"${show('smtp')}><label>From address<input name="from" type="email" value="${esc(E.provider === 'smtp' ? E.from : '')}" placeholder="office@yourbusiness.com"></label></div>
-<div class="sms-test"><button class="btn">Save email settings</button>${integ.email ? '<button type="button" class="btn alt" data-act="testMsg" data-ch="email">Send a test email</button>' : ''}${integ.ownEmail ? `<button type="button" class="btn danger sm" data-act="rmSender" data-kind="email">${integ.serverEmail ? 'Use our email service instead' : 'Remove'}</button>` : ''}</div></form></div>`;
-  const sms = !planHas('sms') ? `<div class="card"><h2>Text messages</h2><p class="muted">Text messages are included on other plans.</p></div>`
-    : `<div class="card"><div class="plan-head"><div><h2>Text messages</h2><p class="muted" style="margin:0">Quotes, invoices and appointment reminders by text.</p></div>
-<div>${integ.ownTwilio ? on(true, 'Your Twilio account') : on(integ.serverSms, 'Using our texting service', 'Not set up')}</div></div>
-<p class="muted" style="font-size:13px">${integ.ownTwilio ? `Texts come from <strong>${esc(T.from)}</strong>.` : integ.serverSms ? 'Texts are sent for you from our number.' : 'Texts are kept in the Notifications Log but not delivered until texting is set up.'} To send from your own Twilio number, find these at <a href="https://console.twilio.com" target="_blank" rel="noopener">console.twilio.com</a> → Account Info:</p>
-<form id="twilioForm"><div class="row"><label>Account SID<input name="sid" value="${esc(T.sid)}" placeholder="AC…" autocomplete="off" spellcheck="false"></label><label>Auth Token<input name="token" type="password" autocomplete="new-password" ${saved(!!integ.ownTwilio)}></label></div>
-<div class="row"><label>Twilio phone number<input name="from" value="${esc(T.from)}" placeholder="(713) 555-0100 or MG…"></label></div>
-<div class="sms-test"><button class="btn">Save Twilio settings</button>${integ.sms ? '<button type="button" class="btn alt" data-act="testMsg" data-ch="sms">Send a test text</button>' : ''}${integ.ownTwilio ? `<button type="button" class="btn danger sm" data-act="rmSender" data-kind="twilio">${integ.serverSms ? 'Use our texting service instead' : 'Remove'}</button>` : ''}</div></form></div>`;
-  return email + sms;
+<div class="sms-test"><button class="btn">Save email settings</button>${integ.email ? '<button type="button" class="btn alt" data-act="testMsg" data-ch="email">Send a test email</button>' : ''}${integ.ownEmail ? `<button type="button" class="btn danger sm" data-act="rmSender" data-kind="email">${integ.serverEmail ? 'Use our email service instead' : 'Disconnect'}</button>` : ''}</div></form>` };
 }
+function twilioConn(integ) {
+  const T = integ.ownTwilio || {};
+  const base = { id: 'twilio', icon: 'twilio', title: 'Twilio text messages' };
+  if (!planHas('sms')) return { ...base, status: connChip('off', 'Not in your plan'), button: '', body: '', desc: 'Send quotes, invoices and appointment reminders by text. Text messages are included on other plans.' };
+  const status = integ.ownTwilio ? connChip('on', 'Connected') : integ.serverSms ? connChip('on', 'Using our texting service') : connChip('off', 'Not connected');
+  return { ...base, status, button: integ.ownTwilio ? 'Manage' : 'Connect',
+    desc: `Send quotes, invoices and appointment reminders by text from your own Twilio number. ${integ.ownTwilio ? `Texts come from ${esc(T.from)}.` : integ.serverSms ? 'Until you connect, texts are sent for you from our number.' : 'Until texting is connected, messages are kept in the Notifications Log but not delivered.'}`,
+    body: `<p class="muted" style="font-size:13px;margin-top:0">Find these at <a href="https://console.twilio.com" target="_blank" rel="noopener">console.twilio.com</a> → Account Info.</p>
+<form id="twilioForm"><div class="row"><label>Account SID<input name="sid" value="${esc(T.sid)}" placeholder="AC…" autocomplete="off" spellcheck="false"></label><label>Auth Token<input name="token" type="password" autocomplete="new-password" ${integ.ownTwilio ? 'placeholder="Saved. Leave blank to keep it."' : ''}></label></div>
+<div class="row"><label>Twilio phone number<input name="from" value="${esc(T.from)}" placeholder="(713) 555-0100 or MG…"></label></div>
+<div class="sms-test"><button class="btn">Save Twilio settings</button>${integ.sms ? '<button type="button" class="btn alt" data-act="testMsg" data-ch="sms">Send a test text</button>' : ''}${integ.ownTwilio ? `<button type="button" class="btn danger sm" data-act="rmSender" data-kind="twilio">${integ.serverSms ? 'Use our texting service instead' : 'Disconnect'}</button>` : ''}</div></form>` };
+}
+async function connectionsPage(main) {
+  const integ = await api('GET', '/api/integrations');
+  const soon = (id, icon, title, desc) => ({ id, icon, title, desc, status: connChip('off', 'Coming soon'), button: 'Connect', disabled: true, body: '' });
+  const rows = [
+    soon('google', 'google', 'Google Business Profile', 'Connect your Google Business Profile and manage which features use it.'),
+    soon('facebook', 'facebook', 'Facebook Business Page', 'Connect your Facebook Business Page and manage which features use it. You’ll need full admin permissions for the business profile to connect it.'),
+    soon('instagram', 'instagram', 'Instagram account', 'Connect your Instagram account to publish Instagram posts. You’ll need an Instagram professional account: either Business or Creator.'),
+    stripeConn(integ), twilioConn(integ), emailConn(integ),
+    ...(planHas('ai') ? [{ id: 'ai', icon: 'ai', title: 'AI descriptions', button: '', body: '', status: integ.ai ? connChip('on', company.aiEnabled !== false ? 'On' : 'Turned off') : connChip('off', 'Not available yet'),
+      desc: `“Write with AI” drafts product and service descriptions from their name. ${integ.ai ? 'Turn it on or off in <a href="/settings" data-link>App Settings</a>.' : ''}` }] : []),
+  ];
+  main.innerHTML = `<div class="head"><div><h1>Account Connections</h1><p class="sub">Connect the accounts your business uses to take payments and message clients.</p></div></div>
+<div class="card conn-list">${rows.map((r) => `<section class="conn" id="conn-${r.id}"><div class="conn-ic">${CONN_ICONS[r.icon]}</div>
+<div class="conn-main"><h2>${esc(r.title)} ${r.status}</h2><p>${r.desc}</p></div>
+<div class="conn-act">${r.button ? `<button type="button" class="btn alt conn-btn" ${r.disabled ? 'disabled title="Coming soon"' : `data-act="toggleConn" data-id="${r.id}" aria-expanded="${r.open ? 'true' : 'false'}"`}>${r.button}</button>` : ''}</div>
+${r.body ? `<div class="conn-body"${r.open ? '' : ' hidden'}>${r.body}</div>` : ''}</section>`).join('')}</div>`;
+  wireMessages(main); stripeReturnNotice(integ);
+  const open = new URLSearchParams(location.search).get('open'); if (open) A.toggleConn({ id: open });
+}
+A.toggleConn = (d) => {
+  const sec = $(`#conn-${d.id}`); const body = sec && $('.conn-body', sec); if (!body) return;
+  body.hidden = !body.hidden; $('.conn-btn', sec).setAttribute('aria-expanded', String(!body.hidden));
+  if (!body.hidden) { const f = $('input:not([disabled]):not([readonly]), select', body); if (f) f.focus(); }
+};
 function wireMessages(main) {
   const ef = $('#emailForm', main); if (!ef) return;
   const sel = $('[name=provider]', ef);
@@ -711,6 +749,7 @@ A.rmStripe = async () => { if (!confirm('Disconnect Stripe? Clients won’t be a
 
 PAGES['/settings/company'] = { title: 'Company Profile', render: (m) => companyPage(m, false) };
 PAGES['/settings'] = { title: 'App Settings', render: (m) => companyPage(m, true) };
+PAGES['/settings/connections'] = { title: 'Account Connections', render: connectionsPage };
 /* ===== /clients/import ===== */
 // CSV parser: quoted fields, embedded commas/newlines, "" escapes, BOM; detects comma, semicolon or tab
 function parseCsv(text) {
