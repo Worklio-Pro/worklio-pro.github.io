@@ -8,6 +8,7 @@ const slugify = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-')
   const S = await (await fetch('/api/site')).json();
   document.title = `Pricing · ${S.productName}`;
   $('#brand').textContent = S.productName;
+  if (S.home) document.querySelectorAll('[data-home]').forEach((a) => { a.href = S.home + a.dataset.home; });
   const label = Object.fromEntries(S.features.map((f) => [f.key, f.label]));
   const beta = (f) => (f.beta ? ' <span class="beta-tag" title="In beta testing">Beta</span>' : '');
   const mid = S.plans.length >= 3 ? Math.floor(S.plans.length / 2) : -1; // highlight the middle plan
@@ -34,7 +35,7 @@ ${S.allowSignups ? `<a class="btn ${i === mid ? '' : 'alt'}" href="#signup" data
   $('#foot').innerHTML = 'Questions? <a href="#contact" data-contact="">Contact us</a> · <a href="/terms">Terms of Service</a> · <a href="/privacy">Privacy Policy</a>';
   document.addEventListener('click', (e) => { const b = e.target.closest('[data-contact]'); if (b) { e.preventDefault(); openContact(S, b.dataset.contact); } });
   if (!S.allowSignups) return;
-  $('#topCta').hidden = false;
+  const cta = $('#topCta'); cta.textContent = 'Get started'; delete cta.dataset.contact;
   const root = S.rootDomain;
   $('#signup').innerHTML = `<div class="card"><h2>Create your account</h2><p class="muted" style="margin:0 0 16px">You’ll be set up in under a minute.</p>
 <form id="sf" novalidate><div id="err"></div><label>Plan<select name="plan">${S.plans.map((p) => `<option value="${esc(p.id)}" ${p.id === S.signupPlan ? 'selected' : ''}>${esc(p.name)}${p.price ? ` (${esc(p.price)})` : ''}</option>`).join('')}</select></label>

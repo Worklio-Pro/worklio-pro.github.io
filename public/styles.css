@@ -603,3 +603,14 @@ a.hp-nav{color:var(--text);text-decoration:none;padding:6px 8px;margin:0 -8px 10
 .fb-check{display:flex;align-items:center;gap:8px;font-size:14px;margin:4px 0 12px}.fb-check input{width:auto;margin:0}
 .fb-err{background:var(--bad-bg);color:var(--bad-fg);padding:8px 12px;border-radius:8px;font-size:14px;margin-bottom:10px}.fb-err[hidden]{display:none}
 @media (max-width:420px){.fb-rate small{display:none}}
+/* public site header (home + pricing pages) */
+.h-wrap{max-width:1160px;margin:0 auto;padding:0 20px}
+.h-top{position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--card) 88%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.h-top .h-wrap{display:flex;align-items:center;gap:20px;height:64px}
+.h-brand{font-weight:800;font-size:20px;color:var(--text);text-decoration:none;display:flex;align-items:center;gap:8px}
+.h-brand i{width:30px;height:30px;border-radius:9px;background:var(--brand);display:grid;place-items:center}
+.h-links{display:flex;gap:4px;margin-left:auto}
+.h-links a{color:var(--text);text-decoration:none;font-size:15px;font-weight:500;padding:8px 12px;border-radius:8px}.h-links a:hover{background:var(--tint)}
+.h-links a[aria-current]{color:var(--link);font-weight:700}
+.h-top .btn{height:40px;line-height:22px;font-weight:600;font-size:15px}
+@media (max-width:640px){.h-wrap{padding:0 16px}.h-links{display:none}.h-top .btn{margin-left:auto}}

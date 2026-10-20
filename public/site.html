@@ -5,11 +5,9 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Pricing</title>
   <meta name="color-scheme" content="light dark">
-  <link rel="stylesheet" href="/styles.css?v=4">
+  <link rel="stylesheet" href="/styles.css?v=12">
   <style>
     body{background:var(--bg)}
-    .s-top{max-width:1120px;margin:0 auto;padding:18px 16px;display:flex;justify-content:space-between;align-items:center;gap:12px}
-    .s-brand{font-weight:800;font-size:20px;letter-spacing:.01em}
     .s-hero{max-width:760px;margin:0 auto;padding:40px 16px 28px;text-align:center}
     .s-hero h1{font-size:clamp(28px,5vw,42px);line-height:1.1;margin:0 0 12px;letter-spacing:-.01em}
     .s-hero p{font-size:17px;color:var(--muted);margin:0}
@@ -43,12 +41,16 @@
   </style>
 </head>
 <body>
-  <header class="s-top"><div class="s-brand" id="brand"></div><a class="btn alt" href="#signup" id="topCta" hidden>Get started</a></header>
+  <header class="h-top"><div class="h-wrap">
+    <a class="h-brand" href="/home" data-home=""><i aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg></i><span id="brand"></span></a>
+    <nav class="h-links" aria-label="Site"><a href="/home#features" data-home="#features">Features</a><a href="/home#how" data-home="#how">How it works</a><a href="/home#faq" data-home="#faq">FAQ</a><a href="/pricing" aria-current="page">Pricing</a></nav>
+    <a class="btn" href="#signup" id="topCta" data-contact="">Contact us</a>
+  </div></header>
   <section class="s-hero"><h1>Run your service business from one place</h1><p>Quotes, scheduling, invoices and payments for you, your team and your clients.</p></section>
   <div id="period"></div>
   <section class="s-plans" id="plans" aria-label="Plans"><p class="muted" style="text-align:center">Loading…</p></section>
   <section class="s-signup" id="signup"></section>
   <footer class="s-foot" id="foot"></footer>
-  <script src="/site.js?v=3"></script>
+  <script src="/site.js?v=4"></script>
 </body>
 </html>

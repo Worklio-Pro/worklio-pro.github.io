@@ -6,18 +6,9 @@
   <title>Field service software for quotes, scheduling and payments</title>
   <meta name="description" content="Quotes, scheduling, invoices and payments for field service businesses: your office, your crew in the field and your clients, all in one place.">
   <meta name="color-scheme" content="light dark">
-  <link rel="stylesheet" href="/styles.css?v=10">
+  <link rel="stylesheet" href="/styles.css?v=12">
   <style>
     body{background:var(--card)}
-    .h-wrap{max-width:1160px;margin:0 auto;padding:0 20px}
-    /* top bar */
-    .h-top{position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--card) 88%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
-    .h-top .h-wrap{display:flex;align-items:center;gap:20px;height:64px}
-    .h-brand{font-weight:800;font-size:20px;color:var(--text);text-decoration:none;display:flex;align-items:center;gap:8px}
-    .h-brand i{width:30px;height:30px;border-radius:9px;background:var(--brand);display:grid;place-items:center}
-    .h-links{display:flex;gap:4px;margin-left:auto}
-    .h-links a{color:var(--text);text-decoration:none;font-size:15px;font-weight:500;padding:8px 12px;border-radius:8px}.h-links a:hover{background:var(--tint)}
-    .h-top .btn{height:40px;line-height:22px;font-weight:600;font-size:15px}
     /* hero */
     .h-hero{background:linear-gradient(180deg,var(--tint) 0%,var(--card) 100%);overflow:hidden}
     .h-hero .h-wrap{display:grid;grid-template-columns:1.05fr 1fr;align-items:center;gap:40px;padding-top:56px;padding-bottom:56px}
@@ -93,7 +84,6 @@
       .h-steps{grid-template-columns:1fr 1fr}.h-grid{grid-template-columns:1fr 1fr}
     }
     @media (max-width:640px){
-      .h-wrap{padding:0 16px}.h-links{display:none}.h-top .btn{margin-left:auto}
       .h-sec{padding:52px 0}.h-steps,.h-grid,.h-stats{grid-template-columns:1fr}
       .h-ctas .btn{flex:1 1 100%}.h-cta{padding:40px 20px;border-radius:20px}
     }
@@ -252,6 +242,7 @@
     fetch('/api/site').then((r) => r.json()).then((s) => {
       if (!s || !s.productName) return;
       document.querySelectorAll('.pname').forEach((el) => { el.textContent = s.productName; });
+      if (s.home) document.querySelectorAll('.h-brand').forEach((a) => { a.href = s.home; });
       document.title = s.productName + ' · Field service software for quotes, scheduling and payments';
     }).catch(() => {});
   </script>
