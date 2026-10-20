@@ -11,7 +11,7 @@
     body{background:var(--bg)}
     .pf-top{background:var(--side);color:#fff;position:sticky;top:0;z-index:5}
     .pf-bar{max-width:1180px;margin:0 auto;padding:0 16px;display:flex;align-items:center;gap:20px;min-height:56px;flex-wrap:wrap}
-    .pf-brand{font-weight:800;font-size:17px;letter-spacing:.01em;display:flex;align-items:center;gap:8px}
+    .pf-brand{font-weight:800;font-size:17px;letter-spacing:.01em;display:flex;align-items:center;gap:8px;--logo-h:30px;--logo-w:160px}
     .pf-brand small{font-weight:600;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#7b8db0}
     .pf-tabs{display:flex;gap:2px;flex:1;overflow-x:auto}
     .pf-tabs a{color:#cbd5e1;text-decoration:none;padding:8px 12px;border-radius:8px;font-size:14px;white-space:nowrap}
@@ -73,6 +73,14 @@
     .hc-cheat{margin-top:10px;font-size:13px;color:var(--muted)}.hc-cheat summary{cursor:pointer}.hc-cheat ul{margin:6px 0 0;padding-left:18px;line-height:1.8}
     .hc-fb{font-size:14px;margin:-6px 0 12px;color:var(--muted)}.linkish{background:none;border:0;padding:0;font:inherit;color:var(--link);cursor:pointer;text-decoration:underline}
     @media (max-width:900px){.grid2{grid-template-columns:1fr}.hc-tgrid{grid-template-columns:1fr 100px}.hc-tgrid .acts{grid-column:1/-1;justify-content:flex-start}}
+    /* settings → logo */
+    .lg-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+    .lg-tile{border:1px solid var(--line);border-radius:10px;padding:12px}.lg-h{display:flex;justify-content:space-between;gap:8px;font-size:14px;margin-bottom:8px}.lg-h .muted{font-size:12px}
+    .lg-prev{height:88px;border-radius:8px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;padding:10px}.lg-prev img{max-height:100%;max-width:100%;object-fit:contain}.lg-prev .muted{font-size:13px}
+    .lg-acts{display:flex;gap:6px;margin-top:8px}.lg-acts label.btn{margin:0;cursor:pointer;color:var(--text)}
+    .lg-sample{margin-top:14px;font-size:12px}.lg-bar{display:flex;align-items:center;gap:10px;background:#0f1f3d;color:#fff;padding:10px 14px;border-radius:10px;margin-top:4px;font-size:17px;--logo-h:30px;--logo-w:160px}
+    .pf-auth-logo{display:flex;justify-content:center;margin-bottom:12px;--logo-h:44px;--logo-w:220px}
+    @media (max-width:640px){.lg-grid{grid-template-columns:1fr}}
     /* messages tab: sub-tabs and the email template editor */
     .msg-seg{display:inline-flex;margin:0 0 16px;max-width:100%;overflow-x:auto}.msg-seg button{white-space:nowrap;padding:7px 14px;font-size:14px}
     .msg-n{display:inline-block;min-width:20px;padding:0 6px;border-radius:99px;background:var(--tint-strong);color:var(--tint-fg);font-size:12px;font-weight:700;margin-left:4px}
@@ -161,6 +169,7 @@
   <div id="root"><p class="muted" style="text-align:center;margin-top:20vh">Loading…</p></div>
   <div id="toast"></div>
   <script src="/hc-editor.js?v=1"></script>
-  <script src="/platform.js?v=14"></script>
+  <script src="/brand.js?v=1"></script>
+  <script src="/platform.js?v=15"></script>
 </body>
 </html>

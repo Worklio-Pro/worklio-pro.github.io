@@ -10,7 +10,7 @@
   <style>
     body{background:var(--bg)}
     .s-top{max-width:1040px;margin:0 auto;padding:18px 16px;display:flex;justify-content:space-between;align-items:center;gap:12px}
-    .s-brand{font-weight:800;font-size:20px;letter-spacing:.01em;color:var(--text);text-decoration:none}
+    .s-brand{font-weight:800;font-size:20px;letter-spacing:.01em;color:var(--text);text-decoration:none;display:flex;align-items:center;gap:10px}
     .steps{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--muted);list-style:none;margin:0;padding:0}
     .steps li{display:flex;align-items:center;gap:6px}.steps li+li::before{content:'';width:18px;height:1px;background:var(--border);margin-right:2px}
     .steps b{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;font-size:11px;background:var(--ok-bg);color:var(--ok-fg)}
@@ -51,6 +51,7 @@
     <ol class="steps" aria-label="Sign-up progress"><li><b>✓</b>Choose plan</li><li><b>✓</b>Create account</li><li class="now" aria-current="step"><b>3</b>Payment</li></ol></header>
   <main id="main"><p class="muted" style="text-align:center">Loading…</p></main>
   <p style="text-align:center;font-size:13px;color:var(--muted);margin:8px 16px 32px"><a href="/terms" style="color:inherit">Terms of Service</a> · <a href="/privacy" style="color:inherit">Privacy Policy</a></p>
-  <script src="/checkout.js?v=2"></script>
+  <script src="/brand.js?v=1"></script>
+  <script src="/checkout.js?v=3"></script>
 </body>
 </html>

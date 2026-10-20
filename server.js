@@ -13,6 +13,7 @@ const BASE_URL = process.env.BASE_URL || `https://workliopro.com/public`;
 // many companies (accounts) on one server: see lib/tenancy.js. `db` below is the data of the account the current request is for.
 const tenancy = require('./lib/tenancy');
 const emails = require('./lib/emails');
+const brandLib = require('./lib/brand');
 const stripeLib = require('./lib/stripe');
 const { db, uploadDir } = tenancy;
 const baseUrl = () => tenancy.tenantUrl(tenancy.current()); // this account's web address, for links in messages
@@ -473,7 +474,7 @@ app.post('/api/auth/accept-invite', (req, res) => {
   startSession(res, u); res.json(publicUser(u));
 });
 app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
-app.get('/api/auth/state', (req, res) => res.json({ needsSetup: !db.users.length, user: publicUser(currentUser(req)), company: { name: db.company.name, logo: db.company.logo, brandColor: db.company.brandColor }, emailReady: !!emailProvider() }));
+app.get('/api/auth/state', (req, res) => res.json({ needsSetup: !db.users.length, user: publicUser(currentUser(req)), company: { name: db.company.name, logo: db.company.logo, brandColor: db.company.brandColor }, product: brandLib.brand(), emailReady: !!emailProvider() }));
 app.get('/api/auth/me', (req, res) => (currentUser(req) ? res.json({ ...publicUser(currentUser(req)), ...(req._support ? { support: { adminName: req._support.adminName, expires: req._support.expires } } : {}) }) : res.status(401).json({ error: 'Please log in' })));
 app.post('/api/auth/setup', (req, res) => { // first run only: create the owner account
   if (db.users.length) return res.status(403).json({ error: 'An account already exists. Log in instead.' });
@@ -584,7 +585,7 @@ function accountInfo() {
     slug: t.slug, plan: { id: plan.id, name: plan.name }, features: plan.features, lockedPages: tenancy.lockedPages(t), betaPages: tenancy.betaPages(), maxUsers: plan.maxUsers || 0,
     url: tenancy.tenantUrl(t), subdomainUrl: tenancy.subdomainUrl(t), rootDomain: tenancy.ROOT_DOMAIN, serverIp: process.env.SERVER_IP || '',
     domains: (t.domains || []).map(({ host, verified, primary, addedAt, verifiedAt }) => ({ host, verified: !!verified, primary: !!primary, addedAt, verifiedAt: verifiedAt || null })),
-    productName: tenancy.platform().settings.productName, contactEmail: tenancy.platform().settings.contactEmail, helpUrl: tenancy.helpUrl(), managed: !tenancy.isDefault(),
+    productName: tenancy.platform().settings.productName, product: brandLib.brand(), contactEmail: tenancy.platform().settings.contactEmail, helpUrl: tenancy.helpUrl(), managed: !tenancy.isDefault(),
     featureList: tenancy.FEATURES.map(({ key, label, desc }) => ({ key, label, desc, beta: tenancy.isBeta(key), included: plan.features.includes(key) })), alwaysIncluded: tenancy.ALWAYS_INCLUDED,
   };
 }
@@ -1870,6 +1871,7 @@ const platformApp = require('./lib/platform')({
 // which app answers: the platform's (its own domain, or /platform… while developing) or an account's
 const PLATFORM_PATHS = /^\/(platform(\/.*)?|home|pricing|signup|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;
 function dispatch(req, res) {
+  if (brandLib.serve(req, res)) return; // the application logo (lib/brand.js), on every address
   const p = req.url.split('?')[0]; const r = tenancy.resolve(req.headers.host);
   // pages and API replies depend on who is logged in: hosting caches (e.g. SiteGround's dynamic cache) must never store or share them
   if (!/\.(js|css|png|jpe?g|gif|webp|svg|ico|woff2?)$/i.test(p)) res.setHeader('Cache-Control', 'private, no-store');

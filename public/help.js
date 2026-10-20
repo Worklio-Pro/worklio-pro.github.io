@@ -181,6 +181,7 @@ Promise.all([fetch('/api/help/content').then((r) => r.json()), fetch('/api/help/
   ({ topics: TOPICS, articles: ARTICLES, popular: POPULAR, suggested: SUGGESTED } = c);
   product = i.productName || product;
   $$('.hc-product').forEach((el) => { el.textContent = product; });
+  if (i.brand && i.brand.logo) { $('.hc-brand .hc-mark').outerHTML = brandImg(i.brand, 'dark'); if (i.brand.logoHasName) $('.hc-brand .hc-product').hidden = true; } // the logo from the platform console
   $('#appLink').textContent = `Go to ${product}`; $('#appLink').href = i.siteUrl || '/'; $('#siteLink').href = i.siteUrl || '/';
   $('#topicMenu').innerHTML = TOPICS.map((t) => `<a href="/topics/${t.slug}" data-link>${ic(ICONS[t.icon] || ICONS.help, 18)}${esc(t.title)}</a>`).join('');
   render();

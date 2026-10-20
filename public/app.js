@@ -115,7 +115,7 @@ const planLocked = (path) => !!(company.account && (company.account.lockedPages 
 const betaPage = (path) => !!(company.account && (company.account.betaPages || []).includes(path));
 const navFor = () => NAV.map(([g, items]) => [g, items.filter(([p]) => memberCan(p) && !planLocked(p))]).filter(([, items]) => items.length);
 function renderSide(path) {
-  $('#side').innerHTML = `<div class="side-nav"><div class="brand">${company.logo ? `<a href="/" data-link class="brand-logo" title="Home"><img src="${esc(company.logo)}" alt="Home"></a>` : ''}<span>${esc(company.name || (company.account && company.account.productName) || 'Fieldwork')}</span></div>` +
+  $('#side').innerHTML = `<div class="side-nav"><div class="brand">${company.logo ? `<a href="/" data-link class="brand-logo" title="Home"><img src="${esc(company.logo)}" alt="Home"></a>` : brandImg(company.account && company.account.product, 'dark')}<span>${esc(company.name || (company.account && company.account.productName) || 'Fieldwork')}</span></div>` +
     navFor().map(([g, items]) => `<div class="grp">${g}</div>` + items.map(([p, l]) => `<a href="${p}" data-link class="${p === path || (!navPaths.includes(path) && path.startsWith(p + '/')) ? 'on' : ''}">${l}${betaPage(p) ? ' <span class="beta-tag" title="This feature is in beta testing">Beta</span>' : ''}</a>`).join('')).join('') + `</div>${themeSwitch()}${me ? `<div class="side-user"><a href="/profile" data-link class="side-user-name${path === '/profile' ? ' on' : ''}" title="My profile (${esc(me.email)})">${avatarHtml(me, 26)}<span>${esc(me.name)}</span></a><button type="button" data-act="logout">Log out</button></div>` : ''}`;
   $('#side').classList.remove('open');
   renderBottomNav(path);

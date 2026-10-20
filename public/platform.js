@@ -24,12 +24,13 @@ const slugify = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-')
 
 let D = null; let tab = 'accounts'; let draftPlans = null; let draftBeta = null; // plans and Beta features being edited (saved with the Save button)
 const plansDirty = () => JSON.stringify(draftPlans) !== JSON.stringify(D.plans) || JSON.stringify(draftBeta) !== JSON.stringify(D.betaFeatures);
+const siteBrand = () => ({ name: D.settings.productName, logo: D.settings.logo || '', logoDark: D.settings.logoDark || '', logoHasName: !!(D.settings.logo && D.settings.logoHasName) });
 const host = (u) => String(u || '').replace(/^https?:\/\//, '');
 
 /* ===== login / first-run setup ===== */
 function authView(state, err) {
   const setup = state.needsSetup;
-  $('#root').innerHTML = `<div class="pf-auth card"><h1>${setup ? 'Create the platform owner' : 'Platform console'}</h1>
+  $('#root').innerHTML = `<div class="pf-auth card">${state.brand && state.brand.logo ? `<div class="pf-auth-logo">${brandImg(state.brand)}</div>` : ''}<h1>${setup ? 'Create the platform owner' : 'Platform console'}</h1>
 <p class="muted">${setup ? `This login controls every account on ${esc(state.productName)}: plans, features and billing. Keep it to yourself.` : `Log in to manage ${esc(state.productName)}.`}</p>
 <form id="af">${err ? `<div class="msg err" role="alert">${esc(err)}</div>` : ''}${setup ? '<label>Your name<input name="name" required autocomplete="name"></label>' : ''}
 <label>Email<input name="email" type="email" required autocomplete="username"></label>
@@ -55,7 +56,7 @@ async function load() { D = await api('GET', '/api/platform/overview'); if (!dra
 function render() {
   const tabs = [['accounts', 'Accounts'], ['plans', 'Plans & features'], ['messages', 'Messages'], ['help', 'Help Center'], ['settings', 'Settings']];
   document.title = `${tabs.find((t) => t[0] === tab)[1]} · ${D.settings.productName} platform`;
-  $('#root').innerHTML = `<header class="pf-top"><div class="pf-bar"><div class="pf-brand">${esc(D.settings.productName)} <small>Platform</small></div>
+  $('#root').innerHTML = `<header class="pf-top"><div class="pf-bar"><div class="pf-brand">${brandImg(siteBrand(), 'dark')}${siteBrand().logoHasName ? '' : esc(D.settings.productName)} <small>Platform</small></div>
 <nav class="pf-tabs">${tabs.map(([k, l]) => `<a href="#${k}" class="${tab === k ? 'on' : ''}">${l}</a>`).join('')}</nav>
 <div class="pf-user"><span>${esc(D.admin.name)}</span><button type="button" data-act="logout">Log out</button></div></div></header>
 <main class="pf-main" id="main"></main>
@@ -290,6 +291,7 @@ function settingsView(main) {
 <label style="max-width:320px">Plan for businesses that sign up without choosing one<select name="signupPlan">${D.plans.filter((p) => !p.hidden).map((p) => `<option value="${esc(p.id)}" ${p.id === s.signupPlan ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
 <p class="muted" style="font-size:13px">Pricing page: <a href="${esc(site)}" target="_blank" rel="noopener">${esc(site)}</a>. Businesses that choose a paid plan pay for it at checkout before their account opens (see Integrations → Stripe below).</p>
 <div class="foot" style="display:flex;justify-content:flex-end"><button class="btn">Save settings</button></div></form>
+<div class="card" style="max-width:720px" id="logoCard"></div>
 <div class="card" style="max-width:720px" id="reserved"></div>
 <div class="card" style="max-width:720px" id="integ"><h2>Integrations</h2><p class="muted">Checking…</p></div>
 <div class="card" style="max-width:720px"><h2>Web addresses</h2>
@@ -299,7 +301,7 @@ ${D.devMode ? `<p>You’re running without <code>PLATFORM_DOMAIN</code>, so this
     e.preventDefault(); const b = Object.fromEntries(new FormData(e.target)); b.allowSignups = !!b.allowSignups;
     try { await api('PUT', '/api/platform/settings', b); await load(); toast('Settings saved'); render(); } catch (x) { toast(x.message, true); }
   });
-  reservedCard($('#reserved', main));
+  logoCard($('#logoCard', main)); reservedCard($('#reserved', main));
   integrationsCard($('#integ', main));
 }
 /* ===== messages: contact requests, user feedback and the platform's email templates ===== */
@@ -373,6 +375,24 @@ A.emailTest = async (d, el) => {
   const m = el.closest('.pf-modal'); el.disabled = true;
   try { const r = await api('POST', `/api/platform/emails/${m.emKey}/test`, m.emVals()); toast(r.status === 'sent' ? `Test sent to ${r.to}` : r.detail || 'Not delivered', r.status !== 'sent'); } finally { el.disabled = false; }
 };
+// the application logo (lib/brand.js): the home, pricing, checkout and help center pages, this console, account logins and sidebars (when a business has no logo of its own) and emails
+function logoCard(box) {
+  const s = D.settings; const b = siteBrand();
+  const tile = (kind, title, src, bg, hint) => `<div class="lg-tile"><div class="lg-h"><strong>${title}</strong><span class="muted">${hint}</span></div>
+<div class="lg-prev" style="background:${bg}">${src ? `<img src="${esc(src)}" alt="">` : '<span class="muted">No logo yet</span>'}</div>
+<div class="lg-acts"><label class="btn alt sm">${src ? 'Replace' : 'Upload'}<input type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" data-logo="${kind}" hidden></label>${src ? `<button type="button" class="btn alt sm" data-act="rmLogo" data-k="${kind}">Remove</button>` : ''}</div></div>`;
+  box.innerHTML = `<h2>Logo</h2><p class="muted" style="font-size:13px;margin-top:0">Your application’s logo, used on the home, pricing, checkout and help center pages, in this console, on account login pages and sidebars (until a business adds its own logo) and at the top of every email in Messages → Email templates.</p>
+<div class="lg-grid">${tile('light', 'Logo', s.logo, '#ffffff', 'For light backgrounds')}${tile('dark', 'Dark background version', s.logoDark, '#0f1f3d', 'Optional')}</div>
+<label class="switchline"><input type="checkbox" id="logoHasName" ${s.logoHasName ? 'checked' : ''} ${s.logo ? '' : 'disabled'}> The logo already shows the name “${esc(s.productName)}”, so don’t repeat it next to the logo</label>
+<p class="muted" style="font-size:13px;margin:0">PNG or JPG works everywhere. Email apps don’t show SVG or WebP, so with one of those your emails keep the standard check mark. Up to 700 KB; a logo about 3 to 5 times as wide as it is tall fits best. Without a dark background version, the logo sits on a small white tile on dark backgrounds.</p>
+${b.logo ? `<div class="lg-sample"><span class="muted">Header preview</span><div class="lg-bar">${brandImg(b, 'dark')}${b.logoHasName ? '' : `<strong>${esc(s.productName)}</strong>`}</div></div>` : ''}`;
+  $$('[data-logo]', box).forEach((i) => i.addEventListener('change', () => {
+    const f = i.files[0]; if (!f) return; if (f.size > 700 * 1024) { toast('Use an image under 700 KB', true); i.value = ''; return; }
+    const r = new FileReader(); r.onload = async () => { try { D.settings = await api('POST', `/api/platform/logo/${i.dataset.logo}`, { dataUrl: r.result }); toast('Logo saved'); render(); } catch (x) { toast(x.message, true); } }; r.readAsDataURL(f);
+  }));
+  $('#logoHasName', box).addEventListener('change', async (e) => { try { D.settings = await api('PUT', '/api/platform/settings', { logoHasName: e.target.checked }); render(); } catch (x) { toast(x.message, true); } });
+}
+A.rmLogo = async (d) => { if (!confirm(d.k === 'dark' ? 'Remove the dark background version?' : 'Remove the logo? Pages and emails go back to the standard check mark.')) return; D.settings = await api('DELETE', `/api/platform/logo/${d.k}`); toast('Logo removed'); render(); };
 // addresses held back from sign-ups; giving one to an account (new account or Manage → web address) releases it
 function reservedCard(box) {
   const R = D.reservedSlugs || [];

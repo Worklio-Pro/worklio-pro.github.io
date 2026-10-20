@@ -12,7 +12,7 @@ const api = async (method, url, body) => {
 let C; let err = new URLSearchParams(location.search).get('unpaid') ? 'Your payment wasn’t completed, so nothing was charged. You can try again below.' : '';
 
 function render() {
-  document.title = `Checkout · ${C.productName}`; $('#brand').textContent = C.productName;
+  document.title = `Checkout · ${C.productName}`; $('#brand').innerHTML = brandImg(C.brand) + (C.brand && C.brand.logoHasName ? '' : `<span>${esc(C.productName)}</span>`);
   const main = $('#main');
   if (C.status !== 'pending') { // already paid (or moved to a free plan)
     main.innerHTML = `<div class="done"><div class="card pad"><h1 style="margin:0 0 8px;font-size:24px">You’re all set</h1>

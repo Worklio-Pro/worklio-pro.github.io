@@ -236,13 +236,15 @@
     <span>© <span id="yr"></span> <span class="pname">Fieldwork</span></span>
     <nav aria-label="Footer"><a href="/pricing">Pricing</a><a href="#features">Features</a><a href="/terms">Terms of Service</a><a href="/privacy">Privacy Policy</a></nav>
   </div></footer>
+  <script src="/brand.js?v=1"></script>
   <script>
     document.getElementById('yr').textContent = new Date().getFullYear();
-    // the product name set in the platform console
+    // the product name and logo set in the platform console
     fetch('/api/site').then((r) => r.json()).then((s) => {
       if (!s || !s.productName) return;
       document.querySelectorAll('.pname').forEach((el) => { el.textContent = s.productName; });
       if (s.home) document.querySelectorAll('.h-brand').forEach((a) => { a.href = s.home; });
+      if (s.brand && s.brand.logo) document.querySelectorAll('.h-brand').forEach((a) => { a.querySelector('i').outerHTML = brandImg(s.brand); a.querySelector('.pname').hidden = s.brand.logoHasName; }); // the logo from the platform console
       document.title = s.productName + ' · Field service software for quotes, scheduling and payments';
     }).catch(() => {});
   </script>
