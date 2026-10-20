@@ -379,9 +379,9 @@ const ROLES = ['admin', 'manager', 'technician']; // assignable to team members 
 const ID = '[^/]+';
 const route = (method, re) => [method, new RegExp('^/api/' + re + '$')];
 const ROLE_API = {
-  technician: [route('GET', '(jobs|clients|staff|company)'), route('GET', 'auth/.+'), route('POST', 'auth/.+'), route('POST', `jobs/${ID}/signature`)],
+  technician: [route('GET', '(jobs|clients|staff|company)'), route('GET', 'auth/.+'), route('POST', 'auth/.+'), route('POST', 'support'), route('POST', `jobs/${ID}/signature`)],
   manager: [
-    route('GET', 'auth/.+'), route('POST', 'auth/.+'),
+    route('GET', 'auth/.+'), route('POST', 'auth/.+'), route('POST', 'support'),
     route('GET', '(jobs|clients|staff|services|photos|company|quotes|invoices|expenses|reports|tax-summary|overview|email-templates)'), route('GET', 'payments/stripe'),
     route('POST', '(jobs|quotes|invoices|expenses|services|clients|photos)'), route('POST', 'services/describe'), route('PUT', `(jobs|quotes|invoices|expenses|services|clients)/${ID}`),
     route('DELETE', `(jobs|quotes|invoices|expenses|services|photos)/${ID}`),
@@ -1600,6 +1600,29 @@ async function planProduct(plan) {
 }
 const periodEndOf = (sub) => unix(sub.current_period_end || (sub.items && sub.items.data[0] && sub.items.data[0].current_period_end));
 const tellPlatform = (subject, body) => { const to = tenancy.platform().settings.contactEmail; if (to) sendEmail(to, subject, `${body}\n\n${tenancy.tenantUrl(tenancy.current())}`, { server: true }).catch(() => {}); };
+// "Get Support" in the app's help panel: saved for the platform console (Settings → Contact requests) and emailed to the contact address
+const supportHits = new Map(); // account+user -> timestamps: 5 requests per hour
+app.post('/api/support', async (req, res) => {
+  const u = currentUser(req); const t = tenancy.current(); const b = req.body || {};
+  const key = `${t.slug}|${u.id}`; const now = Date.now(); const hits = (supportHits.get(key) || []).filter((x) => now - x < 3600e3);
+  if (hits.length >= 5) return res.status(429).json({ error: 'You’ve sent several requests in the last hour. We’ll get back to you soon.' });
+  const str = (k, n) => String(b[k] || '').trim().slice(0, n);
+  const email = normEmail(b.email || u.email).slice(0, 200); const subject = str('subject', 150); const message = str('message', 4000);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Enter a valid email address so we can reply' });
+  if (!message) return res.status(400).json({ error: 'Tell us what you need help with' });
+  hits.push(now); supportHits.set(key, hits);
+  const P = tenancy.platform(); const plan = tenancy.planOf(t);
+  const m = { id: crypto.randomBytes(6).toString('hex'), at: new Date().toISOString(), source: 'support', name: u.name, email, phone: str('phone', 40), company: db.company.name || t.slug,
+    plan: plan.name, topic: str('topic', 60), account: tenancy.tenantUrl(t), page: /^https?:\/\//i.test(str('page', 300)) ? str('page', 300) : '', message: subject ? `${subject}\n\n${message}` : message };
+  P.inquiries = P.inquiries || []; P.inquiries.unshift(m); P.inquiries.length = Math.min(P.inquiries.length, 500); tenancy.savePlatform();
+  const to = P.settings.contactEmail;
+  if (to) {
+    const body = `${m.name} asked for help from ${m.company}.\n\nName: ${m.name} (${u.role})\nEmail: ${m.email}${m.phone ? `\nPhone: ${m.phone}` : ''}\nBusiness: ${m.company}\nPlan: ${m.plan}\nAccount: ${m.account}${m.topic ? `\nTopic: ${m.topic}` : ''}${m.page ? `\nPage: ${m.page}` : ''}\n\n${m.message}\n\nReply to this email to answer ${m.name}.`;
+    const sent = await sendEmail(to, `Support request from ${m.company}: ${subject || m.topic || 'Help needed'}`, body, { server: true, replyTo: m.email }).catch((e) => ({ status: 'failed', detail: e.message }));
+    m.emailed = sent.status === 'sent'; tenancy.savePlatform();
+  }
+  res.json({ ok: true });
+});
 const stripeError = (res, what, e) => { console.error(`Billing ${what}:`, e.message); res.status(502).json({ error: /card|declin|insufficient|authentication/i.test(e.message) ? `Your card couldn’t be charged: ${e.message} Update your card and try again.` : `Stripe couldn’t ${what}: ${e.message}` }); };
 async function liveSubscription(b) {
   if (!b.subscriptionId) return null;

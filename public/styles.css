@@ -540,3 +540,5 @@ table.domains td{vertical-align:middle}.dom-acts{display:flex;gap:6px;justify-co
  .tb-search{width:auto;flex:1}
 }
 @media print{#topbar,#helpPanel,#helpShade{display:none!important}}
+.support-form input[readonly]{background-color:var(--surface-2);color:var(--muted)}
+.support-sent{text-align:center;padding:10px 0}.support-sent .foot{justify-content:center}

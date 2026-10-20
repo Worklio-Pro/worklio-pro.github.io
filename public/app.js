@@ -221,13 +221,9 @@ function helpView(topicId) {
 <div class="hp-grp">Recommendations</div>
 ${topics.map((t) => `<button type="button" class="hp-topic" data-act="helpTopic" data-id="${t.id}"><strong>${esc(t.title)}</strong><span>${esc(t.blurb)}</span></button>`).join('')}`;
   }
-  // details support will ask for, filled into the email
-  const details = [`Business: ${company.name || '—'}`, `Plan: ${(a.plan && a.plan.name) || '—'}`, me ? `Signed in as: ${me.name} <${me.email}> (${role()})` : '', `Page: ${location.href}`].filter(Boolean);
-  const mail = a.contactEmail ? `mailto:${a.contactEmail}?subject=${encodeURIComponent(`${product} support: ${company.name || 'my account'}`)}&body=${encodeURIComponent(`Describe what you need help with:\n\n\n---\n${details.join('\n')}`)}` : '';
   const foot = `<div class="hp-foot">
 <div class="hp-link">${svgIcon(ICONS.user, 18)}<span>${esc(company.name || product)}${a.plan ? ` · ${esc(a.plan.name)} plan` : ''}</span></div>
-${mail ? `<a class="btn hp-wide" href="${esc(mail)}">${svgIcon(ICONS.chat, 18)} Get Support</a><p class="muted hp-note">Email ${esc(a.contactEmail)}. Your account details are added to the message for you.</p>`
-    : `<p class="muted hp-note">${role() === 'owner' ? `Support contact details aren’t set up yet.` : 'For help with your account, ask your account owner.'}</p>`}
+<button type="button" class="btn hp-wide" data-act="supportForm">${svgIcon(ICONS.chat, 18)} Get Support</button><p class="muted hp-note">Send us a message and we’ll reply by email.</p>
 </div>`;
   return head + `<div class="hp-body">${body}</div>` + foot;
 }
@@ -243,6 +239,26 @@ function closeHelp() {
   const b = $('[data-act=openHelp]'); if (b) b.focus();
 }
 $('#helpShade').addEventListener('click', closeHelp);
+const SUPPORT_TOPICS = ['Something isn’t working', 'How do I…?', 'Account and billing', 'Feature request', 'Other'];
+// "Get Support": a contact form in a popup; the message goes to the platform's support inbox with the account details attached
+function supportForm() {
+  const page = location.href; closeHelp();
+  const body = modal('Contact support', `<form class="support-form" data-sticky>
+<p class="muted" style="margin:0 0 14px">Tell us what you need help with and we’ll reply by email. Your business name, plan and the page you’re on are included for you.</p>
+<div class="row"><label>Your name<input name="name" value="${esc(me ? me.name : '')}" readonly></label><label>Email for our reply<input name="email" type="email" required maxlength="200" value="${esc(me ? me.email : '')}"></label></div>
+<div class="row"><label>Phone (optional)<input name="phone" type="tel" maxlength="40" value=""></label><label>Topic<select name="topic">${SUPPORT_TOPICS.map((t) => `<option>${esc(t)}</option>`).join('')}</select></label></div>
+<label>Subject<input name="subject" maxlength="150" placeholder="A few words about the problem or question"></label>
+<label>Message<textarea name="message" rows="6" maxlength="4000" required placeholder="What happened, what you expected, and the steps to see it"></textarea></label>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn" type="submit">Send message</button></div></form>`);
+  const form = $('form', body); phoneMask($('[name=phone]', form)); $('[name=message]', form).focus();
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault(); const btn = $('[type=submit]', form); btn.disabled = true; btn.textContent = 'Sending…';
+    const f = Object.fromEntries(new FormData(form));
+    try { await api('POST', '/api/support', { ...f, page }); }
+    catch (err) { btn.disabled = false; btn.textContent = 'Send message'; throw err; }
+    body.innerHTML = `<div class="support-sent"><h2>Message sent</h2><p class="muted">Thanks, ${esc((f.name || '').split(' ')[0] || 'we got it')}. We’ll reply to ${esc(f.email)} as soon as we can.</p><div class="foot"><button type="button" class="btn" data-act="closeModal">Done</button></div></div>`;
+  });
+}
 // "/" (or Ctrl/⌘ K) jumps to the search box from anywhere except while typing
 document.addEventListener('keydown', (e) => {
   const typing = e.target.closest('input, textarea, select, [contenteditable]');
@@ -302,6 +318,7 @@ A.logout = async () => { await api('POST', '/api/auth/logout', {}); location.hre
 A.openHelp = () => openHelp();
 A.closeHelp = closeHelp;
 A.helpTopic = (d) => openHelp(d.id);
+A.supportForm = supportForm;
 A.focusSearch = () => { closeHelp(); $('#featSearch').focus(); };
 A.setTheme = (d) => { applyTheme(d.t); $$('.theme-sw button').forEach((b) => { b.classList.toggle('on', b.dataset.t === d.t); b.setAttribute('aria-pressed', b.dataset.t === d.t); }); };
 
