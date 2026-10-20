@@ -14,8 +14,9 @@ const slugify = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-')
 <div class="price">${esc(p.price || 'Contact us')}</div><p class="desc">${esc(p.description)}</p>
 <ul><li>${p.maxUsers ? `${p.maxUsers} team login${p.maxUsers === 1 ? '' : 's'}` : 'Unlimited team logins'}</li>${S.features.filter((f) => p.features.includes(f.key)).map((f) => `<li>${esc(label[f.key])}</li>`).join('')}
 ${S.alwaysIncluded.map((l) => `<li class="base">${esc(l)}</li>`).join('')}</ul>
-${S.allowSignups ? `<a class="btn ${i === mid ? '' : 'alt'}" href="#signup" data-plan="${esc(p.id)}">Choose ${esc(p.name)}</a>` : S.contactEmail ? `<a class="btn ${i === mid ? '' : 'alt'}" href="mailto:${esc(S.contactEmail)}?subject=${encodeURIComponent(`${S.productName} ${p.name} plan`)}">Contact us</a>` : ''}</article>`).join('');
-  $('#foot').innerHTML = S.contactEmail ? `Questions? Email <a href="mailto:${esc(S.contactEmail)}">${esc(S.contactEmail)}</a>` : '';
+${S.allowSignups ? `<a class="btn ${i === mid ? '' : 'alt'}" href="#signup" data-plan="${esc(p.id)}">Choose ${esc(p.name)}</a>` : `<button type="button" class="btn ${i === mid ? '' : 'alt'}" data-contact="${esc(p.id)}">Contact us</button>`}</article>`).join('');
+  $('#foot').innerHTML = 'Questions? <a href="#contact" data-contact="">Contact us</a>';
+  document.addEventListener('click', (e) => { const b = e.target.closest('[data-contact]'); if (b) { e.preventDefault(); openContact(S, b.dataset.contact); } });
   if (!S.allowSignups) return;
   $('#topCta').hidden = false;
   const root = S.rootDomain;
@@ -46,3 +47,33 @@ ${S.allowSignups ? `<a class="btn ${i === mid ? '' : 'alt'}" href="#signup" data
     $('#err').innerHTML = `<div class="msg err" role="alert">${esc(j.error || 'Something went wrong. Try again.')}</div>`; btn.disabled = false; btn.textContent = goLabel();
   });
 })();
+
+// "Contact us": a pop-up form that sends the message to the platform owner
+function openContact(S, planId) {
+  const close = () => { const o = $('#overlay'); if (o) o.remove(); document.removeEventListener('keydown', onKey); if (opener) opener.focus(); };
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  const opener = document.activeElement; close();
+  const o = document.createElement('div'); o.className = 'overlay'; o.id = 'overlay';
+  o.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="ctTitle"><div class="mh"><h3 id="ctTitle">Contact us</h3><button type="button" class="x" data-close aria-label="Close">×</button></div><div class="mb">
+<form id="cf" novalidate><div id="cErr"></div><p class="muted" style="margin:0 0 14px">Tell us about your business and we’ll get back to you, usually within one business day.</p>
+<div class="c-row"><label>Your name<input name="name" required maxlength="100" autocomplete="name"></label><label>Email<input name="email" type="email" required maxlength="200" autocomplete="email"></label></div>
+<div class="c-row"><label>Phone (optional)<input name="phone" type="tel" maxlength="40" autocomplete="tel"></label><label>Business name (optional)<input name="company" maxlength="100" autocomplete="organization"></label></div>
+<label>Plan<select name="plan"><option value="">Not sure yet</option>${S.plans.map((p) => `<option value="${esc(p.id)}" ${p.id === planId ? 'selected' : ''}>${esc(p.name)}${p.price ? ` (${esc(p.price)})` : ''}</option>`).join('')}</select></label>
+<label>Message<textarea name="message" required maxlength="4000" rows="5" placeholder="What would you like to know?"></textarea></label>
+<label class="c-hp" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label>
+<div class="foot"><button type="button" class="btn alt" data-close>Cancel</button><button class="btn go-c">Send message</button></div></form></div></div>`;
+  document.body.appendChild(o); document.addEventListener('keydown', onKey);
+  o.addEventListener('mousedown', (e) => { if (e.target === o) close(); });
+  o.addEventListener('click', (e) => { if (e.target.closest('[data-close]')) close(); });
+  const f = $('#cf', o); $('[name=name]', f).focus();
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault(); const b = Object.fromEntries(new FormData(f)); const btn = $('.go-c', f);
+    if (!b.name.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(b.email.trim())) { $('#cErr').innerHTML = '<div class="msg err" role="alert">Enter your name and a valid email address.</div>'; return; }
+    if (!b.message.trim()) { $('#cErr').innerHTML = '<div class="msg err" role="alert">Write a short message.</div>'; return; }
+    btn.disabled = true; btn.textContent = 'Sending…';
+    const r = await fetch('/api/site/contact', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }).catch(() => null);
+    const j = r ? await r.json().catch(() => ({})) : {};
+    if (r && r.ok) { $('.mb', o).innerHTML = `<div class="c-done" role="status"><div class="c-ok">✓</div><h3>Thanks, ${esc(b.name.trim().split(/\s+/)[0])}!</h3><p class="muted">Your message is on its way. We’ll reply to ${esc(b.email.trim())}.</p><div class="foot" style="justify-content:center"><button type="button" class="btn" data-close>Close</button></div></div>`; $('[data-close]', $('.mb', o)).focus(); return; }
+    $('#cErr').innerHTML = `<div class="msg err" role="alert">${esc(j.error || 'Your message couldn’t be sent. Check your connection and try again.')}</div>`; btn.disabled = false; btn.textContent = 'Send message';
+  });
+}

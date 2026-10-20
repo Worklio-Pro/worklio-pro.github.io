@@ -231,7 +231,7 @@ async function sendgridSend(key, { from, fromName, to, replyTo, subject, text })
   throw new Error(`${r.status}: ${(j.errors || []).map((e) => e.message).join('; ') || 'request rejected'}`);
 }
 // server: true sends through the server's own settings even inside an account (platform emails, platform tests)
-async function sendEmail(to, subject, body, { server = false } = {}) {
+async function sendEmail(to, subject, body, { server = false, replyTo: replyOverride = '' } = {}) {
   if (!to) return { status: 'failed', detail: 'Client has no email address' };
   const mine = !server && ownEmail();
   if (mine) {
@@ -247,7 +247,7 @@ async function sendEmail(to, subject, body, { server = false } = {}) {
   }
   const { SENDGRID_API_KEY: key, EMAIL_FROM: from, GMAIL_USER: gUser, GMAIL_APP_PASSWORD: gPass } = process.env;
   // the server's email service is shared by every account; only the default account uses EMAIL_FROM_NAME / EMAIL_REPLY_TO, the others send as themselves
-  const own = tenancy.isDefault(); const fromName = own ? process.env.EMAIL_FROM_NAME : db.company.name; const replyTo = own ? process.env.EMAIL_REPLY_TO : db.company.email;
+  const own = tenancy.isDefault(); const fromName = own ? process.env.EMAIL_FROM_NAME : db.company.name; const replyTo = replyOverride || (own ? process.env.EMAIL_REPLY_TO : db.company.email);
   if (serverEmailProvider() === 'Gmail') {
     try {
       await smtpSend({ host: 'smtp.gmail.com', port: 465, user: gUser, pass: gPass.replace(/\s/g, '') },

@@ -207,6 +207,7 @@ function settingsView(main) {
 <label style="max-width:320px">Plan for businesses that sign up without choosing one<select name="signupPlan">${D.plans.filter((p) => !p.hidden).map((p) => `<option value="${esc(p.id)}" ${p.id === s.signupPlan ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
 <p class="muted" style="font-size:13px">Pricing page: <a href="${esc(site)}" target="_blank" rel="noopener">${esc(site)}</a>. Businesses that choose a paid plan pay for it at checkout before their account opens (see Integrations → Stripe below).</p>
 <div class="foot" style="display:flex;justify-content:flex-end"><button class="btn">Save settings</button></div></form>
+<div class="card" style="max-width:720px" id="inquiries"></div>
 <div class="card" style="max-width:720px" id="reserved"></div>
 <div class="card" style="max-width:720px" id="integ"><h2>Integrations</h2><p class="muted">Checking…</p></div>
 <div class="card" style="max-width:720px"><h2>Web addresses</h2>
@@ -216,9 +217,18 @@ ${D.devMode ? `<p>You’re running without <code>PLATFORM_DOMAIN</code>, so this
     e.preventDefault(); const b = Object.fromEntries(new FormData(e.target)); b.allowSignups = !!b.allowSignups;
     try { await api('PUT', '/api/platform/settings', b); await load(); toast('Settings saved'); render(); } catch (x) { toast(x.message, true); }
   });
-  reservedCard($('#reserved', main));
+  inquiriesCard($('#inquiries', main)); reservedCard($('#reserved', main));
   integrationsCard($('#integ', main));
 }
+// messages from "Contact us" on the pricing page (also emailed to the contact email)
+function inquiriesCard(box) {
+  const L = D.inquiries || [];
+  box.innerHTML = `<h2>Contact requests</h2><p class="muted" style="font-size:13px;margin-top:0">Messages sent with “Contact us” on the <a href="/pricing" target="_blank" rel="noopener">pricing page</a>. ${D.settings.contactEmail ? `Each one is also emailed to ${esc(D.settings.contactEmail)}; reply to that email to answer.` : 'Add a contact email above to get them by email too.'}</p>
+${L.length ? `<div class="inq-list">${L.slice(0, 50).map((m) => `<div class="inq"><div class="inq-h"><div><strong>${esc(m.name)}</strong>${m.company ? ` · ${esc(m.company)}` : ''}${m.plan ? ` <span class="pf-chip">${esc(m.plan)}</span>` : ''}
+<div class="sm"><a href="mailto:${esc(m.email)}">${esc(m.email)}</a>${m.phone ? ` · <a href="tel:${esc(m.phone)}">${esc(m.phone)}</a>` : ''} · ${esc(new Date(m.at).toLocaleString())}${D.settings.contactEmail && m.emailed === false ? ' · <span style="color:var(--danger)">email not delivered</span>' : ''}</div></div>
+<button type="button" class="btn alt sm" data-act="rmInquiry" data-id="${esc(m.id)}">Delete</button></div><p class="inq-m">${esc(m.message)}</p></div>`).join('')}</div>` : '<p class="muted">No messages yet.</p>'}`;
+}
+A.rmInquiry = async (d) => { if (!confirm('Delete this message?')) return; D.inquiries = await api('DELETE', `/api/platform/inquiries/${encodeURIComponent(d.id)}`); inquiriesCard($('#inquiries')); toast('Message deleted'); };
 // addresses held back from sign-ups; giving one to an account (new account or Manage → web address) releases it
 function reservedCard(box) {
   const R = D.reservedSlugs || [];
