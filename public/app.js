@@ -78,7 +78,7 @@ const NAV = [
   ['Operations', [['/business-overview', 'Home'], ['/calendar', 'Job Calendar'], ['/staff-schedules', 'Staff Schedules'], ['/clients', 'Clients'], ['/quotes', 'Quotes'], ['/jobs', 'Jobs'], ['/invoices', 'Invoices']]],
   ['Money', [['/payments', 'Payments'], ['/services', 'Products & Services'], ['/expenses', 'Expenses'], ['/reports', 'Financial Reports'], ['/tax-summary', 'Tax Summary']]],
   ['Records', [['/project-gallery', 'Project Gallery'], ['/notifications', 'Notifications Log']]],
-  ['Settings', [['/settings/company', 'Company Profile'], ['/team', 'Manage Team'], ['/settings/emails', 'Email Templates'], ['/settings', 'App Settings'], ['/settings/connections', 'Account Connections']]],
+  ['Settings', [['/settings/company', 'Company Profile'], ['/team', 'Manage Team'], ['/settings/emails', 'Email Templates'], ['/settings', 'App Settings'], ['/settings/connections', 'Account Connections'], ['/settings/billing', 'Account and Billing']]],
 ];
 const navPaths = NAV.flatMap(([, items]) => items.map(([p]) => p));
 const curPath = () => location.pathname.replace(/\/+$/, '') || '/';
@@ -106,7 +106,8 @@ const ROLE_PAGES = {
   manager: ['/business-overview', '/calendar', '/staff-schedules', '/clients', '/quotes', '/quotes/new', '/quotes/edit', '/jobs', '/jobs/new', '/jobs/edit',
     '/invoices', '/invoices/new', '/invoices/edit', '/payments', '/services', '/expenses', '/reports', '/tax-summary', '/project-gallery', '/profile'],
 };
-const memberCan = (path) => !ROLE_PAGES[role()] || ROLE_PAGES[role()].includes(path);
+const OWNER_PAGES = ['/settings/billing']; // the business's subscription: the owner only
+const memberCan = (path) => (OWNER_PAGES.includes(path) ? role() === 'owner' : !ROLE_PAGES[role()] || ROLE_PAGES[role()].includes(path));
 // the account's plan (from /api/company): features it includes and pages it doesn't. The server enforces the same.
 const planHas = (f) => !(company.account && company.account.features) || company.account.features.includes(f);
 const planLocked = (path) => !!(company.account && (company.account.lockedPages || []).includes(path));

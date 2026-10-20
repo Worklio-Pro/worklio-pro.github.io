@@ -1555,6 +1555,73 @@ app.get('/api/integrations', async (req, res) => {
   });
 });
 
+// ---------- Account and billing: the business's own subscription to this service (owner only) ----------
+// Plans are billed by the platform's Stripe account (lib/platform.js sign-up checkout); t.billing holds the Stripe customer and subscription.
+// Card, address and invoices are changed in Stripe's billing portal (Settings → Billing → Customer portal must be saved once in Stripe).
+const ownerOnly = (req, res) => { const u = currentUser(req); if (u && u.role === 'owner') return true; res.status(403).json({ error: 'Only the account owner can manage billing' }); return false; };
+const billingCall = (method, endpoint, params) => stripeLib.request(stripeLib.platformKey(), method, endpoint, params);
+const unix = (t) => (t ? iso(new Date(t * 1000)) : null);
+app.get('/api/account/billing', async (req, res) => {
+  if (!ownerOnly(req, res)) return;
+  const t = tenancy.current(); const P = tenancy.platform(); const plan = tenancy.planOf(t); const b = t.billing || {}; const charge = stripeLib.planCharge(plan);
+  const out = { activeSince: (b.paidAt || t.createdAt || '').slice(0, 10), status: t.status, plan: { id: plan.id, name: plan.name, price: plan.price || '', charge },
+    productName: P.settings.productName, contactEmail: P.settings.contactEmail, live: !!stripeLib.platformKey(), billed: !!(b.customerId && stripeLib.platformKey()),
+    demo: !!b.demo, managed: !tenancy.isDefault(), plans: P.plans.filter((p) => !p.hidden || p.id === plan.id).map((p) => ({ id: p.id, name: p.name, price: p.price || '', description: p.description || '' })),
+    card: null, customer: null, subscription: null, invoices: [] };
+  if (out.billed) {
+    const get = (ep) => billingCall('GET', ep).catch((e) => { console.error('Billing:', e.message); return null; });
+    const [cust, sub, inv] = await Promise.all([get(`customers/${encodeURIComponent(b.customerId)}?expand[]=invoice_settings.default_payment_method`),
+      b.subscriptionId ? get(`subscriptions/${encodeURIComponent(b.subscriptionId)}?expand[]=default_payment_method`) : null, get(`invoices?customer=${encodeURIComponent(b.customerId)}&limit=12`)]);
+    const pm = (sub && typeof sub.default_payment_method === 'object' && sub.default_payment_method) || (cust && cust.invoice_settings && typeof cust.invoice_settings.default_payment_method === 'object' && cust.invoice_settings.default_payment_method);
+    if (pm && pm.card) out.card = { brand: pm.card.brand, last4: pm.card.last4, expMonth: pm.card.exp_month, expYear: pm.card.exp_year };
+    if (cust && !cust.deleted) out.customer = { name: cust.name || (pm && pm.billing_details && pm.billing_details.name) || b.ownerName || '', email: cust.email || b.email || '', address: cust.address || (pm && pm.billing_details && pm.billing_details.address) || null };
+    if (sub) {
+      const item = sub.items && sub.items.data && sub.items.data[0]; const price = item && item.price;
+      out.subscription = { status: sub.status, cancelAtPeriodEnd: !!sub.cancel_at_period_end, cancelAt: unix(sub.cancel_at), startedAt: unix(sub.start_date),
+        periodEnd: unix(sub.current_period_end || (item && item.current_period_end)), amount: price && price.unit_amount != null ? round2(price.unit_amount / 100) : charge ? charge.cents / 100 : null,
+        interval: (price && price.recurring && price.recurring.interval) || (charge && charge.interval) || 'month' };
+      if (out.subscription.startedAt) out.activeSince = out.subscription.startedAt;
+    }
+    out.invoices = ((inv && inv.data) || []).filter((i) => i.status !== 'draft').map((i) => ({ id: i.id, date: unix(i.status_transitions && i.status_transitions.paid_at) || unix(i.created), amount: round2((i.amount_paid || i.total || 0) / 100),
+      currency: String(i.currency || 'usd').toUpperCase(), status: i.status, receiptUrl: i.hosted_invoice_url || null, pdf: i.invoice_pdf || null }));
+    out.moreInvoices = !!(inv && inv.has_more);
+  }
+  res.json(out);
+});
+// Stripe's billing portal: update the card or billing address, see every invoice, download receipts
+app.post('/api/account/billing/portal', async (req, res) => {
+  if (!ownerOnly(req, res)) return;
+  const b = tenancy.current().billing || {};
+  if (!b.customerId || !stripeLib.platformKey()) return res.status(400).json({ error: 'There’s no card on file for this account' });
+  try { const s = await billingCall('POST', 'billing_portal/sessions', { customer: b.customerId, return_url: `${baseUrl()}/settings/billing` }); res.json({ url: s.url }); }
+  catch (e) { console.error('Billing portal:', e.message); res.status(502).json({ error: /configuration/i.test(e.message) ? 'Billing management isn’t set up yet. Contact us to update your card.' : `Stripe couldn’t open billing: ${e.message}` }); }
+});
+// cancel at the end of the paid period (the platform's billing webhook pauses the account when it ends), or undo that
+app.post('/api/account/billing/cancel', async (req, res) => {
+  if (!ownerOnly(req, res)) return;
+  const t = tenancy.current(); const b = t.billing || {}; const undo = !!(req.body && req.body.undo);
+  if (!b.subscriptionId || !stripeLib.platformKey()) return res.status(400).json({ error: 'This account doesn’t have a subscription to cancel. Contact us to close it.' });
+  try {
+    const s = await billingCall('POST', `subscriptions/${encodeURIComponent(b.subscriptionId)}`, { cancel_at_period_end: undo ? 'false' : 'true', ...(undo ? {} : { 'cancellation_details[comment]': String((req.body && req.body.reason) || '').slice(0, 500) }) });
+    b.cancelRequestedAt = undo ? null : new Date().toISOString(); tenancy.savePlatform();
+    const P = tenancy.platform().settings;
+    if (P.contactEmail) sendEmail(P.contactEmail, `${undo ? 'Cancellation withdrawn' : 'Subscription cancelled'}: ${t.name}`, `${currentUser(req).name} (${currentUser(req).email}) ${undo ? 'kept their subscription' : `cancelled the ${tenancy.planOf(t).name} plan for ${t.name}. Access ends ${niceDate(unix(s.current_period_end || (s.items && s.items.data[0] && s.items.data[0].current_period_end)) || iso(new Date()))}`}.${req.body && req.body.reason ? `\n\nReason: ${req.body.reason}` : ''}\n\n${tenancy.tenantUrl(t)}`, { server: true }).catch(() => {});
+    res.json({ ok: true });
+  } catch (e) { console.error('Billing cancel:', e.message); res.status(502).json({ error: `Stripe couldn’t update the subscription: ${e.message}` }); }
+});
+// plan changes go to the platform owner (Platform → Settings → Contact requests, and by email), who switches the plan in the console
+app.post('/api/account/billing/plan-request', async (req, res) => {
+  if (!ownerOnly(req, res)) return;
+  const t = tenancy.current(); const P = tenancy.platform(); const u = currentUser(req); const b = req.body || {};
+  const to = P.plans.find((p) => p.id === b.planId && !p.hidden); if (!to) return res.status(400).json({ error: 'Choose a plan' });
+  if (to.id === t.planId) return res.status(400).json({ error: `You’re already on ${to.name}` });
+  const m = { id: crypto.randomBytes(6).toString('hex'), at: new Date().toISOString(), name: u.name, email: u.email, phone: db.company.phone || '', company: t.name, plan: to.name,
+    message: `Plan change request for ${t.name} (${tenancy.subdomainUrl(t).replace(/^https?:\/\//, '')}): from ${tenancy.planOf(t).name} to ${to.name}.${b.note ? `\n\n${String(b.note).slice(0, 2000)}` : ''}` };
+  P.inquiries = P.inquiries || []; P.inquiries.unshift(m); tenancy.savePlatform();
+  if (P.settings.contactEmail) { const sent = await sendEmail(P.settings.contactEmail, `Plan change request: ${t.name} → ${to.name}`, m.message + `\n\nReply to this email to answer ${u.name}.`, { server: true, replyTo: u.email }); m.emailed = sent.status === 'sent'; tenancy.savePlatform(); }
+  res.json({ ok: true });
+});
+
 // SPA fallback for every other page route
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'Not found' });

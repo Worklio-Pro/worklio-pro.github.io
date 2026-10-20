@@ -477,3 +477,16 @@ table.domains td{vertical-align:middle}.dom-acts{display:flex;gap:6px;justify-co
 .pay-side{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line)}.pay-side:first-of-type{border-top:0;padding-top:0}
 .pay-rates{width:100%;font-size:14px}.pay-rates td{padding:8px 0;border-bottom:1px solid var(--line)}
 @media (max-width:1000px){.pay-stats{grid-template-columns:1fr}.pay-grid{grid-template-columns:1fr}}
+/* Account and billing */
+.bill-h{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}.bill-h h2{margin:0}
+.bill-dl{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:0}.bill-dl dt{font-weight:600;font-size:14px}.bill-dl dd{margin:4px 0 0}
+.bill-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}.bill-grid .card h2{margin-top:0}
+.bill-card{display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center;padding-bottom:14px;border-bottom:1px solid var(--line)}
+.bill-card small{font-size:11px;letter-spacing:.04em}.bill-brand{padding:4px 8px;border:1px solid var(--line);border-radius:6px;font-size:12px;font-weight:700;background:var(--surface-2)}
+.bill-two{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:14px 0;border-bottom:1px solid var(--line);font-size:14px}.bill-two strong{display:block;margin-bottom:2px}
+.bill-sub{padding-top:14px;font-size:14px}.bill-sub p{margin:6px 0 10px}.bill-warn{color:var(--danger)}
+.bill-hist{width:100%;font-size:14px}.bill-hist td{padding:10px 4px;border-bottom:1px solid var(--line);vertical-align:middle}
+.bill-change{grid-column:1/-1}.bill-change p{font-size:14px}.bill-acts{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.bill-cancel{margin-left:auto;color:var(--danger)}
+.bill-plans{display:grid;gap:8px;margin-bottom:12px}.bill-plan{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--border);border-radius:10px;cursor:pointer}
+.bill-plan small{display:block;font-size:13px}.bill-plan:has(input:checked){border-color:var(--brand);background:var(--tint)}
+@media (max-width:900px){.bill-grid,.bill-dl{grid-template-columns:1fr}.bill-cancel{margin-left:0}}

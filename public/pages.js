@@ -1075,3 +1075,65 @@ A.payBank = () => {
 <div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><a class="btn" href="https://dashboard.stripe.com/settings/payouts" target="_blank" rel="noopener">Update in Stripe</a></div>`);
   return m;
 };
+
+/* ===== /settings/billing: Account and billing (the business's subscription to this service; owner only) ===== */
+const CARD_BRANDS = { visa: 'Visa', mastercard: 'Mastercard', amex: 'American Express', discover: 'Discover', diners: 'Diners Club', jcb: 'JCB', unionpay: 'UnionPay' };
+let billingData = null;
+PAGES['/settings/billing'] = {
+  title: 'Account and billing',
+  async render(main) {
+    const B = billingData = await api('GET', '/api/account/billing'); const sub = B.subscription;
+    const per = (i) => (i === 'year' ? 'yearly' : 'monthly');
+    const statusText = sub && sub.cancelAtPeriodEnd ? `Active until ${fmtDate(sub.periodEnd)}` : sub && sub.status === 'past_due' ? 'Payment past due' : sub && sub.status === 'trialing' ? 'Free trial' : B.status === 'suspended' ? 'Paused' : 'Active';
+    const contact = B.contactEmail ? `<a class="btn alt" href="mailto:${esc(B.contactEmail)}?subject=${encodeURIComponent(`${B.productName} account: ${company.name || ''}`)}">Email us</a>` : '';
+    const addr = (a) => (a ? [a.line1, a.line2, [a.city, a.state].filter(Boolean).join(', ') + (a.postal_code ? ' ' + a.postal_code : ''), a.country].filter((x) => x && x.trim()).map(esc).join('<br>') : '<span class="muted">—</span>');
+    const subText = !B.managed ? '<p class="muted">This is your platform’s own account, so it has no subscription.</p>'
+      : sub ? (sub.cancelAtPeriodEnd ? `<p>Your subscription is cancelled. You can use ${esc(B.productName)} until <strong>${fmtDate(sub.periodEnd)}</strong>, then the account is paused.</p><button type="button" class="btn" data-act="billKeep">Keep my subscription</button>`
+        : `<p>You will be charged <strong>${money(sub.amount)} USD</strong> for your ${per(sub.interval)} ${esc(B.plan.name)} subscription on ${fmtDate(sub.periodEnd)}. Plus taxes where applicable.</p>${sub.status === 'past_due' ? '<p class="bill-warn">Your last payment didn’t go through. Update your card to keep your account active.</p>' : ''}`)
+      : B.demo ? '<p class="muted">Your account was started with a demo checkout, so nothing is charged.</p>'
+      : !B.plan.charge ? `<p>You’re on the ${esc(B.plan.name)} plan${B.plan.price ? ` (${esc(B.plan.price)})` : ''}. There’s nothing to pay.</p>`
+      : `<p class="muted">Your ${esc(B.plan.name)} plan (${esc(B.plan.price)}) is billed outside the app. Contact us with any billing questions.</p>`;
+    main.innerHTML = `<div class="head"><h1>Account and billing</h1></div>
+<div class="card bill-ov"><div class="bill-h"><h2>Account overview</h2><div class="actions">${B.managed ? '<button type="button" class="btn" data-act="billPlans">Change plan</button>' : ''}${B.card || B.billed ? '<button type="button" class="btn alt" data-act="billPortal">Manage billing</button>' : ''}</div></div>
+<dl class="bill-dl"><div><dt>Active since</dt><dd>${B.activeSince ? fmtDate(B.activeSince) : '—'}</dd></div><div><dt>Account status</dt><dd>${esc(statusText)}</dd></div>
+<div><dt>Current plan</dt><dd>${esc(B.plan.name)}${B.plan.price ? ` <span class="muted">(${esc(B.plan.price)})</span>` : ''}</dd></div></dl></div>
+<div class="bill-grid">
+<div class="card"><div class="bill-h"><h2>Billing details</h2>${B.billed ? '<button type="button" class="btn alt sm" data-act="billPortal">Edit</button>' : ''}</div>
+${B.card ? `<div class="bill-card"><span class="bill-brand">${esc(CARD_BRANDS[B.card.brand] || B.card.brand)}</span><div><small class="muted">CARD NUMBER</small><div>•••• ${esc(B.card.last4)}</div></div><div class="r"><small class="muted">EXPIRY</small><div>${String(B.card.expMonth).padStart(2, '0')}/${String(B.card.expYear).slice(-2)}</div></div></div>` : `<p class="muted">${B.billed ? 'No card on file.' : 'No card on file for this account.'}</p>`}
+${B.customer ? `<div class="bill-two"><div><strong>Name</strong><div>${esc(B.customer.name) || '<span class="muted">—</span>'}</div></div><div><strong>Address</strong><div>${addr(B.customer.address)}</div></div></div>` : ''}
+<div class="bill-sub"><strong>Plan subscription</strong>${subText}</div></div>
+<div class="card"><h2>Payment history</h2>${B.invoices.length ? `<table class="bill-hist">${B.invoices.map((i) => `<tr><td>${fmtDate(i.date)}</td><td class="r">${money(i.amount)} ${esc(i.currency)}</td>
+<td><span class="badge ${i.status === 'paid' ? 'paid' : i.status === 'open' ? 'sent' : 'draft'}">${esc({ paid: 'Paid', open: 'Due', void: 'Void', uncollectible: 'Unpaid' }[i.status] || i.status)}</span></td>
+<td class="r">${i.receiptUrl ? `<a class="btn alt sm" href="${esc(i.receiptUrl)}" target="_blank" rel="noopener">Receipt</a>` : ''}</td></tr>`).join('')}</table>${B.moreInvoices ? '<button type="button" class="link-btn" data-act="billPortal">View more payments</button>' : ''}`
+  : '<p class="muted">No payments yet.</p>'}</div>
+${B.managed ? `<div class="card bill-change"><h2>Change subscription</h2><p>To change your plan, choose a new one and we’ll switch it for you, usually within one business day. Questions about billing? Get in touch any time.</p>
+${sub && !sub.cancelAtPeriodEnd ? `<p class="muted">You can also cancel anytime. You keep access until the end of the period you’ve paid for; after that the account is paused and your team can’t log in.</p>` : ''}
+<div class="bill-acts">${contact}<button type="button" class="btn alt" data-act="billPlans">Change plan</button>${sub && !sub.cancelAtPeriodEnd ? '<button type="button" class="link-btn bill-cancel" data-act="billCancel">Cancel subscription</button>' : ''}</div></div>` : ''}
+</div>`;
+  },
+};
+A.billPortal = async (d, el) => {
+  if (el) el.disabled = true;
+  try { const r = await api('POST', '/api/account/billing/portal', {}); location.href = r.url; } catch (err) { toast(err.message, true); if (el) el.disabled = false; }
+};
+A.billPlans = () => {
+  const B = billingData; const m = modal('Change plan', `<form id="bpf"><p class="muted" style="margin-top:0">Pick the plan you’d like. We’ll confirm the change and any difference in price by email.</p>
+<div class="bill-plans">${B.plans.filter((p) => p.id !== B.plan.id).map((p, i) => `<label class="bill-plan"><input type="radio" name="planId" value="${esc(p.id)}" ${i === 0 ? 'checked' : ''}><span><strong>${esc(p.name)}</strong>${p.price ? ` · ${esc(p.price)}` : ''}<small class="muted">${esc(p.description)}</small></span></label>`).join('') || '<p class="muted">There are no other plans to switch to.</p>'}</div>
+<label>Anything we should know? (optional)<textarea name="note" rows="3" maxlength="2000"></textarea></label>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Request plan change</button></div></form>`);
+  $('#bpf', m).addEventListener('submit', async (e) => {
+    e.preventDefault(); const b = Object.fromEntries(new FormData(e.target)); if (!b.planId) return toast('Choose a plan', true);
+    try { await api('POST', '/api/account/billing/plan-request', b); closeModal(); toast('Request sent. We’ll be in touch shortly.'); } catch (err) { toast(err.message, true); }
+  });
+};
+A.billCancel = () => {
+  const B = billingData; const m = modal('Cancel subscription', `<form id="bcf"><p style="margin-top:0">Your ${esc(B.plan.name)} subscription will end on <strong>${fmtDate(B.subscription.periodEnd)}</strong>. You won’t be charged again.</p>
+<p class="muted">After that, the account is paused: you and your team can’t log in, and clients can’t open their quotes, invoices or portal. Your data is kept, so you can come back.</p>
+<label>Why are you leaving? (optional)<textarea name="reason" rows="3" maxlength="500"></textarea></label>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Keep subscription</button><button class="btn danger">Cancel subscription</button></div></form>`);
+  $('#bcf', m).addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try { await api('POST', '/api/account/billing/cancel', Object.fromEntries(new FormData(e.target))); closeModal(); toast('Your subscription is cancelled'); refresh(); } catch (err) { toast(err.message, true); }
+  });
+};
+A.billKeep = async () => { try { await api('POST', '/api/account/billing/cancel', { undo: true }); toast('Your subscription will continue'); refresh(); } catch (err) { toast(err.message, true); } };
