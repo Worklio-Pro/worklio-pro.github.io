@@ -302,7 +302,6 @@ function feedbackForm() {
     catch (x) { btn.disabled = false; btn.textContent = 'Send feedback'; throw x; }
     body.innerHTML = `<div class="support-sent"><div style="font-size:40px" aria-hidden="true">🙏</div><h2>Thanks for the feedback!</h2><p class="muted">It helps us decide what to improve next.</p><div class="foot"><button type="button" class="btn" data-act="closeModal">Done</button></div></div>`;
   });
-  $('input[name=rating]', form).focus();
 }
 // "/" (or Ctrl/⌘ K) jumps to the search box from anywhere except while typing
 document.addEventListener('keydown', (e) => {
