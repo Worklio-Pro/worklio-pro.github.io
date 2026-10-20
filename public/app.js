@@ -567,8 +567,8 @@ PAGES['/clients'] = {
 <button class="cstat" data-act="clientCard" data-k="ytd"><div class="cs-h"><strong>Total new clients</strong><span>↗</span></div><div class="muted">Year to date</div><div class="cs-v">${ytd}</div></button>
 <div class="cstat merge admin-only"><div>Merge duplicate clients into a single profile to keep information accurate.</div><div class="muted">${dup.count ? `${dup.count} possible duplicate${dup.count === 1 ? '' : 's'} found` : 'No duplicates found'}</div><button class="btn alt sm" data-act="clientDupes" ${dup.count ? '' : 'disabled'}>Merge Clients</button></div></div>
 <h2 class="ftitle">Filtered clients <span class="muted">(${list.length} result${list.length === 1 ? '' : 's'})</span></h2>
-<div class="cfilters"><label class="pill">Tag<select data-cv="tag"><option value="">All tags</option>${tags.map((t) => `<option ${v.tag === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
-<label class="pill">Status<select data-cv="status">${[['all', 'Leads and Active'], ['lead', 'Leads'], ['active', 'Active']].map(([k, l]) => `<option value="${k}" ${v.status === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+<div class="cfilters"><label class="pill m-hide">Tag<select data-cv="tag"><option value="">All tags</option>${tags.map((t) => `<option ${v.tag === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
+<label class="pill m-hide">Status<select data-cv="status">${[['all', 'Leads and Active'], ['lead', 'Leads'], ['active', 'Active']].map(([k, l]) => `<option value="${k}" ${v.status === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
 ${v.since ? `<button class="pill on" data-act="clientClear" data-k="since">Created ${sinceLabel} ×</button>` : ''}${v.dupes ? '<button class="pill on" data-act="clientClear" data-k="dupes">Possible duplicates ×</button>' : ''}
 <input id="cq" class="csearch" type="search" placeholder="Search clients…" value="${esc(v.q)}"></div>
 ${v.dupes ? '<div class="notice">Showing clients that share an email, phone number or name. Tick the profiles that are the same client, then click Merge.</div>' : ''}
