@@ -9,7 +9,7 @@
   <script>/* apply the saved theme before first paint; a client's portal link (/client-portal?c=…) is always light */
   if(/^\/client-portal\/?$/.test(location.pathname)&&/[?&]c=/.test(location.search)){document.documentElement.dataset.theme="light";document.querySelector('meta[name="color-scheme"]').content="light"}
   else try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
-  <link rel="stylesheet" href="/styles.css?v=3">
+  <link rel="stylesheet" href="/styles.css?v=4">
 </head>
 <body>
   <div id="app">

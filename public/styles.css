@@ -495,3 +495,5 @@ table.domains td{vertical-align:middle}.dom-acts{display:flex;gap:6px;justify-co
 .bill-period button{border:0;background:none;color:var(--text);font:inherit;font-size:14px;font-weight:600;padding:6px 16px;border-radius:99px;cursor:pointer}.bill-period button.on{background:var(--brand);color:#fff}
 /* "Beta" tag on features the platform owner marks as in beta testing */
 .beta-tag{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:99px;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;line-height:1.5;background:var(--warn-bg);color:var(--warn-fg);vertical-align:middle;white-space:nowrap}.beta-tag[hidden]{display:none}
+.beta-note,.conn-main .beta-note{margin:6px 0 0;padding:6px 10px;border-radius:8px;background:var(--warn-bg);color:var(--warn-fg);font-size:13px}
+.conn-main h2 .beta-tag{margin-left:0}

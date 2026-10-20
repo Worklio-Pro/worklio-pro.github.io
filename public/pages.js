@@ -624,7 +624,7 @@ const CONN_ICONS = {
 // card payments go to the business's own Stripe account, connected with Stripe Connect (Stripe hosts the sign-up and verification)
 function stripeConn(integ) {
   const S = integ.stripe; const mode = integ.paymentsMode === 'live' ? connChip('on', 'Live') : connChip('wait', 'Test mode');
-  const base = { id: 'stripe', icon: 'stripe', title: 'Stripe', desc: 'Let clients pay invoices and quote deposits by card. The money goes straight to your Stripe account.' };
+  const base = { id: 'stripe', icon: 'stripe', feature: 'onlinePayments', title: 'Stripe', desc: 'Let clients pay invoices and quote deposits by card. The money goes straight to your Stripe account.' };
   if (!S) return { ...base, status: connChip('off', 'Not in your plan'), button: '', body: '' , desc: base.desc + ' Card payments are included on other plans.' };
   if (S.chargesEnabled && integ.payments) return { ...base, status: connChip('on', 'Connected') + mode, button: 'Manage', body: `<p>Connected to <strong>${esc(S.name || 'your Stripe account')}</strong>. Payouts, refunds and receipts are managed in Stripe.${S.feePercent ? ` A ${S.feePercent}% platform fee applies to each card payment.` : ''}</p>
 <div class="sms-test"><a class="btn alt" href="https://dashboard.stripe.com" target="_blank" rel="noopener">Open Stripe dashboard</a><button type="button" class="btn danger sm" data-act="rmStripe">Disconnect</button></div>` };
@@ -661,7 +661,7 @@ function emailConn(integ) {
 }
 function twilioConn(integ) {
   const T = integ.ownTwilio || {};
-  const base = { id: 'twilio', icon: 'twilio', title: 'Twilio text messages' };
+  const base = { id: 'twilio', icon: 'twilio', feature: 'sms', title: 'Twilio text messages' };
   if (!planHas('sms')) return { ...base, status: connChip('off', 'Not in your plan'), button: '', body: '', desc: 'Send quotes, invoices and appointment reminders by text. Text messages are included on other plans.' };
   const status = integ.ownTwilio ? connChip('on', 'Connected') : connChip('off', 'Not connected');
   return { ...base, status, button: integ.ownTwilio ? 'Manage' : 'Connect',
@@ -679,12 +679,14 @@ async function connectionsPage(main) {
     soon('facebook', 'facebook', 'Facebook Business Page', 'Connect your Facebook Business Page and manage which features use it. You’ll need full admin permissions for the business profile to connect it.'),
     soon('instagram', 'instagram', 'Instagram account', 'Connect your Instagram account to publish Instagram posts. You’ll need an Instagram professional account: either Business or Creator.'),
     stripeConn(integ), twilioConn(integ), emailConn(integ),
-    ...(planHas('ai') ? [{ id: 'ai', icon: 'ai', title: 'AI descriptions', button: '', body: '', status: integ.ai ? connChip('on', company.aiEnabled !== false ? 'On' : 'Turned off') : connChip('off', 'Not available yet'),
+    ...(planHas('ai') ? [{ id: 'ai', icon: 'ai', feature: 'ai', title: 'AI descriptions', button: '', body: '', status: integ.ai ? connChip('on', company.aiEnabled !== false ? 'On' : 'Turned off') : connChip('off', 'Not available yet'),
       desc: `“Write with AI” drafts product and service descriptions from their name. ${integ.ai ? 'Turn it on or off in <a href="/settings" data-link>App Settings</a>.' : ''}` }] : []),
   ];
+  // connections for features the platform marks as Beta get a Beta tag and a short notice
+  const beta = (r) => !!(r.feature && company.account && (company.account.featureList || []).some((f) => f.key === r.feature && f.beta));
   main.innerHTML = `<div class="head"><div><h1>Account Connections</h1><p class="sub">Connect the accounts your business uses to take payments and message clients.</p></div></div>
 <div class="card conn-list">${rows.map((r) => `<section class="conn" id="conn-${r.id}"><div class="conn-ic">${CONN_ICONS[r.icon]}</div>
-<div class="conn-main"><h2>${esc(r.title)} ${r.status}</h2><p>${r.desc}</p></div>
+<div class="conn-main"><h2>${esc(r.title)}${beta(r) ? '<span class="beta-tag" title="This feature is in beta testing">Beta</span>' : ''} ${r.status}</h2><p>${r.desc}</p>${beta(r) ? '<p class="beta-note">This feature is in beta testing. It works, but it may change and you might run into rough edges. Tell us if something doesn’t look right.</p>' : ''}</div>
 <div class="conn-act">${r.button ? `<button type="button" class="btn alt conn-btn" ${r.disabled ? 'disabled title="Coming soon"' : `data-act="toggleConn" data-id="${r.id}" aria-expanded="${r.open ? 'true' : 'false'}"`}>${r.button}</button>` : ''}</div>
 ${r.body ? `<div class="conn-body"${r.open ? '' : ' hidden'}>${r.body}</div>` : ''}</section>`).join('')}</div>`;
   wireMessages(main); stripeReturnNotice(integ);
