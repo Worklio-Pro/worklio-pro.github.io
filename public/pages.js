@@ -1184,3 +1184,34 @@ A.billCancel = () => {
   $('#bcf', m).addEventListener('submit', (e) => { e.preventDefault(); billGo('/api/account/billing/cancel', Object.fromEntries(new FormData(e.target)), $('.btn.danger', e.target)); });
 };
 A.billKeep = (d, el) => billGo('/api/account/billing/cancel', { undo: true }, el);
+
+/* ===== /settings/support-access: let the support team into the account for four weeks (owner only) ===== */
+const shortName = (n) => { const [first, ...rest] = String(n || 'Support').trim().split(/\s+/); return rest.length ? `${first} ${rest[rest.length - 1][0].toUpperCase()}.` : first; };
+const SUPPORT_STATUS = { expired: 'Expired', revoked: 'Revoked', declined: 'Declined', cancelled: 'Withdrawn' };
+PAGES['/settings/support-access'] = {
+  title: 'Support Access',
+  async render(main) {
+    const S = await api('GET', '/api/account/support-access'); const r = S.current; const product = esc(S.productName || 'our');
+    const ends = fmtDate((r && r.expiresAt ? new Date(r.expiresAt) : addDays(new Date(), S.grantDays)).toISOString().slice(0, 10));
+    const terms = `<p>By providing access to your account, you’re granting ${product} support:</p>
+<ul><li>Permission to access your account for a four week period, ending on ${ends}</li><li>Permission to create, modify, or delete data in your account if necessary to resolve the issue</li></ul>
+<p>Once granted, access may be revoked at any time from this page by clicking on the “Revoke” button.</p>`;
+    const reason = r && r.reason ? `<blockquote class="sa-reason">${esc(r.reason)}</blockquote>` : '';
+    const card = !r ? `<div class="card sa-card"><h2>No access requests</h2><p class="muted">When ${product} support needs to look inside your account to help with an issue, their request will show up here, and nothing changes until you approve it. Need help now? Use <a href="#" data-act="supportForm">Get Support</a>.</p></div>`
+      : r.status === 'pending' ? `<div class="card sa-card pending"><h2>Access Requested</h2><p><strong>${esc(shortName(r.adminName))}</strong> is requesting access to your ${product} account to assist in troubleshooting an issue.</p>${reason}${terms}
+<div class="sa-acts"><button type="button" class="btn" data-act="supportAnswer" data-id="${esc(r.id)}" data-a="grant">Grant Access</button><button type="button" class="btn alt" data-act="supportAnswer" data-id="${esc(r.id)}" data-a="decline">Decline</button></div></div>`
+      : `<div class="card sa-card granted"><h2>Access Granted</h2><p><strong>${esc(shortName(r.adminName))}</strong> is requesting access to your ${product} account to assist in troubleshooting an issue.</p>${reason}${terms}
+<p class="muted">Granted by ${esc(r.grantedBy || 'you')} on ${fmtDate(r.grantedAt.slice(0, 10))}${r.lastUsedAt ? ` · last used ${fmtDate(r.lastUsedAt.slice(0, 10))}` : ' · not used yet'}</p>
+<div class="sa-acts"><button type="button" class="btn alt sa-revoke" data-act="supportAnswer" data-id="${esc(r.id)}" data-a="revoke">Revoke Access</button></div></div>`;
+    main.innerHTML = `<h1 class="sa-title">Grant Access to Your Account</h1>${card}
+<h2 class="sa-h">Previous Requests</h2><div class="card sa-hist"><table><thead><tr><th>Requested by</th><th>Status</th><th class="r">Ended</th></tr></thead><tbody>
+${S.history.length ? S.history.map((h) => `<tr><td>${esc(shortName(h.adminName))}${h.reason ? `<div class="muted">${esc(h.reason)}</div>` : ''}</td><td>${SUPPORT_STATUS[h.status] || esc(h.status)}</td><td class="r">${h.endedAt ? fmtDate(h.endedAt.slice(0, 10)) : '—'}</td></tr>`).join('')
+  : '<tr><td colspan="3" class="muted">No previous requests.</td></tr>'}</tbody></table></div>`;
+  },
+};
+A.supportAnswer = async (d, el) => {
+  if (d.a === 'revoke' && !confirm('Revoke support access? Anyone from support who is signed in is signed out right away.')) return;
+  el.disabled = true;
+  try { await api('POST', `/api/account/support-access/${encodeURIComponent(d.id)}/${d.a}`, {}); toast({ grant: 'Support access granted', decline: 'Request declined', revoke: 'Support access revoked' }[d.a]); refresh(); }
+  catch (err) { el.disabled = false; throw err; }
+};

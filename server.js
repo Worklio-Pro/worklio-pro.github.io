@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const tls = require('tls');
+const support = require('./lib/support');
 
 // load settings such as Twilio credentials from .env next to this file (values already in the environment win)
 if (fs.existsSync(path.join(__dirname, '.env'))) process.loadEnvFile(path.join(__dirname, '.env'));
@@ -348,15 +349,16 @@ function cookies(req) { return Object.fromEntries(String(req.headers.cookie || '
 function currentUser(req) {
   if (req._user !== undefined) return req._user;
   const s = db.sessions[sha(cookies(req).sid || '')];
-  const u = s && s.expires > Date.now() ? db.users.find((x) => x.id === s.userId) : null;
+  const u = s && s.expires > Date.now() && (!s.support || support.sessionOk(tenancy.current(), s.support)) ? db.users.find((x) => x.id === s.userId) : null;
   req._user = u && u.passwordHash && !staffBlocked(u) ? u : null; // invited-but-unfinished and deactivated members can't use sessions
+  req._support = req._user && s.support ? s.support : null; // a platform admin in the account through Support Access
   return req._user;
 }
-function startSession(res, user) {
+function startSession(res, user, { expires = Date.now() + SESSION_DAYS * 864e5, support: sup } = {}) {
   const token = crypto.randomBytes(32).toString('hex');
   const now = Date.now(); for (const [k, s] of Object.entries(db.sessions)) if (s.expires < now) delete db.sessions[k]; // prune old ones
-  db.sessions[sha(token)] = { userId: user.id, expires: now + SESSION_DAYS * 864e5 }; save();
-  res.setHeader('Set-Cookie', `sid=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_DAYS * 86400}${BASE_URL.startsWith('https') ? '; Secure' : ''}`);
+  db.sessions[sha(token)] = { userId: user.id, expires, ...(sup ? { support: sup } : {}) }; save();
+  res.setHeader('Set-Cookie', `sid=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.round((expires - now) / 1000)}${BASE_URL.startsWith('https') ? '; Secure' : ''}`);
 }
 // simple brute-force guard: 10 failed logins per email+IP in 15 minutes
 const failures = new Map();
@@ -368,7 +370,7 @@ const PUBLIC_API = (req) => req.path === '/api/stripe/webhook' || req.path.start
 app.use((req, res, next) => {
   const p = req.path;
   if (p.startsWith('/api/')) return PUBLIC_API(req) || currentUser(req) ? next() : res.status(401).json({ error: 'Please log in' });
-  if (p === '/login' || p === '/client-portal' || p.startsWith('/p/') || p.startsWith('/pay/') || p.startsWith('/refer/') || p.startsWith('/uploads/') || /\.(js|css|png|jpe?g|gif|webp|svg|ico)$/i.test(p)) return next();
+  if (p === '/login' || p === '/support-login' || p === '/client-portal' || p.startsWith('/p/') || p.startsWith('/pay/') || p.startsWith('/refer/') || p.startsWith('/uploads/') || /\.(js|css|png|jpe?g|gif|webp|svg|ico)$/i.test(p)) return next();
   if (currentUser(req)) return next();
   res.redirect('/login' + (p !== '/' ? '?next=' + encodeURIComponent(req.url) : ''));
 });
@@ -388,6 +390,12 @@ const ROLE_API = {
     route('POST', `quotes/${ID}/(send|approve|convert-to-job|mark-deposit-paid|set-deposit)`), route('POST', `invoices/${ID}/(send|mark-paid|payments)`), route('DELETE', `invoices/${ID}/payments/${ID}`), route('POST', `jobs/${ID}/(create-invoice|remind|signature)`), route('DELETE', `jobs/${ID}/signature`),
   ],
 };
+// a support session works like the owner, but can't change the owner's own login, the subscription, or support access itself
+const SUPPORT_BLOCKED = /^\/api\/(auth\/(password|profile|hours)|account\/(billing|support-access)(\/.*)?)$/;
+app.use('/api', (req, res, next) => {
+  if (req.method !== 'GET' && currentUser(req) && req._support && SUPPORT_BLOCKED.test(req.path)) return res.status(403).json({ error: 'Support sessions can’t change this. Ask the account owner.' });
+  next();
+});
 app.use('/api', (req, res, next) => {
   const u = currentUser(req); if (!u || isAdmin(u)) return next();
   if ((ROLE_API[u.role] || []).some(([m, re]) => m === req.method && re.test(req.path))) return next();
@@ -459,7 +467,7 @@ app.post('/api/auth/accept-invite', (req, res) => {
 });
 app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
 app.get('/api/auth/state', (req, res) => res.json({ needsSetup: !db.users.length, user: publicUser(currentUser(req)), company: { name: db.company.name, logo: db.company.logo, brandColor: db.company.brandColor }, emailReady: !!emailProvider() }));
-app.get('/api/auth/me', (req, res) => (currentUser(req) ? res.json(publicUser(currentUser(req))) : res.status(401).json({ error: 'Please log in' })));
+app.get('/api/auth/me', (req, res) => (currentUser(req) ? res.json({ ...publicUser(currentUser(req)), ...(req._support ? { support: { adminName: req._support.adminName, expires: req._support.expires } } : {}) }) : res.status(401).json({ error: 'Please log in' })));
 app.post('/api/auth/setup', (req, res) => { // first run only: create the owner account
   if (db.users.length) return res.status(403).json({ error: 'An account already exists. Log in instead.' });
   const { name, email, password } = req.body || {};
@@ -1623,6 +1631,34 @@ app.post('/api/support', async (req, res) => {
   }
   res.json({ ok: true });
 });
+// ---------- Support Access (lib/support.js): the owner grants the platform's support team access for four weeks ----------
+// the console's one-time link: signs the support admin in as the owner, until the grant ends or is revoked
+app.get('/support-login', (req, res) => {
+  const t = tenancy.current(); const s = support.redeem(t, req.query.token);
+  const owner = s && db.users.find((u) => u.role === 'owner' && u.passwordHash);
+  if (!owner) return res.status(400).send(notice('This support link doesn’t work', 'It was already used, is more than a few minutes old, or the account’s support access has ended. Get a new link from the platform console.'));
+  startSession(res, owner, { expires: s.expires, support: { requestId: s.requestId, adminName: s.adminName, expires: s.expires } });
+  res.redirect('/');
+});
+// signs out every support session of one grant (runs inside the account)
+const endSupportSessions = (requestId) => { for (const [k, s] of Object.entries(db.sessions)) if (s.support && s.support.requestId === requestId) delete db.sessions[k]; save(); };
+const supportOwner = (req, res) => { const u = currentUser(req); if (u && u.role === 'owner') return u; res.status(403).json({ error: 'Only the account owner can manage support access' }); return null; };
+const supportRow = ({ id, adminName, reason, requestedAt, status, grantedAt, grantedBy, expiresAt, endedAt, endedBy, lastUsedAt }) => ({ id, adminName, reason, requestedAt, status, grantedAt, grantedBy, expiresAt, endedAt, endedBy, lastUsedAt });
+const supportState = (t) => { const all = support.requests(t); const cur = support.pending(t) || support.active(t); return { current: cur ? supportRow(cur) : null, history: all.filter((r) => r !== cur).map(supportRow), grantDays: support.GRANT_DAYS, productName: tenancy.platform().settings.productName }; };
+const tellSupportAdmin = (r, subject, body) => { if (r.adminEmail) sendEmail(r.adminEmail, subject, `${body}\n\n${tenancy.platformUrl()}/platform`, { server: true }).catch(() => {}); };
+app.get('/api/account/support-access', (req, res) => { if (supportOwner(req, res)) res.json(supportState(tenancy.current())); });
+app.post('/api/account/support-access/:id/:action', (req, res) => {
+  const u = supportOwner(req, res); if (!u) return;
+  const t = tenancy.current(); const { id, action } = req.params; let r;
+  try {
+    if (action === 'grant' || action === 'decline') r = support.answer(t, id, u, action === 'grant');
+    else if (action === 'revoke') { r = support.end(t, id, u.name); endSupportSessions(r.id); }
+    else return res.status(404).json({ error: 'Not found' });
+  } catch (e) { return res.status(400).json({ error: e.message }); }
+  const what = { granted: `granted support access until ${niceDate(r.expiresAt.slice(0, 10))}`, declined: 'declined your support access request', revoked: 'revoked support access' }[r.status];
+  tellSupportAdmin(r, `${t.name}: support access ${r.status}`, `${u.name} ${what} for ${t.name}.`);
+  res.json(supportState(t));
+});
 const stripeError = (res, what, e) => { console.error(`Billing ${what}:`, e.message); res.status(502).json({ error: /card|declin|insufficient|authentication/i.test(e.message) ? `Your card couldn’t be charged: ${e.message} Update your card and try again.` : `Stripe couldn’t ${what}: ${e.message}` }); };
 async function liveSubscription(b) {
   if (!b.subscriptionId) return null;
@@ -1776,7 +1812,7 @@ const tenantStats = (t) => tenancy.run(t, () => {
 });
 const platformApp = require('./lib/platform')({
   hashPassword, checkPassword, sha, normEmail, cookies, tooMany, recordFailure, clearFailures: (k) => failures.delete(k),
-  createOwner, ownerLink, tenantStats, sendEmail, sendSms, emailProvider: serverEmailProvider, applyStripeSession, syncStripeAccount, resetDemo, setCompanyEmail: (e) => { if (!db.company.email) { db.company.email = e; save(); } },
+  createOwner, ownerLink, tenantStats, endSupportSessions, sendEmail, sendSms, emailProvider: serverEmailProvider, applyStripeSession, syncStripeAccount, resetDemo, setCompanyEmail: (e) => { if (!db.company.email) { db.company.email = e; save(); } },
 });
 // which app answers: the platform's (its own domain, or /platform… while developing) or an account's
 const PLATFORM_PATHS = /^\/(platform(\/.*)?|pricing|signup|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;

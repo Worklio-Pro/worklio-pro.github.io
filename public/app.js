@@ -80,7 +80,7 @@ const NAV = [
   ['Records', [['/project-gallery', 'Project Gallery'], ['/notifications', 'Notifications Log']]],
 ];
 // the Settings pages live in the top bar's gear menu, not the sidebar
-const SETTINGS_NAV = [['/settings/company', 'Company Profile'], ['/team', 'Manage Team'], ['/settings/emails', 'Email Templates'], ['/settings', 'App Settings'], ['/settings/connections', 'Account Connections'], ['/settings/billing', 'Account and Billing']];
+const SETTINGS_NAV = [['/settings/company', 'Company Profile'], ['/team', 'Manage Team'], ['/settings/emails', 'Email Templates'], ['/settings', 'App Settings'], ['/settings/connections', 'Account Connections'], ['/settings/billing', 'Account and Billing'], ['/settings/support-access', 'Support Access']];
 const navPaths = [...NAV.flatMap(([, items]) => items.map(([p]) => p)), ...SETTINGS_NAV.map(([p]) => p)];
 const curPath = () => location.pathname.replace(/\/+$/, '') || '/';
 function navigate(url) { history.pushState({}, '', url); window.scrollTo(0, 0); return render(); }
@@ -107,7 +107,7 @@ const ROLE_PAGES = {
   manager: ['/business-overview', '/calendar', '/staff-schedules', '/clients', '/quotes', '/quotes/new', '/quotes/edit', '/jobs', '/jobs/new', '/jobs/edit',
     '/invoices', '/invoices/new', '/invoices/edit', '/payments', '/services', '/expenses', '/reports', '/tax-summary', '/project-gallery', '/profile'],
 };
-const OWNER_PAGES = ['/settings/billing']; // the business's subscription: the owner only
+const OWNER_PAGES = ['/settings/billing', '/settings/support-access']; // the business's subscription and who else gets in: the owner only
 const memberCan = (path) => (OWNER_PAGES.includes(path) ? role() === 'owner' : !ROLE_PAGES[role()] || ROLE_PAGES[role()].includes(path));
 // the account's plan (from /api/company): features it includes and pages it doesn't. The server enforces the same.
 const planHas = (f) => !(company.account && company.account.features) || company.account.features.includes(f);
@@ -131,6 +131,7 @@ const ICONS = {
   book: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5V21h16"/>',
   chat: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
 };
 const settingsFor = () => SETTINGS_NAV.filter(([p]) => memberCan(p) && !planLocked(p));
 // pages the search finds besides the menu items, and extra words each page answers to
@@ -142,7 +143,7 @@ const FEATURE_WORDS = {
   '/quotes': 'estimates proposals', '/jobs': 'work orders visits', '/invoices': 'billing', '/payments': 'card online stripe', '/services': 'catalog products price list items',
   '/expenses': 'costs receipts spending', '/reports': 'revenue profit charts', '/tax-summary': 'sales tax', '/project-gallery': 'photos pictures', '/notifications': 'emails texts sms sent messages log',
   '/settings/company': 'business details logo address phone regional time zone date format', '/team': 'staff employees users access roles technicians', '/settings/emails': 'templates text messages sms reminders',
-  '/settings': 'tax rate number prefixes branding brand color zelle defaults ai', '/settings/connections': 'integrations stripe email sms domain web address', '/settings/billing': 'subscription plan upgrade payment method',
+  '/settings': 'tax rate number prefixes branding brand color zelle defaults ai', '/settings/connections': 'integrations stripe email sms domain web address', '/settings/billing': 'subscription plan upgrade payment method', '/settings/support-access': 'grant revoke help troubleshoot permission',
 };
 const featureList = () => {
   const open = (p) => PAGES[p] && memberCan(p) && !planLocked(p) && !planLocked(p.split('/').slice(0, 2).join('/'));
@@ -223,6 +224,7 @@ ${topics.map((t) => `<button type="button" class="hp-topic" data-act="helpTopic"
   }
   const foot = `<div class="hp-foot">
 <div class="hp-link">${svgIcon(ICONS.user, 18)}<span>${esc(company.name || product)}${a.plan ? ` · ${esc(a.plan.name)} plan` : ''}</span></div>
+${memberCan('/settings/support-access') ? `<a class="hp-link hp-nav" href="/settings/support-access" data-link>${svgIcon(ICONS.shield, 18)}<span>Support Access</span></a>` : ''}
 <button type="button" class="btn hp-wide" data-act="supportForm">${svgIcon(ICONS.chat, 18)} Get Support</button><p class="muted hp-note">Send us a message and we’ll reply by email.</p>
 </div>`;
   return head + `<div class="hp-body">${body}</div>` + foot;
@@ -288,6 +290,8 @@ async function render() {
   const page = PAGES[path];
   document.body.classList.toggle('role-technician', isTech()); document.body.classList.toggle('role-manager', role() === 'manager');
   if (!portal) { renderSide(path); renderTopbar(path); }
+  const sb = $('#supportBar'); sb.hidden = portal || !(me && me.support);
+  if (!sb.hidden) sb.innerHTML = `${svgIcon(ICONS.shield, 18)}<span><strong>Support session.</strong> ${esc(me.support.adminName)} from ${esc((company.account && company.account.productName) || 'support')} is signed in as ${esc(me.name)} with the owner’s Support Access. It ends ${new Date(me.support.expires).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.</span><button type="button" class="btn alt sm" data-act="logout">End session</button>`;
   if (page && !memberCan(path)) { document.title = 'No access'; main.innerHTML = `<div class="card"><h1>You don't have access to this page</h1><p class="muted">Your access level doesn't include this page. Ask the account owner if you need more access.</p><p><a href="/calendar" data-link>Go to the job calendar</a></p></div>`; return; }
   if (page && planLocked(path)) { document.title = page.title; main.innerHTML = `<div class="card upgrade-card"><h1>${esc(page.title)} isn’t in your plan</h1><p class="muted">You’re on the ${esc(company.account.plan.name)} plan. Upgrade to get ${esc(page.title)} and more.</p><p><a href="/settings" data-link class="btn alt">See your plan</a></p></div>`; return; }
   if (!page) { document.title = 'Not found'; main.innerHTML = '<div class="card"><h1>Page not found</h1><p><a href="/business-overview" data-link>Go to dashboard</a></p></div>'; return; }
