@@ -607,7 +607,7 @@ ${own ? `<h3>Your own domain</h3>${a.domains.length ? `<div class="tablewrap"><t
 <li>Add a <strong>CNAME</strong> record. Name: the part before your domain (e.g. <code>app</code>). Value: <code>${esc(target)}</code></li>
 ${a.serverIp ? `<li>For a domain without a prefix (yourbusiness.com), add an <strong>A</strong> record pointing to <code>${esc(a.serverIp)}</code> instead.</li>` : ''}
 <li>Come back and press <strong>Check now</strong>. DNS changes can take up to a few hours.</li></ol></div>`
-    : `<p class="muted">Want to use your own domain, like app.yourbusiness.com? Custom domains are included on other plans.</p>`}</div>`;
+    : `<p class="muted">Want to use your own domain, like app.yourbusiness.com? Custom domains are included on other plans. ${role() === 'owner' ? '<a href="/settings/billing?upgrade=1" data-link>Upgrade your plan</a>' : 'Ask the account owner to upgrade your plan.'}</p>`}</div>`;
 }
 /* ===== /settings/connections: Account Connections ===== */
 const connChip = (kind, text) => `<span class="conn-chip ${kind}"><i></i>${text}</span>`;
@@ -1087,7 +1087,7 @@ PAGES['/settings/billing'] = {
     if (back) { // back from Stripe's payment or card page
       history.replaceState(null, '', location.pathname);
       try { const r = await api('POST', '/api/account/billing/return', { sessionId: back }); toast(r.message); company = await api('GET', '/api/company'); } catch (err) { toast(err.message, true); }
-    } else if (qs.has('canceled')) history.replaceState(null, '', location.pathname);
+    } else if (qs.has('canceled') || qs.has('upgrade')) history.replaceState(null, '', location.pathname);
     const B = billingData = await api('GET', '/api/account/billing'); const sub = B.subscription;
     const per = (i) => (i === 'year' ? 'yearly' : 'monthly');
     const ending = sub && sub.cancelAtPeriodEnd;
@@ -1120,6 +1120,7 @@ ${B.managed ? `<div class="card bill-change"><h2>Change subscription</h2><p>Swit
 ${sub && !ending ? `<p class="muted">You can also cancel anytime. You keep using ${esc(B.productName)} until the end of the period you’ve paid for; after that the account is paused and your team can’t log in.</p>` : ''}
 <div class="bill-acts">${contact}<button type="button" class="btn alt" data-act="billPlans">Change plan</button>${sub && !ending ? '<button type="button" class="link-btn bill-cancel" data-act="billCancel">Cancel subscription</button>' : ''}</div></div>` : ''}
 </div>`;
+    if (qs.has('upgrade') && B.managed) A.billPlans(); // from an “Upgrade your plan” link
   },
 };
 const billGo = async (url, body, el) => { // POST, then follow Stripe's page or show the result
