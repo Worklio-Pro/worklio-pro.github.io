@@ -22,6 +22,23 @@ const monthLabel = (m) => { const [y, mo] = m.split('-').map(Number); return new
 const byId = (arr, id) => (arr || []).find((x) => x.id === id);
 const hoursOf = (j) => { const [a, b] = [j.startTime, j.endTime].map((t) => { const [h, m] = (t || '0:0').split(':').map(Number); return h * 60 + m; }); return Math.max(0, (b - a) / 60); };
 const badge = (s) => `<span class="badge ${esc(s)}">${esc(s)}</span>`;
+// US phone numbers as (123) 456-7890 while typing; numbers starting with + (international) are left alone
+const fmtUsPhone = (s) => {
+  if (/^\s*\+/.test(s)) return s;
+  let d = String(s || '').replace(/\D/g, ''); if (d.length === 11 && d[0] === '1') d = d.slice(1); d = d.slice(0, 10);
+  return d.length > 6 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : d.length > 3 ? `(${d.slice(0, 3)}) ${d.slice(3)}` : d.length ? `(${d}` : '';
+};
+function phoneMask(input) {
+  if (!input) return;
+  input.value = fmtUsPhone(input.value);
+  input.addEventListener('input', () => {
+    if (/^\s*\+/.test(input.value)) return;
+    const before = input.value.slice(0, input.selectionStart).replace(/\D/g, '').length; // keep the cursor after the same digit
+    input.value = fmtUsPhone(input.value);
+    let pos = 0; for (let n = 0; pos < input.value.length && n < before; pos++) if (/\d/.test(input.value[pos])) n++;
+    input.setSelectionRange(pos, pos);
+  });
+}
 
 async function api(method, url, body) {
   const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });

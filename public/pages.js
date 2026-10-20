@@ -557,7 +557,7 @@ ${planHas('ai') ? `<div class="card"><h2>AI assistance</h2><p class="muted" styl
 ${full ? '<button class="btn">Save changes</button>' : '<div class="cs-foot"><button class="btn">Update settings</button></div>'}</form>
 ${full ? paymentsCard(integ) + servicesCard(integ) : ''}`;
   $$('.prefix-row input').forEach((i) => i.addEventListener('input', () => { i.nextElementSibling.textContent = 'e.g. ' + i.value.trim() + i.dataset.sample; }));
-  if (!full) wireHours(main);
+  if (!full) { wireHours(main); phoneMask($('#cf input[name=phone]', main)); }
   $('#cf').addEventListener('submit', async (e) => {
     e.preventDefault(); const b = Object.fromEntries(new FormData(e.target));
     if (!full) { b.hours = readHoursFrom(e.target); const bad = badHours(b.hours); if (bad) return toast(bad, true); }
