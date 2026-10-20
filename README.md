@@ -16,6 +16,7 @@ and `/client-portal?c=<token>` for their portal. Copy each client's portal link 
 ## Going live (environment variables)
 Put these in the `.env` file next to `server.js` (loaded automatically at startup) or set them in the environment.
 Check them in the platform console under **Settings → Integrations**, which shows what's connected and can send a test email or text.
+Each business can instead send through its own email (Gmail, SendGrid or an SMTP server) and its own Twilio account under **App Settings → Email to clients / Text messages**; the settings here are used for any business that doesn't, and always for platform emails such as sign-up alerts and owner invites.
 
 | Feature | Variables | Without them |
 |---|---|---|

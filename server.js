@@ -213,13 +213,41 @@ function smtpSend({ host, port, user, pass }, { from, fromName, to, replyTo, sub
     })().then(resolve, fail);
   });
 }
-const emailProvider = () => (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD ? 'Gmail' : process.env.SENDGRID_API_KEY && process.env.EMAIL_FROM ? 'SendGrid' : '');
-async function sendEmail(to, subject, body) {
+// each account can send through its own email and Twilio accounts (App Settings → Messages); otherwise the server's .env settings are used
+const EMAIL_LABELS = { gmail: 'Gmail', sendgrid: 'SendGrid', smtp: 'SMTP' };
+const ownEmail = () => { const e = secrets().email; return e && EMAIL_LABELS[e.provider] ? e : null; };
+const envTwilio = () => { const { TWILIO_ACCOUNT_SID: sid, TWILIO_AUTH_TOKEN: token, TWILIO_FROM: from } = process.env; return sid && token && from ? { sid, token, from } : null; };
+const ownTwilio = () => { const t = secrets().twilio; return t && t.sid && t.token && t.from ? t : null; };
+const smsReady = () => !!(ownTwilio() || envTwilio());
+const serverEmailProvider = () => (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD ? 'Gmail' : process.env.SENDGRID_API_KEY && process.env.EMAIL_FROM ? 'SendGrid' : '');
+const emailProvider = () => { const e = ownEmail(); return e ? EMAIL_LABELS[e.provider] : serverEmailProvider(); };
+async function sendgridSend(key, { from, fromName, to, replyTo, subject, text }) {
+  const msg = { personalizations: [{ to: [{ email: to }] }], from: { email: from, name: fromName }, subject, content: [{ type: 'text/plain', value: text }] };
+  if (replyTo) msg.reply_to = { email: replyTo };
+  const r = await fetch('https://api.sendgrid.com/v3/mail/send', { method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }, body: JSON.stringify(msg) });
+  if (r.ok) return;
+  const j = await r.json().catch(() => ({}));
+  throw new Error(`${r.status}: ${(j.errors || []).map((e) => e.message).join('; ') || 'request rejected'}`);
+}
+// server: true sends through the server's own settings even inside an account (platform emails, platform tests)
+async function sendEmail(to, subject, body, { server = false } = {}) {
   if (!to) return { status: 'failed', detail: 'Client has no email address' };
+  const mine = !server && ownEmail();
+  if (mine) {
+    const label = EMAIL_LABELS[mine.provider];
+    const msg = { from: mine.from || mine.user, fromName: mine.fromName || db.company.name, to, replyTo: db.company.email, subject, text: body };
+    try {
+      if (mine.provider === 'sendgrid') await sendgridSend(mine.apiKey, msg);
+      else await smtpSend({ host: mine.provider === 'gmail' ? 'smtp.gmail.com' : mine.host, port: mine.provider === 'gmail' ? 465 : Number(mine.port) || 465, user: mine.user, pass: mine.pass }, msg);
+      return { status: 'sent', detail: `${label} (your account)` };
+    } catch (e) {
+      return { status: 'failed', detail: `${label}: ${e.message}${mine.provider === 'gmail' && /^535/.test(e.message) ? ' (use a Google app password, not your normal password)' : ''}` };
+    }
+  }
   const { SENDGRID_API_KEY: key, EMAIL_FROM: from, GMAIL_USER: gUser, GMAIL_APP_PASSWORD: gPass } = process.env;
-  // the email service is shared by every account; only the default account uses EMAIL_FROM_NAME / EMAIL_REPLY_TO, the others send as themselves
+  // the server's email service is shared by every account; only the default account uses EMAIL_FROM_NAME / EMAIL_REPLY_TO, the others send as themselves
   const own = tenancy.isDefault(); const fromName = own ? process.env.EMAIL_FROM_NAME : db.company.name; const replyTo = own ? process.env.EMAIL_REPLY_TO : db.company.email;
-  if (emailProvider() === 'Gmail') {
+  if (serverEmailProvider() === 'Gmail') {
     try {
       await smtpSend({ host: 'smtp.gmail.com', port: 465, user: gUser, pass: gPass.replace(/\s/g, '') },
         { from: from || gUser, fromName: fromName || db.company.name, to, replyTo: replyTo || db.company.email, subject, text: body });
@@ -229,18 +257,8 @@ async function sendEmail(to, subject, body) {
     }
   }
   if (key && from) {
-    try {
-      const msg = { personalizations: [{ to: [{ email: to }] }], from: { email: from, name: fromName || db.company.name }, subject, content: [{ type: 'text/plain', value: body }] };
-      if (replyTo || db.company.email) msg.reply_to = { email: replyTo || db.company.email };
-      const r = await fetch('https://api.sendgrid.com/v3/mail/send', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(msg),
-      });
-      if (r.ok) return { status: 'sent', detail: 'SendGrid' };
-      const j = await r.json().catch(() => ({}));
-      return { status: 'failed', detail: `SendGrid ${r.status}: ${(j.errors || []).map((e) => e.message).join('; ') || 'request rejected'}` };
-    } catch (e) { return { status: 'failed', detail: e.message }; }
+    try { await sendgridSend(key, { from, fromName: fromName || db.company.name, to, replyTo: replyTo || db.company.email, subject, text: body }); return { status: 'sent', detail: 'SendGrid' }; }
+    catch (e) { return { status: 'failed', detail: `SendGrid ${e.message}` }; }
   }
   return { status: 'simulated', detail: 'No email provider configured (set GMAIL_USER and GMAIL_APP_PASSWORD, or SENDGRID_API_KEY and EMAIL_FROM)' };
 }
@@ -252,9 +270,9 @@ function toE164(phone) {
   if (digits.length === 11 && digits.startsWith('1')) return '+' + digits;
   return digits ? '+' + digits : '';
 }
-async function sendSms(to, body) {
+async function sendSms(to, body, { server = false } = {}) {
   if (!to) return { status: 'failed', detail: 'Client has no phone number' };
-  const { TWILIO_ACCOUNT_SID: sid, TWILIO_AUTH_TOKEN: auth, TWILIO_FROM: from } = process.env;
+  const mine = !server && ownTwilio(); const { sid, token: auth, from } = mine || envTwilio() || {};
   if (sid && auth && from) {
     try {
       // TWILIO_FROM can be a Twilio phone number or a Messaging Service SID (starts with MG)
@@ -265,7 +283,7 @@ async function sendSms(to, body) {
         body: new URLSearchParams(params),
       });
       const j = await r.json().catch(() => ({}));
-      return r.ok ? { status: 'sent', detail: `Twilio ${j.sid || ''}`.trim() } : { status: 'failed', detail: `Twilio ${r.status}${j.code ? ' (error ' + j.code + ')' : ''}: ${j.message || 'request rejected'}` };
+      return r.ok ? { status: 'sent', detail: `Twilio ${j.sid || ''}${mine ? ' (your account)' : ''}`.trim() } : { status: 'failed', detail: `Twilio ${r.status}${j.code ? ' (error ' + j.code + ')' : ''}: ${j.message || 'request rejected'}` };
     } catch (e) { return { status: 'failed', detail: e.message }; }
   }
   return { status: 'simulated', detail: 'No SMS provider configured (set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM)' };
@@ -651,6 +669,50 @@ app.post('/api/integrations/stripe/disconnect', (req, res) => {
   const t = tenancy.current(); delete t.stripeAccountId; tenancy.savePlatform();
   const sec = { ...secrets() }; for (const k of ['stripeAccountId', 'stripeChargesEnabled', 'stripeDetailsSubmitted', 'stripeAccountName', 'stripeSecretKey', 'stripeWebhookSecret']) delete sec[k];
   db.secrets = sec; save(); res.json({ ok: true });
+});
+// the account's own email and Twilio accounts (owner/admin only: these routes aren't in ROLE_API). Blank secrets keep the saved ones.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+app.put('/api/integrations/email', (req, res) => {
+  const b = req.body || {}; const provider = String(b.provider || ''); const old = ownEmail() && ownEmail().provider === provider ? ownEmail() : {};
+  const str = (k, n = 200) => String(b[k] || '').trim().slice(0, n);
+  const e = { provider, fromName: str('fromName', 100) };
+  if (provider === 'gmail') {
+    Object.assign(e, { user: str('user').toLowerCase(), pass: str('pass').replace(/\s/g, '') || old.pass || '' }); e.from = e.user;
+    if (!EMAIL_RE.test(e.user)) return res.status(400).json({ error: 'Enter your Gmail address' });
+    if (!e.pass) return res.status(400).json({ error: 'Enter a Google app password (myaccount.google.com/apppasswords)' });
+  } else if (provider === 'sendgrid') {
+    Object.assign(e, { apiKey: str('apiKey', 300) || old.apiKey || '', from: str('from').toLowerCase() });
+    if (!e.apiKey) return res.status(400).json({ error: 'Enter your SendGrid API key' });
+    if (!EMAIL_RE.test(e.from)) return res.status(400).json({ error: 'Enter the sender address you verified in SendGrid' });
+  } else if (provider === 'smtp') {
+    Object.assign(e, { host: str('host').toLowerCase(), port: Math.floor(Number(b.port)) || 465, user: str('user'), pass: str('pass') || old.pass || '', from: str('from').toLowerCase() });
+    if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(e.host)) return res.status(400).json({ error: 'Enter the SMTP server, e.g. smtp.yourmailhost.com' });
+    if (e.port !== 465) return res.status(400).json({ error: 'Use your mail server’s SSL/TLS port 465' });
+    if (!e.user || !e.pass) return res.status(400).json({ error: 'Enter the SMTP username and password' });
+    if (!EMAIL_RE.test(e.from)) return res.status(400).json({ error: 'Enter the address emails come from' });
+  } else return res.status(400).json({ error: 'Choose Gmail, SendGrid or another mail server' });
+  db.secrets = { ...secrets(), email: e }; save(); res.json({ ok: true });
+});
+app.delete('/api/integrations/email', (req, res) => { const sec = { ...secrets() }; delete sec.email; db.secrets = sec; save(); res.json({ ok: true }); });
+app.put('/api/integrations/twilio', (req, res) => {
+  if (!tenancy.has('sms')) return res.status(403).json({ error: 'Text messages aren’t included in your plan' });
+  const b = req.body || {}; const old = ownTwilio() || {};
+  const sid = String(b.sid || '').trim(); const token = String(b.token || '').trim() || (sid === old.sid ? old.token : ''); const raw = String(b.from || '').trim();
+  const from = /^MG[0-9a-f]{32}$/i.test(raw) ? raw : toE164(raw);
+  if (!/^AC[0-9a-f]{32}$/i.test(sid)) return res.status(400).json({ error: 'Enter your Twilio Account SID (starts with AC)' });
+  if (!token) return res.status(400).json({ error: 'Enter your Twilio Auth Token' });
+  if (!/^MG/i.test(from) && !/^\+\d{10,15}$/.test(from)) return res.status(400).json({ error: 'Enter your Twilio phone number, e.g. (713) 555-0100, or a Messaging Service SID (MG…)' });
+  db.secrets = { ...secrets(), twilio: { sid, token, from } }; save(); res.json({ ok: true });
+});
+app.delete('/api/integrations/twilio', (req, res) => { const sec = { ...secrets() }; delete sec.twilio; db.secrets = sec; save(); res.json({ ok: true }); });
+app.post('/api/integrations/test', async (req, res) => {
+  const b = req.body || {}; const to = String(b.to || '').trim();
+  if (b.channel === 'sms') {
+    if (!tenancy.has('sms')) return res.status(403).json({ error: 'Text messages aren’t included in your plan' });
+    return res.json(await sendSms(to, `Test message from ${db.company.name}. Text messages are working.`));
+  }
+  if (!EMAIL_RE.test(to)) return res.status(400).json({ error: 'Enter an email address to send the test to' });
+  res.json(await sendEmail(to, `Test email from ${db.company.name}`, `This is a test email from ${db.company.name}. Emails to your clients are working.`));
 });
 
 // ---------- AI: draft a product/service description from its name (needs ANTHROPIC_API_KEY) ----------
@@ -1422,7 +1484,11 @@ app.get('/api/integrations', async (req, res) => {
   const sec = secrets(); if (sec.stripeAccountId && !sec.stripeChargesEnabled) await syncStripeAccount(); // e.g. just back from Stripe
   const s = secrets(); const pay = tenancy.has('onlinePayments');
   res.json({
-    email: !!emailProvider(), sms: !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM), ai: !!process.env.ANTHROPIC_API_KEY,
+    email: !!emailProvider(), sms: smsReady(), ai: !!process.env.ANTHROPIC_API_KEY,
+    serverEmail: !!serverEmailProvider(), serverSms: !!envTwilio(),
+    // the account's own senders, without passwords, tokens or keys
+    ownEmail: (({ provider, user, from, fromName, host, port } = {}) => (provider ? { provider, user: user || '', from: from || '', fromName: fromName || '', host: host || '', port: port || '' } : null))(ownEmail() || undefined),
+    ownTwilio: ownTwilio() ? { sid: ownTwilio().sid, from: ownTwilio().from } : null,
     payments: !!stripeKey(), paymentsMode: stripeKey() ? stripeMode() : null,
     stripe: pay ? {
       available: !!stripeLib.platformKey(), accountId: s.stripeAccountId || null, chargesEnabled: !!s.stripeChargesEnabled, detailsSubmitted: !!s.stripeDetailsSubmitted, name: s.stripeAccountName || '',
@@ -1462,7 +1528,7 @@ const tenantStats = (t) => tenancy.run(t, () => {
 });
 const platformApp = require('./lib/platform')({
   hashPassword, checkPassword, sha, normEmail, cookies, tooMany, recordFailure, clearFailures: (k) => failures.delete(k),
-  createOwner, ownerLink, tenantStats, sendEmail, sendSms, emailProvider, applyStripeSession, syncStripeAccount, resetDemo, setCompanyEmail: (e) => { if (!db.company.email) { db.company.email = e; save(); } },
+  createOwner, ownerLink, tenantStats, sendEmail, sendSms, emailProvider: serverEmailProvider, applyStripeSession, syncStripeAccount, resetDemo, setCompanyEmail: (e) => { if (!db.company.email) { db.company.email = e; save(); } },
 });
 // which app answers: the platform's (its own domain, or /platform… while developing) or an account's
 const PLATFORM_PATHS = /^\/(platform(\/.*)?|pricing|signup|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;

@@ -555,7 +555,7 @@ ${full ? `<div class="card"><h2>${planHas('branding') ? 'Branding and defaults' 
 ${planHas('ai') ? `<div class="card"><h2>AI assistance</h2><p class="muted" style="margin-top:0">Shows a “Write with AI” button that drafts product and service descriptions from their name.${integ.ai ? '' : ' AI isn’t available on this service yet.'}</p>
 <div class="ai-toggle"><span class="cstatus ${c.aiEnabled !== false ? 'active' : ''}">${c.aiEnabled !== false ? 'On' : 'Off'}</span><button type="button" class="btn alt sm" data-act="toggleAi">${c.aiEnabled !== false ? 'Turn off AI assistance' : 'Turn on AI assistance'}</button></div></div>` : ''}` : ''}
 ${full ? '<button class="btn">Save changes</button>' : '<div class="cs-foot"><button class="btn">Update settings</button></div>'}</form>
-${full ? paymentsCard(integ) + servicesCard(integ) : ''}`;
+${full ? paymentsCard(integ) + messagesCard(integ) : ''}`;
   $$('.prefix-row input').forEach((i) => i.addEventListener('input', () => { i.nextElementSibling.textContent = 'e.g. ' + i.value.trim() + i.dataset.sample; }));
   if (!full) { wireHours(main); phoneMask($('#cf input[name=phone]', main)); }
   $('#cf').addEventListener('submit', async (e) => {
@@ -568,7 +568,7 @@ ${full ? paymentsCard(integ) + servicesCard(integ) : ''}`;
     if (!confirm('Delete your logo? It will be removed from quotes, invoices and the client portal.')) return;
     try { await api('DELETE', '/api/company/logo'); toast('Logo deleted'); refresh(); } catch (err) { toast(err.message, true); }
   };
-  wireAccountCards(main);
+  wireAccountCards(main); if (full) wireMessages(main);
   if (full) stripeReturnNotice(integ);
   if ($('#logoFile')) $('#logoFile').addEventListener('change', async (e) => {
     const f = e.target.files[0]; if (!f) return; if (f.size > 4e6) return toast('Logo must be under 4 MB', true);
@@ -624,15 +624,64 @@ function paymentsCard(integ) {
 <p class="muted" style="font-size:13px">Stripe charges its standard card processing fees${S.feePercent ? `, plus a ${S.feePercent}% platform fee on each payment` : ''}. Until you connect, the pay page runs a demo checkout that charges nobody.</p>
 <button type="button" class="btn" data-act="connectStripe">Connect with Stripe</button></div>`;
 }
-// read-only: what this service provides (set up by the platform, not by the business)
-function servicesCard(integ) {
-  const st = (inPlan, ok) => `<span class="cstatus ${inPlan && ok ? 'active' : ''}">${!inPlan ? 'Not in your plan' : ok ? 'On' : 'Not available yet'}</span>`;
-  return `<div class="card"><h2>Messages</h2><table>
-<tr><td>Email to clients</td><td>${st(true, integ.email)}</td><td class="muted">Sent in your business name. Client replies go to ${esc(company.email || 'your company email')}.</td></tr>
-<tr><td>Text messages</td><td>${st(planHas('sms'), integ.sms)}</td><td class="muted">Quotes, invoices and appointment reminders by text.</td></tr>
-<tr><td>AI descriptions</td><td>${st(planHas('ai'), integ.ai)}</td><td class="muted">“Write with AI” on products and services.</td></tr></table>
-${!integ.email || (planHas('sms') && !integ.sms) ? '<p class="muted" style="font-size:13px">Until a service is available, messages are kept in the Notifications Log but not delivered.</p>' : ''}</div>`;
+// Messages: send through the business's own email and Twilio accounts, or the service's (set up by the platform)
+function messagesCard(integ) {
+  const on = (ok, yes, no) => `<span class="cstatus ${ok ? 'active' : ''}">${ok ? yes : no}</span>`;
+  const E = integ.ownEmail || {}; const T = integ.ownTwilio || {}; const p = E.provider || 'gmail';
+  const saved = (has) => (has ? 'placeholder="Saved. Leave blank to keep it."' : '');
+  const show = (k) => (p === k ? '' : ' hidden');
+  const email = `<div class="card"><div class="plan-head"><div><h2>Email to clients</h2><p class="muted" style="margin:0">Quotes, invoices, reminders and password resets.</p></div>
+<div>${integ.ownEmail ? on(true, `Your ${esc({ gmail: 'Gmail', sendgrid: 'SendGrid', smtp: 'mail server' }[E.provider])}`) : on(integ.serverEmail, 'Using our email service', 'Not set up')}</div></div>
+<p class="muted" style="font-size:13px">${integ.ownEmail ? `Emails come from <strong>${esc(E.from || E.user)}</strong>.` : integ.serverEmail ? 'Emails are sent for you, in your business name.' : 'Emails are kept in the Notifications Log but not delivered until email is set up.'} Client replies go to ${esc(company.email || 'your company email')}. To send from your own mailbox instead, fill this in:</p>
+<form id="emailForm"><div class="row"><label>Send with<select name="provider">${[['gmail', 'Gmail or Google Workspace'], ['sendgrid', 'SendGrid'], ['smtp', 'Another mail server (SMTP)']].map(([v, l]) => `<option value="${v}" ${v === p ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+<label>Sender name<input name="fromName" maxlength="100" value="${esc(E.fromName)}" placeholder="${esc(company.name || 'Your business')}"></label></div>
+<div class="row" data-for="gmail"${show('gmail')}><label>Gmail address<input name="user" type="email" value="${esc(E.provider === 'gmail' ? E.user : '')}" placeholder="you@gmail.com"></label>
+<label>App password<input name="pass" type="password" autocomplete="new-password" ${saved(E.provider === 'gmail')}></label></div>
+<p class="muted" data-for="gmail" style="font-size:13px"${show('gmail')}>Turn on 2-Step Verification, then create an app password at <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">myaccount.google.com/apppasswords</a>. Your normal Google password won’t work.</p>
+<div class="row" data-for="sendgrid"${show('sendgrid')}><label>API key<input name="apiKey" type="password" autocomplete="off" ${saved(E.provider === 'sendgrid')}></label>
+<label>From address<input name="from" type="email" value="${esc(E.provider === 'sendgrid' ? E.from : '')}" placeholder="office@yourbusiness.com"></label></div>
+<p class="muted" data-for="sendgrid" style="font-size:13px"${show('sendgrid')}>Use a key with Mail Send access, and a sender address verified in SendGrid.</p>
+<div class="row" data-for="smtp"${show('smtp')}><label>SMTP server<input name="host" value="${esc(E.host)}" placeholder="smtp.yourmailhost.com"></label><label>Port (SSL/TLS)<input name="port" type="number" value="465" readonly></label></div>
+<div class="row" data-for="smtp"${show('smtp')}><label>Username<input name="user" value="${esc(E.provider === 'smtp' ? E.user : '')}"></label><label>Password<input name="pass" type="password" autocomplete="new-password" ${saved(E.provider === 'smtp')}></label></div>
+<div class="row" data-for="smtp"${show('smtp')}><label>From address<input name="from" type="email" value="${esc(E.provider === 'smtp' ? E.from : '')}" placeholder="office@yourbusiness.com"></label></div>
+<div class="sms-test"><button class="btn">Save email settings</button>${integ.email ? '<button type="button" class="btn alt" data-act="testMsg" data-ch="email">Send a test email</button>' : ''}${integ.ownEmail ? `<button type="button" class="btn danger sm" data-act="rmSender" data-kind="email">${integ.serverEmail ? 'Use our email service instead' : 'Remove'}</button>` : ''}</div></form></div>`;
+  const sms = !planHas('sms') ? `<div class="card"><h2>Text messages</h2><p class="muted">Text messages are included on other plans.</p></div>`
+    : `<div class="card"><div class="plan-head"><div><h2>Text messages</h2><p class="muted" style="margin:0">Quotes, invoices and appointment reminders by text.</p></div>
+<div>${integ.ownTwilio ? on(true, 'Your Twilio account') : on(integ.serverSms, 'Using our texting service', 'Not set up')}</div></div>
+<p class="muted" style="font-size:13px">${integ.ownTwilio ? `Texts come from <strong>${esc(T.from)}</strong>.` : integ.serverSms ? 'Texts are sent for you from our number.' : 'Texts are kept in the Notifications Log but not delivered until texting is set up.'} To send from your own Twilio number, find these at <a href="https://console.twilio.com" target="_blank" rel="noopener">console.twilio.com</a> → Account Info:</p>
+<form id="twilioForm"><div class="row"><label>Account SID<input name="sid" value="${esc(T.sid)}" placeholder="AC…" autocomplete="off" spellcheck="false"></label><label>Auth Token<input name="token" type="password" autocomplete="new-password" ${saved(!!integ.ownTwilio)}></label></div>
+<div class="row"><label>Twilio phone number<input name="from" value="${esc(T.from)}" placeholder="(713) 555-0100 or MG…"></label></div>
+<div class="sms-test"><button class="btn">Save Twilio settings</button>${integ.sms ? '<button type="button" class="btn alt" data-act="testMsg" data-ch="sms">Send a test text</button>' : ''}${integ.ownTwilio ? `<button type="button" class="btn danger sm" data-act="rmSender" data-kind="twilio">${integ.serverSms ? 'Use our texting service instead' : 'Remove'}</button>` : ''}</div></form></div>`;
+  return email + sms;
 }
+function wireMessages(main) {
+  const ef = $('#emailForm', main); if (!ef) return;
+  const sel = $('[name=provider]', ef);
+  const pick = () => $$('[data-for]', ef).forEach((el) => { el.hidden = el.dataset.for !== sel.value; $$('input', el).forEach((i) => { i.disabled = el.hidden; }); });
+  sel.addEventListener('change', pick); pick();
+  ef.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try { await api('PUT', '/api/integrations/email', Object.fromEntries(new FormData(ef))); toast('Email settings saved. Send a test to check them.'); refresh(); } catch (err) { toast(err.message, true); }
+  });
+  const tf = $('#twilioForm', main);
+  if (tf) {
+    phoneMask($('[name=from]', tf));
+    tf.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try { await api('PUT', '/api/integrations/twilio', Object.fromEntries(new FormData(tf))); toast('Twilio settings saved. Send a test to check them.'); refresh(); } catch (err) { toast(err.message, true); }
+    });
+  }
+}
+A.testMsg = async (d, el) => {
+  const sms = d.ch === 'sms'; const to = prompt(sms ? 'Send a test text to which mobile number?' : 'Send a test email to which address?', sms ? '' : (me && me.email) || company.email || ''); if (!to) return;
+  el.disabled = true;
+  try { const r = await api('POST', '/api/integrations/test', { channel: d.ch, to }); toast(r.status === 'sent' ? `Test ${sms ? 'text' : 'email'} sent` : r.detail || 'Not delivered', r.status !== 'sent'); }
+  finally { el.disabled = false; }
+};
+A.rmSender = async (d) => {
+  if (!confirm(d.kind === 'email' ? 'Remove your email settings?' : 'Remove your Twilio settings?')) return;
+  await api('DELETE', `/api/integrations/${d.kind}`); toast('Removed'); refresh();
+};
 function stripeReturnNotice(integ) {
   const q = new URLSearchParams(location.search).get('stripe'); if (!q) return;
   history.replaceState(null, '', location.pathname);
