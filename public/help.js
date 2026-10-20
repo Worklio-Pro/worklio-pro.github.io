@@ -1,5 +1,6 @@
 'use strict';
-// Help center: home, topic pages, articles, search and the contact form. Content comes from help-articles.js.
+// Help center: home, topic pages, articles, search and the contact form. Content comes from /api/help/content
+// (edited in the platform console → Help Center).
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -7,8 +8,8 @@ let product = ''; // the product name from the platform console, filled in by /a
 const hcName = () => `${product ? product + ' ' : ''}Help Center`;
 const prod = () => esc(product || 'the app');
 const fill = (s) => String(s).replace(/\{product\}/g, prod());
-const TOPICS = window.HELP_TOPICS; const ARTICLES = window.HELP_ARTICLES;
-const topicOf = (slug) => TOPICS.find((t) => t.slug === slug);
+let TOPICS = []; let ARTICLES = []; let POPULAR = []; let SUGGESTED = [];
+const topicOf = (slug) => TOPICS.find((t) => t.slug === slug) || { slug, title: '', desc: '', icon: 'help' };
 const articleOf = (slug) => ARTICLES.find((a) => a.slug === slug);
 const inTopic = (slug) => ARTICLES.filter((a) => a.topic === slug);
 const plain = (html) => html.replace(/<[^>]+>/g, ' ').replace(/&[a-z]+;/g, ' ').replace(/\s+/g, ' ').trim();
@@ -70,13 +71,13 @@ const crumbs = (items) => `<div class="crumbs"><a href="/" data-link>Help Center
 
 function home() {
   return { title: `${hcName()}`, html: `<section class="hc-hero"><div class="wrap"><h1>How can we help?</h1>${searchBox()}
-<div class="hc-suggest">${window.HELP_SUGGESTED.map((q) => `<a href="/search?q=${encodeURIComponent(q)}" data-link>${esc(q)}</a>`).join('')}</div></div></section>
-<div class="wrap"><section class="hc-sec hc-pop" aria-label="Popular articles"><div class="grid g3">${window.HELP_POPULAR.map(articleOf).filter(Boolean).map(articleCard).join('')}</div></section>
+<div class="hc-suggest">${SUGGESTED.map((q) => `<a href="/search?q=${encodeURIComponent(q)}" data-link>${esc(q)}</a>`).join('')}</div></div></section>
+<div class="wrap"><section class="hc-sec hc-pop" aria-label="Popular articles"><div class="grid g3">${POPULAR.map(articleOf).filter(Boolean).map(articleCard).join('')}</div></section>
 <section class="hc-sec"><h2>What do you want to get done?</h2><div class="grid g3">${TOPICS.map((t) => `<a class="card" href="/topics/${t.slug}" data-link><span class="topic-ic">${ic(ICONS[t.icon])}</span><h3>${esc(t.title)}</h3><p>${fill(t.desc)}</p><span class="meta">${inTopic(t.slug).length} article${inTopic(t.slug).length === 1 ? '' : 's'}</span></a>`).join('')}</div></section>
 ${helpBand()}</div>` };
 }
 function topicPage(slug) {
-  const t = topicOf(slug); if (!t) return notFound();
+  const t = TOPICS.find((x) => x.slug === slug); if (!t) return notFound();
   return { title: `${t.title} · ${hcName()}`, html: `<div class="wrap">${crumbs([[null, t.title]])}<div class="page"><div><h1 class="page-title">${esc(t.title)}</h1><p class="lead">${fill(t.desc)}</p>
 <div class="alist">${inTopic(slug).map((a) => `<a href="/articles/${a.slug}" data-link><strong>${fill(a.title)}</strong><span>${fill(a.summary)} · ${readMins(a)} min read</span></a>`).join('')}</div></div>
 <aside class="side">${topicNav(slug)}</aside></div>${helpBand()}</div>` };
@@ -86,7 +87,7 @@ function articlePage(slug) {
   const t = topicOf(a.topic); const more = inTopic(a.topic);
   return { title: `${plain(fill(a.title))} · ${hcName()}`, html: `<div class="wrap">${crumbs([[`/topics/${t.slug}`, t.title], [null, plain(fill(a.title))]])}<div class="page"><div>
 <h1 class="page-title">${fill(a.title)}</h1><p class="lead">${fill(a.summary)}</p>
-<article class="card article">${fill(a.body)}<div class="feedback" id="feedback"><span>Was this article helpful?</span><button type="button" data-fb="yes">👍 Yes</button><button type="button" data-fb="no">👎 No</button></div></article></div>
+<article class="card article">${fill(a.body)}<div class="feedback" id="feedback" data-slug="${esc(a.slug)}">${votedOn(a.slug) ? '<span>Thanks for your feedback!</span>' : '<span>Was this article helpful?</span><button type="button" data-fb="yes">👍 Yes</button><button type="button" data-fb="no">👎 No</button>'}</div></article></div>
 <aside class="side"><h3>In ${esc(t.title)}</h3><nav>${more.map((x) => `<a href="/articles/${x.slug}" data-link class="${x.slug === slug ? 'on' : ''}">${fill(x.title)}</a>`).join('')}</nav>${topicNav(a.topic)}</aside></div>${helpBand()}</div>` };
 }
 function searchPage(q) {
@@ -134,7 +135,16 @@ document.addEventListener('keydown', (e) => {
 });
 function wirePage() {
   const fb = $('#feedback');
-  if (fb) fb.addEventListener('click', (e) => { const b = e.target.closest('[data-fb]'); if (!b) return; fb.innerHTML = b.dataset.fb === 'yes' ? '<span>Thanks for letting us know!</span>' : '<span>Sorry this didn’t help. <a href="/contact" data-link>Tell our support team</a> what you were looking for.</span>'; });
+  if (fb) fb.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-fb]'); if (!b) return; const slug = fb.dataset.slug; const yes = b.dataset.fb === 'yes';
+    markVoted(slug); sendFeedback({ slug, vote: yes ? 'yes' : 'no' });
+    if (yes) { fb.innerHTML = '<span>Thanks for letting us know!</span>'; return; }
+    // a No: ask what was missing (optional), so the article can be improved
+    fb.innerHTML = `<form class="fb-more"><label>Sorry this didn’t help. What were you looking for? <span class="muted">(optional)</span><textarea name="c" rows="3" maxlength="1000"></textarea></label>
+<div class="fb-acts"><button class="btn" type="submit">Send</button><a href="/contact" data-link>Contact support instead</a></div></form>`;
+    const f = $('form', fb); $('textarea', f).focus();
+    f.addEventListener('submit', (ev) => { ev.preventDefault(); const c = f.c.value.trim(); if (c) sendFeedback({ slug, comment: c }); fb.innerHTML = '<span>Thanks, this helps us improve the article.</span>'; });
+  });
   const f = $('#contactForm'); if (!f) return;
   f.addEventListener('submit', async (e) => {
     e.preventDefault(); const err = $('#formErr'); err.hidden = true;
@@ -149,6 +159,12 @@ function wirePage() {
   });
 }
 
+// remembered per browser so the buttons don't come back after voting (the server also counts one vote a day per connection)
+const votes = () => { try { return JSON.parse(localStorage.getItem('hc-voted') || '{}'); } catch (e) { return {}; } };
+const votedOn = (slug) => !!votes()[slug];
+const markVoted = (slug) => { try { localStorage.setItem('hc-voted', JSON.stringify({ ...votes(), [slug]: Date.now() })); } catch (e) { /* private mode */ } };
+const sendFeedback = (body) => fetch('/api/help/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).catch(() => {});
+
 /* ===== theme + product name ===== */
 const THEMES = ['system', 'light', 'dark'];
 const theme = () => { try { return localStorage.getItem('theme') || 'system'; } catch (e) { return 'system'; } };
@@ -160,11 +176,12 @@ function setTheme(t) {
 $('#themeBtn').addEventListener('click', () => setTheme(THEMES[(THEMES.indexOf(theme()) + 1) % THEMES.length]));
 setTheme(theme());
 $('#year').textContent = new Date().getFullYear();
-$('#topicMenu').innerHTML = TOPICS.map((t) => `<a href="/topics/${t.slug}" data-link>${ic(ICONS[t.icon], 18)}${esc(t.title)}</a>`).join('');
-render();
-fetch('/api/help/info').then((r) => r.json()).then((i) => {
+$('#main').innerHTML = '<div class="wrap" style="padding:48px 20px;color:var(--muted)">Loading…</div>';
+Promise.all([fetch('/api/help/content').then((r) => r.json()), fetch('/api/help/info').then((r) => r.json()).catch(() => ({}))]).then(([c, i]) => {
+  ({ topics: TOPICS, articles: ARTICLES, popular: POPULAR, suggested: SUGGESTED } = c);
   product = i.productName || product;
   $$('.hc-product').forEach((el) => { el.textContent = product; });
   $('#appLink').textContent = `Go to ${product}`; $('#appLink').href = i.siteUrl || '/'; $('#siteLink').href = i.siteUrl || '/';
+  $('#topicMenu').innerHTML = TOPICS.map((t) => `<a href="/topics/${t.slug}" data-link>${ic(ICONS[t.icon] || ICONS.help, 18)}${esc(t.title)}</a>`).join('');
   render();
-}).catch(() => {});
+}).catch(() => { $('#main').innerHTML = '<div class="wrap" style="padding:48px 20px">The help center couldn’t load. Refresh the page to try again.</div>'; });

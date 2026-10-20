@@ -31,6 +31,28 @@
     .chips{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
     .pf-chip{font-size:12px;padding:2px 8px;border-radius:99px;background:var(--neutral-bg);color:var(--neutral-fg)}.pf-chip.ok{background:var(--ok-bg);color:var(--ok-fg)}.pf-chip.wait{background:var(--warn-bg);color:var(--warn-fg)}
     .acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+    /* help center tab */
+    .pf-modal.wide{max-width:900px}
+    .hc-tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}.hc-tools select{width:auto;min-width:180px}.hc-tools input{width:240px}
+    .hc-table td.r,.hc-table th.r{text-align:right;font-variant-numeric:tabular-nums}
+    .hc-sort{background:none;border:0;padding:0;font:inherit;color:inherit;text-transform:inherit;letter-spacing:inherit;cursor:pointer}.hc-sort.on{color:var(--text)}
+    .hc-link{background:none;border:0;padding:0;font:inherit;font-weight:600;color:var(--link);cursor:pointer;text-align:left}.hc-link:hover{text-decoration:underline}
+    .hc-pct{font-weight:700;padding:2px 8px;border-radius:99px;font-size:13px}.hc-pct.ok{background:var(--ok-bg);color:var(--ok-fg)}.hc-pct.mid{background:var(--warn-bg);color:var(--warn-fg)}.hc-pct.bad{background:var(--bad-bg);color:var(--bad-fg)}
+    .grid2{display:grid;grid-template-columns:3fr 2fr;gap:16px;align-items:start}.grid2>.card{margin:0}
+    .hc-trow{padding:12px 0;border-top:1px solid var(--line)}.hc-trow:first-child{border-top:0}.hc-trow>input{margin-top:6px}
+    .hc-tgrid{display:grid;grid-template-columns:minmax(0,1fr) 120px auto;gap:6px;align-items:center}
+    .hc-slug{display:inline-block;width:auto;min-width:0;height:26px;padding:0 6px;font-size:13px;margin-top:6px}
+    .hc-h3{font-size:14px;margin:4px 0 8px}.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+    .hc-addr{display:flex;align-items:center;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-top:4px}.hc-addr span{padding:0 8px;color:var(--muted);font-size:13px;background:var(--surface-2);align-self:stretch;display:flex;align-items:center}.hc-addr input{border:0;border-radius:0;margin:0}
+    .hc-bodyhead{display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--muted);margin:4px 0 6px}
+    .hc-seg{display:flex;background:var(--surface-2);border-radius:8px;padding:2px}.hc-seg button{border:0;background:none;font:inherit;font-size:13px;padding:5px 12px;border-radius:6px;color:var(--muted);cursor:pointer}.hc-seg button.on{background:var(--card);color:var(--text);box-shadow:var(--shadow-sm)}
+    .hc-body{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;line-height:1.5;min-height:320px}
+    .hc-preview{border:1px solid var(--line);border-radius:8px;padding:16px 20px;min-height:320px;max-height:60vh;overflow:auto;line-height:1.6}.hc-preview h2{font-size:18px;margin:18px 0 6px}
+    .hc-preview .note,.hc-preview .tip{padding:10px 14px;border-radius:8px;margin:12px 0;background:var(--info-bg);color:var(--info-fg)}.hc-preview .tip{background:var(--ok-bg);color:var(--ok-fg)}
+    .hc-preview code,.hc-cheat code{font-size:12px;background:var(--surface-2);padding:1px 5px;border-radius:4px}
+    .hc-cheat{margin-top:10px;font-size:13px;color:var(--muted)}.hc-cheat summary{cursor:pointer}.hc-cheat ul{margin:6px 0 0;padding-left:18px;line-height:1.8}
+    .hc-fb{font-size:14px;margin:-6px 0 12px;color:var(--muted)}.linkish{background:none;border:0;padding:0;font:inherit;color:var(--link);cursor:pointer;text-decoration:underline}
+    @media (max-width:900px){.grid2{grid-template-columns:1fr}.hc-tgrid{grid-template-columns:1fr 100px}.hc-tgrid .acts{grid-column:1/-1;justify-content:flex-start}}
     /* plans x features grid */
     .matrix{border-collapse:separate;border-spacing:0;min-width:640px}
     .matrix th,.matrix td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:center;vertical-align:middle}
@@ -106,6 +128,6 @@
 <body>
   <div id="root"><p class="muted" style="text-align:center;margin-top:20vh">Loading…</p></div>
   <div id="toast"></div>
-  <script src="/platform.js?v=9"></script>
+  <script src="/platform.js?v=10"></script>
 </body>
 </html>

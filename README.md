@@ -73,8 +73,10 @@ CNAME to `<address>.yourapp.com`. **Check now** verifies the DNS, and the domain
 You can also approve one by hand in the console. A custom domain only works while the account's plan includes Custom domain.
 
 **Help center** at `help.<PLATFORM_DOMAIN>` (e.g. `https://help.workliopro.com`; `help.localhost:<port>` while developing): public
-articles grouped by topic, search, and a contact form whose messages join the console's Contact requests. Articles live in
-`public/help-articles.js`; `{product}` in them becomes the product name. The app's help panel links to it with **Visit Help Center**.
+articles grouped by topic, search, "Was this article helpful?" votes, and a contact form whose messages join the console's Contact
+requests. Edit articles, topics and the home page in the console's **Help Center** tab, which also shows each article's yes/no
+counts and what people said was missing (all saved in `platform.json`). The first run starts from `lib/help-content.js`;
+`{product}` in articles becomes the product name. The app's help panel links to it with **Visit Help Center**.
 `help` is a reserved address, so no account can take it.
 
 **DNS + HTTPS:** point `yourapp.com` and `*.yourapp.com` at the server (the wildcard also covers `help.yourapp.com`). A wildcard certificate covers the subdomains; for custom domains
