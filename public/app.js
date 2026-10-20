@@ -118,8 +118,24 @@ function renderSide(path) {
   $('#side').innerHTML = `<div class="side-nav"><div class="brand">${company.logo ? `<a href="/" data-link class="brand-logo" title="Home"><img src="${esc(company.logo)}" alt="Home"></a>` : ''}<span>${esc(company.name || (company.account && company.account.productName) || 'Fieldwork')}</span></div>` +
     navFor().map(([g, items]) => `<div class="grp">${g}</div>` + items.map(([p, l]) => `<a href="${p}" data-link class="${p === path || (!navPaths.includes(path) && path.startsWith(p + '/')) ? 'on' : ''}">${l}${betaPage(p) ? ' <span class="beta-tag" title="This feature is in beta testing">Beta</span>' : ''}</a>`).join('')).join('') + `</div>${themeSwitch()}${me ? `<div class="side-user"><a href="/profile" data-link class="side-user-name${path === '/profile' ? ' on' : ''}" title="My profile (${esc(me.email)})">${avatarHtml(me, 26)}<span>${esc(me.name)}</span></a><button type="button" data-act="logout">Log out</button></div>` : ''}`;
   $('#side').classList.remove('open');
+  renderBottomNav(path);
 }
-
+// bottom tab bar (phones): the first four main pages this member can open, then More for the full menu
+const bico = (d) => `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const BNAV = [
+  ['/business-overview', 'Home', '<path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/>'],
+  ['/calendar', 'Calendar', '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>'],
+  ['/quotes', 'Quotes', '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>'],
+  ['/jobs', 'Jobs', '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 13h18"/>'],
+  ['/invoices', 'Invoices', '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h3"/>'],
+  ['/staff-schedules', 'Schedules', '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'],
+  ['/clients', 'Clients', '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6.5 6.5 0 0 1 3.5 6"/>'],
+];
+function renderBottomNav(path) {
+  const items = BNAV.filter(([p]) => memberCan(p) && !planLocked(p)).slice(0, 4);
+  $('#bnav').innerHTML = items.map(([p, l, d]) => { const on = p === path || (!navPaths.includes(path) && path.startsWith(p + '/')); return `<a href="${p}" data-link class="${on ? 'on' : ''}"${on ? ' aria-current="page"' : ''}>${bico(d)}<span>${l}</span></a>`; }).join('')
+    + `<button type="button" data-act="toggleSide" aria-label="More menu" aria-expanded="false">${bico('<path d="M4 6h16M4 12h16M4 18h16"/>')}<span>More</span></button>`;
+}
 /* ===== top bar: feature search, help panel, settings (gear) menu ===== */
 const svgIcon = (d, size = 20) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const ICONS = {
@@ -283,7 +299,7 @@ async function render() {
   try { company = await api('GET', '/api/company'); } catch (e) { /* ignore */ }
   updateAppIcon();
   document.documentElement.style.setProperty('--brand', company.brandColor || '#2563eb');
-  $('#side').style.display = portal ? 'none' : ''; $('#menuBtn').style.display = portal ? 'none' : ''; $('#topbar').style.display = portal ? 'none' : '';
+  $('#side').style.display = portal ? 'none' : ''; $('#menuBtn').style.display = portal ? 'none' : ''; $('#bnav').style.display = portal ? 'none' : ''; $('#topbar').style.display = portal ? 'none' : '';
   closeHelp();
   main.className = portal ? 'portal' : '';
   showTheme(portal ? 'light' : getTheme()); // clients always see their portal in light mode
@@ -313,6 +329,9 @@ document.addEventListener('click', (e) => {
 });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
 $('#menuBtn').addEventListener('click', () => $('#side').classList.toggle('open'));
+A.toggleSide = (d, el) => { const open = $('#side').classList.toggle('open'); el.setAttribute('aria-expanded', open); };
+// tapping outside the open menu drawer closes it
+document.addEventListener('click', (e) => { const side = $('#side'); if (side.classList.contains('open') && !e.target.closest('#side, #menuBtn, [data-act="toggleSide"]')) { side.classList.remove('open'); const b = $('#bnav [data-act="toggleSide"]'); if (b) b.setAttribute('aria-expanded', 'false'); } });
 // form submit handlers are async: show any save error (e.g. "Another invoice already uses number …") instead of failing silently
 window.addEventListener('unhandledrejection', (e) => { if (e.reason && e.reason.message) { toast(e.reason.message, true); e.preventDefault(); } });
 A.closeModal = closeModal;
