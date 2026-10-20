@@ -497,3 +497,46 @@ table.domains td{vertical-align:middle}.dom-acts{display:flex;gap:6px;justify-co
 .beta-tag{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:99px;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;line-height:1.5;background:var(--warn-bg);color:var(--warn-fg);vertical-align:middle;white-space:nowrap}.beta-tag[hidden]{display:none}
 .beta-note,.conn-main .beta-note{margin:6px 0 0;padding:6px 10px;border-radius:8px;background:var(--warn-bg);color:var(--warn-fg);font-size:13px}
 .conn-main h2 .beta-tag{margin-left:0}
+/* ===== top bar: feature search, help, settings menu ===== */
+#col{flex:1;min-width:0;display:flex;flex-direction:column}
+#topbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:flex-end;gap:6px;height:60px;padding:0 28px;background:var(--bg);border-bottom:1px solid var(--line)}
+.tb-search{position:relative;display:flex;align-items:center;width:320px;max-width:100%;margin-right:6px}
+.tb-search>svg{position:absolute;left:12px;color:var(--muted);pointer-events:none}
+.tb-search input{padding-left:38px;background-color:var(--card)}
+.tb-search input::-webkit-search-cancel-button{display:none}
+.tb-results{position:absolute;left:0;right:0;top:calc(100% + 6px);background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow-lg);padding:6px;z-index:35;max-height:70vh;overflow:auto}
+.tb-results a{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 12px;border-radius:6px;color:var(--text);text-decoration:none;font-size:14px}
+.tb-results a.act,.tb-results a:hover{background:var(--tint)}
+.tb-none{padding:10px 12px}
+.tb-icon{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border:0;border-radius:10px;background:none;color:var(--muted);cursor:pointer;flex-shrink:0}
+.tb-icon:hover,.tb-gear[open]>summary{background:var(--surface-2);color:var(--text)}
+.tb-icon.on{color:var(--link)}
+.tb-gear .menu-list{min-width:230px}
+.menu-h{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:8px 12px 4px}
+.menu-list a.on{background:var(--tint);color:var(--tint-fg);font-weight:600}
+/* help panel: slides in from the right */
+#helpShade{position:fixed;inset:0;background:rgba(15,31,61,.35);z-index:55}
+#helpPanel{position:fixed;top:0;right:0;width:min(400px,100vw);height:100vh;height:100dvh;z-index:60;display:flex;flex-direction:column;background:var(--card);border-left:1px solid var(--line);box-shadow:var(--shadow-lg);transform:translateX(105%);visibility:hidden;transition:transform .25s ease,visibility 0s .25s}
+#helpPanel.open{transform:none;visibility:visible;transition:transform .25s ease}
+@media (prefers-reduced-motion:reduce){#helpPanel,#helpPanel.open{transition:none}}
+.hp-head{display:flex;align-items:center;gap:4px;padding:14px 12px 14px 20px}
+.hp-head h2{flex:1;margin:0;font-size:17px}
+.hp-head .tb-icon:first-child{margin-left:-10px}
+.hp-body{flex:1;overflow:auto;padding:4px 20px 16px}
+.hp-wide{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:42px}
+.hp-grp{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:24px 0 12px;margin-bottom:6px;border-bottom:1px solid var(--line)}
+.hp-topic{display:flex;flex-direction:column;gap:4px;padding:12px 10px;margin:0 -10px;width:calc(100% + 20px);border:0;border-radius:8px;background:none;color:var(--text);font:inherit;text-align:left;cursor:pointer}
+.hp-topic:hover{background:var(--surface-2)}
+.hp-topic strong{font-size:16px}.hp-topic span{font-size:14px;color:var(--muted);line-height:1.4}
+.hp-lead{color:var(--muted);margin:0 0 14px;line-height:1.5}
+.hp-steps{margin:0;padding-left:20px;line-height:1.5}.hp-steps li{margin-bottom:12px}.hp-steps a{white-space:nowrap;font-weight:600;text-decoration:none}
+.hp-foot{padding:14px 20px 20px;border-top:1px solid var(--line)}
+.hp-link{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--muted);margin-bottom:12px}
+.hp-note{margin:8px 0 0;text-align:center}
+@media (max-width:900px){
+ #topbar{padding:0 10px 0 64px;height:58px}
+ #menuBtn{left:10px;right:auto;top:9px}
+ #main{padding:18px 14px 24px}
+ .tb-search{width:auto;flex:1}
+}
+@media print{#topbar,#helpPanel,#helpShade{display:none!important}}

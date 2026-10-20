@@ -78,9 +78,10 @@ const NAV = [
   ['Operations', [['/business-overview', 'Home'], ['/calendar', 'Job Calendar'], ['/staff-schedules', 'Staff Schedules'], ['/clients', 'Clients'], ['/quotes', 'Quotes'], ['/jobs', 'Jobs'], ['/invoices', 'Invoices']]],
   ['Money', [['/payments', 'Payments'], ['/services', 'Products & Services'], ['/expenses', 'Expenses'], ['/reports', 'Financial Reports'], ['/tax-summary', 'Tax Summary']]],
   ['Records', [['/project-gallery', 'Project Gallery'], ['/notifications', 'Notifications Log']]],
-  ['Settings', [['/settings/company', 'Company Profile'], ['/team', 'Manage Team'], ['/settings/emails', 'Email Templates'], ['/settings', 'App Settings'], ['/settings/connections', 'Account Connections'], ['/settings/billing', 'Account and Billing']]],
 ];
-const navPaths = NAV.flatMap(([, items]) => items.map(([p]) => p));
+// the Settings pages live in the top bar's gear menu, not the sidebar
+const SETTINGS_NAV = [['/settings/company', 'Company Profile'], ['/team', 'Manage Team'], ['/settings/emails', 'Email Templates'], ['/settings', 'App Settings'], ['/settings/connections', 'Account Connections'], ['/settings/billing', 'Account and Billing']];
+const navPaths = [...NAV.flatMap(([, items]) => items.map(([p]) => p)), ...SETTINGS_NAV.map(([p]) => p)];
 const curPath = () => location.pathname.replace(/\/+$/, '') || '/';
 function navigate(url) { history.pushState({}, '', url); window.scrollTo(0, 0); return render(); }
 function refresh() { return render(true); }
@@ -118,6 +119,136 @@ function renderSide(path) {
     navFor().map(([g, items]) => `<div class="grp">${g}</div>` + items.map(([p, l]) => `<a href="${p}" data-link class="${p === path || (!navPaths.includes(path) && path.startsWith(p + '/')) ? 'on' : ''}">${l}${betaPage(p) ? ' <span class="beta-tag" title="This feature is in beta testing">Beta</span>' : ''}</a>`).join('')).join('') + `</div>${themeSwitch()}${me ? `<div class="side-user"><a href="/profile" data-link class="side-user-name${path === '/profile' ? ' on' : ''}" title="My profile (${esc(me.email)})">${avatarHtml(me, 26)}<span>${esc(me.name)}</span></a><button type="button" data-act="logout">Log out</button></div>` : ''}`;
   $('#side').classList.remove('open');
 }
+
+/* ===== top bar: feature search, help panel, settings (gear) menu ===== */
+const svgIcon = (d, size = 20) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const ICONS = {
+  search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+  help: '<circle cx="12" cy="12" r="9"/><path d="M9.6 9.2a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.3-2.4 3.9"/><path d="M12 17.2h.01"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+  close: '<path d="M18 6 6 18M6 6l12 12"/>',
+  back: '<path d="m15 18-6-6 6-6"/>',
+  book: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5V21h16"/>',
+  chat: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+};
+const settingsFor = () => SETTINGS_NAV.filter(([p]) => memberCan(p) && !planLocked(p));
+// pages the search finds besides the menu items, and extra words each page answers to
+const FEATURE_EXTRAS = [['/quotes/new', 'New quote', 'Quotes', 'create estimate'], ['/jobs/new', 'New job', 'Jobs', 'create schedule visit'], ['/invoices/new', 'New invoice', 'Invoices', 'create bill'],
+  ['/clients/import', 'Import clients', 'Clients', 'csv upload spreadsheet'], ['/team/new', 'Add team member', 'Settings', 'invite staff employee user'],
+  ['/payments/settings', 'Payment settings', 'Money', 'card online payouts processing rates disputes'], ['/profile', 'My profile', 'Account', 'password photo name email login']];
+const FEATURE_WORDS = {
+  '/business-overview': 'dashboard overview', '/calendar': 'schedule appointments visits', '/staff-schedules': 'working hours availability', '/clients': 'customers contacts',
+  '/quotes': 'estimates proposals', '/jobs': 'work orders visits', '/invoices': 'billing', '/payments': 'card online stripe', '/services': 'catalog products price list items',
+  '/expenses': 'costs receipts spending', '/reports': 'revenue profit charts', '/tax-summary': 'sales tax', '/project-gallery': 'photos pictures', '/notifications': 'emails texts sms sent messages log',
+  '/settings/company': 'business details logo address phone regional time zone date format', '/team': 'staff employees users access roles technicians', '/settings/emails': 'templates text messages sms reminders',
+  '/settings': 'tax rate number prefixes branding brand color zelle defaults ai', '/settings/connections': 'integrations stripe email sms domain web address', '/settings/billing': 'subscription plan upgrade payment method',
+};
+const featureList = () => {
+  const open = (p) => PAGES[p] && memberCan(p) && !planLocked(p) && !planLocked(p.split('/').slice(0, 2).join('/'));
+  return [...navFor().flatMap(([g, items]) => items.map(([p, l]) => [p, l, g])), ...settingsFor().map(([p, l]) => [p, l, 'Settings']), ...FEATURE_EXTRAS.filter(([p]) => open(p))]
+    .map(([p, l, g, k]) => ({ p, l, g, words: `${l} ${g} ${k || ''} ${FEATURE_WORDS[p] || ''}`.toLowerCase() }));
+};
+function searchFeatures(q) {
+  const terms = q.toLowerCase().split(/\s+/).filter(Boolean); if (!terms.length) return [];
+  const rank = (f) => (f.l.toLowerCase().startsWith(terms[0]) ? 0 : f.l.toLowerCase().includes(terms[0]) ? 1 : 2);
+  return featureList().filter((f) => terms.every((t) => f.words.includes(t))).sort((a, b) => rank(a) - rank(b)).slice(0, 8);
+}
+function buildTopbar() {
+  $('#topbar').innerHTML = `<div class="tb-search" role="search">${svgIcon(ICONS.search, 18)}<input id="featSearch" type="search" placeholder="Press / to search" autocomplete="off" spellcheck="false" aria-label="Search features" role="combobox" aria-autocomplete="list" aria-controls="featResults" aria-expanded="false"><div id="featResults" class="tb-results" role="listbox" hidden></div></div>
+<button type="button" class="tb-icon" data-act="openHelp" title="Help and support" aria-label="Help and support">${svgIcon(ICONS.help)}</button>
+<details class="menu tb-gear"><summary class="tb-icon" title="Settings" aria-label="Settings">${svgIcon(ICONS.gear)}</summary><div class="menu-list" id="gearMenu"></div></details>`;
+  const input = $('#featSearch'); const box = $('#featResults'); let hits = []; let sel = 0;
+  const show = () => {
+    hits = searchFeatures(input.value); sel = 0;
+    box.hidden = !input.value.trim(); input.setAttribute('aria-expanded', !box.hidden);
+    box.innerHTML = hits.length ? hits.map((f, i) => `<a href="${f.p}" data-link role="option" id="fr${i}" class="${i === sel ? 'act' : ''}"><span>${esc(f.l)}</span><span class="muted">${esc(f.g)}</span></a>`).join('')
+      : `<div class="tb-none muted">No features match “${esc(input.value.trim())}”</div>`;
+  };
+  const mark = () => { $$('a', box).forEach((a, i) => a.classList.toggle('act', i === sel)); input.setAttribute('aria-activedescendant', hits.length ? 'fr' + sel : ''); };
+  input.addEventListener('input', show);
+  input.addEventListener('focus', () => { if (input.value.trim()) show(); });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); if (hits.length) { sel = (sel + (e.key === 'ArrowDown' ? 1 : hits.length - 1)) % hits.length; mark(); } }
+    else if (e.key === 'Enter' && hits[sel]) { e.preventDefault(); navigate(hits[sel].p); }
+    else if (e.key === 'Escape') { e.stopPropagation(); if (input.value) { input.value = ''; show(); } else input.blur(); }
+  });
+  document.addEventListener('click', (e) => { if (!e.target.closest('.tb-search')) { box.hidden = true; input.setAttribute('aria-expanded', 'false'); } });
+}
+function renderTopbar(path) {
+  if (!$('#featSearch')) buildTopbar();
+  const input = $('#featSearch'); input.value = ''; input.blur(); $('#featResults').hidden = true; input.setAttribute('aria-expanded', 'false');
+  const items = settingsFor(); const gear = $('.tb-gear'); gear.open = false; gear.hidden = !items.length;
+  const isOn = (p) => p === path || (!navPaths.includes(path) && path.startsWith(p + '/'));
+  $('summary', gear).classList.toggle('on', items.some(([p]) => isOn(p)));
+  $('#gearMenu').innerHTML = '<div class="menu-h">Settings</div>' + items.map(([p, l]) => `<a href="${p}" data-link class="${isOn(p) ? 'on' : ''}">${l}${betaPage(p) ? ' <span class="beta-tag" title="This feature is in beta testing">Beta</span>' : ''}</a>`).join('');
+}
+// short how-to guides shown in the help panel; each step can link to the page it mentions
+const HELP_TOPICS = [
+  { id: 'start', title: 'Get Started', blurb: 'Set up your business details, branding and team so you’re ready to send your first quote.', steps: [
+    ['Add your business name, address, logo and regional settings.', '/settings/company', 'Company Profile'],
+    ['Set your tax rate, number prefixes and branding defaults.', '/settings', 'App Settings'],
+    ['Add your products and services so quotes and invoices fill in prices for you.', '/services', 'Products & Services'],
+    ['Invite your team and choose what each person can access.', '/team', 'Manage Team']] },
+  { id: 'schedule', title: 'Schedule', blurb: 'Plan jobs on the calendar, assign team members and keep track of who’s working when.', steps: [
+    ['Open the job calendar and pick a day to schedule a new job.', '/calendar', 'Job Calendar'],
+    ['Assign team members to a job from the job page.', '/jobs', 'Jobs'],
+    ['Set each team member’s working hours.', '/staff-schedules', 'Staff Schedules']] },
+  { id: 'work', title: 'Work', blurb: 'Every step of your workflow: quotes, jobs, invoices, payments and expenses.', steps: [
+    ['Create a quote and send it to your client to approve.', '/quotes/new', 'New quote'],
+    ['Turn approved work into a scheduled job.', '/jobs', 'Jobs'],
+    ['Create an invoice from a finished job, or start one from scratch.', '/invoices/new', 'New invoice'],
+    ['See the payments your clients have made.', '/payments', 'Payments'],
+    ['Log what you spend on materials and running the business.', '/expenses', 'Expenses']] },
+  { id: 'clients', title: 'Clients', blurb: 'Manage your clients and the messages you send them, including email templates and text messages.', steps: [
+    ['Add clients one at a time or see everyone in one list.', '/clients', 'Clients'],
+    ['Bring in an existing client list from a CSV file.', '/clients/import', 'Import clients'],
+    ['Edit the emails and texts clients receive.', '/settings/emails', 'Email Templates'],
+    ['See every email and text that was sent.', '/notifications', 'Notifications Log']] },
+];
+const helpOpen = () => $('#helpPanel').classList.contains('open');
+function helpView(topicId) {
+  const a = company.account || {}; const product = a.productName || 'Fieldwork';
+  const topic = HELP_TOPICS.find((t) => t.id === topicId);
+  const head = `<div class="hp-head">${topic ? `<button type="button" class="tb-icon" data-act="helpTopic" data-id="" aria-label="Back">${svgIcon(ICONS.back)}</button>` : ''}<h2 id="helpTitle">${topic ? esc(topic.title) : 'Need a hand?'}</h2><button type="button" class="tb-icon" data-act="closeHelp" aria-label="Close help">${svgIcon(ICONS.close)}</button></div>`;
+  let body;
+  if (topic) {
+    const steps = topic.steps.filter(([, p]) => !p || (memberCan(p) && !planLocked(p)));
+    body = `<p class="hp-lead">${esc(topic.blurb)}</p><ol class="hp-steps">${steps.map(([t, p, l]) => `<li>${esc(t)}${p ? ` <a href="${p}" data-link>${esc(l)} →</a>` : ''}</li>`).join('')}</ol>`;
+  } else {
+    const topics = HELP_TOPICS.filter((t) => t.steps.some(([, p]) => memberCan(p) && !planLocked(p)));
+    body = `<button type="button" class="btn alt hp-wide" data-act="focusSearch">${svgIcon(ICONS.search, 18)} Search features</button>
+<div class="hp-grp">Recommendations</div>
+${topics.map((t) => `<button type="button" class="hp-topic" data-act="helpTopic" data-id="${t.id}"><strong>${esc(t.title)}</strong><span>${esc(t.blurb)}</span></button>`).join('')}`;
+  }
+  // details support will ask for, filled into the email
+  const details = [`Business: ${company.name || '—'}`, `Plan: ${(a.plan && a.plan.name) || '—'}`, me ? `Signed in as: ${me.name} <${me.email}> (${role()})` : '', `Page: ${location.href}`].filter(Boolean);
+  const mail = a.contactEmail ? `mailto:${a.contactEmail}?subject=${encodeURIComponent(`${product} support: ${company.name || 'my account'}`)}&body=${encodeURIComponent(`Describe what you need help with:\n\n\n---\n${details.join('\n')}`)}` : '';
+  const foot = `<div class="hp-foot">
+<div class="hp-link">${svgIcon(ICONS.user, 18)}<span>${esc(company.name || product)}${a.plan ? ` · ${esc(a.plan.name)} plan` : ''}</span></div>
+${mail ? `<a class="btn hp-wide" href="${esc(mail)}">${svgIcon(ICONS.chat, 18)} Get Support</a><p class="muted hp-note">Email ${esc(a.contactEmail)}. Your account details are added to the message for you.</p>`
+    : `<p class="muted hp-note">${role() === 'owner' ? `Support contact details aren’t set up yet.` : 'For help with your account, ask your account owner.'}</p>`}
+</div>`;
+  return head + `<div class="hp-body">${body}</div>` + foot;
+}
+function openHelp(topicId) {
+  const p = $('#helpPanel'); p.innerHTML = helpView(topicId);
+  p.classList.add('open'); p.setAttribute('aria-hidden', 'false'); $('#helpShade').hidden = false;
+  const g = $('.tb-gear'); if (g) g.open = false;
+  const f = $('.hp-head .tb-icon', p); if (f) f.focus();
+}
+function closeHelp() {
+  if (!helpOpen()) return;
+  const p = $('#helpPanel'); p.classList.remove('open'); p.setAttribute('aria-hidden', 'true'); $('#helpShade').hidden = true;
+  const b = $('[data-act=openHelp]'); if (b) b.focus();
+}
+$('#helpShade').addEventListener('click', closeHelp);
+// "/" (or Ctrl/⌘ K) jumps to the search box from anywhere except while typing
+document.addEventListener('keydown', (e) => {
+  const typing = e.target.closest('input, textarea, select, [contenteditable]');
+  if (((e.key === '/' && !typing) || (e.key.toLowerCase() === 'k' && (e.metaKey || e.ctrlKey))) && $('#featSearch') && $('#topbar').style.display !== 'none' && !$('#overlay')) { e.preventDefault(); closeHelp(); $('#featSearch').focus(); }
+  if (e.key === 'Escape') closeHelp();
+});
 function updateAppIcon() {
   let link = $('link[rel="icon"]');
   if (!link) { link = document.createElement('link'); link.rel = 'icon'; document.head.appendChild(link); }
@@ -134,12 +265,13 @@ async function render() {
   try { company = await api('GET', '/api/company'); } catch (e) { /* ignore */ }
   updateAppIcon();
   document.documentElement.style.setProperty('--brand', company.brandColor || '#2563eb');
-  $('#side').style.display = portal ? 'none' : ''; $('#menuBtn').style.display = portal ? 'none' : '';
+  $('#side').style.display = portal ? 'none' : ''; $('#menuBtn').style.display = portal ? 'none' : ''; $('#topbar').style.display = portal ? 'none' : '';
+  closeHelp();
   main.className = portal ? 'portal' : '';
   showTheme(portal ? 'light' : getTheme()); // clients always see their portal in light mode
   const page = PAGES[path];
   document.body.classList.toggle('role-technician', isTech()); document.body.classList.toggle('role-manager', role() === 'manager');
-  if (!portal) renderSide(path);
+  if (!portal) { renderSide(path); renderTopbar(path); }
   if (page && !memberCan(path)) { document.title = 'No access'; main.innerHTML = `<div class="card"><h1>You don't have access to this page</h1><p class="muted">Your access level doesn't include this page. Ask the account owner if you need more access.</p><p><a href="/calendar" data-link>Go to the job calendar</a></p></div>`; return; }
   if (page && planLocked(path)) { document.title = page.title; main.innerHTML = `<div class="card upgrade-card"><h1>${esc(page.title)} isn’t in your plan</h1><p class="muted">You’re on the ${esc(company.account.plan.name)} plan. Upgrade to get ${esc(page.title)} and more.</p><p><a href="/settings" data-link class="btn alt">See your plan</a></p></div>`; return; }
   if (!page) { document.title = 'Not found'; main.innerHTML = '<div class="card"><h1>Page not found</h1><p><a href="/business-overview" data-link>Go to dashboard</a></p></div>'; return; }
@@ -167,6 +299,10 @@ A.closeModal = closeModal;
 // ⋯ menus close when you click anywhere else
 document.addEventListener('click', (e) => $$('details.menu[open]').forEach((m) => { if (!m.contains(e.target)) m.open = false; }));
 A.logout = async () => { await api('POST', '/api/auth/logout', {}); location.href = '/login'; };
+A.openHelp = () => openHelp();
+A.closeHelp = closeHelp;
+A.helpTopic = (d) => openHelp(d.id);
+A.focusSearch = () => { closeHelp(); $('#featSearch').focus(); };
 A.setTheme = (d) => { applyTheme(d.t); $$('.theme-sw button').forEach((b) => { b.classList.toggle('on', b.dataset.t === d.t); b.setAttribute('aria-pressed', b.dataset.t === d.t); }); };
 
 /* ===== line items editor (quotes + invoices) ===== */
