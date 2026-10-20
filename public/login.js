@@ -71,8 +71,8 @@ document.addEventListener('click', (e) => {
   try { state = await (await fetch('/api/auth/state')).json(); } catch (e) { state = { company: {} }; }
   const co = state.company || {};
   if (co.brandColor) document.documentElement.style.setProperty('--brand', co.brandColor);
-  document.title = `Log in · ${co.name || 'Fieldwork'}`;
-  $('#brand').innerHTML = `${co.logo ? `<img src="${esc(co.logo)}" alt="">` : ''}<span>${esc(co.name || 'Fieldwork')}</span>`;
+  document.title = `Log in · ${co.name || 'Worklio Pro'}`;
+  $('#brand').innerHTML = `${co.logo ? `<img src="${esc(co.logo)}" alt="">` : ''}<span>${esc(co.name || 'Worklio Pro')}</span>`;
   $('#promoCo').textContent = co.name || 'Your business';
   if (params.get('invite')) {
     const r = await fetch('/api/auth/invite?token=' + encodeURIComponent(params.get('invite'))); const j = await r.json().catch(() => ({}));
