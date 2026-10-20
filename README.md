@@ -72,7 +72,12 @@ before Connect existed keep working until they switch or remove them.
 CNAME to `<address>.yourapp.com`. **Check now** verifies the DNS, and the domain starts working and becomes the address used in links.
 You can also approve one by hand in the console. A custom domain only works while the account's plan includes Custom domain.
 
-**DNS + HTTPS:** point `yourapp.com` and `*.yourapp.com` at the server. A wildcard certificate covers the subdomains; for custom domains
+**Help center** at `help.<PLATFORM_DOMAIN>` (e.g. `https://help.workliopro.com`; `help.localhost:<port>` while developing): public
+articles grouped by topic, search, and a contact form whose messages join the console's Contact requests. Articles live in
+`public/help-articles.js`; `{product}` in them becomes the product name. The app's help panel links to it with **Visit Help Center**.
+`help` is a reserved address, so no account can take it.
+
+**DNS + HTTPS:** point `yourapp.com` and `*.yourapp.com` at the server (the wildcard also covers `help.yourapp.com`). A wildcard certificate covers the subdomains; for custom domains
 use a proxy that gets certificates on demand. Caddy example:
 
     {

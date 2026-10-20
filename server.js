@@ -570,7 +570,7 @@ function accountInfo() {
     slug: t.slug, plan: { id: plan.id, name: plan.name }, features: plan.features, lockedPages: tenancy.lockedPages(t), betaPages: tenancy.betaPages(), maxUsers: plan.maxUsers || 0,
     url: tenancy.tenantUrl(t), subdomainUrl: tenancy.subdomainUrl(t), rootDomain: tenancy.ROOT_DOMAIN, serverIp: process.env.SERVER_IP || '',
     domains: (t.domains || []).map(({ host, verified, primary, addedAt, verifiedAt }) => ({ host, verified: !!verified, primary: !!primary, addedAt, verifiedAt: verifiedAt || null })),
-    productName: tenancy.platform().settings.productName, contactEmail: tenancy.platform().settings.contactEmail, managed: !tenancy.isDefault(),
+    productName: tenancy.platform().settings.productName, contactEmail: tenancy.platform().settings.contactEmail, helpUrl: tenancy.helpUrl(), managed: !tenancy.isDefault(),
     featureList: tenancy.FEATURES.map(({ key, label, desc }) => ({ key, label, desc, beta: tenancy.isBeta(key), included: plan.features.includes(key) })), alwaysIncluded: tenancy.ALWAYS_INCLUDED,
   };
 }
@@ -1819,6 +1819,7 @@ const tenantStats = (t) => tenancy.run(t, () => {
     logins: db.users.map((u) => ({ id: u.id, name: u.name, email: u.email, role: u.role, active: !!u.passwordHash && !staffBlocked(u) })), clients: db.clients.length, jobs: db.jobs.length, invoices: db.invoices.length,
     lastLoginAt: db.users.map((u) => u.lastLoginAt || '').sort().pop() || null };
 });
+const helpApp = require('./lib/help')({ sendEmail, normEmail });
 const platformApp = require('./lib/platform')({
   hashPassword, checkPassword, sha, normEmail, cookies, tooMany, recordFailure, clearFailures: (k) => failures.delete(k),
   createOwner, ownerLink, tenantStats, endSupportSessions, sendEmail, sendSms, emailProvider: serverEmailProvider, applyStripeSession, syncStripeAccount, resetDemo, setCompanyEmail: (e) => { if (!db.company.email) { db.company.email = e; save(); } },
@@ -1830,6 +1831,7 @@ function dispatch(req, res) {
   // pages and API replies depend on who is logged in: hosting caches (e.g. SiteGround's dynamic cache) must never store or share them
   if (!/\.(js|css|png|jpe?g|gif|webp|svg|ico|woff2?)$/i.test(p)) res.setHeader('Cache-Control', 'private, no-store');
   else if (/\.(js|css)$/i.test(p)) res.setHeader('Cache-Control', 'no-cache'); // the app's code: always check for a newer version, so a deploy shows up right away
+  if (tenancy.isHelpHost(req.headers.host)) return helpApp(req, res);
   if (r.kind === 'platform' || p === '/api/site/domain-allowed' || (r.dev && PLATFORM_PATHS.test(p))) return platformApp(req, res);
   app(req, res);
 }

@@ -186,22 +186,22 @@ function renderTopbar(path) {
 }
 // short how-to guides shown in the help panel; each step can link to the page it mentions
 const HELP_TOPICS = [
-  { id: 'start', title: 'Get Started', blurb: 'Set up your business details, branding and team so you’re ready to send your first quote.', steps: [
+  { id: 'start', hc: 'get-started', title: 'Get Started', blurb: 'Set up your business details, branding and team so you’re ready to send your first quote.', steps: [
     ['Add your business name, address, logo and regional settings.', '/settings/company', 'Company Profile'],
     ['Set your tax rate, number prefixes and branding defaults.', '/settings', 'App Settings'],
     ['Add your products and services so quotes and invoices fill in prices for you.', '/services', 'Products & Services'],
     ['Invite your team and choose what each person can access.', '/team', 'Manage Team']] },
-  { id: 'schedule', title: 'Schedule', blurb: 'Plan jobs on the calendar, assign team members and keep track of who’s working when.', steps: [
+  { id: 'schedule', hc: 'schedule', title: 'Schedule', blurb: 'Plan jobs on the calendar, assign team members and keep track of who’s working when.', steps: [
     ['Open the job calendar and pick a day to schedule a new job.', '/calendar', 'Job Calendar'],
     ['Assign team members to a job from the job page.', '/jobs', 'Jobs'],
     ['Set each team member’s working hours.', '/staff-schedules', 'Staff Schedules']] },
-  { id: 'work', title: 'Work', blurb: 'Every step of your workflow: quotes, jobs, invoices, payments and expenses.', steps: [
+  { id: 'work', hc: 'work', title: 'Work', blurb: 'Every step of your workflow: quotes, jobs, invoices, payments and expenses.', steps: [
     ['Create a quote and send it to your client to approve.', '/quotes/new', 'New quote'],
     ['Turn approved work into a scheduled job.', '/jobs', 'Jobs'],
     ['Create an invoice from a finished job, or start one from scratch.', '/invoices/new', 'New invoice'],
     ['See the payments your clients have made.', '/payments', 'Payments'],
     ['Log what you spend on materials and running the business.', '/expenses', 'Expenses']] },
-  { id: 'clients', title: 'Clients', blurb: 'Manage your clients and the messages you send them, including email templates and text messages.', steps: [
+  { id: 'clients', hc: 'clients', title: 'Clients', blurb: 'Manage your clients and the messages you send them, including email templates and text messages.', steps: [
     ['Add clients one at a time or see everyone in one list.', '/clients', 'Clients'],
     ['Bring in an existing client list from a CSV file.', '/clients/import', 'Import clients'],
     ['Edit the emails and texts clients receive.', '/settings/emails', 'Email Templates'],
@@ -215,10 +215,10 @@ function helpView(topicId) {
   let body;
   if (topic) {
     const steps = topic.steps.filter(([, p]) => !p || (memberCan(p) && !planLocked(p)));
-    body = `<p class="hp-lead">${esc(topic.blurb)}</p><ol class="hp-steps">${steps.map(([t, p, l]) => `<li>${esc(t)}${p ? ` <a href="${p}" data-link>${esc(l)} →</a>` : ''}</li>`).join('')}</ol>`;
+    body = `<p class="hp-lead">${esc(topic.blurb)}</p><ol class="hp-steps">${steps.map(([t, p, l]) => `<li>${esc(t)}${p ? ` <a href="${p}" data-link>${esc(l)} →</a>` : ''}</li>`).join('')}</ol>${a.helpUrl ? `<a class="btn alt hp-wide" href="${esc(a.helpUrl)}/topics/${topic.hc}" target="_blank" rel="noopener">${svgIcon(ICONS.book, 18)} More in the Help Center</a>` : ''}`;
   } else {
     const topics = HELP_TOPICS.filter((t) => t.steps.some(([, p]) => memberCan(p) && !planLocked(p)));
-    body = `<button type="button" class="btn alt hp-wide" data-act="focusSearch">${svgIcon(ICONS.search, 18)} Search features</button>
+    body = `${a.helpUrl ? `<a class="btn alt hp-wide" href="${esc(a.helpUrl)}" target="_blank" rel="noopener">${svgIcon(ICONS.help, 18)} Visit Help Center</a>` : `<button type="button" class="btn alt hp-wide" data-act="focusSearch">${svgIcon(ICONS.search, 18)} Search features</button>`}
 <div class="hp-grp">Recommendations</div>
 ${topics.map((t) => `<button type="button" class="hp-topic" data-act="helpTopic" data-id="${t.id}"><strong>${esc(t.title)}</strong><span>${esc(t.blurb)}</span></button>`).join('')}`;
   }
