@@ -588,11 +588,12 @@ ${full ? `<div class="card"><h2>Payments and messages</h2><p class="muted" style
 /* ===== App Settings: plan, web address, card payments ===== */
 function planCard(a) {
   if (!a) return '';
+  const beta = (f) => (f.beta ? ' <span class="beta-tag" title="This feature is in beta testing">Beta</span>' : '');
   const inc = a.featureList.filter((f) => f.included); const not = a.featureList.filter((f) => !f.included);
   const contact = a.contactEmail ? `<a href="mailto:${esc(a.contactEmail)}?subject=${encodeURIComponent('Plan change for ' + (company.name || a.slug))}">${esc(a.contactEmail)}</a>` : 'us';
   return `<div class="card plan-card"><div class="plan-head"><div><h2>Your plan: ${esc(a.plan.name)}</h2><p class="muted" style="margin:0">${a.maxUsers ? `Up to ${a.maxUsers} login${a.maxUsers === 1 ? '' : 's'}` : 'Unlimited logins'} · ${inc.length + a.alwaysIncluded.length} features</p></div>${not.length ? `<p class="muted" style="margin:0">To change your plan, contact ${contact}.</p>` : ''}</div>
-<div class="plan-cols"><div><h3>Included</h3><ul class="feat-list">${a.alwaysIncluded.map((l) => `<li class="on">${esc(l)}</li>`).join('')}${inc.map((f) => `<li class="on" title="${esc(f.desc)}">${esc(f.label)}</li>`).join('')}</ul></div>
-${not.length ? `<div><h3>Available on other plans</h3><ul class="feat-list">${not.map((f) => `<li title="${esc(f.desc)}">${esc(f.label)}</li>`).join('')}</ul></div>` : ''}</div></div>`;
+<div class="plan-cols"><div><h3>Included</h3><ul class="feat-list">${a.alwaysIncluded.map((l) => `<li class="on">${esc(l)}</li>`).join('')}${inc.map((f) => `<li class="on" title="${esc(f.desc)}"><span>${esc(f.label)}${beta(f)}</span></li>`).join('')}</ul></div>
+${not.length ? `<div><h3>Available on other plans</h3><ul class="feat-list">${not.map((f) => `<li title="${esc(f.desc)}"><span>${esc(f.label)}${beta(f)}</span></li>`).join('')}</ul></div>` : ''}</div></div>`;
 }
 function webAddressCard(a) {
   if (!a) return '';

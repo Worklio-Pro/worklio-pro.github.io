@@ -558,11 +558,11 @@ const COLLECTIONS = ['clients', 'services', 'staff', 'quotes', 'jobs', 'invoices
 function accountInfo() {
   const t = tenancy.current(); const plan = tenancy.planOf(t);
   return {
-    slug: t.slug, plan: { id: plan.id, name: plan.name }, features: plan.features, lockedPages: tenancy.lockedPages(t), maxUsers: plan.maxUsers || 0,
+    slug: t.slug, plan: { id: plan.id, name: plan.name }, features: plan.features, lockedPages: tenancy.lockedPages(t), betaPages: tenancy.betaPages(), maxUsers: plan.maxUsers || 0,
     url: tenancy.tenantUrl(t), subdomainUrl: tenancy.subdomainUrl(t), rootDomain: tenancy.ROOT_DOMAIN, serverIp: process.env.SERVER_IP || '',
     domains: (t.domains || []).map(({ host, verified, primary, addedAt, verifiedAt }) => ({ host, verified: !!verified, primary: !!primary, addedAt, verifiedAt: verifiedAt || null })),
     productName: tenancy.platform().settings.productName, contactEmail: tenancy.platform().settings.contactEmail, managed: !tenancy.isDefault(),
-    featureList: tenancy.FEATURES.map(({ key, label, desc }) => ({ key, label, desc, included: plan.features.includes(key) })), alwaysIncluded: tenancy.ALWAYS_INCLUDED,
+    featureList: tenancy.FEATURES.map(({ key, label, desc }) => ({ key, label, desc, beta: tenancy.isBeta(key), included: plan.features.includes(key) })), alwaysIncluded: tenancy.ALWAYS_INCLUDED,
   };
 }
 app.get('/api/company', (req, res) => res.json({ ...db.company, account: accountInfo() }));

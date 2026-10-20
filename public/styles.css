@@ -493,3 +493,5 @@ table.domains td{vertical-align:middle}.dom-acts{display:flex;gap:6px;justify-co
 .bill-cardrow{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 12px;margin:4px 0 8px;border:1px solid var(--line);border-radius:10px;font-size:14px}
 .bill-period{display:flex;width:max-content;padding:3px;margin:0 0 12px;border:1px solid var(--line);border-radius:99px}
 .bill-period button{border:0;background:none;color:var(--text);font:inherit;font-size:14px;font-weight:600;padding:6px 16px;border-radius:99px;cursor:pointer}.bill-period button.on{background:var(--brand);color:#fff}
+/* "Beta" tag on features the platform owner marks as in beta testing */
+.beta-tag{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:99px;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;line-height:1.5;background:var(--warn-bg);color:var(--warn-fg);vertical-align:middle;white-space:nowrap}.beta-tag[hidden]{display:none}

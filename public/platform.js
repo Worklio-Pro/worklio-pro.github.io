@@ -22,7 +22,8 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal
 const fmtDate = (s) => (s ? new Date(String(s).slice(0, 10) + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—');
 const slugify = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32).replace(/-+$/, '');
 
-let D = null; let tab = 'accounts'; let draftPlans = null; // plans being edited (saved with the Save button)
+let D = null; let tab = 'accounts'; let draftPlans = null; let draftBeta = null; // plans and Beta features being edited (saved with the Save button)
+const plansDirty = () => JSON.stringify(draftPlans) !== JSON.stringify(D.plans) || JSON.stringify(draftBeta) !== JSON.stringify(D.betaFeatures);
 const host = (u) => String(u || '').replace(/^https?:\/\//, '');
 
 /* ===== login / first-run setup ===== */
@@ -48,7 +49,7 @@ const TAB_ICONS = { // bottom bar icons (phones)
   plans: ico('<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14.5 17.5l2 2 4-4"/>'),
   settings: ico('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>'),
 };
-async function load() { D = await api('GET', '/api/platform/overview'); if (!draftPlans) draftPlans = structuredClone(D.plans); }
+async function load() { D = await api('GET', '/api/platform/overview'); if (!draftPlans) { draftPlans = structuredClone(D.plans); draftBeta = [...D.betaFeatures]; } }
 function render() {
   const tabs = [['accounts', 'Accounts'], ['plans', 'Plans & features'], ['settings', 'Settings']];
   document.title = `${tabs.find((t) => t[0] === tab)[1]} · ${D.settings.productName} platform`;
@@ -173,12 +174,15 @@ const planFields = (p, i) => `<label>Name<input class="pn" data-i="${i}" data-k=
 <label>Label when there’s no price<input data-i="${i}" data-k="priceLabel" value="${esc(p.priceLabel || '')}" maxlength="40" placeholder="Free or Contact us" aria-label="Price label for ${esc(p.name)}"></label>
 <label>Team logins (0 = unlimited)<input type="number" inputmode="numeric" min="0" data-i="${i}" data-k="maxUsers" value="${p.maxUsers || 0}" aria-label="Team logins for ${esc(p.name)}"></label><label>Short description<input data-i="${i}" data-k="description" value="${esc(p.description)}" maxlength="200" aria-label="Description for ${esc(p.name)}"></label>
 <label class="switchline" style="font-size:13px"><input type="checkbox" data-hide="${i}" ${p.hidden ? 'checked' : ''}> Hidden from public</label>`;
+// a feature ticked as Beta shows a "Beta" tag to businesses (pricing page, checkout, their plan and menu)
+const betaTag = (f) => `<span class="beta-tag" data-beta-tag="${f.key}" ${draftBeta.includes(f.key) ? '' : 'hidden'}>Beta</span>`;
+const betaTick = (f) => `<label class="beta-tick" title="Show a Beta tag on this feature to businesses"><input type="checkbox" data-beta="${f.key}" ${draftBeta.includes(f.key) ? 'checked' : ''} aria-label="${esc(f.label)} is in beta"> Beta</label>`;
 function plansView(main) {
   const P = draftPlans; const groups = [...new Set(D.features.map((f) => f.group))];
   const used = (id) => D.accounts.filter((a) => a.planId === id).length;
   const usedText = (p) => `${used(p.id)} account${used(p.id) === 1 ? '' : 's'}`;
   const rmBtn = (p, i) => (P.length > 1 ? `<button type="button" class="rm-plan" data-act="rmPlan" data-i="${i}" ${used(p.id) ? `disabled title="Move its accounts to another plan first"` : ''}>Remove plan</button>` : '');
-  const dirty = JSON.stringify(P) !== JSON.stringify(D.plans);
+  const dirty = plansDirty();
   planIx = Math.min(planIx, P.length - 1);
   const head = `<div class="head"><div><h1>Plans & features</h1><p class="sub" style="margin:4px 0 0">Tick what each plan includes. Accounts get changes as soon as you save.</p></div><button class="btn alt" data-act="addPlan">Add plan</button></div>`;
   const savebar = `<div class="savebar"><span class="muted">${dirty ? 'Unsaved changes' : 'All changes saved'}</span>${dirty ? '<button type="button" class="btn alt" data-act="discardPlans">Discard</button>' : ''}<button type="button" class="btn" data-act="savePlans" ${dirty ? '' : 'disabled'}>Save plans</button></div>`;
@@ -188,7 +192,7 @@ function plansView(main) {
 <div class="card pl-card"><details class="pl-det" ${detailsOpen ? 'open' : ''}><summary><span><strong>Plan details</strong><span class="muted">${esc(saveText(p))}</span></span><span class="muted">${usedText(p)}</span></summary><div class="pl-form">${planFields(p, i)}${rmBtn(p, i)}</div></details>
 <div class="pl-feat"><div class="pl-h"><span>Features</span><span class="muted" data-count="${i}">${p.features.length} of ${D.features.length}</span></div>
 <p class="pl-always"><strong>Always included:</strong> ${D.alwaysIncluded.map(esc).join(', ')}</p>
-${groups.map((g) => `<div class="pl-grp">${esc(g)}</div>` + D.features.filter((f) => f.group === g).map((f) => `<label class="pl-row"><span><span class="mx-l">${esc(f.label)}</span><span class="mx-d">${esc(f.desc)}</span></span><input type="checkbox" data-i="${i}" data-f="${f.key}" ${p.features.includes(f.key) ? 'checked' : ''}></label>`).join('')).join('')}</div>
+${groups.map((g) => `<div class="pl-grp">${esc(g)}</div>` + D.features.filter((f) => f.group === g).map((f) => `<div class="pl-item"><label class="pl-row"><span><span class="mx-l">${esc(f.label)}${betaTag(f)}</span><span class="mx-d">${esc(f.desc)}</span></span><input type="checkbox" data-i="${i}" data-f="${f.key}" ${p.features.includes(f.key) ? 'checked' : ''}></label>${betaTick(f)}</div>`).join('')).join('')}</div>
 ${savebar}</div>`;
     $('.pl-det', main).addEventListener('toggle', (e) => { detailsOpen = e.target.open; });
   } else {
@@ -196,7 +200,7 @@ ${savebar}</div>`;
 ${P.map((p, i) => `<th>${planFields(p, i)}<div class="muted" style="font-size:12px">${usedText(p)}</div>${rmBtn(p, i)}</th>`).join('')}</tr></thead>
 <tbody><tr class="grp"><td>Always included</td>${P.map(() => '<td></td>').join('')}</tr>
 ${D.alwaysIncluded.map((l) => `<tr><td><div class="mx-l">${esc(l)}</div></td>${P.map(() => '<td class="always" aria-label="Included">✓</td>').join('')}</tr>`).join('')}
-${groups.map((g) => `<tr class="grp"><td>${esc(g)}</td>${P.map(() => '<td></td>').join('')}</tr>` + D.features.filter((f) => f.group === g).map((f) => `<tr><td><div class="mx-l">${esc(f.label)}</div><div class="mx-d">${esc(f.desc)}</div></td>
+${groups.map((g) => `<tr class="grp"><td>${esc(g)}</td>${P.map(() => '<td></td>').join('')}</tr>` + D.features.filter((f) => f.group === g).map((f) => `<tr><td><div class="mx-l">${esc(f.label)}${betaTag(f)}</div><div class="mx-d">${esc(f.desc)}</div>${betaTick(f)}</td>
 ${P.map((p, i) => `<td><input type="checkbox" data-i="${i}" data-f="${f.key}" ${p.features.includes(f.key) ? 'checked' : ''} aria-label="${esc(f.label)} in ${esc(p.name)}"></td>`).join('')}</tr>`).join('')).join('')}
 <tr class="count"><td>Features ticked</td>${P.map((p, i) => `<td data-count="${i}">${p.features.length} of ${D.features.length}</td>`).join('')}</tr></tbody></table></div>
 ${savebar}</div>`;
@@ -214,9 +218,13 @@ ${savebar}</div>`;
     const p = P[c.dataset.i]; p.features = c.checked ? [...new Set([...p.features, c.dataset.f])] : p.features.filter((k) => k !== c.dataset.f);
     $(`[data-count="${c.dataset.i}"]`, main).textContent = `${p.features.length} of ${D.features.length}`; markDirty(main);
   }));
+  $$('input[data-beta]', main).forEach((c) => c.addEventListener('change', () => {
+    const k = c.dataset.beta; const on = new Set(draftBeta); if (c.checked) on.add(k); else on.delete(k);
+    draftBeta = D.features.map((f) => f.key).filter((x) => on.has(x)); $(`[data-beta-tag="${k}"]`, main).hidden = !c.checked; markDirty(main);
+  }));
 }
 function markDirty(main) {
-  const dirty = JSON.stringify(draftPlans) !== JSON.stringify(D.plans); const bar = $('.savebar', main);
+  const dirty = plansDirty(); const bar = $('.savebar', main);
   $('.muted', bar).textContent = dirty ? 'Unsaved changes' : 'All changes saved'; $('[data-act=savePlans]', bar).disabled = !dirty;
   if (dirty && !$('[data-act=discardPlans]', bar)) $('[data-act=savePlans]', bar).insertAdjacentHTML('beforebegin', '<button type="button" class="btn alt" data-act="discardPlans">Discard</button>');
 }
@@ -227,11 +235,11 @@ A.addPlan = () => {
 };
 A.pickPlan = (d) => { planIx = Number(d.i); render(); };
 A.rmPlan = (d) => { const p = draftPlans[d.i]; if (!confirm(`Remove the ${p.name} plan?`)) return; draftPlans.splice(Number(d.i), 1); render(); };
-A.discardPlans = () => { draftPlans = structuredClone(D.plans); render(); };
+A.discardPlans = () => { draftPlans = structuredClone(D.plans); draftBeta = [...D.betaFeatures]; render(); };
 A.savePlans = async () => {
-  try { await api('PUT', '/api/platform/plans', { plans: draftPlans }); await load(); draftPlans = structuredClone(D.plans); toast('Plans saved'); render(); } catch (x) { toast(x.message, true); }
+  try { await api('PUT', '/api/platform/plans', { plans: draftPlans, betaFeatures: draftBeta }); await load(); draftPlans = structuredClone(D.plans); draftBeta = [...D.betaFeatures]; toast('Plans saved'); render(); } catch (x) { toast(x.message, true); }
 };
-window.addEventListener('beforeunload', (e) => { if (D && draftPlans && JSON.stringify(draftPlans) !== JSON.stringify(D.plans)) e.preventDefault(); });
+window.addEventListener('beforeunload', (e) => { if (D && draftPlans && plansDirty()) e.preventDefault(); });
 
 /* ===== settings ===== */
 function settingsView(main) {
@@ -321,7 +329,7 @@ ${!I.email && !I.sms ? '<p class="muted" style="font-size:14px;margin:0">Connect
 
 /* ===== actions ===== */
 A.closeModal = closeModal;
-A.logout = async () => { await api('POST', '/api/platform/logout', {}); D = null; draftPlans = null; boot(); };
+A.logout = async () => { await api('POST', '/api/platform/logout', {}); D = null; draftPlans = null; draftBeta = null; boot(); };
 document.addEventListener('click', (e) => {
   const el = e.target.closest('[data-act]'); if (!el || el.disabled) return;
   const fn = A[el.dataset.act]; if (!fn) return; e.preventDefault();

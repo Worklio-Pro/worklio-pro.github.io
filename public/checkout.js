@@ -20,7 +20,7 @@ function render() {
     return;
   }
   const p = C.plan; const c = p.charge; const label = Object.fromEntries(C.features.map((f) => [f.key, f.label]));
-  const feats = C.features.filter((f) => p.features.includes(f.key)).map((f) => label[f.key]);
+  const feats = C.features.filter((f) => p.features.includes(f.key)).map((f) => esc(label[f.key]) + (f.beta ? ' <span class="beta-tag" title="In beta testing">Beta</span>' : ''));
   main.innerHTML = `<div class="co"><section>
 <h1>Complete your order</h1><p class="lead">Your account is created. Pay for your plan to start using it.</p>
 <div class="card pad"><h2>Your account</h2><dl class="acct"><dt>Business</dt><dd>${esc(C.company)}</dd><dt>Web address</dt><dd>${esc(C.address)}</dd><dt>Owner login</dt><dd>${esc(C.email)}</dd></dl></div>
@@ -38,7 +38,7 @@ ${C.plans.map((x) => `<label class="opt"><input type="radio" name="plan" value="
 <button class="btn pay" id="pay"><span class="lock">${C.live ? '🔒 ' : ''}Pay ${money(c.cents)} and start</span></button>
 ${C.live ? `<p class="fine">You’ll enter your card on Stripe’s secure checkout page. Your plan renews every ${per(c)} at ${money(c.cents)} until you cancel.${C.testMode ? '<br><strong>Test mode:</strong> use card 4242 4242 4242 4242.' : ''}</p>`
     : '<div class="msg warn" style="margin:12px 0 0;font-size:13px">Demo checkout: card payments aren’t set up yet, so no card is charged. Your account starts right away.</div>'}
-<details><summary>What’s included in ${esc(p.name)}</summary><ul>${feats.map((f) => `<li>${esc(f)}</li>`).join('')}${C.alwaysIncluded.map((f) => `<li>${esc(f)}</li>`).join('')}</ul></details>
+<details><summary>What’s included in ${esc(p.name)}</summary><ul>${feats.map((f) => `<li>${f}</li>`).join('')}${C.alwaysIncluded.map((f) => `<li>${esc(f)}</li>`).join('')}</ul></details>
 ${C.contactEmail ? `<p class="fine">Questions? <a href="mailto:${esc(C.contactEmail)}">${esc(C.contactEmail)}</a></p>` : ''}</aside></div>`;
 
   const pick = async (body) => { try { C = await api('POST', `/api/site/checkout/${token}/plan`, { planId: C.plan.id, interval: C.interval, ...body }); err = ''; render(); } catch (e) { err = e.message; render(); } };
