@@ -12,6 +12,7 @@
     body{background:var(--card)}
     .auth{min-height:100vh;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:center;gap:56px;max-width:1040px;margin:0 auto;padding:40px 24px}
     .auth-form{width:100%;max-width:360px;justify-self:end}
+    .auth-legal{margin:28px 0 0;text-align:center;font-size:13px;color:var(--muted)}.auth-legal a{color:var(--muted)}
     .auth-brand{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:36px;font-size:24px;font-weight:800;letter-spacing:.02em;color:var(--text);min-height:44px}
     .auth-brand img{height:44px;max-width:140px;object-fit:contain}
     .auth h1{font-size:20px;margin:0 0 6px;text-align:center}
@@ -47,6 +48,7 @@
     <section class="auth-form">
       <div class="auth-brand" id="brand"></div>
       <div id="panel" aria-live="polite"><p class="muted" style="text-align:center">Loading…</p></div>
+      <p class="auth-legal"><a href="/terms">Terms of Service</a> · <a href="/privacy">Privacy Policy</a></p>
     </section>
     <aside class="auth-side">
       <div class="promo">

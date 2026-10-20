@@ -225,7 +225,7 @@ ${topics.map((t) => `<button type="button" class="hp-topic" data-act="helpTopic"
   const foot = `<div class="hp-foot">
 <div class="hp-link">${svgIcon(ICONS.user, 18)}<span>${esc(company.name || product)}${a.plan ? ` · ${esc(a.plan.name)} plan` : ''}</span></div>
 ${memberCan('/settings/support-access') ? `<a class="hp-link hp-nav" href="/settings/support-access" data-link>${svgIcon(ICONS.shield, 18)}<span>Support Access</span></a>` : ''}
-<button type="button" class="btn hp-wide" data-act="supportForm">${svgIcon(ICONS.chat, 18)} Get Support</button><p class="muted hp-note">Send us a message and we’ll reply by email.</p>
+<button type="button" class="btn hp-wide" data-act="supportForm">${svgIcon(ICONS.chat, 18)} Get Support</button><p class="muted hp-note">Send us a message and we’ll reply by email.</p><p class="hp-legal"><a href="/terms" target="_blank" rel="noopener">Terms of Service</a> · <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a></p>
 </div>`;
   return head + `<div class="hp-body">${body}</div>` + foot;
 }

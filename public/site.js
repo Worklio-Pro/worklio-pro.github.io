@@ -31,7 +31,7 @@ ${S.allowSignups ? `<a class="btn ${i === mid ? '' : 'alt'}" href="#signup" data
   };
   drawPlans();
   document.addEventListener('click', (e) => { const b = e.target.closest('[data-period]'); if (!b) return; period = b.dataset.period; drawPlans(); const sel = $('#sf [name=interval]'); if (sel) { sel.value = period; sel.dispatchEvent(new Event('change')); } });
-  $('#foot').innerHTML = 'Questions? <a href="#contact" data-contact="">Contact us</a>';
+  $('#foot').innerHTML = 'Questions? <a href="#contact" data-contact="">Contact us</a> · <a href="/terms">Terms of Service</a> · <a href="/privacy">Privacy Policy</a>';
   document.addEventListener('click', (e) => { const b = e.target.closest('[data-contact]'); if (b) { e.preventDefault(); openContact(S, b.dataset.contact); } });
   if (!S.allowSignups) return;
   $('#topCta').hidden = false;
@@ -44,7 +44,7 @@ ${both ? `<label>Billing<select name="interval"><option value="month" ${period =
 <label>Your name<input name="name" required maxlength="100" autocomplete="name"></label>
 <label>Email<input name="email" type="email" required autocomplete="email"></label>
 <label>Password (8+ characters)<input name="password" type="password" required minlength="8" autocomplete="new-password"></label>
-<button class="btn go">Create account</button><p class="muted" id="payNote" style="font-size:13px;margin:8px 0 0;text-align:center"></p></form></div>`;
+<p class="muted" style="font-size:13px;margin:4px 0 10px">By creating an account, you agree to the <a href="/terms" target="_blank" rel="noopener">Terms of Service</a> and <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</p><button class="btn go">Create account</button><p class="muted" id="payNote" style="font-size:13px;margin:8px 0 0;text-align:center"></p></form></div>`;
   const f = $('#sf'); const slug = $('[name=slug]', f); const hint = $('#hint'); let t;
   const check = () => { clearTimeout(t); const v = slug.value.trim().toLowerCase(); if (!v) { hint.textContent = ''; return; }
     t = setTimeout(async () => { const r = await (await fetch('/api/site/slug-check?slug=' + encodeURIComponent(v))).json(); hint.className = 'hint ' + (r.ok ? 'good' : 'bad'); hint.textContent = r.ok ? `${v}.${root} is available` : r.error; }, 250); };

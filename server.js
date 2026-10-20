@@ -1820,6 +1820,7 @@ const tenantStats = (t) => tenancy.run(t, () => {
     lastLoginAt: db.users.map((u) => u.lastLoginAt || '').sort().pop() || null };
 });
 const helpApp = require('./lib/help')({ sendEmail, normEmail });
+const legal = require('./lib/legal');
 const platformApp = require('./lib/platform')({
   hashPassword, checkPassword, sha, normEmail, cookies, tooMany, recordFailure, clearFailures: (k) => failures.delete(k),
   createOwner, ownerLink, tenantStats, endSupportSessions, sendEmail, sendSms, emailProvider: serverEmailProvider, applyStripeSession, syncStripeAccount, resetDemo, setCompanyEmail: (e) => { if (!db.company.email) { db.company.email = e; save(); } },
@@ -1831,6 +1832,7 @@ function dispatch(req, res) {
   // pages and API replies depend on who is logged in: hosting caches (e.g. SiteGround's dynamic cache) must never store or share them
   if (!/\.(js|css|png|jpe?g|gif|webp|svg|ico|woff2?)$/i.test(p)) res.setHeader('Cache-Control', 'private, no-store');
   else if (/\.(js|css)$/i.test(p)) res.setHeader('Cache-Control', 'no-cache'); // the app's code: always check for a newer version, so a deploy shows up right away
+  if (legal.kindOf(p)) { res.setHeader('Content-Type', 'text/html; charset=utf-8'); return res.end(legal.page(legal.kindOf(p))); } // Terms + Privacy: the same on every address
   if (tenancy.isHelpHost(req.headers.host)) return helpApp(req, res);
   if (r.kind === 'platform' || p === '/api/site/domain-allowed' || (r.dev && PLATFORM_PATHS.test(p))) return platformApp(req, res);
   app(req, res);

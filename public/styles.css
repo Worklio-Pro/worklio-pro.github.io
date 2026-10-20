@@ -553,3 +553,4 @@ table.domains td{vertical-align:middle}.dom-acts{display:flex;gap:6px;justify-co
 #supportBar span{flex:1}#supportBar[hidden]{display:none}
 a.hp-nav{color:var(--text);text-decoration:none;padding:6px 8px;margin:0 -8px 10px;border-radius:8px}a.hp-nav:hover{background:var(--surface-2)}
 @media (max-width:900px){#supportBar{padding:8px 14px;flex-wrap:wrap}}
+.hp-legal{margin:10px 0 0;text-align:center;font-size:13px}.hp-legal a{color:var(--muted)}
