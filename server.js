@@ -12,6 +12,7 @@ const PORT = process.env.PORT || 3000;
 const BASE_URL = process.env.BASE_URL || `https://workliopro.com/public`;
 // many companies (accounts) on one server: see lib/tenancy.js. `db` below is the data of the account the current request is for.
 const tenancy = require('./lib/tenancy');
+const emails = require('./lib/emails');
 const stripeLib = require('./lib/stripe');
 const { db, uploadDir } = tenancy;
 const baseUrl = () => tenancy.tenantUrl(tenancy.current()); // this account's web address, for links in messages
@@ -179,16 +180,19 @@ const withStatus = (inv) => ({ ...inv, displayStatus: invoiceStatus(inv), ...inv
 
 // ---------- messaging adapters (email / SMS) ----------
 // minimal SMTP client over TLS (port 465): enough to send through Gmail with an app password, no npm packages
-function smtpSend({ host, port, user, pass }, { from, fromName, to, replyTo, subject, text }) {
+function smtpSend({ host, port, user, pass }, { from, fromName, to, replyTo, subject, text, html }) {
   const clean = (s) => String(s || '').replace(/[\r\n]+/g, ' ').trim(); // no header injection
   const word = (s) => (/[^\x20-\x7e]/.test(s) ? `=?UTF-8?B?${Buffer.from(s).toString('base64')}?=` : s);
+  const b64 = (s) => Buffer.from(String(s)).toString('base64').replace(/.{76}/g, '$&\r\n');
+  const part = (type, s) => [`Content-Type: ${type}; charset=UTF-8`, 'Content-Transfer-Encoding: base64', '', b64(s)];
+  const edge = 'b' + crypto.randomBytes(12).toString('hex'); // an HTML email goes as multipart/alternative with a plain-text copy
   const msg = [
     `From: ${/[^\x20-\x7e]/.test(clean(fromName)) ? word(clean(fromName)) : `"${clean(fromName).replace(/["\\]/g, '')}"`} <${clean(from)}>`,
     `To: <${clean(to)}>`, ...(replyTo ? [`Reply-To: <${clean(replyTo)}>`] : []),
     `Subject: ${word(clean(subject))}`, `Date: ${new Date().toUTCString()}`,
     `Message-ID: <${crypto.randomUUID()}@${clean(from).split('@')[1] || 'localhost'}>`,
-    'MIME-Version: 1.0', 'Content-Type: text/plain; charset=UTF-8', 'Content-Transfer-Encoding: base64', '',
-    Buffer.from(String(text)).toString('base64').replace(/.{76}/g, '$&\r\n'),
+    'MIME-Version: 1.0',
+    ...(html ? [`Content-Type: multipart/alternative; boundary="${edge}"`, '', `--${edge}`, ...part('text/plain', text), `--${edge}`, ...part('text/html', html), `--${edge}--`] : part('text/plain', text)),
   ].join('\r\n');
   return new Promise((resolve, reject) => {
     const sock = tls.connect({ host, port, servername: host });
@@ -223,8 +227,8 @@ const ownTwilio = () => { const t = secrets().twilio; return t && t.sid && t.tok
 const smsReady = () => !!ownTwilio();
 const serverEmailProvider = () => (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD ? 'Gmail' : process.env.SENDGRID_API_KEY && process.env.EMAIL_FROM ? 'SendGrid' : '');
 const emailProvider = () => { const e = ownEmail(); return e ? EMAIL_LABELS[e.provider] : serverEmailProvider(); };
-async function sendgridSend(key, { from, fromName, to, replyTo, subject, text }) {
-  const msg = { personalizations: [{ to: [{ email: to }] }], from: { email: from, name: fromName }, subject, content: [{ type: 'text/plain', value: text }] };
+async function sendgridSend(key, { from, fromName, to, replyTo, subject, text, html }) {
+  const msg = { personalizations: [{ to: [{ email: to }] }], from: { email: from, name: fromName }, subject, content: [{ type: 'text/plain', value: text }, ...(html ? [{ type: 'text/html', value: html }] : [])] };
   if (replyTo) msg.reply_to = { email: replyTo };
   const r = await fetch('https://api.sendgrid.com/v3/mail/send', { method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }, body: JSON.stringify(msg) });
   if (r.ok) return;
@@ -232,12 +236,12 @@ async function sendgridSend(key, { from, fromName, to, replyTo, subject, text })
   throw new Error(`${r.status}: ${(j.errors || []).map((e) => e.message).join('; ') || 'request rejected'}`);
 }
 // server: true sends through the server's own settings even inside an account (platform emails, platform tests)
-async function sendEmail(to, subject, body, { server = false, replyTo: replyOverride = '' } = {}) {
+async function sendEmail(to, subject, body, { server = false, replyTo: replyOverride = '', html = '' } = {}) {
   if (!to) return { status: 'failed', detail: 'Client has no email address' };
   const mine = !server && ownEmail();
   if (mine) {
     const label = EMAIL_LABELS[mine.provider];
-    const msg = { from: mine.from || mine.user, fromName: mine.fromName || db.company.name, to, replyTo: db.company.email, subject, text: body };
+    const msg = { from: mine.from || mine.user, fromName: mine.fromName || db.company.name, to, replyTo: db.company.email, subject, text: body, html };
     try {
       if (mine.provider === 'sendgrid') await sendgridSend(mine.apiKey, msg);
       else await smtpSend({ host: mine.provider === 'gmail' ? 'smtp.gmail.com' : mine.host, port: mine.provider === 'gmail' ? 465 : Number(mine.port) || 465, user: mine.user, pass: mine.pass }, msg);
@@ -252,18 +256,20 @@ async function sendEmail(to, subject, body, { server = false, replyTo: replyOver
   if (serverEmailProvider() === 'Gmail') {
     try {
       await smtpSend({ host: 'smtp.gmail.com', port: 465, user: gUser, pass: gPass.replace(/\s/g, '') },
-        { from: from || gUser, fromName: fromName || db.company.name, to, replyTo: replyTo || db.company.email, subject, text: body });
+        { from: from || gUser, fromName: fromName || db.company.name, to, replyTo: replyTo || db.company.email, subject, text: body, html });
       return { status: 'sent', detail: 'Gmail' };
     } catch (e) {
       return { status: 'failed', detail: `Gmail: ${e.message}${/^535/.test(e.message) ? ' (check GMAIL_USER and use a Google app password, not your normal password)' : ''}` };
     }
   }
   if (key && from) {
-    try { await sendgridSend(key, { from, fromName: fromName || db.company.name, to, replyTo: replyTo || db.company.email, subject, text: body }); return { status: 'sent', detail: 'SendGrid' }; }
+    try { await sendgridSend(key, { from, fromName: fromName || db.company.name, to, replyTo: replyTo || db.company.email, subject, text: body, html }); return { status: 'sent', detail: 'SendGrid' }; }
     catch (e) { return { status: 'failed', detail: `SendGrid ${e.message}` }; }
   }
   return { status: 'simulated', detail: 'No email provider configured (set GMAIL_USER and GMAIL_APP_PASSWORD, or SENDGRID_API_KEY and EMAIL_FROM)' };
 }
+// the platform's own emails (lib/emails.js; edited in the platform console under Messages → Email templates)
+async function sendTemplate(key, to, vars, opts = {}) { const m = emails.render(key, vars); return { ...(await sendEmail(to, m.subject, m.text, { ...opts, html: m.html })), subject: m.subject, text: m.text }; }
 // Twilio needs E.164 numbers (+17135550100); assume US/Canada for bare 10-digit numbers
 function toE164(phone) {
   const s = String(phone || '').trim(); const digits = s.replace(/\D/g, '');
@@ -433,7 +439,7 @@ app.post('/api/users/invite', async (req, res) => { // invite (or re-invite) a t
   for (const [k, t] of Object.entries(db.resetTokens)) if (t.userId === user.id) delete db.resetTokens[k]; // old invite links stop working
   const tok = crypto.randomBytes(32).toString('hex'); db.resetTokens[sha(tok)] = { userId: user.id, expires: Date.now() + INVITE_DAYS * 864e5, invite: true }; save();
   const link = `${baseUrl()}/login?invite=${tok}`;
-  const sent = await sendEmail(email, `You're invited to ${db.company.name}`, `Hi ${st.name},\n\n${currentUser(req).name} invited you to log in to ${db.company.name}'s scheduling and jobs app.\n\nSet your password here (the link works for ${INVITE_DAYS} days):\n${link}\n\n${db.company.name}`);
+  const sent = await sendTemplate('teamInvite', email, { name: st.name, inviter: currentUser(req).name, business: db.company.name, link, days: String(INVITE_DAYS) });
   res.json({ user: userRow(user), link, emailed: sent.status === 'sent', detail: sent.detail });
 });
 app.put('/api/users/:id', (req, res) => {
@@ -490,11 +496,19 @@ app.post('/api/auth/logout', (req, res) => {
   delete db.sessions[sha(cookies(req).sid || '')]; save();
   res.setHeader('Set-Cookie', 'sid=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0'); res.json({ ok: true });
 });
+app.get('/api/auth/verify-email', (req, res) => {
+  const h = sha(String(req.query.token || '')); const u = db.users.find((x) => x.emailVerify && x.emailVerify.hash === h);
+  const login = `<a href="/login?email=${encodeURIComponent(u ? u.email : '')}">Log in</a>`;
+  if (!u || u.emailVerify.expires < Date.now()) return res.status(400).send(notice('This link doesn’t work', `It was already used or is more than 7 days old. ${login} and you can keep using your account.`));
+  delete u.emailVerify; u.emailVerifiedAt = new Date().toISOString(); save();
+  sendTemplate('welcome', u.email, { name: u.name, business: db.company.name || tenancy.current().name, account_url: baseUrl() }, { server: true }).catch(() => {});
+  res.send(notice('Email confirmed', `Thanks, ${esc(u.name)}. Your email address is confirmed. ${login}`));
+});
 app.post('/api/auth/forgot', async (req, res) => { // always answers the same, so it doesn't reveal which emails have accounts
   const user = db.users.find((u) => u.email === normEmail(req.body && req.body.email));
   if (user) {
     const token = crypto.randomBytes(32).toString('hex'); db.resetTokens[sha(token)] = { userId: user.id, expires: Date.now() + 60 * 60e3 }; save();
-    await sendEmail(user.email, `Reset your ${db.company.name} password`, `Hi ${user.name},\n\nUse this link to choose a new password. It works for 1 hour:\n${baseUrl()}/login?reset=${token}\n\nIf you didn't ask for this, you can ignore this email.`);
+    await sendTemplate('passwordReset', user.email, { name: user.name, business: db.company.name, link: `${baseUrl()}/login?reset=${token}` });
   }
   res.json({ ok: true });
 });
@@ -1162,9 +1176,9 @@ function applyStripeSession(s) {
       notify({ clientId, channel: 'email', kind: 'receipt', refId: meta.invoiceId || meta.quoteId, refNumber: '', subject: `Receipt from ${db.company.name}`, body: rb }).then(() => save()).catch(() => {});
     }
     if (!set.notifyEmail || !db.company.email) return;
-    const body = `${c ? c.name : 'A client'} paid ${money(amount)} ${(s.payment_method_types || []).includes('us_bank_account') && !(s.payment_method_types || []).includes('card') ? 'from their bank account' : 'online'} for ${what}.\n\nStripe payment: ${s.payment_intent || s.id}`;
-    sendEmail(db.company.email, `Online payment received: ${what}`, body).then((sent) => {
-      db.notifications.unshift({ id: uid(), at: new Date().toISOString(), clientId, clientName: c ? c.name : '', channel: 'email', kind: 'payment', refId: meta.invoiceId || meta.quoteId, refNumber: '', to: db.company.email, subject: `Online payment received: ${what}`, body, status: sent.status, detail: sent.detail }); save();
+    const how = (s.payment_method_types || []).includes('us_bank_account') && !(s.payment_method_types || []).includes('card') ? 'from their bank account' : 'online';
+    sendTemplate('paymentReceived', db.company.email, { client: c ? c.name : 'A client', amount: money(amount), what, how, reference: s.payment_intent || s.id, business: db.company.name, account_url: baseUrl() }).then((sent) => {
+      db.notifications.unshift({ id: uid(), at: new Date().toISOString(), clientId, clientName: c ? c.name : '', channel: 'email', kind: 'payment', refId: meta.invoiceId || meta.quoteId, refNumber: '', to: db.company.email, subject: sent.subject, body: sent.text, status: sent.status, detail: sent.detail }); save();
     }).catch(() => {});
   };
   if (meta.invoiceId) {
@@ -1222,7 +1236,7 @@ app.get('/api/payments/stripe', async (req, res) => {
 });
 function tellBusinessZelle(what, amount, clientName) {
   if (!db.company.email) return;
-  sendEmail(db.company.email, `Zelle payment reported: ${what}`, `${clientName || 'A client'} says they sent ${money(amount)} by Zelle for ${what}.\n\nCheck your bank, then mark it paid in the app.`).catch(() => {});
+  sendTemplate('zelleReported', db.company.email, { client: clientName || 'A client', amount: money(amount), what, business: db.company.name, account_url: baseUrl() }).catch(() => {});
 }
 
 app.get('/pay/:token', (req, res) => {
@@ -1447,9 +1461,9 @@ app.post('/refer/:code', async (req, res) => {
   db.requests = db.requests || [];
   const r = { id: uid(), clientId: lead.id, title, details: clip('details', 4000), address: lead.address, preferredDate: '', preferredTime: 'any', status: 'new', referredBy: c.id, createdAt: new Date().toISOString() };
   db.requests.push(r);
-  const body = `New referral request from ${name}${phone ? ' (' + phone + ')' : ''}${email ? ' <' + email + '>' : ''}\nReferred by ${c.name}\n\n${title}\n${r.details ? '\n' + r.details + '\n' : ''}\nAddress: ${r.address || 'not given'}\n\nThey've been added to your clients as a lead.`;
-  const sent = await sendEmail(db.company.email, `Referral from ${c.name}: ${name} needs ${title}`, body);
-  db.notifications.unshift({ id: uid(), at: r.createdAt, clientId: lead.id, clientName: name, channel: 'email', kind: 'referral', refId: r.id, refNumber: '', to: db.company.email || '', subject: `Referral: ${title}`, body, status: sent.status, detail: sent.detail });
+  const details = emails.details([['Name', name], ['Phone', phone], ['Email', email], ['Address', r.address || 'not given'], ['Referred by', c.name]]);
+  const sent = await sendTemplate('referral', db.company.email, { name, referrer: c.name, title, details, request: r.details, business: db.company.name, account_url: baseUrl() });
+  db.notifications.unshift({ id: uid(), at: r.createdAt, clientId: lead.id, clientName: name, channel: 'email', kind: 'referral', refId: r.id, refNumber: '', to: db.company.email || '', subject: `Referral: ${title}`, body: sent.text, status: sent.status, detail: sent.detail });
   save(); res.send(done);
 });
 
@@ -1466,9 +1480,9 @@ app.post('/api/portal/:token/requests', async (req, res) => {
   const preferredTime = ['morning', 'afternoon', 'evening'].includes(b.preferredTime) ? b.preferredTime : 'any';
   const r = { id: uid(), clientId: c.id, title, details: clip(b.details, 4000), address: clip(b.address, 300) || c.address || '', preferredDate, preferredTime, status: 'new', createdAt: new Date().toISOString() };
   db.requests.push(r);
-  const body = `New work request from ${c.name}${c.phone ? ' (' + c.phone + ')' : ''}${c.email ? ' <' + c.email + '>' : ''}\n\n${title}\n${r.details ? '\n' + r.details + '\n' : ''}\nAddress: ${r.address || 'not given'}\nPreferred: ${preferredDate || 'any day'}, ${preferredTime === 'any' ? 'any time' : preferredTime}`;
-  const sent = await sendEmail(db.company.email, `New request from ${c.name}: ${title}`, body);
-  db.notifications.unshift({ id: uid(), at: r.createdAt, clientId: c.id, clientName: c.name, channel: 'email', kind: 'request', refId: r.id, refNumber: '', to: db.company.email || '', subject: `New request: ${title}`, body, status: sent.status, detail: sent.detail });
+  const details = emails.details([['Client', c.name], ['Phone', c.phone], ['Email', c.email], ['Address', r.address || 'not given'], ['Preferred', `${preferredDate || 'any day'}, ${preferredTime === 'any' ? 'any time' : preferredTime}`]]);
+  const sent = await sendTemplate('workRequest', db.company.email, { client: c.name, title, details, request: r.details, business: db.company.name, account_url: baseUrl() });
+  db.notifications.unshift({ id: uid(), at: r.createdAt, clientId: c.id, clientName: c.name, channel: 'email', kind: 'request', refId: r.id, refNumber: '', to: db.company.email || '', subject: `New request: ${title}`, body: sent.text, status: sent.status, detail: sent.detail });
   save(); res.status(201).json(requestForClient(r));
 });
 
@@ -1608,8 +1622,8 @@ async function planProduct(plan) {
   P.stripeProducts[k] = p.id; tenancy.savePlatform(); return p.id;
 }
 const periodEndOf = (sub) => unix(sub.current_period_end || (sub.items && sub.items.data[0] && sub.items.data[0].current_period_end));
-const tellPlatform = (subject, body) => { const to = tenancy.platform().settings.contactEmail; if (to) sendEmail(to, subject, `${body}\n\n${tenancy.tenantUrl(tenancy.current())}`, { server: true }).catch(() => {}); };
-// "Get Support" in the app's help panel: saved for the platform console (Settings → Contact requests) and emailed to the contact address
+const tellPlatform = (title, message) => { const to = tenancy.platform().settings.contactEmail; if (to) sendTemplate('accountActivity', to, { title, message, link: tenancy.tenantUrl(tenancy.current()) }, { server: true }).catch(() => {}); };
+// "Get Support" in the app's help panel: saved for the platform console (Messages → Contact requests) and emailed to the contact address
 const supportHits = new Map(); // account+user -> timestamps: 5 requests per hour
 app.post('/api/support', async (req, res) => {
   const u = currentUser(req); const t = tenancy.current(); const b = req.body || {};
@@ -1626,13 +1640,13 @@ app.post('/api/support', async (req, res) => {
   P.inquiries = P.inquiries || []; P.inquiries.unshift(m); P.inquiries.length = Math.min(P.inquiries.length, 500); tenancy.savePlatform();
   const to = P.settings.contactEmail;
   if (to) {
-    const body = `${m.name} asked for help from ${m.company}.\n\nName: ${m.name} (${u.role})\nEmail: ${m.email}${m.phone ? `\nPhone: ${m.phone}` : ''}\nBusiness: ${m.company}\nPlan: ${m.plan}\nAccount: ${m.account}${m.topic ? `\nTopic: ${m.topic}` : ''}${m.page ? `\nPage: ${m.page}` : ''}\n\n${m.message}\n\nReply to this email to answer ${m.name}.`;
-    const sent = await sendEmail(to, `Support request from ${m.company}: ${subject || m.topic || 'Help needed'}`, body, { server: true, replyTo: m.email }).catch((e) => ({ status: 'failed', detail: e.message }));
+    const details = emails.details([['Name', `${m.name} (${u.role})`], ['Email', m.email], ['Phone', m.phone], ['Business', m.company], ['Plan', m.plan], ['Account', m.account], ['Topic', m.topic], ['Page', m.page]]);
+    const sent = await sendTemplate('supportRequest', to, { name: m.name, business: m.company, subject: subject || m.topic || 'Help needed', details, message }, { server: true, replyTo: m.email }).catch((e) => ({ status: 'failed', detail: e.message }));
     m.emailed = sent.status === 'sent'; tenancy.savePlatform();
   }
   res.json({ ok: true });
 });
-// "Feedback" in the app's top bar: a rating and a message from any login, saved for the platform console (Settings → User feedback) and emailed to the contact address
+// "Feedback" in the app's top bar: a rating and a message from any login, saved for the platform console (Messages → User feedback) and emailed to the contact address
 const FEEDBACK_KINDS = ['Idea or suggestion', 'Something isn’t working', 'Something I like', 'Other'];
 const feedbackHits = new Map(); // account+user -> timestamps: 10 per hour
 app.post('/api/feedback', async (req, res) => {
@@ -1648,8 +1662,8 @@ app.post('/api/feedback', async (req, res) => {
   P.feedback = P.feedback || []; P.feedback.unshift(m); P.feedback.length = Math.min(P.feedback.length, 1000); tenancy.savePlatform();
   const to = P.settings.contactEmail;
   if (to) {
-    const body = `${m.name} (${m.role}) at ${m.company} sent feedback.\n\nRating: ${m.rating ? `${m.rating}/5` : 'none'}\nType: ${m.kind}\nPlan: ${m.plan}\nAccount: ${m.account}${m.page ? `\nPage: ${m.page}` : ''}\nOK to contact: ${m.contactOk ? `yes, ${m.email}` : 'no'}\n\n${m.message || '(no message)'}`;
-    const sent = await sendEmail(to, `Feedback from ${m.company}${m.rating ? ` (${m.rating}/5)` : ''}: ${m.kind}`, body, { server: true, ...(m.contactOk ? { replyTo: m.email } : {}) }).catch((e) => ({ status: 'failed', detail: e.message }));
+    const details = emails.details([['From', `${m.name} (${m.role})`], ['Business', m.company], ['Plan', m.plan], ['Account', m.account], ['Page', m.page], ['OK to contact', m.contactOk ? `yes, ${m.email}` : 'no']]);
+    const sent = await sendTemplate('feedback', to, { name: m.name, business: m.company, rating: m.rating ? `${m.rating}/5` : 'no rating', kind: m.kind, details, message: m.message || '(no message)' }, { server: true, ...(m.contactOk ? { replyTo: m.email } : {}) }).catch((e) => ({ status: 'failed', detail: e.message }));
     m.emailed = sent.status === 'sent'; tenancy.savePlatform();
   }
   res.json({ ok: true });
@@ -1674,7 +1688,7 @@ const supportState = (t, u) => {
   return { current: cur ? supportRow(cur) : null, team: others.filter(support.isOpen).map(supportRow), history: [...mine.filter((r) => r !== cur), ...others.filter((r) => !support.isOpen(r))].sort((a, b) => (b.requestedAt > a.requestedAt ? 1 : -1)).map(supportRow),
     isOwner: owner, grantDays: support.GRANT_DAYS, productName: tenancy.platform().settings.productName };
 };
-const tellSupportAdmin = (r, subject, body) => { if (r.adminEmail) sendEmail(r.adminEmail, subject, `${body}\n\n${tenancy.platformUrl()}/platform`, { server: true }).catch(() => {}); };
+const tellSupportAdmin = (r, title, message) => { if (r.adminEmail) sendTemplate('accountActivity', r.adminEmail, { title, message, link: `${tenancy.platformUrl()}/platform` }, { server: true }).catch(() => {}); };
 app.get('/api/account/support-access', (req, res) => res.json(supportState(tenancy.current(), currentUser(req))));
 app.post('/api/account/support-access/:id/:action', (req, res) => {
   const u = currentUser(req); const t = tenancy.current(); const { id, action } = req.params; let r;
@@ -1825,6 +1839,12 @@ function createOwner(t, { name, email, password }) {
   if (password) { const { salt, hash } = hashPassword(password); Object.assign(user, { salt, passwordHash: hash }); }
   db.users.push(user); ensureOwnerStaff(); save(); return user;
 }
+// self sign-ups confirm their email: the link (7 days) marks the owner's email confirmed and sends the welcome email. Runs inside the account.
+function sendVerifyEmail(t) {
+  const u = db.users.find((x) => x.role === 'owner'); if (!u || u.emailVerifiedAt) return Promise.resolve(null);
+  const tok = crypto.randomBytes(32).toString('hex'); u.emailVerify = { hash: sha(tok), expires: Date.now() + 7 * 864e5 }; save();
+  return sendTemplate('verifyEmail', u.email, { name: u.name, business: db.company.name || t.name, link: `${baseUrl()}/api/auth/verify-email?token=${tok}`, account_url: baseUrl() }, { server: true }).catch(() => null);
+}
 // a fresh link for the owner: choose a password (not set yet) or reset it
 function ownerLink(t) {
   const u = db.users.find((x) => x.role === 'owner'); if (!u) return null;
@@ -1837,15 +1857,15 @@ function ownerLink(t) {
 const resetDemo = () => { const keep = { users: db.users, sessions: db.sessions, resetTokens: db.resetTokens, secrets: db.secrets }; tenancy.replaceStore({ ...seed(), ...keep }); };
 const tenantStats = (t) => tenancy.run(t, () => {
   const owner = db.users.find((u) => u.role === 'owner');
-  return { owner: owner ? { name: owner.name, email: owner.email, active: !!owner.passwordHash } : null, users: db.users.length,
+  return { owner: owner ? { name: owner.name, email: owner.email, active: !!owner.passwordHash, unconfirmed: !!owner.emailVerify && !owner.emailVerifiedAt } : null, users: db.users.length,
     logins: db.users.map((u) => ({ id: u.id, name: u.name, email: u.email, role: u.role, active: !!u.passwordHash && !staffBlocked(u) })), clients: db.clients.length, jobs: db.jobs.length, invoices: db.invoices.length,
     lastLoginAt: db.users.map((u) => u.lastLoginAt || '').sort().pop() || null };
 });
-const helpApp = require('./lib/help')({ sendEmail, normEmail });
+const helpApp = require('./lib/help')({ sendTemplate, normEmail, emails });
 const legal = require('./lib/legal');
 const platformApp = require('./lib/platform')({
   hashPassword, checkPassword, sha, normEmail, cookies, tooMany, recordFailure, clearFailures: (k) => failures.delete(k),
-  createOwner, ownerLink, tenantStats, endSupportSessions, sendEmail, sendSms, emailProvider: serverEmailProvider, applyStripeSession, syncStripeAccount, resetDemo, setCompanyEmail: (e) => { if (!db.company.email) { db.company.email = e; save(); } },
+  createOwner, ownerLink, sendVerifyEmail, tenantStats, endSupportSessions, sendEmail, sendTemplate, sendSms, emailProvider: serverEmailProvider, applyStripeSession, syncStripeAccount, resetDemo, setCompanyEmail: (e) => { if (!db.company.email) { db.company.email = e; save(); } },
 });
 // which app answers: the platform's (its own domain, or /platform… while developing) or an account's
 const PLATFORM_PATHS = /^\/(platform(\/.*)?|home|pricing|signup|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;

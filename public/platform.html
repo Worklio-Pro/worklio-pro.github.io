@@ -73,6 +73,18 @@
     .hc-cheat{margin-top:10px;font-size:13px;color:var(--muted)}.hc-cheat summary{cursor:pointer}.hc-cheat ul{margin:6px 0 0;padding-left:18px;line-height:1.8}
     .hc-fb{font-size:14px;margin:-6px 0 12px;color:var(--muted)}.linkish{background:none;border:0;padding:0;font:inherit;color:var(--link);cursor:pointer;text-decoration:underline}
     @media (max-width:900px){.grid2{grid-template-columns:1fr}.hc-tgrid{grid-template-columns:1fr 100px}.hc-tgrid .acts{grid-column:1/-1;justify-content:flex-start}}
+    /* messages tab: sub-tabs and the email template editor */
+    .msg-seg{display:inline-flex;margin:0 0 16px;max-width:100%;overflow-x:auto}.msg-seg button{white-space:nowrap;padding:7px 14px;font-size:14px}
+    .msg-n{display:inline-block;min-width:20px;padding:0 6px;border-radius:99px;background:var(--tint-strong);color:var(--tint-fg);font-size:12px;font-weight:700;margin-left:4px}
+    .em-subj{margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:560px}.inq-h>div:first-child{min-width:0}
+    .pf-modal.em{max-width:1100px;min-width:0}
+    .em-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:start}
+    .em-body{min-height:300px}
+    .em-vars{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px;margin:-4px 0 6px}.em-vars .pf-chip{border:0;cursor:pointer;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.em-vars .pf-chip:hover{background:var(--tint-strong);color:var(--tint-fg)}
+    .em-psubj{font-weight:600;font-size:14px;padding:8px 12px;border:1px solid var(--line);border-bottom:0;border-radius:10px 10px 0 0;background:var(--surface-2)}
+    .em-frame{display:block;width:100%;height:560px;max-height:62vh;border:1px solid var(--line);border-radius:0 0 10px 10px;background:#eef3fb}
+    @media (max-width:900px){.em-grid{grid-template-columns:minmax(0,1fr)}.em-frame{height:480px}}
+    @media (max-width:760px){.msg-seg{display:flex;width:100%;overflow:visible}.msg-seg button{flex:1;white-space:normal;padding:6px 8px;font-size:13px;line-height:1.25}.pf-modal.em{padding:16px}}
     /* plans x features grid */
     .matrix{border-collapse:separate;border-spacing:0;min-width:640px}
     .matrix th,.matrix td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:center;vertical-align:middle}
@@ -149,6 +161,6 @@
   <div id="root"><p class="muted" style="text-align:center;margin-top:20vh">Loading…</p></div>
   <div id="toast"></div>
   <script src="/hc-editor.js?v=1"></script>
-  <script src="/platform.js?v=13"></script>
+  <script src="/platform.js?v=14"></script>
 </body>
 </html>
