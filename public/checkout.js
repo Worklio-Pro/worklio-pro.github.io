@@ -24,10 +24,11 @@ function render() {
   main.innerHTML = `<div class="co"><section>
 <h1>Complete your order</h1><p class="lead">Your account is created. Pay for your plan to start using it.</p>
 <div class="card pad"><h2>Your account</h2><dl class="acct"><dt>Business</dt><dd>${esc(C.company)}</dd><dt>Web address</dt><dd>${esc(C.address)}</dd><dt>Owner login</dt><dd>${esc(C.email)}</dd></dl></div>
-<div class="card pad"><h2 id="planHd">Plan</h2><div class="plans" role="radiogroup" aria-labelledby="planHd">
+<div class="card pad"><h2 id="planHd">Plan</h2>${C.plans.some((x) => x.monthly && x.yearly) ? `<div class="period" role="radiogroup" aria-label="Billing period">${[['month', 'Monthly'], ['year', 'Yearly']].map(([k, l]) => `<button type="button" role="radio" aria-checked="${C.interval === k}" class="${C.interval === k ? 'on' : ''}" data-period="${k}">${l}</button>`).join('')}</div>` : ''}
+<div class="plans" role="radiogroup" aria-labelledby="planHd">
 ${C.plans.map((x) => `<label class="opt"><input type="radio" name="plan" value="${esc(x.id)}" ${x.id === p.id ? 'checked' : ''}>
 <span><span class="nm">${esc(x.name)}</span><span class="ds" style="display:block">${esc(x.description)}</span></span>
-<span class="pr">${x.charge ? `${money(x.charge.cents)}/${x.charge.interval === 'year' ? 'yr' : 'mo'}` : esc(x.price || 'Free')}</span></label>`).join('')}
+<span class="pr">${x.charge ? `${money(x.charge.cents)}/${x.charge.interval === 'year' ? 'yr' : 'mo'}${x.monthly && x.yearly && x.charge.interval === 'year' && x.yearly < x.monthly * 12 ? `<small class="sv">Save ${Math.round((1 - x.yearly / (x.monthly * 12)) * 100)}%</small>` : ''}` : esc(x.priceLabel || x.price || 'Free')}</span></label>`).join('')}
 </div></div></section>
 <aside class="card pad sum" aria-label="Order summary"><h2>Order summary</h2>
 <div id="err">${err ? `<div class="msg err" role="alert">${esc(err)}</div>` : ''}</div>
@@ -40,10 +41,9 @@ ${C.live ? `<p class="fine">You’ll enter your card on Stripe’s secure checko
 <details><summary>What’s included in ${esc(p.name)}</summary><ul>${feats.map((f) => `<li>${esc(f)}</li>`).join('')}${C.alwaysIncluded.map((f) => `<li>${esc(f)}</li>`).join('')}</ul></details>
 ${C.contactEmail ? `<p class="fine">Questions? <a href="mailto:${esc(C.contactEmail)}">${esc(C.contactEmail)}</a></p>` : ''}</aside></div>`;
 
-  main.querySelectorAll('[name=plan]').forEach((r) => r.addEventListener('change', async () => {
-    try { C = await api('POST', `/api/site/checkout/${token}/plan`, { planId: r.value }); err = ''; render(); }
-    catch (e) { err = e.message; render(); }
-  }));
+  const pick = async (body) => { try { C = await api('POST', `/api/site/checkout/${token}/plan`, { planId: C.plan.id, interval: C.interval, ...body }); err = ''; render(); } catch (e) { err = e.message; render(); } };
+  main.querySelectorAll('[name=plan]').forEach((r) => r.addEventListener('change', () => pick({ planId: r.value })));
+  main.querySelectorAll('[data-period]').forEach((b) => b.addEventListener('click', () => pick({ interval: b.dataset.period })));
   $('#pay').addEventListener('click', async (e) => {
     const b = e.currentTarget; b.disabled = true; b.textContent = C.live ? 'Opening secure checkout…' : 'Starting your account…';
     try { const r = await api('POST', `/api/site/checkout/${token}/pay`); location.href = r.redirect || r.url; }

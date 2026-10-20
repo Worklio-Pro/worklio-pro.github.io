@@ -10,11 +10,26 @@ const slugify = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-')
   $('#brand').textContent = S.productName;
   const label = Object.fromEntries(S.features.map((f) => [f.key, f.label]));
   const mid = S.plans.length >= 3 ? Math.floor(S.plans.length / 2) : -1; // highlight the middle plan
-  $('#plans').innerHTML = S.plans.map((p, i) => `<article class="card s-plan ${i === mid ? 'pop' : ''}"><span class="s-tag">${i === mid ? 'Most popular' : ''}</span><h2>${esc(p.name)}</h2>
-<div class="price">${esc(p.price || 'Contact us')}</div><p class="desc">${esc(p.description)}</p>
+  // monthly or yearly prices: a switch above the plans when any plan offers both
+  const both = S.plans.some((p) => p.monthly && p.yearly); const best = Math.max(0, ...S.plans.filter((p) => p.monthly && p.yearly).map((p) => Math.round((1 - p.yearly / (p.monthly * 12)) * 100)));
+  let period = S.plans.some((p) => p.monthly) ? 'month' : 'year';
+  const amount = (n) => '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 });
+  const priceHtml = (p) => {
+    const y = period === 'year' && p.yearly; const v = y ? p.yearly : p.monthly || p.yearly;
+    if (!v) return `<div class="price">${esc(p.priceLabel || p.price || 'Contact us')}</div><div class="per">&nbsp;</div>`;
+    const yearly = y || !p.monthly; const save = p.monthly && p.yearly ? Math.round((1 - p.yearly / (p.monthly * 12)) * 100) : 0;
+    return `<div class="price">${amount(v)}<small>/${yearly ? 'year' : 'month'}</small></div><div class="per">${yearly ? `${amount(Math.round(v / 12 * 100) / 100)}/month, billed yearly${save > 0 ? ` · <strong>save ${save}%</strong>` : ''}` : period === 'year' ? 'Billed monthly only' : p.yearly ? `or ${amount(p.yearly)}/year` : 'Billed monthly'}</div>`;
+  };
+  const drawPlans = () => {
+    $('#period').innerHTML = both ? `<div class="s-period" role="radiogroup" aria-label="Billing period">${[['month', 'Monthly'], ['year', `Yearly${best > 0 ? ` <span class="s-save">Save up to ${best}%</span>` : ''}`]].map(([k, l]) => `<button type="button" role="radio" aria-checked="${period === k}" class="${period === k ? 'on' : ''}" data-period="${k}">${l}</button>`).join('')}</div>` : '';
+    $('#plans').innerHTML = S.plans.map((p, i) => `<article class="card s-plan ${i === mid ? 'pop' : ''}"><span class="s-tag">${i === mid ? 'Most popular' : ''}</span><h2>${esc(p.name)}</h2>
+${priceHtml(p)}<p class="desc">${esc(p.description)}</p>
 <ul><li>${p.maxUsers ? `${p.maxUsers} team login${p.maxUsers === 1 ? '' : 's'}` : 'Unlimited team logins'}</li>${S.features.filter((f) => p.features.includes(f.key)).map((f) => `<li>${esc(label[f.key])}</li>`).join('')}
 ${S.alwaysIncluded.map((l) => `<li class="base">${esc(l)}</li>`).join('')}</ul>
 ${S.allowSignups ? `<a class="btn ${i === mid ? '' : 'alt'}" href="#signup" data-plan="${esc(p.id)}">Choose ${esc(p.name)}</a>` : `<button type="button" class="btn ${i === mid ? '' : 'alt'}" data-contact="${esc(p.id)}">Contact us</button>`}</article>`).join('');
+  };
+  drawPlans();
+  document.addEventListener('click', (e) => { const b = e.target.closest('[data-period]'); if (!b) return; period = b.dataset.period; drawPlans(); const sel = $('#sf [name=interval]'); if (sel) { sel.value = period; sel.dispatchEvent(new Event('change')); } });
   $('#foot').innerHTML = 'Questions? <a href="#contact" data-contact="">Contact us</a>';
   document.addEventListener('click', (e) => { const b = e.target.closest('[data-contact]'); if (b) { e.preventDefault(); openContact(S, b.dataset.contact); } });
   if (!S.allowSignups) return;
@@ -22,6 +37,7 @@ ${S.allowSignups ? `<a class="btn ${i === mid ? '' : 'alt'}" href="#signup" data
   const root = S.rootDomain;
   $('#signup').innerHTML = `<div class="card"><h2>Create your account</h2><p class="muted" style="margin:0 0 16px">You’ll be set up in under a minute.</p>
 <form id="sf" novalidate><div id="err"></div><label>Plan<select name="plan">${S.plans.map((p) => `<option value="${esc(p.id)}" ${p.id === S.signupPlan ? 'selected' : ''}>${esc(p.name)}${p.price ? ` (${esc(p.price)})` : ''}</option>`).join('')}</select></label>
+${both || S.plans.some((p) => p.yearly && !p.monthly) ? `<label>Billing<select name="interval"><option value="month" ${period === 'month' ? 'selected' : ''}>Monthly</option><option value="year" ${period === 'year' ? 'selected' : ''}>Yearly${best > 0 ? ` (save up to ${best}%)` : ''}</option></select></label>` : ''}
 <label>Business name<input name="company" required maxlength="100" autocomplete="organization"></label>
 <label>Your web address<div class="slug"><input name="slug" required maxlength="32" autocomplete="off" spellcheck="false"><span>.${esc(root)}</span></div><div class="hint" id="hint"></div></label>
 <label>Your name<input name="name" required maxlength="100" autocomplete="name"></label>
@@ -34,8 +50,13 @@ ${S.allowSignups ? `<a class="btn ${i === mid ? '' : 'alt'}" href="#signup" data
   slug.addEventListener('input', () => { slug.dataset.touched = '1'; check(); });
   $('[name=company]', f).addEventListener('input', (e) => { if (!slug.dataset.touched) { slug.value = slugify(e.target.value); check(); } });
   // paid plans go on to the checkout page after the account is created
-  const sel = $('[name=plan]', f); const goLabel = () => { const p = S.plans.find((x) => x.id === sel.value); return p && p.paid ? 'Continue to payment' : 'Create account'; };
-  const syncPlan = () => { const p = S.plans.find((x) => x.id === sel.value); $('.go', f).textContent = goLabel(); $('#payNote').textContent = p && p.paid ? `Next you’ll pay for ${p.name} (${p.price}).` : ''; };
+  const sel = $('[name=plan]', f); const iv = $('[name=interval]', f);
+  // the price the server will charge: the chosen period if the plan has it, otherwise the one it offers
+  const chosen = () => { const p = S.plans.find((x) => x.id === sel.value); if (!p) return null; const want = iv ? iv.value : 'month';
+    const per = want === 'year' ? (p.yearly ? 'year' : 'month') : (p.monthly ? 'month' : 'year'); const v = per === 'year' ? p.yearly : p.monthly; return v ? { p, v, per } : { p }; };
+  const goLabel = () => { const c = chosen(); return c && c.v ? 'Continue to payment' : 'Create account'; };
+  const syncPlan = () => { const c = chosen(); $('.go', f).textContent = goLabel(); $('#payNote').textContent = c && c.v ? `Next you’ll pay ${amount(c.v)} for ${c.p.name}, billed every ${c.per}.` : ''; };
+  if (iv) iv.addEventListener('change', () => { if (period !== iv.value) { period = iv.value; drawPlans(); } syncPlan(); });
   sel.addEventListener('change', syncPlan); syncPlan();
   document.addEventListener('click', (e) => { const b = e.target.closest('[data-plan]'); if (b) { sel.value = b.dataset.plan; syncPlan(); } });
   f.addEventListener('submit', async (e) => {

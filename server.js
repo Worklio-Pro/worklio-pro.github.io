@@ -1564,10 +1564,11 @@ const billingCall = (method, endpoint, params) => stripeLib.request(stripeLib.pl
 const unix = (t) => (t ? iso(new Date(t * 1000)) : null);
 app.get('/api/account/billing', async (req, res) => {
   if (!ownerOnly(req, res)) return;
-  const t = tenancy.current(); const P = tenancy.platform(); const plan = tenancy.planOf(t); const b = t.billing || {}; const charge = stripeLib.planCharge(plan);
+  const t = tenancy.current(); const P = tenancy.platform(); const plan = tenancy.planOf(t); const b = t.billing || {}; let charge = stripeLib.planCharge(plan, b.interval);
   const out = { activeSince: (b.paidAt || t.createdAt || '').slice(0, 10), status: t.status, plan: { id: plan.id, name: plan.name, price: plan.price || '', charge },
     productName: P.settings.productName, contactEmail: P.settings.contactEmail, live: !!stripeLib.platformKey(), billed: !!(b.customerId && stripeLib.platformKey()),
-    demo: !!b.demo, managed: !tenancy.isDefault(), plans: P.plans.filter((p) => !p.hidden || p.id === plan.id).map((p) => ({ id: p.id, name: p.name, price: p.price || '', description: p.description || '' })),
+    demo: !!b.demo, managed: !tenancy.isDefault(), plans: P.plans.filter((p) => !p.hidden || p.id === plan.id).map((p) => ({ id: p.id, name: p.name, price: p.price || '', description: p.description || '', month: (stripeLib.planCharge(p, 'month') || {}).interval === 'month' ? stripeLib.planCharge(p, 'month').cents / 100 : null, year: (stripeLib.planCharge(p, 'year') || {}).interval === 'year' ? stripeLib.planCharge(p, 'year').cents / 100 : null })),
+    interval: charge ? charge.interval : b.interval || 'month',
     card: null, customer: null, subscription: null, invoices: [], endsAt: b.endsAt || null, pendingPlan: b.pendingPlanId ? (P.plans.find((p) => p.id === b.pendingPlanId) || {}).name || null : null };
   if (out.billed) {
     const get = (ep) => billingCall('GET', ep).catch((e) => { console.error('Billing:', e.message); return null; });
@@ -1582,6 +1583,7 @@ app.get('/api/account/billing', async (req, res) => {
         periodEnd: unix(sub.current_period_end || (item && item.current_period_end)), amount: price && price.unit_amount != null ? round2(price.unit_amount / 100) : charge ? charge.cents / 100 : null,
         interval: (price && price.recurring && price.recurring.interval) || (charge && charge.interval) || 'month' };
       if (out.subscription.startedAt) out.activeSince = out.subscription.startedAt;
+      out.interval = out.subscription.interval; out.plan.charge = charge = stripeLib.planCharge(plan, out.interval);
     }
     out.invoices = ((inv && inv.data) || []).filter((i) => i.status !== 'draft').map((i) => ({ id: i.id, date: unix(i.status_transitions && i.status_transitions.paid_at) || unix(i.created), amount: round2((i.amount_paid || i.total || 0) / 100),
       currency: String(i.currency || 'usd').toUpperCase(), status: i.status, receiptUrl: i.hosted_invoice_url || null, pdf: i.invoice_pdf || null }));
@@ -1612,12 +1614,15 @@ app.post('/api/account/billing/plan', async (req, res) => {
   if (tenancy.isDefault(t)) return res.status(400).json({ error: 'Your platform’s own account doesn’t have a plan to change' });
   const to = P.plans.find((p) => p.id === (req.body && req.body.planId) && !p.hidden); if (!to) return res.status(400).json({ error: 'Choose a plan' });
   const from = tenancy.planOf(t); const b = t.billing || (t.billing = {});
-  if (to.id === t.planId && !b.pendingPlanId) return res.status(400).json({ error: `You’re already on ${to.name}` });
-  const c = stripeLib.planCharge(to);
-  const switched = (message) => { tenancy.savePlatform(); tellPlatform(`Plan changed: ${t.name} → ${to.name}`, `${u.name} (${u.email}) changed ${t.name} from ${from.name} to ${to.name}. ${message}`); res.json({ ok: true, message }); };
-  if (!stripeLib.platformKey()) { t.planId = to.id; delete b.pendingPlanId; delete b.endsAt; return switched(`You’re now on ${to.name}.`); } // no Stripe on this server: demo
+  const want = req.body.interval === 'year' ? 'year' : 'month'; const c = stripeLib.planCharge(to, want);
+  if (c && c.interval !== want) return res.status(400).json({ error: `${to.name} isn’t available ${want === 'year' ? 'yearly' : 'monthly'}` });
+  const label = `${to.name}${c ? ` (${want === 'year' ? 'yearly' : 'monthly'})` : ''}`;
+  const switched = (message) => { if (c) b.interval = c.interval; tenancy.savePlatform(); tellPlatform(`Plan changed: ${t.name} → ${label}`, `${u.name} (${u.email}) changed ${t.name} from ${from.name} to ${label}. ${message}`); res.json({ ok: true, message }); };
   try {
-    const sub = await liveSubscription(b);
+    const sub = stripeLib.platformKey() ? await liveSubscription(b) : null;
+    const nowInterval = (sub && sub.items.data[0].price.recurring && sub.items.data[0].price.recurring.interval) || b.interval || 'month';
+    if (to.id === t.planId && !b.pendingPlanId && (!c || c.interval === nowInterval)) return res.status(400).json({ error: `You’re already on ${label}` });
+    if (!stripeLib.platformKey()) { t.planId = to.id; delete b.pendingPlanId; delete b.endsAt; return switched(`You’re now on ${label}.`); } // no Stripe on this server: demo
     if (!c) { // free plan
       if (!sub) { t.planId = to.id; delete b.pendingPlanId; delete b.endsAt; return switched(`You’re now on ${to.name}.`); }
       if (to.id === t.planId) { delete b.pendingPlanId; delete b.endsAt; await billingCall('POST', `subscriptions/${sub.id}`, { cancel_at_period_end: 'false' }); return switched(`You’ll stay on ${to.name}.`); }
@@ -1631,10 +1636,11 @@ app.post('/api/account/billing/plan', async (req, res) => {
         'items[0][price_data][unit_amount]': String(c.cents), 'items[0][price_data][recurring][interval]': c.interval, proration_behavior: 'always_invoice', payment_behavior: 'error_if_incomplete',
         cancel_at_period_end: 'false', 'metadata[planId]': to.id });
       t.planId = to.id; delete b.pendingPlanId; delete b.endsAt; b.subscriptionStatus = s2.status;
-      return switched(`You’re now on ${to.name}. Any difference for the rest of this billing period is charged or credited now, and you’ll pay ${money(c.cents / 100)} each ${c.interval} from your next bill.`);
+      return switched(c.interval !== nowInterval ? `You’re now on ${label}. Your unused time is credited and the new ${c.interval}ly price of ${money(c.cents / 100)} is charged now; it renews every ${c.interval}.`
+        : `You’re now on ${label}. Any difference for the rest of this billing period is charged or credited now, and you’ll pay ${money(c.cents / 100)} each ${c.interval} from your next bill.`);
     }
     // no paid subscription yet: pay at Stripe Checkout; the plan switches when the payment goes through
-    const p = { mode: 'subscription', client_reference_id: t.id, 'metadata[tenantId]': t.id, 'metadata[planId]': to.id, 'subscription_data[metadata][tenantId]': t.id,
+    const p = { mode: 'subscription', client_reference_id: t.id, 'metadata[tenantId]': t.id, 'metadata[planId]': to.id, 'metadata[interval]': c.interval, 'subscription_data[metadata][tenantId]': t.id,
       'line_items[0][quantity]': '1', 'line_items[0][price_data][currency]': 'usd', 'line_items[0][price_data][product]': await planProduct(to),
       'line_items[0][price_data][unit_amount]': String(c.cents), 'line_items[0][price_data][recurring][interval]': c.interval,
       success_url: `${baseUrl()}/settings/billing?checkout={CHECKOUT_SESSION_ID}`, cancel_url: `${baseUrl()}/settings/billing` };
@@ -1654,7 +1660,7 @@ app.post('/api/account/billing/return', async (req, res) => {
       const to = tenancy.platform().plans.find((p) => p.id === s.metadata.planId);
       if (to && s.subscription && b.subscriptionId !== s.subscription) {
         const from = tenancy.planOf(t); t.planId = to.id;
-        Object.assign(b, { customerId: s.customer, subscriptionId: s.subscription, status: 'paid', subscriptionStatus: 'active' }); delete b.pendingPlanId; delete b.endsAt; delete b.demo;
+        Object.assign(b, { customerId: s.customer, subscriptionId: s.subscription, status: 'paid', subscriptionStatus: 'active', interval: s.metadata.interval === 'year' ? 'year' : 'month' }); delete b.pendingPlanId; delete b.endsAt; delete b.demo;
         if (b.pausedForBilling) { t.status = 'active'; delete b.pausedForBilling; }
         tenancy.savePlatform(); tellPlatform(`New subscription: ${t.name} → ${to.name}`, `${currentUser(req).name} subscribed ${t.name} to ${to.name} (was ${from.name}).`);
       }

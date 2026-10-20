@@ -1105,7 +1105,7 @@ PAGES['/settings/billing'] = {
     main.innerHTML = `<div class="head"><h1>Account and billing</h1></div>
 <div class="card bill-ov"><div class="bill-h"><h2>Account overview</h2><div class="actions">${B.managed ? '<button type="button" class="btn" data-act="billPlans">Change plan</button>' : ''}${B.live && B.managed ? '<button type="button" class="btn alt" data-act="billCard">Update card</button>' : ''}</div></div>
 <dl class="bill-dl"><div><dt>Active since</dt><dd>${B.activeSince ? fmtDate(B.activeSince) : '—'}</dd></div><div><dt>Account status</dt><dd>${esc(statusText)}</dd></div>
-<div><dt>Current plan</dt><dd>${esc(B.plan.name)}${B.plan.price ? ` <span class="muted">(${esc(B.plan.price)})</span>` : ''}</dd></div></dl></div>
+<div><dt>Current plan</dt><dd>${esc(B.plan.name)}${B.plan.charge ? ` <span class="muted">(${B.plan.charge.interval === 'year' ? 'yearly' : 'monthly'}, ${money(B.plan.charge.cents / 100).replace(/\.00$/, '')}/${B.plan.charge.interval})</span>` : B.plan.price ? ` <span class="muted">(${esc(B.plan.price)})</span>` : ''}</dd></div></dl></div>
 <div class="bill-grid">
 <div class="card"><div class="bill-h"><h2>Billing details</h2>${B.live && B.managed ? '<button type="button" class="btn alt sm" data-act="billEdit">Edit</button>' : ''}</div>
 ${B.card ? `<div class="bill-card"><span class="bill-brand">${esc(CARD_BRANDS[B.card.brand] || B.card.brand)}</span><div><small class="muted">CARD NUMBER</small><div>•••• ${esc(B.card.last4)}</div></div><div class="r"><small class="muted">EXPIRY</small><div>${String(B.card.expMonth).padStart(2, '0')}/${String(B.card.expYear).slice(-2)}</div></div></div>`
@@ -1130,23 +1130,34 @@ const billGo = async (url, body, el) => { // POST, then follow Stripe's page or 
 A.billMore = () => { billingAll = true; refresh(); };
 A.billCard = (d, el) => billGo('/api/account/billing/card', {}, el);
 A.billPlans = () => {
-  const B = billingData; const sub = B.subscription; const cur = B.pendingPlan ? null : B.plan.id;
-  const m = modal('Change plan', `<form id="bpf"><div class="bill-plans">${B.plans.map((p) => `<label class="bill-plan"><input type="radio" name="planId" value="${esc(p.id)}" ${p.id === B.plan.id ? 'checked' : ''} ${p.id === cur ? 'disabled' : ''}>
-<span><strong>${esc(p.name)}</strong>${p.price ? ` · ${esc(p.price)}` : ''}${p.id === B.plan.id ? ' <span class="cstatus active">Current plan</span>' : ''}<small class="muted">${esc(p.description)}</small></span></label>`).join('')}</div>
+  const B = billingData; const sub = B.subscription; let period = B.interval === 'year' ? 'year' : 'month';
+  const both = B.plans.some((p) => p.month && p.year); const amt = (n) => money(n).replace(/\.00$/, '');
+  const isCurrent = (p) => !B.pendingPlan && p.id === B.plan.id && (!B.plan.charge || (p[period] ? B.interval === period : true));
+  const m = modal('Change plan', `<form id="bpf">${both ? '<div class="bill-period" role="radiogroup" aria-label="Billing period"></div>' : ''}<div class="bill-plans"></div>
 <p class="muted" id="bpNote" style="font-size:13px"></p>
 <div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn" id="bpGo" disabled>Switch plan</button></div></form>`);
   const f = $('#bpf', m); const go = $('#bpGo', m); const note = $('#bpNote', m);
-  const paid = (p) => /\$\s*\d/.test(p.price || '') && !/^\$\s*0+(\.0+)?\b/.test(p.price);
-  const sync = () => {
-    const p = B.plans.find((x) => x.id === (new FormData(f)).get('planId')); go.disabled = !p || p.id === cur;
-    if (!p || p.id === cur) { note.textContent = ''; return; }
-    go.textContent = `Switch to ${p.name}`;
-    note.textContent = !paid(p) ? (sub ? `You’ll keep ${B.plan.name} until ${fmtDate(sub.periodEnd)}, then move to ${p.name}. You won’t be charged again.` : `You’ll move to ${p.name} right away.`)
-      : sub ? `Your card${B.card ? ` ending in ${B.card.last4}` : ''} is charged or credited the difference for the rest of this billing period, then ${p.price} from your next bill.`
-      : `You’ll go to Stripe’s secure checkout to pay ${p.price}. After that, Stripe charges your card automatically.`;
+  const priceFor = (p) => p[period] || p.month || p.year; const perFor = (p) => (p[period] ? period : p.month ? 'month' : 'year');
+  const draw = (keep) => {
+    if (both) $('.bill-period', f).innerHTML = [['month', 'Monthly'], ['year', 'Yearly']].map(([k, l]) => `<button type="button" role="radio" aria-checked="${period === k}" class="${period === k ? 'on' : ''}" data-per="${k}">${l}</button>`).join('');
+    $('.bill-plans', f).innerHTML = B.plans.map((p) => { const v = priceFor(p); const save = p.month && p.year && perFor(p) === 'year' ? Math.round((1 - p.year / (p.month * 12)) * 100) : 0;
+      return `<label class="bill-plan"><input type="radio" name="planId" value="${esc(p.id)}" ${(keep || B.plan.id) === p.id ? 'checked' : ''} ${isCurrent(p) ? 'disabled' : ''}>
+<span><strong>${esc(p.name)}</strong> · ${v ? `${amt(v)}/${perFor(p)}${save > 0 ? ` <span class="cstatus active">Save ${save}%</span>` : ''}` : esc(p.price || 'Free')}${isCurrent(p) ? ' <span class="cstatus active">Current plan</span>' : ''}<small class="muted">${esc(p.description)}</small></span></label>`; }).join('');
+    sync();
   };
-  f.addEventListener('change', sync); sync();
-  f.addEventListener('submit', (e) => { e.preventDefault(); billGo('/api/account/billing/plan', { planId: (new FormData(f)).get('planId') }, go); });
+  const sync = () => {
+    const p = B.plans.find((x) => x.id === (new FormData(f)).get('planId')); go.disabled = !p || isCurrent(p);
+    if (!p || isCurrent(p)) { note.textContent = ''; go.textContent = 'Switch plan'; return; }
+    const v = priceFor(p); const per = perFor(p); go.textContent = p.id === B.plan.id ? `Switch to ${per === 'year' ? 'yearly' : 'monthly'} billing` : `Switch to ${p.name}`;
+    note.textContent = !v ? (sub ? `You’ll keep ${B.plan.name} until ${fmtDate(sub.periodEnd)}, then move to ${p.name}. You won’t be charged again.` : `You’ll move to ${p.name} right away.`)
+      : sub && per !== B.interval ? `Your unused time is credited, then ${amt(v)} is charged to your card${B.card ? ` ending in ${B.card.last4}` : ''} now and every ${per} after that.`
+      : sub ? `Your card${B.card ? ` ending in ${B.card.last4}` : ''} is charged or credited the difference for the rest of this billing period, then ${amt(v)}/${per} from your next bill.`
+      : `You’ll go to Stripe’s secure checkout to pay ${amt(v)}/${per}. After that, Stripe charges your card automatically every ${per}.`;
+  };
+  f.addEventListener('change', sync);
+  f.addEventListener('click', (e) => { const b = e.target.closest('[data-per]'); if (b) { period = b.dataset.per; draw((new FormData(f)).get('planId')); } });
+  draw();
+  f.addEventListener('submit', (e) => { e.preventDefault(); const p = B.plans.find((x) => x.id === (new FormData(f)).get('planId')); billGo('/api/account/billing/plan', { planId: p.id, interval: perFor(p) }, go); });
 };
 A.billEdit = () => {
   const C = (billingData.customer || {}); const a = C.address || {};

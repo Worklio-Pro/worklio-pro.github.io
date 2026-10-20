@@ -491,3 +491,5 @@ table.domains td{vertical-align:middle}.dom-acts{display:flex;gap:6px;justify-co
 .bill-plan small{display:block;font-size:13px}.bill-plan:has(input:checked){border-color:var(--brand);background:var(--tint)}
 @media (max-width:900px){.bill-grid,.bill-dl{grid-template-columns:1fr}.bill-cancel{margin-left:0}}
 .bill-cardrow{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 12px;margin:4px 0 8px;border:1px solid var(--line);border-radius:10px;font-size:14px}
+.bill-period{display:flex;width:max-content;padding:3px;margin:0 0 12px;border:1px solid var(--line);border-radius:99px}
+.bill-period button{border:0;background:none;color:var(--text);font:inherit;font-size:14px;font-weight:600;padding:6px 16px;border-radius:99px;cursor:pointer}.bill-period button.on{background:var(--brand);color:#fff}

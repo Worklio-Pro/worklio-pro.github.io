@@ -154,13 +154,18 @@ A.delAccount = async (d) => {
 };
 
 /* ===== plans & features ===== */
+// how much the yearly price saves against 12 monthly payments
+const saveText = (p) => (p.monthly > 0 && p.yearly > 0 ? (p.yearly < p.monthly * 12 ? `Yearly saves ${Math.round((1 - p.yearly / (p.monthly * 12)) * 100)}% ($${Math.round(p.yearly / 12 * 100) / 100}/mo)` : 'Yearly costs as much as 12 months') : p.yearly > 0 ? 'Yearly only' : p.monthly > 0 ? 'Monthly only' : 'No price: shows the label below');
 function plansView(main) {
   const P = draftPlans; const groups = [...new Set(D.features.map((f) => f.group))];
   const used = (id) => D.accounts.filter((a) => a.planId === id).length;
   const dirty = JSON.stringify(P) !== JSON.stringify(D.plans);
   main.innerHTML = `<div class="head"><div><h1>Plans & features</h1><p class="sub" style="margin:4px 0 0">Tick what each plan includes. Accounts get changes as soon as you save.</p></div><button class="btn alt" data-act="addPlan">Add plan</button></div>
 <div class="card" style="padding-bottom:18px"><div class="tablewrap"><table class="matrix"><thead><tr><th><span class="muted" style="font-weight:400;font-size:13px">Plan details</span></th>
-${P.map((p, i) => `<th><label>Name<input class="pn" data-i="${i}" data-k="name" value="${esc(p.name)}" maxlength="40" aria-label="Plan name"></label><label>Price<input data-i="${i}" data-k="price" value="${esc(p.price)}" maxlength="40" placeholder="$49/month" aria-label="Price for ${esc(p.name)}"></label>
+${P.map((p, i) => `<th><label>Name<input class="pn" data-i="${i}" data-k="name" value="${esc(p.name)}" maxlength="40" aria-label="Plan name"></label><div class="pr-pair"><label>Monthly ($)<input type="number" min="0" step="0.01" data-i="${i}" data-k="monthly" value="${p.monthly ?? ''}" placeholder="49" aria-label="Monthly price for ${esc(p.name)}"></label>
+<label>Yearly ($)<input type="number" min="0" step="0.01" data-i="${i}" data-k="yearly" value="${p.yearly ?? ''}" placeholder="490" aria-label="Yearly price for ${esc(p.name)}"></label></div>
+<div class="pr-save muted" data-save="${i}">${saveText(p)}</div>
+<label>Label when there’s no price<input data-i="${i}" data-k="priceLabel" value="${esc(p.priceLabel || '')}" maxlength="40" placeholder="Free or Contact us" aria-label="Price label for ${esc(p.name)}"></label>
 <label>Team logins (0 = unlimited)<input type="number" min="0" data-i="${i}" data-k="maxUsers" value="${p.maxUsers || 0}" aria-label="Team logins for ${esc(p.name)}"></label><label>Short description<input data-i="${i}" data-k="description" value="${esc(p.description)}" maxlength="200" aria-label="Description for ${esc(p.name)}"></label>
 <label class="switchline" style="font-size:13px"><input type="checkbox" data-hide="${i}" ${p.hidden ? 'checked' : ''}> Hidden from public</label>
 <div class="muted" style="font-size:12px">${used(p.id)} account${used(p.id) === 1 ? '' : 's'}</div>${P.length > 1 ? `<button type="button" class="rm-plan" data-act="rmPlan" data-i="${i}" ${used(p.id) ? `disabled title="Move its accounts to another plan first"` : ''}>Remove plan</button>` : ''}</th>`).join('')}</tr></thead>
@@ -172,7 +177,12 @@ ${P.map((p, i) => `<td><input type="checkbox" data-i="${i}" data-f="${f.key}" ${
 <div class="savebar"><span class="muted">${dirty ? 'Unsaved changes' : 'All changes saved'}</span>${dirty ? '<button type="button" class="btn alt" data-act="discardPlans">Discard</button>' : ''}<button type="button" class="btn" data-act="savePlans" ${dirty ? '' : 'disabled'}>Save plans</button></div></div>`;
   // hidden plans stay off the pricing page and checkout; you can still put an account on one
   $$('thead input[data-hide]', main).forEach((c) => c.addEventListener('change', () => { const p = P[c.dataset.hide]; if (c.checked) p.hidden = true; else delete p.hidden; markDirty(main); }));
-  $$('thead input:not([data-hide])', main).forEach((i) => i.addEventListener('input', () => { const p = P[i.dataset.i]; p[i.dataset.k] = i.dataset.k === 'maxUsers' ? Math.max(0, parseInt(i.value, 10) || 0) : i.value; markDirty(main); }));
+  $$('thead input:not([data-hide])', main).forEach((i) => i.addEventListener('input', () => {
+    const p = P[i.dataset.i]; const k = i.dataset.k;
+    p[k] = k === 'maxUsers' ? Math.max(0, parseInt(i.value, 10) || 0) : k === 'monthly' || k === 'yearly' ? (Number(i.value) > 0 ? Number(i.value) : null) : i.value;
+    if (k === 'monthly' || k === 'yearly') $(`[data-save="${i.dataset.i}"]`, main).textContent = saveText(p);
+    markDirty(main);
+  }));
   $$('tbody input[type=checkbox]', main).forEach((c) => c.addEventListener('change', () => {
     const p = P[c.dataset.i]; p.features = c.checked ? [...new Set([...p.features, c.dataset.f])] : p.features.filter((k) => k !== c.dataset.f);
     const cnt = $$('.count td', main)[Number(c.dataset.i) + 1]; cnt.textContent = `${p.features.length} of ${D.features.length}`; markDirty(main);
@@ -186,7 +196,7 @@ function markDirty(main) {
 A.addPlan = () => {
   const name = prompt('Name of the new plan:'); if (!name || !name.trim()) return;
   let id = slugify(name) || 'plan'; while (draftPlans.some((p) => p.id === id)) id += '-2';
-  draftPlans.push({ id, name: name.trim(), price: '', description: '', maxUsers: 1, features: [] }); render();
+  draftPlans.push({ id, name: name.trim(), monthly: null, yearly: null, priceLabel: '', price: '', description: '', maxUsers: 1, features: [] }); render();
 };
 A.rmPlan = (d) => { const p = draftPlans[d.i]; if (!confirm(`Remove the ${p.name} plan?`)) return; draftPlans.splice(Number(d.i), 1); render(); };
 A.discardPlans = () => { draftPlans = structuredClone(D.plans); render(); };

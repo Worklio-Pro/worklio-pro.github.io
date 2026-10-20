@@ -41,7 +41,10 @@
     .lock{display:inline-flex;align-items:center;gap:6px}
     .done{max-width:520px;margin:40px auto;padding:0 16px;text-align:center}
     @media (max-width:820px){.co{grid-template-columns:1fr}.sum{position:static}.steps{display:none}}
-  </style>
+      .period{display:flex;width:max-content;padding:3px;margin:0 0 12px;border:1px solid var(--line);border-radius:99px}
+    .period button{border:0;background:none;color:var(--text);font:inherit;font-size:14px;font-weight:600;padding:6px 16px;border-radius:99px;cursor:pointer}.period button.on{background:var(--brand);color:#fff}
+    .pr .sv{display:block;font-size:11px;font-weight:600;color:var(--ok-fg)}
+</style>
 </head>
 <body>
   <header class="s-top"><a class="s-brand" id="brand" href="/pricing"></a>

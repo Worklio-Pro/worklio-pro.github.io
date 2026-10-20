@@ -31,6 +31,11 @@
     .msg{padding:10px 12px;border-radius:8px;font-size:14px;margin-bottom:12px}.msg.err{background:var(--bad-bg);color:var(--bad-fg)}
     .s-signup .go{width:100%;height:46px;font-size:16px;margin-top:6px}
     .s-foot{text-align:center;color:var(--muted);font-size:14px;padding:0 16px 40px}
+    .s-period{display:flex;width:max-content;max-width:calc(100% - 32px);margin:0 auto 18px;padding:4px;border:1px solid var(--line);border-radius:99px;background:var(--card)}
+    .s-period button{border:0;background:none;color:var(--text);font:inherit;font-size:15px;font-weight:600;padding:8px 18px;border-radius:99px;cursor:pointer}
+    .s-period button.on{background:var(--brand);color:#fff}.s-save{font-size:12px;font-weight:600;padding:2px 8px;border-radius:99px;background:var(--ok-bg);color:var(--ok-fg);margin-left:4px}
+    .s-period button.on .s-save{background:rgba(255,255,255,.2);color:#fff}
+    .s-plan .price small{font-size:15px;font-weight:600;color:var(--muted)}.s-plan .per{font-size:13px;color:var(--muted);margin:0 0 10px;min-height:18px}
     .c-row{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}@media (max-width:560px){.c-row{grid-template-columns:1fr}}
     #cf textarea{width:100%;resize:vertical}
     .c-hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
@@ -40,6 +45,7 @@
 <body>
   <header class="s-top"><div class="s-brand" id="brand"></div><a class="btn alt" href="#signup" id="topCta" hidden>Get started</a></header>
   <section class="s-hero"><h1>Run your service business from one place</h1><p>Quotes, scheduling, invoices and payments for you, your team and your clients.</p></section>
+  <div id="period"></div>
   <section class="s-plans" id="plans" aria-label="Plans"><p class="muted" style="text-align:center">Loading…</p></section>
   <section class="s-signup" id="signup"></section>
   <footer class="s-foot" id="foot"></footer>
