@@ -64,7 +64,7 @@ before Connect existed keep working until they switch or remove them.
 ### Web addresses
 | Setting | What it does |
 |---|---|
-| `PLATFORM_DOMAIN` | e.g. `yourapp.com`. Accounts open at `<address>.yourapp.com`; `yourapp.com` shows the pricing page and `/platform`. Unset: this server answers as your own account on every address, and other accounts open at `<address>.localhost:<port>` |
+| `PLATFORM_DOMAIN` | e.g. `yourapp.com`. Accounts open at `<address>.yourapp.com`; `yourapp.com` shows the guest home page (features), `/pricing` and `/platform`. Unset (developing): the home page is at `/home`; this server answers as your own account on every address, and other accounts open at `<address>.localhost:<port>` |
 | `BASE_URL` | `https://yourapp.com` (makes links and cookies use https) |
 | `SERVER_IP` | optional: your server's public IP, shown to customers who connect a root domain with an A record |
 

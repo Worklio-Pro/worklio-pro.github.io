@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 360" role="img" aria-labelledby="t">
+  <title id="t">A quote with line items, a client's signature and an Approved stamp, with a deposit paid</title>
+  <defs><filter id="sh" x="-20%" y="-20%" width="140%" height="160%"><feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#0f1f3d" flood-opacity=".16"/></filter></defs>
+  <rect width="480" height="360" rx="28" fill="#fef3c7"/>
+  <circle cx="420" cy="60" r="70" fill="#fde68a"/>
+  <circle cx="50" cy="320" r="60" fill="#fde68a"/>
+  <g filter="url(#sh)">
+    <rect x="110" y="34" width="250" height="300" rx="14" fill="#fff"/>
+  </g>
+  <rect x="110" y="34" width="250" height="12" rx="6" fill="#2563eb"/>
+  <text x="132" y="78" font-family="Inter,system-ui,sans-serif" font-size="18" font-weight="800" fill="#0f1f3d">Quote #1042</text>
+  <text x="132" y="98" font-family="Inter,system-ui,sans-serif" font-size="12" fill="#64748b">Backyard cleanup · J. Smith</text>
+  <g font-family="Inter,system-ui,sans-serif" font-size="13" fill="#334155">
+    <text x="132" y="132">Leaf &amp; debris removal</text><text x="338" y="132" text-anchor="end" font-weight="600">$320</text>
+    <text x="132" y="156">Hedge trimming</text><text x="338" y="156" text-anchor="end" font-weight="600">$180</text>
+    <text x="132" y="180">Haul away (2 loads)</text><text x="338" y="180" text-anchor="end" font-weight="600">$150</text>
+  </g>
+  <path d="M132 194h206" stroke="#e2e8f0" stroke-width="2"/>
+  <text x="132" y="218" font-family="Inter,system-ui,sans-serif" font-size="15" font-weight="800" fill="#0f1f3d">Total</text>
+  <text x="338" y="218" text-anchor="end" font-family="Inter,system-ui,sans-serif" font-size="15" font-weight="800" fill="#0f1f3d">$650.00</text>
+  <rect x="132" y="232" width="206" height="30" rx="8" fill="#ecfdf5"/>
+  <text x="144" y="252" font-family="Inter,system-ui,sans-serif" font-size="12" font-weight="600" fill="#15803d">Deposit paid</text>
+  <text x="326" y="252" text-anchor="end" font-family="Inter,system-ui,sans-serif" font-size="12" font-weight="700" fill="#15803d">$195.00</text>
+  <path d="M136 304c10-22 18-24 20-10s6 16 16-6 14-16 16 0 10 10 22-4" fill="none" stroke="#1e3a8a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M132 312h120" stroke="#cbd5e1" stroke-width="2"/>
+  <text x="132" y="326" font-family="Inter,system-ui,sans-serif" font-size="10" fill="#94a3b8">Client signature</text>
+  <g transform="rotate(-14 312 296)">
+    <rect x="262" y="276" width="104" height="38" rx="8" fill="none" stroke="#16a34a" stroke-width="4"/>
+    <text x="314" y="302" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="16" font-weight="800" fill="#16a34a" letter-spacing="1.5">APPROVED</text>
+  </g>
+  <!-- pen -->
+  <g transform="translate(250 268) rotate(35)">
+    <rect x="0" y="0" width="14" height="80" rx="4" fill="#0f1f3d"/>
+    <rect x="0" y="0" width="14" height="18" rx="4" fill="#f59e0b"/>
+    <path d="M0 80l7 18 7-18z" fill="#f1f5f9"/>
+  </g>
+</svg>

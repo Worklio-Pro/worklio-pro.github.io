@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 360" role="img" aria-labelledby="t">
+  <title id="t">Before and after photos of a lawn job</title>
+  <defs><filter id="sh" x="-20%" y="-20%" width="140%" height="160%"><feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#0f1f3d" flood-opacity=".18"/></filter></defs>
+  <rect width="480" height="360" rx="28" fill="#fce7f3"/>
+  <circle cx="420" cy="300" r="90" fill="#fbcfe8"/>
+  <!-- before -->
+  <g transform="rotate(-6 140 170)" filter="url(#sh)">
+    <rect x="40" y="70" width="190" height="200" rx="10" fill="#fff"/>
+    <rect x="52" y="82" width="166" height="150" rx="6" fill="#e0f2fe"/>
+    <path d="M52 182c40-14 90-14 166 0v44a6 6 0 0 1-6 6H58a6 6 0 0 1-6-6z" fill="#d9c27a"/>
+    <path d="M70 200l6-14 4 14M110 210l5-16 5 16M160 196l6-12 4 12M190 214l4-14 4 14" stroke="#a16207" stroke-width="3" fill="none" stroke-linecap="round"/>
+    <circle cx="96" cy="216" r="8" fill="#a16207"/><circle cx="146" cy="222" r="6" fill="#854d0e"/>
+    <path d="M90 186V132M90 142l-14-14M90 152l14-16" stroke="#78350f" stroke-width="5" stroke-linecap="round"/>
+    <text x="135" y="256" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="14" font-weight="800" fill="#64748b">BEFORE</text>
+  </g>
+  <!-- after -->
+  <g transform="rotate(5 330 170)" filter="url(#sh)">
+    <rect x="236" y="62" width="200" height="210" rx="10" fill="#fff"/>
+    <rect x="248" y="74" width="176" height="158" rx="6" fill="#bae6fd"/>
+    <circle cx="396" cy="104" r="16" fill="#fde047"/>
+    <path d="M248 178c40-14 96-14 176 0v48a6 6 0 0 1-6 6H254a6 6 0 0 1-6-6z" fill="#4ade80"/>
+    <path d="M248 200c50-8 120-8 176 0" stroke="#22c55e" stroke-width="10" fill="none"/>
+    <path d="M286 182v-48" stroke="#78350f" stroke-width="7" stroke-linecap="round"/>
+    <circle cx="286" cy="124" r="26" fill="#16a34a"/><circle cx="270" cy="138" r="16" fill="#22c55e"/><circle cx="302" cy="138" r="16" fill="#22c55e"/>
+    <circle cx="352" cy="200" r="7" fill="#f472b6"/><circle cx="368" cy="206" r="7" fill="#fbbf24"/><circle cx="384" cy="198" r="7" fill="#f472b6"/>
+    <text x="336" y="258" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="14" font-weight="800" fill="#16a34a">AFTER</text>
+  </g>
+  <!-- camera -->
+  <g transform="translate(196 270)" filter="url(#sh)">
+    <rect x="0" y="12" width="88" height="60" rx="12" fill="#0f1f3d"/>
+    <rect x="24" y="0" width="36" height="18" rx="5" fill="#0f1f3d"/>
+    <circle cx="44" cy="42" r="20" fill="#334155"/><circle cx="44" cy="42" r="12" fill="#60a5fa"/><circle cx="40" cy="38" r="4" fill="#fff" opacity=".8"/>
+    <circle cx="74" cy="24" r="4" fill="#f59e0b"/>
+  </g>
+</svg>

@@ -1826,7 +1826,7 @@ const platformApp = require('./lib/platform')({
   createOwner, ownerLink, tenantStats, endSupportSessions, sendEmail, sendSms, emailProvider: serverEmailProvider, applyStripeSession, syncStripeAccount, resetDemo, setCompanyEmail: (e) => { if (!db.company.email) { db.company.email = e; save(); } },
 });
 // which app answers: the platform's (its own domain, or /platform… while developing) or an account's
-const PLATFORM_PATHS = /^\/(platform(\/.*)?|pricing|signup|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;
+const PLATFORM_PATHS = /^\/(platform(\/.*)?|home|pricing|signup|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;
 function dispatch(req, res) {
   const p = req.url.split('?')[0]; const r = tenancy.resolve(req.headers.host);
   // pages and API replies depend on who is logged in: hosting caches (e.g. SiteGround's dynamic cache) must never store or share them

@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Field service software for quotes, scheduling and payments</title>
+  <meta name="description" content="Quotes, scheduling, invoices and payments for field service businesses: your office, your crew in the field and your clients, all in one place.">
+  <meta name="color-scheme" content="light dark">
+  <link rel="stylesheet" href="/styles.css?v=10">
+  <style>
+    body{background:var(--card)}
+    .h-wrap{max-width:1160px;margin:0 auto;padding:0 20px}
+    /* top bar */
+    .h-top{position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--card) 88%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+    .h-top .h-wrap{display:flex;align-items:center;gap:20px;height:64px}
+    .h-brand{font-weight:800;font-size:20px;color:var(--text);text-decoration:none;display:flex;align-items:center;gap:8px}
+    .h-brand i{width:30px;height:30px;border-radius:9px;background:var(--brand);display:grid;place-items:center}
+    .h-links{display:flex;gap:4px;margin-left:auto}
+    .h-links a{color:var(--text);text-decoration:none;font-size:15px;font-weight:500;padding:8px 12px;border-radius:8px}.h-links a:hover{background:var(--tint)}
+    .h-top .btn{height:40px;line-height:22px;font-weight:600;font-size:15px}
+    /* hero */
+    .h-hero{background:linear-gradient(180deg,var(--tint) 0%,var(--card) 100%);overflow:hidden}
+    .h-hero .h-wrap{display:grid;grid-template-columns:1.05fr 1fr;align-items:center;gap:40px;padding-top:56px;padding-bottom:56px}
+    .h-eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--brand);background:var(--card);border:1px solid var(--tint-border);padding:6px 12px;border-radius:99px}
+    .h-hero h1{font-size:clamp(34px,5.2vw,58px);line-height:1.04;letter-spacing:-.025em;margin:18px 0 18px}
+    .h-hero h1 em{font-style:normal;color:var(--brand)}
+    .h-hero p.lead{font-size:19px;line-height:1.55;color:var(--muted);margin:0 0 28px;max-width:540px}
+    .h-ctas{display:flex;gap:12px;flex-wrap:wrap}
+    .h-ctas .btn{display:inline-flex;align-items:center;justify-content:center;min-height:50px;padding:0 22px;font-size:16px;font-weight:700;border-radius:10px}
+    .h-ticks{display:flex;flex-wrap:wrap;gap:8px 20px;margin:22px 0 0;padding:0;list-style:none;color:var(--muted);font-size:14px}
+    .h-ticks li::before{content:'✓';color:var(--ok);font-weight:800;margin-right:6px}
+    .h-hero img{width:100%;height:auto;display:block}
+    /* trades strip */
+    .h-trades{padding:34px 0 10px;text-align:center}
+    .h-trades p{margin:0 0 16px;color:var(--muted);font-size:14px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+    .h-trades ul{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;justify-content:center;gap:10px}
+    .h-trades li{display:flex;align-items:center;gap:8px;padding:9px 16px;border:1px solid var(--line);border-radius:99px;font-weight:600;font-size:15px;background:var(--surface-2)}
+    .h-trades li span{font-size:18px}
+    /* feature rows */
+    .h-sec{padding:72px 0}
+    .h-sec-head{text-align:center;max-width:720px;margin:0 auto 48px}
+    .h-sec-head h2{font-size:clamp(28px,3.6vw,40px);line-height:1.12;letter-spacing:-.02em;margin:10px 0 12px}
+    .h-sec-head p{font-size:18px;color:var(--muted);margin:0;line-height:1.55}
+    .h-kicker{font-size:13px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--brand)}
+    .h-row{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center;margin-bottom:84px}.h-row:last-child{margin-bottom:0}
+    .h-row.flip .h-art{order:2}
+    .h-art img{width:100%;height:auto;display:block;border-radius:28px}
+    .h-copy h3{font-size:clamp(24px,2.8vw,32px);line-height:1.15;letter-spacing:-.015em;margin:10px 0 14px}
+    .h-copy>p{font-size:17px;line-height:1.6;color:var(--muted);margin:0 0 18px}
+    .h-copy ul{list-style:none;margin:0;padding:0;display:grid;gap:12px}
+    .h-copy li{display:flex;gap:12px;font-size:16px;line-height:1.45}
+    .h-copy li b{display:block}
+    .h-copy li i{flex:none;width:26px;height:26px;border-radius:50%;background:var(--ok-bg);color:var(--ok-fg);display:grid;place-items:center;font-style:normal;font-weight:800;font-size:13px;margin-top:1px}
+    /* steps */
+    .h-steps-bg{background:var(--side);color:#e2e8f0}
+    .h-steps-bg .h-sec-head p{color:#94a3b8}.h-steps-bg .h-kicker{color:#93c5fd}.h-steps-bg h2{color:#fff}
+    .h-steps{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;counter-reset:s}
+    .h-step{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:18px;padding:24px;position:relative}
+    .h-step::before{counter-increment:s;content:counter(s);width:36px;height:36px;border-radius:50%;background:var(--brand);color:#fff;font-weight:800;display:grid;place-items:center;margin-bottom:14px}
+    .h-step h3{color:#fff;margin:0 0 8px;font-size:18px}.h-step p{margin:0;color:#94a3b8;font-size:15px;line-height:1.55}
+    /* all features grid */
+    .h-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+    .h-feat{border:1px solid var(--line);border-radius:18px;padding:22px;background:var(--card);transition:transform .15s,box-shadow .15s}
+    .h-feat:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
+    .h-feat .ic{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;margin-bottom:14px}
+    .h-feat .ic svg{width:22px;height:22px}
+    .h-feat h3{margin:0 0 6px;font-size:17px}.h-feat p{margin:0;color:var(--muted);font-size:15px;line-height:1.5}
+    .c1{background:var(--info-bg);color:var(--info-fg)}.c2{background:var(--ok-bg);color:var(--ok-fg)}.c3{background:var(--warn-bg);color:var(--warn-fg)}.c4{background:var(--violet-bg);color:var(--violet-fg)}.c5{background:var(--bad-bg);color:var(--bad-fg)}
+    /* stats + quote */
+    .h-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:40px}
+    .h-stat{text-align:center;padding:26px;border-radius:18px;background:var(--tint)}
+    .h-stat b{display:block;font-size:34px;letter-spacing:-.02em;color:var(--brand)}.h-stat span{color:var(--muted);font-size:15px}
+    /* faq */
+    .h-faq{max-width:780px;margin:0 auto}
+    .h-faq details{border-bottom:1px solid var(--line);padding:4px 0}
+    .h-faq summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;gap:16px;padding:16px 0;font-weight:700;font-size:17px}
+    .h-faq summary::-webkit-details-marker{display:none}
+    .h-faq summary::after{content:'+';font-size:24px;line-height:1;color:var(--brand);font-weight:400}.h-faq details[open] summary::after{content:'−'}
+    .h-faq details p{margin:0 0 18px;color:var(--muted);line-height:1.6;font-size:16px}
+    /* closing cta */
+    .h-cta{background:var(--brand);color:#fff;border-radius:28px;padding:56px 32px;text-align:center;position:relative;overflow:hidden}
+    .h-cta::before,.h-cta::after{content:'';position:absolute;border-radius:50%;background:rgba(255,255,255,.08)}
+    .h-cta::before{width:320px;height:320px;left:-80px;top:-140px}.h-cta::after{width:260px;height:260px;right:-60px;bottom:-140px}
+    .h-cta h2{font-size:clamp(28px,3.6vw,40px);margin:0 0 12px;letter-spacing:-.02em;position:relative}
+    .h-cta p{margin:0 0 26px;font-size:18px;opacity:.9;position:relative}
+    .h-cta .btn{background:#fff;color:var(--brand);height:52px;line-height:34px;padding:9px 26px;font-size:17px;font-weight:800;border-radius:12px;position:relative}
+    .h-foot{padding:36px 0 44px;color:var(--muted);font-size:14px}
+    .h-foot .h-wrap{display:flex;flex-wrap:wrap;gap:12px 24px;justify-content:space-between;align-items:center}
+    .h-foot nav{display:flex;flex-wrap:wrap;gap:6px 18px}.h-foot a{color:var(--muted)}
+    @media (max-width:960px){
+      .h-hero .h-wrap{grid-template-columns:1fr;padding-top:36px;gap:24px}.h-hero .h-art{max-width:560px;margin:0 auto;width:100%}
+      .h-row,.h-row.flip{grid-template-columns:1fr;gap:26px;margin-bottom:64px}.h-row.flip .h-art{order:0}
+      .h-steps{grid-template-columns:1fr 1fr}.h-grid{grid-template-columns:1fr 1fr}
+    }
+    @media (max-width:640px){
+      .h-wrap{padding:0 16px}.h-links{display:none}.h-top .btn{margin-left:auto}
+      .h-sec{padding:52px 0}.h-steps,.h-grid,.h-stats{grid-template-columns:1fr}
+      .h-ctas .btn{flex:1 1 100%}.h-cta{padding:40px 20px;border-radius:20px}
+    }
+    @media (prefers-reduced-motion:reduce){.h-feat{transition:none}.h-feat:hover{transform:none}}
+  </style>
+</head>
+<body>
+  <header class="h-top"><div class="h-wrap">
+    <a class="h-brand" href="/"><i aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg></i><span class="pname">Fieldwork</span></a>
+    <nav class="h-links" aria-label="Page sections"><a href="#features">Features</a><a href="#how">How it works</a><a href="#faq">FAQ</a><a href="/pricing">Pricing</a></nav>
+    <a class="btn" href="/pricing">Get started</a>
+  </div></header>
+
+  <main>
+    <section class="h-hero"><div class="h-wrap">
+      <div>
+        <span class="h-eyebrow">Built for field service teams</span>
+        <h1>Less paperwork. <em>More jobs done.</em></h1>
+        <p class="lead"><span class="pname">Fieldwork</span> runs your whole service business: quotes your clients sign online, a schedule your crew can see from the truck, and invoices that get paid by card before you’re back at the shop.</p>
+        <div class="h-ctas"><a class="btn" href="/pricing">See plans &amp; get started</a><a class="btn alt" href="#features">Explore features</a></div>
+        <ul class="h-ticks"><li>Works on any phone</li><li>Set up in minutes</li><li>Your own web address</li></ul>
+      </div>
+      <div class="h-art"><img src="/img/home/hero.svg" alt="A technician with a tablet next to a service van outside a client's house, with job and payment notifications" width="640" height="500"></div>
+    </div></section>
+
+    <section class="h-trades" aria-label="Who it's for"><div class="h-wrap">
+      <p>Made for the trades that keep homes and businesses running</p>
+      <ul>
+        <li><span aria-hidden="true">❄️</span>HVAC</li><li><span aria-hidden="true">🔧</span>Plumbing</li><li><span aria-hidden="true">⚡</span>Electrical</li>
+        <li><span aria-hidden="true">🌿</span>Landscaping</li><li><span aria-hidden="true">🧽</span>Cleaning</li><li><span aria-hidden="true">🏠</span>Roofing &amp; gutters</li>
+        <li><span aria-hidden="true">🐜</span>Pest control</li><li><span aria-hidden="true">🏊</span>Pool service</li><li><span aria-hidden="true">🎨</span>Painting</li><li><span aria-hidden="true">🛠️</span>Handyman</li>
+      </ul>
+    </div></section>
+
+    <section class="h-sec" id="features"><div class="h-wrap">
+      <div class="h-sec-head"><span class="h-kicker">Everything in one place</span><h2>From the first call to the final payment</h2><p>Stop juggling spreadsheets, paper forms and group texts. Every quote, visit, photo and payment lives with the client it belongs to.</p></div>
+
+      <div class="h-row">
+        <div class="h-art"><img src="/img/home/quotes.svg" alt="A quote with line items, a client's signature and an Approved stamp, with a deposit paid" width="480" height="360" loading="lazy"></div>
+        <div class="h-copy"><span class="h-kicker">Quotes</span><h3>Send quotes clients approve in one tap</h3>
+          <p>Build a professional quote from your saved services in a couple of minutes, then send it by email or text. Clients review it on their phone, sign, and pay a deposit on the spot.</p>
+          <ul><li><i>✓</i><span><b>E-signatures and deposits</b>Ask for a flat or percentage deposit and collect it when the quote is approved.</span></li>
+            <li><i>✓</i><span><b>Products &amp; services catalog</b>Saved prices, markups and descriptions, with AI help writing them.</span></li>
+            <li><i>✓</i><span><b>One click to a job</b>Approved quotes turn into scheduled jobs with every line item carried over.</span></li></ul>
+        </div>
+      </div>
+
+      <div class="h-row flip">
+        <div class="h-art"><img src="/img/home/schedule.svg" alt="A weekly crew schedule with jobs for each team member" width="480" height="360" loading="lazy"></div>
+        <div class="h-copy"><span class="h-kicker">Scheduling</span><h3>Know who’s where, every day of the week</h3>
+          <p>Drop jobs on the calendar, assign your crew and see the whole week at a glance. Everyone sees their own schedule on their phone, so no one has to call the office to ask where they’re headed next.</p>
+          <ul><li><i>✓</i><span><b>Job calendar and staff schedules</b>Working hours, days off and workload for each team member.</span></li>
+            <li><i>✓</i><span><b>Roles for your team</b>Owners, managers and technicians each see exactly what they need, and technicians never see prices.</span></li>
+            <li><i>✓</i><span><b>Visit reminders</b>Send clients a heads-up by email or text in one tap, so fewer no-shows and locked gates.</span></li></ul>
+        </div>
+      </div>
+
+      <div class="h-row">
+        <div class="h-art"><img src="/img/home/onsite.svg" alt="A technician at a client's door with a toolbox while the client signs off on a tablet" width="480" height="360" loading="lazy"></div>
+        <div class="h-copy"><span class="h-kicker">In the field</span><h3>Your office, in your crew’s pocket</h3>
+          <p>Techs open the job, get the address and notes, and wrap up on site. Collect the client’s signature when the work is done and attach it to the job for your records.</p>
+          <ul><li><i>✓</i><span><b>On-site signatures</b>Clients sign off on the phone or tablet right at the door.</span></li>
+            <li><i>✓</i><span><b>Built for phones</b>A simple bottom menu and big tap targets, made for work gloves and truck cabs.</span></li></ul>
+        </div>
+      </div>
+
+      <div class="h-row flip">
+        <div class="h-art"><img src="/img/home/photos.svg" alt="Before and after photos of a lawn job" width="480" height="360" loading="lazy"></div>
+        <div class="h-copy"><span class="h-kicker">Project gallery</span><h3>Show off your work with before &amp; after photos</h3>
+          <p>Snap before, progress and after photos on the job. They’re saved with the client and job, ready for proof of work, disputes, or your next social post.</p>
+          <ul><li><i>✓</i><span><b>Every photo in one gallery</b>Filter by job, add captions and find the shot you need in seconds.</span></li></ul>
+        </div>
+      </div>
+
+      <div class="h-row">
+        <div class="h-art"><img src="/img/home/payments.svg" alt="A client paying an invoice by card on their phone" width="480" height="360" loading="lazy"></div>
+        <div class="h-copy"><span class="h-kicker">Invoices &amp; payments</span><h3>Get paid faster, without chasing checks</h3>
+          <p>Turn a finished job into an invoice in one click. Clients pay by card or Zelle from a secure link, deposits are credited automatically, and payments go straight to your own Stripe account.</p>
+          <ul><li><i>✓</i><span><b>Online card payments</b>Card payments through your own Stripe account, with payouts to your bank.</span></li>
+            <li><i>✓</i><span><b>Balances that add up</b>Deposits, partial payments and balance due, tracked on every invoice.</span></li>
+            <li><i>✓</i><span><b>See who owes what</b>Paid, pending and overdue totals at a glance, with every payment logged in one place.</span></li></ul>
+        </div>
+      </div>
+
+      <div class="h-row flip">
+        <div class="h-art"><img src="/img/home/portal.svg" alt="A client portal on a phone showing the next visit, a quote and an invoice, with a text message reminder" width="480" height="360" loading="lazy"></div>
+        <div class="h-copy"><span class="h-kicker">Client experience</span><h3>Give clients a portal they’ll actually use</h3>
+          <p>Every client gets a private link to see upcoming visits, review quotes, pay invoices and request new work, with no app to download and no password to forget.</p>
+          <ul><li><i>✓</i><span><b>Texts and emails in your voice</b>Edit the wording of every quote, invoice and reminder message.</span></li>
+            <li><i>✓</i><span><b>Referral links</b>Happy clients share a link, and their friends arrive as new leads.</span></li></ul>
+        </div>
+      </div>
+
+      <div class="h-row">
+        <div class="h-art"><img src="/img/home/reports.svg" alt="A revenue chart rising month over month with expenses and tax totals" width="480" height="360" loading="lazy"></div>
+        <div class="h-copy"><span class="h-kicker">Reports</span><h3>See how your business is really doing</h3>
+          <p>Revenue by month, paid vs pending, your most popular services, expenses and sales tax collected, all ready when your accountant asks.</p>
+          <ul><li><i>✓</i><span><b>Expenses linked to jobs</b>Know what each job really earned.</span></li>
+            <li><i>✓</i><span><b>Tax summary</b>Sales tax by month, exportable to CSV.</span></li></ul>
+        </div>
+      </div>
+    </div></section>
+
+    <section class="h-sec h-steps-bg" id="how"><div class="h-wrap">
+      <div class="h-sec-head"><span class="h-kicker">How it works</span><h2>A simple flow your whole team will follow</h2><p>The same four steps for every job, whether you’re a crew of one or a fleet of trucks.</p></div>
+      <div class="h-steps">
+        <div class="h-step"><h3>Quote</h3><p>Send a quote from your phone. The client signs and pays a deposit online.</p></div>
+        <div class="h-step"><h3>Schedule</h3><p>Put the job on the calendar, assign your crew and send the client a reminder.</p></div>
+        <div class="h-step"><h3>Do the work</h3><p>Your tech has the details on site, takes photos and gets a signature.</p></div>
+        <div class="h-step"><h3>Get paid</h3><p>Invoice in one click. The client pays by card or Zelle and you see it right away.</p></div>
+      </div>
+    </div></section>
+
+    <section class="h-sec"><div class="h-wrap">
+      <div class="h-sec-head"><span class="h-kicker">And a lot more</span><h2>All the tools a growing service company needs</h2></div>
+      <div class="h-grid">
+        <div class="h-feat"><div class="ic c1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6.5 6.5 0 0 1 3.5 6"/></svg></div><h3>Client records</h3><p>Contacts, properties, history and notes for every client. Import from a spreadsheet and merge duplicates.</p></div>
+        <div class="h-feat"><div class="ic c2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div><h3>Text messages</h3><p>Send quotes, invoices and visit reminders by text, where clients actually read them.</p></div>
+        <div class="h-feat"><div class="ic c3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg></div><h3>Expense tracking</h3><p>Log fuel, materials and equipment, and link them to the jobs they were for.</p></div>
+        <div class="h-feat"><div class="ic c4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></svg></div><h3>Your brand</h3><p>Your logo and colors on every quote, invoice and client page, plus your own web address.</p></div>
+        <div class="h-feat"><div class="ic c5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></div><h3>Secure by default</h3><p>Separate logins for each team member, and support access only when you grant it.</p></div>
+        <div class="h-feat"><div class="ic c1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5V21h16"/></svg></div><h3>Help when you need it</h3><p>Step-by-step guides inside the app and a full help center, plus a real person to contact.</p></div>
+      </div>
+      <div class="h-stats">
+        <div class="h-stat"><b>1 place</b><span>for clients, jobs, quotes &amp; invoices</span></div>
+        <div class="h-stat"><b>4 steps</b><span>from first quote to paid invoice</span></div>
+        <div class="h-stat"><b>0 apps</b><span>for your clients to install</span></div>
+      </div>
+    </div></section>
+
+    <section class="h-sec" id="faq" style="padding-top:0"><div class="h-wrap">
+      <div class="h-sec-head"><span class="h-kicker">Questions</span><h2>Frequently asked questions</h2></div>
+      <div class="h-faq">
+        <details><summary>Do my technicians need to install anything?</summary><p>No. Everyone signs in from the web browser on their phone, tablet or computer. On a phone the app shows a simple bottom menu made for working in the field.</p></details>
+        <details><summary>How do my clients pay?</summary><p>Each invoice and quote has a secure pay link. Clients can pay by card through your own Stripe account, or by Zelle using your details. Payments and deposits are recorded on the invoice automatically.</p></details>
+        <details><summary>Can I control what my team sees?</summary><p>Yes. Owners and admins see everything, managers run jobs, quotes and invoices, and technicians see their schedule, clients and jobs without any prices.</p></details>
+        <details><summary>Can I bring my existing client list?</summary><p>Yes. Import clients from a CSV spreadsheet, then merge any duplicates in a couple of clicks.</p></details>
+        <details><summary>Is there a contract?</summary><p>Plans are billed monthly or yearly. See the pricing page for the plans and what each one includes.</p></details>
+      </div>
+    </div></section>
+
+    <section class="h-wrap" style="padding-bottom:20px"><div class="h-cta">
+      <h2>Ready to spend less time on paperwork?</h2>
+      <p>Set up your account in minutes and send your first quote today.</p>
+      <a class="btn" href="/pricing">See plans &amp; get started</a>
+    </div></section>
+  </main>
+
+  <footer class="h-foot"><div class="h-wrap">
+    <span>© <span id="yr"></span> <span class="pname">Fieldwork</span></span>
+    <nav aria-label="Footer"><a href="/pricing">Pricing</a><a href="#features">Features</a><a href="/terms">Terms of Service</a><a href="/privacy">Privacy Policy</a></nav>
+  </div></footer>
+  <script>
+    document.getElementById('yr').textContent = new Date().getFullYear();
+    // the product name set in the platform console
+    fetch('/api/site').then((r) => r.json()).then((s) => {
+      if (!s || !s.productName) return;
+      document.querySelectorAll('.pname').forEach((el) => { el.textContent = s.productName; });
+      document.title = s.productName + ' · Field service software for quotes, scheduling and payments';
+    }).catch(() => {});
+  </script>
+</body>
+</html>

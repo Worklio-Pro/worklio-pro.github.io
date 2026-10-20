@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 360" role="img" aria-labelledby="t">
+  <title id="t">A client paying an invoice by card on their phone</title>
+  <defs><filter id="sh" x="-20%" y="-20%" width="140%" height="160%"><feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#0f1f3d" flood-opacity=".18"/></filter></defs>
+  <rect width="480" height="360" rx="28" fill="#dcfce7"/>
+  <circle cx="60" cy="60" r="80" fill="#bbf7d0"/>
+  <!-- phone -->
+  <g filter="url(#sh)"><rect x="160" y="24" width="168" height="316" rx="28" fill="#0f1f3d"/></g>
+  <rect x="170" y="34" width="148" height="296" rx="20" fill="#fff"/>
+  <rect x="222" y="42" width="44" height="8" rx="4" fill="#0f1f3d"/>
+  <text x="186" y="82" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#64748b">Invoice #3010</text>
+  <text x="186" y="106" font-family="Inter,system-ui,sans-serif" font-size="22" font-weight="800" fill="#0f1f3d">$480.00</text>
+  <text x="186" y="124" font-family="Inter,system-ui,sans-serif" font-size="10" fill="#64748b">Due upon receipt</text>
+  <g font-family="Inter,system-ui,sans-serif" font-size="10" fill="#334155">
+    <text x="186" y="152">AC tune-up</text><text x="302" y="152" text-anchor="end">$180</text>
+    <text x="186" y="170">Filter replacement</text><text x="302" y="170" text-anchor="end">$60</text>
+    <text x="186" y="188">Coil cleaning</text><text x="302" y="188" text-anchor="end">$240</text>
+  </g>
+  <path d="M186 198h116" stroke="#e2e8f0" stroke-width="2"/>
+  <rect x="186" y="210" width="116" height="34" rx="8" fill="#f8fafc" stroke="#e2e8f0" stroke-width="2"/>
+  <rect x="194" y="220" width="22" height="14" rx="3" fill="#2563eb"/>
+  <text x="224" y="231" font-family="Inter,system-ui,sans-serif" font-size="10" fill="#334155">•••• 4242</text>
+  <rect x="186" y="256" width="116" height="36" rx="10" fill="#2563eb"/>
+  <text x="244" y="279" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="700" fill="#fff">Pay now</text>
+  <text x="244" y="314" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="9" fill="#94a3b8">Card · Zelle</text>
+  <!-- card -->
+  <g transform="rotate(-12 96 236)" filter="url(#sh)">
+    <rect x="36" y="196" width="128" height="82" rx="12" fill="#1d4ed8"/>
+    <rect x="52" y="214" width="22" height="16" rx="3" fill="#fbbf24"/>
+    <path d="M52 254h70" stroke="#bfdbfe" stroke-width="5" stroke-linecap="round"/>
+    <circle cx="138" cy="258" r="9" fill="#f59e0b" opacity=".9"/><circle cx="148" cy="258" r="9" fill="#ef4444" opacity=".8"/>
+  </g>
+  <!-- paid badge -->
+  <g filter="url(#sh)">
+    <rect x="310" y="96" width="140" height="58" rx="16" fill="#fff"/>
+    <circle cx="338" cy="125" r="16" fill="#16a34a"/>
+    <path d="M330 125l6 6 11-11" stroke="#fff" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="362" y="121" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#64748b">Payment</text>
+    <text x="362" y="138" font-family="Inter,system-ui,sans-serif" font-size="14" font-weight="800" fill="#15803d">Received</text>
+  </g>
+  <g fill="#16a34a" font-family="Inter,system-ui,sans-serif" font-weight="800" font-size="22">
+    <text x="372" y="226">$</text><text x="408" y="270" font-size="16">$</text><text x="360" y="300" font-size="18">$</text>
+  </g>
+</svg>

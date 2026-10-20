@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 360" role="img" aria-labelledby="t">
+  <title id="t">A client portal on a phone showing the next visit, a quote and an invoice, with a text message reminder</title>
+  <defs><filter id="sh" x="-20%" y="-20%" width="140%" height="160%"><feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#0f1f3d" flood-opacity=".18"/></filter></defs>
+  <rect width="480" height="360" rx="28" fill="#e0f2fe"/>
+  <circle cx="400" cy="70" r="80" fill="#bae6fd"/>
+  <g filter="url(#sh)"><rect x="60" y="24" width="168" height="316" rx="28" fill="#0f1f3d"/></g>
+  <rect x="70" y="34" width="148" height="296" rx="20" fill="#f8fafc"/>
+  <rect x="122" y="42" width="44" height="8" rx="4" fill="#0f1f3d"/>
+  <text x="84" y="80" font-family="Inter,system-ui,sans-serif" font-size="14" font-weight="800" fill="#0f1f3d">Hi, Jane 👋</text>
+  <g font-family="Inter,system-ui,sans-serif">
+    <rect x="82" y="94" width="124" height="58" rx="10" fill="#fff" stroke="#e2e8f0" stroke-width="2"/>
+    <rect x="82" y="94" width="5" height="58" rx="2.5" fill="#2563eb"/>
+    <text x="96" y="112" font-size="9" fill="#64748b">NEXT VISIT</text>
+    <text x="96" y="128" font-size="11" font-weight="700" fill="#0f1f3d">Pool service</text>
+    <text x="96" y="143" font-size="9" fill="#64748b">Thu · 10:00 AM</text>
+    <rect x="82" y="160" width="124" height="46" rx="10" fill="#fff" stroke="#e2e8f0" stroke-width="2"/>
+    <text x="96" y="179" font-size="11" font-weight="700" fill="#0f1f3d">Quote #1045</text>
+    <rect x="96" y="186" width="50" height="14" rx="7" fill="#fef3c7"/><text x="121" y="196" text-anchor="middle" font-size="8" font-weight="700" fill="#b45309">Review</text>
+    <rect x="82" y="214" width="124" height="46" rx="10" fill="#fff" stroke="#e2e8f0" stroke-width="2"/>
+    <text x="96" y="233" font-size="11" font-weight="700" fill="#0f1f3d">Invoice #3018</text>
+    <rect x="96" y="240" width="40" height="14" rx="7" fill="#dcfce7"/><text x="116" y="250" text-anchor="middle" font-size="8" font-weight="700" fill="#15803d">Paid</text>
+    <rect x="82" y="272" width="124" height="34" rx="10" fill="#2563eb"/>
+    <text x="144" y="293" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">Request work</text>
+  </g>
+  <!-- sms bubbles -->
+  <g filter="url(#sh)" font-family="Inter,system-ui,sans-serif">
+    <rect x="252" y="120" width="200" height="70" rx="18" fill="#fff"/>
+    <text x="270" y="146" font-size="12" font-weight="700" fill="#0f1f3d">Reminder: we'll see you</text>
+    <text x="270" y="164" font-size="12" font-weight="700" fill="#0f1f3d">Thursday at 10:00 AM.</text>
+    <text x="270" y="181" font-size="10" fill="#64748b">Text message · just now</text>
+    <rect x="300" y="210" width="150" height="44" rx="18" fill="#2563eb"/>
+    <text x="318" y="237" font-size="12" font-weight="700" fill="#fff">Perfect, thank you!</text>
+  </g>
+  <g transform="translate(400 270)"><path d="M6 10a14 14 0 0 1 28 0v12l6 8H0l6-8z" fill="#f59e0b"/><circle cx="20" cy="36" r="5" fill="#f59e0b"/><circle cx="34" cy="2" r="8" fill="#ef4444"/></g>
+</svg>
