@@ -87,6 +87,12 @@
     /* settings: two columns on wide screens */
     .set-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 18px;align-items:start}.set-col>.card{margin-bottom:18px}
     @media (max-width:1000px){.set-grid{grid-template-columns:minmax(0,1fr)}}
+    .set-grid .card>h2:first-child{display:flex;align-items:center;gap:8px;margin:-18px -18px 14px;padding:12px 18px;background:var(--tint);border-bottom:1px solid var(--line);border-radius:12px 12px 0 0;font-size:16px}
+    .card-save{display:flex;justify-content:flex-end;margin-top:6px}
+    /* integrations: one group per service */
+    .ig{border:1px solid var(--line);border-radius:10px;padding:14px;margin-top:12px}
+    .ig-h{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:-14px -14px 10px;padding:10px 14px;background:var(--surface-2);border-bottom:1px solid var(--line);border-radius:10px 10px 0 0}.ig-h h3{margin:0;font-size:15px}
+    .ig h4{font-size:14px;margin:14px 0 6px}.ig-d{margin:0 0 6px;font-size:14px}.ig-env{font-size:13px;color:var(--muted);margin:0 0 6px}.ig-p{font-size:13px;margin:0 0 8px}.ig .note{margin:8px 0}.ig .inline-form{max-width:none}
     /* maintenance mode */
     .mt-bar{background:#b91c1c;color:#fff;padding:8px 16px;text-align:center;font-size:14px}.mt-bar a{color:#fff;font-weight:600}
     /* promotions tab */
@@ -188,6 +194,6 @@
   <div id="toast"></div>
   <script src="/hc-editor.js?v=1"></script>
   <script src="/brand.js?v=1"></script>
-  <script src="/platform.js?v=28"></script>
+  <script src="/platform.js?v=29"></script>
 </body>
 </html>

@@ -304,24 +304,24 @@ function settingsView(main) {
   const s = D.settings; const site = `${location.origin}/pricing`;
   main.innerHTML = `<div class="head"><div><h1>Settings</h1></div></div>
 <div class="set-grid"><div class="set-col"><div class="card" id="mtCard"></div>
-<form id="sf" class="card"><h2>Your product</h2>
+<form id="sf" class="set-form"><div class="card"><h2>Your product</h2>
 <div class="row"><label>Product name<input name="productName" value="${esc(s.productName)}" required maxlength="60"></label><label>Contact email<input name="contactEmail" type="email" value="${esc(s.contactEmail)}" placeholder="sales@yourapp.com"></label></div>
 <p class="muted" style="font-size:13px;margin-top:-4px">The product name appears on the pricing page and in account emails. Accounts see the contact email when they want to change plans, and new sign-ups are reported to it.</p>
-<h2 style="margin-top:20px">Terms and privacy</h2>
+<div class="card-save"><button class="btn">Save</button></div></div>
+<div class="card"><h2>Terms and privacy</h2>
 <div class="row"><label>Legal business name<input name="legalName" value="${esc(s.legalName || '')}" maxlength="120" placeholder="e.g. Worklio Pro LLC"></label><label>Governing law<input name="governingLaw" value="${esc(s.governingLaw || '')}" maxlength="80" placeholder="e.g. the State of Texas"></label></div>
 <p class="muted" style="font-size:13px;margin-top:-4px">Used in the <a href="/terms" target="_blank" rel="noopener">Terms of Service</a> and <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>, which every address shows at /terms and /privacy. Leave the governing law blank to leave that sentence out. The wording itself is in lib/legal.js; have a lawyer review it.</p>
-<h2 style="margin-top:20px">Sign-ups</h2>
+<div class="card-save"><button class="btn">Save</button></div></div>
+<div class="card"><h2>Sign-ups</h2>
 <label class="switchline"><input type="checkbox" name="allowSignups" ${s.allowSignups ? 'checked' : ''}> Let businesses create an account themselves on the pricing page</label>
 <label style="max-width:320px">Plan for businesses that sign up without choosing one<select name="signupPlan">${D.plans.filter((p) => !p.hidden).map((p) => `<option value="${esc(p.id)}" ${p.id === s.signupPlan ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
 <label style="max-width:320px">“Most popular” badge on the pricing page<select name="popularPlan"><option value="" ${!s.popularPlan ? 'selected' : ''}>Automatic (the middle plan)</option>${D.plans.filter((p) => !p.hidden).map((p) => `<option value="${esc(p.id)}" ${p.id === s.popularPlan ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}<option value="none" ${s.popularPlan === 'none' ? 'selected' : ''}>None</option></select></label>
 <p class="muted" style="font-size:13px">Pricing page: <a href="${esc(site)}" target="_blank" rel="noopener">${esc(site)}</a>. Businesses that choose a paid plan pay for it at checkout before their account opens (see Integrations → Stripe below).</p>
-<h2 style="margin-top:20px">Accounts with a last day of access</h2>
+<div class="card-save"><button class="btn">Save</button></div></div>
+<div class="card"><h2>Accounts with a last day of access</h2>
 <div class="row"><label>Show a banner in their app (days before)<input name="expiryBannerDays" type="number" min="0" max="60" value="${esc(s.expiryBannerDays ?? 7)}"></label><label>Email the owner a reminder (days before)<input name="expiryReminderDays" type="number" min="0" max="60" value="${esc(s.expiryReminderDays ?? 3)}"></label></div>
 <p class="muted" style="font-size:13px;margin-top:-4px">For accounts you gave a last day of access (e.g. trials). Owners and admins see the banner; owners can choose a plan from it, which removes the end date. The reminder is sent once per end date; edit its wording in Messages → Email templates → Access ending soon. 0 means on the last day itself.</p>
-<div class="foot" style="display:flex;justify-content:flex-end"><button class="btn">Save settings</button></div></form>
-<div class="card"><h2>Web addresses</h2>
-${D.devMode ? `<p>You’re running without <code>PLATFORM_DOMAIN</code>, so this server answers as your own account on any address, and other accounts open at <code>&lt;address&gt;.${esc(D.rootDomain)}</code>.</p>` : `<p>Accounts open at <code>&lt;address&gt;.${esc(D.rootDomain)}</code>. The pricing page is at <code>${esc(D.rootDomain)}</code>.</p>`}
-<p class="muted" style="font-size:14px">To go live: point <code>*.yourapp.com</code> and <code>yourapp.com</code> at this server in DNS, set <code>PLATFORM_DOMAIN=yourapp.com</code> and <code>BASE_URL=https://yourapp.com</code>, and put an HTTPS proxy in front (the README has a Caddy example that also issues certificates for custom domains).</p></div>
+<div class="card-save"><button class="btn">Save</button></div></div></form>
 <div class="card" id="reserved"></div></div>
 <div class="set-col"><div class="card" id="logoCard"></div>
 <div class="card" id="integ"><h2>Integrations</h2><p class="muted">Checking…</p></div></div></div>`;
@@ -578,34 +578,33 @@ async function integrationsCard(box) {
   let I; try { I = await api('GET', '/api/platform/integrations'); } catch (x) { box.innerHTML = `<h2>Integrations</h2><p class="muted">${esc(x.message)}</p>`; return; }
   const on = (ok, yes = 'Connected', no = 'Not set up') => `<span class="cstatus ${ok ? 'active' : ''}">${ok ? yes : no}</span>`;
   const S = I.stripe; const copy = (v, label) => `<div class="linkbox"><input readonly value="${esc(v)}" aria-label="${esc(label)}"><button type="button" class="btn alt" data-act="copy">Copy</button></div>`;
-  box.innerHTML = `<h2>Integrations</h2><p class="muted" style="font-size:13px;margin-top:0">Shared by every account. Set these in the <code>.env</code> file next to <code>server.js</code> and restart. Keys are never shown here.</p>
-<div class="tablewrap"><table class="acc">
-<tr><td><strong>Email</strong><div class="sm">Every email the app sends, for every business: quotes, invoices, reminders and password resets, in each business’s name</div></td><td>${on(I.email, `Connected (${esc(I.email)})`)}</td><td class="sm">${I.mailServer ? `Your mail server below (${esc(I.mailServer.from)})` : '<code>GMAIL_USER</code> + <code>GMAIL_APP_PASSWORD</code>, or <code>SENDGRID_API_KEY</code> + <code>EMAIL_FROM</code>, or your mail server below'}</td></tr>
-<tr><td><strong>Text messages</strong><div class="sm">Twilio: every business’s texts to clients (on plans with text messages), from your number</div></td><td>${on(I.sms)}</td><td class="sm"><code>TWILIO_ACCOUNT_SID</code>, <code>TWILIO_AUTH_TOKEN</code>, <code>TWILIO_FROM</code></td></tr>
-<tr><td><strong>AI descriptions</strong><div class="sm">Claude, for plans with AI descriptions</div></td><td>${on(I.ai)}</td><td class="sm"><code>ANTHROPIC_API_KEY</code></td></tr>
-<tr><td><strong>Stripe</strong><div class="sm">Your Stripe account: plan payments at sign-up, and “Connect with Stripe” for businesses’ card payments</div></td><td>${S.key ? `${on(true)} <span class="cstatus ${S.mode === 'live' ? 'active' : 'q-sent'}">${S.mode === 'live' ? 'Live' : 'Test mode'}</span>` : on(false)}</td><td class="sm">${S.keyVar ? `Using <code>${S.keyVar}</code>` : '<code>BILLING_STRIPE_SECRET_KEY</code> (or <code>STRIPE_SECRET_KEY</code>)'}</td></tr>
-</table></div>
-${S.key ? '' : '<div class="note" style="margin-top:12px">Without a Stripe key, sign-up checkout and businesses’ invoice pay pages run demo payments that charge nobody, and businesses can’t connect Stripe.</div>'}
-<h3 style="font-size:15px;margin:18px 0 6px">Your mail server</h3>
-<p class="muted" style="font-size:14px;margin:0 0 8px">Send email from a mailbox at your own domain, such as a SiteGround email account. This replaces ${I.envEmail ? esc(I.envEmail) + ' from the .env file' : 'the .env email settings'} for every email the server sends; every business’s emails go through it. In SiteGround: Site Tools → Email → Accounts → ⋮ → Mail Configuration shows the outgoing (SMTP) server.</p>
+  const ig = (title, status, inner) => `<section class="ig"><div class="ig-h"><h3>${title}</h3>${status}</div>${inner}</section>`;
+  const env = (html) => `<p class="ig-env">Set in <code>.env</code>: ${html}</p>`;
+  box.innerHTML = `<h2>Integrations</h2><p class="muted" style="font-size:13px;margin-top:0">Shared by every account. Keys go in the <code>.env</code> file next to <code>server.js</code> (restart after changing it) and are never shown here.</p>
+${ig('Email', on(I.email, `Connected (${esc(I.email)})`), `<p class="ig-d">Every email the app sends, for every business: quotes, invoices, reminders, receipts and password resets, in each business’s name. Your own emails show your product name (or <code>EMAIL_FROM_NAME</code>) as the sender.</p>
+${I.mailServer ? `<p class="ig-env">Using your mail server below (${esc(I.mailServer.from)}).</p>` : env('<code>GMAIL_USER</code> + <code>GMAIL_APP_PASSWORD</code>, or <code>SENDGRID_API_KEY</code> + <code>EMAIL_FROM</code>; or use your own mail server below.')}
+<h4>Your mail server</h4><p class="muted ig-p">Send from a mailbox at your own domain, such as a SiteGround email account. It replaces ${I.envEmail ? esc(I.envEmail) + ' from the .env file' : 'the .env email settings'}. In SiteGround: Site Tools → Email → Accounts → ⋮ → Mail Configuration shows the outgoing (SMTP) server.</p>
 <form id="mailForm" class="mail-form"><div class="row"><label>Outgoing mail server<input name="host" value="${esc(I.mailServer ? I.mailServer.host : '')}" placeholder="mail.yourdomain.com" autocapitalize="off" spellcheck="false"></label><label>Port (SSL/TLS)<input value="465" readonly></label></div>
 <div class="row"><label>Username (the full email address)<input name="user" value="${esc(I.mailServer ? I.mailServer.user : '')}" placeholder="hello@yourdomain.com" autocomplete="off" autocapitalize="off" spellcheck="false"></label><label>Password<input name="pass" type="password" autocomplete="new-password" ${I.mailServer ? 'placeholder="Saved. Leave blank to keep it."' : ''}></label></div>
 <div class="row"><label>Send from<input name="from" type="email" value="${esc(I.mailServer ? I.mailServer.from : '')}" placeholder="Same as the username"></label><div></div></div>
 <div class="acts" style="justify-content:flex-start"><button class="btn alt">${I.mailServer ? 'Save mail server' : 'Use this mail server'}</button>${I.mailServer ? `<button type="button" class="btn danger sm" data-act="rmMailServer">${I.envEmail ? `Go back to ${esc(I.envEmail)}` : 'Remove'}</button>` : ''}</div></form>
-<p class="muted" style="font-size:13px;margin:6px 0 0">Emails show your product name (or <code>EMAIL_FROM_NAME</code>) as the sender. Then send a test below.</p>
-<h3 style="font-size:15px;margin:18px 0 6px">Card payments for businesses (Stripe Connect)</h3>
-<p class="muted" style="font-size:14px;margin:0 0 8px">Each business clicks <strong>Connect with Stripe</strong> in its App Settings, sets up its own Stripe account on Stripe’s pages, and clients’ payments go straight to it. ${I.connected} account${I.connected === 1 ? ' has' : 's have'} started connecting. One-time setup: turn on <strong>Connect</strong> in your Stripe dashboard (Settings → Connect).</p>
+<h4>Send a test</h4>${I.email ? '<form id="tEmail" class="inline-form"><label>Test email to<input name="to" type="email" required placeholder="you@example.com"></label><button class="btn alt">Send test email</button></form>' : '<p class="muted ig-p">Set up email first. Until then, emails are recorded in each account’s Notifications Log but not delivered.</p>'}`)}
+${ig('Text messages (Twilio)', on(I.sms), `<p class="ig-d">Every business’s texts to clients (on plans with text messages), sent from your Twilio number and starting with the business’s name.</p>
+${env('<code>TWILIO_ACCOUNT_SID</code>, <code>TWILIO_AUTH_TOKEN</code> and <code>TWILIO_FROM</code> (your Twilio number, or a Messaging Service SID starting with MG).')}
+<h4>Send a test</h4>${I.sms ? '<form id="tSms" class="inline-form"><label>Test text to<input name="to" required placeholder="+17135550100"></label><button class="btn alt">Send test text</button></form>' : '<p class="muted ig-p">Set up Twilio first. Until then, texts are recorded in each account’s Notifications Log but not delivered.</p>'}`)}
+${ig('Stripe', S.key ? `${on(true)} <span class="cstatus ${S.mode === 'live' ? 'active' : 'q-sent'}">${S.mode === 'live' ? 'Live' : 'Test mode'}</span>` : on(false), `<p class="ig-d">Your Stripe account: plan payments when businesses sign up, and “Connect with Stripe” for businesses’ card payments from their clients.</p>
+${S.keyVar ? `<p class="ig-env">Using <code>${S.keyVar}</code> from <code>.env</code>.</p>` : env('<code>BILLING_STRIPE_SECRET_KEY</code> (or <code>STRIPE_SECRET_KEY</code>).')}
+${S.key ? '' : '<div class="note">Without a Stripe key, sign-up checkout and businesses’ invoice pay pages run demo payments that charge nobody, and businesses can’t connect Stripe.</div>'}
+<h4>Card payments for businesses (Stripe Connect)</h4>
+<p class="muted ig-p">Each business clicks <strong>Connect with Stripe</strong> in its App Settings, sets up its own Stripe account on Stripe’s pages, and clients’ payments go straight to it. ${I.connected} account${I.connected === 1 ? ' has' : 's have'} started connecting. One-time setup: turn on <strong>Connect</strong> in your Stripe dashboard (Settings → Connect).</p>
 <form id="feeForm" class="inline-form"><label>Your platform fee on each card payment (%)<input name="platformFeePercent" type="number" min="0" max="30" step="0.1" value="${esc(D.settings.platformFeePercent || 0)}"></label><button class="btn alt">Save fee</button></form>
-<p class="muted" style="font-size:13px;margin:0 0 6px">Payment confirmations: ${on(S.connectWebhook, 'Webhook connected', 'Webhook not set up')} In Stripe, add a webhook for <strong>events on connected accounts</strong> with <code>checkout.session.completed</code>, <code>checkout.session.async_payment_succeeded</code> and <code>account.updated</code>, then put its signing secret in <code>STRIPE_CONNECT_WEBHOOK_SECRET</code>.</p>
+<p class="muted ig-p">Payment confirmations: ${on(S.connectWebhook, 'Webhook connected', 'Webhook not set up')} In Stripe, add a webhook for <strong>events on connected accounts</strong> with <code>checkout.session.completed</code>, <code>checkout.session.async_payment_succeeded</code> and <code>account.updated</code>, then put its signing secret in <code>STRIPE_CONNECT_WEBHOOK_SECRET</code>.</p>
 ${copy(S.connectWebhookUrl, 'Connect webhook URL')}
-<h3 style="font-size:15px;margin:18px 0 6px">Plan payments at sign-up</h3>
-<p class="muted" style="font-size:13px;margin:0 0 6px">${on(S.billingWebhook, 'Webhook connected', 'Webhook not set up')} Optional: add a webhook on your own account for <code>checkout.session.completed</code>, <code>customer.subscription.updated</code> and <code>customer.subscription.deleted</code>, with its signing secret in <code>BILLING_STRIPE_WEBHOOK_SECRET</code>. It pauses accounts whose subscription ends.</p>
+<h4>Plan payments at sign-up</h4>
+<p class="muted ig-p">${on(S.billingWebhook, 'Webhook connected', 'Webhook not set up')} Optional: add a webhook on your own account for <code>checkout.session.completed</code>, <code>customer.subscription.updated</code> and <code>customer.subscription.deleted</code>, with its signing secret in <code>BILLING_STRIPE_WEBHOOK_SECRET</code>. It pauses accounts whose subscription ends.</p>
 ${copy(S.billingWebhookUrl, 'Billing webhook URL')}
-${I.localhost ? '<p class="muted" style="font-size:13px">Stripe can’t reach localhost: set <code>BASE_URL</code> (or <code>PLATFORM_DOMAIN</code>) to your public address first.</p>' : ''}
-<h3 style="font-size:15px;margin:18px 0 6px">Send a test</h3>
-${I.email ? '<form id="tEmail" class="inline-form"><label>Test email to<input name="to" type="email" required placeholder="you@example.com"></label><button class="btn alt">Send test email</button></form>' : ''}
-${I.sms ? '<form id="tSms" class="inline-form"><label>Test text to<input name="to" required placeholder="+17135550100"></label><button class="btn alt">Send test text</button></form>' : ''}
-${!I.email && !I.sms ? '<p class="muted" style="font-size:14px;margin:0">Connect email or text messages to send a test. Until then, messages are recorded in each account’s Notifications Log but not delivered.</p>' : ''}`;
+${I.localhost ? '<p class="muted ig-p" style="margin-top:8px">Stripe can’t reach localhost: set <code>BASE_URL</code> (or <code>PLATFORM_DOMAIN</code>) to your public address first.</p>' : ''}`)}
+${ig('AI descriptions', on(I.ai), `<p class="ig-d">Claude drafts product and service descriptions, for plans with AI descriptions.</p>${env('<code>ANTHROPIC_API_KEY</code>.')}`)}`;
   $('#mailForm', box).addEventListener('submit', async (e) => {
     e.preventDefault(); try { await api('PUT', '/api/platform/mail-server', Object.fromEntries(new FormData(e.target))); toast('Mail server saved. Send a test email to check it.'); integrationsCard(box); } catch (x) { toast(x.message, true); }
   });
