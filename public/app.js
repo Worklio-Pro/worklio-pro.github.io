@@ -265,12 +265,13 @@ function closeHelp() {
 $('#helpShade').addEventListener('click', closeHelp);
 const SUPPORT_TOPICS = ['Something isn’t working', 'How do I…?', 'Account and billing', 'Feature request', 'Other'];
 // "Get Support": a contact form in a popup; the message goes to the platform's support inbox with the account details attached
-function supportForm() {
+// opts: title for the popup, and a topic to start with (e.g. "Account and billing" from the billing page)
+function supportForm(opts = {}) {
   const page = location.href; closeHelp();
-  const body = modal('Contact support', `<form class="support-form" data-sticky>
+  const body = modal(opts.title || 'Contact support', `<form class="support-form" data-sticky>
 <p class="muted" style="margin:0 0 14px">Tell us what you need help with and we’ll reply by email. Your business name, plan and the page you’re on are included for you.</p>
 <div class="row"><label>Your name<input name="name" value="${esc(me ? me.name : '')}" readonly></label><label>Email for our reply<input name="email" type="email" required maxlength="200" value="${esc(me ? me.email : '')}"></label></div>
-<div class="row"><label>Phone (optional)<input name="phone" type="tel" maxlength="40" value=""></label><label>Topic<select name="topic">${SUPPORT_TOPICS.map((t) => `<option>${esc(t)}</option>`).join('')}</select></label></div>
+<div class="row"><label>Phone (optional)<input name="phone" type="tel" maxlength="40" value=""></label><label>Topic<select name="topic">${SUPPORT_TOPICS.map((t) => `<option ${t === opts.topic ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label></div>
 <label>Subject<input name="subject" maxlength="150" placeholder="A few words about the problem or question"></label>
 <label>Message<textarea name="message" rows="6" maxlength="4000" required placeholder="What happened, what you expected, and the steps to see it"></textarea></label>
 <div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn" type="submit">Send message</button></div></form>`);
@@ -376,7 +377,7 @@ A.openHelp = () => openHelp();
 A.feedbackForm = () => feedbackForm();
 A.closeHelp = closeHelp;
 A.helpTopic = (d) => openHelp(d.id);
-A.supportForm = supportForm;
+A.supportForm = (d) => supportForm({ title: d.title, topic: d.topic });
 A.focusSearch = () => { closeHelp(); $('#featSearch').focus(); };
 A.setTheme = (d) => { applyTheme(d.t); $$('.theme-sw button').forEach((b) => { b.classList.toggle('on', b.dataset.t === d.t); b.setAttribute('aria-pressed', b.dataset.t === d.t); }); };
 

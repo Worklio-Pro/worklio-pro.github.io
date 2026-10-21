@@ -1103,7 +1103,7 @@ PAGES['/settings/billing'] = {
     const per = (i) => (i === 'year' ? 'yearly' : 'monthly');
     const ending = sub && sub.cancelAtPeriodEnd;
     const statusText = ending ? `Active until ${fmtDate(sub.periodEnd)}` : sub && sub.status === 'past_due' ? 'Payment past due' : B.status === 'suspended' ? 'Paused' : 'Active';
-    const contact = B.contactEmail ? `<a class="btn alt" href="mailto:${esc(B.contactEmail)}?subject=${encodeURIComponent(`${B.productName} account: ${company.name || ''}`)}">Email us</a>` : '';
+    const contact = '<button type="button" class="btn alt" data-act="supportForm" data-title="Contact us" data-topic="Account and billing">Contact us</button>'; // the support form, sent to the platform's inbox
     const addr = (a) => (a && a.line1 ? [a.line1, a.line2, [a.city, a.state].filter(Boolean).join(', ') + (a.postal_code ? ' ' + a.postal_code : ''), a.country].filter((x) => x && x.trim()).map(esc).join('<br>') : '<span class="muted">No address yet</span>');
     const subText = !B.managed ? '<p class="muted">This is your platform’s own account, so it has no subscription.</p>'
       : ending && B.pendingPlan ? `<p>Your plan changes to <strong>${esc(B.pendingPlan)}</strong> on ${fmtDate(sub.periodEnd)}. You won’t be charged again.</p><button type="button" class="btn alt sm" data-act="billKeep">Stay on ${esc(B.plan.name)}</button>`
