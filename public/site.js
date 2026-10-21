@@ -12,7 +12,9 @@ const slugify = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-')
   if (S.home) document.querySelectorAll('[data-home]').forEach((a) => { a.href = S.home + a.dataset.home; });
   const label = Object.fromEntries(S.features.map((f) => [f.key, f.label]));
   const beta = (f) => (f.beta ? ' <span class="beta-tag" title="In beta testing">Beta</span>' : '');
-  const mid = S.plans.length >= 3 ? Math.floor(S.plans.length / 2) : -1; // highlight the middle plan
+  // the "Most popular" plan, chosen in Alpha → Settings; automatic: the middle one when there are 3 or more
+  const picked = S.plans.findIndex((p) => p.id === S.popularPlan);
+  const mid = S.popularPlan === 'none' ? -1 : picked >= 0 ? picked : S.plans.length >= 3 ? Math.floor(S.plans.length / 2) : -1;
   // monthly or yearly prices: a switch above the plans once there are prices of both kinds to show
   const both = S.plans.some((p) => p.monthly) && S.plans.some((p) => p.yearly); const best = Math.max(0, ...S.plans.filter((p) => p.monthly && p.yearly).map((p) => Math.round((1 - p.yearly / (p.monthly * 12)) * 100)));
   let period = S.plans.some((p) => p.monthly) ? 'month' : 'year';
