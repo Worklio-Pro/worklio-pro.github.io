@@ -30,7 +30,7 @@ const host = (u) => String(u || '').replace(/^https?:\/\//, '');
 /* ===== login / first-run setup ===== */
 function authView(state, err) {
   const setup = state.needsSetup;
-  $('#root').innerHTML = `<div class="pf-auth card">${state.brand && state.brand.logo ? `<div class="pf-auth-logo">${brandImg(state.brand)}</div>` : ''}<h1>${setup ? 'Create the platform owner' : 'Platform console'}</h1>
+  $('#root').innerHTML = `<div class="pf-auth card">${state.brand && state.brand.logo ? `<div class="pf-auth-logo">${brandImg(state.brand)}</div>` : ''}<h1>${setup ? 'Create the Alpha owner' : 'Alpha'}</h1>
 <p class="muted">${setup ? `This login controls every account on ${esc(state.productName)}: plans, features and billing. Keep it to yourself.` : `Log in to manage ${esc(state.productName)}.`}</p>
 <form id="af">${err ? `<div class="msg err" role="alert">${esc(err)}</div>` : ''}${setup ? '<label>Your name<input name="name" required autocomplete="name"></label>' : ''}
 <label>Email<input name="email" type="email" required autocomplete="username"></label>
@@ -55,12 +55,12 @@ const TAB_ICONS = { // bottom bar icons (phones)
 async function load() { D = await api('GET', '/api/platform/overview'); if (!draftPlans) { draftPlans = structuredClone(D.plans); draftBeta = [...D.betaFeatures]; } }
 function render() {
   const tabs = [['accounts', 'Accounts'], ['plans', 'Plans & features'], ['messages', 'Messages'], ['help', 'Help Center'], ['settings', 'Settings']];
-  document.title = `${tabs.find((t) => t[0] === tab)[1]} · ${D.settings.productName} platform`;
-  $('#root').innerHTML = `<header class="pf-top"><div class="pf-bar"><div class="pf-brand">${brandImg(siteBrand(), 'dark')}${siteBrand().logoHasName ? '' : esc(D.settings.productName)} <small>Platform</small></div>
+  document.title = `${tabs.find((t) => t[0] === tab)[1]} · ${D.settings.productName} Alpha`;
+  $('#root').innerHTML = `<header class="pf-top"><div class="pf-bar"><div class="pf-brand">${brandImg(siteBrand(), 'dark')}${siteBrand().logoHasName ? '' : esc(D.settings.productName)} <small>Alpha</small></div>
 <nav class="pf-tabs">${tabs.map(([k, l]) => `<a href="#${k}" class="${tab === k ? 'on' : ''}">${l}</a>`).join('')}</nav>
 <div class="pf-user"><span>${esc(D.admin.name)}</span><button type="button" data-act="logout">Log out</button></div></div></header>
 <main class="pf-main" id="main"></main>
-<nav class="pf-bnav" aria-label="Platform sections">${tabs.map(([k, l]) => `<a href="#${k}" class="${tab === k ? 'on' : ''}"${tab === k ? ' aria-current="page"' : ''}>${TAB_ICONS[k]}<span>${l}</span></a>`).join('')}</nav>`;
+<nav class="pf-bnav" aria-label="Alpha sections">${tabs.map(([k, l]) => `<a href="#${k}" class="${tab === k ? 'on' : ''}"${tab === k ? ' aria-current="page"' : ''}>${TAB_ICONS[k]}<span>${l}</span></a>`).join('')}</nav>`;
   ({ accounts: accountsView, plans: plansView, messages: messagesView, help: helpView, settings: settingsView })[tab]($('#main'));
 }
 const TABS = ['accounts', 'plans', 'messages', 'help', 'settings'];
@@ -578,7 +578,7 @@ document.addEventListener('click', (e) => {
 
 async function boot() {
   const state = await api('GET', '/api/platform/state');
-  if (!state.admin) { document.title = 'Platform console'; return authView(state); }
+  if (!state.admin) { document.title = 'Alpha'; return authView(state); }
   tab = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'accounts';
   await load(); render();
 }

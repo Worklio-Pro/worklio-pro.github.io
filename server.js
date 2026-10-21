@@ -1692,7 +1692,7 @@ support.setOwnerLookup((t) => tenancy.run(t, () => { const o = db.users.find((u)
 app.get('/support-login', (req, res) => {
   const t = tenancy.current(); const s = support.redeem(t, req.query.token);
   const user = s && db.users.find((u) => u.id === s.userId && u.passwordHash && !staffBlocked(u));
-  if (!user) return res.status(400).send(notice('This support link doesn’t work', 'It was already used, is more than a few minutes old, or support access has ended. Get a new link from the platform console.'));
+  if (!user) return res.status(400).send(notice('This support link doesn’t work', 'It was already used, is more than a few minutes old, or support access has ended. Get a new link from Alpha.'));
   startSession(res, user, { expires: s.expires, support: { requestId: s.requestId, adminName: s.adminName, expires: s.expires } });
   res.redirect('/');
 });
@@ -1912,7 +1912,7 @@ if (rp > 0) { // emergency reset from the terminal: node server.js --reset-passw
 const rpp = process.argv.indexOf('--reset-platform-password');
 if (rpp > 0) { // same for the platform console login: node server.js --reset-platform-password you@example.com NewPassword
   const P = tenancy.platform(); const a = P.admins.find((x) => x.email === normEmail(process.argv[rpp + 1])); const pw = process.argv[rpp + 2] || '';
-  if (!a) { console.error(P.admins.length ? `No platform login with that email. Platform logins: ${P.admins.map((x) => x.email).join(', ')}` : 'There is no platform login yet: open /platform to create one'); process.exit(1); }
+  if (!a) { console.error(P.admins.length ? `No Alpha login with that email. Alpha logins: ${P.admins.map((x) => x.email).join(', ')}` : 'There is no Alpha login yet: open /platform to create one'); process.exit(1); }
   if (pw.length < 10) { console.error('Password must be at least 10 characters'); process.exit(1); }
   Object.assign(a, (({ salt, hash }) => ({ salt, passwordHash: hash }))(hashPassword(pw)));
   for (const [k, s] of Object.entries(P.sessions)) if (s.adminId === a.id) delete P.sessions[k]; // log out everywhere
@@ -1920,5 +1920,5 @@ if (rpp > 0) { // same for the platform console login: node server.js --reset-pl
 }
 require('http').createServer(dispatch).listen(PORT, () => {
   console.log(`App running at ${BASE_URL}`);
-  console.log(tenancy.devMode ? `Platform console: ${BASE_URL}/platform (set PLATFORM_DOMAIN to host accounts on their own addresses)` : `Platform: ${tenancy.platformUrl()}  ·  accounts at <address>.${tenancy.PLATFORM_DOMAIN}`);
+  console.log(tenancy.devMode ? `Alpha console: ${BASE_URL}/platform (set PLATFORM_DOMAIN to host accounts on their own addresses)` : `Platform: ${tenancy.platformUrl()}  ·  accounts at <address>.${tenancy.PLATFORM_DOMAIN}`);
 });
