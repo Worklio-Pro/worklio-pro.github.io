@@ -43,16 +43,16 @@ ${S.allowSignups ? `<a class="btn ${i === mid ? '' : 'alt'}" href="#signup" data
   const qs = new URLSearchParams(location.search); let ref = (qs.get('ref') || '').trim().toLowerCase().slice(0, 20);
   try { if (ref) sessionStorage.setItem('ref', ref); else ref = sessionStorage.getItem('ref') || ''; } catch (e) { /* private mode */ }
   const root = S.rootDomain; const urlCode = (new URLSearchParams(location.search).get('code') || '').trim().slice(0, 30); // a shared link: /pricing?code=SPRING20
-  $('#signup').innerHTML = `<div class="card"><h2>Create your account</h2><p class="muted" style="margin:0 0 16px">You’ll be set up in under a minute.</p>
-<form id="sf" novalidate><div id="err"></div><input type="hidden" name="ref" value="${esc(ref)}"><label>Plan<select name="plan">${S.plans.map((p) => `<option value="${esc(p.id)}" ${p.id === S.signupPlan ? 'selected' : ''}>${esc(p.name)}${p.price ? ` (${esc(p.price)})` : ''}</option>`).join('')}</select></label>
+  // the sign-up form waits here (hidden) and moves into a pop-up when someone chooses a plan or clicks Get started
+  $('#signup').innerHTML = `<form id="sf" novalidate><div id="err"></div><input type="hidden" name="ref" value="${esc(ref)}"><label>Plan<select name="plan">${S.plans.map((p) => `<option value="${esc(p.id)}" ${p.id === S.signupPlan ? 'selected' : ''}>${esc(p.name)}${p.price ? ` (${esc(p.price)})` : ''}</option>`).join('')}</select></label>
 ${both ? `<label>Billing<select name="interval"><option value="month" ${period === 'month' ? 'selected' : ''}>Monthly</option><option value="year" ${period === 'year' ? 'selected' : ''}>Yearly${best > 0 ? ` (save up to ${best}%)` : ''}</option></select></label>` : ''}
 <label>Business name<input name="company" required maxlength="100" autocomplete="organization"></label>
 <label>Your web address<div class="slug"><input name="slug" required maxlength="32" autocomplete="off" spellcheck="false"><span>.${esc(root)}</span></div><div class="hint" id="hint"></div></label>
-<label>Your name<input name="name" required maxlength="100" autocomplete="name"></label>
-<label>Email<input name="email" type="email" required autocomplete="email"></label>
+<div class="c-row"><label>Your name<input name="name" required maxlength="100" autocomplete="name"></label>
+<label>Email<input name="email" type="email" required autocomplete="email"></label></div>
 <label>Password (8+ characters)<input name="password" type="password" required minlength="8" autocomplete="new-password"></label>
 <label id="codeRow">Discount code (optional)<input name="code" maxlength="30" autocomplete="off" autocapitalize="characters" spellcheck="false" style="text-transform:uppercase" value="${esc(urlCode)}"><div class="hint" id="codeHint"></div></label>
-<p class="muted" style="font-size:13px;margin:4px 0 10px">By creating an account, you agree to the <a href="/terms" target="_blank" rel="noopener">Terms of Service</a> and <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</p><button class="btn go">Create account</button><p class="muted" id="payNote" style="font-size:13px;margin:8px 0 0;text-align:center"></p></form></div>`;
+<p class="muted" style="font-size:13px;margin:4px 0 10px">By creating an account, you agree to the <a href="/terms" target="_blank" rel="noopener">Terms of Service</a> and <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</p><button class="btn go">Create account</button><p class="muted" id="payNote" style="font-size:13px;margin:8px 0 0;text-align:center"></p></form>`;
   const f = $('#sf'); const slug = $('[name=slug]', f); const hint = $('#hint'); let t;
   const check = () => { clearTimeout(t); const v = slug.value.trim().toLowerCase(); if (!v) { hint.textContent = ''; return; }
     t = setTimeout(async () => { const r = await (await fetch('/api/site/slug-check?slug=' + encodeURIComponent(v))).json(); hint.className = 'hint ' + (r.ok ? 'good' : 'bad'); hint.textContent = r.ok ? `${v}.${root} is available` : r.error; }, 250); };
@@ -76,13 +76,27 @@ ${both ? `<label>Billing<select name="interval"><option value="month" ${period =
       const c2 = chosen(); $('#payNote').textContent = r.ok && c2 && c2.v ? `Next you’ll pay ${amount(j.first / 100)} for ${c2.p.name} with your discount.` : $('#payNote').textContent;
     }, 350); };
   code.addEventListener('input', checkCode); sel.addEventListener('change', checkCode); if (iv) iv.addEventListener('change', checkCode);
-  sel.addEventListener('change', syncPlan); syncPlan(); if (urlCode) { checkCode(); $('#signup').scrollIntoView({ block: 'start' }); }
+  sel.addEventListener('change', syncPlan); syncPlan();
+  const openSignup = (planId) => {
+    if (planId) { sel.value = planId; sel.dispatchEvent(new Event('change')); }
+    const opener = document.activeElement; const old = $('#overlay'); if (old) old.remove();
+    const o = document.createElement('div'); o.className = 'overlay'; o.id = 'overlay';
+    o.innerHTML = '<div class="modal su-modal" role="dialog" aria-modal="true" aria-labelledby="suTitle"><div class="mh"><div><h3 id="suTitle">Create your account</h3><p class="muted" style="margin:2px 0 0;font-size:14px">You’ll be set up in under a minute.</p></div><button type="button" class="x" data-close aria-label="Close">×</button></div><div class="mb"></div></div>';
+    $('.mb', o).appendChild(f); document.body.appendChild(o);
+    const close = () => { $('#signup').appendChild(f); o.remove(); document.removeEventListener('keydown', onKey); if (opener && opener.focus) opener.focus(); };
+    const onKey = (e) => { if (e.key === 'Escape') close(); }; document.addEventListener('keydown', onKey);
+    o.addEventListener('mousedown', (e) => { if (e.target === o) close(); });
+    o.addEventListener('click', (e) => { if (e.target.closest('[data-close]')) close(); });
+    const first = [...f.querySelectorAll('input:not([type=hidden])')].find((x) => !x.value); (first || $('[name=company]', f)).focus();
+  };
+  if (urlCode) checkCode();
+  if (urlCode || location.hash === '#signup') openSignup();
   if (ref) fetch('/api/site/ref/' + encodeURIComponent(ref)).then((r) => (r.ok ? r.json() : null)).then((L) => {
     if (!L) return; const box = document.createElement('div'); box.className = 'ref-banner';
-    box.innerHTML = `<strong>${esc(L.business)} invited you.</strong>${L.offer ? ` Sign up with their link and get ${esc(L.offer)}.` : ' Sign up below to get started.'}`;
+    box.innerHTML = `<strong>${esc(L.business)} invited you.</strong>${L.offer ? ` Sign up with their link and get ${esc(L.offer)}.` : ' Choose a plan to get started.'}`;
     $('#plans').before(box); if (!code.value && L.code) { code.value = L.code; checkCode(); }
   }).catch(() => {});
-  document.addEventListener('click', (e) => { const b = e.target.closest('[data-plan]'); if (b) { sel.value = b.dataset.plan; syncPlan(); } });
+  document.addEventListener('click', (e) => { const b = e.target.closest('[data-plan], a[href="#signup"]'); if (!b) return; e.preventDefault(); openSignup(b.dataset.plan); });
   f.addEventListener('submit', async (e) => {
     e.preventDefault(); const btn = $('.go', f); const b = Object.fromEntries(new FormData(f)); b.slug = b.slug.trim().toLowerCase();
     btn.disabled = true; btn.textContent = 'Creating your account…';
