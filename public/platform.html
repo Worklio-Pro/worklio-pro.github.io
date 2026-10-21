@@ -91,8 +91,11 @@
     .set-grid .card>h2:first-child,#main[data-tab=help] .card>h2:first-child,#main[data-tab=messages] .card>h2:first-child{display:flex;align-items:center;gap:8px;margin:-18px -18px 14px;padding:12px 18px;background:var(--tint);border-bottom:1px solid var(--line);border-radius:12px 12px 0 0;font-size:16px}
     .card-save{display:flex;justify-content:flex-end;margin-top:6px}
     /* integrations tab: one box per service, two columns on wide screens */
-    .ig-grid{columns:2 460px;column-gap:18px}.ig-grid>.ig{break-inside:avoid;background:var(--card);border-radius:12px;padding:18px;margin:0 0 18px;display:inline-block;width:100%;box-sizing:border-box}
-    .ig-grid>.ig>.ig-h{margin:-18px -18px 14px;padding:12px 18px;background:var(--tint);border-radius:12px 12px 0 0}.ig-grid>.ig>.ig-h h3{font-size:16px}
+    .ig-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 18px;align-items:start}
+    .ig-grid .ig,.ig-wide>.ig{background:var(--card);border-radius:12px;padding:18px;margin:0 0 18px}
+    .ig-2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 28px}.ig-2>div>:first-child{margin-top:0}.ig-2>div+div{border-left:1px solid var(--line);padding-left:28px}
+    @media (max-width:1000px){.ig-grid,.ig-2{grid-template-columns:minmax(0,1fr)}.ig-2>div+div{border-left:0;padding-left:0}}
+    .ig-grid .ig>.ig-h,.ig-wide>.ig>.ig-h{margin:-18px -18px 14px;padding:12px 18px;background:var(--tint);border-radius:12px 12px 0 0}.ig-grid .ig>.ig-h h3,.ig-wide>.ig>.ig-h h3{font-size:16px}
     /* integrations: one group per service */
     .ig{border:1px solid var(--line);border-radius:10px;padding:14px;margin-top:12px}
     .ig-h{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:-14px -14px 10px;padding:10px 14px;background:var(--surface-2);border-bottom:1px solid var(--line);border-radius:10px 10px 0 0}.ig-h h3{margin:0;font-size:15px}
@@ -200,6 +203,6 @@
   <div id="toast"></div>
   <script src="/hc-editor.js?v=2"></script>
   <script src="/brand.js?v=1"></script>
-  <script src="/platform.js?v=36"></script>
+  <script src="/platform.js?v=37"></script>
 </body>
 </html>
