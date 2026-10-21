@@ -81,6 +81,10 @@
     .lg-sample{margin-top:14px;font-size:12px}.lg-bar{display:flex;align-items:center;gap:10px;background:#0f1f3d;color:#fff;padding:10px 14px;border-radius:10px;margin-top:4px;font-size:17px;--logo-h:30px;--logo-w:160px}
     .pf-auth-logo{display:flex;justify-content:center;margin-bottom:12px;--logo-h:44px;--logo-w:220px}
     @media (max-width:640px){.lg-grid{grid-template-columns:1fr}}
+    /* discounts tab */
+    #df input:disabled,#df select:disabled{opacity:.6;cursor:not-allowed}
+    .disc-code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.03em}
+    .disc-plans{display:flex;flex-wrap:wrap;gap:4px 18px;align-items:center;margin-bottom:10px}.disc-plans>span{width:100%}
     /* messages tab: sub-tabs and the email template editor */
     .msg-seg{display:inline-flex;margin:0 0 16px;max-width:100%;overflow-x:auto}.msg-seg button{white-space:nowrap;padding:7px 14px;font-size:14px}
     .msg-n{display:inline-block;min-width:20px;padding:0 6px;border-radius:99px;background:var(--tint-strong);color:var(--tint-fg);font-size:12px;font-weight:700;margin-left:4px}
@@ -170,6 +174,6 @@
   <div id="toast"></div>
   <script src="/hc-editor.js?v=1"></script>
   <script src="/brand.js?v=1"></script>
-  <script src="/platform.js?v=18"></script>
+  <script src="/platform.js?v=20"></script>
 </body>
 </html>

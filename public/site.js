@@ -39,7 +39,7 @@ ${S.allowSignups ? `<a class="btn ${i === mid ? '' : 'alt'}" href="#signup" data
   document.addEventListener('click', (e) => { const b = e.target.closest('[data-contact]'); if (b) { e.preventDefault(); openContact(S, b.dataset.contact); } });
   if (!S.allowSignups) return;
   const cta = $('#topCta'); cta.textContent = 'Get started'; delete cta.dataset.contact;
-  const root = S.rootDomain;
+  const root = S.rootDomain; const urlCode = (new URLSearchParams(location.search).get('code') || '').trim().slice(0, 30); // a shared link: /pricing?code=SPRING20
   $('#signup').innerHTML = `<div class="card"><h2>Create your account</h2><p class="muted" style="margin:0 0 16px">You’ll be set up in under a minute.</p>
 <form id="sf" novalidate><div id="err"></div><label>Plan<select name="plan">${S.plans.map((p) => `<option value="${esc(p.id)}" ${p.id === S.signupPlan ? 'selected' : ''}>${esc(p.name)}${p.price ? ` (${esc(p.price)})` : ''}</option>`).join('')}</select></label>
 ${both ? `<label>Billing<select name="interval"><option value="month" ${period === 'month' ? 'selected' : ''}>Monthly</option><option value="year" ${period === 'year' ? 'selected' : ''}>Yearly${best > 0 ? ` (save up to ${best}%)` : ''}</option></select></label>` : ''}
@@ -48,6 +48,7 @@ ${both ? `<label>Billing<select name="interval"><option value="month" ${period =
 <label>Your name<input name="name" required maxlength="100" autocomplete="name"></label>
 <label>Email<input name="email" type="email" required autocomplete="email"></label>
 <label>Password (8+ characters)<input name="password" type="password" required minlength="8" autocomplete="new-password"></label>
+<label id="codeRow">Discount code (optional)<input name="code" maxlength="30" autocomplete="off" autocapitalize="characters" spellcheck="false" style="text-transform:uppercase" value="${esc(urlCode)}"><div class="hint" id="codeHint"></div></label>
 <p class="muted" style="font-size:13px;margin:4px 0 10px">By creating an account, you agree to the <a href="/terms" target="_blank" rel="noopener">Terms of Service</a> and <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</p><button class="btn go">Create account</button><p class="muted" id="payNote" style="font-size:13px;margin:8px 0 0;text-align:center"></p></form></div>`;
   const f = $('#sf'); const slug = $('[name=slug]', f); const hint = $('#hint'); let t;
   const check = () => { clearTimeout(t); const v = slug.value.trim().toLowerCase(); if (!v) { hint.textContent = ''; return; }
@@ -62,7 +63,17 @@ ${both ? `<label>Billing<select name="interval"><option value="month" ${period =
   const goLabel = () => { const c = chosen(); return c && c.v ? 'Continue to payment' : 'Create account'; };
   const syncPlan = () => { const c = chosen(); $('.go', f).textContent = goLabel(); $('#payNote').textContent = c && c.v ? `Next you’ll pay ${amount(c.v)} for ${c.p.name}, billed every ${c.per}.` : ''; };
   if (iv) iv.addEventListener('change', () => { if (period !== iv.value) { period = iv.value; drawPlans(); } syncPlan(); });
-  sel.addEventListener('change', syncPlan); syncPlan();
+  // the discount code: checked against the chosen plan and billing as it's typed; the server checks it again on sign-up
+  const code = $('[name=code]', f); const codeHint = $('#codeHint'); let ct;
+  const checkCode = () => { clearTimeout(ct); const v = code.value.trim(); const c = chosen(); $('#codeRow').hidden = !!(c && !c.v) && !v; if (!v) { codeHint.textContent = ''; syncPlan(); return; }
+    ct = setTimeout(async () => {
+      const r = await fetch('/api/site/discount-check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: v, plan: sel.value, interval: iv ? iv.value : 'month', email: $('[name=email]', f).value }) });
+      const j = await r.json().catch(() => ({})); if (code.value.trim() !== v) return;
+      codeHint.className = 'hint ' + (r.ok ? 'good' : 'bad'); codeHint.textContent = r.ok ? `${j.code}: ${j.summary}` : j.error || 'That code can’t be used';
+      const c2 = chosen(); $('#payNote').textContent = r.ok && c2 && c2.v ? `Next you’ll pay ${amount(j.first / 100)} for ${c2.p.name} with your discount.` : $('#payNote').textContent;
+    }, 350); };
+  code.addEventListener('input', checkCode); sel.addEventListener('change', checkCode); if (iv) iv.addEventListener('change', checkCode);
+  sel.addEventListener('change', syncPlan); syncPlan(); if (urlCode) { checkCode(); $('#signup').scrollIntoView({ block: 'start' }); }
   document.addEventListener('click', (e) => { const b = e.target.closest('[data-plan]'); if (b) { sel.value = b.dataset.plan; syncPlan(); } });
   f.addEventListener('submit', async (e) => {
     e.preventDefault(); const btn = $('.go', f); const b = Object.fromEntries(new FormData(f)); b.slug = b.slug.trim().toLowerCase();
