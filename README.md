@@ -43,7 +43,7 @@ Each business can instead send through its own email (Gmail, SendGrid or an SMTP
 One server hosts many businesses. Each **account** has its own data (`data/tenants/<id>/`), uploads, logins and web address.
 Your original business is the default account and keeps using `data/db.json` and `data/uploads/`.
 
-**Platform console** at `/platform` (on `PLATFORM_DOMAIN` once it's set; on any address while developing). The first visit creates
+**Alpha** (the platform console) at `/alpha` (on `PLATFORM_DOMAIN` once it's set; on any address while developing). The first visit creates
 your platform owner login; that login is separate from any account's logins.
 - **Accounts:** create an account (the owner gets an emailed link to choose a password), change its plan, pause it, rename its address,
   approve or remove its custom domains, get a new owner invite/reset link, or delete it (a copy is kept in `data/deleted/`).
@@ -64,7 +64,7 @@ before Connect existed keep working until they switch or remove them.
 ### Web addresses
 | Setting | What it does |
 |---|---|
-| `PLATFORM_DOMAIN` | e.g. `yourapp.com`. Accounts open at `<address>.yourapp.com`; `yourapp.com` shows the guest home page (features), `/pricing` and `/platform`. Unset (developing): the home page is at `/home`; this server answers as your own account on every address, and other accounts open at `<address>.localhost:<port>` |
+| `PLATFORM_DOMAIN` | e.g. `yourapp.com`. Accounts open at `<address>.yourapp.com`; `yourapp.com` shows the guest home page (features), `/pricing` and `/alpha`. Unset (developing): the home page is at `/home`; this server answers as your own account on every address, and other accounts open at `<address>.localhost:<port>` |
 | `BASE_URL` | `https://yourapp.com` (makes links and cookies use https) |
 | `SERVER_IP` | optional: your server's public IP, shown to customers who connect a root domain with an A record |
 

@@ -1706,7 +1706,7 @@ const supportState = (t, u) => {
   return { current: cur ? supportRow(cur) : null, team: others.filter(support.isOpen).map(supportRow), history: [...mine.filter((r) => r !== cur), ...others.filter((r) => !support.isOpen(r))].sort((a, b) => (b.requestedAt > a.requestedAt ? 1 : -1)).map(supportRow),
     isOwner: owner, grantDays: support.GRANT_DAYS, productName: tenancy.platform().settings.productName };
 };
-const tellSupportAdmin = (r, title, message) => { if (r.adminEmail) sendTemplate('accountActivity', r.adminEmail, { title, message, link: `${tenancy.platformUrl()}/platform` }, { server: true }).catch(() => {}); };
+const tellSupportAdmin = (r, title, message) => { if (r.adminEmail) sendTemplate('accountActivity', r.adminEmail, { title, message, link: `${tenancy.platformUrl()}/alpha` }, { server: true }).catch(() => {}); };
 app.get('/api/account/support-access', (req, res) => res.json(supportState(tenancy.current(), currentUser(req))));
 app.post('/api/account/support-access/:id/:action', (req, res) => {
   const u = currentUser(req); const t = tenancy.current(); const { id, action } = req.params; let r;
@@ -1885,8 +1885,8 @@ const platformApp = require('./lib/platform')({
   hashPassword, checkPassword, sha, normEmail, cookies, tooMany, recordFailure, clearFailures: (k) => failures.delete(k),
   createOwner, ownerLink, sendVerifyEmail, tenantStats, endSupportSessions, sendEmail, sendTemplate, sendSms, emailProvider: serverEmailProvider, applyStripeSession, syncStripeAccount, resetDemo, setCompanyEmail: (e) => { if (!db.company.email) { db.company.email = e; save(); } },
 });
-// which app answers: the platform's (its own domain, or /platform… while developing) or an account's
-const PLATFORM_PATHS = /^\/(platform(\/.*)?|home|pricing|signup|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;
+// which app answers: the platform's (its own domain, or /alpha… while developing) or an account's
+const PLATFORM_PATHS = /^\/(alpha(\/.*)?|platform(\/.*)?|home|pricing|signup|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;
 function dispatch(req, res) {
   if (brandLib.serve(req, res)) return; // the application logo (lib/brand.js), on every address
   const p = req.url.split('?')[0]; const r = tenancy.resolve(req.headers.host);
@@ -1912,7 +1912,7 @@ if (rp > 0) { // emergency reset from the terminal: node server.js --reset-passw
 const rpp = process.argv.indexOf('--reset-platform-password');
 if (rpp > 0) { // same for the platform console login: node server.js --reset-platform-password you@example.com NewPassword
   const P = tenancy.platform(); const a = P.admins.find((x) => x.email === normEmail(process.argv[rpp + 1])); const pw = process.argv[rpp + 2] || '';
-  if (!a) { console.error(P.admins.length ? `No Alpha login with that email. Alpha logins: ${P.admins.map((x) => x.email).join(', ')}` : 'There is no Alpha login yet: open /platform to create one'); process.exit(1); }
+  if (!a) { console.error(P.admins.length ? `No Alpha login with that email. Alpha logins: ${P.admins.map((x) => x.email).join(', ')}` : 'There is no Alpha login yet: open /alpha to create one'); process.exit(1); }
   if (pw.length < 10) { console.error('Password must be at least 10 characters'); process.exit(1); }
   Object.assign(a, (({ salt, hash }) => ({ salt, passwordHash: hash }))(hashPassword(pw)));
   for (const [k, s] of Object.entries(P.sessions)) if (s.adminId === a.id) delete P.sessions[k]; // log out everywhere
@@ -1920,5 +1920,5 @@ if (rpp > 0) { // same for the platform console login: node server.js --reset-pl
 }
 require('http').createServer(dispatch).listen(PORT, () => {
   console.log(`App running at ${BASE_URL}`);
-  console.log(tenancy.devMode ? `Alpha console: ${BASE_URL}/platform (set PLATFORM_DOMAIN to host accounts on their own addresses)` : `Platform: ${tenancy.platformUrl()}  ·  accounts at <address>.${tenancy.PLATFORM_DOMAIN}`);
+  console.log(tenancy.devMode ? `Alpha console: ${BASE_URL}/alpha (set PLATFORM_DOMAIN to host accounts on their own addresses)` : `Platform: ${tenancy.platformUrl()}  ·  accounts at <address>.${tenancy.PLATFORM_DOMAIN}`);
 });
