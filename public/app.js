@@ -481,7 +481,7 @@ function sendDialog(kind, doc) {
   const c = byId(D.clients, doc.clientId) || {};
   const mb = modal(`Send ${kind} ${doc.number}`, `<p>To <strong>${esc(c.name)}</strong></p>
 <form><div class="chk"><label><input type="checkbox" name="ch" value="email" checked> Email ${c.email ? `(${esc(c.email)})` : '<span class="muted">(no email on file)</span>'}</label>
-${planHas('sms') ? `<label><input type="checkbox" name="ch" value="sms" checked> Text message ${c.phone ? `(${esc(c.phone)})` : '<span class="muted">(no phone on file)</span>'}</label>` : ''}</div>
+${planHas('sms') ? `<label><input type="checkbox" name="ch" value="sms"> Text message ${c.phone ? `(${esc(c.phone)})` : '<span class="muted">(no phone on file)</span>'}</label>` : ''}</div>
 <p class="muted">The client gets a link to ${kind === 'invoice' ? 'view and pay this invoice online' : 'view and approve this quote'}. Every message is recorded in the Notifications Log.</p>
 <div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Send</button></div></form>`);
   $('form', mb).addEventListener('submit', async (e) => {
