@@ -517,14 +517,21 @@ const tzOffset = (tz) => { try { return new Intl.DateTimeFormat('en-US', { timeZ
 // social media pages (Company Profile); the server turns a handle into the page's link
 const SOCIAL = [['facebook', 'Facebook', 'facebook.com/yourbusiness'], ['instagram', 'Instagram', '@yourbusiness'], ['tiktok', 'TikTok', '@yourbusiness'], ['x', 'X (Twitter)', '@yourbusiness'],
   ['youtube', 'YouTube', '@yourbusiness'], ['linkedin', 'LinkedIn', 'linkedin.com/company/yourbusiness'], ['google', 'Google Business Profile', 'Link to your Google business page or reviews'], ['yelp', 'Yelp', 'yelp.com/biz/yourbusiness'], ['nextdoor', 'Nextdoor', 'nextdoor.com/pages/yourbusiness']];
+// App Settings → Regional settings: time zone, date and time formats, first day of the week
+function regionalBox(c) {
+  const tz = c.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const zones = Intl.supportedValuesOf('timeZone').map((z) => [z, `(${tzOffset(z)}) ${z}`]);
+  const sample = ymd(new Date()); const fmtWith = (f) => { const saved = company.dateFormat; company.dateFormat = f; const out = fmtDate(sample); company.dateFormat = saved; return out; };
+  return `<div class="card cs"><h2>Regional settings</h2>
+${flSelect('Timezone', 'timezone', zones, tz)}
+${flSelect('Date format', 'dateFormat', ['MMM D, YYYY', 'MM/DD/YYYY', 'DD/MM/YYYY', 'YYYY-MM-DD'].map((f) => [f, fmtWith(f)]), c.dateFormat || 'MMM D, YYYY')}
+${flSelect('Time format', 'timeFormat', [['12', '12 Hour (1:30 PM)'], ['24', '24 Hour (13:30)']], c.timeFormat || '12')}
+${flSelect('First day of the week', 'weekStart', [['sun', 'Sunday'], ['mon', 'Monday']], c.weekStart || 'mon')}</div>`.replace(/<select name=/g, '<select form="cf" name=');
+}
 function companySettingsHtml(c, logoBox = '') {
   const hasParts = ['addrStreet1', 'addrStreet2', 'addrCity', 'addrState', 'addrZip'].some((k) => c[k]);
   const v = (k) => esc(c[k] ?? '');
   const country = c.addrCountry || 'United States';
-  const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const tz = c.timezone || browserTz;
-  const zones = Intl.supportedValuesOf('timeZone').map((z) => [z, `(${tzOffset(z)}) ${z}`]);
-  const sample = ymd(new Date()); const fmtWith = (f) => { const saved = company.dateFormat; company.dateFormat = f; const out = fmtDate(sample); company.dateFormat = saved; return out; };
   return `<div class="cs-cols"><div class="cs-col"><div class="card cs"><h2>Company details</h2>
 ${fl('Company name', `<input name="name" required value="${v('name')}">`)}${fl('Phone number', `<input name="phone" type="tel" value="${v('phone')}">`)}
 ${fl('Website URL', `<input name="website" value="${v('website')}">`)}${fl('Email address', `<input name="email" type="email" value="${v('email')}">`)}
@@ -535,18 +542,15 @@ ${switchRow('addressPrivate', 'Keep address private', c.addressPrivate, 'We won�
 <hr class="cs-hr"><h3>Business hours</h3><p class="muted cs-note">Your usual opening times.</p>
 ${hoursHtml(staffHours({ hours: c.hours || { sat: { on: false, start: '09:00', end: '17:00' }, sun: { on: false, start: '09:00', end: '17:00' } } }), 'Closed')}
 ${switchRow('showHours', 'Show business hours', c.showHours, 'Display your business hours on the client portal.')}</div>
+</div><div class="cs-col">${logoBox}<div class="card cs"><h2>Social media</h2><p class="muted cs-note">Paste a link to your page, or just your handle (like @yourbusiness). Leave any you don’t use blank.</p>
+<div class="cs-soc">${SOCIAL.map(([k, l, ph]) => fl(l, `<input name="social_${k}" value="${esc((c.social || {})[k] || '')}" placeholder="${ph}" autocomplete="off" autocapitalize="off" spellcheck="false">`)).join('')}</div></div>
+
 <div class="card cs"><h2>Tax settings</h2>
 <div class="row">${fl('Tax ID name (ex: GST)', `<input name="taxIdName" value="${v('taxIdName')}">`)}${fl('Tax ID number', `<input name="taxIdNumber" value="${v('taxIdNumber')}">`)}</div>
 <p class="muted cs-note">Tax ID name and number will appear on invoices.</p>
 <h3>Default tax rate</h3>
 <div class="tax-rate">${fl('Tax name', `<input name="taxName" value="${v('taxName')}" placeholder="e.g. TX Sales Tax">`)}${fl('Tax rate (%)', `<input name="taxRate" type="number" step="any" min="0" value="${c.taxRate ?? 0}">`)}${fl('Internal tax description', `<input name="taxDescription" value="${v('taxDescription')}">`)}</div>
-<p class="muted cs-note">Used on new quotes, jobs and invoices. The tax name shows on documents that use this rate.</p></div></div><div class="cs-col">${logoBox}<div class="card cs"><h2>Social media</h2><p class="muted cs-note">Paste a link to your page, or just your handle (like @yourbusiness). Leave any you don’t use blank.</p>
-<div class="cs-soc">${SOCIAL.map(([k, l, ph]) => fl(l, `<input name="social_${k}" value="${esc((c.social || {})[k] || '')}" placeholder="${ph}" autocomplete="off" autocapitalize="off" spellcheck="false">`)).join('')}</div></div>
-<div class="card cs"><h2>Regional settings</h2>
-${flSelect('Timezone', 'timezone', zones, tz)}
-${flSelect('Date format', 'dateFormat', ['MMM D, YYYY', 'MM/DD/YYYY', 'DD/MM/YYYY', 'YYYY-MM-DD'].map((f) => [f, fmtWith(f)]), c.dateFormat || 'MMM D, YYYY')}
-${flSelect('Time format', 'timeFormat', [['12', '12 Hour (1:30 PM)'], ['24', '24 Hour (13:30)']], c.timeFormat || '12')}
-${flSelect('First day of the week', 'weekStart', [['sun', 'Sunday'], ['mon', 'Monday']], c.weekStart || 'mon')}</div></div></div>`;
+<p class="muted cs-note">Used on new quotes, jobs and invoices. The tax name shows on documents that use this rate.</p></div></div></div>`;
 }
 async function companyPage(main, full) {
   const c = company; const integ = full ? await api('GET', '/api/integrations') : null;
@@ -560,9 +564,9 @@ async function companyPage(main, full) {
 <div class="row"><label>Zelle email or phone<input form="cf" name="zelleRecipient" value="${esc(c.zelleRecipient || '')}" placeholder="payments@yourbusiness.com or +17135550100"></label><label>Name registered with Zelle<input form="cf" name="zelleName" value="${esc(c.zelleName || '')}" placeholder="e.g. TLB Group LLC"></label></div></div>` : '';
   const aiBox = full ? planHas('ai') ? `<div class="card"><h2>AI assistance</h2><p class="muted" style="margin-top:0">Shows a “Write with AI” button that drafts product and service descriptions from their name.${integ.ai ? '' : ' AI isn’t available on this service yet.'}</p>
 <div class="ai-toggle"><span class="cstatus ${c.aiEnabled !== false ? 'active' : ''}">${c.aiEnabled !== false ? 'On' : 'Off'}</span><button type="button" class="btn alt sm" data-act="toggleAi">${c.aiEnabled !== false ? 'Turn off AI assistance' : 'Turn on AI assistance'}</button></div></div>` : '' : '';
-  main.innerHTML = `<div class="head"><div><h1>${full ? 'App Settings' : 'Company settings'}</h1>${full ? '<p class="sub">Branding and defaults used on every quote and invoice. Business details, tax and regional settings are on <a href="/settings/company" data-link>Company Profile</a>.</p>' : ''}</div></div>
+  main.innerHTML = `<div class="head"><div><h1>${full ? 'App Settings' : 'Company settings'}</h1>${full ? '<p class="sub">Branding and defaults used on every quote and invoice. Business details, social media and tax settings are on <a href="/settings/company" data-link>Company Profile</a>.</p>' : ''}</div></div>
 ${full ? planCard(c.account) : ''}
-${full ? `<div class="as-cols"><div class="as-col">${webAddressCard(c.account)}${iconBox}${brandBox}</div><div class="as-col">${payCard(integ)}${zelleBox}${aiBox}${prefixBox}</div></div>
+${full ? `<div class="as-cols"><div class="as-col">${webAddressCard(c.account)}${iconBox}${brandBox}${regionalBox(c)}</div><div class="as-col">${payCard(integ)}${zelleBox}${aiBox}${prefixBox}</div></div>
 <form id="cf"><div class="as-save"><button class="btn">Save changes</button></div></form>` : `<form id="cf" class="cs-form">${companySettingsHtml(c, logoBox)}<div class="cs-foot"><button class="btn">Update settings</button></div></form>`}`;
   $$('.prefix-row input').forEach((i) => i.addEventListener('input', () => { i.nextElementSibling.textContent = 'e.g. ' + i.value.trim() + i.dataset.sample; }));
   if (!full) { wireHours(main); phoneMask($('#cf input[name=phone]', main)); }

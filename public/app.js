@@ -8,7 +8,7 @@ const pad = (n) => String(n).padStart(2, '0');
 const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const parseD = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
 const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
-// regional settings (Company Profile): first day of the week, date format, 12/24-hour time
+// regional settings (App Settings): first day of the week, date format, 12/24-hour time
 const weekStartDay = () => (company.weekStart === 'sun' ? 0 : 1);
 const dayInWeek = (d) => (d.getDay() - weekStartDay() + 7) % 7; // 0 = first column of the calendar
 const startOfWeek = (d) => { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); return addDays(x, -dayInWeek(x)); };
@@ -162,8 +162,8 @@ const FEATURE_WORDS = {
   '/business-overview': 'dashboard overview', '/calendar': 'schedule appointments visits', '/staff-schedules': 'working hours availability', '/clients': 'customers contacts',
   '/quotes': 'estimates proposals', '/jobs': 'work orders visits', '/invoices': 'billing', '/payments': 'card online stripe', '/services': 'catalog products price list items',
   '/expenses': 'costs receipts spending', '/reports': 'revenue profit charts', '/tax-summary': 'sales tax', '/project-gallery': 'photos pictures', '/notifications': 'emails texts sms sent messages log',
-  '/settings/company': 'business details logo address phone regional time zone date format', '/team': 'staff employees users access roles technicians', '/settings/emails': 'templates text messages sms reminders',
-  '/settings': 'tax rate number prefixes branding brand color zelle defaults ai stripe card payments online payments', '/settings/connections': 'integrations google facebook instagram ai', '/settings/billing': 'subscription plan upgrade payment method', '/settings/support-access': 'grant revoke help troubleshoot permission',
+  '/settings/company': 'business details logo address phone social media facebook instagram tiktok tax', '/team': 'staff employees users access roles technicians', '/settings/emails': 'templates text messages sms reminders',
+  '/settings': 'number prefixes branding brand color zelle defaults ai stripe card payments online payments regional time zone date format time format week', '/settings/connections': 'integrations google facebook instagram ai', '/settings/billing': 'subscription plan upgrade payment method', '/settings/support-access': 'grant revoke help troubleshoot permission',
 };
 const featureList = () => {
   const open = (p) => PAGES[p] && memberCan(p) && !planLocked(p) && !planLocked(p.split('/').slice(0, 2).join('/'));
@@ -209,8 +209,8 @@ function renderTopbar(path) {
 // short how-to guides shown in the help panel; each step can link to the page it mentions
 const HELP_TOPICS = [
   { id: 'start', hc: 'get-started', title: 'Get Started', blurb: 'Set up your business details, branding and team so you’re ready to send your first quote.', steps: [
-    ['Add your business name, address, logo and regional settings.', '/settings/company', 'Company Profile'],
-    ['Set your tax rate, number prefixes and branding defaults.', '/settings', 'App Settings'],
+    ['Add your business name, address, logo and social media.', '/settings/company', 'Company Profile'],
+    ['Set your time zone, number prefixes and branding defaults.', '/settings', 'App Settings'],
     ['Add your products and services so quotes and invoices fill in prices for you.', '/services', 'Products & Services'],
     ['Invite your team and choose what each person can access.', '/team', 'Manage Team']] },
   { id: 'schedule', hc: 'schedule', title: 'Schedule', blurb: 'Plan jobs on the calendar, assign team members and keep track of who’s working when.', steps: [
