@@ -60,6 +60,7 @@ function render() {
   $('#root').innerHTML = `<header class="pf-top"><div class="pf-bar"><div class="pf-brand">${brandImg(siteBrand(), 'dark')}${siteBrand().logoHasName ? '' : esc(D.settings.productName)} <small>Alpha</small></div>
 <nav class="pf-tabs">${tabs.map(([k, l]) => `<a href="#${k}" class="${tab === k ? 'on' : ''}">${l}</a>`).join('')}</nav>
 <div class="pf-user"><span>${esc(D.admin.name)}</span><button type="button" data-act="logout">Log out</button></div></div></header>
+${D.maintenance && D.maintenance.on ? `<div class="mt-bar" role="status"><strong>Maintenance mode is on.</strong> Visitors and businesses see the maintenance page; you can still use everything. <a href="#settings">Turn it off in Settings</a></div>` : ''}
 <main class="pf-main" id="main"></main>
 <nav class="pf-bnav" aria-label="Alpha sections">${tabs.map(([k, l]) => `<a href="#${k}" class="${tab === k ? 'on' : ''}"${tab === k ? ' aria-current="page"' : ''}>${TAB_ICONS[k]}<span>${SHORT_TABS[k] || l}</span></a>`).join('')}</nav>`;
   ({ accounts: accountsView, plans: plansView, discounts: promoView, messages: messagesView, help: helpView, settings: settingsView })[tab]($('#main'));
@@ -302,6 +303,7 @@ window.addEventListener('beforeunload', (e) => { if (D && draftPlans && plansDir
 function settingsView(main) {
   const s = D.settings; const site = `${location.origin}/pricing`;
   main.innerHTML = `<div class="head"><div><h1>Settings</h1></div></div>
+<div class="card" style="max-width:720px" id="mtCard"></div>
 <form id="sf" class="card" style="max-width:720px"><h2>Your product</h2>
 <div class="row"><label>Product name<input name="productName" value="${esc(s.productName)}" required maxlength="60"></label><label>Contact email<input name="contactEmail" type="email" value="${esc(s.contactEmail)}" placeholder="sales@yourapp.com"></label></div>
 <p class="muted" style="font-size:13px;margin-top:-4px">The product name appears on the pricing page and in account emails. Accounts see the contact email when they want to change plans, and new sign-ups are reported to it.</p>
@@ -327,7 +329,7 @@ ${D.devMode ? `<p>You’re running without <code>PLATFORM_DOMAIN</code>, so this
     e.preventDefault(); const b = Object.fromEntries(new FormData(e.target)); b.allowSignups = !!b.allowSignups;
     try { await api('PUT', '/api/platform/settings', b); await load(); toast('Settings saved'); render(); } catch (x) { toast(x.message, true); }
   });
-  logoCard($('#logoCard', main)); reservedCard($('#reserved', main));
+  maintenanceCard($('#mtCard', main)); logoCard($('#logoCard', main)); reservedCard($('#reserved', main));
   integrationsCard($('#integ', main));
 }
 /* ===== promotions: discount codes, the referral program and its activity ===== */
@@ -536,6 +538,25 @@ ${b.logo ? `<div class="lg-sample"><span class="muted">Header preview</span><div
   $('#logoHasName', box).addEventListener('change', async (e) => { try { D.settings = await api('PUT', '/api/platform/settings', { logoHasName: e.target.checked }); render(); } catch (x) { toast(x.message, true); } });
 }
 A.rmLogo = async (d) => { if (!confirm(d.k === 'dark' ? 'Remove the dark background version?' : 'Remove the logo? Pages and emails go back to the standard check mark.')) return; D.settings = await api('DELETE', `/api/platform/logo/${d.k}`); toast('Logo removed'); render(); };
+// maintenance mode (lib/maintenance.js): everyone but you sees the maintenance page
+function maintenanceCard(box) {
+  const m = D.maintenance || {}; const link = m.secret ? `${location.origin}/?bypass=${m.secret}` : '';
+  box.innerHTML = `<h2>Maintenance mode <span class="cstatus ${m.on ? 'q-sent' : ''}" style="margin-left:6px">${m.on ? 'On' : 'Off'}</span></h2>
+<p class="muted" style="font-size:13px;margin-top:0">While it’s on, every address (your home and pricing pages, checkout, the help center and every business’s app and client links) shows a maintenance page. You can still use everything while you’re logged in here. Alpha, Stripe payments and webhooks keep working.</p>
+<form id="mtf"><label>Title<input name="title" value="${esc(m.title || '')}" maxlength="120" placeholder="We’ll be back soon"></label>
+<label>Message<textarea name="message" rows="3" maxlength="1000" placeholder="${esc(D.settings.productName)} is getting some scheduled improvements. Everything will be back shortly. Thanks for your patience.">${esc(m.message || '')}</textarea></label>
+<label style="max-width:360px">Expected back (optional)<input name="until" value="${esc(m.until || '')}" maxlength="80" placeholder="e.g. Today at 2:00 PM Central"></label>
+<div class="acts" style="justify-content:flex-start">${m.on ? '<button class="btn alt" data-v="keep">Save wording</button><button type="button" class="btn" data-act="mtSet" data-on="0">Turn off maintenance mode</button>' : '<button class="btn alt" data-v="keep">Save wording</button><button type="button" class="btn danger" data-act="mtSet" data-on="1">Turn on maintenance mode</button>'}<a class="btn alt" href="/api/platform/maintenance/preview" target="_blank" rel="noopener">Preview page</a></div></form>
+${link ? `<h3 style="font-size:15px;margin:18px 0 6px">Your access while it’s on</h3><p class="muted" style="font-size:13px;margin:0 0 8px">This browser gets through automatically on ${esc(D.rootDomain)} and every business address under it. On a business’s own domain (or another browser or phone), open any page with this link’s ending, e.g. <code>app.theirbusiness.com/?bypass=…</code>:</p>
+<div class="linkbox"><input readonly value="${esc(link)}" aria-label="Bypass link"><button type="button" class="btn alt" data-act="copy">Copy</button></div>
+<p class="muted" style="font-size:12px;margin:6px 0 0">Keep it private: anyone with it can see the site. <button type="button" class="linkish" data-act="mtNewCode">Make a new link</button> to stop old ones working.</p>` : ''}`;
+  $('#mtf', box).addEventListener('submit', async (e) => { e.preventDefault(); try { D.maintenance = await api('PUT', '/api/platform/maintenance', Object.fromEntries(new FormData(e.target))); toast('Saved'); render(); } catch (x) { toast(x.message, true); } });
+}
+A.mtSet = async (d) => {
+  const on = d.on === '1'; if (on && !confirm('Turn on maintenance mode? Everyone except you will see the maintenance page until you turn it off.')) return;
+  D.maintenance = await api('PUT', '/api/platform/maintenance', { ...Object.fromEntries(new FormData($('#mtf'))), on }); toast(on ? 'Maintenance mode is on' : 'Maintenance mode is off: the site is open again'); render();
+};
+A.mtNewCode = async () => { if (!confirm('Make a new bypass link? Old links stop working; this browser keeps working.')) return; D.maintenance = await api('PUT', '/api/platform/maintenance', { newCode: true, ...(D.maintenance.on ? { on: true } : {}) }); toast('New link made'); render(); };
 // addresses held back from sign-ups; giving one to an account (new account or Manage → web address) releases it
 function reservedCard(box) {
   const R = D.reservedSlugs || [];

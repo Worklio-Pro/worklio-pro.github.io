@@ -15,6 +15,7 @@ const tenancy = require('./lib/tenancy');
 const emails = require('./lib/emails');
 const brandLib = require('./lib/brand');
 const referrals = require('./lib/referrals');
+const maintenance = require('./lib/maintenance');
 const stripeLib = require('./lib/stripe');
 const { db, uploadDir } = tenancy;
 const baseUrl = () => tenancy.tenantUrl(tenancy.current()); // this account's web address, for links in messages
@@ -1889,6 +1890,7 @@ const platformApp = require('./lib/platform')({
 const PLATFORM_PATHS = /^\/(alpha(\/.*)?|platform(\/.*)?|home|pricing|signup|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;
 function dispatch(req, res) {
   if (brandLib.serve(req, res)) return; // the application logo (lib/brand.js), on every address
+  if (maintenance.handle(req, res)) return; // maintenance mode (Alpha → Settings): the maintenance page for everyone but you
   const p = req.url.split('?')[0]; const r = tenancy.resolve(req.headers.host);
   // pages and API replies depend on who is logged in: hosting caches (e.g. SiteGround's dynamic cache) must never store or share them
   if (!/\.(js|css|png|jpe?g|gif|webp|svg|ico|woff2?)$/i.test(p)) res.setHeader('Cache-Control', 'private, no-store');
