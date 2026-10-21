@@ -692,8 +692,8 @@ app.delete('/api/account/domains/:host', (req, res) => {
 });
 // How businesses set up card payments (Alpha → Settings → Integrations → Stripe):
 //   'standard' "Connect with Stripe": the business makes or signs in to its own Stripe account on Stripe's pages (the default)
-//   'embedded' "Set up in Worklio Pro": Stripe's setup form inside the app; the account is the platform's (no Stripe login or dashboard
-//              for the business; the platform pays the Stripe fees and covers losses Stripe can't recover)
+//   'embedded' "Set up in Worklio Pro": Stripe's setup form inside the app; no Stripe login or dashboard for the business. Stripe
+//              covers negative balances and charges its fees to the business's account, as with Connect with Stripe
 //   'both'     each business picks
 const cardSetup = () => { const v = tenancy.platform().settings.cardSetup; return ['standard', 'embedded', 'both'].includes(v) ? v : 'standard'; };
 const stripePubKey = () => tenancy.platform().settings.stripePublishableKey || process.env.STRIPE_PUBLISHABLE_KEY || '';
@@ -739,7 +739,8 @@ app.post('/api/integrations/stripe/embedded', async (req, res) => {
   try {
     if (!sec.stripeAccountId) {
       const a = await stripeLib.request(key, 'POST', 'accounts', { country: 'US', ...(db.company.email ? { email: db.company.email } : {}), 'business_profile[name]': db.company.name || t.name, 'metadata[tenantId]': t.id,
-        'controller[fees][payer]': 'application', 'controller[losses][payments]': 'application', 'controller[stripe_dashboard][type]': 'none', 'controller[requirement_collection]': 'stripe',
+        // no Stripe Dashboard; Stripe collects the details (embedded form), covers negative balances, and charges its fees to the business's account
+        'controller[stripe_dashboard][type]': 'none', 'controller[requirement_collection]': 'stripe', 'controller[losses][payments]': 'stripe', 'controller[fees][payer]': 'account',
         'capabilities[card_payments][requested]': 'true', 'capabilities[transfers][requested]': 'true', 'capabilities[us_bank_account_ach_payments][requested]': 'true' });
       Object.assign(sec, { stripeAccountId: a.id, stripeAccountType: 'embedded', stripeChargesEnabled: !!a.charges_enabled }); db.secrets = sec; save();
       t.stripeAccountId = a.id; t.stripeAccountType = 'embedded'; tenancy.savePlatform(); // the Connect webhook finds the account by this; Alpha counts the methods
@@ -1931,7 +1932,7 @@ const platformApp = require('./lib/platform')({
   createOwner, ownerLink, sendVerifyEmail, tenantStats, endSupportSessions, sendEmail, sendTemplate, sendSms, emailProvider: serverEmailProvider, applyStripeSession, syncStripeAccount, resetDemo, setCompanyEmail: (e) => { if (!db.company.email) { db.company.email = e; save(); } },
 });
 // which app answers: the platform's (its own domain, or /alpha… while developing) or an account's
-const PLATFORM_PATHS = /^\/(alpha(\/.*)?|platform(\/.*)?|home|pricing|signup|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;
+const PLATFORM_PATHS = /^\/(alpha(\/.*)?|platform(\/.*)?|stripe\/go\/[a-z]+|home|pricing|signup|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;
 function dispatch(req, res) {
   if (brandLib.serve(req, res)) return; // the application logo (lib/brand.js), on every address
   if (maintenance.handle(req, res)) return; // maintenance mode (Alpha → Settings): the maintenance page for everyone but you
