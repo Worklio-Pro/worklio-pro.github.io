@@ -641,7 +641,7 @@ a.hp-nav{color:var(--text);text-decoration:none;padding:6px 8px;margin:0 -8px 10
 .rf-h{font-size:20px;margin:8px 0 4px}.rf-sub{margin:0 0 14px;font-size:14px}
 .rf-miles{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin-bottom:28px}
 .rf-mile{margin:0;padding:0;overflow:hidden}.rf-mile h3{font-size:15px;margin:12px 14px 4px}.rf-mile p{margin:0 14px;font-size:13px;color:var(--muted);line-height:1.45}
-.rf-mile-img{position:relative;aspect-ratio:16/9;background:var(--tint) center/cover no-repeat;display:grid;place-items:center;color:var(--brand)}
+.rf-mile-img{position:relative;height:180px;background:var(--tint) center/cover no-repeat;display:grid;place-items:center;color:var(--brand)}
 .rf-badge{position:absolute;top:8px;right:8px;font-size:11px;font-weight:700;padding:3px 8px;border-radius:99px;background:var(--card);color:var(--text);box-shadow:var(--shadow-sm)}
 .rf-mile.done .rf-badge{background:var(--ok-bg);color:var(--ok-fg)}
 .rf-prog{height:6px;border-radius:99px;background:var(--line);margin:12px 14px 6px;overflow:hidden}.rf-prog span{display:block;height:100%;background:var(--brand);border-radius:99px}.rf-mile.done .rf-prog span{background:var(--ok)}
