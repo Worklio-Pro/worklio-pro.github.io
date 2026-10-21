@@ -654,3 +654,7 @@ a.hp-nav{color:var(--text);text-decoration:none;padding:6px 8px;margin:0 -8px 10
 /* App Settings → Card payments */
 .pay-card-h{display:flex;gap:14px;align-items:flex-start}.pay-card-h>svg{width:40px;height:40px;flex:none}.pay-card-h h2{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 4px}
 .pay-card-b{margin-top:12px}.pay-card-b>p:first-child{margin-top:0}
+/* box title rows: a shaded band across the top of each box (as in Alpha); not on the client portal or the Support Access status cards */
+#main:not(.portal) .card:not(.sa-card)>h2:first-child,#main:not(.portal) .card>.bill-h:first-child,#main:not(.portal) .card>.plan-head:first-child,#main:not(.portal) .card>.tpl-head:first-child,#main:not(.portal) .card>.pay-card-h:first-child{margin:-18px -18px 14px;padding:12px 18px;background:var(--tint);border-bottom:1px solid var(--line);border-radius:12px 12px 0 0}
+#main:not(.portal) .card:not(.sa-card)>h2:first-child{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:16px}
+#main:not(.portal) .card>.tpl-head:first-child h2,#main:not(.portal) .card>.plan-head:first-child h2{font-size:16px}
