@@ -558,7 +558,7 @@ async function companyPage(main, full) {
 <div class="ai-toggle"><span class="cstatus ${c.aiEnabled !== false ? 'active' : ''}">${c.aiEnabled !== false ? 'On' : 'Off'}</span><button type="button" class="btn alt sm" data-act="toggleAi">${c.aiEnabled !== false ? 'Turn off AI assistance' : 'Turn on AI assistance'}</button></div></div>` : '' : '';
   main.innerHTML = `<div class="head"><div><h1>${full ? 'App Settings' : 'Company settings'}</h1>${full ? '<p class="sub">Branding and defaults used on every quote and invoice. Business details, tax and regional settings are on <a href="/settings/company" data-link>Company Profile</a>.</p>' : ''}</div></div>
 ${full ? planCard(c.account) : ''}
-${full ? `<div class="as-cols"><div class="as-col">${webAddressCard(c.account)}${logoBox}${brandBox}</div><div class="as-col">${payCard(integ)}${zelleBox}${aiBox}${iconBox}${prefixBox}</div></div>
+${full ? `<div class="as-cols"><div class="as-col">${webAddressCard(c.account)}${logoBox}${iconBox}${brandBox}</div><div class="as-col">${payCard(integ)}${zelleBox}${aiBox}${prefixBox}</div></div>
 <form id="cf"><div class="as-save"><button class="btn">Save changes</button></div></form>` : `<form id="cf" class="cs-form">${companySettingsHtml(c)}${logoBox}<div class="cs-foot"><button class="btn">Update settings</button></div></form>`}`;
   $$('.prefix-row input').forEach((i) => i.addEventListener('input', () => { i.nextElementSibling.textContent = 'e.g. ' + i.value.trim() + i.dataset.sample; }));
   if (!full) { wireHours(main); phoneMask($('#cf input[name=phone]', main)); }
