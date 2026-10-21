@@ -966,8 +966,10 @@ const niceDate = (s) => {
   return f === 'MM/DD/YYYY' ? `${m}/${d}/${y}` : f === 'DD/MM/YYYY' ? `${d}/${m}/${y}` : f === 'YYYY-MM-DD' ? `${y}-${m}-${d}` : new Date(s.slice(0, 10) + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 };
 // the business's emails to clients: styled like the platform's emails, with the business's logo, name and brand color (lib/emails.js)
+// US numbers as (713) 555-0100, like the phone box in Company Profile (public/app.js fmtUsPhone); other international numbers stay as typed
+const fmtUsPhone = (s) => { const t = String(s || '').trim(); let d = t.replace(/\D/g, ''); if (d.length === 11 && d[0] === '1') d = d.slice(1); else if (/^\+/.test(t)) return t; return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : t; };
 const companyBrand = (origin = baseUrl()) => ({ name: db.company.name || 'Your business', logoUrl: db.company.logo ? origin.replace(/\/+$/, '') + db.company.logo : '', color: db.company.brandColor,
-  contact: [db.company.phone, db.company.email, db.company.website] });
+  contact: [fmtUsPhone(db.company.phone), db.company.email, db.company.website] });
 function renderEmail(key, vars, t = emailTemplate(key), origin) { const m = emails.renderBusiness(t, vars, companyBrand(origin)); return { ...m, body: m.text }; }
 
 app.get('/api/email-templates', (req, res) => res.json(Object.entries(EMAIL_TEMPLATES).map(([key, d]) => {
