@@ -17,6 +17,7 @@ const brandLib = require('./lib/brand');
 const referrals = require('./lib/referrals');
 const maintenance = require('./lib/maintenance');
 const stripeLib = require('./lib/stripe');
+const social = require('./lib/social');
 const { db, uploadDir } = tenancy;
 const baseUrl = () => tenancy.tenantUrl(tenancy.current()); // this account's web address, for links in messages
 
@@ -376,7 +377,7 @@ const PUBLIC_API = (req) => req.path === '/api/stripe/webhook' || req.path.start
 app.use((req, res, next) => {
   const p = req.path;
   if (p.startsWith('/api/')) return PUBLIC_API(req) || currentUser(req) ? next() : res.status(401).json({ error: 'Please log in' });
-  if (p === '/login' || p === '/support-login' || p === '/client-portal' || p.startsWith('/p/') || p.startsWith('/pay/') || p.startsWith('/refer/') || p.startsWith('/uploads/') || /\.(js|css|png|jpe?g|gif|webp|svg|ico)$/i.test(p)) return next();
+  if (p === '/login' || p === '/support-login' || p === '/client-portal' || p.startsWith('/p/') || p.startsWith('/pay/') || p.startsWith('/refer/') || p === '/book' || p.startsWith('/uploads/') || /\.(js|css|png|jpe?g|gif|webp|svg|ico)$/i.test(p)) return next();
   if (currentUser(req)) return next();
   res.redirect('/login' + (p !== '/' ? '?next=' + encodeURIComponent(req.url) : ''));
 });
@@ -391,7 +392,7 @@ const ROLE_API = {
   technician: [route('GET', '(jobs|clients|staff|company)'), route('GET', 'auth/.+'), route('POST', 'auth/.+'), route('POST', 'support'), route('POST', 'feedback'), ...SUPPORT_API, route('POST', `jobs/${ID}/signature`)],
   manager: [
     route('GET', 'auth/.+'), route('POST', 'auth/.+'), route('POST', 'support'), route('POST', 'feedback'), ...SUPPORT_API,
-    route('GET', '(jobs|clients|staff|services|photos|company|quotes|invoices|expenses|reports|tax-summary|overview|email-templates)'), route('GET', 'payments/stripe'),
+    route('GET', '(jobs|clients|staff|services|photos|company|quotes|invoices|expenses|reports|tax-summary|overview|email-templates)'), route('GET', 'payments/stripe'), route('GET', 'reviews'), route('PUT', 'reviews/reply'), route('DELETE', 'reviews/reply'),
     route('POST', '(jobs|quotes|invoices|expenses|services|clients|photos)'), route('POST', 'services/describe'), route('PUT', `(jobs|quotes|invoices|expenses|services|clients)/${ID}`),
     route('DELETE', `(jobs|quotes|invoices|expenses|services|photos)/${ID}`),
     route('POST', `quotes/${ID}/(send|approve|convert-to-job|mark-deposit-paid|set-deposit)`), route('POST', `invoices/${ID}/(send|mark-paid|payments)`), route('DELETE', `invoices/${ID}/payments/${ID}`), route('POST', `jobs/${ID}/(create-invoice|remind|signature)`), route('DELETE', `jobs/${ID}/signature`),
@@ -1522,6 +1523,56 @@ app.post('/refer/:code', async (req, res) => {
   save(); res.send(done);
 });
 
+// ---------- online booking: <account address>/book, linked from the Google Business Profile ("Book" button) and the business's own website ----------
+// New clients ask for work here; it arrives as a request (and a lead, unless the email or phone matches a client already).
+const bookHits = new Map(); // ip -> [timestamps]: at most 5 bookings per hour per address
+app.use('/book', express.urlencoded({ extended: false }));
+app.use('/book', (req, res, next) => (tenancy.has('onlineBooking') ? next() : res.status(404).send(shell('Page not found', '<h1>Page not found</h1><p class="muted">Online booking isn’t available for this business.</p>'))));
+function bookPage({ error, values = {} } = {}) {
+  const v = (k) => esc(values[k] || ''); const sel = (k, x) => (values[k] === x ? ' selected' : '');
+  const field = 'padding:10px;border:1px solid #d1d5db;border-radius:8px;width:100%;box-sizing:border-box;margin:4px 0 10px;font:inherit';
+  return shell(`${db.company.name}: book online`, `<h1>Book with ${esc(db.company.name)}</h1>
+<p class="muted">Tell us what you need and when suits you. We'll confirm a time with you${db.company.phone ? `, or call <a href="tel:${esc(db.company.phone)}">${esc(fmtUsPhone(db.company.phone))}</a>` : ''}.</p>
+${error ? `<p style="color:#b91c1c;font-weight:600">${esc(error)}</p>` : ''}
+<form method="post" style="margin-top:16px">
+<label>Your name*<input name="name" required maxlength="100" value="${v('name')}" autocomplete="name"></label>
+<label>Email<input name="email" type="email" maxlength="120" value="${v('email')}" autocomplete="email"></label>
+<label>Phone<input name="phone" type="tel" maxlength="40" value="${v('phone')}" autocomplete="tel"></label>
+<label>Service address<input name="address" maxlength="300" value="${v('address')}" autocomplete="street-address"></label>
+<label>What do you need done?*<input name="title" required maxlength="120" value="${v('title')}"></label>
+<label>Details<textarea name="details" rows="4" maxlength="4000" style="${field}">${v('details')}</textarea></label>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px"><label>Preferred day<input name="preferredDate" type="date" min="${iso(new Date())}" value="${v('preferredDate')}"></label>
+<label>Preferred time<select name="preferredTime" style="${field}"><option value="any">Any time</option><option value="morning"${sel('preferredTime', 'morning')}>Morning</option><option value="afternoon"${sel('preferredTime', 'afternoon')}>Afternoon</option><option value="evening"${sel('preferredTime', 'evening')}>Evening</option></select></label></div>
+<input name="website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">
+<button class="btn">Send booking request</button></form>`);
+}
+app.get('/book', (req, res) => res.send(bookPage()));
+app.post('/book', async (req, res) => {
+  const b = req.body || {}; const clip = (k, n) => String(b[k] || '').trim().slice(0, n);
+  const done = shell('Booking request sent', `<h1>Thanks${clip('name', 100) ? ', ' + esc(clip('name', 100).split(/\s+/)[0]) : ''}!</h1><p class="muted">We got your request and will be in touch soon to confirm a time.</p>`);
+  if (b.website) return res.send(done); // honeypot: bots fill every field
+  const ip = req.socket.remoteAddress; const now = Date.now(); const hits = (bookHits.get(ip) || []).filter((t) => now - t < 3600e3);
+  if (hits.length >= 5) return res.status(429).send(bookPage({ error: 'Too many requests from this connection. Please call or email us instead.', values: b }));
+  const name = clip('name', 100); const title = clip('title', 120); const email = normEmail(clip('email', 120)); const phone = clip('phone', 40);
+  if (!name || !title) return res.status(400).send(bookPage({ error: 'Please enter your name and what you need done.', values: b }));
+  if (!email && !phone) return res.status(400).send(bookPage({ error: 'Please give us an email or phone number so we can reach you.', values: b }));
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).send(bookPage({ error: 'Please check your email address.', values: b }));
+  hits.push(now); bookHits.set(ip, hits);
+  const digits = (s) => String(s || '').replace(/\D/g, '').slice(-10);
+  let c = db.clients.find((x) => (email && normEmail(x.email) === email) || (digits(phone).length === 10 && digits(x.phone) === digits(phone)));
+  const isNew = !c;
+  if (!c) { c = { id: uid(), name, email, phone, address: clip('address', 300), company: '', tags: ['Online booking'], notes: 'Booked online', portalToken: token(), createdAt: iso(new Date()) }; db.clients.push(c); }
+  const preferredDate = /^\d{4}-\d{2}-\d{2}$/.test(b.preferredDate || '') && b.preferredDate >= iso(new Date()) ? b.preferredDate : '';
+  const preferredTime = ['morning', 'afternoon', 'evening'].includes(b.preferredTime) ? b.preferredTime : 'any';
+  db.requests = db.requests || [];
+  const r = { id: uid(), clientId: c.id, title, details: clip('details', 4000), address: clip('address', 300) || c.address || '', preferredDate, preferredTime, status: 'new', source: 'booking', createdAt: new Date().toISOString() };
+  db.requests.push(r);
+  const details = emails.details([['Name', name + (isNew ? ' (new lead)' : '')], ['Phone', phone || c.phone], ['Email', email || c.email], ['Address', r.address || 'not given'], ['Preferred', `${preferredDate || 'any day'}, ${preferredTime === 'any' ? 'any time' : preferredTime}`], ['From', 'Online booking']]);
+  const sent = await sendTemplate('workRequest', db.company.email, { client: name, title, details, request: r.details, business: db.company.name, account_url: baseUrl() });
+  db.notifications.unshift({ id: uid(), at: r.createdAt, clientId: c.id, clientName: c.name, channel: 'email', kind: 'request', refId: r.id, refNumber: '', to: db.company.email || '', subject: `New request: ${title}`, body: sent.text, status: sent.status, detail: sent.detail });
+  save(); res.send(done);
+});
+
 // a client asks for work from their portal: saved as a request and emailed to the business
 app.post('/api/portal/:token/requests', async (req, res) => {
   const c = db.clients.find((x) => x.portalToken === req.params.token);
@@ -1630,6 +1681,97 @@ app.get('/api/integrations', async (req, res) => {
       feePercent: Number(tenancy.platform().settings.platformFeePercent) || 0, // charged only on payments through Connect
     } : null,
   });
+});
+
+// ---------- Account Connections: Google Business Profile, Facebook and Instagram (lib/social.js) ----------
+// The sign-in returns to the platform address, which calls saveConnection inside this account. Tokens stay in the account's secrets.
+const SOCIAL_KINDS = ['google', 'facebook', 'instagram'];
+const connOf = (kind) => (secrets().social || {})[kind] || null;
+function setConnection(kind, conn) {
+  const sec = { ...secrets() }; sec.social = { ...(sec.social || {}) }; if (conn) sec.social[kind] = conn; else delete sec.social[kind]; db.secrets = sec; save();
+  const t = tenancy.current(); t.social = Object.keys(sec.social); tenancy.savePlatform(); // Alpha shows how many businesses use each connection
+}
+function saveConnection(kind, conn) {
+  const old = connOf(kind); if (kind === 'google' && old && old.booking && old.location === conn.location) conn.booking = true; // reconnecting keeps online booking on
+  setConnection(kind, conn);
+}
+const bookingUrl = () => `${baseUrl()}/book`;
+function connectionsView() {
+  const g = connOf('google'); const f = connOf('facebook'); const i = connOf('instagram');
+  return {
+    google: { available: social.ready('google'), connected: !!g, title: g ? g.title : '', address: g ? g.address : '', mapsUrl: g ? g.mapsUrl : '', reviewUrl: g ? g.reviewUrl : '', choices: g ? g.choices || 1 : 0,
+      reviews: !!(g && g.reviews !== false), booking: !!(g && g.booking), bookingUrl: bookingUrl(), bookingPlan: tenancy.has('onlineBooking'), reviewsPlan: tenancy.has('reviews') },
+    facebook: { available: social.ready('facebook'), connected: !!f, name: f ? f.name : '', link: f ? f.link : '', choices: f ? f.choices || 1 : 0 },
+    instagram: { available: social.ready('instagram'), connected: !!i, username: i ? i.username : '', choices: i ? i.choices || 1 : 0 },
+    postsPlan: tenancy.has('socialPosts'),
+  };
+}
+const connKind = (req, res) => {
+  const kind = req.params.kind; if (!SOCIAL_KINDS.includes(kind)) { res.status(404).json({ error: 'Unknown connection' }); return null; }
+  if (!isAdmin(currentUser(req))) { res.status(403).json({ error: 'Only the account owner or an admin can manage connections' }); return null; }
+  return kind;
+};
+// a Google or Meta call failed: the message, and a saved token refresh either way
+const connFail = (res, e) => { save(); res.status(e.status || 502).json({ error: e.message }); };
+app.get('/api/connections', (req, res) => res.json(connectionsView()));
+app.post('/api/connections/:kind/start', (req, res) => {
+  const kind = connKind(req, res); if (!kind) return;
+  if (!social.ready(kind)) return res.status(503).json({ error: 'This connection isn’t available yet.' });
+  res.json({ url: social.startUrl(kind, tenancy.current().id, currentUser(req).id) });
+});
+app.delete('/api/connections/:kind', async (req, res) => {
+  const kind = connKind(req, res); if (!kind) return; const c = connOf(kind);
+  if (c && kind === 'google') { if (c.bookingLink) await social.googleBookingLink(c, '').catch(() => {}); await social.googleRevoke(c); }
+  // Facebook and Instagram share one Facebook sign-in: only give up its access once neither uses it
+  if (c && kind !== 'google') { const other = connOf(kind === 'facebook' ? 'instagram' : 'facebook'); if (!other || other.userToken !== c.userToken) await social.metaRevoke(c); }
+  setConnection(kind, null); res.json(connectionsView());
+});
+// another Business Profile location, Facebook Page or Instagram account the same sign-in manages
+app.get('/api/connections/:kind/choices', async (req, res) => {
+  const kind = connKind(req, res); if (!kind) return; const c = connOf(kind); if (!c) return res.status(400).json({ error: 'Connect it first' });
+  try {
+    const list = kind === 'google' ? (await social.googleLocations(c)).map((l) => ({ id: l.location, label: l.title, sub: l.address, current: l.location === c.location }))
+      : (await social.metaChoices(kind, c)).map((x) => ({ id: x.id, label: x.label, sub: kind === 'instagram' ? x.page.name : '', current: x.id === (kind === 'facebook' ? c.pageId : c.igId) }));
+    save(); res.json(list);
+  } catch (e) { connFail(res, e); }
+});
+app.put('/api/connections/:kind', async (req, res) => {
+  const kind = connKind(req, res); if (!kind) return; const c = connOf(kind); if (!c) return res.status(400).json({ error: 'Connect it first' });
+  const b = req.body || {};
+  try {
+    if (b.choice && kind === 'google') {
+      const locs = await social.googleLocations(c); const l = locs.find((x) => x.location === b.choice); if (!l) return res.status(400).json({ error: 'Choose one of your Business Profile locations' });
+      if (c.bookingLink) await social.googleBookingLink(c, '').catch(() => {}); // the booking button moves with the location
+      Object.assign(c, l, { choices: locs.length }); if (c.booking) await social.googleBookingLink(c, bookingUrl());
+    } else if (b.choice) {
+      const list = await social.metaChoices(kind, c); const x = list.find((y) => y.id === b.choice); if (!x) return res.status(400).json({ error: 'Choose one of the accounts listed' });
+      if (kind === 'facebook') Object.assign(c, { pageId: x.page.id, name: x.page.name, link: x.page.link, token: x.page.token, choices: list.length });
+      else Object.assign(c, { igId: x.page.ig.id, username: x.page.ig.username, pageId: x.page.id, token: x.page.token, choices: list.length });
+    }
+    if (kind === 'google' && 'reviews' in b) c.reviews = !!b.reviews;
+    if (kind === 'google' && 'booking' in b) {
+      if (b.booking && !tenancy.has('onlineBooking')) return res.status(403).json({ error: 'Online booking isn’t included in your plan' });
+      await social.googleBookingLink(c, b.booking ? bookingUrl() : ''); c.booking = !!b.booking;
+    }
+    setConnection(kind, c); res.json(connectionsView());
+  } catch (e) { connFail(res, e); }
+});
+
+// Google reviews (the Reviews page): read straight from the Business Profile; replies show publicly on Google
+app.get('/api/reviews', async (req, res) => {
+  const c = connOf('google'); if (!c || c.reviews === false) return res.json({ connected: !!c, on: false });
+  try { const r = await social.googleReviews(c, String(req.query.page || '')); save(); res.json({ connected: true, on: true, title: c.title, mapsUrl: c.mapsUrl, reviewUrl: c.reviewUrl, ...r }); } catch (e) { connFail(res, e); }
+});
+const canReply = (req, res) => { const u = currentUser(req); if (isAdmin(u) || u.role === 'manager') return true; res.status(403).json({ error: 'Ask a manager or admin to reply to reviews' }); return false; };
+app.put('/api/reviews/reply', async (req, res) => {
+  if (!canReply(req, res)) return; const c = connOf('google'); if (!c) return res.status(400).json({ error: 'Connect your Google Business Profile first' });
+  const comment = String((req.body && req.body.comment) || '').trim(); if (!comment) return res.status(400).json({ error: 'Write a reply first' });
+  if (comment.length > 4000) return res.status(400).json({ error: 'Keep the reply under 4,000 characters' });
+  try { const r = await social.googleReply(c, String(req.body.name || ''), comment); save(); res.json({ comment: r.comment || comment, updatedAt: r.updateTime || new Date().toISOString() }); } catch (e) { connFail(res, e); }
+});
+app.delete('/api/reviews/reply', async (req, res) => {
+  if (!canReply(req, res)) return; const c = connOf('google'); if (!c) return res.status(400).json({ error: 'Connect your Google Business Profile first' });
+  try { await social.googleDeleteReply(c, String(req.query.name || '')); save(); res.json({ ok: true }); } catch (e) { connFail(res, e); }
 });
 
 // ---------- Account and billing: the business's own subscription to this service (owner only) ----------
@@ -1935,10 +2077,10 @@ const helpApp = require('./lib/help')({ sendTemplate, normEmail, emails });
 const legal = require('./lib/legal');
 const platformApp = require('./lib/platform')({
   hashPassword, checkPassword, sha, normEmail, cookies, tooMany, recordFailure, clearFailures: (k) => failures.delete(k),
-  createOwner, ownerLink, sendVerifyEmail, tenantStats, endSupportSessions, sendEmail, sendTemplate, sendSms, emailProvider: serverEmailProvider, applyStripeSession, syncStripeAccount, resetDemo, setCompanyEmail: (e) => { if (!db.company.email) { db.company.email = e; save(); } },
+  createOwner, ownerLink, sendVerifyEmail, tenantStats, endSupportSessions, sendEmail, sendTemplate, sendSms, emailProvider: serverEmailProvider, applyStripeSession, syncStripeAccount, resetDemo, saveConnection, setCompanyEmail: (e) => { if (!db.company.email) { db.company.email = e; save(); } },
 });
 // which app answers: the platform's (its own domain, or /alpha… while developing) or an account's
-const PLATFORM_PATHS = /^\/(alpha(\/.*)?|platform(\/.*)?|stripe\/go\/[a-z]+|home|pricing|signup|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;
+const PLATFORM_PATHS = /^\/(alpha(\/.*)?|platform(\/.*)?|stripe\/go\/[a-z]+|oauth\/(google|meta)\/callback|home|pricing|signup|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;
 function dispatch(req, res) {
   if (brandLib.serve(req, res)) return; // the application logo (lib/brand.js), on every address
   if (maintenance.handle(req, res)) return; // maintenance mode (Alpha → Settings): the maintenance page for everyone but you

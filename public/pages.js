@@ -361,6 +361,67 @@ PAGES['/tax-summary'] = {
   },
 };
 
+/* ===== /reviews: Google reviews from the connected Business Profile, with replies ===== */
+let revState = { filter: 'all', list: [], next: '' };
+const starRow = (n, size = 16) => `<span class="stars" style="--sz:${size}px" aria-label="${n} out of 5 stars">${[1, 2, 3, 4, 5].map((i) => `<i class="${i <= Math.round(n) ? 'on' : ''}">★</i>`).join('')}</span>`;
+PAGES['/reviews'] = {
+  title: 'Reviews',
+  async render(main) {
+    const head = '<div class="head"><div><h1>Reviews</h1><p class="sub">Your Google reviews. Replies show publicly on Google under the review.</p></div></div>';
+    const R = await api('GET', '/api/reviews');
+    if (!R.connected) {
+      main.innerHTML = `${head}<div class="card rv-empty"><div class="conn-ic">${CONN_ICONS.google}</div><h2>Connect your Google Business Profile</h2><p class="muted">See every Google review in one place and reply without leaving ${esc(company.account.productName)}.</p>
+${['owner', 'admin'].includes(role()) ? '<a class="btn" href="/settings/connections" data-link>Go to Account Connections</a>' : '<p class="muted">Ask the account owner or an admin to connect it in Account Connections.</p>'}</div>`;
+      return;
+    }
+    revState = { ...revState, list: R.reviews || [], next: R.next || '' };
+    const noReply = revState.list.filter((r) => !r.reply).length;
+    main.innerHTML = `${head}
+<div class="card rv-sum"><div class="rv-avg"><strong>${(R.average || 0).toFixed(1)}</strong>${starRow(R.average || 0, 20)}<span class="muted">${R.total || 0} review${R.total === 1 ? '' : 's'} on Google</span></div>
+<div class="rv-ask"><h3>Ask for reviews</h3><p class="muted">Send happy clients this link. It opens Google’s review form for ${esc(R.title || 'your business')}.</p>
+${R.reviewUrl ? `<div class="copy-row"><input readonly value="${esc(R.reviewUrl)}" onclick="this.select()" aria-label="Review link"><button type="button" class="btn alt sm" data-act="copyInput">Copy</button></div>` : '<p class="muted">Google hasn’t given a review link for this profile yet.</p>'}
+${R.mapsUrl ? `<p style="margin:10px 0 0;font-size:13px"><a href="${esc(R.mapsUrl)}" target="_blank" rel="noopener">See your profile on Google Maps</a></p>` : ''}</div></div>
+<div class="tabs rv-tabs" role="tablist">${[['all', 'All'], ['open', `Needs a reply${noReply ? ` (${noReply})` : ''}`], ['replied', 'Replied']].map(([k, l]) => `<button type="button" role="tab" class="${revState.filter === k ? 'on' : ''}" data-act="revFilter" data-f="${k}">${l}</button>`).join('')}</div>
+<div id="rvList"></div>`;
+    drawReviews();
+  },
+};
+function drawReviews() {
+  const box = $('#rvList'); if (!box) return;
+  const f = revState.filter; const list = revState.list.filter((r) => f === 'all' || (f === 'open' ? !r.reply : !!r.reply));
+  const canReply = role() !== 'technician';
+  box.innerHTML = (list.length ? list.map((r) => `<article class="card rv" data-name="${esc(r.name)}">
+<header>${r.photo ? `<img src="${esc(r.photo)}" alt="" referrerpolicy="no-referrer">` : `<span class="rv-ini">${esc((r.reviewer[0] || '?').toUpperCase())}</span>`}<div><strong>${esc(r.reviewer)}</strong><div>${starRow(r.stars)} <span class="muted">${fmtDate(String(r.createdAt || '').slice(0, 10))}</span></div></div></header>
+${r.comment ? `<p class="rv-text">${esc(r.comment)}</p>` : '<p class="muted rv-text">A rating with no comment.</p>'}
+${r.reply ? `<div class="rv-reply"><div class="rv-reply-h"><strong>Your reply</strong><span class="muted">${fmtDate(String(r.reply.updatedAt || '').slice(0, 10))}</span></div><p>${esc(r.reply.comment)}</p>
+${canReply ? '<div class="rv-acts"><button type="button" class="link-btn" data-act="revEdit">Edit</button><button type="button" class="link-btn danger" data-act="revDelete">Delete</button></div>' : ''}</div>`
+    : canReply ? '<div class="rv-acts"><button type="button" class="btn alt sm" data-act="revEdit">Reply</button></div>' : ''}
+</article>`).join('') : `<div class="card"><p class="muted" style="margin:0">${f === 'open' ? 'Every review has a reply. Nice work.' : f === 'replied' ? 'No replies yet.' : 'No reviews yet. Share your review link with happy clients.'}</p></div>`)
+    + (revState.next ? '<div style="text-align:center;margin:12px 0"><button type="button" class="btn alt" data-act="revMore">Show more reviews</button></div>' : '');
+}
+A.revFilter = (d) => { revState.filter = d.f; $('.rv-tabs button').forEach((b) => b.classList.toggle('on', b.dataset.f === d.f)); drawReviews(); };
+A.revMore = async (d, el) => {
+  el.disabled = true;
+  try { const R = await api('GET', '/api/reviews?page=' + encodeURIComponent(revState.next)); revState.list.push(...(R.reviews || [])); revState.next = R.next || ''; drawReviews(); } catch (e) { el.disabled = false; toast(e.message, true); }
+};
+const revOf = (el) => { const card = el.closest('.rv'); return { card, r: revState.list.find((x) => x.name === card.dataset.name) }; };
+A.revEdit = (d, el) => {
+  const { card, r } = revOf(el); const box = $('.rv-reply', card) || $('.rv-acts', card);
+  const f = document.createElement('form'); f.className = 'rv-form';
+  f.innerHTML = `<label>Your reply<textarea name="comment" rows="4" maxlength="4000" required placeholder="Thank ${esc(r.reviewer.split(' ')[0])} for the review">${esc(r.reply ? r.reply.comment : '')}</textarea></label>
+<p class="muted" style="font-size:12px;margin:0 0 8px">Your reply shows publicly on Google.</p><div class="rv-acts"><button type="button" class="btn alt sm" data-act="revCancel">Cancel</button><button class="btn sm">${r.reply ? 'Save reply' : 'Post reply'}</button></div>`;
+  box.replaceWith(f); $('textarea', f).focus();
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault(); const btn = $('button.btn:not(.alt)', f); btn.disabled = true;
+    try { r.reply = await api('PUT', '/api/reviews/reply', { name: r.name, comment: f.comment.value }); toast('Reply posted to Google'); drawReviews(); } catch (err) { btn.disabled = false; toast(err.message, true); }
+  });
+};
+A.revCancel = () => drawReviews();
+A.revDelete = async (d, el) => {
+  const { r } = revOf(el); if (!confirm('Delete your reply? It comes off Google too.')) return;
+  try { await api('DELETE', '/api/reviews/reply?name=' + encodeURIComponent(r.name)); r.reply = null; toast('Reply deleted'); drawReviews(); } catch (e) { toast(e.message, true); }
+};
+
 /* ===== /project-gallery ===== */
 let galJob = '';
 PAGES['/project-gallery'] = {
@@ -668,12 +729,28 @@ function stripeConn(integ) {
 ${inApp && viaStripe ? '<p class="muted" style="font-size:13px;margin-top:8px">Already use Stripe? <strong>Connect with Stripe</strong> links your own Stripe account instead, and you manage payments in your Stripe dashboard.</p>' : ''}` };
 }
 async function connectionsPage(main) {
-  const integ = await api('GET', '/api/integrations');
-  const soon = (id, icon, title, desc) => ({ id, icon, title, desc, status: connChip('off', 'Coming soon'), button: 'Connect', disabled: true, body: '' });
+  const [integ, C] = await Promise.all([api('GET', '/api/integrations'), api('GET', '/api/connections')]);
+  connReturnNotice();
+  const admin = ['owner', 'admin'].includes(role());
+  const soon = { status: connChip('off', 'Coming soon'), button: '<button type="button" class="btn alt conn-btn" disabled title="Coming soon">Connect</button>' };
+  const connect = (id) => ({ status: connChip('off', 'Not connected'), button: admin ? `<button type="button" class="btn alt conn-btn" data-act="socialConnect" data-kind="${id}">Connect</button>` : '' });
+  const connected = (id, to, n) => ({ status: connChip('on', 'Connected'), connectedTo: `Connected to ${to}.${admin && n > 1 ? ` <button type="button" class="link-btn" data-act="socialChoose" data-kind="${id}">Change</button>` : ''}`,
+    button: admin ? `<button type="button" class="btn alt conn-btn" data-act="socialDisconnect" data-kind="${id}">Disconnect</button>` : '' });
+  const state = (id, x, to) => (!x.available ? soon : x.connected ? connected(id, to, x.choices) : connect(id));
+  const G = C.google; const F = C.facebook; const I = C.instagram;
+  // Google's features, each managed on its own (Jobber-style sub-rows)
+  const sub = (title, desc, chip, btn) => `<div class="conn-sub"><div><h3>${title} ${chip}</h3><p>${desc}</p></div>${btn}</div>`;
+  const gSubs = G.connected ? [
+    G.reviewsPlan ? sub('Reviews', 'See your Google reviews and reply to them from here.', '', '<a class="btn alt sm" href="/reviews" data-link>Manage</a>') : '',
+    G.bookingPlan ? sub('Online booking', 'Add a <strong>Book</strong> button to your Google Business Profile that opens your booking page.', G.booking ? connChip('on', 'On') : connChip('off', 'Off'), admin ? '<button type="button" class="btn alt sm" data-act="bookingManage">Manage</button>' : '') : '',
+  ].join('') : '';
+  const posts = C.postsPlan ? ' Then post your project photos from <a href="/social-posts" data-link>Social Posts</a>.' : '';
   const rows = [
-    soon('google', 'google', 'Google Business Profile', 'Connect your Google Business Profile and manage which features use it.'),
-    soon('facebook', 'facebook', 'Facebook Business Page', 'Connect your Facebook Business Page and manage which features use it. You’ll need full admin permissions for the business profile to connect it.'),
-    soon('instagram', 'instagram', 'Instagram account', 'Connect your Instagram account to publish Instagram posts. You’ll need an Instagram professional account: either Business or Creator.'),
+    { id: 'google', icon: 'google', title: 'Google Business Profile', desc: 'Connect your Google Business Profile and manage which features use it.', ...state('google', G, `<strong>${esc(G.title)}</strong>`), body: gSubs },
+    { id: 'facebook', icon: 'facebook', title: 'Facebook Business Page', desc: `Connect your Facebook Business Page and manage which features use it. You’ll need full admin permissions for the business profile to connect it.${F.connected ? posts : ''}`,
+      ...state('facebook', F, F.link ? `<a href="${esc(F.link)}" target="_blank" rel="noopener"><strong>${esc(F.name)}</strong></a>` : `<strong>${esc(F.name)}</strong>`) },
+    { id: 'instagram', icon: 'instagram', title: 'Instagram account', desc: `Connect your Instagram account to publish Instagram posts. You’ll need an Instagram professional account: either Business or Creator.${I.connected ? posts : ''}`,
+      ...state('instagram', I, `<a href="https://www.instagram.com/${encodeURIComponent(I.username)}" target="_blank" rel="noopener"><strong>@${esc(I.username)}</strong></a>`) },
     ...(planHas('ai') ? [{ id: 'ai', icon: 'ai', feature: 'ai', title: 'AI descriptions', button: '', body: '', status: integ.ai ? connChip('on', company.aiEnabled !== false ? 'On' : 'Turned off') : connChip('off', 'Not available yet'),
       desc: `“Write with AI” drafts product and service descriptions from their name. ${integ.ai ? 'Turn it on or off in <a href="/settings" data-link>App Settings</a>.' : ''}` }] : []),
   ];
@@ -681,11 +758,57 @@ async function connectionsPage(main) {
   const beta = (r) => !!(r.feature && company.account && (company.account.featureList || []).some((f) => f.key === r.feature && f.beta));
   main.innerHTML = `<div class="head"><div><h1>Account Connections</h1><p class="sub">Connect other accounts your business uses. Card payments are set up in <a href="/settings#payments" data-link>App Settings</a>; emails and texts to clients are sent for you.</p></div></div>
 <div class="card conn-list">${rows.map((r) => `<section class="conn" id="conn-${r.id}"><div class="conn-ic">${CONN_ICONS[r.icon]}</div>
-<div class="conn-main"><h2>${esc(r.title)}${beta(r) ? '<span class="beta-tag" title="This feature is in beta testing">Beta</span>' : ''} ${r.status}</h2><p>${r.desc}</p>${beta(r) ? '<p class="beta-note">This feature is in beta testing. It works, but it may change and you might run into rough edges. Tell us if something doesn’t look right.</p>' : ''}</div>
-<div class="conn-act">${r.button ? `<button type="button" class="btn alt conn-btn" ${r.disabled ? 'disabled title="Coming soon"' : `data-act="toggleConn" data-id="${r.id}" aria-expanded="${r.open ? 'true' : 'false'}"`}>${r.button}</button>` : ''}</div>
-${r.body ? `<div class="conn-body"${r.open ? '' : ' hidden'}>${r.body}</div>` : ''}</section>`).join('')}</div>`;
-  const open = new URLSearchParams(location.search).get('open'); if (open) A.toggleConn({ id: open });
+<div class="conn-main"><h2>${esc(r.title)}${beta(r) ? '<span class="beta-tag" title="This feature is in beta testing">Beta</span>' : ''} ${r.status}</h2>${r.connectedTo ? `<p class="conn-to">${r.connectedTo}</p>` : ''}<p>${r.desc}</p>${beta(r) ? '<p class="beta-note">This feature is in beta testing. It works, but it may change and you might run into rough edges. Tell us if something doesn’t look right.</p>' : ''}</div>
+<div class="conn-act">${r.button || ''}</div>
+${r.body ? `<div class="conn-body conn-subs">${r.body}</div>` : ''}</section>`).join('')}</div>
+${admin ? '' : '<p class="muted" style="font-size:13px">Only the account owner or an admin can connect or disconnect accounts.</p>'}`;
+  connectionsData = C;
 }
+let connectionsData = null;
+const CONN_NAMES = { google: 'Google Business Profile', facebook: 'Facebook Page', instagram: 'Instagram account' };
+// back from Google or Facebook's sign-in (lib/platform.js → /oauth/…/callback)
+function connReturnNotice() {
+  const q = new URLSearchParams(location.search); const ok = q.get('connected'); const bad = q.get('connect_error'); if (!ok && !bad) return;
+  history.replaceState(null, '', location.pathname);
+  if (ok) toast(`${CONN_NAMES[ok] || 'Account'} connected`);
+  else toast(q.get('reason') === 'cancelled' ? 'Connection cancelled. Nothing was changed.' : `Couldn’t connect: ${q.get('reason') || 'something went wrong'}`, true);
+}
+A.socialConnect = async (d, el) => {
+  el.disabled = true;
+  try { const { url } = await api('POST', `/api/connections/${d.kind}/start`, {}); location.href = url; } catch (e) { el.disabled = false; toast(e.message, true); }
+};
+A.socialDisconnect = async (d) => {
+  const why = { google: 'Your reviews will stop showing here, and the Book button comes off your Google profile.', facebook: 'You won’t be able to post to the Page from here.', instagram: 'You won’t be able to post to Instagram from here.' }[d.kind];
+  if (!confirm(`Disconnect your ${CONN_NAMES[d.kind]}? ${why}`)) return;
+  try { await api('DELETE', `/api/connections/${d.kind}`); toast(`${CONN_NAMES[d.kind]} disconnected`); refresh(); } catch (e) { toast(e.message, true); }
+};
+// another location, Page or Instagram account the same sign-in manages
+A.socialChoose = async (d) => {
+  const mb = modal(`Change ${CONN_NAMES[d.kind]}`, '<p class="muted">Loading…</p>');
+  try {
+    const list = await api('GET', `/api/connections/${d.kind}/choices`);
+    mb.innerHTML = `<form id="chooseForm"><div class="choose-list">${list.map((x) => `<label class="choose-row"><input type="radio" name="choice" value="${esc(x.id)}" ${x.current ? 'checked' : ''}><span><strong>${esc(x.label)}</strong>${x.sub ? `<small>${esc(x.sub)}</small>` : ''}</span></label>`).join('')}</div>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Use this one</button></div></form>`;
+    $('#chooseForm', mb).addEventListener('submit', async (e) => {
+      e.preventDefault(); const choice = new FormData(e.target).get('choice'); const btn = $('button.btn:not(.alt)', e.target); btn.disabled = true;
+      try { await api('PUT', `/api/connections/${d.kind}`, { choice }); closeModal(); toast('Connection updated'); refresh(); } catch (err) { btn.disabled = false; toast(err.message, true); }
+    });
+  } catch (e) { mb.innerHTML = `<p>${esc(e.message)}</p><div class="foot"><button type="button" class="btn alt" data-act="closeModal">Close</button></div>`; }
+};
+// Google → Online booking: the Book button on the Google profile, and the booking page link to share anywhere
+A.bookingManage = () => {
+  const G = (connectionsData || {}).google || {};
+  const mb = modal('Online booking', `<p>New clients can ask for a visit from your booking page. Requests arrive in <a href="/clients" data-link>Clients</a> as leads, and you get an email.</p>
+<label class="sw-row"><span>Show a Book button on Google<small class="muted">On your Business Profile in Google Search and Maps. Google can take a few hours to show it.</small></span><input type="checkbox" class="sw" id="bkOn" ${G.booking ? 'checked' : ''}><i></i></label>
+<p style="margin:16px 0 6px"><strong>Your booking page</strong></p><p class="muted" style="margin:0 0 8px;font-size:13px">Add it to your website, social media bio or email signature.</p>
+<div class="copy-row"><input readonly value="${esc(G.bookingUrl)}" onclick="this.select()" aria-label="Booking page link"><button type="button" class="btn alt sm" data-act="copyInput">Copy</button><a class="btn alt sm" href="${esc(G.bookingUrl)}" target="_blank" rel="noopener">Open</a></div>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button type="button" class="btn" data-act="bookingSave">Save</button></div>`);
+  return mb;
+};
+A.bookingSave = async (d, el) => {
+  const on = $('#bkOn').checked; el.disabled = true;
+  try { await api('PUT', '/api/connections/google', { booking: on }); closeModal(); toast(on ? 'The Book button is on. Google can take a few hours to show it.' : 'The Book button is off'); refresh(); } catch (e) { el.disabled = false; toast(e.message, true); }
+};
 A.toggleConn = (d) => {
   const sec = $(`#conn-${d.id}`); const body = sec && $('.conn-body', sec); if (!body) return;
   body.hidden = !body.hidden; $('.conn-btn', sec).setAttribute('aria-expanded', String(!body.hidden));

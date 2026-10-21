@@ -678,3 +678,38 @@ a.hp-nav{color:var(--text);text-decoration:none;padding:6px 8px;margin:0 -8px 10
 .cs-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:start}.cs-col>.card{margin:0 0 18px}
 .cs-soc{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 10px}
 @media (max-width:1000px){.cs-cols{grid-template-columns:minmax(0,1fr)}}@media (max-width:600px){.cs-soc{grid-template-columns:minmax(0,1fr)}}
+/* Account Connections: "Connected to …" and Google's feature rows (Reviews, Online booking) */
+.conn-main p.conn-to{color:var(--text);margin-bottom:4px}
+.conn-to .link-btn{margin-left:6px;font-size:13px}
+.conn-subs{padding-top:0;border-top:0;margin-top:12px;border:1px solid var(--line);border-radius:10px}
+.conn-sub{display:flex;align-items:center;gap:16px;padding:14px 16px;border-top:1px solid var(--line)}
+.conn-sub:first-child{border-top:0}
+.conn-sub>div{flex:1;min-width:0}
+.conn-sub h3{display:flex;align-items:center;gap:8px;margin:0 0 3px;font-size:15px}
+.conn-sub p{margin:0;color:var(--muted);font-size:13px}
+.choose-list{display:grid;gap:8px;margin-bottom:6px}
+.choose-row{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:10px;cursor:pointer}
+.choose-row:has(input:checked){border-color:var(--brand)}
+.choose-row small{display:block;color:var(--muted);font-weight:400}
+/* Reviews (Google) */
+.stars{display:inline-flex;gap:1px;font-size:var(--sz,16px);line-height:1;vertical-align:-2px}
+.stars i{font-style:normal;color:var(--switch-off)}
+.stars i.on{color:#f59e0b}
+.rv-empty{text-align:center;padding:36px 24px}.rv-empty .conn-ic{display:flex;justify-content:center;margin-bottom:8px}.rv-empty h2{margin:0 0 6px}
+.rv-sum{display:grid;grid-template-columns:220px minmax(0,1fr);gap:24px;align-items:center}
+.rv-avg{display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;padding-right:24px;border-right:1px solid var(--line)}
+.rv-avg strong{font-size:44px;line-height:1}
+.rv-ask h3{margin:0 0 4px;font-size:16px}.rv-ask p{margin:0 0 4px;font-size:14px}
+.rv header{display:flex;gap:12px;align-items:center}
+.rv header img,.rv-ini{width:40px;height:40px;border-radius:50%;flex:none;object-fit:cover}
+.rv-ini{display:flex;align-items:center;justify-content:center;background:var(--tint-strong);color:var(--tint-fg);font-weight:700}
+.rv header>div{display:grid;gap:2px;font-size:14px}
+.rv-text{margin:12px 0 0;white-space:pre-line;line-height:1.55}
+.rv-reply{margin-top:14px;padding:12px 14px;border-left:3px solid var(--brand);background:var(--surface-2);border-radius:0 8px 8px 0}
+.rv-reply-h{display:flex;justify-content:space-between;gap:10px;font-size:13px}
+.rv-reply p{margin:6px 0 0;white-space:pre-line;font-size:14px}
+.rv-acts{display:flex;gap:14px;justify-content:flex-end;align-items:center;margin-top:10px}
+.rv-acts .link-btn{margin:0;font-size:13px}.link-btn.danger{color:var(--danger)}
+.rv-form{margin-top:14px}
+@media (max-width:640px){.rv-sum{grid-template-columns:1fr}.rv-avg{border-right:0;padding:0 0 16px;border-bottom:1px solid var(--line)}}
+.copy-row .btn{flex:none;display:inline-flex;align-items:center}

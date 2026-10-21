@@ -77,6 +77,7 @@ const PAGES = {};
 const NAV = [
   ['Operations', [['/business-overview', 'Home'], ['/calendar', 'Job Calendar'], ['/staff-schedules', 'Staff Schedules'], ['/clients', 'Clients'], ['/quotes', 'Quotes'], ['/jobs', 'Jobs'], ['/invoices', 'Invoices']]],
   ['Money', [['/payments', 'Payments'], ['/services', 'Products & Services'], ['/expenses', 'Expenses'], ['/reports', 'Financial Reports'], ['/tax-summary', 'Tax Summary']]],
+  ['Marketing', [['/reviews', 'Reviews']]],
   ['Records', [['/project-gallery', 'Project Gallery'], ['/notifications', 'Notifications Log']]],
 ];
 // the Settings pages live in the top bar's gear menu, not the sidebar
@@ -105,7 +106,7 @@ const isTech = () => role() === 'technician';
 const ROLE_PAGES = {
   technician: ['/calendar', '/staff-schedules', '/clients', '/jobs', '/jobs/edit', '/profile', '/settings/support-access'],
   manager: ['/business-overview', '/calendar', '/staff-schedules', '/clients', '/quotes', '/quotes/new', '/quotes/edit', '/jobs', '/jobs/new', '/jobs/edit',
-    '/invoices', '/invoices/new', '/invoices/edit', '/payments', '/services', '/expenses', '/reports', '/tax-summary', '/project-gallery', '/profile', '/settings/support-access'],
+    '/invoices', '/invoices/new', '/invoices/edit', '/payments', '/services', '/expenses', '/reports', '/tax-summary', '/project-gallery', '/reviews', '/profile', '/settings/support-access'],
 };
 const OWNER_PAGES = ['/settings/billing']; // the business's subscription: the owner only
 const memberCan = (path) => (OWNER_PAGES.includes(path) ? role() === 'owner' : !ROLE_PAGES[role()] || ROLE_PAGES[role()].includes(path));
@@ -161,7 +162,7 @@ const FEATURE_EXTRAS = [['/quotes/new', 'New quote', 'Quotes', 'create estimate'
 const FEATURE_WORDS = {
   '/business-overview': 'dashboard overview', '/calendar': 'schedule appointments visits', '/staff-schedules': 'working hours availability', '/clients': 'customers contacts',
   '/quotes': 'estimates proposals', '/jobs': 'work orders visits', '/invoices': 'billing', '/payments': 'card online stripe', '/services': 'catalog products price list items',
-  '/expenses': 'costs receipts spending', '/reports': 'revenue profit charts', '/tax-summary': 'sales tax', '/project-gallery': 'photos pictures', '/notifications': 'emails texts sms sent messages log',
+  '/expenses': 'costs receipts spending', '/reports': 'revenue profit charts', '/tax-summary': 'sales tax', '/project-gallery': 'photos pictures', '/reviews': 'google reviews ratings stars reply', '/notifications': 'emails texts sms sent messages log',
   '/settings/company': 'business details logo address phone social media facebook instagram tiktok tax', '/team': 'staff employees users access roles technicians', '/settings/emails': 'templates text messages sms reminders',
   '/settings': 'number prefixes branding brand color zelle defaults ai stripe card payments online payments regional time zone date format time format week', '/settings/connections': 'integrations google facebook instagram ai', '/settings/billing': 'subscription plan upgrade payment method', '/settings/support-access': 'grant revoke help troubleshoot permission',
 };

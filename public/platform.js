@@ -614,6 +614,7 @@ ${copy(S.connectWebhookUrl, 'Connect webhook URL')}
 <p class="muted ig-p">${on(S.billingWebhook, 'Webhook connected', 'Webhook not set up')} Optional: add a webhook on your own account for <code>checkout.session.completed</code>, <code>customer.subscription.updated</code> and <code>customer.subscription.deleted</code>, with its signing secret in <code>BILLING_STRIPE_WEBHOOK_SECRET</code>. It pauses accounts whose subscription ends.</p>
 ${copy(S.billingWebhookUrl, 'Billing webhook URL')}
 ${I.localhost ? '<p class="muted ig-p" style="margin-top:8px">Stripe can’t reach localhost: set <code>BASE_URL</code> (or <code>PLATFORM_DOMAIN</code>) to your public address first.</p>' : ''}`)}
+${socialGroups(I, ig, on, copy)}
 ${ig('AI descriptions', on(I.ai), `<p class="ig-d">Claude drafts product and service descriptions, for plans with AI descriptions.</p>${env('<code>ANTHROPIC_API_KEY</code>.')}`)}`;
   $('#mailForm', box).addEventListener('submit', async (e) => {
     e.preventDefault(); try { await api('PUT', '/api/platform/mail-server', Object.fromEntries(new FormData(e.target))); toast('Mail server saved. Send a test email to check it.'); integrationsCard(box); } catch (x) { toast(x.message, true); }
@@ -622,6 +623,9 @@ ${ig('AI descriptions', on(I.ai), `<p class="ig-d">Claude drafts product and ser
     e.preventDefault(); const b = Object.fromEntries(new FormData(e.target)); if (!b.stripePublishableKey) delete b.stripePublishableKey;
     try { await api('PUT', '/api/platform/settings', b); await load(); toast('Card payment setup saved'); integrationsCard(box); } catch (x) { toast(x.message, true); }
   });
+  $$('.oa-form', box).forEach((f) => f.addEventListener('submit', async (e) => {
+    e.preventDefault(); try { await api('PUT', '/api/platform/oauth-apps/' + f.dataset.p, Object.fromEntries(new FormData(f))); toast('Saved. Businesses can connect now.'); integrationsCard(box); } catch (x) { toast(x.message, true); }
+  }));
   $('#feeForm', box).addEventListener('submit', async (e) => {
     e.preventDefault(); try { await api('PUT', '/api/platform/settings', Object.fromEntries(new FormData(e.target))); await load(); toast('Platform fee saved'); } catch (x) { toast(x.message, true); }
   });
@@ -632,6 +636,31 @@ ${ig('AI descriptions', on(I.ai), `<p class="ig-d">Claude drafts product and ser
   });
 }
 
+// Account Connections (lib/social.js): the Google and Meta apps businesses sign in through
+function socialGroups(I, ig, on, copy) {
+  const G = I.social.google; const M = I.social.meta; const n = (k, c) => `${c} business${c === 1 ? '' : 'es'} connected${k ? ' ' + k : ''}`;
+  const form = (p, x, idLabel, idPh, secLabel) => `<form class="oa-form" data-p="${p}"><div class="row"><label>${idLabel}<input name="id" value="${esc(x.fromEnv ? '' : x.id)}" placeholder="${x.fromEnv ? esc(x.id) + ' (from .env)' : idPh}" autocomplete="off" spellcheck="false"></label>
+<label>${secLabel}<input name="secret" type="password" autocomplete="new-password" placeholder="${x.secret ? 'Saved. Leave blank to keep it' : ''}"></label></div>
+<div class="acts" style="justify-content:flex-start"><button class="btn alt">Save</button>${x.id && !x.fromEnv ? `<button type="button" class="btn danger sm" data-act="rmOauthApp" data-p="${p}">Remove</button>` : ''}</div></form>`;
+  return ig('Google Business Profile', on(G.id && G.secret, 'Ready', 'Not set up'), `<p class="ig-d">Businesses connect their Google Business Profile in Account Connections to see and reply to Google reviews, and to add a <strong>Book</strong> button to their Google profile. ${n('', G.connected)}.</p>
+<ol class="ig-steps"><li>In <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">Google Cloud</a>, create a project. Google gives Business Profile API access by request: <a href="https://developers.google.com/my-business/content/prereqs" target="_blank" rel="noopener">apply here</a>, then turn on the <em>My Business Account Management</em>, <em>My Business Business Information</em>, <em>My Business Place Actions</em> and <em>Google My Business</em> APIs.</li>
+<li>Set up the OAuth consent screen (External) with the <code>business.manage</code> scope, then publish it.</li>
+<li>Credentials → Create credentials → OAuth client ID → Web application. Add this <strong>Authorized redirect URI</strong>:</li></ol>
+${copy(G.redirectUri, 'Google redirect URI')}
+<p class="muted ig-p" style="margin-top:8px">Then paste the client’s ID and secret here. Or set <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> in <code>.env</code>.</p>
+${form('google', G, 'Client ID', '….apps.googleusercontent.com', 'Client secret')}${I.localhost ? '<p class="muted ig-p">Google only sends people back to a public address: set <code>BASE_URL</code> (or <code>PLATFORM_DOMAIN</code>) first.</p>' : ''}`)
+  + ig('Facebook & Instagram (Meta)', on(M.id && M.secret, 'Ready', 'Not set up'), `<p class="ig-d">Businesses connect their Facebook Page and Instagram professional account in Account Connections, then post project photos to them. ${n('to Facebook', M.connected.facebook)}, ${M.connected.instagram} to Instagram.</p>
+<ol class="ig-steps"><li>On <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener">Meta for Developers</a>, create an app of type <strong>Business</strong> and add <strong>Facebook Login for Business</strong>.</li>
+<li>In Facebook Login → Settings, add this <strong>Valid OAuth Redirect URI</strong>:</li></ol>
+${copy(M.redirectUri, 'Meta redirect URI')}
+<ol class="ig-steps" start="3"><li>Request Advanced Access in App Review for <code>pages_show_list</code>, <code>pages_read_engagement</code>, <code>pages_manage_posts</code>, <code>business_management</code>, <code>instagram_basic</code> and <code>instagram_content_publish</code>. Until Meta approves them, only people with a role on your app can connect.</li>
+<li>App settings → Basic has the App ID and App secret. Paste them here, or set <code>META_APP_ID</code> and <code>META_APP_SECRET</code> in <code>.env</code>.</li></ol>
+${form('meta', M, 'App ID', '1234567890123456', 'App secret')}`);
+}
+A.rmOauthApp = async (d) => {
+  if (!confirm('Remove these keys? Businesses won’t be able to connect, and connected ones stop working until you add keys again.')) return;
+  await api('DELETE', '/api/platform/oauth-apps/' + d.p); toast('Keys removed'); integrationsCard($('#integ'));
+};
 A.rmMailServer = async () => { if (!confirm('Stop sending through your mail server?')) return; await api('DELETE', '/api/platform/mail-server'); toast('Mail server removed'); integrationsCard($('#integ')); };
 /* ===== actions ===== */
 A.closeModal = closeModal;
