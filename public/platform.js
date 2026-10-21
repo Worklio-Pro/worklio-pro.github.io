@@ -55,7 +55,14 @@ const TAB_ICONS = { // bottom bar icons (phones)
   settings: ico('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>'),
 };
 async function load() { D = await api('GET', '/api/platform/overview'); if (!draftPlans) { draftPlans = structuredClone(D.plans); draftBeta = [...D.betaFeatures]; } }
+// Live chat on its own: /alpha?popout=chat opens in a separate window, with just the chats
+const POPOUT = new URLSearchParams(location.search).get('popout') === 'chat';
 function render() {
+  if (POPOUT) {
+    tab = 'messages'; msgTab = 'chat'; document.title = `Live chat · ${D.settings.productName} Alpha`;
+    $('#root').innerHTML = '<main class="pf-main pf-pop" id="main"><div class="card" id="chat"></div></main>';
+    return chatCard($('#chat'));
+  }
   const tabs = [['accounts', 'Accounts'], ['plans', 'Plans & features'], ['discounts', 'Promotions'], ['messages', 'Messages'], ['help', 'Help Center'], ['integrations', 'Integrations'], ['settings', 'Settings']];
   document.title = `${tabs.find((t) => t[0] === tab)[1]} · ${D.settings.productName} Alpha`;
   $('#root').innerHTML = `<header class="pf-top"><div class="pf-bar"><div class="pf-brand">${brandImg(siteBrand(), 'dark')}${siteBrand().logoHasName ? '' : esc(D.settings.productName)} <small>Alpha</small></div>
@@ -69,7 +76,7 @@ ${D.maintenance && D.maintenance.on ? `<div class="mt-bar" role="status"><strong
 }
 const TABS = ['accounts', 'plans', 'discounts', 'messages', 'help', 'integrations', 'settings'];
 const SHORT_TABS = { plans: 'Plans', help: 'Help', discounts: 'Promos', integrations: 'Services' }; // the phone tab bar has room for short names only
-window.addEventListener('hashchange', () => { tab = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'accounts'; if (D) render(); });
+window.addEventListener('hashchange', () => { if (POPOUT) return; tab = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'accounts'; if (D) render(); });
 
 /* ===== accounts ===== */
 const statusChip = (a) => (a.status === 'active' ? `<span class="cstatus active">Active</span>${a.expiresAt ? `<div class="sm">Until ${fmtDate(a.expiresAt)}</div>` : ''}${a.billing && a.billing.status === 'paid' ? `<div class="sm">${a.billing.demo ? 'Demo checkout' : 'Paid by card'}</div>` : ''}`
@@ -472,7 +479,7 @@ const LC_ST = { waiting: ['Waiting', 'q-sent'], live: ['Live', 'active'], bot: [
 const lcAgo = (s) => { const m = Math.round((Date.now() - new Date(s)) / 60000); return m < 1 ? 'now' : m < 60 ? m + 'm' : m < 1440 ? Math.round(m / 60) + 'h' : new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); };
 const lcLink = (t) => esc(t).replace(/https?:\/\/[^\s<]+[^\s<.,;:!?)'"]/g, (u) => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`).replace(/\n/g, '<br>');
 function chatCard(box) {
-  box.innerHTML = `<div class="lc-head"><h2>Live chat</h2><button type="button" class="btn alt sm" data-act="lcSettings">Chat settings</button></div>
+  box.innerHTML = `<div class="lc-head"><h2>Live chat</h2><div class="acts">${POPOUT ? `<button type="button" class="btn alt sm" data-act="lcNotify" id="lcNotify" ${'Notification' in window && Notification.permission === 'default' ? '' : 'hidden'}>Turn on alerts</button>` : '<button type="button" class="btn alt sm" data-act="lcPopout" title="Open Live chat in its own window">Pop out ↗</button>'}<button type="button" class="btn alt sm" data-act="lcSettings">Chat settings</button></div></div>
 ${LC && !LC.settings.on ? '<div class="note">The chat button is off. Turn it on in <strong>Chat settings</strong> to show it on your site, help center and in the app.</div>' : ''}
 <div class="lc"><div class="lc-list" id="lcList"><p class="muted">Loading…</p></div><div class="lc-conv" id="lcConv"><p class="muted lc-empty">Choose a chat to read it and reply.</p></div></div>`;
   lcLoad(); clearInterval(lcTimer);
@@ -480,7 +487,7 @@ ${LC && !LC.settings.on ? '<div class="note">The chat button is off. Turn it on 
 }
 async function lcLoad() {
   try { LC = await api('GET', '/api/platform/chats'); } catch (x) { return; }
-  const L = $('#lcList'); if (!L) return;
+  lcAlert(LC.chats); const L = $('#lcList'); if (!L) return;
   const waiting = LC.chats.filter((c) => c.status === 'waiting' || (c.status === 'live' && c.unread)).length;
   if (D.chatWaiting !== waiting) { D.chatWaiting = waiting; const n = $('.msg-seg [data-k=chat] .msg-n'); if (n) { n.textContent = waiting; n.hidden = !waiting; } }
   L.innerHTML = LC.chats.length ? LC.chats.map((c) => `<button type="button" class="lc-row ${c.id === lcSel ? 'on' : ''} ${c.unread ? 'new' : ''}" data-act="lcOpen" data-id="${c.id}">
@@ -491,6 +498,22 @@ async function lcLoad() {
   if (lcSel) lcConv();
 }
 A.lcOpen = (d) => { lcSel = d.id; lcShown = ''; $$('.lc-row').forEach((r) => r.classList.toggle('on', r.dataset.id === d.id)); $('.lc').classList.add('open'); lcConv(); };
+A.lcPopout = () => {
+  const w = window.open('/alpha?popout=chat', 'worklio-live-chat', 'popup,width=1040,height=760');
+  if (!w) location.href = '/alpha?popout=chat'; else w.focus(); // pop-ups blocked: open it here instead
+};
+A.lcNotify = async () => { const p = await Notification.requestPermission(); $('#lcNotify').hidden = true; if (p === 'granted') toast('You’ll get an alert when someone wants to talk to a person'); };
+// the pop-out window: the number waiting in its title, and an alert (if allowed) when someone new asks for a person
+let lcKnown = null;
+function lcAlert(chats) {
+  const waiting = chats.filter((c) => c.status === 'waiting'); const n = chats.filter((c) => c.status === 'waiting' || (c.status === 'live' && c.unread)).length;
+  if (POPOUT) document.title = `${n ? `(${n}) ` : ''}Live chat · ${D.settings.productName} Alpha`;
+  const fresh = lcKnown ? waiting.filter((c) => !lcKnown.has(c.id)) : []; lcKnown = new Set(waiting.map((c) => c.id));
+  if (fresh.length && document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+    const c = fresh[0]; const note = new Notification(`${c.name || 'A visitor'} wants to talk to a person`, { body: c.last ? c.last.text : '', tag: 'chat-' + c.id });
+    note.onclick = () => { window.focus(); A.lcOpen({ id: c.id }); note.close(); };
+  }
+}
 A.lcBack = () => { lcSel = ''; $('.lc').classList.remove('open'); };
 async function lcConv() {
   let c; try { c = await api('GET', '/api/platform/chats/' + lcSel); } catch (x) { lcSel = ''; $('#lcConv').innerHTML = `<p class="muted lc-empty">${esc(x.message)}</p>`; return; }
