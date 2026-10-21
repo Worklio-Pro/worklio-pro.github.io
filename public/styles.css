@@ -674,3 +674,7 @@ a.hp-nav{color:var(--text);text-decoration:none;padding:6px 8px;margin:0 -8px 10
 .up-note{font-size:13px;color:var(--muted);margin:14px 0 0;line-height:1.5}
 /* card payments set up in the app: Stripe's embedded form */
 .cp-setup{max-width:760px;min-height:240px}.cp-setup #cpBanner:not(:empty){margin-bottom:12px}
+/* Company Profile: two columns (details and hours on the left; logo, social media, tax and regional settings on the right) */
+.cs-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:start}.cs-col>.card{margin:0 0 18px}
+.cs-soc{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 10px}
+@media (max-width:1000px){.cs-cols{grid-template-columns:minmax(0,1fr)}}@media (max-width:600px){.cs-soc{grid-template-columns:minmax(0,1fr)}}

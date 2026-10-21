@@ -611,6 +611,14 @@ function accountInfo() {
   };
 }
 app.get('/api/company', (req, res) => res.json({ ...db.company, account: accountInfo() }));
+// social media pages a business can list; a handle becomes the page's link on networks that use handles
+const SOCIAL = { facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok', x: 'X', youtube: 'YouTube', linkedin: 'LinkedIn', google: 'Google Business Profile', yelp: 'Yelp', nextdoor: 'Nextdoor' };
+const SOCIAL_HANDLE = { facebook: (h) => `https://www.facebook.com/${h}`, instagram: (h) => `https://www.instagram.com/${h}`, tiktok: (h) => `https://www.tiktok.com/@${h}`, x: (h) => `https://x.com/${h}`, youtube: (h) => `https://www.youtube.com/@${h}` };
+function socialUrl(k, v) {
+  if (/^@?[A-Za-z0-9._-]{1,60}$/.test(v) && !/\.(com|net|org|co|app|biz|us)$/i.test(v) && SOCIAL_HANDLE[k]) return SOCIAL_HANDLE[k](v.replace(/^@/, ''));
+  const u = /^https?:\/\//i.test(v) ? v : /^[\w.-]+\.[a-z]{2,}(\/\S*)?$/i.test(v) ? 'https://' + v : ''; // "facebook.com/page" without https://
+  try { const p = new URL(u); return ['http:', 'https:'].includes(p.protocol) && p.hostname.includes('.') ? p.href : ''; } catch (e) { return ''; }
+}
 app.put('/api/company', (req, res) => {
   if (!tenancy.has('branding')) delete req.body.brandColor; // custom branding is a plan feature
   if (!tenancy.has('numberPrefixes')) for (const k of Object.keys(PREFIX_DEFAULTS)) delete req.body[k]; // so are custom number prefixes (saved ones keep working)
@@ -622,6 +630,16 @@ app.put('/api/company', (req, res) => {
   const b = req.body;
   for (const [k, ok] of Object.entries(REGIONAL)) if (k in b && !ok(b[k])) return res.status(400).json({ error: `Choose a valid ${k === 'timezone' ? 'time zone' : k === 'dateFormat' ? 'date format' : k === 'timeFormat' ? 'time format' : 'first day of the week'}` });
   if ('hours' in b) { const h = readHours(b.hours); if (!h) return res.status(400).json({ error: 'Check the business hours: each open day needs an end time after its start time' }); b.hours = h; }
+  // social media pages (Company Profile): a link, or a handle for the networks that have them
+  if (Object.keys(b).some((k) => k.startsWith('social_'))) {
+    const social = {};
+    for (const [k, label] of Object.entries(SOCIAL)) {
+      const v = String(b['social_' + k] || '').trim().slice(0, 300); if (!v) continue;
+      const url = socialUrl(k, v); if (!url) return res.status(400).json({ error: `Enter a link to your ${label} page${SOCIAL_HANDLE[k] ? ' or your handle, like @yourbusiness' : ''}` });
+      social[k] = url;
+    }
+    db.company.social = social;
+  }
   const allowed = ['name', 'email', 'phone', 'website', 'address', 'logo', 'taxRate', 'paymentTermsDays', 'invoiceFooter', 'brandColor', 'zelleRecipient', 'zelleName', 'quoteDisclaimer', 'invoiceDisclaimer', ...Object.keys(PREFIX_DEFAULTS),
     ...ADDRESS_PARTS, 'taxIdName', 'taxIdNumber', 'taxName', 'taxDescription', 'hours', ...Object.keys(REGIONAL)];
   for (const k of allowed) if (k in b) db.company[k] = k === 'taxRate' || k === 'paymentTermsDays' ? Number(b[k]) || 0 : typeof b[k] === 'string' ? b[k].trim().slice(0, 500) : b[k];
