@@ -863,24 +863,30 @@ A.runImport = async (d, el) => {
 A.importTemplate = () => downloadCsv('client-import-sample.csv', [['Name', 'Email', 'Phone', 'Address', 'Notes'], ['Jane Smith', 'jane@example.com', '(713) 555-0100', '100 Main St, Houston, TX 77002', 'Gate code 1234'], ['Carlos Rivera', 'carlos@example.com', '281-555-0142', '22 Oak Ln, Katy, TX 77494', '']]);
 
 /* ===== /settings/emails ===== */
-const fillTpl = (text, vars) => String(text).replace(/\{\{\s*(\w+)\s*\}\}/g, (m, k) => (k in vars ? vars[k] : m));
 PAGES['/settings/emails'] = {
   title: 'Email Templates',
   async render(main) {
     const list = await api('GET', '/api/email-templates');
-    const sample = { client_name: 'Jane Smith', company_name: company.name || 'Your Business', quote_number: docPrefix('quotePrefix') + '1005', quote_title: 'Backyard cleanup', invoice_number: docPrefix('invoicePrefix') + '3010', total: '$1,250.00', due_date: fmtDate(ymd(addDays(new Date(), 14))), job_number: docPrefix('jobPrefix') + '2010', job_title: 'Gutter cleaning', date: fmtDate(ymd(addDays(new Date(), 2))), time: '09:00', address: '100 Main St, Houston, TX 77002' };
+    const sample = { client_name: 'Jane Smith', company_name: company.name || 'Your Business', quote_number: docPrefix('quotePrefix') + '1005', quote_title: 'Backyard cleanup', invoice_number: docPrefix('invoicePrefix') + '3010', total: '$1,250.00', due_date: fmtDate(ymd(addDays(new Date(), 14))), job_number: docPrefix('jobPrefix') + '2010', job_title: 'Gutter cleaning', date: fmtDate(ymd(addDays(new Date(), 2))), time: '09:00', address: '100 Main St, Houston, TX 77002',
+      amount: '$1,250.00', paid_for: 'Invoice ' + docPrefix('invoicePrefix') + '3010', reference: 'pi_3Q8x2L4eZvKYlo2C' };
     const links = { quote: location.origin + '/p/quote/abc123', invoice: location.origin + '/pay/abc123' };
-    main.innerHTML = `<div class="head"><div><h1>Email Templates</h1><p class="sub">Edit the emails sent to clients. Placeholders in {{double braces}} are replaced with the real details when each email is sent.</p></div></div>
+    main.innerHTML = `<div class="head"><div><h1>Email Templates</h1><p class="sub">Edit the emails sent to clients. Placeholders in {{double braces}} are replaced with the real details when each email is sent. Emails show your logo, business name and brand color (Company Profile and App Settings).</p></div></div>
 ${list.map((t) => `<form class="card tpl" data-key="${t.key}"><div class="tpl-head"><div><h2>${esc(t.label)} ${t.custom ? '<span class="badge sent">customized</span>' : ''}</h2><div class="muted">${esc(t.description)}</div></div></div>
 <div class="row"><div><label>Subject<input name="subject" value="${esc(t.subject)}" required></label><label>Message<textarea name="body" rows="10" required>${esc(t.body)}</textarea></label>
-<div class="muted" style="margin-bottom:6px">Insert a placeholder at the cursor:</div><div class="chips">${Object.entries(t.vars).map(([k, l]) => `<button type="button" class="btn alt sm" data-act="insVar" data-v="${k}" title="${esc(l)}">${esc(l)}</button>`).join('')}</div></div>
-<div><div class="muted" style="font-size:13px">Preview with sample details</div><div class="tpl-preview"><div class="pv-subj"></div><div class="pv-body"></div></div><div class="pv-warn notice" hidden></div></div></div>
+<div class="muted" style="margin-bottom:6px">Insert a placeholder at the cursor:</div><div class="chips">${Object.entries(t.vars).map(([k, l]) => `<button type="button" class="btn alt sm" data-act="insVar" data-v="${k}" title="${esc(l)}">${esc(l)}</button>`).join('')}</div>
+<details class="tpl-fmt"><summary>Formatting</summary><ul><li><code># Heading</code> on the first line is the big title</li><li>Leave a blank line between paragraphs</li><li><code>**bold**</code> for bold</li><li><code>[Button text]({{link}})</code> on its own line is a button</li><li>Lines starting with <code>&gt;</code> go in a shaded box</li></ul></details></div>
+<div><div class="muted" style="font-size:13px">Preview with sample details</div><div class="tpl-preview"><div class="pv-subj"></div><iframe class="pv-frame" title="Email preview" sandbox=""></iframe></div><div class="pv-warn notice" hidden></div></div></div>
 <div class="foot">${t.custom ? `<button type="button" class="btn alt" data-act="resetTpl" data-key="${t.key}">Reset to default</button>` : ''}<button class="btn">Save ${esc(t.label.toLowerCase())} email</button></div></form>`).join('')}`;
     $$('form.tpl', main).forEach((form) => {
       const t = list.find((x) => x.key === form.dataset.key); const vars = { ...sample, link: links[t.key] || '' };
+      let timer; let seq = 0;
+      const draw = async () => { // the styled email, drawn by the server so it matches what clients get
+        const n = ++seq; const r = await api('POST', `/api/email-templates/${t.key}/preview`, { subject: $('[name=subject]', form).value, body: $('[name=body]', form).value, vars }).catch(() => null);
+        if (!r || n !== seq) return; $('.pv-subj', form).textContent = r.subject; $('.pv-frame', form).srcdoc = r.html;
+      };
       const preview = () => {
         const subj = $('[name=subject]', form).value; const body = $('[name=body]', form).value;
-        $('.pv-subj', form).textContent = fillTpl(subj, vars); $('.pv-body', form).textContent = fillTpl(body, vars);
+        clearTimeout(timer); timer = setTimeout(draw, 300);
         const unknown = [...new Set([...(subj + body).matchAll(/\{\{\s*(\w+)\s*\}\}/g)].map((m) => m[1]).filter((k) => !(k in t.vars)))];
         const w = $('.pv-warn', form); w.hidden = !unknown.length; w.textContent = unknown.length ? `Not a placeholder for this email, so it will be sent as typed: ${unknown.map((k) => '{{' + k + '}}').join(', ')}` : '';
       };

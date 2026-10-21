@@ -297,10 +297,10 @@ async function sendSms(to, body, { server = false } = {}) {
   }
   return { status: 'simulated', detail: server ? 'No SMS provider configured (set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM)' : 'Texting isn’t connected: connect your Twilio account in Settings → Account Connections' };
 }
-async function notify({ clientId, channel, kind, refId, refNumber, subject, body }) {
+async function notify({ clientId, channel, kind, refId, refNumber, subject, body, html = '' }) {
   const c = findClient(clientId);
   if (channel === 'sms' && !tenancy.has('sms')) return { id: uid(), at: new Date().toISOString(), clientId, channel, kind, status: 'failed', detail: 'Text messages aren’t included in your plan' };
-  const res = channel === 'email' ? await sendEmail(c && c.email, subject, body) : await sendSms(c && c.phone, body);
+  const res = channel === 'email' ? await sendEmail(c && c.email, subject, body, { html }) : await sendSms(c && c.phone, body);
   const entry = { id: uid(), at: new Date().toISOString(), clientId, clientName: c ? c.name : 'Unknown', channel, kind, refId, refNumber, to: channel === 'email' ? (c && c.email) : (c && c.phone), subject: subject || '', body, status: res.status, detail: res.detail };
   db.notifications.unshift(entry);
   return entry;
@@ -937,35 +937,50 @@ const EMAIL_TEMPLATES = {
   quote: {
     label: 'Quote', description: 'Sent when you send a quote to a client.',
     subject: 'Quote {{quote_number}} from {{company_name}}',
-    body: 'Hello {{client_name}},\n\nYour quote {{quote_number}} for {{total}} is ready.\nView and approve it here: {{link}}\n\n{{company_name}}',
+    body: '# Your quote is ready\n\nHello {{client_name}},\n\nYour quote {{quote_number}} for **{{total}}** is ready. Review the details and approve it online.\n\n[View and approve quote]({{link}})\n\nThank you,\n{{company_name}}',
     vars: { client_name: 'Client name', company_name: 'Your business name', quote_number: 'Quote number', quote_title: 'Quote title', total: 'Quote total', link: 'Link to view and approve' },
   },
   invoice: {
     label: 'Invoice', description: 'Sent when you send an invoice to a client.',
     subject: 'Invoice {{invoice_number}} from {{company_name}}',
-    body: 'Hello {{client_name}},\n\nInvoice {{invoice_number}} for {{total}} is due {{due_date}}.\nPay securely online: {{link}}\n\n{{company_name}}',
+    body: '# Invoice {{invoice_number}}\n\nHello {{client_name}},\n\nInvoice {{invoice_number}} for **{{total}}** is due {{due_date}}. You can view it and pay securely online.\n\n[View and pay invoice]({{link}})\n\nThank you for your business,\n{{company_name}}',
     vars: { client_name: 'Client name', company_name: 'Your business name', invoice_number: 'Invoice number', total: 'Invoice total', due_date: 'Due date', link: 'Link to view and pay' },
   },
   reminder: {
     label: 'Appointment reminder', description: 'Sent when you send a job reminder by email.',
     subject: 'Appointment reminder from {{company_name}}',
-    body: 'Hello {{client_name}},\n\nThis is a reminder of your appointment "{{job_title}}" on {{date}} at {{time}}.\nAddress: {{address}}\n\n{{company_name}}',
+    body: '# Appointment reminder\n\nHello {{client_name}},\n\nThis is a reminder of your appointment with us:\n\n> **{{job_title}}**\n> {{date}} at {{time}}\n> {{address}}\n\nNeed to change it? Just reply to this email.\n\n{{company_name}}',
     vars: { client_name: 'Client name', company_name: 'Your business name', job_number: 'Job number', job_title: 'Job title', date: 'Appointment date', time: 'Start time', address: 'Job address' },
+  },
+  receipt: {
+    label: 'Payment receipt', description: 'Sent when a client pays online, if you turned on email receipts in App Settings.',
+    subject: 'Receipt from {{company_name}}',
+    body: '# Thank you for your payment\n\nHello {{client_name}},\n\nWe received your payment of **{{amount}}** for {{paid_for}}.\n\n> Paid on {{date}}\n> Payment reference: {{reference}}\n\nThank you,\n{{company_name}}',
+    vars: { client_name: 'Client name', company_name: 'Your business name', amount: 'Amount paid', paid_for: 'What was paid, e.g. Invoice INV-3010', date: 'Payment date', reference: 'Payment reference' },
   },
 };
 const emailTemplate = (key) => ({ subject: EMAIL_TEMPLATES[key].subject, body: EMAIL_TEMPLATES[key].body, ...((db.emailTemplates || {})[key] || {}) });
-const fillTemplate = (text, vars) => String(text).replace(/\{\{\s*(\w+)\s*\}\}/g, (m, k) => (k in vars ? String(vars[k] ?? '') : m));
 const niceDate = (s) => {
   if (!s) return '';
   const [y, m, d] = String(s).slice(0, 10).split('-'); const f = db.company.dateFormat;
   return f === 'MM/DD/YYYY' ? `${m}/${d}/${y}` : f === 'DD/MM/YYYY' ? `${d}/${m}/${y}` : f === 'YYYY-MM-DD' ? `${y}-${m}-${d}` : new Date(s.slice(0, 10) + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 };
-function renderEmail(key, vars) { const t = emailTemplate(key); return { subject: fillTemplate(t.subject, vars), body: fillTemplate(t.body, vars) }; }
+// the business's emails to clients: styled like the platform's emails, with the business's logo, name and brand color (lib/emails.js)
+const companyBrand = (origin = baseUrl()) => ({ name: db.company.name || 'Your business', logoUrl: db.company.logo ? origin.replace(/\/+$/, '') + db.company.logo : '', color: db.company.brandColor,
+  contact: [db.company.phone, db.company.email, db.company.website] });
+function renderEmail(key, vars, t = emailTemplate(key), origin) { const m = emails.renderBusiness(t, vars, companyBrand(origin)); return { ...m, body: m.text }; }
 
 app.get('/api/email-templates', (req, res) => res.json(Object.entries(EMAIL_TEMPLATES).map(([key, d]) => {
   const t = emailTemplate(key);
   return { key, label: d.label, description: d.description, vars: d.vars, subject: t.subject, body: t.body, defaultSubject: d.subject, defaultBody: d.body, custom: !!(db.emailTemplates || {})[key] };
 })));
+// the editor's preview: what's in the form (saved or not) with the sample details it sends, logo loaded from this page's own address
+app.post('/api/email-templates/:key/preview', (req, res) => {
+  const key = req.params.key; if (!EMAIL_TEMPLATES[key]) return res.status(404).json({ error: 'Unknown template' });
+  const b = req.body || {}; const vars = Object.fromEntries(Object.entries(b.vars || {}).map(([k, v]) => [k, String(v ?? '').slice(0, 300)]));
+  const m = renderEmail(key, vars, { subject: String(b.subject || ''), body: String(b.body || '') }, `${/^https/.test(process.env.BASE_URL || '') ? 'https' : 'http'}://${req.headers.host}`);
+  res.json({ subject: m.subject, html: m.html });
+});
 app.put('/api/email-templates/:key', (req, res) => {
   const key = req.params.key; if (!EMAIL_TEMPLATES[key]) return res.status(404).json({ error: 'Unknown template' });
   const subject = String((req.body && req.body.subject) || '').trim(); const body = String((req.body && req.body.body) || '').trim();
@@ -985,7 +1000,7 @@ app.post('/api/quotes/:id/send', async (req, res) => {
   const email = renderEmail('quote', { client_name: findClient(q.clientId)?.name || '', company_name: co, quote_number: q.number, quote_title: q.title || '', total: money(q.total), link });
   for (const ch of channels) {
     results.push(await notify({ clientId: q.clientId, channel: ch, kind: 'quote', refId: q.id, refNumber: q.number,
-      subject: email.subject, body: ch === 'email' ? email.body : `${co}: Quote ${q.number} (${money(q.total)}) is ready: ${link}` }));
+      subject: email.subject, html: ch === 'email' ? email.html : '', body: ch === 'email' ? email.body : `${co}: Quote ${q.number} (${money(q.total)}) is ready: ${link}` }));
   }
   if (q.status === 'draft') q.status = 'sent'; if (!q.sentAt) q.sentAt = iso(new Date());
   save(); res.json({ quote: q, results });
@@ -1024,7 +1039,7 @@ app.post('/api/invoices/:id/send', async (req, res) => {
   const email = renderEmail('invoice', { client_name: findClient(inv.clientId)?.name || '', company_name: co, invoice_number: inv.number, total: money(inv.total), due_date: niceDate(inv.dueDate), link });
   for (const ch of channels) {
     results.push(await notify({ clientId: inv.clientId, channel: ch, kind: 'invoice', refId: inv.id, refNumber: inv.number,
-      subject: email.subject, body: ch === 'email' ? email.body : `${co}: Invoice ${inv.number} (${money(inv.total)}) due ${inv.dueDate}. Pay online: ${link}` }));
+      subject: email.subject, html: ch === 'email' ? email.html : '', body: ch === 'email' ? email.body : `${co}: Invoice ${inv.number} (${money(inv.total)}) due ${inv.dueDate}. Pay online: ${link}` }));
   }
   if (inv.status === 'draft') inv.status = 'sent';
   save(); res.json({ invoice: withStatus(inv), results });
@@ -1086,7 +1101,7 @@ app.post('/api/jobs/:id/remind', async (req, res) => {
   const results = [];
   for (const ch of channels) {
     results.push(await notify({ clientId: j.clientId, channel: ch, kind: 'job', refId: j.id, refNumber: j.number,
-      subject: email.subject, body: ch === 'email' ? email.body : `${co}: reminder for "${j.title}" on ${j.date} at ${j.startTime}.` }));
+      subject: email.subject, html: ch === 'email' ? email.html : '', body: ch === 'email' ? email.body : `${co}: reminder for "${j.title}" on ${j.date} at ${j.startTime}.` }));
   }
   res.json({ results }); save();
 });
@@ -1173,8 +1188,8 @@ function applyStripeSession(s) {
   const tell = (what, clientId) => {
     const c = findClient(clientId); const set = paySettings();
     if (set.emailReceipts && c && c.email) { // receipt to the client, from the business
-      const rb = `Hi ${c.name},\n\nThank you for your payment of ${money(amount)} for ${what}.\n\nPaid on ${niceDate(iso(new Date()))}\nPayment reference: ${s.payment_intent || s.id}\n\n${db.company.name}`;
-      notify({ clientId, channel: 'email', kind: 'receipt', refId: meta.invoiceId || meta.quoteId, refNumber: '', subject: `Receipt from ${db.company.name}`, body: rb }).then(() => save()).catch(() => {});
+      const rm = renderEmail('receipt', { client_name: c.name, company_name: db.company.name, amount: money(amount), paid_for: what, date: niceDate(iso(new Date())), reference: s.payment_intent || s.id });
+      notify({ clientId, channel: 'email', kind: 'receipt', refId: meta.invoiceId || meta.quoteId, refNumber: '', subject: rm.subject, body: rm.text, html: rm.html }).then(() => save()).catch(() => {});
     }
     if (!set.notifyEmail || !db.company.email) return;
     const how = (s.payment_method_types || []).includes('us_bank_account') && !(s.payment_method_types || []).includes('card') ? 'from their bank account' : 'online';
