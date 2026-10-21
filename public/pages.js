@@ -808,49 +808,56 @@ A.importTemplate = () => downloadCsv('client-import-sample.csv', [['Name', 'Emai
 /* ===== /settings/emails ===== */
 PAGES['/settings/emails'] = {
   title: 'Email Templates',
+  // a list of the emails; clicking one opens it in an editor with a live preview
   async render(main) {
-    const list = await api('GET', '/api/email-templates');
-    const sample = { client_name: 'Jane Smith', company_name: company.name || 'Your Business', quote_number: docPrefix('quotePrefix') + '1005', quote_title: 'Backyard cleanup', invoice_number: docPrefix('invoicePrefix') + '3010', total: '$1,250.00', due_date: fmtDate(ymd(addDays(new Date(), 14))), job_number: docPrefix('jobPrefix') + '2010', job_title: 'Gutter cleaning', date: fmtDate(ymd(addDays(new Date(), 2))), time: '09:00', address: '100 Main St, Houston, TX 77002',
-      amount: '$1,250.00', paid_for: 'Invoice ' + docPrefix('invoicePrefix') + '3010', reference: 'pi_3Q8x2L4eZvKYlo2C' };
-    const links = { quote: location.origin + '/p/quote/abc123', invoice: location.origin + '/pay/abc123' };
-    main.innerHTML = `<div class="head"><div><h1>Email Templates</h1><p class="sub">Edit the emails sent to clients. Placeholders in {{double braces}} are replaced with the real details when each email is sent. Emails show your logo, business name and brand color (Company Profile and App Settings).</p></div></div>
-${list.map((t) => `<form class="card tpl" data-key="${t.key}"><div class="tpl-head"><div><h2>${esc(t.label)} ${t.custom ? '<span class="badge sent">customized</span>' : ''}</h2><div class="muted">${esc(t.description)}</div></div></div>
-<div class="row"><div><label>Subject<input name="subject" value="${esc(t.subject)}" required></label><label>Message<textarea name="body" rows="10" required>${esc(t.body)}</textarea></label>
-<div class="muted" style="margin-bottom:6px">Insert a placeholder at the cursor:</div><div class="chips">${Object.entries(t.vars).map(([k, l]) => `<button type="button" class="btn alt sm" data-act="insVar" data-v="${k}" title="${esc(l)}">${esc(l)}</button>`).join('')}</div>
-<details class="tpl-fmt"><summary>Formatting</summary><ul><li><code># Heading</code> on the first line is the big title</li><li>Leave a blank line between paragraphs</li><li><code>**bold**</code> for bold</li><li><code>[Button text]({{link}})</code> on its own line is a button</li><li>Lines starting with <code>&gt;</code> go in a shaded box</li></ul></details></div>
-<div><div class="muted" style="font-size:13px">Preview with sample details</div><div class="tpl-preview"><div class="pv-subj"></div><iframe class="pv-frame" title="Email preview" sandbox=""></iframe></div><div class="pv-warn notice" hidden></div></div></div>
-<div class="foot">${t.custom ? `<button type="button" class="btn alt" data-act="resetTpl" data-key="${t.key}">Reset to default</button>` : ''}<button class="btn">Save ${esc(t.label.toLowerCase())} email</button></div></form>`).join('')}`;
-    $$('form.tpl', main).forEach((form) => {
-      const t = list.find((x) => x.key === form.dataset.key); const vars = { ...sample, link: links[t.key] || '' };
-      let timer; let seq = 0;
-      const draw = async () => { // the styled email, drawn by the server so it matches what clients get
-        const n = ++seq; const r = await api('POST', `/api/email-templates/${t.key}/preview`, { subject: $('[name=subject]', form).value, body: $('[name=body]', form).value, vars }).catch(() => null);
-        if (!r || n !== seq) return; $('.pv-subj', form).textContent = r.subject; $('.pv-frame', form).srcdoc = r.html;
-      };
-      const preview = () => {
-        const subj = $('[name=subject]', form).value; const body = $('[name=body]', form).value;
-        clearTimeout(timer); timer = setTimeout(draw, 300);
-        const unknown = [...new Set([...(subj + body).matchAll(/\{\{\s*(\w+)\s*\}\}/g)].map((m) => m[1]).filter((k) => !(k in t.vars)))];
-        const w = $('.pv-warn', form); w.hidden = !unknown.length; w.textContent = unknown.length ? `Not a placeholder for this email, so it will be sent as typed: ${unknown.map((k) => '{{' + k + '}}').join(', ')}` : '';
-      };
-      form.addEventListener('input', preview);
-      form.addEventListener('focusin', (e) => { if (e.target.name === 'subject' || e.target.name === 'body') form._field = e.target; });
-      form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        await api('PUT', '/api/email-templates/' + t.key, { subject: $('[name=subject]', form).value, body: $('[name=body]', form).value });
-        toast(t.label + ' email saved'); refresh();
-      });
-      preview();
-    });
+    TPL.list = await api('GET', '/api/email-templates');
+    main.innerHTML = `<div class="head"><div><h1>Email Templates</h1><p class="sub">Edit the emails sent to clients. Each one shows your logo, business name and brand color (Company Profile and App Settings).</p></div></div>
+<div class="card ctable"><div class="tablewrap"><table class="tpl-list"><tr><th>Email</th><th>When it’s sent</th><th>Subject</th><th></th></tr>
+${TPL.list.map((t) => `<tr class="crow" data-act="editTpl" data-key="${t.key}"><td><strong>${esc(t.label)}</strong>${t.custom ? ' <span class="badge sent">customized</span>' : ''}</td><td class="muted">${esc(t.description)}</td><td class="tpl-subj">${esc(t.subject)}</td>
+<td class="r"><button type="button" class="btn alt sm" data-act="editTpl" data-key="${t.key}">Edit</button></td></tr>`).join('')}</table></div></div>`;
   },
 };
+const TPL = { list: [] };
+const tplSample = () => ({ client_name: 'Jane Smith', company_name: company.name || 'Your Business', quote_number: docPrefix('quotePrefix') + '1005', quote_title: 'Backyard cleanup', invoice_number: docPrefix('invoicePrefix') + '3010', total: '$1,250.00', due_date: fmtDate(ymd(addDays(new Date(), 14))), job_number: docPrefix('jobPrefix') + '2010', job_title: 'Gutter cleaning', date: fmtDate(ymd(addDays(new Date(), 2))), time: '09:00', address: '100 Main St, Houston, TX 77002', amount: '$1,250.00', paid_for: 'Invoice ' + docPrefix('invoicePrefix') + '3010', reference: 'pi_3Q8x2L4eZvKYlo2C' });
+const tplLinks = () => ({ quote: location.origin + '/p/quote/abc123', invoice: location.origin + '/pay/abc123' });
+A.editTpl = (d) => {
+  const t = TPL.list.find((x) => x.key === d.key); if (!t) return; const vars = { ...tplSample(), link: tplLinks()[t.key] || '' };
+  const body = modal(`${t.label} email`, `<form class="tpl" data-sticky><p class="muted" style="margin:-4px 0 12px">${esc(t.description)}</p>
+<div class="tpl-grid"><div><label>Subject<input name="subject" value="${esc(t.subject)}" required></label><label>Message<textarea name="body" rows="14" required>${esc(t.body)}</textarea></label>
+<div class="muted" style="margin-bottom:6px">Insert a placeholder at the cursor:</div><div class="chips">${Object.entries(t.vars).map(([k, l]) => `<button type="button" class="btn alt sm" data-act="insVar" data-v="${k}" title="${esc(l)}">${esc(l)}</button>`).join('')}</div>
+<details class="tpl-fmt"><summary>Formatting</summary><ul><li><code># Heading</code> on the first line is the big title</li><li>Leave a blank line between paragraphs</li><li><code>**bold**</code> for bold</li><li><code>[Button text]({{link}})</code> on its own line is a button</li><li>Lines starting with <code>&gt;</code> go in a shaded box</li></ul></details>
+<div class="pv-warn notice" hidden></div></div>
+<div><div class="muted" style="font-size:13px">Preview with sample details</div><div class="tpl-preview"><div class="pv-subj"></div><iframe class="pv-frame" title="Email preview" sandbox=""></iframe></div></div></div>
+<div class="foot">${t.custom ? `<button type="button" class="btn alt" data-act="resetTpl" data-key="${t.key}" style="margin-right:auto">Reset to default</button>` : ''}<button type="button" class="btn alt" data-act="tplCancel">Cancel</button><button class="btn">Save</button></div></form>`, true);
+  body.parentElement.classList.add('tpl-modal');
+  const form = $('form', body); let timer; let seq = 0;
+  const draw = async () => { // the styled email, drawn by the server so it matches what clients get
+    const n = ++seq; const r = await api('POST', `/api/email-templates/${t.key}/preview`, { subject: form.subject.value, body: form.body.value, vars }).catch(() => null);
+    if (!r || n !== seq || !document.body.contains(form)) return; $('.pv-subj', form).textContent = r.subject; $('.pv-frame', form).srcdoc = r.html;
+  };
+  const preview = () => {
+    clearTimeout(timer); timer = setTimeout(draw, 300);
+    const unknown = [...new Set([...(form.subject.value + form.body.value).matchAll(/\{\{\s*(\w+)\s*\}\}/g)].map((x) => x[1]).filter((k) => !(k in t.vars)))];
+    const w = $('.pv-warn', form); w.hidden = !unknown.length; w.textContent = unknown.length ? `Not a placeholder for this email, so it will be sent as typed: ${unknown.map((k) => '{{' + k + '}}').join(', ')}` : '';
+  };
+  form.addEventListener('input', preview);
+  form.addEventListener('focusin', (e) => { if (e.target.name === 'subject' || e.target.name === 'body') form._field = e.target; });
+  form._dirty = () => form.subject.value !== t.subject || form.body.value !== t.body;
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    await api('PUT', '/api/email-templates/' + t.key, { subject: form.subject.value, body: form.body.value });
+    closeModal(); toast(t.label + ' email saved'); refresh();
+  });
+  draw(); form.body.focus();
+};
+A.tplCancel = (d, el) => { const f = el.closest('form'); if (f._dirty() && !confirm('Discard your changes to this email?')) return; closeModal(); };
 A.insVar = (d, el) => {
   const form = el.closest('form'); const f = form._field || $('[name=body]', form); const tag = `{{${d.v}}}`;
   const a = f.selectionStart ?? f.value.length; const b = f.selectionEnd ?? a;
   f.value = f.value.slice(0, a) + tag + f.value.slice(b); f.focus(); f.setSelectionRange(a + tag.length, a + tag.length);
   f.dispatchEvent(new Event('input', { bubbles: true }));
 };
-A.resetTpl = async (d) => { if (!confirm('Replace your wording with the original default email?')) return; await api('DELETE', '/api/email-templates/' + d.key); toast('Template reset'); refresh(); };
+A.resetTpl = async (d) => { if (!confirm('Replace your wording with the original default email?')) return; await api('DELETE', '/api/email-templates/' + d.key); closeModal(); toast('Template reset'); refresh(); };
 
 
 render();

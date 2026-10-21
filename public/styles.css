@@ -661,3 +661,8 @@ a.hp-nav{color:var(--text);text-decoration:none;padding:6px 8px;margin:0 -8px 10
 /* App Settings: two columns of boxes, each stacked at its own height (one column on narrow screens) */
 .as-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:start}.as-col>.card{margin:0 0 18px}.pay-card{margin-top:0}
 @media (max-width:900px){.as-cols{grid-template-columns:minmax(0,1fr)}}
+/* Email Templates: the list, and the editor popup (message on the left, preview on the right) */
+.tpl-list td{vertical-align:middle}.tpl-subj{max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.modal.tpl-modal{max-width:1120px}.tpl-modal .pv-frame{height:460px}
+.tpl-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:900px){.tpl-grid{grid-template-columns:minmax(0,1fr)}.tpl-modal .pv-frame{height:380px}}
