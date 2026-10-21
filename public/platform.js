@@ -55,17 +55,17 @@ const TAB_ICONS = { // bottom bar icons (phones)
 };
 async function load() { D = await api('GET', '/api/platform/overview'); if (!draftPlans) { draftPlans = structuredClone(D.plans); draftBeta = [...D.betaFeatures]; } }
 function render() {
-  const tabs = [['accounts', 'Accounts'], ['plans', 'Plans & features'], ['discounts', 'Discounts'], ['messages', 'Messages'], ['help', 'Help Center'], ['settings', 'Settings']];
+  const tabs = [['accounts', 'Accounts'], ['plans', 'Plans & features'], ['discounts', 'Promotions'], ['messages', 'Messages'], ['help', 'Help Center'], ['settings', 'Settings']];
   document.title = `${tabs.find((t) => t[0] === tab)[1]} · ${D.settings.productName} Alpha`;
   $('#root').innerHTML = `<header class="pf-top"><div class="pf-bar"><div class="pf-brand">${brandImg(siteBrand(), 'dark')}${siteBrand().logoHasName ? '' : esc(D.settings.productName)} <small>Alpha</small></div>
 <nav class="pf-tabs">${tabs.map(([k, l]) => `<a href="#${k}" class="${tab === k ? 'on' : ''}">${l}</a>`).join('')}</nav>
 <div class="pf-user"><span>${esc(D.admin.name)}</span><button type="button" data-act="logout">Log out</button></div></div></header>
 <main class="pf-main" id="main"></main>
 <nav class="pf-bnav" aria-label="Alpha sections">${tabs.map(([k, l]) => `<a href="#${k}" class="${tab === k ? 'on' : ''}"${tab === k ? ' aria-current="page"' : ''}>${TAB_ICONS[k]}<span>${SHORT_TABS[k] || l}</span></a>`).join('')}</nav>`;
-  ({ accounts: accountsView, plans: plansView, discounts: discountsView, messages: messagesView, help: helpView, settings: settingsView })[tab]($('#main'));
+  ({ accounts: accountsView, plans: plansView, discounts: promoView, messages: messagesView, help: helpView, settings: settingsView })[tab]($('#main'));
 }
 const TABS = ['accounts', 'plans', 'discounts', 'messages', 'help', 'settings'];
-const SHORT_TABS = { plans: 'Plans', help: 'Help' }; // the phone tab bar has room for short names only
+const SHORT_TABS = { plans: 'Plans', help: 'Help', discounts: 'Promos' }; // the phone tab bar has room for short names only
 window.addEventListener('hashchange', () => { tab = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'accounts'; if (D) render(); });
 
 /* ===== accounts ===== */
@@ -330,12 +330,83 @@ ${D.devMode ? `<p>You’re running without <code>PLATFORM_DOMAIN</code>, so this
   logoCard($('#logoCard', main)); reservedCard($('#reserved', main));
   integrationsCard($('#integ', main));
 }
+/* ===== promotions: discount codes, the referral program and its activity ===== */
+let promoTab = 'codes'; let RF = null; // RF: the referral program and its activity (lib/referrals.js)
+function promoView(main) {
+  const due = RF ? RF.rewards.filter((w) => w.status === 'to send').length : 0;
+  main.innerHTML = `<div class="head"><div><h1>Promotions</h1><p class="sub" style="margin:4px 0 0">Discount codes for sign-ups, and a referral program for the businesses on ${esc(D.settings.productName)}.</p></div></div>
+<div class="hc-seg msg-seg" role="tablist">${[['codes', 'Discount codes'], ['program', 'Referral program'], ['activity', 'Referral activity']].map(([k, l]) => `<button type="button" role="tab" aria-selected="${promoTab === k}" class="${promoTab === k ? 'on' : ''}" data-act="promoTab" data-k="${k}">${l}${k === 'activity' && due ? ` <span class="msg-n">${due}</span>` : ''}</button>`).join('')}</div><div id="promoBody"></div>`;
+  const box = $('#promoBody', main);
+  if (promoTab === 'codes') return discountsView(box);
+  if (!RF) { box.innerHTML = '<p class="muted">Loading…</p>'; api('GET', '/api/platform/referrals').then((r) => { RF = r; if (tab === 'discounts') promoView($('#main')); }).catch((x) => toast(x.message, true)); return; }
+  (promoTab === 'program' ? referralProgramView : referralActivityView)(box);
+}
+A.promoTab = (d) => { promoTab = d.k; promoView($('#main')); };
+// pick an image file and upload it; resolves to its address (/brand/media-…)
+const pickImage = () => new Promise((resolve) => {
+  const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/png,image/jpeg,image/gif,image/webp';
+  i.onchange = () => { const f = i.files[0]; if (!f) return resolve(''); if (f.size > 2 * 1024 * 1024) { toast('Use an image under 2 MB', true); return resolve(''); }
+    const r = new FileReader(); r.onload = () => api('POST', '/api/platform/media', { dataUrl: r.result }).then((x) => resolve(x.url), (x) => { toast(x.message, true); resolve(''); }); r.readAsDataURL(f); };
+  i.click();
+});
+let rfDraft = null; // the program form's milestones and images, while editing
+function referralProgramView(box) {
+  const p = RF.program; if (!rfDraft) rfDraft = { heroImage: p.heroImage, milestones: structuredClone(p.milestones) };
+  const discs = D.discounts || [];
+  const mileRow = (m, i) => `<div class="rp-mile" data-i="${i}"><button type="button" class="rp-img" data-act="rpMileImg" data-i="${i}" title="Choose a picture"${m.image ? ` style="background-image:url('${esc(m.image)}')"` : ''}>${m.image ? '' : '+ Picture'}</button>
+<div class="rp-mile-f"><div class="row"><label>Reward<input data-k="title" value="${esc(m.title)}" maxlength="80" placeholder="e.g. $100 prepaid card"></label><label>Paying referrals needed<input data-k="count" type="number" min="1" value="${esc(m.count || '')}"></label></div>
+<label>Description<input data-k="desc" value="${esc(m.desc)}" maxlength="300" placeholder="e.g. A prepaid card you can use anywhere cards are accepted"></label></div>
+<button type="button" class="rm-plan" data-act="rpMileRm" data-i="${i}" title="Remove this milestone">Remove</button></div>`;
+  box.innerHTML = `<form id="rpf" class="card" style="max-width:860px">
+<label class="switchline"><input type="checkbox" name="enabled" ${p.enabled ? 'checked' : ''}> <span><strong>Referral program on.</strong> Owners and admins see “Refer &amp; earn” in their app.</span></label>
+<h2 style="margin-top:14px">What businesses see</h2>
+<div class="row"><label>Title<input name="title" value="${esc(p.title)}" maxlength="80"></label><label>Months of credit per paying referral<input name="months" type="number" min="0" max="24" value="${esc(p.months)}"></label></div>
+<label>Introduction<textarea name="intro" rows="2" maxlength="400">${esc(p.intro)}</textarea></label>
+<p class="muted" style="font-size:12px;margin:-6px 0 12px"><code>{{months}}</code> becomes the number of months. A referrer earns them when the business they referred pays for a plan: with Stripe, their next charge moves out by that many months; without a subscription yet, the months start when they subscribe.</p>
+<div class="rp-hero"><button type="button" class="rp-img wide" data-act="rpHeroImg" title="Choose the header picture"${rfDraft.heroImage ? ` style="background-image:url('${esc(rfDraft.heroImage)}')"` : ''}>${rfDraft.heroImage ? '' : '+ Header picture (optional)'}</button>${rfDraft.heroImage ? '<button type="button" class="rm-plan" data-act="rpHeroRm">Remove picture</button>' : ''}</div>
+<h2 style="margin-top:18px">The friend’s offer</h2>
+<div class="row"><label>Discount code applied from a referral link<select name="friendDiscountId"><option value="">None</option>${discs.map((d) => `<option value="${d.id}" ${d.id === p.friendDiscountId ? 'selected' : ''}>${esc(d.code)} · ${esc(d.summary)}${d.status !== 'active' ? ` (${d.status})` : ''}</option>`).join('')}</select></label>
+<label>How to describe it (optional)<input name="friendText" value="${esc(p.friendText)}" maxlength="200" placeholder="e.g. 30% off your first 3 months"></label></div>
+<p class="muted" style="font-size:12px;margin:-6px 0 0">Make the code in Discount codes first. Its rules still apply (plans, dates, uses). Without a description, the code’s own summary is shown.</p>
+<h2 style="margin-top:18px">Milestone rewards</h2><p class="muted" style="font-size:13px;margin-top:0">Prizes you send yourself when a business reaches a number of paying referrals. They show up in Referral activity to send.</p>
+<div id="rpMiles">${rfDraft.milestones.map(mileRow).join('') || '<p class="muted" style="font-size:14px">No milestones yet.</p>'}</div>
+<button type="button" class="btn alt sm" data-act="rpMileAdd">+ Add a milestone</button>
+<h2 style="margin-top:18px">Video (optional)</h2>
+<div class="row"><label>Title<input name="videoTitle" value="${esc(p.video.title)}" maxlength="80" placeholder="e.g. Refer in minutes, earn for months"></label><label>Video link<input name="videoUrl" value="${esc(p.video.url)}" maxlength="300" placeholder="https://www.youtube.com/watch?v=…"></label></div>
+<label>Text<input name="videoText" value="${esc(p.video.text)}" maxlength="300" placeholder="e.g. A walkthrough of sharing your link and tracking referrals"></label>
+<div class="savebar"><span class="muted">YouTube links play on the page; other links open in a new tab.</span><button class="btn">Save referral program</button></div></form>`;
+  const f = $('#rpf', box);
+  const readMiles = () => { $$('.rp-mile', f).forEach((row) => { const m = rfDraft.milestones[row.dataset.i]; $$('[data-k]', row).forEach((i) => { m[i.dataset.k] = i.value; }); }); };
+  f._readMiles = readMiles;
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault(); readMiles(); const b = Object.fromEntries(new FormData(f)); b.enabled = !!f.enabled.checked;
+    try { RF = await api('PUT', '/api/platform/referrals/program', { ...b, heroImage: rfDraft.heroImage, milestones: rfDraft.milestones }); rfDraft = null; await load(); toast(RF.program.enabled ? 'Referral program saved and on' : 'Referral program saved (off)'); render(); } catch (x) { toast(x.message, true); }
+  });
+}
+const rpRedraw = () => { const f = $('#rpf'); if (f) f._readMiles(); const keep = f ? Object.fromEntries(new FormData(f)) : {}; referralProgramView($('#promoBody')); const g = $('#rpf'); Object.entries(keep).forEach(([k, v]) => { const el = g.elements[k]; if (el && el.type !== 'checkbox') el.value = v; }); if (f) g.enabled.checked = keep.enabled === 'on'; };
+A.rpMileAdd = () => { $('#rpf')._readMiles(); rfDraft.milestones.push({ title: '', desc: '', count: (rfDraft.milestones.slice(-1)[0] || { count: 0 }).count * 1 + 3 || 3, image: '' }); rpRedraw(); };
+A.rpMileRm = (d) => { $('#rpf')._readMiles(); rfDraft.milestones.splice(Number(d.i), 1); rpRedraw(); };
+A.rpMileImg = async (d) => { const url = await pickImage(); if (!url) return; $('#rpf')._readMiles(); rfDraft.milestones[d.i].image = url; rpRedraw(); };
+A.rpHeroImg = async () => { const url = await pickImage(); if (!url) return; $('#rpf')._readMiles(); rfDraft.heroImage = url; rpRedraw(); };
+A.rpHeroRm = () => { $('#rpf')._readMiles(); rfDraft.heroImage = ''; rpRedraw(); };
+const RF_STATUS = { invited: ['Invited', ''], 'signed up': ['Signed up', 'q-sent'], subscribed: ['Subscribed', 'active'] };
+function referralActivityView(box) {
+  const W = RF.rewards; const L = RF.referrals;
+  box.innerHTML = `<div class="card" style="max-width:960px"><h2>Rewards to send</h2>${W.length ? `<div class="tablewrap"><table class="acc"><thead><tr><th>Business</th><th>Reward</th><th>Reached</th><th>Status</th><th></th></tr></thead><tbody>
+${W.map((w) => `<tr><td class="nm">${esc(w.business)}</td><td>${esc(w.title)}<div class="sm">${w.count} paying referral${w.count === 1 ? '' : 's'}</div></td><td class="sm">${fmtDate(w.at)}</td><td><span class="cstatus ${w.status === 'sent' ? 'active' : 'q-sent'}">${w.status === 'sent' ? `Sent ${fmtDate(w.sentAt)}` : 'To send'}</span></td>
+<td><div class="acts"><button type="button" class="btn alt sm" data-act="rwMark" data-id="${w.id}" data-s="${w.status === 'sent' ? 'to send' : 'sent'}">${w.status === 'sent' ? 'Mark not sent' : 'Mark sent'}</button></div></td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">Nobody has reached a milestone yet.</p>'}</div>
+${RF.leaders.length ? `<div class="card" style="max-width:960px"><h2>Credit earned</h2><div class="tablewrap"><table class="acc"><thead><tr><th>Business</th><th>Months earned</th><th>Months remaining</th></tr></thead><tbody>${RF.leaders.sort((a, b) => b.earned - a.earned).map((x) => `<tr><td class="nm">${esc(x.name)}</td><td>${x.earned}</td><td>${x.remaining}</td></tr>`).join('')}</tbody></table></div></div>` : ''}
+<div class="card" style="max-width:960px"><h2>All referrals</h2>${L.length ? `<div class="tablewrap"><table class="acc"><thead><tr><th>Referred by</th><th>Friend</th><th>Date</th><th>Status</th></tr></thead><tbody>
+${L.map((r) => `<tr><td class="nm">${esc(r.referrer)}</td><td>${esc(r.name || '—')}${r.company ? ` · ${esc(r.company)}` : ''}<div class="sm">${esc(r.email)}${r.via === 'link' ? ' · used the link' : ''}</div></td><td class="sm">${fmtDate(r.invitedAt || r.signedUpAt)}</td>
+<td><span class="cstatus ${RF_STATUS[r.status][1]}">${RF_STATUS[r.status][0]}</span>${r.status === 'subscribed' && r.creditMonths ? `<div class="sm">${r.creditMonths} month${r.creditMonths === 1 ? '' : 's'} credited${r.credit === 'banked' ? ' (waiting for a subscription)' : ''}</div>` : ''}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">No referrals yet. Turn the program on in Referral program.</p>'}</div>`;
+}
+A.rwMark = async (d) => { RF = await api('POST', `/api/platform/referrals/rewards/${d.id}`, { status: d.s }); toast(d.s === 'sent' ? 'Marked as sent' : 'Marked as not sent'); promoView($('#main')); };
 /* ===== discounts: codes for sign-ups, each with its rules (lib/discounts.js) ===== */
 const DISC_CHIP = { active: 'active', scheduled: 'q-sent', paused: '', expired: '', 'used up': '' };
 const codeLink = (code) => `${location.origin}/pricing?code=${encodeURIComponent(code)}`;
 function discountsView(main) {
   const L = D.discounts || [];
-  main.innerHTML = `<div class="head"><div><h1>Discounts</h1><p class="sub" style="margin:4px 0 0">Codes people enter when they sign up for a paid plan, on the pricing page or at checkout.</p></div><button class="btn" data-act="discEdit">New discount code</button></div>
+  main.innerHTML = `<div class="promo-bar"><p class="muted">Codes people enter when they sign up for a paid plan, on the pricing page or at checkout.</p><button class="btn" data-act="discEdit">New discount code</button></div>
 ${L.length ? `<div class="card"><div class="tablewrap"><table class="acc"><thead><tr><th>Code</th><th>Discount</th><th>Rules</th><th>Used</th><th>Status</th><th></th></tr></thead><tbody>
 ${L.map((d) => `<tr><td><div class="nm disc-code">${esc(d.code)}</div>${d.note ? `<div class="sm">${esc(d.note)}</div>` : ''}</td><td>${esc(d.summary)}</td><td class="sm">${d.rules.map(esc).join(' · ')}</td>
 <td class="sm">${d.uses.length}${d.maxUses ? ` of ${d.maxUses}` : ''} used</td><td><span class="cstatus ${DISC_CHIP[d.status]}">${d.status[0].toUpperCase() + d.status.slice(1)}</span></td>

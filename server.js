@@ -14,6 +14,7 @@ const BASE_URL = process.env.BASE_URL || `https://workliopro.com/public`;
 const tenancy = require('./lib/tenancy');
 const emails = require('./lib/emails');
 const brandLib = require('./lib/brand');
+const referrals = require('./lib/referrals');
 const stripeLib = require('./lib/stripe');
 const { db, uploadDir } = tenancy;
 const baseUrl = () => tenancy.tenantUrl(tenancy.current()); // this account's web address, for links in messages
@@ -617,6 +618,7 @@ function accountInfo() {
     url: tenancy.tenantUrl(t), subdomainUrl: tenancy.subdomainUrl(t), rootDomain: tenancy.ROOT_DOMAIN, serverIp: process.env.SERVER_IP || '',
     domains: (t.domains || []).map(({ host, verified, primary, addedAt, verifiedAt }) => ({ host, verified: !!verified, primary: !!primary, addedAt, verifiedAt: verifiedAt || null })),
     productName: tenancy.platform().settings.productName, product: brandLib.brand(), contactEmail: tenancy.platform().settings.contactEmail, helpUrl: tenancy.helpUrl(), managed: !tenancy.isDefault(),
+    referrals: referrals.openTo(t),
     expiry: (() => { const x = expiryOf(t); return x && { ...x, when: whenText(x) }; })(),
     featureList: tenancy.FEATURES.map(({ key, label, desc }) => ({ key, label, desc, beta: tenancy.isBeta(key), included: plan.features.includes(key) })), alwaysIncluded: tenancy.ALWAYS_INCLUDED,
   };
@@ -1740,6 +1742,20 @@ const supportState = (t, u) => {
     isOwner: owner, grantDays: support.GRANT_DAYS, productName: tenancy.platform().settings.productName };
 };
 const tellSupportAdmin = (r, title, message) => { if (r.adminEmail) sendTemplate('accountActivity', r.adminEmail, { title, message, link: `${tenancy.platformUrl()}/alpha` }, { server: true }).catch(() => {}); };
+// ---------- the referral program (lib/referrals.js; set up in Alpha → Promotions): the business's Refer & earn page ----------
+const defaultT = () => tenancy.platform().tenants.find((t) => tenancy.isDefault(t)) || tenancy.platform().tenants[0];
+referrals.init({
+  sendTemplate: (key, to, vars, opts = {}) => tenancy.run(defaultT(), () => sendTemplate(key, to, vars, { server: true, ...opts })),
+  ownerOf: (t) => tenancy.run(t, () => { const o = db.users.find((u) => u.role === 'owner'); return o ? { name: o.name, email: o.email } : null; }),
+  tellPlatform: (title, message) => { const to = tenancy.platform().settings.contactEmail; if (to) tenancy.run(defaultT(), () => sendTemplate('accountActivity', to, { title, message, link: `${tenancy.platformUrl()}/alpha#discounts` }, { server: true })).catch(() => {}); },
+});
+const referralGate = (req, res) => { if (referrals.openTo(tenancy.current())) return true; res.status(404).json({ error: 'The referral program isn’t available' }); return false; };
+app.get('/api/rewards', (req, res) => { if (referralGate(req, res)) res.json(referrals.pageFor(tenancy.current())); });
+app.post('/api/rewards/invite', async (req, res) => {
+  if (!referralGate(req, res)) return;
+  try { const r = await referrals.invite(tenancy.current(), currentUser(req), req.body || {}); res.json({ ...referrals.pageFor(tenancy.current()), emailed: r.emailed, detail: r.detail }); }
+  catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
 app.get('/api/account/support-access', (req, res) => res.json(supportState(tenancy.current(), currentUser(req))));
 app.post('/api/account/support-access/:id/:action', (req, res) => {
   const u = currentUser(req); const t = tenancy.current(); const { id, action } = req.params; let r;
@@ -1771,7 +1787,7 @@ app.post('/api/account/billing/plan', async (req, res) => {
   const want = req.body.interval === 'year' ? 'year' : 'month'; const c = stripeLib.planCharge(to, want);
   if (c && c.interval !== want) return res.status(400).json({ error: `${to.name} isn’t available ${want === 'year' ? 'yearly' : 'monthly'}` });
   const label = `${to.name}${c ? ` (${want === 'year' ? 'yearly' : 'monthly'})` : ''}`;
-  const switched = (message) => { if (c) b.interval = c.interval; if (t.planId === to.id) delete t.expiresAt; tenancy.savePlatform(); tellPlatform(`Plan changed: ${t.name} → ${label}`, `${u.name} (${u.email}) changed ${t.name} from ${from.name} to ${label}. ${message}`); res.json({ ok: true, message }); };
+  const switched = (message) => { if (c) b.interval = c.interval; if (t.planId === to.id) delete t.expiresAt; tenancy.savePlatform(); if (c && t.planId === to.id) referrals.paid(t).catch(() => {}); tellPlatform(`Plan changed: ${t.name} → ${label}`, `${u.name} (${u.email}) changed ${t.name} from ${from.name} to ${label}. ${message}`); res.json({ ok: true, message }); };
   try {
     const sub = stripeLib.platformKey() ? await liveSubscription(b) : null;
     const nowInterval = (sub && sub.items.data[0].price.recurring && sub.items.data[0].price.recurring.interval) || b.interval || 'month';
@@ -1799,6 +1815,7 @@ app.post('/api/account/billing/plan', async (req, res) => {
       'line_items[0][price_data][unit_amount]': String(c.cents), 'line_items[0][price_data][recurring][interval]': c.interval,
       success_url: `${baseUrl()}/settings/billing?checkout={CHECKOUT_SESSION_ID}`, cancel_url: `${baseUrl()}/settings/billing` };
     if (b.customerId) p.customer = b.customerId; else p.customer_email = u.email;
+    Object.assign(p, referrals.bankedTrial(t)); // free months earned by referring other businesses
     const s = await billingCall('POST', 'checkout/sessions', p); res.json({ redirect: s.url });
   } catch (e) { stripeError(res, 'change the plan', e); }
 });
@@ -1817,6 +1834,7 @@ app.post('/api/account/billing/return', async (req, res) => {
         delete t.expiresAt; // paid for a plan: no end date
         Object.assign(b, { customerId: s.customer, subscriptionId: s.subscription, status: 'paid', subscriptionStatus: 'active', interval: s.metadata.interval === 'year' ? 'year' : 'month' }); delete b.pendingPlanId; delete b.endsAt; delete b.demo;
         if (b.pausedForBilling) { t.status = 'active'; delete b.pausedForBilling; }
+        referrals.useBanked(t, s.metadata.creditUntil); referrals.paid(t).catch(() => {}); // free months from referrals; and reward whoever referred this account
         tenancy.savePlatform(); tellPlatform(`New subscription: ${t.name} → ${to.name}`, `${currentUser(req).name} subscribed ${t.name} to ${to.name} (was ${from.name}).`);
       }
       return res.json({ ok: true, message: to ? `You’re now on ${to.name}. Thank you!` : 'Payment received' });

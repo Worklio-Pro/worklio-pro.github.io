@@ -39,9 +39,12 @@ ${S.allowSignups ? `<a class="btn ${i === mid ? '' : 'alt'}" href="#signup" data
   document.addEventListener('click', (e) => { const b = e.target.closest('[data-contact]'); if (b) { e.preventDefault(); openContact(S, b.dataset.contact); } });
   if (!S.allowSignups) return;
   const cta = $('#topCta'); cta.textContent = 'Get started'; delete cta.dataset.contact;
+  // a referral link (/pricing?ref=…) from another business: kept for this visit, so it's still there after looking around
+  const qs = new URLSearchParams(location.search); let ref = (qs.get('ref') || '').trim().toLowerCase().slice(0, 20);
+  try { if (ref) sessionStorage.setItem('ref', ref); else ref = sessionStorage.getItem('ref') || ''; } catch (e) { /* private mode */ }
   const root = S.rootDomain; const urlCode = (new URLSearchParams(location.search).get('code') || '').trim().slice(0, 30); // a shared link: /pricing?code=SPRING20
   $('#signup').innerHTML = `<div class="card"><h2>Create your account</h2><p class="muted" style="margin:0 0 16px">You’ll be set up in under a minute.</p>
-<form id="sf" novalidate><div id="err"></div><label>Plan<select name="plan">${S.plans.map((p) => `<option value="${esc(p.id)}" ${p.id === S.signupPlan ? 'selected' : ''}>${esc(p.name)}${p.price ? ` (${esc(p.price)})` : ''}</option>`).join('')}</select></label>
+<form id="sf" novalidate><div id="err"></div><input type="hidden" name="ref" value="${esc(ref)}"><label>Plan<select name="plan">${S.plans.map((p) => `<option value="${esc(p.id)}" ${p.id === S.signupPlan ? 'selected' : ''}>${esc(p.name)}${p.price ? ` (${esc(p.price)})` : ''}</option>`).join('')}</select></label>
 ${both ? `<label>Billing<select name="interval"><option value="month" ${period === 'month' ? 'selected' : ''}>Monthly</option><option value="year" ${period === 'year' ? 'selected' : ''}>Yearly${best > 0 ? ` (save up to ${best}%)` : ''}</option></select></label>` : ''}
 <label>Business name<input name="company" required maxlength="100" autocomplete="organization"></label>
 <label>Your web address<div class="slug"><input name="slug" required maxlength="32" autocomplete="off" spellcheck="false"><span>.${esc(root)}</span></div><div class="hint" id="hint"></div></label>
@@ -74,6 +77,11 @@ ${both ? `<label>Billing<select name="interval"><option value="month" ${period =
     }, 350); };
   code.addEventListener('input', checkCode); sel.addEventListener('change', checkCode); if (iv) iv.addEventListener('change', checkCode);
   sel.addEventListener('change', syncPlan); syncPlan(); if (urlCode) { checkCode(); $('#signup').scrollIntoView({ block: 'start' }); }
+  if (ref) fetch('/api/site/ref/' + encodeURIComponent(ref)).then((r) => (r.ok ? r.json() : null)).then((L) => {
+    if (!L) return; const box = document.createElement('div'); box.className = 'ref-banner';
+    box.innerHTML = `<strong>${esc(L.business)} invited you.</strong>${L.offer ? ` Sign up with their link and get ${esc(L.offer)}.` : ' Sign up below to get started.'}`;
+    $('#plans').before(box); if (!code.value && L.code) { code.value = L.code; checkCode(); }
+  }).catch(() => {});
   document.addEventListener('click', (e) => { const b = e.target.closest('[data-plan]'); if (b) { sel.value = b.dataset.plan; syncPlan(); } });
   f.addEventListener('submit', async (e) => {
     e.preventDefault(); const btn = $('.go', f); const b = Object.fromEntries(new FormData(f)); b.slug = b.slug.trim().toLowerCase();

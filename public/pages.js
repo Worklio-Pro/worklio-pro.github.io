@@ -1230,3 +1230,50 @@ A.supportAnswer = async (d, el) => {
   try { await api('POST', `/api/account/support-access/${encodeURIComponent(d.id)}/${d.a}`, {}); toast({ grant: 'Support access granted', decline: 'Request declined', revoke: 'Support access revoked' }[d.a]); refresh(); }
   catch (err) { el.disabled = false; throw err; }
 };
+
+/* ===== /rewards: Refer & Earn (the platform's referral program, set up in Alpha → Promotions) ===== */
+const REF_STATUS = { invited: ['Invited', ''], 'signed up': ['Signed up', 'q-sent'], subscribed: ['Subscribed', 'active'] };
+// a YouTube link plays in the page; any other video opens in a new tab
+const youTubeId = (u) => { const m = /(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{11})/.exec(u || ''); return m ? m[1] : ''; };
+PAGES['/rewards'] = {
+  title: 'Refer & Earn',
+  async render(main) {
+    const R = await api('GET', '/api/rewards'); const s = R.stats;
+    const share = encodeURIComponent(R.link); const text = encodeURIComponent(`I run my business on ${company.account.productName}. Try it:`);
+    const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+    const yt = R.video && youTubeId(R.video.url);
+    main.innerHTML = `<section class="rf-hero${R.heroImage ? ' has-img' : ''}"><div class="rf-hero-copy"><h1>${esc(R.title)}</h1><p>${esc(R.intro)}</p>${R.friendOffer ? `<p class="rf-offer">Your friends get <strong>${esc(R.friendOffer)}</strong>.</p>` : ''}
+<button type="button" class="rf-copy" data-act="copyRefLink">Copy your referral link</button>
+<form id="refForm" class="rf-form"><div class="rf-row"><input name="firstName" placeholder="First name" aria-label="Friend’s first name" required maxlength="60"><input name="company" placeholder="Company name" aria-label="Friend’s company" maxlength="100"></div>
+<input name="email" type="email" placeholder="Email" aria-label="Friend’s email" required>
+<p class="rf-fine">By submitting, you confirm you know this person and have their permission to share their information. We’ll send them one email with your referral link.</p>
+<div class="rf-actions"><button class="btn">Invite</button><span class="rf-share" aria-label="Share your link"><button type="button" data-act="copyRefLink" title="Copy link" aria-label="Copy link">${svgIcon('<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>', 18)}</button>
+<a href="mailto:?subject=${encodeURIComponent(`Try ${company.account.productName}`)}&body=${text}%20${share}" title="Share by email" aria-label="Share by email">${svgIcon('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>', 18)}</a>
+<a href="https://www.facebook.com/sharer/sharer.php?u=${share}" target="_blank" rel="noopener" title="Share on Facebook" aria-label="Share on Facebook"><b>f</b></a>
+<a href="https://www.linkedin.com/sharing/share-offsite/?url=${share}" target="_blank" rel="noopener" title="Share on LinkedIn" aria-label="Share on LinkedIn"><b>in</b></a>
+<a href="https://twitter.com/intent/tweet?text=${text}&url=${share}" target="_blank" rel="noopener" title="Share on X" aria-label="Share on X"><b>𝕏</b></a></span></div></form></div>
+${R.heroImage ? `<div class="rf-hero-img" style="background-image:url('${esc(R.heroImage)}')" role="img" aria-label=""></div>` : ''}</section>
+<div class="rf-steps"><div>${svgIcon('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>', 22)}<h3>Enter your friend’s details</h3><p>Fill in the form, or share your link, and we’ll send them a personalized invite.</p></div>
+<div>${svgIcon('<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>', 22)}<h3>Your friend gets a head start</h3><p>${R.friendOffer ? `They sign up with your link and get ${esc(R.friendOffer)}.` : 'They sign up with your link and get set up in minutes.'}</p></div>
+<div>${svgIcon(ICONS.gift, 22)}<h3>Earn rewards for every referral</h3><p>${R.months ? `Get ${plural(R.months, 'month')} of credit for every business that subscribes` : 'Earn rewards as your friends subscribe'}${R.milestones.length ? ', and unlock milestone rewards as you refer more.' : '.'}</p></div></div>
+${R.milestones.length ? `<h2 class="rf-h">Milestone rewards</h2><p class="muted rf-sub">Bonus rewards on top of your regular credit. The more friends that subscribe, the more rewards you get.</p>
+<div class="rf-miles">${R.milestones.map((m) => { const pct = Math.min(100, Math.round((s.subscribed / m.count) * 100)); return `<article class="card rf-mile${m.done ? ' done' : ''}">
+<div class="rf-mile-img"${m.image ? ` style="background-image:url('${esc(m.image)}')"` : ''}>${m.image ? '' : svgIcon(ICONS.gift, 44)}<span class="rf-badge">${m.done ? (m.reward && m.reward.status === 'sent' ? 'Sent' : 'Unlocked') : s.subscribed ? 'In progress' : 'Locked'}</span></div>
+<h3>${esc(m.title)}</h3>${m.desc ? `<p>${esc(m.desc)}</p>` : ''}<div class="rf-prog"><span style="width:${pct}%"></span></div><div class="muted rf-count">${Math.min(s.subscribed, m.count)} of ${plural(m.count, 'referral')}</div></article>`; }).join('')}</div>` : ''}
+<h2 class="rf-h">Your stats</h2>
+<div class="rf-stats"><div class="card"><span>Referrals sent</span><b>${s.sent}</b><small>invitation${s.sent === 1 ? '' : 's'}</small></div><div class="card"><span>Signed up</span><b>${s.signedUp}</b><small>${s.subscribed} paying</small></div>
+<div class="card"><span>Total credit earned</span><b>${s.earned}</b><small>month${s.earned === 1 ? '' : 's'}</small></div><div class="card"><span>Credit remaining</span><b>${s.remaining}</b><small>month${s.remaining === 1 ? '' : 's'}${s.banked ? ', starting when you subscribe' : ''}</small></div></div>
+<h2 class="rf-h">All referrals</h2>
+<div class="card ctable"><div class="tablewrap"><table><tr><th>Name</th><th class="m-hide">Email</th><th>Date referred</th><th>Status</th></tr>
+${R.referrals.map((r) => `<tr><td><strong>${esc(r.name || '—')}</strong>${r.company ? `<div class="muted">${esc(r.company)}</div>` : ''}<div class="muted m-only">${esc(r.email)}</div></td><td class="m-hide">${esc(r.email)}</td><td>${fmtDate((r.date || '').slice(0, 10))}${r.via === 'link' ? '<div class="muted">Used your link</div>' : ''}</td><td><span class="cstatus ${REF_STATUS[r.status][1]}">${REF_STATUS[r.status][0]}</span></td></tr>`).join('') || '<tr><td colspan="4" class="empty">You haven’t sent any referrals yet.</td></tr>'}</table></div></div>
+${R.video ? `<section class="rf-video card"><div><h2>${esc(R.video.title || 'How referrals work')}</h2>${R.video.text ? `<p>${esc(R.video.text)}</p>` : ''}${yt ? '' : `<a class="btn" href="${esc(R.video.url)}" target="_blank" rel="noopener">Watch the video</a>`}</div>
+${yt ? `<div class="rf-embed"><iframe src="https://www.youtube-nocookie.com/embed/${yt}" title="${esc(R.video.title || 'Video')}" allow="accelerometer; encrypted-media; picture-in-picture" allowfullscreen loading="lazy"></iframe></div>` : ''}</section>` : ''}`;
+    main._refLink = R.link;
+    $('#refForm', main).addEventListener('submit', async (e) => {
+      e.preventDefault(); const f = e.target; const b = $('.btn', f); b.disabled = true;
+      try { const r = await api('POST', '/api/rewards/invite', Object.fromEntries(new FormData(f))); toast(r.emailed ? `Invitation sent to ${f.email.value}` : `Saved. The email wasn’t sent (${r.detail || 'email isn’t set up'}), so share your link instead.`, !r.emailed); refresh(); }
+      catch (err) { b.disabled = false; toast(err.message, true); }
+    });
+  },
+};
+A.copyRefLink = () => { const l = $('#main')._refLink; navigator.clipboard.writeText(l).then(() => toast('Referral link copied'), () => prompt('Copy your referral link:', l)); };
