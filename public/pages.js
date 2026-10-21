@@ -559,7 +559,7 @@ ${planHas('numberPrefixes') ? `<div class="card"><h2>Number prefixes</h2><p clas
 ${planHas('ai') ? `<div class="card"><h2>AI assistance</h2><p class="muted" style="margin-top:0">Shows a “Write with AI” button that drafts product and service descriptions from their name.${integ.ai ? '' : ' AI isn’t available on this service yet.'}</p>
 <div class="ai-toggle"><span class="cstatus ${c.aiEnabled !== false ? 'active' : ''}">${c.aiEnabled !== false ? 'On' : 'Off'}</span><button type="button" class="btn alt sm" data-act="toggleAi">${c.aiEnabled !== false ? 'Turn off AI assistance' : 'Turn on AI assistance'}</button></div></div>` : ''}` : ''}
 ${full ? '<button class="btn">Save changes</button>' : '<div class="cs-foot"><button class="btn">Update settings</button></div>'}</form>
-${full ? `<div class="card"><h2>Payments and messages</h2><p class="muted" style="margin:0">Card payments (Stripe), text messages (Twilio) and your own email are set up in <a href="/settings/connections" data-link>Account Connections</a>.</p></div>` : ''}`;
+${full ? payCard(integ) : ''}`;
   $$('.prefix-row input').forEach((i) => i.addEventListener('input', () => { i.nextElementSibling.textContent = 'e.g. ' + i.value.trim() + i.dataset.sample; }));
   if (!full) { wireHours(main); phoneMask($('#cf input[name=phone]', main)); }
   $('#cf').addEventListener('submit', async (e) => {
@@ -573,6 +573,7 @@ ${full ? `<div class="card"><h2>Payments and messages</h2><p class="muted" style
     try { await api('DELETE', '/api/company/logo'); toast('Logo deleted'); refresh(); } catch (err) { toast(err.message, true); }
   };
   wireAccountCards(main);
+  if (full) { stripeReturnNotice(integ); if (location.hash === '#payments') $('#payments', main).scrollIntoView({ block: 'start' }); } // back from Stripe, or a link to Card payments
   if ($('#logoFile')) $('#logoFile').addEventListener('change', async (e) => {
     const f = e.target.files[0]; if (!f) return; if (f.size > 4e6) return toast('Logo must be under 4 MB', true);
     const dataUrl = f.type === 'image/svg+xml' ? await readFileAsDataUrl(f) : await resizeImage(f, 600);
@@ -639,40 +640,6 @@ function stripeConn(integ) {
 <p class="muted" style="font-size:13px">Stripe charges its standard card processing fees${S.feePercent ? `, plus a ${S.feePercent}% platform fee on each payment` : ''}. Until you connect, the pay page runs a demo checkout that charges nobody.</p>
 <button type="button" class="btn" data-act="connectStripe">Connect with Stripe</button>` };
 }
-// email and texts: the business's own Gmail/SendGrid/SMTP and Twilio accounts, or the service's (set up by the platform)
-function emailConn(integ) {
-  const E = integ.ownEmail || {}; const p = E.provider || 'gmail';
-  const saved = (has) => (has ? 'placeholder="Saved. Leave blank to keep it."' : '');
-  const show = (k) => (p === k ? '' : ' hidden');
-  const status = integ.ownEmail ? connChip('on', `Your ${esc({ gmail: 'Gmail', sendgrid: 'SendGrid', smtp: 'mail server' }[E.provider])}`) : integ.serverEmail ? connChip('on', 'Using our email service') : connChip('off', 'Not connected');
-  return { id: 'email', icon: 'email', title: 'Email', status, button: integ.ownEmail ? 'Manage' : 'Connect',
-    desc: `Send quotes, invoices, reminders and password resets from your own mailbox. ${integ.ownEmail ? `Emails come from ${esc(E.from || E.user)}.` : integ.serverEmail ? 'Until you connect, emails are sent for you in your business name.' : 'Until email is connected, messages are kept in the Notifications Log but not delivered.'}`,
-    body: `<p class="muted" style="font-size:13px;margin-top:0">Client replies go to ${esc(company.email || 'your company email')}.</p>
-<form id="emailForm"><div class="row"><label>Send with<select name="provider">${[['gmail', 'Gmail or Google Workspace'], ['sendgrid', 'SendGrid'], ['smtp', 'Another mail server (SMTP)']].map(([v, l]) => `<option value="${v}" ${v === p ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-<label>Sender name<input name="fromName" maxlength="100" value="${esc(E.fromName)}" placeholder="${esc(company.name || 'Your business')}"></label></div>
-<div class="row" data-for="gmail"${show('gmail')}><label>Gmail address<input name="user" type="email" value="${esc(E.provider === 'gmail' ? E.user : '')}" placeholder="you@gmail.com"></label>
-<label>App password<input name="pass" type="password" autocomplete="new-password" ${saved(E.provider === 'gmail')}></label></div>
-<p class="muted" data-for="gmail" style="font-size:13px"${show('gmail')}>Turn on 2-Step Verification, then create an app password at <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">myaccount.google.com/apppasswords</a>. Your normal Google password won’t work.</p>
-<div class="row" data-for="sendgrid"${show('sendgrid')}><label>API key<input name="apiKey" type="password" autocomplete="off" ${saved(E.provider === 'sendgrid')}></label>
-<label>From address<input name="from" type="email" value="${esc(E.provider === 'sendgrid' ? E.from : '')}" placeholder="office@yourbusiness.com"></label></div>
-<p class="muted" data-for="sendgrid" style="font-size:13px"${show('sendgrid')}>Use a key with Mail Send access, and a sender address verified in SendGrid.</p>
-<div class="row" data-for="smtp"${show('smtp')}><label>SMTP server<input name="host" value="${esc(E.host)}" placeholder="smtp.yourmailhost.com"></label><label>Port (SSL/TLS)<input name="port" type="number" value="465" readonly></label></div>
-<div class="row" data-for="smtp"${show('smtp')}><label>Username<input name="user" value="${esc(E.provider === 'smtp' ? E.user : '')}"></label><label>Password<input name="pass" type="password" autocomplete="new-password" ${saved(E.provider === 'smtp')}></label></div>
-<div class="row" data-for="smtp"${show('smtp')}><label>From address<input name="from" type="email" value="${esc(E.provider === 'smtp' ? E.from : '')}" placeholder="office@yourbusiness.com"></label></div>
-<div class="sms-test"><button class="btn">Save email settings</button>${integ.email ? '<button type="button" class="btn alt" data-act="testMsg" data-ch="email">Send a test email</button>' : ''}${integ.ownEmail ? `<button type="button" class="btn danger sm" data-act="rmSender" data-kind="email">${integ.serverEmail ? 'Use our email service instead' : 'Disconnect'}</button>` : ''}</div></form>` };
-}
-function twilioConn(integ) {
-  const T = integ.ownTwilio || {};
-  const base = { id: 'twilio', icon: 'twilio', feature: 'sms', title: 'Twilio text messages' };
-  if (!planHas('sms')) return { ...base, status: connChip('off', 'Not in your plan'), button: '', body: '', desc: 'Send quotes, invoices and appointment reminders by text. Text messages are included on other plans.' };
-  const status = integ.ownTwilio ? connChip('on', 'Connected') : connChip('off', 'Not connected');
-  return { ...base, status, button: integ.ownTwilio ? 'Manage' : 'Connect',
-    desc: `Send quotes, invoices and appointment reminders by text from your own Twilio number. ${integ.ownTwilio ? `Texts come from ${esc(T.from)}.` : 'Connect your Twilio account to start texting clients. Until then, texts are kept in the Notifications Log but not delivered.'}`,
-    body: `<p class="muted" style="font-size:13px;margin-top:0">Find these at <a href="https://console.twilio.com" target="_blank" rel="noopener">console.twilio.com</a> → Account Info.</p>
-<form id="twilioForm"><div class="row"><label>Account SID<input name="sid" value="${esc(T.sid)}" placeholder="AC…" autocomplete="off" spellcheck="false"></label><label>Auth Token<input name="token" type="password" autocomplete="new-password" ${integ.ownTwilio ? 'placeholder="Saved. Leave blank to keep it."' : ''}></label></div>
-<div class="row"><label>Twilio phone number<input name="from" value="${esc(T.from)}" placeholder="(713) 555-0100 or MG…"></label></div>
-<div class="sms-test"><button class="btn">Save Twilio settings</button>${integ.sms ? '<button type="button" class="btn alt" data-act="testMsg" data-ch="sms">Send a test text</button>' : ''}${integ.ownTwilio ? '<button type="button" class="btn danger sm" data-act="rmSender" data-kind="twilio">Disconnect</button>' : ''}</div></form>` };
-}
 async function connectionsPage(main) {
   const integ = await api('GET', '/api/integrations');
   const soon = (id, icon, title, desc) => ({ id, icon, title, desc, status: connChip('off', 'Coming soon'), button: 'Connect', disabled: true, body: '' });
@@ -680,18 +647,16 @@ async function connectionsPage(main) {
     soon('google', 'google', 'Google Business Profile', 'Connect your Google Business Profile and manage which features use it.'),
     soon('facebook', 'facebook', 'Facebook Business Page', 'Connect your Facebook Business Page and manage which features use it. You’ll need full admin permissions for the business profile to connect it.'),
     soon('instagram', 'instagram', 'Instagram account', 'Connect your Instagram account to publish Instagram posts. You’ll need an Instagram professional account: either Business or Creator.'),
-    stripeConn(integ), twilioConn(integ), emailConn(integ),
     ...(planHas('ai') ? [{ id: 'ai', icon: 'ai', feature: 'ai', title: 'AI descriptions', button: '', body: '', status: integ.ai ? connChip('on', company.aiEnabled !== false ? 'On' : 'Turned off') : connChip('off', 'Not available yet'),
       desc: `“Write with AI” drafts product and service descriptions from their name. ${integ.ai ? 'Turn it on or off in <a href="/settings" data-link>App Settings</a>.' : ''}` }] : []),
   ];
   // connections for features the platform marks as Beta get a Beta tag and a short notice
   const beta = (r) => !!(r.feature && company.account && (company.account.featureList || []).some((f) => f.key === r.feature && f.beta));
-  main.innerHTML = `<div class="head"><div><h1>Account Connections</h1><p class="sub">Connect the accounts your business uses to take payments and message clients.</p></div></div>
+  main.innerHTML = `<div class="head"><div><h1>Account Connections</h1><p class="sub">Connect other accounts your business uses. Card payments are set up in <a href="/settings#payments" data-link>App Settings</a>; emails and texts to clients are sent for you.</p></div></div>
 <div class="card conn-list">${rows.map((r) => `<section class="conn" id="conn-${r.id}"><div class="conn-ic">${CONN_ICONS[r.icon]}</div>
 <div class="conn-main"><h2>${esc(r.title)}${beta(r) ? '<span class="beta-tag" title="This feature is in beta testing">Beta</span>' : ''} ${r.status}</h2><p>${r.desc}</p>${beta(r) ? '<p class="beta-note">This feature is in beta testing. It works, but it may change and you might run into rough edges. Tell us if something doesn’t look right.</p>' : ''}</div>
 <div class="conn-act">${r.button ? `<button type="button" class="btn alt conn-btn" ${r.disabled ? 'disabled title="Coming soon"' : `data-act="toggleConn" data-id="${r.id}" aria-expanded="${r.open ? 'true' : 'false'}"`}>${r.button}</button>` : ''}</div>
 ${r.body ? `<div class="conn-body"${r.open ? '' : ' hidden'}>${r.body}</div>` : ''}</section>`).join('')}</div>`;
-  wireMessages(main); stripeReturnNotice(integ);
   const open = new URLSearchParams(location.search).get('open'); if (open) A.toggleConn({ id: open });
 }
 A.toggleConn = (d) => {
@@ -699,34 +664,12 @@ A.toggleConn = (d) => {
   body.hidden = !body.hidden; $('.conn-btn', sec).setAttribute('aria-expanded', String(!body.hidden));
   if (!body.hidden) { const f = $('input:not([disabled]):not([readonly]), select', body); if (f) f.focus(); }
 };
-function wireMessages(main) {
-  const ef = $('#emailForm', main); if (!ef) return;
-  const sel = $('[name=provider]', ef);
-  const pick = () => $$('[data-for]', ef).forEach((el) => { el.hidden = el.dataset.for !== sel.value; $$('input', el).forEach((i) => { i.disabled = el.hidden; }); });
-  sel.addEventListener('change', pick); pick();
-  ef.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    try { await api('PUT', '/api/integrations/email', Object.fromEntries(new FormData(ef))); toast('Email settings saved. Send a test to check them.'); refresh(); } catch (err) { toast(err.message, true); }
-  });
-  const tf = $('#twilioForm', main);
-  if (tf) {
-    phoneMask($('[name=from]', tf));
-    tf.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      try { await api('PUT', '/api/integrations/twilio', Object.fromEntries(new FormData(tf))); toast('Twilio settings saved. Send a test to check them.'); refresh(); } catch (err) { toast(err.message, true); }
-    });
-  }
+// App Settings → Card payments: the one-time Stripe setup (Stripe Connect), so clients can pay invoices and deposits by card
+function payCard(integ) {
+  const r = stripeConn(integ);
+  return `<div class="card pay-card" id="payments"><div class="pay-card-h">${CONN_ICONS.stripe}<div><h2>Card payments ${r.status}</h2><p class="muted" style="margin:0">${r.desc}</p></div></div>${r.body ? `<div class="pay-card-b">${r.body}</div>` : ''}
+<p class="muted" style="font-size:13px;margin:12px 0 0">Emails and text messages to your clients are sent for you by ${esc(company.account.productName)}, in your business name.</p></div>`;
 }
-A.testMsg = async (d, el) => {
-  const sms = d.ch === 'sms'; const to = prompt(sms ? 'Send a test text to which mobile number?' : 'Send a test email to which address?', sms ? '' : (me && me.email) || company.email || ''); if (!to) return;
-  el.disabled = true;
-  try { const r = await api('POST', '/api/integrations/test', { channel: d.ch, to }); toast(r.status === 'sent' ? `Test ${sms ? 'text' : 'email'} sent` : r.detail || 'Not delivered', r.status !== 'sent'); }
-  finally { el.disabled = false; }
-};
-A.rmSender = async (d) => {
-  if (!confirm(d.kind === 'email' ? 'Remove your email settings?' : 'Remove your Twilio settings?')) return;
-  await api('DELETE', `/api/integrations/${d.kind}`); toast('Removed'); refresh();
-};
 function stripeReturnNotice(integ) {
   const q = new URLSearchParams(location.search).get('stripe'); if (!q) return;
   history.replaceState(null, '', location.pathname);
@@ -1027,7 +970,7 @@ PAGES['/payments'] = {
 ${list.map((r) => `<tr><td><strong>${esc(cname(r))}</strong><div class="pay-ref">${docLink(r.doc)}</div></td><td style="white-space:nowrap">${fmtDate(r.date)}</td>
 <td><span class="badge ${PAY_STATUS[r.status][1]}">${PAY_STATUS[r.status][0]}</span></td><td>${r.method === 'stripe' ? '💳 ' : ''}${esc(r.methodLabel)}</td><td style="white-space:nowrap">${esc(r.payout)}</td><td class="r"><strong>${money(r.amount)}</strong></td></tr>`).join('')
   || `<tr><td colspan="6" class="empty">${rows.length ? 'No payments match these filters' : 'No payments yet. Payments show up here when clients pay online or you record a payment on an invoice.'}</td></tr>`}</table></div></div>`;
-    const payouts = !S.connected ? `<div class="card"><h2>Payouts</h2><p class="muted">When clients pay online, Stripe sends the money to your bank account. ${admin ? '<a href="/settings/connections" data-link>Connect Stripe</a> to start taking online payments.' : 'Ask the account owner to connect Stripe.'}</p></div>`
+    const payouts = !S.connected ? `<div class="card"><h2>Payouts</h2><p class="muted">When clients pay online, Stripe sends the money to your bank account. ${admin ? '<a href="/settings#payments" data-link>Connect Stripe</a> in App Settings to start taking online payments.' : 'Ask the account owner to connect Stripe.'}</p></div>`
       : `<div class="card ctable"><div class="tablewrap"><table><tr><th>Arrival date</th><th>Status</th><th>Bank account</th><th class="r">Amount</th></tr>
 ${S.payouts.map((p) => `<tr><td>${fmtDate(p.arrival)}</td><td><span class="badge ${p.status === 'paid' ? 'paid' : p.status === 'failed' || p.status === 'canceled' ? 'failed' : 'sent'}">${esc({ paid: 'Paid', pending: 'Pending', in_transit: 'In transit', canceled: 'Canceled', failed: 'Failed' }[p.status] || p.status)}</span></td><td>${p.bank ? `${esc(p.bank.name)} •••• ${esc(p.bank.last4)}` : '—'}</td><td class="r"><strong>${money(p.amount)}</strong></td></tr>`).join('')
   || '<tr><td colspan="4" class="empty">No payouts yet. Stripe pays out after your first online payments clear.</td></tr>'}</table></div></div>`;
@@ -1055,7 +998,7 @@ PAGES['/payments/settings'] = {
     const bal = S.balance ? S.balance.pending + S.balance.available : 0;
     main.innerHTML = `<div class="head"><div><a href="/payments" data-link class="muted">← Payments</a><h1>Payment settings</h1></div></div>
 <div class="pay-grid"><div>
-${!can ? '<div class="notice">Online payments aren’t included in your plan. You can still record cash, check and other payments on invoices.</div>' : !S.connected ? `<div class="notice">Connect Stripe in <a href="/settings/connections" data-link>Account Connections</a> to take online payments. Until then, the pay page runs a demo checkout that charges nobody.</div>` : ''}
+${!can ? '<div class="notice">Online payments aren’t included in your plan. You can still record cash, check and other payments on invoices.</div>' : !S.connected ? `<div class="notice">Connect Stripe in <a href="/settings#payments" data-link>App Settings → Card payments</a> to take online payments. Until then, the pay page runs a demo checkout that charges nobody.</div>` : ''}
 <div class="card"><h2>Client payments</h2>
 <h3 class="pay-h">Quote payments<small class="muted">Let clients pay deposits online when viewing quotes</small></h3>${methodRows('quote')}
 <h3 class="pay-h">Invoice payments<small class="muted">Let clients pay online when viewing invoices</small></h3>${methodRows('invoice')}</div>
