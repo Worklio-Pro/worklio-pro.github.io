@@ -399,7 +399,7 @@ ${canReply ? '<div class="rv-acts"><button type="button" class="link-btn" data-a
 </article>`).join('') : `<div class="card"><p class="muted" style="margin:0">${f === 'open' ? 'Every review has a reply. Nice work.' : f === 'replied' ? 'No replies yet.' : 'No reviews yet. Share your review link with happy clients.'}</p></div>`)
     + (revState.next ? '<div style="text-align:center;margin:12px 0"><button type="button" class="btn alt" data-act="revMore">Show more reviews</button></div>' : '');
 }
-A.revFilter = (d) => { revState.filter = d.f; $('.rv-tabs button').forEach((b) => b.classList.toggle('on', b.dataset.f === d.f)); drawReviews(); };
+A.revFilter = (d) => { revState.filter = d.f; $$('.rv-tabs button').forEach((b) => b.classList.toggle('on', b.dataset.f === d.f)); drawReviews(); };
 A.revMore = async (d, el) => {
   el.disabled = true;
   try { const R = await api('GET', '/api/reviews?page=' + encodeURIComponent(revState.next)); revState.list.push(...(R.reviews || [])); revState.next = R.next || ''; drawReviews(); } catch (e) { el.disabled = false; toast(e.message, true); }
@@ -420,6 +420,87 @@ A.revCancel = () => drawReviews();
 A.revDelete = async (d, el) => {
   const { r } = revOf(el); if (!confirm('Delete your reply? It comes off Google too.')) return;
   try { await api('DELETE', '/api/reviews/reply?name=' + encodeURIComponent(r.name)); r.reply = null; toast('Reply deleted'); drawReviews(); } catch (e) { toast(e.message, true); }
+};
+
+/* ===== /social-posts: project photos to the connected Facebook Page and Instagram account ===== */
+let spDraft = { photos: [], to: null }; // photos: [{ src, label }] picked from the gallery or the device
+// Instagram only takes JPEGs: every photo is redrawn on white (no transparency) and sent as a JPEG, at most 1440px
+async function toJpeg(src, max = 1440) {
+  const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('Couldn’t read a photo')); i.src = src; });
+  const s = Math.min(1, max / Math.max(img.width, img.height)); const c = document.createElement('canvas'); c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+  const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.88);
+}
+PAGES['/social-posts'] = {
+  title: 'Social Posts',
+  async render(main) {
+    const R = await api('GET', '/api/social-posts');
+    const head = '<div class="head"><div><h1>Social Posts</h1><p class="sub">Share your work on Facebook and Instagram. Before-and-after photos from your jobs make great posts.</p></div></div>';
+    if (!R.facebook && !R.instagram) {
+      main.innerHTML = `${head}<div class="card rv-empty"><div class="conn-ic sp-ics">${CONN_ICONS.facebook}${CONN_ICONS.instagram}</div><h2>Connect Facebook or Instagram</h2><p class="muted">Then post photos from your Project Gallery to your Facebook Page and Instagram, right from here.</p>
+${['owner', 'admin'].includes(role()) ? '<a class="btn" href="/settings/connections" data-link>Go to Account Connections</a>' : '<p class="muted">Ask the account owner or an admin to connect them in Account Connections.</p>'}</div>`;
+      return;
+    }
+    if (!spDraft.to) spDraft.to = ['facebook', 'instagram'].filter((k) => R[k]);
+    const dest = (k, name, label) => `<label class="sp-dest ${R[k] ? '' : 'off'}"><input type="checkbox" name="to" value="${k}" ${R[k] ? '' : 'disabled'} ${R[k] && spDraft.to.includes(k) ? 'checked' : ''}>${CONN_ICONS[k]}<span><strong>${name}</strong><small>${R[k] ? esc(label) : 'Not connected'}</small></span></label>`;
+    const res = (p, k, name) => { const r = p.results[k]; if (!r) return ''; return r.status === 'posted' ? `<a class="conn-chip on" href="${esc(r.url)}" target="_blank" rel="noopener"><i></i>${name}: view post</a>` : `<span class="conn-chip bad" title="${esc(r.error)}"><i></i>${name}: didn’t post</span>`; };
+    main.innerHTML = `${head}
+<form class="card sp-new" id="spForm"><h2>New post</h2>
+<div class="sp-dests">${dest('facebook', 'Facebook', R.facebook && R.facebook.name)}${dest('instagram', 'Instagram', R.instagram && '@' + R.instagram.username)}</div>
+<div class="sp-photos" id="spPhotos"></div>
+<div class="sp-add"><button type="button" class="btn alt sm" data-act="spGallery">Choose from Project Gallery</button><label class="btn alt sm">Upload photos<input type="file" accept="image/*" multiple hidden id="spFile"></label><span class="muted" style="font-size:13px">Up to 10 photos. The first one is the cover.</span></div>
+<label>Caption<textarea name="caption" rows="4" maxlength="2200" placeholder="Another pool back to sparkling! Swipe to see the before and after. Call us for a free quote.">${esc(spDraft.caption || '')}</textarea></label>
+<div class="sp-foot"><span class="muted" id="spCount" style="font-size:13px"></span><button class="btn">Post now</button></div></form>
+<div class="card"><h2>Posted</h2>${(R.posts || []).length ? `<div class="sp-list">${R.posts.map((p) => `<div class="sp-row">${p.images[0] ? `<img src="${esc(p.images[0])}" alt="" loading="lazy">` : '<span class="sp-noimg"></span>'}
+<div><p>${p.caption ? esc(p.caption.length > 220 ? p.caption.slice(0, 220) + '…' : p.caption) : '<span class="muted">No caption</span>'}</p><div class="sp-meta"><span class="muted">${fmtDate(p.createdAt.slice(0, 10))}${p.by ? ' · ' + esc(p.by) : ''}${p.images.length > 1 ? ` · ${p.images.length} photos` : ''}</span>${res(p, 'facebook', 'Facebook')}${res(p, 'instagram', 'Instagram')}</div>
+${Object.values(p.results).filter((r) => r.status !== 'posted').map((r) => `<p class="sp-err">${esc(r.error)}</p>`).join('')}</div>
+${['owner', 'admin'].includes(role()) ? `<button type="button" class="x sp-x" data-act="spRemove" data-id="${p.id}" title="Remove from this list (it stays on Facebook and Instagram)" aria-label="Remove from this list">×</button>` : ''}</div>`).join('')}</div>` : '<p class="muted" style="margin:0">Nothing posted yet.</p>'}</div>`;
+    const f = $('#spForm'); const cap = f.caption;
+    const count = () => { $('#spCount').textContent = `${cap.value.length} / 2,200`; spDraft.caption = cap.value; }; cap.addEventListener('input', count); count();
+    $$('input[name=to]', f).forEach((c) => c.addEventListener('change', () => { spDraft.to = $$('input[name=to]:checked', f).map((x) => x.value); }));
+    $('#spFile').addEventListener('change', async (e) => {
+      for (const file of [...e.target.files]) { if (spDraft.photos.length >= 10) { toast('Up to 10 photos per post', true); break; } try { spDraft.photos.push({ src: await readFileAsDataUrl(file), label: file.name }); } catch (x) { toast('Couldn’t read ' + file.name, true); } }
+      e.target.value = ''; drawSpPhotos();
+    });
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault(); const btn = $('.sp-foot .btn', f); const to = spDraft.to;
+      if (!to.length) return toast('Choose Facebook, Instagram or both', true);
+      if (to.includes('instagram') && !spDraft.photos.length) return toast('Instagram posts need at least one photo', true);
+      if (!spDraft.photos.length && !cap.value.trim()) return toast('Add a photo or write a caption', true);
+      btn.disabled = true; btn.textContent = 'Posting…';
+      try {
+        const images = []; for (const p of spDraft.photos) images.push(await toJpeg(p.src));
+        const p = await api('POST', '/api/social-posts', { caption: cap.value, images, to });
+        const bad = Object.entries(p.results).filter(([, r]) => r.status !== 'posted');
+        if (bad.length) toast(`Didn’t post to ${bad.map(([k]) => (k === 'facebook' ? 'Facebook' : 'Instagram')).join(' or ')}: ${bad[0][1].error}`, true); else toast('Posted');
+        if (bad.length < Object.keys(p.results).length) spDraft = { photos: [], to: null };
+        refresh();
+      } catch (x) { btn.disabled = false; btn.textContent = 'Post now'; toast(x.message, true); }
+    });
+    drawSpPhotos();
+  },
+};
+function drawSpPhotos() {
+  const box = $('#spPhotos'); if (!box) return;
+  box.innerHTML = spDraft.photos.map((p, i) => `<figure><img src="${esc(p.src)}" alt="${esc(p.label)}">${i === 0 ? '<span class="sp-cover">Cover</span>' : ''}<div class="sp-tools">${i ? `<button type="button" data-act="spMove" data-i="${i}" title="Move earlier" aria-label="Move earlier">‹</button>` : ''}<button type="button" data-act="spDrop" data-i="${i}" title="Remove" aria-label="Remove photo">×</button></div></figure>`).join('');
+  box.hidden = !spDraft.photos.length;
+}
+A.spDrop = (d) => { spDraft.photos.splice(+d.i, 1); drawSpPhotos(); };
+A.spMove = (d) => { const i = +d.i; [spDraft.photos[i - 1], spDraft.photos[i]] = [spDraft.photos[i], spDraft.photos[i - 1]]; drawSpPhotos(); };
+A.spRemove = async (d) => { if (!confirm('Remove this post from the list? It stays on Facebook and Instagram.')) return; await api('DELETE', '/api/social-posts/' + d.id); refresh(); };
+// pick from the Project Gallery, newest first, grouped by job
+A.spGallery = async () => {
+  const mb = modal('Choose photos', '<p class="muted">Loading…</p>', true);
+  const photos = (await api('GET', '/api/photos')).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  if (!photos.length) { mb.innerHTML = '<p>No photos yet. Add before, progress and after photos to jobs in <a href="/project-gallery" data-link>Project Gallery</a>.</p><div class="foot"><button type="button" class="btn alt" data-act="closeModal">Close</button></div>'; return; }
+  const jobs = [...new Set(photos.map((p) => p.jobId))];
+  mb.innerHTML = `<form id="spPick"><div class="sp-pick">${jobs.map((jid) => { const j = byId(D.jobs, jid); return `<h4>${j ? esc(j.number + ' · ' + j.title) : 'Other photos'}</h4><div class="sp-grid">${photos.filter((p) => p.jobId === jid).map((p) => `<label><input type="checkbox" value="${p.id}" ${spDraft.photos.some((x) => x.src === p.file) ? 'checked disabled' : ''}><img src="${esc(p.file)}" alt="${esc(p.caption)}" loading="lazy">${badge(p.type)}</label>`).join('')}</div>`; }).join('')}</div>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Add photos</button></div></form>`;
+  $('#spPick', mb).addEventListener('submit', (e) => {
+    e.preventDefault(); const ids = $$('input:checked:not(:disabled)', e.target).map((c) => c.value);
+    for (const id of ids) { if (spDraft.photos.length >= 10) { toast('Up to 10 photos per post', true); break; } const p = photos.find((x) => x.id === id); spDraft.photos.push({ src: p.file, label: p.caption || p.type }); }
+    closeModal(); drawSpPhotos();
+  });
 };
 
 /* ===== /project-gallery ===== */
