@@ -604,6 +604,7 @@ function accountInfo() {
 app.get('/api/company', (req, res) => res.json({ ...db.company, account: accountInfo() }));
 app.put('/api/company', (req, res) => {
   if (!tenancy.has('branding')) delete req.body.brandColor; // custom branding is a plan feature
+  if (!tenancy.has('numberPrefixes')) for (const k of Object.keys(PREFIX_DEFAULTS)) delete req.body[k]; // so are custom number prefixes (saved ones keep working)
   for (const k of Object.keys(PREFIX_DEFAULTS)) if (k in req.body) {
     const v = String(req.body[k] ?? '').trim();
     if (v.length > 10 || !/^[A-Za-z0-9 #._\/-]*$/.test(v)) return res.status(400).json({ error: 'Number prefixes can be up to 10 letters, numbers, spaces or # . _ / -' });
