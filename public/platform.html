@@ -87,7 +87,7 @@
     /* settings: two columns on wide screens */
     .set-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 18px;align-items:start}.set-col>.card{margin-bottom:18px}
     @media (max-width:1000px){.set-grid{grid-template-columns:minmax(0,1fr)}}
-    .set-grid .card>h2:first-child{display:flex;align-items:center;gap:8px;margin:-18px -18px 14px;padding:12px 18px;background:var(--tint);border-bottom:1px solid var(--line);border-radius:12px 12px 0 0;font-size:16px}
+    .set-grid .card>h2:first-child,#main[data-tab=help] .card>h2:first-child,#main[data-tab=messages] .card>h2:first-child{display:flex;align-items:center;gap:8px;margin:-18px -18px 14px;padding:12px 18px;background:var(--tint);border-bottom:1px solid var(--line);border-radius:12px 12px 0 0;font-size:16px}
     .card-save{display:flex;justify-content:flex-end;margin-top:6px}
     /* integrations: one group per service */
     .ig{border:1px solid var(--line);border-radius:10px;padding:14px;margin-top:12px}
@@ -194,6 +194,6 @@
   <div id="toast"></div>
   <script src="/hc-editor.js?v=1"></script>
   <script src="/brand.js?v=1"></script>
-  <script src="/platform.js?v=29"></script>
+  <script src="/platform.js?v=30"></script>
 </body>
 </html>
