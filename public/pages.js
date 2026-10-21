@@ -1072,7 +1072,7 @@ PAGES['/payments/settings'] = {
     const bal = S.balance ? S.balance.pending + S.balance.available : 0;
     main.innerHTML = `<div class="head"><div><a href="/payments" data-link class="muted">← Payments</a><h1>Payment settings</h1></div></div>
 <div class="pay-grid"><div>
-${!can ? '<div class="notice">Online payments aren’t included in your plan. You can still record cash, check and other payments on invoices.</div>' : !S.connected ? `<div class="notice">Connect Stripe in <a href="/settings#payments" data-link>App Settings → Card payments</a> to take online payments. Until then, clients can’t pay by card.</div>` : ''}
+${!can ? '<div class="notice">Online payments aren’t included in your plan. You can still record cash, check and other payments on invoices.</div>' : !S.connected ? `<div class="notice">Set up card payments in <a href="/settings#payments" data-link>App Settings → Card payments</a> to take online payments. Until then, clients can’t pay by card.</div>` : ''}
 <div class="card"><h2>Client payments</h2>
 <h3 class="pay-h">Quote payments<small class="muted">Let clients pay deposits online when viewing quotes</small></h3>${methodRows('quote')}
 <h3 class="pay-h">Invoice payments<small class="muted">Let clients pay online when viewing invoices</small></h3>${methodRows('invoice')}</div>
@@ -1082,7 +1082,7 @@ ${can ? `<div class="card pay-off"><div><h2>${P.disabled ? 'Payments are disable
 </div><aside>
 <div class="card"><h2>Standard payouts</h2>
 <div class="pay-side"><div><strong>Upcoming payouts</strong><div class="muted">${money(bal)}</div></div>${S.connected ? '<button type="button" class="btn alt sm" data-act="payTabPayouts">View payouts</button>' : ''}</div>
-<div class="pay-side"><div><strong>Payout to</strong><div class="muted">${S.bank ? `${esc(S.bank.name)} • Ending in ${esc(S.bank.last4)}` : S.connected ? 'Your bank account in Stripe' : 'No bank account yet'}</div></div>${can ? '<button type="button" class="btn alt sm" data-act="payBank" aria-label="Update bank account">⋯</button>' : ''}</div></div>
+<div class="pay-side"><div><strong>Payout to</strong><div class="muted">${(() => { const b = S.bank || (company.account && company.account.payoutBank); return b ? `${esc(b.name)} • Ending in ${esc(b.last4)}` : S.connected ? 'Your bank account in Stripe' : 'No bank account yet'; })()}</div></div>${can ? '<button type="button" class="btn alt sm" data-act="payBank" aria-label="Update bank account">⋯</button>' : ''}</div></div>
 ${S.connected ? `<div class="card"><h2>Disputes</h2><div class="pay-side"><div><strong>${S.disputes.open ? 'Action required' : 'No action required'}</strong><div class="muted">${S.disputes.open} open dispute${S.disputes.open === 1 ? '' : 's'}</div></div><a class="btn alt sm" href="https://dashboard.stripe.com/disputes" target="_blank" rel="noopener">View disputes</a></div></div>` : ''}
 <div class="card"><h2>Processing rates</h2><table class="pay-rates"><tr><td>Credit / debit cards</td><td class="r">2.9% + 30¢</td></tr><tr><td>Bank payments (ACH)</td><td class="r">0.8%, max $5</td></tr></table>
 <p class="muted" style="font-size:12px;margin:8px 0 0">Stripe’s standard US rates${S.feePercent ? `, plus a ${S.feePercent}% platform fee` : ''}. Your Stripe account shows your exact rates.</p></div>
@@ -1097,11 +1097,22 @@ A.payDisable = async (d) => {
   const on = d.on === '1'; if (on && !confirm('Disable online payments? Clients won’t be able to pay quotes or invoices online until you turn them back on.')) return;
   company.paySettings = await api('PUT', '/api/payments/settings', { disabled: on }); toast(on ? 'Online payments disabled' : 'Online payments are back on'); refresh();
 };
-// bank details live in the business's own Stripe account (Stripe verifies and pays out to it)
+// where payouts go, and where to change it: depends on how the business set up card payments
 A.payBank = () => {
-  const m = modal('Update bank account', `<p>Payouts go to the bank account in your Stripe account. Stripe verifies it and keeps it secure, so you add or change it there, using your online banking login or your account and routing numbers.</p>
-<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><a class="btn" href="https://dashboard.stripe.com/settings/payouts" target="_blank" rel="noopener">Update in Stripe</a></div>`);
-  return m;
+  const a = company.account || {}; const bank = a.payoutBank; const cancel = '<button type="button" class="btn alt" data-act="closeModal">Cancel</button>';
+  const stripeLink = '<a class="btn" href="https://dashboard.stripe.com/settings/payouts" target="_blank" rel="noopener">Update in Stripe</a>';
+  const body = {
+    // set up in the app: no Stripe dashboard, so the bank account is changed with Stripe's form in the app
+    embedded: `<p>${bank ? `Payouts go to <strong>${esc(bank.name)} ••${esc(bank.last4)}</strong>.` : 'Payouts go to the bank account you added when you set up card payments.'} To use a different account, update your payout details. Stripe verifies the new account and keeps it secure.</p>
+<p class="muted" style="font-size:13px">Payouts already on their way still go to the current account.</p>
+<div class="foot">${cancel}<a class="btn" href="/settings/card-payments" data-link>Update payout details</a></div>`,
+    standard: `<p>Payouts go to the bank account in your Stripe account. Stripe verifies it and keeps it secure, so you add or change it there, using your online banking login or your account and routing numbers.</p>
+<div class="foot">${cancel}${stripeLink}</div>`,
+    server: `<p>Payouts for your business go to the bank account in your platform’s Stripe account. Change it in your Stripe dashboard.</p>
+<div class="foot">${cancel}${stripeLink}</div>`,
+  }[a.cardSetupType] || `<p>You’ll add the bank account for payouts when you set up card payments. Stripe verifies it and keeps it secure.</p>
+<div class="foot">${cancel}<a class="btn" href="/settings#payments" data-link>Set up card payments</a></div>`;
+  return modal(a.cardSetupType === null || a.cardSetupType === undefined ? 'Add a bank account' : 'Update bank account', body);
 };
 
 /* ===== /settings/billing: Account and billing (the business's subscription to this service; owner only) ===== */

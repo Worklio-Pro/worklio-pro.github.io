@@ -604,6 +604,8 @@ function accountInfo() {
     domains: (t.domains || []).map(({ host, verified, primary, addedAt, verifiedAt }) => ({ host, verified: !!verified, primary: !!primary, addedAt, verifiedAt: verifiedAt || null })),
     productName: tenancy.platform().settings.productName, product: brandLib.brand(), contactEmail: tenancy.platform().settings.contactEmail, helpUrl: tenancy.helpUrl(), managed: !tenancy.isDefault(),
     referrals: referrals.openTo(t), cardReady: !!stripeKey(), // card payments set up (App Settings → Card payments)
+    // how: 'embedded' (set up in the app, payout bank changed in the app), 'standard' (own Stripe account), 'server' (the platform's own account), or null
+    cardSetupType: secrets().stripeAccountId ? secrets().stripeAccountType || 'standard' : stripeKey() ? 'server' : null, payoutBank: secrets().stripeBank || null,
     expiry: (() => { const x = expiryOf(t); return x && { ...x, when: whenText(x) }; })(),
     featureList: tenancy.FEATURES.map(({ key, label, desc }) => ({ key, label, desc, beta: tenancy.isBeta(key), included: plan.features.includes(key) })), alwaysIncluded: tenancy.ALWAYS_INCLUDED,
   };

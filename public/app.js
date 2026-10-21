@@ -355,7 +355,7 @@ window.addEventListener('popstate', render);
 const A = {}; // click actions
 document.addEventListener('click', (e) => {
   const link = e.target.closest('a[data-link]');
-  if (link) { e.preventDefault(); navigate(link.getAttribute('href')); return; }
+  if (link) { e.preventDefault(); if (link.closest('#overlay')) closeModal(); navigate(link.getAttribute('href')); return; } // a link in a popup closes it
   const el = e.target.closest('[data-act]');
   if (!el) return;
   e.preventDefault();
