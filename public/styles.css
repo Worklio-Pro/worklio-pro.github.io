@@ -66,6 +66,7 @@ th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--mute
 td.r,th.r{text-align:right}
 .tablewrap{overflow-x:auto}
 .actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+td.actions{display:table-cell;text-align:right;white-space:nowrap} /* a button cell stays a table cell, so it's as tall as its row and the row's line runs under it */
 .badge{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;background:var(--neutral-bg);color:var(--neutral-fg);white-space:nowrap}
 .badge.paid,.badge.approved,.badge.completed,.badge.sent-ok{background:var(--ok-bg);color:var(--ok-fg)}
 .badge.sent,.badge.scheduled,.badge.simulated{background:var(--info-bg);color:var(--info-fg)}
