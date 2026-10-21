@@ -252,8 +252,11 @@ async function sendEmail(to, subject, body, { server = false, replyTo: replyOver
     }
   }
   const { SENDGRID_API_KEY: key, EMAIL_FROM: from, GMAIL_USER: gUser, GMAIL_APP_PASSWORD: gPass } = process.env;
-  // the server's email service is shared by every account; only the default account uses EMAIL_FROM_NAME / EMAIL_REPLY_TO, the others send as themselves
-  const own = tenancy.isDefault(); const fromName = own ? process.env.EMAIL_FROM_NAME : db.company.name; const replyTo = replyOverride || (own ? process.env.EMAIL_REPLY_TO : db.company.email);
+  // the server's email service is shared by every account. A business's emails (to its clients and team) carry its name, with replies to its email;
+  // the platform's own emails (server: true) carry EMAIL_FROM_NAME (else the product name), with replies to EMAIL_REPLY_TO (else the contact email)
+  const PS = tenancy.platform().settings;
+  const fromName = server ? process.env.EMAIL_FROM_NAME || PS.productName : db.company.name;
+  const replyTo = replyOverride || (server ? process.env.EMAIL_REPLY_TO || PS.contactEmail : db.company.email);
   if (serverEmailProvider() === 'Gmail') {
     try {
       await smtpSend({ host: 'smtp.gmail.com', port: 465, user: gUser, pass: gPass.replace(/\s/g, '') },
