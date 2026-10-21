@@ -998,7 +998,7 @@ A.viewPayouts = () => {
   const L = payView.upcoming || []; const when = (u) => (u.next ? 'Next payout' : u.clearing ? 'When the payments clear' : new Date(u.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
   modal('Upcoming payouts', `<table class="up-table"><tr><th>Date</th><th class="r">Amount</th></tr>
 ${L.map((u) => `<tr><td>${when(u)}${u.inTransit ? `<div class="muted">On its way${u.bank && u.bank.last4 ? ` to ${esc(u.bank.name)} ••${esc(u.bank.last4)}` : ''}</div>` : ''}</td><td class="r">${money(u.amount)}</td></tr>`).join('')}</table>
-<p class="up-note">Payout amounts and dates are estimates and may change until they’re deposited. <a href="https://docs.stripe.com/payouts#payout-schedule" target="_blank" rel="noopener">Learn more about payout schedules</a></p>`);
+<p class="up-note">Payout amounts and dates are estimates and may change until they’re deposited. <a href="${esc((company.account && company.account.helpUrl) || '')}/articles/payout-schedule" target="_blank" rel="noopener">Learn more about payout schedules</a></p>`);
 };
 A.paySort = (d) => { if (payView.sort === d.k) payView.dir *= -1; else { payView.sort = d.k; payView.dir = d.k === 'client' || d.k === 'method' ? 1 : -1; } refresh(); };
 A.payInvoices = () => navigate('/invoices');
