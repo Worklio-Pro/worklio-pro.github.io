@@ -49,13 +49,14 @@ const TAB_ICONS = { // bottom bar icons (phones)
   help: ico('<circle cx="12" cy="12" r="9"/><path d="M9.6 9.2a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.3-2.4 3.9"/><path d="M12 17.2h.01"/>'),
   accounts: ico('<path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 9h1M14 9h1M9 13h1M14 13h1M10 21v-4h4v4"/>'),
   discounts: ico('<path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="8" cy="8" r="1.5"/>'),
+  integrations: ico('<path d="M9 2v6M15 2v6"/><path d="M6 8h12v3a6 6 0 0 1-12 0z"/><path d="M12 17v5"/>'),
   messages: ico('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>'),
   plans: ico('<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14.5 17.5l2 2 4-4"/>'),
   settings: ico('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>'),
 };
 async function load() { D = await api('GET', '/api/platform/overview'); if (!draftPlans) { draftPlans = structuredClone(D.plans); draftBeta = [...D.betaFeatures]; } }
 function render() {
-  const tabs = [['accounts', 'Accounts'], ['plans', 'Plans & features'], ['discounts', 'Promotions'], ['messages', 'Messages'], ['help', 'Help Center'], ['settings', 'Settings']];
+  const tabs = [['accounts', 'Accounts'], ['plans', 'Plans & features'], ['discounts', 'Promotions'], ['messages', 'Messages'], ['help', 'Help Center'], ['integrations', 'Integrations'], ['settings', 'Settings']];
   document.title = `${tabs.find((t) => t[0] === tab)[1]} · ${D.settings.productName} Alpha`;
   $('#root').innerHTML = `<header class="pf-top"><div class="pf-bar"><div class="pf-brand">${brandImg(siteBrand(), 'dark')}${siteBrand().logoHasName ? '' : esc(D.settings.productName)} <small>Alpha</small></div>
 <nav class="pf-tabs">${tabs.map(([k, l]) => `<a href="#${k}" class="${tab === k ? 'on' : ''}">${l}</a>`).join('')}</nav>
@@ -64,10 +65,10 @@ ${D.maintenance && D.maintenance.on ? `<div class="mt-bar" role="status"><strong
 <main class="pf-main" id="main"></main>
 <nav class="pf-bnav" aria-label="Alpha sections">${tabs.map(([k, l]) => `<a href="#${k}" class="${tab === k ? 'on' : ''}"${tab === k ? ' aria-current="page"' : ''}>${TAB_ICONS[k]}<span>${SHORT_TABS[k] || l}</span></a>`).join('')}</nav>`;
   $('#main').dataset.tab = tab; // box title bands are styled per tab (platform.html)
-  ({ accounts: accountsView, plans: plansView, discounts: promoView, messages: messagesView, help: helpView, settings: settingsView })[tab]($('#main'));
+  ({ accounts: accountsView, plans: plansView, discounts: promoView, messages: messagesView, help: helpView, integrations: integrationsView, settings: settingsView })[tab]($('#main'));
 }
-const TABS = ['accounts', 'plans', 'discounts', 'messages', 'help', 'settings'];
-const SHORT_TABS = { plans: 'Plans', help: 'Help', discounts: 'Promos' }; // the phone tab bar has room for short names only
+const TABS = ['accounts', 'plans', 'discounts', 'messages', 'help', 'integrations', 'settings'];
+const SHORT_TABS = { plans: 'Plans', help: 'Help', discounts: 'Promos', integrations: 'Services' }; // the phone tab bar has room for short names only
 window.addEventListener('hashchange', () => { tab = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'accounts'; if (D) render(); });
 
 /* ===== accounts ===== */
@@ -317,20 +318,24 @@ function settingsView(main) {
 <label class="switchline"><input type="checkbox" name="allowSignups" ${s.allowSignups ? 'checked' : ''}> Let businesses create an account themselves on the pricing page</label>
 <label style="max-width:320px">Plan for businesses that sign up without choosing one<select name="signupPlan">${D.plans.filter((p) => !p.hidden).map((p) => `<option value="${esc(p.id)}" ${p.id === s.signupPlan ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
 <label style="max-width:320px">“Most popular” badge on the pricing page<select name="popularPlan"><option value="" ${!s.popularPlan ? 'selected' : ''}>Automatic (the middle plan)</option>${D.plans.filter((p) => !p.hidden).map((p) => `<option value="${esc(p.id)}" ${p.id === s.popularPlan ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}<option value="none" ${s.popularPlan === 'none' ? 'selected' : ''}>None</option></select></label>
-<p class="muted" style="font-size:13px">Pricing page: <a href="${esc(site)}" target="_blank" rel="noopener">${esc(site)}</a>. Businesses that choose a paid plan pay for it at checkout before their account opens (see Integrations → Stripe below).</p>
+<p class="muted" style="font-size:13px">Pricing page: <a href="${esc(site)}" target="_blank" rel="noopener">${esc(site)}</a>. Businesses that choose a paid plan pay for it at checkout before their account opens (see <a href="#integrations">Integrations → Stripe</a>).</p>
 <div class="card-save"><button class="btn">Save</button></div></div>
-<div class="card"><h2>Accounts with a last day of access</h2>
+</form></div>
+<div class="set-col"><div class="card" id="logoCard"></div>
+<form id="sf2" class="set-form"><div class="card"><h2>Accounts with a last day of access</h2>
 <div class="row"><label>Show a banner in their app (days before)<input name="expiryBannerDays" type="number" min="0" max="60" value="${esc(s.expiryBannerDays ?? 7)}"></label><label>Email the owner a reminder (days before)<input name="expiryReminderDays" type="number" min="0" max="60" value="${esc(s.expiryReminderDays ?? 3)}"></label></div>
 <p class="muted" style="font-size:13px;margin-top:-4px">For accounts you gave a last day of access (e.g. trials). Owners and admins see the banner; owners can choose a plan from it, which removes the end date. The reminder is sent once per end date; edit its wording in Messages → Email templates → Access ending soon. 0 means on the last day itself.</p>
 <div class="card-save"><button class="btn">Save</button></div></div></form>
-<div class="card" id="reserved"></div></div>
-<div class="set-col"><div class="card" id="logoCard"></div>
-<div class="card" id="integ"><h2>Integrations</h2><p class="muted">Checking…</p></div></div></div>`;
-  $('#sf').addEventListener('submit', async (e) => {
-    e.preventDefault(); const b = Object.fromEntries(new FormData(e.target)); b.allowSignups = !!b.allowSignups;
+<div class="card" id="reserved"></div></div></div>`;
+  $$('#sf, #sf2', main).forEach((f) => f.addEventListener('submit', async (e) => {
+    e.preventDefault(); const b = Object.fromEntries(new FormData(e.target)); if (e.target.elements.allowSignups) b.allowSignups = !!b.allowSignups; // only the form with the switch sends it
     try { await api('PUT', '/api/platform/settings', b); await load(); toast('Settings saved'); render(); } catch (x) { toast(x.message, true); }
-  });
+  }));
   maintenanceCard($('#mtCard', main)); logoCard($('#logoCard', main)); reservedCard($('#reserved', main));
+}
+// the Integrations tab: one box per service, in two columns on wide screens
+function integrationsView(main) {
+  main.innerHTML = '<div class="head"><div><h1>Integrations</h1><p class="muted" style="margin:4px 0 0">Shared by every account. Keys in the <code>.env</code> file next to <code>server.js</code> need a restart after changing; secrets are never shown here.</p></div></div><div id="integ"><p class="muted">Checking…</p></div>';
   integrationsCard($('#integ', main));
 }
 /* ===== promotions: discount codes, the referral program and its activity ===== */
@@ -576,13 +581,12 @@ A.unreserve = async (d) => {
 };
 // the server-wide services every account uses: set in the .env file next to server.js, checked and tested here
 async function integrationsCard(box) {
-  let I; try { I = await api('GET', '/api/platform/integrations'); } catch (x) { box.innerHTML = `<h2>Integrations</h2><p class="muted">${esc(x.message)}</p>`; return; }
+  let I; try { I = await api('GET', '/api/platform/integrations'); } catch (x) { box.innerHTML = `<div class="card"><p class="muted" style="margin:0">${esc(x.message)}</p></div>`; return; }
   const on = (ok, yes = 'Connected', no = 'Not set up') => `<span class="cstatus ${ok ? 'active' : ''}">${ok ? yes : no}</span>`;
   const S = I.stripe; const copy = (v, label) => `<div class="linkbox"><input readonly value="${esc(v)}" aria-label="${esc(label)}"><button type="button" class="btn alt" data-act="copy">Copy</button></div>`;
   const ig = (title, status, inner) => `<section class="ig"><div class="ig-h"><h3>${title}</h3>${status}</div>${inner}</section>`;
   const env = (html) => `<p class="ig-env">Set in <code>.env</code>: ${html}</p>`;
-  box.innerHTML = `<h2>Integrations</h2><p class="muted" style="font-size:13px;margin-top:0">Shared by every account. Keys go in the <code>.env</code> file next to <code>server.js</code> (restart after changing it) and are never shown here.</p>
-${ig('Email', on(I.email, `Connected (${esc(I.email)})`), `<p class="ig-d">Every email the app sends, for every business: quotes, invoices, reminders, receipts and password resets, in each business’s name. Your own emails show your product name (or <code>EMAIL_FROM_NAME</code>) as the sender.</p>
+  box.innerHTML = `<div class="ig-grid">${ig('Email', on(I.email, `Connected (${esc(I.email)})`), `<p class="ig-d">Every email the app sends, for every business: quotes, invoices, reminders, receipts and password resets, in each business’s name. Your own emails show your product name (or <code>EMAIL_FROM_NAME</code>) as the sender.</p>
 ${I.mailServer ? `<p class="ig-env">Using your mail server below (${esc(I.mailServer.from)}).</p>` : env('<code>GMAIL_USER</code> + <code>GMAIL_APP_PASSWORD</code>, or <code>SENDGRID_API_KEY</code> + <code>EMAIL_FROM</code>; or use your own mail server below.')}
 <h4>Your mail server</h4><p class="muted ig-p">Send from a mailbox at your own domain, such as a SiteGround email account. It replaces ${I.envEmail ? esc(I.envEmail) + ' from the .env file' : 'the .env email settings'}. In SiteGround: Site Tools → Email → Accounts → ⋮ → Mail Configuration shows the outgoing (SMTP) server.</p>
 <form id="mailForm" class="mail-form"><div class="row"><label>Outgoing mail server<input name="host" value="${esc(I.mailServer ? I.mailServer.host : '')}" placeholder="mail.yourdomain.com" autocapitalize="off" spellcheck="false"></label><label>Port (SSL/TLS)<input value="465" readonly></label></div>
@@ -615,7 +619,7 @@ ${copy(S.connectWebhookUrl, 'Connect webhook URL')}
 ${copy(S.billingWebhookUrl, 'Billing webhook URL')}
 ${I.localhost ? '<p class="muted ig-p" style="margin-top:8px">Stripe can’t reach localhost: set <code>BASE_URL</code> (or <code>PLATFORM_DOMAIN</code>) to your public address first.</p>' : ''}`)}
 ${socialGroups(I, ig, on, copy)}
-${ig('AI descriptions', on(I.ai), `<p class="ig-d">Claude drafts product and service descriptions, for plans with AI descriptions.</p>${env('<code>ANTHROPIC_API_KEY</code>.')}`)}`;
+${ig('AI descriptions', on(I.ai), `<p class="ig-d">Claude drafts product and service descriptions, for plans with AI descriptions.</p>${env('<code>ANTHROPIC_API_KEY</code>.')}`)}</div>`;
   $('#mailForm', box).addEventListener('submit', async (e) => {
     e.preventDefault(); try { await api('PUT', '/api/platform/mail-server', Object.fromEntries(new FormData(e.target))); toast('Mail server saved. Send a test email to check it.'); integrationsCard(box); } catch (x) { toast(x.message, true); }
   });
