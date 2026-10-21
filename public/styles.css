@@ -658,3 +658,6 @@ a.hp-nav{color:var(--text);text-decoration:none;padding:6px 8px;margin:0 -8px 10
 #main:not(.portal) .card:not(.sa-card)>h2:first-child,#main:not(.portal) .card>.bill-h:first-child,#main:not(.portal) .card>.plan-head:first-child,#main:not(.portal) .card>.tpl-head:first-child,#main:not(.portal) .card>.pay-card-h:first-child{margin:-18px -18px 14px;padding:12px 18px;background:var(--tint);border-bottom:1px solid var(--line);border-radius:12px 12px 0 0}
 #main:not(.portal) .card:not(.sa-card)>h2:first-child{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:16px}
 #main:not(.portal) .card>.tpl-head:first-child h2,#main:not(.portal) .card>.plan-head:first-child h2{font-size:16px}
+/* App Settings: two columns of boxes, each stacked at its own height (one column on narrow screens) */
+.as-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:start}.as-col>.card{margin:0 0 18px}.pay-card{margin-top:0}
+@media (max-width:900px){.as-cols{grid-template-columns:minmax(0,1fr)}}
