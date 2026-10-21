@@ -722,7 +722,7 @@ ${discCard('invoice', d.id ? d.disclaimer || '' : company.invoiceDisclaimer ?? '
 </div>
 <aside class="qside"><div class="qcard"><h3>Client payments</h3><p class="muted">How the client can pay this invoice.</p>
 ${planHas('onlinePayments') ? switchRow('allowCard', 'Card payments', on('allowCard')) : ''}
-${planHas('zelle') ? switchRow('allowZelle', 'Zelle', on('allowZelle') && !!company.zelleRecipient, company.zelleRecipient ? '' : 'Add your Zelle details in App Settings', !company.zelleRecipient) : ''}</div>
+${planHas('zelle') ? switchRow('allowZelle', 'Zelle', on('allowZelle') && !!company.zelleRecipient, company.zelleRecipient ? '' : 'Add your Zelle details in Company Profile', !company.zelleRecipient) : ''}</div>
 <div class="qcard"><h3>Client view</h3><p class="muted">What the client sees on their invoice.</p>
 ${switchRow('showQty', 'Quantities', on('showQty'))}${switchRow('showUnit', 'Unit prices', on('showUnit'))}${switchRow('showLineTotals', 'Line item totals', on('showLineTotals'))}
 ${switchRow('showAccountBalance', 'Account balance', on('showAccountBalance'))}${switchRow('showLateStamp', 'Late stamp (if overdue)', on('showLateStamp'))}</div>
@@ -845,7 +845,7 @@ ${discCard('quote', d.id ? d.disclaimer || '' : company.quoteDisclaimer ?? DEFAU
 </div>
 <aside class="qside"><div class="qcard"><h3>Client payments</h3><p class="muted">How the client can pay this quote's deposit.</p>
 ${planHas('onlinePayments') ? switchRow('allowCard', 'Card payments', d.allowCard !== 'off') : ''}
-${planHas('zelle') ? switchRow('allowZelle', 'Zelle', d.allowZelle !== 'off' && !!company.zelleRecipient, company.zelleRecipient ? '' : 'Add your Zelle details in App Settings', !company.zelleRecipient) : ''}</div>
+${planHas('zelle') ? switchRow('allowZelle', 'Zelle', d.allowZelle !== 'off' && !!company.zelleRecipient, company.zelleRecipient ? '' : 'Add your Zelle details in Company Profile', !company.zelleRecipient) : ''}</div>
 <div class="qcard"><h3>Notes</h3><textarea name="internalNotes" rows="6" placeholder="Leave an internal note for yourself or a team member. Clients never see this.">${esc(d.internalNotes || '')}</textarea></div></aside></div></form>`;
   const form = $('form', main); wireItems(form);
   form._doc = d; form._kind = 'quote'; form._discSaved = $('[name=disclaimer]', form).value;
