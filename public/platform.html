@@ -84,6 +84,9 @@
     .lg-sample{margin-top:14px;font-size:12px}.lg-bar{display:flex;align-items:center;gap:10px;background:#0f1f3d;color:#fff;padding:10px 14px;border-radius:10px;margin-top:4px;font-size:17px;--logo-h:30px;--logo-w:160px}
     .pf-auth-logo{display:flex;justify-content:center;margin-bottom:12px;--logo-h:44px;--logo-w:220px}
     @media (max-width:640px){.lg-grid{grid-template-columns:1fr}}
+    /* settings: two columns on wide screens */
+    .set-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 18px;align-items:start}.set-col>.card{margin-bottom:18px}
+    @media (max-width:1000px){.set-grid{grid-template-columns:minmax(0,1fr)}}
     /* maintenance mode */
     .mt-bar{background:#b91c1c;color:#fff;padding:8px 16px;text-align:center;font-size:14px}.mt-bar a{color:#fff;font-weight:600}
     /* promotions tab */
@@ -185,6 +188,6 @@
   <div id="toast"></div>
   <script src="/hc-editor.js?v=1"></script>
   <script src="/brand.js?v=1"></script>
-  <script src="/platform.js?v=27"></script>
+  <script src="/platform.js?v=28"></script>
 </body>
 </html>

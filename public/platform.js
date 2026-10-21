@@ -303,8 +303,8 @@ window.addEventListener('beforeunload', (e) => { if (D && draftPlans && plansDir
 function settingsView(main) {
   const s = D.settings; const site = `${location.origin}/pricing`;
   main.innerHTML = `<div class="head"><div><h1>Settings</h1></div></div>
-<div class="card" style="max-width:720px" id="mtCard"></div>
-<form id="sf" class="card" style="max-width:720px"><h2>Your product</h2>
+<div class="set-grid"><div class="set-col"><div class="card" id="mtCard"></div>
+<form id="sf" class="card"><h2>Your product</h2>
 <div class="row"><label>Product name<input name="productName" value="${esc(s.productName)}" required maxlength="60"></label><label>Contact email<input name="contactEmail" type="email" value="${esc(s.contactEmail)}" placeholder="sales@yourapp.com"></label></div>
 <p class="muted" style="font-size:13px;margin-top:-4px">The product name appears on the pricing page and in account emails. Accounts see the contact email when they want to change plans, and new sign-ups are reported to it.</p>
 <h2 style="margin-top:20px">Terms and privacy</h2>
@@ -319,12 +319,12 @@ function settingsView(main) {
 <div class="row"><label>Show a banner in their app (days before)<input name="expiryBannerDays" type="number" min="0" max="60" value="${esc(s.expiryBannerDays ?? 7)}"></label><label>Email the owner a reminder (days before)<input name="expiryReminderDays" type="number" min="0" max="60" value="${esc(s.expiryReminderDays ?? 3)}"></label></div>
 <p class="muted" style="font-size:13px;margin-top:-4px">For accounts you gave a last day of access (e.g. trials). Owners and admins see the banner; owners can choose a plan from it, which removes the end date. The reminder is sent once per end date; edit its wording in Messages → Email templates → Access ending soon. 0 means on the last day itself.</p>
 <div class="foot" style="display:flex;justify-content:flex-end"><button class="btn">Save settings</button></div></form>
-<div class="card" style="max-width:720px" id="logoCard"></div>
-<div class="card" style="max-width:720px" id="reserved"></div>
-<div class="card" style="max-width:720px" id="integ"><h2>Integrations</h2><p class="muted">Checking…</p></div>
-<div class="card" style="max-width:720px"><h2>Web addresses</h2>
+<div class="card"><h2>Web addresses</h2>
 ${D.devMode ? `<p>You’re running without <code>PLATFORM_DOMAIN</code>, so this server answers as your own account on any address, and other accounts open at <code>&lt;address&gt;.${esc(D.rootDomain)}</code>.</p>` : `<p>Accounts open at <code>&lt;address&gt;.${esc(D.rootDomain)}</code>. The pricing page is at <code>${esc(D.rootDomain)}</code>.</p>`}
-<p class="muted" style="font-size:14px">To go live: point <code>*.yourapp.com</code> and <code>yourapp.com</code> at this server in DNS, set <code>PLATFORM_DOMAIN=yourapp.com</code> and <code>BASE_URL=https://yourapp.com</code>, and put an HTTPS proxy in front (the README has a Caddy example that also issues certificates for custom domains).</p></div>`;
+<p class="muted" style="font-size:14px">To go live: point <code>*.yourapp.com</code> and <code>yourapp.com</code> at this server in DNS, set <code>PLATFORM_DOMAIN=yourapp.com</code> and <code>BASE_URL=https://yourapp.com</code>, and put an HTTPS proxy in front (the README has a Caddy example that also issues certificates for custom domains).</p></div>
+<div class="card" id="reserved"></div></div>
+<div class="set-col"><div class="card" id="logoCard"></div>
+<div class="card" id="integ"><h2>Integrations</h2><p class="muted">Checking…</p></div></div></div>`;
   $('#sf').addEventListener('submit', async (e) => {
     e.preventDefault(); const b = Object.fromEntries(new FormData(e.target)); b.allowSignups = !!b.allowSignups;
     try { await api('PUT', '/api/platform/settings', b); await load(); toast('Settings saved'); render(); } catch (x) { toast(x.message, true); }
