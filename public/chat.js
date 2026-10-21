@@ -52,7 +52,7 @@ textarea:focus,input:focus{outline:2px solid var(--brand,#2563eb);outline-offset
 .go{border:0;background:var(--brand,#2563eb);color:#fff;border-radius:10px;height:38px;padding:0 14px;font-size:14px;font-weight:600;cursor:pointer}
 .go:disabled{opacity:.5;cursor:default}
 .human{display:block;margin:8px auto 0;background:none;border:0;color:var(--brand,#2563eb);font-size:13px;font-weight:600;cursor:pointer;text-decoration:underline}
-.ho{display:grid;gap:8px}.ho p{margin:0;font-size:13px;color:var(--c-muted)}.ho .row{display:flex;gap:8px}
+.ho{display:grid;gap:8px}.away{margin:0 0 8px;padding:8px 10px;border-radius:10px;background:var(--c-soft);border:1px solid var(--c-line);font-size:13px;line-height:1.45;color:var(--c-text)}.alt-link{display:block;text-align:center;font-size:13px;margin-top:6px;color:var(--brand,#2563eb)}.ho p{margin:0;font-size:13px;color:var(--c-muted)}.ho .row{display:flex;gap:8px}
 .err{color:#dc2626;font-size:12px;min-height:0}
 .typing{align-self:flex-start;font-size:12px;color:var(--c-muted)}
 @media (max-width:480px){.panel{right:0;bottom:0;width:100vw;max-width:100vw;height:100%;max-height:100%;border-radius:0}.btn{bottom:${where === 'app' ? '84px' : '16px'};right:16px}}
@@ -96,7 +96,7 @@ textarea:focus,input:focus{outline:2px solid var(--brand,#2563eb);outline-offset
     draw();
   }
   function draw() {
-    const st = !S || S.status === 'bot' ? 'Ask us anything' : S.status === 'closed' ? 'Chat ended' : C.online ? 'We’re online' : 'We’ll reply by email';
+    const st = !S || S.status === 'bot' ? 'Ask us anything' : S.status === 'closed' ? 'Chat ended' : C.online ? 'We’re online' : 'Away · leave a message';
     $('.st').textContent = st; $('.dot').classList.toggle('off', !C.online);
     const sig = msgs.map((m) => m.id).join() + '|' + (S ? S.status : '');
     if (sig !== shown) { shown = sig;
@@ -110,15 +110,16 @@ textarea:focus,input:focus{outline:2px solid var(--brand,#2563eb);outline-offset
   }
   // the footer is rebuilt only when it has to change (chat ended, the "talk to a person" form, the bot handing over); a draft and focus carry over
   function drawFoot() {
-    const mode = S && S.status === 'closed' ? 'closed' : handoff ? 'handoff' : !S || S.status === 'bot' ? 'bot' : 'live';
+    const mode = (S && S.status === 'closed' ? 'closed' : handoff ? 'handoff' : !S || S.status === 'bot' ? 'bot' : 'live') + (C.online ? '' : '-away');
     if (mode === footMode) return;
     const f = $('.foot'); const old = f.querySelector('textarea'); const draft = old ? old.value : ''; const focused = old && root.activeElement === old;
     footMode = mode;
     if (mode === 'live' || mode === 'bot') setTimeout(() => { const t = f.querySelector('textarea'); if (t && draft) t.value = draft; if (t && focused) t.focus(); });
     if (S && S.status === 'closed') { f.innerHTML = '<button class="go" type="button" style="width:100%">Start a new chat</button>'; f.querySelector('.go').addEventListener('click', () => { S = null; store.set(null); msgs = []; show(); }); return; }
+    const contact = C.contactUrl ? `<a class="alt-link" href="${esc(C.contactUrl)}" target="_blank" rel="noopener">Or use our contact form</a>` : '';
     if (handoff) {
       const p = who(); const need = !C.online;
-      f.innerHTML = `<form class="ho"><p>${need ? esc(C.offline) : 'We’ll bring someone in. Add your email in case you leave the page.'}</p><div class="row"><input name="name" placeholder="Your name" maxlength="100" value="${esc(p.name || '')}" autocomplete="name"><input name="email" type="email" placeholder="Email${need ? '' : ' (optional)'}" ${need ? 'required' : ''} value="${esc(p.email || '')}" autocomplete="email"></div><div class="err"></div><div class="row"><button class="go" type="submit" style="flex:1">${need ? 'Send to the team' : 'Talk to a person'}</button><button class="go" type="button" style="background:transparent;color:var(--c-muted)">Back</button></div></form>`;
+      f.innerHTML = `<form class="ho">${need ? `<p class="away">${esc(C.offline)}</p>` : '<p>We’ll bring someone in. Add your email in case you leave the page.</p>'}<div class="row"><input name="name" placeholder="Your name" maxlength="100" value="${esc(p.name || '')}" autocomplete="name"><input name="email" type="email" placeholder="Email${need ? '' : ' (optional)'}" ${need ? 'required' : ''} value="${esc(p.email || '')}" autocomplete="email"></div>${need ? '<textarea name="message" rows="3" maxlength="2000" placeholder="Your message" aria-label="Your message"></textarea>' : ''}<div class="err"></div><div class="row"><button class="go" type="submit" style="flex:1">${need ? 'Leave a message' : 'Talk to a person'}</button><button class="go" type="button" style="background:transparent;color:var(--c-muted)">Back</button></div>${need ? contact : ''}</form>`;
       const form = f.querySelector('form'); form.querySelector('button[type=button]').addEventListener('click', () => { handoff = false; drawFoot(); });
       form.addEventListener('submit', async (e) => {
         e.preventDefault(); const b = Object.fromEntries(new FormData(form)); const go = form.querySelector('button[type=submit]'); go.disabled = true;
@@ -128,7 +129,7 @@ textarea:focus,input:focus{outline:2px solid var(--brand,#2563eb);outline-offset
       form.querySelector('input:not([value]), input[value=""]')?.focus();
       return;
     }
-    f.innerHTML = `<form class="send"><textarea rows="1" placeholder="Type a message…" maxlength="2000" aria-label="Message"></textarea><button class="go" type="submit">Send</button></form>${!S || S.status === 'bot' ? '<button class="human" type="button">Talk to a person</button>' : ''}<div class="err"></div>`;
+    f.innerHTML = `<form class="send"><textarea rows="1" placeholder="Type a message…" maxlength="2000" aria-label="Message"></textarea><button class="go" type="submit">Send</button></form>${!S || S.status === 'bot' ? `<button class="human" type="button">${C.online ? 'Talk to a person' : 'No one’s available live: leave a message'}</button>` : !C.online ? contact : ''}<div class="err"></div>`;
     const form = f.querySelector('form'); const ta = form.querySelector('textarea');
     ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.min(120, ta.scrollHeight) + 'px'; });
     ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); } });

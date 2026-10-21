@@ -37,6 +37,7 @@ ${S.allowSignups ? `<a class="btn ${i === mid ? '' : 'alt'}" href="#signup" data
   document.addEventListener('click', (e) => { const b = e.target.closest('[data-period]'); if (!b) return; period = b.dataset.period; drawPlans(); const sel = $('#sf [name=interval]'); if (sel) { sel.value = period; sel.dispatchEvent(new Event('change')); } });
   $('#foot').innerHTML = 'Questions? <a href="#contact" data-contact="">Contact us</a> · <a href="/terms">Terms of Service</a> · <a href="/privacy">Privacy Policy</a>';
   document.addEventListener('click', (e) => { const b = e.target.closest('[data-contact]'); if (b) { e.preventDefault(); openContact(S, b.dataset.contact); } });
+  if (location.hash === '#contact') openContact(S, ''); // a link straight to the contact form (e.g. from the chat when no one is available)
   if (!S.allowSignups) return;
   const cta = $('#topCta'); cta.textContent = 'Get started'; delete cta.dataset.contact;
   // a referral link (/pricing?ref=…) from another business: kept for this visit, so it's still there after looking around

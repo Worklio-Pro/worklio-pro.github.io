@@ -474,6 +474,7 @@ function messagesView(main) {
 A.msgTab = (d) => { msgTab = d.k; messagesView($('#main')); };
 /* ===== Messages → Live chat (lib/chat.js): chats from the chat button; the open chat refreshes every few seconds ===== */
 let LC = null; let lcSel = ''; let lcTimer = null; let lcShown = '';
+const LC_TZ = [['America/New_York', 'Eastern'], ['America/Chicago', 'Central'], ['America/Denver', 'Mountain'], ['America/Phoenix', 'Arizona'], ['America/Los_Angeles', 'Pacific'], ['America/Anchorage', 'Alaska'], ['Pacific/Honolulu', 'Hawaii']];
 const LC_WHERE = { site: 'Website', help: 'Help Center', app: 'In the app' };
 const LC_ST = { waiting: ['Waiting', 'q-sent'], live: ['Live', 'active'], bot: ['With the bot', ''], closed: ['Ended', ''] };
 const lcAgo = (s) => { const m = Math.round((Date.now() - new Date(s)) / 60000); return m < 1 ? 'now' : m < 60 ? m + 'm' : m < 1440 ? Math.round(m / 60) + 'h' : new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); };
@@ -481,6 +482,7 @@ const lcLink = (t) => esc(t).replace(/https?:\/\/[^\s<]+[^\s<.,;:!?)'"]/g, (u) =
 function chatCard(box) {
   box.innerHTML = `<div class="lc-head"><h2>Live chat</h2><div class="acts">${POPOUT ? `<button type="button" class="btn alt sm" data-act="lcNotify" id="lcNotify" ${'Notification' in window && Notification.permission === 'default' ? '' : 'hidden'}>Turn on alerts</button>` : '<button type="button" class="btn alt sm" data-act="lcPopout" title="Open Live chat in its own window">Pop out ↗</button>'}<button type="button" class="btn alt sm" data-act="lcSettings">Chat settings</button></div></div>
 ${LC && !LC.settings.on ? '<div class="note">The chat button is off. Turn it on in <strong>Chat settings</strong> to show it on your site, help center and in the app.</div>' : ''}
+${LC && LC.settings.on && LC.settings.hours.on && !LC.inHours ? `<div class="note">It’s outside your business hours (${esc(LC.hoursText)}), so people see your “no one is available” message and can leave one.</div>` : ''}
 <div class="lc"><div class="lc-list" id="lcList"><p class="muted">Loading…</p></div><div class="lc-conv" id="lcConv"><p class="muted lc-empty">Choose a chat to read it and reply.</p></div></div>`;
   lcLoad(); clearInterval(lcTimer);
   lcTimer = setInterval(() => { if (tab !== 'messages' || msgTab !== 'chat' || !$('#lcList')) { clearInterval(lcTimer); return; } lcLoad(); }, 4000);
@@ -545,8 +547,16 @@ A.lcSettings = () => {
   const m = modal('Chat settings', `<form id="lcsf"><label class="switchline"><input type="checkbox" name="on" ${s.on ? 'checked' : ''}> Show the chat button</label>
 <p class="muted" style="font-size:13px;margin:4px 0 6px">Show it on:</p><div class="lc-where">${Object.entries(LC_WHERE).map(([k, l]) => `<label class="switchline"><input type="checkbox" name="where" value="${k}" ${s.where.includes(k) ? 'checked' : ''}> ${k === 'site' ? 'Your website (home and pricing pages)' : k === 'help' ? 'The help center' : 'Inside the business app'}</label>`).join('')}</div>
 <label>Greeting<textarea name="greeting" rows="2" maxlength="500">${esc(s.greeting)}</textarea></label>
-<label>When you’re away<textarea name="offline" rows="2" maxlength="500">${esc(s.offline)}</textarea></label>
-<p class="muted" style="font-size:13px;margin:-4px 0 12px">You count as online while Alpha’s Live chat is open in a browser. When you’re away, people leave their email and you get an email${D.settings.contactEmail ? ` at ${esc(D.settings.contactEmail)}` : ' (add a contact email in Settings)'}.</p>
+<h3 style="margin:8px 0 4px;font-size:15px">When no one is available</h3>
+<p class="muted" style="font-size:13px;margin:0 0 8px">No one is available when Live chat isn’t open in Alpha (here or in the pop-out window), or it’s outside the business hours below. People then see this message and can leave one with their email; you get an email${D.settings.contactEmail ? ` at ${esc(D.settings.contactEmail)}` : ' (add a contact email in Settings)'}.</p>
+<label>Message<textarea name="offline" rows="3" maxlength="500">${esc(s.offline)}</textarea></label>
+<p class="muted" style="font-size:13px;margin:-4px 0 10px"><code>{hours}</code> shows your business hours, e.g. “(Mon–Fri, 9 AM–5 PM CDT)”.</p>
+<label>Contact form link<input name="contactUrl" value="${esc(s.contactUrl || '')}" maxlength="300" placeholder="{site}/pricing#contact" spellcheck="false"></label>
+<p class="muted" style="font-size:13px;margin:-4px 0 12px">Shown as “Or use our contact form”. <code>{site}/pricing#contact</code> opens the Contact us form on your pricing page. Leave it blank to hide it.</p>
+<label class="switchline"><input type="checkbox" name="hoursOn" ${s.hours.on ? 'checked' : ''}> Only chat live during business hours</label>
+<div class="lc-hours"><label>Time zone<select name="tz">${LC_TZ.map(([z, l]) => `<option value="${z}" ${s.hours.tz === z ? 'selected' : ''}>${l}</option>`).join('')}${LC_TZ.some(([z]) => z === s.hours.tz) ? '' : `<option value="${esc(s.hours.tz)}" selected>${esc(s.hours.tz)}</option>`}</select></label>
+<label>Opens<input type="time" name="open" value="${esc(s.hours.open)}"></label><label>Closes<input type="time" name="close" value="${esc(s.hours.close)}"></label></div>
+<div class="lc-days">${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d, i) => `<label><input type="checkbox" name="day" value="${i}" ${s.hours.days.includes(i) ? 'checked' : ''}> ${d}</label>`).join('')}</div>
 <label class="switchline"><input type="checkbox" name="ai" ${s.ai && LC.ai ? 'checked' : ''} ${LC.ai ? '' : 'disabled'}> Let AI answer from your help center articles and plans</label>
 <p class="muted" style="font-size:13px;margin:0 0 12px">${LC.ai ? 'Saved answers below are used first. AI answers only from your articles, plans and saved answers, and suggests a person when it isn’t sure.' : 'Needs <code>ANTHROPIC_API_KEY</code> (see Integrations → AI). Until then, the bot answers with your saved answers and matching help articles.'}</p>
 <h3 style="margin:8px 0 4px;font-size:15px">Saved answers</h3><p class="muted" style="font-size:13px;margin:0 0 8px">The first four questions show as buttons when a chat starts.</p>
@@ -557,7 +567,8 @@ A.lcSettings = () => {
   $('#lcsf', m).addEventListener('submit', async (e) => {
     e.preventDefault(); const f = e.target;
     // without an AI key the AI switch is greyed out, so the saved choice is kept
-    const b = { on: f.on.checked, ai: LC.ai ? f.ai.checked : LC.settings.ai, where: [...f.querySelectorAll('[name=where]:checked')].map((x) => x.value), greeting: f.greeting.value, offline: f.offline.value,
+    const b = { on: f.on.checked, ai: LC.ai ? f.ai.checked : LC.settings.ai, where: [...f.querySelectorAll('[name=where]:checked')].map((x) => x.value), greeting: f.greeting.value, offline: f.offline.value, contactUrl: f.contactUrl.value,
+      hours: { on: f.hoursOn.checked, tz: f.tz.value, open: f.open.value, close: f.close.value, days: [...f.querySelectorAll('[name=day]:checked')].map((x) => +x.value) },
       answers: [...f.querySelectorAll('.lc-ans')].map((r) => ({ q: r.querySelector('[name=q]').value, keywords: r.querySelector('[name=keywords]').value, a: r.querySelector('[name=a]').value })) };
     try { await api('PUT', '/api/platform/chat-settings', b); closeModal(); toast('Chat settings saved'); chatCard($('#chat')); } catch (x) { toast(x.message, true); }
   });
