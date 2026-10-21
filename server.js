@@ -1225,7 +1225,7 @@ app.put('/api/payments/settings', (req, res) => {
 app.get('/api/payments/stripe', async (req, res) => {
   if (!tenancy.has('onlinePayments') || !stripeKey()) return res.json({ connected: false });
   const get = (ep) => stripeApi('GET', ep).catch((e) => { console.error('Stripe:', e.message); return null; });
-  const [bal, charges, payouts, disputes] = await Promise.all([get('balance'), get('charges?limit=100&expand[]=data.balance_transaction'), get('payouts?limit=50&expand[]=data.destination'), get('disputes?limit=100')]);
+  const [bal, charges, payouts, disputes, txns] = await Promise.all([get('balance'), get('charges?limit=100&expand[]=data.balance_transaction'), get('payouts?limit=50&expand[]=data.destination'), get('disputes?limit=100'), get('balance_transactions?limit=100')]);
   const day = (t) => (t ? iso(new Date(t * 1000)) : null); const usd = (l) => round2((l || []).filter((x) => x.currency === 'usd').reduce((s, x) => s + x.amount, 0) / 100);
   const acct = (d) => (d && typeof d === 'object' ? { name: d.bank_name || d.brand || 'Bank account', last4: d.last4 || '' } : null);
   const charge = {};
@@ -1234,7 +1234,13 @@ app.get('/api/payments/stripe', async (req, res) => {
       status: c.disputed ? 'disputed' : c.refunded ? 'refunded' : c.amount_refunded ? 'partly refunded' : c.status === 'failed' ? 'failed' : c.status === 'pending' ? 'processing' : 'succeeded' };
   }
   const pl = (payouts && payouts.data) || []; const dl = (disputes && disputes.data) || [];
-  res.json({ connected: true, mode: stripeMode(), feePercent: connectedAccount() ? Number(tenancy.platform().settings.platformFeePercent) || 0 : 0, balance: bal ? { available: usd(bal.available), pending: usd(bal.pending) } : null, charges: charge,
+  // upcoming payouts, soonest first: payouts already on their way to the bank, then money that becomes available on a known day
+  // (it's paid out on the account's payout schedule from then), then money that's available now and waiting for the next payout
+  const due = {}; for (const t of (txns && txns.data) || []) if (t.status === 'pending' && t.currency === 'usd') { const d = day(t.available_on); due[d] = (due[d] || 0) + t.net; }
+  const upcoming = [...pl.filter((p) => ['pending', 'in_transit'].includes(p.status)).map((p) => ({ date: day(p.arrival_date), amount: round2(p.amount / 100), inTransit: true, bank: acct(p.destination) })),
+    ...Object.entries(due).filter(([, c]) => c > 0).map(([date, c]) => ({ date, amount: round2(c / 100) }))].sort((a, b) => (a.date < b.date ? -1 : 1));
+  const ready = bal ? usd(bal.available) : 0; if (ready > 0) upcoming.unshift({ date: null, amount: ready, next: true });
+  res.json({ connected: true, mode: stripeMode(), feePercent: connectedAccount() ? Number(tenancy.platform().settings.platformFeePercent) || 0 : 0, balance: bal ? { available: usd(bal.available), pending: usd(bal.pending) } : null, charges: charge, upcoming,
     payouts: pl.map((p) => ({ id: p.id, amount: round2(p.amount / 100), arrival: day(p.arrival_date), status: p.status, bank: acct(p.destination) })),
     bank: (pl.map((p) => acct(p.destination)).find(Boolean)) || null,
     disputes: { open: dl.filter((d) => /needs_response|under_review/.test(d.status)).length, total: dl.length } });

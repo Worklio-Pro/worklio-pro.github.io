@@ -666,3 +666,8 @@ a.hp-nav{color:var(--text);text-decoration:none;padding:6px 8px;margin:0 -8px 10
 .modal.tpl-modal{max-width:1120px}.tpl-modal .pv-frame{height:460px}
 .tpl-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:start}
 @media (max-width:900px){.tpl-grid{grid-template-columns:minmax(0,1fr)}.tpl-modal .pv-frame{height:380px}}
+/* Payments → Upcoming payouts: the link and its popup */
+.up-link{margin:4px 0 0;font-size:14px}
+.up-table{width:100%;border-collapse:collapse;font-size:15px}.up-table th{text-align:left;font-weight:500;color:var(--muted);font-size:14px;padding:4px 0 8px;border:0;text-transform:none;letter-spacing:0;background:none}.up-table th.r,.up-table td.r{text-align:right}
+.up-table td{padding:8px 0;border-bottom:1px solid var(--line);font-weight:600}.up-table td .muted{font-weight:400;font-size:13px}.up-table tr:last-child td{border-bottom:0}
+.up-note{font-size:13px;color:var(--muted);margin:14px 0 0;line-height:1.5}

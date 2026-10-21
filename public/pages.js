@@ -954,7 +954,9 @@ PAGES['/payments'] = {
     const onTime = (l) => (l.length ? Math.round((l.filter((i) => !i.dueDate || day(i.paidAt) <= i.dueDate).length / l.length) * 100) : null);
     const stat = (fn, n, lowerIsBetter, fmt) => [false, true].map((com) => { const now = fn(paidIn(ago(n), tomorrow, com)); const prev = fn(paidIn(ago(2 * n), ago(n), com));
       return `<div class="pt"><div class="cs-v sm">${now === null ? '—' : fmt(now)} ${change(now, prev, lowerIsBetter)}</div><div class="muted">${com ? 'Commercial' : 'Residential'}</div></div>`; }).join('');
-    const upcoming = S.balance ? S.balance.pending + S.balance.available : 0;
+    // upcoming payouts from Stripe (soonest first); the box shows their total and a link to the list
+    const UP = S.upcoming || []; payView.upcoming = UP;
+    const upcoming = UP.length ? UP.reduce((s, u) => s + u.amount, 0) : S.balance ? S.balance.pending + S.balance.available : 0;
     const since = { '30': ago(30), '90': ago(90), year: new Date().getFullYear() + '-01-01' }[v.date] || '';
     const list = rows.filter((r) => (v.status === 'all' || r.status === v.status) && (v.method === 'all' || (v.method === 'online' ? online(r.method) : r.method === v.method)) && (!since || r.date >= since)
       && (!v.q || [cname(r), r.doc[1].number, r.methodLabel, money(r.amount), r.reference].join(' ').toLowerCase().includes(v.q.toLowerCase())));
@@ -965,7 +967,7 @@ PAGES['/payments'] = {
     const docLink = ([kind, d]) => `<a href="/${kind}s/edit?id=${d.id}" data-link>${kind === 'quote' ? 'Quote' : 'Invoice'} ${esc(d.number)}</a>`;
     const admin = !me || ['owner', 'admin'].includes(me.role);
     const overview = `<div class="cstats pay-stats">
-<div class="cstat"><div class="cs-h"><strong>Upcoming payouts</strong></div><div class="cs-v">${money(upcoming)}</div><div class="muted">${!S.connected ? 'Payouts appear here once you connect Stripe and collect online payments' : upcoming ? `${S.balance.available ? `${money(S.balance.available)} ready to pay out · ` : ''}${money(S.balance.pending)} on its way` : 'Upcoming payouts appear after you collect payments'}</div></div>
+<div class="cstat"><div class="cs-h"><strong>Upcoming payouts</strong></div><div class="cs-v">${money(upcoming)}</div><div class="muted">${!S.connected ? 'Payouts appear here once you connect Stripe and collect online payments' : UP.length ? `<button type="button" class="link-btn up-link" data-act="viewPayouts">View ${UP.length} payout${UP.length === 1 ? '' : 's'}</button>` : 'Upcoming payouts appear after you collect payments'}</div></div>
 <button class="cstat" data-act="payInvoices"><div class="cs-h"><strong>Invoice payment time</strong><span>↗</span></div><div class="muted">Past 30 days</div><div class="pts">${stat(payDays, 30, true, (d) => `${d} ${d === 1 ? 'day' : 'days'}`)}</div></button>
 <div class="cstat"><div class="cs-h"><strong>Invoices paid on time</strong></div><div class="muted">Last 60 days</div><div class="pts">${stat(onTime, 60, false, (p) => p + '%')}</div></div></div>
 <h2 class="ftitle">All payments <span class="muted">(${list.length} result${list.length === 1 ? '' : 's'})</span></h2>
@@ -989,6 +991,13 @@ ${v.tab === 'payouts' ? payouts : overview}`;
   },
 };
 A.payTab = (d) => { payView.tab = d.t; refresh(); };
+// "View N payouts": the dates and amounts Stripe expects, with a note that they can change
+A.viewPayouts = () => {
+  const L = payView.upcoming || []; const when = (u) => (u.next ? 'Next payout' : new Date(u.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+  modal('Upcoming payouts', `<table class="up-table"><tr><th>Date</th><th class="r">Amount</th></tr>
+${L.map((u) => `<tr><td>${when(u)}${u.inTransit ? `<div class="muted">On its way${u.bank && u.bank.last4 ? ` to ${esc(u.bank.name)} ••${esc(u.bank.last4)}` : ''}</div>` : ''}</td><td class="r">${money(u.amount)}</td></tr>`).join('')}</table>
+<p class="up-note">Payout amounts and dates are estimates and may change until they’re deposited. <a href="https://docs.stripe.com/payouts#payout-schedule" target="_blank" rel="noopener">Learn more about payout schedules</a></p>`);
+};
 A.paySort = (d) => { if (payView.sort === d.k) payView.dir *= -1; else { payView.sort = d.k; payView.dir = d.k === 'client' || d.k === 'method' ? 1 : -1; } refresh(); };
 A.payInvoices = () => navigate('/invoices');
 
