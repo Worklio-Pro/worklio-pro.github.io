@@ -523,8 +523,19 @@ async function lcConv() {
   const sig = c.id + c.messages.length + c.status;
   if (!$('.lc-msgs', box) || !lcShown.startsWith(c.id)) {
     box.innerHTML = `<div class="lc-ch"><button type="button" class="lc-back" data-act="lcBack" aria-label="Back to chats">‹</button><div><strong>${esc(c.name || 'Visitor')}</strong><div class="sm" id="lcMeta"></div></div><div class="acts"><span id="lcSt"></span><button type="button" class="btn alt sm" data-act="lcClose" id="lcEnd">End chat</button><button type="button" class="btn danger sm" data-act="lcDel">Delete</button></div></div>
-<div class="lc-msgs"></div><form class="lc-reply" id="lcForm"><textarea name="text" rows="2" placeholder="Write a reply… (Enter sends, Shift+Enter for a new line)" maxlength="4000"></textarea><button class="btn">Send</button></form>`;
+<div class="lc-msgs"></div><form class="lc-reply" id="lcForm"><button type="button" class="btn alt lc-att" data-act="lcAttach" title="Send a file (up to 10 MB)" aria-label="Send a file">📎</button><input type="file" id="lcFile" multiple hidden accept=".jpg,.jpeg,.png,.webp,.gif,.heic,.heif,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt"><textarea name="text" rows="2" placeholder="Write a reply… (Enter sends, Shift+Enter for a new line)" maxlength="4000"></textarea><button class="btn">Send</button></form>`;
     const f = $('#lcForm'); const ta = f.text;
+    $('#lcFile').addEventListener('change', async (e) => {
+      const files = [...e.target.files].slice(0, 3); e.target.value = '';
+      for (const file of files) {
+        if (file.size > 10 * 1024 * 1024) { toast(`${file.name} is over 10 MB`, true); continue; }
+        try {
+          const r = await fetch(`/api/platform/chats/${lcSel}/files?name=${encodeURIComponent(file.name)}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file });
+          const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'The file couldn’t be sent');
+        } catch (x) { toast(x.message, true); }
+      }
+      lcShown = ''; lcLoad();
+    });
     ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); f.requestSubmit(); } });
     f.addEventListener('submit', async (e) => {
       e.preventDefault(); const text = ta.value.trim(); if (!text) return; const btn = $('button', f); btn.disabled = true;
@@ -536,8 +547,16 @@ async function lcConv() {
   if (lcShown === sig) return; lcShown = sig;
   const m = $('.lc-msgs', box);
   m.innerHTML = c.messages.map((x) => x.from === 'system' ? `<div class="lc-sys">${esc(x.text)}</div>`
-    : `<div class="lc-m ${x.from}"><span class="lc-who">${x.from === 'visitor' ? esc(c.name || 'Visitor') : x.from === 'bot' ? 'Bot' : esc(x.agent || 'You')} · ${new Date(x.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>${lcLink(x.text)}${x.links ? `<ul>${x.links.map((l) => `<li><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.title)}</a></li>`).join('')}</ul>` : ''}</div>`).join('');
-  m.scrollTop = m.scrollHeight;
+    : `<div class="lc-m ${x.from}"><span class="lc-who">${x.from === 'visitor' ? esc(c.name || 'Visitor') : x.from === 'bot' ? 'Bot' : esc(x.agent || 'You')} · ${new Date(x.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>${x.file ? lcFile(c.id, x.file) : lcLink(x.text)}${x.links ? `<ul>${x.links.map((l) => `<li><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.title)}</a></li>`).join('')}</ul>` : ''}</div>`).join('');
+  m.scrollTop = m.scrollHeight; m.querySelectorAll('img').forEach((i) => i.addEventListener('load', () => { m.scrollTop = m.scrollHeight; }, { once: true })); // pictures load after the scroll
+}
+A.lcAttach = () => $('#lcFile').click();
+const lcSize = (n) => (n < 1024 * 1024 ? Math.max(1, Math.round(n / 1024)) + ' KB' : (n / 1024 / 1024).toFixed(1) + ' MB');
+function lcFile(cid, f) {
+  const url = `/api/platform/chats/${cid}/files/${f.id}`;
+  if (f.deleted) return `<div class="lc-fgone">📎 ${esc(f.name)} (deleted after the time set in Chat settings)</div>`;
+  if (f.image) return `<a href="${url}" target="_blank" rel="noopener"><img class="lc-fimg" src="${url}" alt="${esc(f.name)}" loading="lazy"></a><a class="lc-fdl" href="${url}?download" download="${esc(f.name)}">Download ${esc(f.name)} (${lcSize(f.size)})</a>`;
+  return `<a class="lc-fcard" href="${url}?download" download="${esc(f.name)}"><i>${esc(f.name.split('.').pop().toUpperCase().slice(0, 4))}</i><span><b>${esc(f.name)}</b><small>${lcSize(f.size)} · Download</small></span></a>`;
 }
 A.lcClose = async () => { await api('POST', `/api/platform/chats/${lcSel}/close`); lcShown = ''; toast('Chat ended'); lcLoad(); };
 A.lcDel = async () => { if (!confirm('Delete this chat? This can’t be undone.')) return; await api('DELETE', '/api/platform/chats/' + lcSel); lcSel = ''; chatCard($('#chat')); toast('Chat deleted'); };
@@ -557,6 +576,10 @@ A.lcSettings = () => {
 <div class="lc-hours"><label>Time zone<select name="tz">${LC_TZ.map(([z, l]) => `<option value="${z}" ${s.hours.tz === z ? 'selected' : ''}>${l}</option>`).join('')}${LC_TZ.some(([z]) => z === s.hours.tz) ? '' : `<option value="${esc(s.hours.tz)}" selected>${esc(s.hours.tz)}</option>`}</select></label>
 <label>Opens<input type="time" name="open" value="${esc(s.hours.open)}"></label><label>Closes<input type="time" name="close" value="${esc(s.hours.close)}"></label></div>
 <div class="lc-days">${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d, i) => `<label><input type="checkbox" name="day" value="${i}" ${s.hours.days.includes(i) ? 'checked' : ''}> ${d}</label>`).join('')}</div>
+<h3 style="margin:8px 0 4px;font-size:15px">Files</h3>
+<label class="switchline"><input type="checkbox" name="files" ${s.files !== false ? 'checked' : ''}> Let people attach photos and files (up to 10 MB: photos, PDFs, Word, Excel, CSV, text)</label>
+<label style="max-width:320px">Delete files after (days; 0 keeps them)<input type="number" name="fileDays" min="0" max="3650" value="${esc(s.fileDays ?? 90)}"></label>
+<p class="muted" style="font-size:13px;margin:-4px 0 12px">Files are stored privately on your server and only the person who sent them and you can open them. Deleting a chat deletes its files.</p>
 <label class="switchline"><input type="checkbox" name="ai" ${s.ai && LC.ai ? 'checked' : ''} ${LC.ai ? '' : 'disabled'}> Let AI answer from your help center articles and plans</label>
 <p class="muted" style="font-size:13px;margin:0 0 12px">${LC.ai ? 'Saved answers below are used first. AI answers only from your articles, plans and saved answers, and suggests a person when it isn’t sure.' : 'Needs <code>ANTHROPIC_API_KEY</code> (see Integrations → AI). Until then, the bot answers with your saved answers and matching help articles.'}</p>
 <h3 style="margin:8px 0 4px;font-size:15px">Saved answers</h3><p class="muted" style="font-size:13px;margin:0 0 8px">The first four questions show as buttons when a chat starts.</p>
@@ -567,7 +590,7 @@ A.lcSettings = () => {
   $('#lcsf', m).addEventListener('submit', async (e) => {
     e.preventDefault(); const f = e.target;
     // without an AI key the AI switch is greyed out, so the saved choice is kept
-    const b = { on: f.on.checked, ai: LC.ai ? f.ai.checked : LC.settings.ai, where: [...f.querySelectorAll('[name=where]:checked')].map((x) => x.value), greeting: f.greeting.value, offline: f.offline.value, contactUrl: f.contactUrl.value,
+    const b = { on: f.on.checked, ai: LC.ai ? f.ai.checked : LC.settings.ai, where: [...f.querySelectorAll('[name=where]:checked')].map((x) => x.value), greeting: f.greeting.value, offline: f.offline.value, contactUrl: f.contactUrl.value, files: f.files.checked, fileDays: f.fileDays.value,
       hours: { on: f.hoursOn.checked, tz: f.tz.value, open: f.open.value, close: f.close.value, days: [...f.querySelectorAll('[name=day]:checked')].map((x) => +x.value) },
       answers: [...f.querySelectorAll('.lc-ans')].map((r) => ({ q: r.querySelector('[name=q]').value, keywords: r.querySelector('[name=keywords]').value, a: r.querySelector('[name=a]').value })) };
     try { await api('PUT', '/api/platform/chat-settings', b); closeModal(); toast('Chat settings saved'); chatCard($('#chat')); } catch (x) { toast(x.message, true); }
