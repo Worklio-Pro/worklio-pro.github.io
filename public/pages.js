@@ -955,8 +955,10 @@ PAGES['/payments'] = {
     const stat = (fn, n, lowerIsBetter, fmt) => [false, true].map((com) => { const now = fn(paidIn(ago(n), tomorrow, com)); const prev = fn(paidIn(ago(2 * n), ago(n), com));
       return `<div class="pt"><div class="cs-v sm">${now === null ? '—' : fmt(now)} ${change(now, prev, lowerIsBetter)}</div><div class="muted">${com ? 'Commercial' : 'Residential'}</div></div>`; }).join('');
     // upcoming payouts from Stripe (soonest first); the box shows their total and a link to the list
-    const UP = S.upcoming || []; payView.upcoming = UP;
-    const upcoming = UP.length ? UP.reduce((s, u) => s + u.amount, 0) : S.balance ? S.balance.pending + S.balance.available : 0;
+    // without dated entries from Stripe (or before the server has them), fall back to the balance: what's ready now, and what's still clearing
+    const B = S.balance || { available: 0, pending: 0 };
+    const UP = S.upcoming && S.upcoming.length ? S.upcoming : [...(B.available > 0 ? [{ date: null, amount: B.available, next: true }] : []), ...(B.pending > 0 ? [{ date: null, amount: B.pending, clearing: true }] : [])];
+    payView.upcoming = UP; const upcoming = UP.reduce((s, u) => s + u.amount, 0);
     const since = { '30': ago(30), '90': ago(90), year: new Date().getFullYear() + '-01-01' }[v.date] || '';
     const list = rows.filter((r) => (v.status === 'all' || r.status === v.status) && (v.method === 'all' || (v.method === 'online' ? online(r.method) : r.method === v.method)) && (!since || r.date >= since)
       && (!v.q || [cname(r), r.doc[1].number, r.methodLabel, money(r.amount), r.reference].join(' ').toLowerCase().includes(v.q.toLowerCase())));
@@ -993,7 +995,7 @@ ${v.tab === 'payouts' ? payouts : overview}`;
 A.payTab = (d) => { payView.tab = d.t; refresh(); };
 // "View N payouts": the dates and amounts Stripe expects, with a note that they can change
 A.viewPayouts = () => {
-  const L = payView.upcoming || []; const when = (u) => (u.next ? 'Next payout' : new Date(u.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+  const L = payView.upcoming || []; const when = (u) => (u.next ? 'Next payout' : u.clearing ? 'When the payments clear' : new Date(u.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
   modal('Upcoming payouts', `<table class="up-table"><tr><th>Date</th><th class="r">Amount</th></tr>
 ${L.map((u) => `<tr><td>${when(u)}${u.inTransit ? `<div class="muted">On its way${u.bank && u.bank.last4 ? ` to ${esc(u.bank.name)} ••${esc(u.bank.last4)}` : ''}</div>` : ''}</td><td class="r">${money(u.amount)}</td></tr>`).join('')}</table>
 <p class="up-note">Payout amounts and dates are estimates and may change until they’re deposited. <a href="https://docs.stripe.com/payouts#payout-schedule" target="_blank" rel="noopener">Learn more about payout schedules</a></p>`);
