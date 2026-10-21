@@ -533,7 +533,8 @@ A.lcSettings = () => {
   A.lcAnsRm = (d, el) => el.closest('.lc-ans').remove();
   $('#lcsf', m).addEventListener('submit', async (e) => {
     e.preventDefault(); const f = e.target;
-    const b = { on: f.on.checked, ai: LC.ai ? f.ai.checked : LC.settings.ai, // without a key the switch is greyed out: keep the saved choice where: [...f.querySelectorAll('[name=where]:checked')].map((x) => x.value), greeting: f.greeting.value, offline: f.offline.value,
+    // without an AI key the AI switch is greyed out, so the saved choice is kept
+    const b = { on: f.on.checked, ai: LC.ai ? f.ai.checked : LC.settings.ai, where: [...f.querySelectorAll('[name=where]:checked')].map((x) => x.value), greeting: f.greeting.value, offline: f.offline.value,
       answers: [...f.querySelectorAll('.lc-ans')].map((r) => ({ q: r.querySelector('[name=q]').value, keywords: r.querySelector('[name=keywords]').value, a: r.querySelector('[name=a]').value })) };
     try { await api('PUT', '/api/platform/chat-settings', b); closeModal(); toast('Chat settings saved'); chatCard($('#chat')); } catch (x) { toast(x.message, true); }
   });
