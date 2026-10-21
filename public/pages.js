@@ -629,6 +629,15 @@ function stripeConn(integ) {
   const S = integ.stripe; const mode = integ.paymentsMode === 'live' ? connChip('on', 'Live') : connChip('wait', 'Test mode');
   const base = { id: 'stripe', icon: 'stripe', feature: 'onlinePayments', title: 'Stripe', desc: 'Let clients pay invoices and quote deposits by card. The money goes straight to your Stripe account.' };
   if (!S) return { ...base, status: connChip('off', 'Not in your plan'), button: '', body: '' , desc: base.desc + ' Card payments are included on other plans.' };
+  const fee = S.feePercent ? ` A ${S.feePercent}% platform fee applies to each card payment.` : '';
+  // set up in the app (no Stripe login): its status, the payout bank, and the in-app form to finish or update it
+  if (S.accountType === 'embedded') {
+    const bank = S.bank ? `${esc(S.bank.name)} ••${esc(S.bank.last4)}` : 'your bank account';
+    if (S.chargesEnabled && integ.payments) return { ...base, desc: 'Clients pay invoices and quote deposits by card.', status: connChip('on', 'Connected') + mode + (S.due ? connChip('wait', 'Action needed') : ''), button: 'Manage', body: `${S.due ? '<div class="notice">Stripe needs a little more information to keep your payouts going.</div>' : ''}<p>Clients can pay you by card. Payouts go to <strong>${bank}</strong>.${fee}</p>
+<div class="sms-test"><a class="btn ${S.due ? '' : 'alt'}" href="/settings/card-payments" data-link>${S.due ? 'Add the missing details' : 'Update business or payout details'}</a><button type="button" class="btn danger sm" data-act="rmStripe" data-kind="embedded">Turn off card payments</button></div>` };
+    return { ...base, desc: 'Clients pay invoices and quote deposits by card.', status: connChip('wait', 'Setup not finished'), button: 'Manage', open: true, body: `<p>${S.detailsSubmitted && !S.due ? 'Stripe is reviewing your details. This usually takes a few minutes; you’ll be able to take card payments once it’s done.' : 'You started setting up card payments but didn’t finish. Pick up where you left off.'}</p>
+<div class="sms-test"><a class="btn" href="/settings/card-payments" data-link>Finish setup</a><button type="button" class="btn alt" data-act="refreshStripe">Check again</button><button type="button" class="btn danger sm" data-act="rmStripe" data-kind="embedded">Cancel</button></div>` };
+  }
   if (S.chargesEnabled && integ.payments) return { ...base, status: connChip('on', 'Connected') + mode, button: 'Manage', body: `<p>Connected to <strong>${esc(S.name || 'your Stripe account')}</strong>. Payouts, refunds and receipts are managed in Stripe.${S.feePercent ? ` A ${S.feePercent}% platform fee applies to each card payment.` : ''}</p>
 <div class="sms-test"><a class="btn alt" href="https://dashboard.stripe.com" target="_blank" rel="noopener">Open Stripe dashboard</a><button type="button" class="btn danger sm" data-act="rmStripe">Disconnect</button></div>` };
   if (S.ownKeys || S.serverKey) return { ...base, status: connChip('on', 'Connected') + mode, button: 'Manage', body: `<p>Card payments use ${S.serverKey ? 'the Stripe key in the server settings' : 'the Stripe API keys you saved earlier'}.${S.available ? ' You can switch to Connect with Stripe, which is simpler to look after.' : ''}</p>
@@ -636,9 +645,15 @@ function stripeConn(integ) {
   if (!S.available) return { ...base, status: connChip('off', 'Not available yet'), button: '', body: '', desc: base.desc + ' Until card payments are switched on for this service, the pay page runs a demo checkout that charges nobody.' };
   if (S.accountId) return { ...base, status: connChip('wait', 'Setup not finished'), button: 'Manage', open: true, body: `<p>${S.detailsSubmitted ? 'Stripe is reviewing your details. This usually takes a few minutes; you’ll be able to take card payments once it’s done.' : 'You started connecting Stripe but didn’t finish. Pick up where you left off: it takes about 5 minutes.'}</p>
 <div class="sms-test"><button type="button" class="btn" data-act="connectStripe">${S.detailsSubmitted ? 'Review details in Stripe' : 'Finish setting up Stripe'}</button><button type="button" class="btn alt" data-act="refreshStripe">Check again</button><button type="button" class="btn danger sm" data-act="rmStripe">Cancel</button></div>` };
-  return { ...base, status: connChip('off', 'Not connected'), button: 'Connect', body: `<ol class="pay-steps"><li>Click <strong>Connect with Stripe</strong>. You’ll go to Stripe’s secure site.</li><li>Set up your Stripe account: your business details and the bank account for payouts.</li><li>You come back here, and clients can pay you by card.</li></ol>
-<p class="muted" style="font-size:13px">Stripe charges its standard card processing fees${S.feePercent ? `, plus a ${S.feePercent}% platform fee on each payment` : ''}. Until you connect, the pay page runs a demo checkout that charges nobody.</p>
-<button type="button" class="btn" data-act="connectStripe">Connect with Stripe</button>` };
+  // not set up yet: the ways the platform offers (Alpha → Settings → Integrations → Stripe)
+  const M = S.methods || ['standard']; const inApp = M.includes('embedded'); const viaStripe = M.includes('standard');
+  if (!M.length) return { ...base, status: connChip('off', 'Not available yet'), button: '', body: '', desc: base.desc + ' Until card payments are switched on for this service, the pay page runs a demo checkout that charges nobody.' };
+  const steps = inApp ? '<li>Click <strong>Set up card payments</strong>.</li><li>Enter your business details and the bank account for payouts, right here. It takes about 10 minutes, and you don’t need a Stripe account.</li><li>Clients can pay you by card.</li>'
+    : '<li>Click <strong>Connect with Stripe</strong>. You’ll go to Stripe’s secure site.</li><li>Set up your Stripe account: your business details and the bank account for payouts.</li><li>You come back here, and clients can pay you by card.</li>';
+  return { ...base, desc: inApp ? 'Let clients pay invoices and quote deposits by card. The money goes straight to your bank account.' : base.desc, status: connChip('off', 'Not connected'), button: 'Connect', body: `<ol class="pay-steps">${steps}</ol>
+<p class="muted" style="font-size:13px">Stripe charges its standard card processing fees${S.feePercent ? `, plus a ${S.feePercent}% platform fee on each payment` : ''}. Until you ${inApp ? 'set up card payments' : 'connect'}, the pay page runs a demo checkout that charges nobody.</p>
+<div class="sms-test">${inApp ? '<a class="btn" href="/settings/card-payments" data-link>Set up card payments</a>' : ''}${viaStripe ? `<button type="button" class="btn ${inApp ? 'alt' : ''}" data-act="connectStripe">Connect with Stripe</button>` : ''}</div>
+${inApp && viaStripe ? '<p class="muted" style="font-size:13px;margin-top:8px">Already use Stripe? <strong>Connect with Stripe</strong> links your own Stripe account instead, and you manage payments in your Stripe dashboard.</p>' : ''}` };
 }
 async function connectionsPage(main) {
   const integ = await api('GET', '/api/integrations');
@@ -695,7 +710,44 @@ A.connectStripe = async (d, el) => {
   try { const r = await api('POST', '/api/integrations/stripe/connect', {}); location.href = r.url; } catch (err) { toast(err.message, true); el.disabled = false; el.textContent = 'Connect with Stripe'; }
 };
 A.refreshStripe = () => refresh();
-A.rmStripe = async () => { if (!confirm('Disconnect Stripe? Clients won’t be able to pay by card until you connect it again. Your Stripe account and its money aren’t affected.')) return; await api('POST', '/api/integrations/stripe/disconnect', {}); toast('Stripe disconnected'); refresh(); };
+A.rmStripe = async (d) => {
+  const inApp = d && d.kind === 'embedded';
+  if (!confirm(inApp ? 'Turn off card payments? Clients won’t be able to pay by card, and you’ll need to set card payments up again to turn them back on. Payouts already on their way still arrive.' : 'Disconnect Stripe? Clients won’t be able to pay by card until you connect it again. Your Stripe account and its money aren’t affected.')) return;
+  await api('POST', '/api/integrations/stripe/disconnect', {}); toast(inApp ? 'Card payments turned off' : 'Stripe disconnected'); refresh();
+};
+/* ===== /settings/card-payments: card payment setup inside the app (Stripe's embedded form; no Stripe account for the business) ===== */
+const CONNECT_JS = 'https://connect-js.stripe.com/v1.0/connect.js';
+const loadConnectJs = () => new Promise((resolve, reject) => {
+  if (window.StripeConnect && window.StripeConnect.init) return resolve(window.StripeConnect);
+  window.StripeConnect = window.StripeConnect || {}; window.StripeConnect.onLoad = () => resolve(window.StripeConnect);
+  if (!document.querySelector(`script[src="${CONNECT_JS}"]`)) { const s = document.createElement('script'); s.src = CONNECT_JS; s.async = true; s.onerror = () => reject(new Error('Stripe’s setup form couldn’t load. Check your connection and try again.')); document.head.appendChild(s); }
+});
+PAGES['/settings/card-payments'] = {
+  title: 'Card payments setup',
+  async render(main) {
+    const integ = await api('GET', '/api/integrations'); const S = integ.stripe || {};
+    const done = S.accountType === 'embedded' && S.chargesEnabled && !S.due; // set up: show the form for updating details and the payout bank
+    main.innerHTML = `<div class="head"><div><a href="/settings#payments" data-link class="muted">← App Settings</a><h1>${done ? 'Business and payout details' : 'Set up card payments'}</h1>
+<p class="sub">${done ? 'Update your business details or the bank account your payouts go to.' : 'Enter your business details and the bank account for payouts. It takes about 10 minutes, and you can stop and come back any time.'}</p></div></div>
+<div class="card cp-setup"><div id="cpBanner"></div><div id="cpForm"><p class="muted">Loading the secure form…</p></div></div>
+<p class="muted" style="font-size:13px">Your details go securely to Stripe, our payment processor, which verifies businesses as banks require. ${esc(company.account.productName)} never sees your full SSN or bank account number. <a href="${esc(company.account.helpUrl || '')}/articles/set-up-payments" target="_blank" rel="noopener">How card payments work</a></p>`;
+    if (S.accountType && S.accountType !== 'embedded') { $('#cpForm', main).innerHTML = '<p>Card payments are connected with your own Stripe account. Manage your details and bank account in your Stripe dashboard.</p><a class="btn alt" href="https://dashboard.stripe.com" target="_blank" rel="noopener">Open Stripe dashboard</a>'; return; }
+    try {
+      const first = await api('POST', '/api/integrations/stripe/embedded', {}); let fresh = first.clientSecret;
+      const SC = await loadConnectJs();
+      const brand = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim() || '#2563eb';
+      const instance = SC.init({ publishableKey: first.publishableKey, fetchClientSecret: async () => { if (fresh) { const s = fresh; fresh = null; return s; } return (await api('POST', '/api/integrations/stripe/embedded', {})).clientSecret; },
+        appearance: { variables: { colorPrimary: brand, fontFamily: 'inherit', borderRadius: '8px' } } });
+      const box = $('#cpForm', main); box.innerHTML = '';
+      if (done) { $('#cpBanner', main).appendChild(instance.create('notification-banner')); box.appendChild(instance.create('account-management')); }
+      else {
+        const ob = instance.create('account-onboarding');
+        ob.setOnExit(async () => { const r = await api('GET', '/api/integrations').catch(() => ({})); const ok = r.stripe && r.stripe.chargesEnabled; toast(ok ? 'Card payments are on. Clients can now pay you by card.' : 'Saved. Finish any remaining steps to start taking card payments.', !ok); navigate('/settings#payments'); });
+        box.appendChild(ob);
+      }
+    } catch (err) { $('#cpForm', main).innerHTML = `<div class="notice">${esc(err.message)}</div><a class="btn alt" href="/settings#payments" data-link>Back to App Settings</a>`; }
+  },
+};
 
 PAGES['/settings/company'] = { title: 'Company Profile', render: (m) => companyPage(m, false) };
 PAGES['/settings'] = { title: 'App Settings', render: (m) => companyPage(m, true) };

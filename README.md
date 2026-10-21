@@ -105,6 +105,7 @@ goes through; then the owner lands on their login page. Plans with no `$` amount
 | Setting | What it does |
 |---|---|
 | `BILLING_STRIPE_SECRET_KEY` | Your Stripe key for plan subscriptions. Falls back to `STRIPE_SECRET_KEY`. Without either, checkout is a demo that starts the account without charging |
+| `STRIPE_PUBLISHABLE_KEY` | Optional: your publishable key (pk_…), needed only if businesses set up card payments inside the app (Alpha → Settings → Integrations → Stripe). It can also be saved there |
 | `BILLING_STRIPE_WEBHOOK_SECRET` | Optional. Add a webhook at `<platform address>/api/site/stripe-webhook` for `checkout.session.completed`, `customer.subscription.updated` and `customer.subscription.deleted`. Confirms payments when someone closes the tab, and pauses an account whose subscription is cancelled or unpaid (and resumes it once it's paid up) |
 
 The price charged comes from the plan's price text (`$29/month`, `$290/year`). In the console, accounts show *Awaiting payment*, *Paid by card*

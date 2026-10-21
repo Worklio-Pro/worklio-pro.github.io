@@ -690,10 +690,21 @@ app.delete('/api/account/domains/:host', (req, res) => {
   if (d.primary) { const next = t.domains.find((x) => x.verified); if (next) next.primary = true; }
   tenancy.savePlatform(); res.json(accountInfo());
 });
+// How businesses set up card payments (Alpha → Settings → Integrations → Stripe):
+//   'standard' "Connect with Stripe": the business makes or signs in to its own Stripe account on Stripe's pages (the default)
+//   'embedded' "Set up in Worklio Pro": Stripe's setup form inside the app; the account is the platform's (no Stripe login or dashboard
+//              for the business; the platform pays the Stripe fees and covers losses Stripe can't recover)
+//   'both'     each business picks
+const cardSetup = () => { const v = tenancy.platform().settings.cardSetup; return ['standard', 'embedded', 'both'].includes(v) ? v : 'standard'; };
+const stripePubKey = () => tenancy.platform().settings.stripePublishableKey || process.env.STRIPE_PUBLISHABLE_KEY || '';
+// the ways a business without an account can start now (embedded needs the publishable key for Stripe's form)
+const setupMethods = () => { const m = cardSetup(); return [m !== 'embedded' && 'standard', m !== 'standard' && stripePubKey() && 'embedded'].filter(Boolean); };
 // "Connect with Stripe" (Online card payments feature): the business signs up for or finishes its Stripe account on Stripe's own pages
 const connectReturn = () => `${baseUrl()}/settings?stripe=connected#payments`; // back to App Settings → Card payments
 async function stripeOnboardingLink() {
   const key = stripeLib.platformKey(); const sec = { ...secrets() }; const t = tenancy.current();
+  if (sec.stripeAccountId && sec.stripeAccountType === 'embedded') throw new Error('Card payments were set up in the app. Use Finish setup in App Settings → Card payments.');
+  if (!sec.stripeAccountId && !setupMethods().includes('standard')) throw new Error('Set up card payments with the Set up card payments button instead');
   if (!sec.stripeAccountId) {
     const a = await stripeLib.request(key, 'POST', 'accounts', { type: 'standard', ...(db.company.email ? { email: db.company.email } : {}), 'business_profile[name]': db.company.name || t.name, 'metadata[tenantId]': t.id });
     sec.stripeAccountId = a.id; sec.stripeChargesEnabled = !!a.charges_enabled; db.secrets = sec; save();
@@ -707,13 +718,38 @@ async function syncStripeAccount() {
   const sec = { ...secrets() }; if (!sec.stripeAccountId || !stripeLib.platformKey()) return;
   try {
     const a = await stripeLib.request(stripeLib.platformKey(), 'GET', 'accounts/' + encodeURIComponent(sec.stripeAccountId));
-    Object.assign(sec, { stripeChargesEnabled: !!a.charges_enabled, stripeDetailsSubmitted: !!a.details_submitted, stripeAccountName: (a.settings && a.settings.dashboard && a.settings.dashboard.display_name) || (a.business_profile && a.business_profile.name) || a.email || '' });
+    const bank = a.external_accounts && a.external_accounts.data && a.external_accounts.data[0]; const req = a.requirements || {}; // Stripe gives bank names in capitals: shown as "Chase"
+    Object.assign(sec, { stripeChargesEnabled: !!a.charges_enabled, stripePayoutsEnabled: !!a.payouts_enabled, stripeDetailsSubmitted: !!a.details_submitted, stripeAccountName: (a.settings && a.settings.dashboard && a.settings.dashboard.display_name) || (a.business_profile && a.business_profile.name) || a.email || '',
+      stripeBank: bank ? { name: bank.bank_name ? bank.bank_name.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()) : bank.brand ? `${bank.brand} card` : 'Bank account', last4: bank.last4 || '' } : null, stripeDue: (req.currently_due || []).length + (req.past_due || []).length });
     db.secrets = sec; save();
   } catch (e) { console.error('Stripe account check failed:', e.message); }
 }
 app.post('/api/integrations/stripe/connect', async (req, res) => {
   if (!stripeLib.platformKey()) return res.status(503).json({ error: 'Card payments aren’t available on this server yet. Contact support.' });
   try { res.json({ url: await stripeOnboardingLink() }); } catch (e) { console.error('Stripe Connect failed:', e.message); res.status(502).json({ error: `Stripe couldn’t start the setup: ${e.message}` }); }
+});
+// "Set up in Worklio Pro": make the business's account (owned by the platform) the first time, then a session for Stripe's
+// setup form in the app (and, once set up, its form for updating details and the payout bank account)
+app.post('/api/integrations/stripe/embedded', async (req, res) => {
+  const key = stripeLib.platformKey(); if (!key) return res.status(503).json({ error: 'Card payments aren’t available on this server yet. Contact support.' });
+  if (!stripePubKey()) return res.status(503).json({ error: 'Setting up card payments in the app isn’t available yet. Contact support.' });
+  const sec = { ...secrets() }; const t = tenancy.current();
+  if (sec.stripeAccountId && sec.stripeAccountType !== 'embedded') return res.status(400).json({ error: 'Card payments are connected with your own Stripe account. Manage them in Stripe.' });
+  if (!sec.stripeAccountId && !setupMethods().includes('embedded')) return res.status(400).json({ error: 'Use Connect with Stripe to set up card payments' });
+  try {
+    if (!sec.stripeAccountId) {
+      const a = await stripeLib.request(key, 'POST', 'accounts', { country: 'US', ...(db.company.email ? { email: db.company.email } : {}), 'business_profile[name]': db.company.name || t.name, 'metadata[tenantId]': t.id,
+        'controller[fees][payer]': 'application', 'controller[losses][payments]': 'application', 'controller[stripe_dashboard][type]': 'none', 'controller[requirement_collection]': 'stripe',
+        'capabilities[card_payments][requested]': 'true', 'capabilities[transfers][requested]': 'true', 'capabilities[us_bank_account_ach_payments][requested]': 'true' });
+      Object.assign(sec, { stripeAccountId: a.id, stripeAccountType: 'embedded', stripeChargesEnabled: !!a.charges_enabled }); db.secrets = sec; save();
+      t.stripeAccountId = a.id; t.stripeAccountType = 'embedded'; tenancy.savePlatform(); // the Connect webhook finds the account by this; Alpha counts the methods
+    }
+    const s = await stripeLib.request(key, 'POST', 'account_sessions', { account: sec.stripeAccountId,
+      'components[account_onboarding][enabled]': 'true', 'components[account_onboarding][features][external_account_collection]': 'true',
+      'components[account_management][enabled]': 'true', 'components[account_management][features][external_account_collection]': 'true',
+      'components[notification_banner][enabled]': 'true' });
+    res.json({ clientSecret: s.client_secret, publishableKey: stripePubKey() });
+  } catch (e) { console.error('Stripe in-app setup failed:', e.message); res.status(502).json({ error: `Stripe couldn’t start the setup: ${e.message}` }); }
 });
 // Stripe sends people here when an onboarding link has expired: make a fresh one
 app.get('/stripe/connect', async (req, res) => {
@@ -723,7 +759,8 @@ app.get('/stripe/connect', async (req, res) => {
 // forget the connected account (and any older pasted keys); the business keeps its Stripe account and its money
 app.post('/api/integrations/stripe/disconnect', (req, res) => {
   const t = tenancy.current(); delete t.stripeAccountId; tenancy.savePlatform();
-  const sec = { ...secrets() }; for (const k of ['stripeAccountId', 'stripeChargesEnabled', 'stripeDetailsSubmitted', 'stripeAccountName', 'stripeSecretKey', 'stripeWebhookSecret']) delete sec[k];
+  delete t.stripeAccountType; tenancy.savePlatform();
+  const sec = { ...secrets() }; for (const k of ['stripeAccountId', 'stripeAccountType', 'stripeChargesEnabled', 'stripePayoutsEnabled', 'stripeDetailsSubmitted', 'stripeAccountName', 'stripeBank', 'stripeDue', 'stripeSecretKey', 'stripeWebhookSecret']) delete sec[k];
   db.secrets = sec; save(); res.json({ ok: true });
 });
 // the account's own email and Twilio accounts (owner/admin only: these routes aren't in ROLE_API). Blank secrets keep the saved ones.
@@ -1573,14 +1610,15 @@ app.post('/api/clients/merge', (req, res) => {
 });
 // what this account's App Settings shows: which messages work, and the state of its card payments
 app.get('/api/integrations', async (req, res) => {
-  const sec = secrets(); if (sec.stripeAccountId && !sec.stripeChargesEnabled) await syncStripeAccount(); // e.g. just back from Stripe
+  const sec = secrets(); if (sec.stripeAccountId && (!sec.stripeChargesEnabled || sec.stripeAccountType === 'embedded')) await syncStripeAccount(); // e.g. just back from Stripe, or a new payout bank set in the app
   const s = secrets(); const pay = tenancy.has('onlinePayments');
   res.json({
     email: !!emailProvider(), sms: smsReady(), ai: !!process.env.ANTHROPIC_API_KEY,
     serverEmail: !!serverEmailProvider(),
     payments: !!stripeKey(), paymentsMode: stripeKey() ? stripeMode() : null,
     stripe: pay ? {
-      available: !!stripeLib.platformKey(), accountId: s.stripeAccountId || null, chargesEnabled: !!s.stripeChargesEnabled, detailsSubmitted: !!s.stripeDetailsSubmitted, name: s.stripeAccountName || '',
+      available: !!stripeLib.platformKey(), accountId: s.stripeAccountId || null, accountType: s.stripeAccountId ? s.stripeAccountType || 'standard' : null, methods: setupMethods(), bank: s.stripeBank || null, due: s.stripeDue || 0, payoutsEnabled: !!s.stripePayoutsEnabled,
+      chargesEnabled: !!s.stripeChargesEnabled, detailsSubmitted: !!s.stripeDetailsSubmitted, name: s.stripeAccountName || '',
       ownKeys: !!s.stripeSecretKey && !connectedAccount(), serverKey: tenancy.isDefault() && !s.stripeSecretKey && !connectedAccount() && !!process.env.STRIPE_SECRET_KEY,
       feePercent: Number(tenancy.platform().settings.platformFeePercent) || 0, // charged only on payments through Connect
     } : null,

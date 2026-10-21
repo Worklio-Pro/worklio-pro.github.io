@@ -597,7 +597,13 @@ ${ig('Stripe', S.key ? `${on(true)} <span class="cstatus ${S.mode === 'live' ? '
 ${S.keyVar ? `<p class="ig-env">Using <code>${S.keyVar}</code> from <code>.env</code>.</p>` : env('<code>BILLING_STRIPE_SECRET_KEY</code> (or <code>STRIPE_SECRET_KEY</code>).')}
 ${S.key ? '' : '<div class="note">Without a Stripe key, sign-up checkout and businesses’ invoice pay pages run demo payments that charge nobody, and businesses can’t connect Stripe.</div>'}
 <h4>Card payments for businesses (Stripe Connect)</h4>
-<p class="muted ig-p">Each business clicks <strong>Connect with Stripe</strong> in its App Settings, sets up its own Stripe account on Stripe’s pages, and clients’ payments go straight to it. ${I.connected} account${I.connected === 1 ? ' has' : 's have'} started connecting. One-time setup: turn on <strong>Connect</strong> in your Stripe dashboard (Settings → Connect).</p>
+<p class="muted ig-p">Each business sets up card payments once in its App Settings → Card payments, and clients’ payments go straight to that business. One-time setup: turn on <strong>Connect</strong> in your Stripe dashboard (Settings → Connect). ${I.connected} account${I.connected === 1 ? ' has' : 's have'} started: ${I.byMethod.standard} with Connect with Stripe, ${I.byMethod.embedded} set up in ${esc(D.settings.productName)}.</p>
+<form id="cardSetupForm"><div class="cs-opts">${[['standard', 'Connect with Stripe', 'Businesses make or sign in to their own Stripe account on Stripe’s pages and manage it in their Stripe dashboard. No extra Stripe fees for you.'],
+  ['embedded', `Set up in ${esc(D.settings.productName)}`, 'Businesses fill in Stripe’s form inside the app, with no Stripe account or login. You pay Stripe’s Connect fees for these accounts and cover losses Stripe can’t recover, such as disputes on an empty balance. Needs the publishable key below.'],
+  ['both', 'Let each business choose', 'Shows both buttons. Handy while you find out what businesses prefer.']].map(([v, l, d]) => `<label class="cs-opt"><input type="radio" name="cardSetup" value="${v}" ${I.cardSetup === v ? 'checked' : ''}><span><strong>${l}</strong><small>${d}</small></span></label>`).join('')}</div>
+<label>Stripe publishable key<input name="stripePublishableKey" placeholder="${I.pubKey ? esc(I.pubKey) + (I.pubKeyFromEnv ? ' (from .env)' : ' (saved)') : 'pk_live_… (Stripe → Developers → API keys)'}" autocomplete="off" spellcheck="false"></label>
+<p class="muted ig-p" style="margin-top:-4px">Only needed for setting up in the app. Use the key from the same Stripe account and mode as your secret key. Leave it blank to keep the saved one. Businesses already set up keep working whichever way you choose.</p>
+<div class="acts" style="justify-content:flex-start"><button class="btn alt">Save card payment setup</button></div></form>
 <form id="feeForm" class="inline-form"><label>Your platform fee on each card payment (%)<input name="platformFeePercent" type="number" min="0" max="30" step="0.1" value="${esc(D.settings.platformFeePercent || 0)}"></label><button class="btn alt">Save fee</button></form>
 <p class="muted ig-p">Payment confirmations: ${on(S.connectWebhook, 'Webhook connected', 'Webhook not set up')} In Stripe, add a webhook for <strong>events on connected accounts</strong> with <code>checkout.session.completed</code>, <code>checkout.session.async_payment_succeeded</code> and <code>account.updated</code>, then put its signing secret in <code>STRIPE_CONNECT_WEBHOOK_SECRET</code>.</p>
 ${copy(S.connectWebhookUrl, 'Connect webhook URL')}
@@ -608,6 +614,10 @@ ${I.localhost ? '<p class="muted ig-p" style="margin-top:8px">Stripe can’t rea
 ${ig('AI descriptions', on(I.ai), `<p class="ig-d">Claude drafts product and service descriptions, for plans with AI descriptions.</p>${env('<code>ANTHROPIC_API_KEY</code>.')}`)}`;
   $('#mailForm', box).addEventListener('submit', async (e) => {
     e.preventDefault(); try { await api('PUT', '/api/platform/mail-server', Object.fromEntries(new FormData(e.target))); toast('Mail server saved. Send a test email to check it.'); integrationsCard(box); } catch (x) { toast(x.message, true); }
+  });
+  $('#cardSetupForm', box).addEventListener('submit', async (e) => {
+    e.preventDefault(); const b = Object.fromEntries(new FormData(e.target)); if (!b.stripePublishableKey) delete b.stripePublishableKey;
+    try { await api('PUT', '/api/platform/settings', b); await load(); toast('Card payment setup saved'); integrationsCard(box); } catch (x) { toast(x.message, true); }
   });
   $('#feeForm', box).addEventListener('submit', async (e) => {
     e.preventDefault(); try { await api('PUT', '/api/platform/settings', Object.fromEntries(new FormData(e.target))); await load(); toast('Platform fee saved'); } catch (x) { toast(x.message, true); }
