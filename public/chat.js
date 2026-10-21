@@ -15,6 +15,7 @@
   const who = () => { try { return typeof me !== 'undefined' && me ? { name: me.name || '', email: me.email || '' } : {}; } catch (e) { return {}; } }; // the logged-in person in the business app
 
   let C = null; let S = null; let msgs = []; let open = false; let timer = null; let unread = 0; let handoff = false;
+  let shown = ''; let footMode = ''; // what's on screen, so checking for new messages doesn't redraw (and steal the typing box) when nothing changed
   const host = document.createElement('div'); host.id = 'chat-root';
   const root = host.attachShadow({ mode: 'open' });
 
@@ -97,15 +98,23 @@ textarea:focus,input:focus{outline:2px solid var(--brand,#2563eb);outline-offset
   function draw() {
     const st = !S || S.status === 'bot' ? 'Ask us anything' : S.status === 'closed' ? 'Chat ended' : C.online ? 'We’re online' : 'We’ll reply by email';
     $('.st').textContent = st; $('.dot').classList.toggle('off', !C.online);
+    const sig = msgs.map((m) => m.id).join() + '|' + (S ? S.status : '');
+    if (sig !== shown) { shown = sig;
     $('.list').innerHTML = msgs.map((m) => m.from === 'system' ? `<div class="sys">${esc(m.text)}</div>`
       : `<div class="m ${m.from}">${m.from === 'agent' ? `<span class="who">${esc(m.agent || 'Support')}</span>` : m.from === 'bot' && S && S.status !== 'bot' ? '<span class="who">Assistant</span>' : ''}${linkify(m.text)}${m.links ? `<ul>${m.links.map((l) => `<li><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.title)}</a></li>`).join('')}</ul>` : ''}</div>`).join('');
     const l = $('.list'); l.scrollTop = l.scrollHeight;
     $('.chips').innerHTML = !msgs.some((m) => m.from === 'visitor') && C.suggestions.length ? C.suggestions.map((q) => `<button class="chip" type="button">${esc(q)}</button>`).join('') : '';
     root.querySelectorAll('.chip').forEach((b) => b.addEventListener('click', () => sendText(b.textContent)));
+    }
     drawFoot();
   }
+  // the footer is rebuilt only when it has to change (chat ended, the "talk to a person" form, the bot handing over); a draft and focus carry over
   function drawFoot() {
-    const f = $('.foot');
+    const mode = S && S.status === 'closed' ? 'closed' : handoff ? 'handoff' : !S || S.status === 'bot' ? 'bot' : 'live';
+    if (mode === footMode) return;
+    const f = $('.foot'); const old = f.querySelector('textarea'); const draft = old ? old.value : ''; const focused = old && root.activeElement === old;
+    footMode = mode;
+    if (mode === 'live' || mode === 'bot') setTimeout(() => { const t = f.querySelector('textarea'); if (t && draft) t.value = draft; if (t && focused) t.focus(); });
     if (S && S.status === 'closed') { f.innerHTML = '<button class="go" type="button" style="width:100%">Start a new chat</button>'; f.querySelector('.go').addEventListener('click', () => { S = null; store.set(null); msgs = []; show(); }); return; }
     if (handoff) {
       const p = who(); const need = !C.online;
@@ -127,15 +136,19 @@ textarea:focus,input:focus{outline:2px solid var(--brand,#2563eb);outline-offset
     const h = f.querySelector('.human'); if (h) h.addEventListener('click', () => { handoff = true; drawFoot(); });
   }
   async function start() { const p = who(); const r = await api('POST', '/api/chat/start', { where, page: location.href, ...p }); S = { id: r.id, token: r.token, status: r.status }; store.set(S); msgs = []; merge(r); }
+  // the box empties as soon as a message is sent, so the next one can be typed while this one goes out
   async function sendText(text) {
-    const ta = $('textarea'); const go = root.querySelector('.send .go'); if (go) go.disabled = true;
+    const ta = $('textarea'); if (ta) { ta.value = ''; ta.style.height = 'auto'; } const er = root.querySelector('.err'); if (er) er.textContent = '';
+    const tmp = 'tmp' + Date.now();
     try {
       if (!S) await start();
-      msgs.push({ id: 'tmp', from: 'visitor', text, at: new Date().toISOString() }); draw();
+      msgs.push({ id: tmp, from: 'visitor', text, at: new Date().toISOString() }); draw();
       if (S.status === 'bot') $('.list').insertAdjacentHTML('beforeend', '<div class="typing">Typing…</div>');
       const r = await api('POST', `/api/chat/${S.id}/messages`, { token: S.token, text });
-      msgs = msgs.filter((m) => m.id !== 'tmp'); merge(r);
-    } catch (x) { msgs = msgs.filter((m) => m.id !== 'tmp'); draw(); const t2 = $('textarea'); if (t2) t2.value = text; const er = root.querySelector('.err'); if (er) er.textContent = x.message; return; }
-    const t3 = $('textarea'); if (t3) t3.focus(); if (ta) ta.value = '';
+      msgs = msgs.filter((m) => m.id !== tmp); merge(r);
+    } catch (x) {
+      msgs = msgs.filter((m) => m.id !== tmp); draw();
+      const t2 = $('textarea'); if (t2 && !t2.value) t2.value = text; const e2 = root.querySelector('.err'); if (e2) e2.textContent = x.message;
+    }
   }
 })();
