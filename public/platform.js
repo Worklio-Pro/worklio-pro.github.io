@@ -416,12 +416,19 @@ async function integrationsCard(box) {
   const S = I.stripe; const copy = (v, label) => `<div class="linkbox"><input readonly value="${esc(v)}" aria-label="${esc(label)}"><button type="button" class="btn alt" data-act="copy">Copy</button></div>`;
   box.innerHTML = `<h2>Integrations</h2><p class="muted" style="font-size:13px;margin-top:0">Shared by every account. Set these in the <code>.env</code> file next to <code>server.js</code> and restart. Keys are never shown here.</p>
 <div class="tablewrap"><table class="acc">
-<tr><td><strong>Email</strong><div class="sm">Quotes, invoices, reminders and password resets, sent in each business’s name</div></td><td>${on(I.email, `Connected (${esc(I.email)})`)}</td><td class="sm"><code>GMAIL_USER</code> + <code>GMAIL_APP_PASSWORD</code>, or <code>SENDGRID_API_KEY</code> + <code>EMAIL_FROM</code></td></tr>
+<tr><td><strong>Email</strong><div class="sm">Quotes, invoices, reminders and password resets, sent in each business’s name</div></td><td>${on(I.email, `Connected (${esc(I.email)})`)}</td><td class="sm">${I.mailServer ? `Your mail server below (${esc(I.mailServer.from)})` : '<code>GMAIL_USER</code> + <code>GMAIL_APP_PASSWORD</code>, or <code>SENDGRID_API_KEY</code> + <code>EMAIL_FROM</code>, or your mail server below'}</td></tr>
 <tr><td><strong>Text messages</strong><div class="sm">Twilio, for your own test texts only. Each business connects its own Twilio account in Account Connections</div></td><td>${on(I.sms)}</td><td class="sm"><code>TWILIO_ACCOUNT_SID</code>, <code>TWILIO_AUTH_TOKEN</code>, <code>TWILIO_FROM</code></td></tr>
 <tr><td><strong>AI descriptions</strong><div class="sm">Claude, for plans with AI descriptions</div></td><td>${on(I.ai)}</td><td class="sm"><code>ANTHROPIC_API_KEY</code></td></tr>
 <tr><td><strong>Stripe</strong><div class="sm">Your Stripe account: plan payments at sign-up, and “Connect with Stripe” for businesses’ card payments</div></td><td>${S.key ? `${on(true)} <span class="cstatus ${S.mode === 'live' ? 'active' : 'q-sent'}">${S.mode === 'live' ? 'Live' : 'Test mode'}</span>` : on(false)}</td><td class="sm">${S.keyVar ? `Using <code>${S.keyVar}</code>` : '<code>BILLING_STRIPE_SECRET_KEY</code> (or <code>STRIPE_SECRET_KEY</code>)'}</td></tr>
 </table></div>
 ${S.key ? '' : '<div class="note" style="margin-top:12px">Without a Stripe key, sign-up checkout and businesses’ invoice pay pages run demo payments that charge nobody, and businesses can’t connect Stripe.</div>'}
+<h3 style="font-size:15px;margin:18px 0 6px">Your mail server</h3>
+<p class="muted" style="font-size:14px;margin:0 0 8px">Send email from a mailbox at your own domain, such as a SiteGround email account. This replaces ${I.envEmail ? esc(I.envEmail) + ' from the .env file' : 'the .env email settings'} for every email the server sends; businesses that connected their own email keep using it. In SiteGround: Site Tools → Email → Accounts → ⋮ → Mail Configuration shows the outgoing (SMTP) server.</p>
+<form id="mailForm" class="mail-form"><div class="row"><label>Outgoing mail server<input name="host" value="${esc(I.mailServer ? I.mailServer.host : '')}" placeholder="mail.yourdomain.com" autocapitalize="off" spellcheck="false"></label><label>Port (SSL/TLS)<input value="465" readonly></label></div>
+<div class="row"><label>Username (the full email address)<input name="user" value="${esc(I.mailServer ? I.mailServer.user : '')}" placeholder="hello@yourdomain.com" autocomplete="off" autocapitalize="off" spellcheck="false"></label><label>Password<input name="pass" type="password" autocomplete="new-password" ${I.mailServer ? 'placeholder="Saved. Leave blank to keep it."' : ''}></label></div>
+<div class="row"><label>Send from<input name="from" type="email" value="${esc(I.mailServer ? I.mailServer.from : '')}" placeholder="Same as the username"></label><div></div></div>
+<div class="acts" style="justify-content:flex-start"><button class="btn alt">${I.mailServer ? 'Save mail server' : 'Use this mail server'}</button>${I.mailServer ? `<button type="button" class="btn danger sm" data-act="rmMailServer">${I.envEmail ? `Go back to ${esc(I.envEmail)}` : 'Remove'}</button>` : ''}</div></form>
+<p class="muted" style="font-size:13px;margin:6px 0 0">Emails show your product name (or <code>EMAIL_FROM_NAME</code>) as the sender. Then send a test below.</p>
 <h3 style="font-size:15px;margin:18px 0 6px">Card payments for businesses (Stripe Connect)</h3>
 <p class="muted" style="font-size:14px;margin:0 0 8px">Each business clicks <strong>Connect with Stripe</strong> in its App Settings, sets up its own Stripe account on Stripe’s pages, and clients’ payments go straight to it. ${I.connected} account${I.connected === 1 ? ' has' : 's have'} started connecting. One-time setup: turn on <strong>Connect</strong> in your Stripe dashboard (Settings → Connect).</p>
 <form id="feeForm" class="inline-form"><label>Your platform fee on each card payment (%)<input name="platformFeePercent" type="number" min="0" max="30" step="0.1" value="${esc(D.settings.platformFeePercent || 0)}"></label><button class="btn alt">Save fee</button></form>
@@ -435,6 +442,9 @@ ${I.localhost ? '<p class="muted" style="font-size:13px">Stripe can’t reach lo
 ${I.email ? '<form id="tEmail" class="inline-form"><label>Test email to<input name="to" type="email" required placeholder="you@example.com"></label><button class="btn alt">Send test email</button></form>' : ''}
 ${I.sms ? '<form id="tSms" class="inline-form"><label>Test text to<input name="to" required placeholder="+17135550100"></label><button class="btn alt">Send test text</button></form>' : ''}
 ${!I.email && !I.sms ? '<p class="muted" style="font-size:14px;margin:0">Connect email or text messages to send a test. Until then, messages are recorded in each account’s Notifications Log but not delivered.</p>' : ''}`;
+  $('#mailForm', box).addEventListener('submit', async (e) => {
+    e.preventDefault(); try { await api('PUT', '/api/platform/mail-server', Object.fromEntries(new FormData(e.target))); toast('Mail server saved. Send a test email to check it.'); integrationsCard(box); } catch (x) { toast(x.message, true); }
+  });
   $('#feeForm', box).addEventListener('submit', async (e) => {
     e.preventDefault(); try { await api('PUT', '/api/platform/settings', Object.fromEntries(new FormData(e.target))); await load(); toast('Platform fee saved'); } catch (x) { toast(x.message, true); }
   });
@@ -445,6 +455,7 @@ ${!I.email && !I.sms ? '<p class="muted" style="font-size:14px;margin:0">Connect
   });
 }
 
+A.rmMailServer = async () => { if (!confirm('Stop sending through your mail server?')) return; await api('DELETE', '/api/platform/mail-server'); toast('Mail server removed'); integrationsCard($('#integ')); };
 /* ===== actions ===== */
 A.closeModal = closeModal;
 

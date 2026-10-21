@@ -226,7 +226,9 @@ const envTwilio = () => { const { TWILIO_ACCOUNT_SID: sid, TWILIO_AUTH_TOKEN: to
 const ownTwilio = () => { const t = secrets().twilio; return t && t.sid && t.token && t.from ? t : null; };
 // texts to clients go only through the business's own Twilio account; the server's TWILIO_* settings are for platform tests
 const smsReady = () => !!ownTwilio();
-const serverEmailProvider = () => (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD ? 'Gmail' : process.env.SENDGRID_API_KEY && process.env.EMAIL_FROM ? 'SendGrid' : '');
+// the platform's own mail server, set in Alpha → Settings → Integrations (e.g. a SiteGround mailbox); it takes priority over the .env settings
+const platformSmtp = () => { const m = tenancy.platform().mailServer; return m && m.host && m.user && m.pass ? m : null; };
+const serverEmailProvider = () => (platformSmtp() ? 'Mail server' : process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD ? 'Gmail' : process.env.SENDGRID_API_KEY && process.env.EMAIL_FROM ? 'SendGrid' : '');
 const emailProvider = () => { const e = ownEmail(); return e ? EMAIL_LABELS[e.provider] : serverEmailProvider(); };
 async function sendgridSend(key, { from, fromName, to, replyTo, subject, text, html }) {
   const msg = { personalizations: [{ to: [{ email: to }] }], from: { email: from, name: fromName }, subject, content: [{ type: 'text/plain', value: text }, ...(html ? [{ type: 'text/html', value: html }] : [])] };
@@ -257,6 +259,13 @@ async function sendEmail(to, subject, body, { server = false, replyTo: replyOver
   const PS = tenancy.platform().settings;
   const fromName = server ? process.env.EMAIL_FROM_NAME || PS.productName : db.company.name;
   const replyTo = replyOverride || (server ? process.env.EMAIL_REPLY_TO || PS.contactEmail : db.company.email);
+  const ms = platformSmtp();
+  if (ms) {
+    try {
+      await smtpSend({ host: ms.host, port: Number(ms.port) || 465, user: ms.user, pass: ms.pass }, { from: ms.from || ms.user, fromName: fromName || db.company.name, to, replyTo: replyTo || db.company.email, subject, text: body, html });
+      return { status: 'sent', detail: `Mail server (${ms.host})` };
+    } catch (e) { return { status: 'failed', detail: `Mail server ${ms.host}: ${e.message}${/^535/.test(e.message) ? ' (check the username and password in Alpha → Settings → Integrations)' : ''}` }; }
+  }
   if (serverEmailProvider() === 'Gmail') {
     try {
       await smtpSend({ host: 'smtp.gmail.com', port: 465, user: gUser, pass: gPass.replace(/\s/g, '') },
