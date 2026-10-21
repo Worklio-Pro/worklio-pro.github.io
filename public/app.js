@@ -115,7 +115,7 @@ const planLocked = (path) => !!(company.account && (company.account.lockedPages 
 const betaPage = (path) => !!(company.account && (company.account.betaPages || []).includes(path));
 const navFor = () => NAV.map(([g, items]) => [g, items.filter(([p]) => memberCan(p) && !planLocked(p))]).filter(([, items]) => items.length);
 function renderSide(path) {
-  $('#side').innerHTML = `<div class="side-nav"><div class="brand">${company.logo ? `<a href="/" data-link class="brand-logo" title="Home"><img src="${esc(company.logo)}" alt="Home"></a>` : brandImg(company.account && company.account.product, 'dark')}<span>${esc(company.name || (company.account && company.account.productName) || 'Fieldwork')}</span></div>` +
+  $('#side').innerHTML = `<div class="side-nav"><div class="brand">${company.logo ? `<a href="/" data-link class="brand-logo" title="Home"><img src="${esc(company.logo)}" alt="Home"></a>` : brandImg(company.account && company.account.product, 'dark')}<span>${esc(company.name || (company.account && company.account.productName) || 'Worklio Pro')}</span></div>` +
     navFor().map(([g, items]) => `<div class="grp">${g}</div>` + items.map(([p, l]) => `<a href="${p}" data-link class="${p === path || (!navPaths.includes(path) && path.startsWith(p + '/')) ? 'on' : ''}">${l}${betaPage(p) ? ' <span class="beta-tag" title="This feature is in beta testing">Beta</span>' : ''}</a>`).join('')).join('') + `</div>${themeSwitch()}${me ? `<div class="side-user"><a href="/profile" data-link class="side-user-name${path === '/profile' ? ' on' : ''}" title="My profile (${esc(me.email)})">${avatarHtml(me, 26)}<span>${esc(me.name)}</span></a><button type="button" data-act="logout">Log out</button></div>` : ''}`;
   $('#side').classList.remove('open');
   renderBottomNav(path);
@@ -231,7 +231,7 @@ const HELP_TOPICS = [
 ];
 const helpOpen = () => $('#helpPanel').classList.contains('open');
 function helpView(topicId) {
-  const a = company.account || {}; const product = a.productName || 'Fieldwork';
+  const a = company.account || {}; const product = a.productName || 'Worklio Pro';
   const topic = HELP_TOPICS.find((t) => t.id === topicId);
   const head = `<div class="hp-head">${topic ? `<button type="button" class="tb-icon" data-act="helpTopic" data-id="" aria-label="Back">${svgIcon(ICONS.back)}</button>` : ''}<h2 id="helpTitle">${topic ? esc(topic.title) : 'Need a hand?'}</h2><button type="button" class="tb-icon" data-act="closeHelp" aria-label="Close help">${svgIcon(ICONS.close)}</button></div>`;
   let body;
@@ -346,7 +346,7 @@ async function render() {
   if (page && !memberCan(path)) { document.title = 'No access'; main.innerHTML = `<div class="card"><h1>You don't have access to this page</h1><p class="muted">Your access level doesn't include this page. Ask the account owner if you need more access.</p><p><a href="/calendar" data-link>Go to the job calendar</a></p></div>`; return; }
   if (page && planLocked(path)) { document.title = page.title; main.innerHTML = `<div class="card upgrade-card"><h1>${esc(page.title)} isn’t in your plan</h1><p class="muted">You’re on the ${esc(company.account.plan.name)} plan. Upgrade to get ${esc(page.title)} and more.</p><p><a href="/settings" data-link class="btn alt">See your plan</a></p></div>`; return; }
   if (!page) { document.title = 'Not found'; main.innerHTML = '<div class="card"><h1>Page not found</h1><p><a href="/business-overview" data-link>Go to dashboard</a></p></div>'; return; }
-  document.title = `${page.title} · ${company.name || (company.account && company.account.productName) || 'Fieldwork'}`;
+  document.title = `${page.title} · ${company.name || (company.account && company.account.productName) || 'Worklio Pro'}`;
   try { D = portal ? {} : await loadAll(); await page.render(main); }
   catch (e) { main.innerHTML = `<div class="card"><h2>Something went wrong</h2><p>${esc(e.message)}</p></div>`; }
 }
