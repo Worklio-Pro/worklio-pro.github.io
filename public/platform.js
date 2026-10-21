@@ -69,8 +69,13 @@ const SHORT_TABS = { plans: 'Plans', help: 'Help' }; // the phone tab bar has ro
 window.addEventListener('hashchange', () => { tab = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'accounts'; if (D) render(); });
 
 /* ===== accounts ===== */
-const statusChip = (a) => (a.status === 'active' ? `<span class="cstatus active">Active</span>${a.billing && a.billing.status === 'paid' ? `<div class="sm">${a.billing.demo ? 'Demo checkout' : 'Paid by card'}</div>` : ''}`
-  + (a.billing && a.billing.discountCode ? `<div class="sm">Code ${esc(a.billing.discountCode)}</div>` : '') : a.status === 'pending' ? '<span class="cstatus">Awaiting payment</span>' : `<span class="cstatus">Paused</span>${a.billing && a.billing.pausedForBilling ? '<div class="sm">Subscription ended</div>' : ''}`);
+const statusChip = (a) => (a.status === 'active' ? `<span class="cstatus active">Active</span>${a.expiresAt ? `<div class="sm">Until ${fmtDate(a.expiresAt)}</div>` : ''}${a.billing && a.billing.status === 'paid' ? `<div class="sm">${a.billing.demo ? 'Demo checkout' : 'Paid by card'}</div>` : ''}`
+  + (a.billing && a.billing.discountCode ? `<div class="sm">Code ${esc(a.billing.discountCode)}</div>` : '') : a.status === 'pending' ? '<span class="cstatus">Awaiting payment</span>' : `<span class="cstatus">${a.expiredOn ? 'Expired' : 'Paused'}</span>${a.expiredOn ? `<div class="sm">Access ended ${fmtDate(a.expiredOn)}</div>` : a.billing && a.billing.pausedForBilling ? '<div class="sm">Subscription ended</div>' : ''}`);
+// a trial or test plan (Trial, or any plan hidden from the pricing page): suggest a last day of access two weeks out
+const isTrialPlan = (id) => { const p = D.plans.find((x) => x.id === id); return !!p && (p.id === 'trial' || !!p.hidden); };
+const ymdLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const inDays = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return ymdLocal(d); };
+const expiryField = (v) => `<label>Last day of access (optional)<input name="expiresAt" type="date" min="${ymdLocal(new Date())}" value="${esc(v || '')}"></label>`;
 const planName = (id) => (D.plans.find((p) => p.id === id) || {}).name || id;
 function accountsView(main) {
   const active = D.accounts.filter((a) => a.status === 'active').length;
@@ -90,8 +95,16 @@ ${D.accounts.map((a) => `<tr data-id="${a.id}"><td><div class="nm">${esc(a.name)
 </tbody></table></div></div>`;
   $$('[data-plan]', main).forEach((s) => s.addEventListener('change', async () => {
     const a = D.accounts.find((x) => x.id === s.dataset.plan);
+    if (isTrialPlan(s.value) && !a.isDefault) { trialModal(a, s.value); s.value = a.planId; return; }
     try { await api('PUT', `/api/platform/accounts/${a.id}`, { planId: s.value }); toast(`${a.name} is now on ${planName(s.value)}`); await load(); render(); } catch (e) { toast(e.message, true); s.value = a.planId; }
   }));
+}
+function trialModal(a, planId) {
+  const m = modal(`Move ${a.name} to ${planName(planId)}`, `<form id="tf"><p class="muted" style="margin-top:0">Choose the last day ${esc(a.name)} can use the account. The day after, it pauses until you resume it or move it to another plan.</p>
+${expiryField(a.expiresAt || inDays(14))}<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Move to ${esc(planName(planId))}</button></div></form>`);
+  $('#tf', m).addEventListener('submit', async (e) => {
+    e.preventDefault(); try { await api('PUT', `/api/platform/accounts/${a.id}`, { planId, expiresAt: e.target.expiresAt.value }); closeModal(); toast(`${a.name} is now on ${planName(planId)}${e.target.expiresAt.value ? ` until ${fmtDate(e.target.expiresAt.value)}` : ''}`); await load(); render(); } catch (x) { toast(x.message, true); }
+  });
 }
 function slugField(name, value) {
   return `<label>Web address<div class="slug"><input name="${name}" value="${esc(value)}" required autocomplete="off" spellcheck="false" maxlength="32"><span>.${esc(D.rootDomain)}</span></div><div class="hint" data-hint></div></label>`;
@@ -107,10 +120,12 @@ A.newAccount = () => {
   const m = modal('New account', `<form id="nf"><label>Business name<input name="name" required maxlength="100"></label>${slugField('slug', '')}
 <label>Plan<select name="planId">${D.plans.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}${p.price ? ` (${esc(p.price)})` : ''}</option>`).join('')}</select></label>
 <div class="row"><label>Owner’s name<input name="ownerName" required maxlength="100" autocomplete="off"></label><label>Owner’s email<input name="ownerEmail" type="email" required autocomplete="off"></label></div>
+${expiryField('')}<p class="muted" style="font-size:13px;margin:-6px 0 12px">Leave blank to keep the account open. The day after the last day, it pauses until you resume it.</p>
 <label class="switchline"><input type="checkbox" name="demo"> Start with demo clients, jobs and invoices</label>
 <p class="muted" style="font-size:13px;margin:0">The owner gets an email with a link to choose their password. You’ll also see the link here to send yourself.</p>
 <div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Create account</button></div></form>`);
   const f = $('#nf', m); const check = wireSlug(f, '');
+  $('[name=planId]', f).addEventListener('change', (e) => { if (isTrialPlan(e.target.value) && !f.expiresAt.value) f.expiresAt.value = inDays(14); }); // a trial gets two weeks to start with
   $('[name=name]', f).addEventListener('input', (e) => { const s = $('[name=slug]', f); if (!s.dataset.touched) { s.value = slugify(e.target.value); check(); } });
   f.addEventListener('submit', async (e) => {
     e.preventDefault(); const b = Object.fromEntries(new FormData(f)); b.demo = !!b.demo;
@@ -137,6 +152,8 @@ A.editAccount = (d) => {
 <h3 style="font-size:15px;margin:18px 0 6px">Owner login</h3><p class="muted" style="font-size:14px;margin:0 0 8px">${a.owner ? `${esc(a.owner.name)} (${esc(a.owner.email)}). ${a.owner.active ? 'Get a password reset link if they’re locked out.' : 'They haven’t chosen a password yet.'}` : 'No owner login.'}</p>
 ${a.owner ? `<button type="button" class="btn alt sm" data-act="ownerLink" data-id="${a.id}">${a.owner.active ? 'Get password reset link' : 'Get a new invite link'}</button>` : ''}
 <h3 style="font-size:15px;margin:18px 0 6px">Support access</h3>${supportSection(a)}
+${a.isDefault ? '' : `<h3 style="font-size:15px;margin:18px 0 6px">Last day of access</h3><form id="xf" class="inline-form">${expiryField(a.expiresAt)}<button class="btn alt">Save date</button></form>
+<p class="muted" style="font-size:13px;margin:-4px 0 0">${a.expiredOn ? `Its access ended on ${fmtDate(a.expiredOn)}. Choose a later date (or clear it), save, then resume the account.` : a.expiresAt ? `The account pauses after ${fmtDate(a.expiresAt)}. Clear the date to keep it open.` : 'No end date: the account stays open.'}</p>`}
 <h3 style="font-size:15px;margin:18px 0 6px">Access</h3><div class="acts" style="justify-content:flex-start"><a class="btn alt sm" href="${esc(a.url)}/login" target="_blank" rel="noopener">Open login page</a>
 <button type="button" class="btn alt sm" data-act="resetDemo" data-id="${a.id}">Reset to demo data</button>
 ${a.isDefault ? '' : `<button type="button" class="btn alt sm" data-act="status" data-id="${a.id}">${a.status === 'active' ? 'Pause account' : 'Resume account'}</button><button type="button" class="btn danger sm" data-act="delAccount" data-id="${a.id}">Delete account</button>`}</div>
@@ -144,6 +161,7 @@ ${a.status === 'active' ? '' : a.status === 'pending' ? '<p class="muted" style=
 <div class="foot"><button type="button" class="btn alt" data-act="closeModal">Close</button></div>`);
   m.dataset.id = a.id;
   const f = $('#ef', m); wireSlug(f, a.slug);
+  const xf = $('#xf', m); if (xf) xf.addEventListener('submit', async (e) => { e.preventDefault(); try { await api('PUT', `/api/platform/accounts/${a.id}`, { expiresAt: xf.expiresAt.value }); toast(xf.expiresAt.value ? `Last day of access: ${fmtDate(xf.expiresAt.value)}` : 'End date removed'); await load(); render(); A.editAccount({ id: a.id }); } catch (x) { toast(x.message, true); } });
   const sf = $('#saf', m);
   if (sf) sf.addEventListener('submit', async (e) => {
     e.preventDefault(); const b = $('button', sf); b.disabled = true;
@@ -188,6 +206,7 @@ A.resetDemo = async (d) => {
 A.status = async (d) => {
   const a = D.accounts.find((x) => x.id === d.id); const pause = a.status === 'active';
   if (pause && !confirm(`Pause ${a.name}? Their team can’t log in and client links stop working until you resume it.`)) return;
+  if (!pause && a.expiresAt && a.expiresAt < ymdLocal(new Date())) return toast('Its last day of access has passed. Choose a later date (or clear it) under Last day of access first.', true);
   try { await api('PUT', `/api/platform/accounts/${a.id}`, { status: pause ? 'suspended' : 'active' }); toast(pause ? 'Account paused' : 'Account resumed'); await load(); render(); A.editAccount({ id: a.id }); } catch (x) { toast(x.message, true); }
 };
 A.delAccount = async (d) => {

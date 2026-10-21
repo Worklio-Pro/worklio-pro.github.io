@@ -333,9 +333,10 @@ app.use((req, res, next) => {
     const msg = `This account is waiting for its first payment. Use the checkout link from your sign-up to finish, or sign up again at <a href="${esc(tenancy.platformUrl())}/pricing">${esc(tenancy.platformUrl().replace(/^https?:\/\//, ''))}/pricing</a>.${P.contactEmail ? ` Questions? Contact ${esc(P.contactEmail)}.` : ''}`;
     return isApi ? res.status(403).json({ error: 'This account isn’t paid for yet' }) : res.status(403).send(notice('Finish your checkout', msg));
   }
+  tenancy.expireIfDue(r.tenant); // its last day of access has passed
   if (r.tenant.status === 'suspended') {
-    const msg = `This account is paused.${P.contactEmail ? ` Contact ${esc(P.contactEmail)} for help.` : ''}`;
-    return isApi ? res.status(403).json({ error: 'This account is paused' }) : res.status(403).send(notice('Account paused', msg));
+    const msg = `${r.tenant.expiredOn ? `This account’s access ended on ${esc(new Date(r.tenant.expiredOn + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }))}.` : 'This account is paused.'}${P.contactEmail ? ` Contact ${esc(P.contactEmail)} for help.` : ''}`;
+    return isApi ? res.status(403).json({ error: r.tenant.expiredOn ? 'This account’s access has ended' : 'This account is paused' }) : res.status(403).send(notice(r.tenant.expiredOn ? 'Access ended' : 'Account paused', msg));
   }
   tenancy.run(r.tenant, () => { applyTimezone(); next(); });
 });
