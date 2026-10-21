@@ -59,7 +59,7 @@ function render() {
   const tabs = [['accounts', 'Accounts'], ['plans', 'Plans & features'], ['discounts', 'Promotions'], ['messages', 'Messages'], ['help', 'Help Center'], ['integrations', 'Integrations'], ['settings', 'Settings']];
   document.title = `${tabs.find((t) => t[0] === tab)[1]} · ${D.settings.productName} Alpha`;
   $('#root').innerHTML = `<header class="pf-top"><div class="pf-bar"><div class="pf-brand">${brandImg(siteBrand(), 'dark')}${siteBrand().logoHasName ? '' : esc(D.settings.productName)} <small>Alpha</small></div>
-<nav class="pf-tabs">${tabs.map(([k, l]) => `<a href="#${k}" class="${tab === k ? 'on' : ''}">${l}</a>`).join('')}</nav>
+<nav class="pf-tabs">${tabs.map(([k, l]) => `<a href="#${k}" class="${tab === k ? 'on' : ''}">${l}${k === 'messages' && D.chatWaiting ? ` <span class="msg-n" title="Chats waiting for you">${D.chatWaiting}</span>` : ''}</a>`).join('')}</nav>
 <div class="pf-user"><span>${esc(D.admin.name)}</span><button type="button" data-act="logout">Log out</button></div></div></header>
 ${D.maintenance && D.maintenance.on ? `<div class="mt-bar" role="status"><strong>Maintenance mode is on.</strong> Visitors and businesses see the maintenance page; you can still use everything. <a href="#settings">Turn it off in Settings</a></div>` : ''}
 <main class="pf-main" id="main"></main>
@@ -456,15 +456,88 @@ A.discDelete = async (d, el) => {
   D.discounts = await api('DELETE', `/api/platform/discounts/${id}`); closeModal(); toast(`${x.code} deleted`); render();
 };
 /* ===== messages: contact requests, user feedback and the platform's email templates ===== */
-let msgTab = 'inquiries';
+let msgTab = 'chat';
 function messagesView(main) {
-  const subs = [['inquiries', 'Contact requests', (D.inquiries || []).length], ['feedback', 'User feedback', (D.feedback || []).length], ['emails', 'Email templates']];
+  const subs = [['chat', 'Live chat', D.chatWaiting || 0], ['inquiries', 'Contact requests', (D.inquiries || []).length], ['feedback', 'User feedback', (D.feedback || []).length], ['emails', 'Email templates']];
   main.innerHTML = `<div class="head"><div><h1>Messages</h1><p class="sub" style="margin:4px 0 0">What people send you, and the emails ${esc(D.settings.productName)} sends.</p></div></div>
-<div class="hc-seg msg-seg" role="tablist">${subs.map(([k, l, n]) => `<button type="button" role="tab" aria-selected="${msgTab === k}" class="${msgTab === k ? 'on' : ''}" data-act="msgTab" data-k="${k}">${l}${n ? ` <span class="msg-n">${n}</span>` : ''}</button>`).join('')}</div>
-<div class="card" style="max-width:860px" id="${msgTab}"></div>`;
-  ({ inquiries: inquiriesCard, feedback: feedbackCard, emails: emailsCard })[msgTab]($('#' + msgTab, main));
+<div class="hc-seg msg-seg" role="tablist">${subs.map(([k, l, n]) => `<button type="button" role="tab" aria-selected="${msgTab === k}" class="${msgTab === k ? 'on' : ''}" data-act="msgTab" data-k="${k}">${l}${n || k === 'chat' ? ` <span class="msg-n"${n ? '' : ' hidden'}>${n}</span>` : ''}</button>`).join('')}</div>
+<div class="card" style="max-width:${msgTab === 'chat' ? 'none' : '860px'}" id="${msgTab}"></div>`;
+  ({ chat: chatCard, inquiries: inquiriesCard, feedback: feedbackCard, emails: emailsCard })[msgTab]($('#' + msgTab, main));
 }
 A.msgTab = (d) => { msgTab = d.k; messagesView($('#main')); };
+/* ===== Messages → Live chat (lib/chat.js): chats from the chat button; the open chat refreshes every few seconds ===== */
+let LC = null; let lcSel = ''; let lcTimer = null; let lcShown = '';
+const LC_WHERE = { site: 'Website', help: 'Help Center', app: 'In the app' };
+const LC_ST = { waiting: ['Waiting', 'q-sent'], live: ['Live', 'active'], bot: ['With the bot', ''], closed: ['Ended', ''] };
+const lcAgo = (s) => { const m = Math.round((Date.now() - new Date(s)) / 60000); return m < 1 ? 'now' : m < 60 ? m + 'm' : m < 1440 ? Math.round(m / 60) + 'h' : new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); };
+const lcLink = (t) => esc(t).replace(/https?:\/\/[^\s<]+[^\s<.,;:!?)'"]/g, (u) => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`).replace(/\n/g, '<br>');
+function chatCard(box) {
+  box.innerHTML = `<div class="lc-head"><h2>Live chat</h2><button type="button" class="btn alt sm" data-act="lcSettings">Chat settings</button></div>
+${LC && !LC.settings.on ? '<div class="note">The chat button is off. Turn it on in <strong>Chat settings</strong> to show it on your site, help center and in the app.</div>' : ''}
+<div class="lc"><div class="lc-list" id="lcList"><p class="muted">Loading…</p></div><div class="lc-conv" id="lcConv"><p class="muted lc-empty">Choose a chat to read it and reply.</p></div></div>`;
+  lcLoad(); clearInterval(lcTimer);
+  lcTimer = setInterval(() => { if (tab !== 'messages' || msgTab !== 'chat' || !$('#lcList')) { clearInterval(lcTimer); return; } lcLoad(); }, 4000);
+}
+async function lcLoad() {
+  try { LC = await api('GET', '/api/platform/chats'); } catch (x) { return; }
+  const L = $('#lcList'); if (!L) return;
+  const waiting = LC.chats.filter((c) => c.status === 'waiting' || (c.status === 'live' && c.unread)).length;
+  if (D.chatWaiting !== waiting) { D.chatWaiting = waiting; const n = $('.msg-seg [data-k=chat] .msg-n'); if (n) { n.textContent = waiting; n.hidden = !waiting; } }
+  L.innerHTML = LC.chats.length ? LC.chats.map((c) => `<button type="button" class="lc-row ${c.id === lcSel ? 'on' : ''} ${c.unread ? 'new' : ''}" data-act="lcOpen" data-id="${c.id}">
+<span class="lc-r1"><strong>${esc(c.name || 'Visitor')}</strong><span class="sm">${lcAgo(c.updatedAt)}</span></span>
+<span class="lc-r2 sm">${c.business ? esc(c.business) : LC_WHERE[c.where]}${c.visitorOnline && c.status !== 'closed' ? ' · <span class="lc-on">online</span>' : ''}</span>
+<span class="lc-r3">${LC_ST[c.status][1] || c.status === 'bot' ? `<span class="cstatus ${LC_ST[c.status][1]}">${LC_ST[c.status][0]}</span>` : ''}<span class="sm">${c.last ? esc((c.last.from === 'agent' ? 'You: ' : c.last.from === 'bot' ? 'Bot: ' : '') + c.last.text) : ''}</span>${c.unread ? `<b class="msg-n">${c.unread}</b>` : ''}</span></button>`).join('')
+    : `<p class="muted" style="padding:12px">No chats yet.${LC.settings.on ? ' They’ll show up here as people use the chat button.' : ''}</p>`;
+  if (lcSel) lcConv();
+}
+A.lcOpen = (d) => { lcSel = d.id; lcShown = ''; $$('.lc-row').forEach((r) => r.classList.toggle('on', r.dataset.id === d.id)); $('.lc').classList.add('open'); lcConv(); };
+A.lcBack = () => { lcSel = ''; $('.lc').classList.remove('open'); };
+async function lcConv() {
+  let c; try { c = await api('GET', '/api/platform/chats/' + lcSel); } catch (x) { lcSel = ''; $('#lcConv').innerHTML = `<p class="muted lc-empty">${esc(x.message)}</p>`; return; }
+  const box = $('#lcConv'); if (!box || c.id !== lcSel) return;
+  const sig = c.id + c.messages.length + c.status;
+  if (!$('.lc-msgs', box) || !lcShown.startsWith(c.id)) {
+    box.innerHTML = `<div class="lc-ch"><button type="button" class="lc-back" data-act="lcBack" aria-label="Back to chats">‹</button><div><strong>${esc(c.name || 'Visitor')}</strong><div class="sm" id="lcMeta"></div></div><div class="acts"><span id="lcSt"></span><button type="button" class="btn alt sm" data-act="lcClose" id="lcEnd">End chat</button><button type="button" class="btn danger sm" data-act="lcDel">Delete</button></div></div>
+<div class="lc-msgs"></div><form class="lc-reply" id="lcForm"><textarea name="text" rows="2" placeholder="Write a reply… (Enter sends, Shift+Enter for a new line)" maxlength="4000"></textarea><button class="btn">Send</button></form>`;
+    const f = $('#lcForm'); const ta = f.text;
+    ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); f.requestSubmit(); } });
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault(); const text = ta.value.trim(); if (!text) return; const btn = $('button', f); btn.disabled = true;
+      try { await api('POST', `/api/platform/chats/${lcSel}/reply`, { text }); ta.value = ''; lcShown = ''; lcLoad(); } catch (x) { toast(x.message, true); } btn.disabled = false; ta.focus();
+    });
+  }
+  $('#lcMeta').innerHTML = [c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : 'No email', c.business || LC_WHERE[c.where], c.page ? `<a href="${esc(c.page)}" target="_blank" rel="noopener">page</a>` : '', c.visitorOnline ? '<span class="lc-on">online now</span>' : ''].filter(Boolean).join(' · ');
+  $('#lcSt').innerHTML = `<span class="cstatus ${LC_ST[c.status][1]}">${LC_ST[c.status][0]}</span>`; $('#lcEnd').hidden = c.status === 'closed';
+  if (lcShown === sig) return; lcShown = sig;
+  const m = $('.lc-msgs', box);
+  m.innerHTML = c.messages.map((x) => x.from === 'system' ? `<div class="lc-sys">${esc(x.text)}</div>`
+    : `<div class="lc-m ${x.from}"><span class="lc-who">${x.from === 'visitor' ? esc(c.name || 'Visitor') : x.from === 'bot' ? 'Bot' : esc(x.agent || 'You')} · ${new Date(x.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>${lcLink(x.text)}${x.links ? `<ul>${x.links.map((l) => `<li><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.title)}</a></li>`).join('')}</ul>` : ''}</div>`).join('');
+  m.scrollTop = m.scrollHeight;
+}
+A.lcClose = async () => { await api('POST', `/api/platform/chats/${lcSel}/close`); lcShown = ''; toast('Chat ended'); lcLoad(); };
+A.lcDel = async () => { if (!confirm('Delete this chat? This can’t be undone.')) return; await api('DELETE', '/api/platform/chats/' + lcSel); lcSel = ''; chatCard($('#chat')); toast('Chat deleted'); };
+A.lcSettings = () => {
+  const s = LC.settings; const ans = (x = {}) => `<div class="lc-ans"><div class="row"><label>Question (shown as a button)<input name="q" value="${esc(x.q || '')}" maxlength="120" placeholder="How much does it cost?"></label><label>Also answers when the message has<input name="keywords" value="${esc(x.keywords || '')}" maxlength="300" placeholder="price, cost, plans"></label></div>
+<label>Answer<textarea name="a" rows="2" maxlength="1500" placeholder="Use {site} for your site address and {product} for the product name">${esc(x.a || '')}</textarea></label><button type="button" class="link-btn" data-act="lcAnsRm">Remove</button></div>`;
+  const m = modal('Chat settings', `<form id="lcsf"><label class="switchline"><input type="checkbox" name="on" ${s.on ? 'checked' : ''}> Show the chat button</label>
+<p class="muted" style="font-size:13px;margin:4px 0 6px">Show it on:</p><div class="lc-where">${Object.entries(LC_WHERE).map(([k, l]) => `<label class="switchline"><input type="checkbox" name="where" value="${k}" ${s.where.includes(k) ? 'checked' : ''}> ${k === 'site' ? 'Your website (home and pricing pages)' : k === 'help' ? 'The help center' : 'Inside the business app'}</label>`).join('')}</div>
+<label>Greeting<textarea name="greeting" rows="2" maxlength="500">${esc(s.greeting)}</textarea></label>
+<label>When you’re away<textarea name="offline" rows="2" maxlength="500">${esc(s.offline)}</textarea></label>
+<p class="muted" style="font-size:13px;margin:-4px 0 12px">You count as online while Alpha’s Live chat is open in a browser. When you’re away, people leave their email and you get an email${D.settings.contactEmail ? ` at ${esc(D.settings.contactEmail)}` : ' (add a contact email in Settings)'}.</p>
+<label class="switchline"><input type="checkbox" name="ai" ${s.ai && LC.ai ? 'checked' : ''} ${LC.ai ? '' : 'disabled'}> Let AI answer from your help center articles and plans</label>
+<p class="muted" style="font-size:13px;margin:0 0 12px">${LC.ai ? 'Saved answers below are used first. AI answers only from your articles, plans and saved answers, and suggests a person when it isn’t sure.' : 'Needs <code>ANTHROPIC_API_KEY</code> (see Integrations → AI). Until then, the bot answers with your saved answers and matching help articles.'}</p>
+<h3 style="margin:8px 0 4px;font-size:15px">Saved answers</h3><p class="muted" style="font-size:13px;margin:0 0 8px">The first four questions show as buttons when a chat starts.</p>
+<div id="lcAns">${s.answers.map(ans).join('')}</div><button type="button" class="btn alt sm" data-act="lcAnsAdd">Add an answer</button>
+<div class="acts" style="margin-top:16px"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save</button></div></form>`, { wide: true });
+  A.lcAnsAdd = () => { $('#lcAns').insertAdjacentHTML('beforeend', ans()); $('#lcAns .lc-ans:last-child input').focus(); };
+  A.lcAnsRm = (d, el) => el.closest('.lc-ans').remove();
+  $('#lcsf', m).addEventListener('submit', async (e) => {
+    e.preventDefault(); const f = e.target;
+    const b = { on: f.on.checked, ai: LC.ai ? f.ai.checked : LC.settings.ai, // without a key the switch is greyed out: keep the saved choice where: [...f.querySelectorAll('[name=where]:checked')].map((x) => x.value), greeting: f.greeting.value, offline: f.offline.value,
+      answers: [...f.querySelectorAll('.lc-ans')].map((r) => ({ q: r.querySelector('[name=q]').value, keywords: r.querySelector('[name=keywords]').value, a: r.querySelector('[name=a]').value })) };
+    try { await api('PUT', '/api/platform/chat-settings', b); closeModal(); toast('Chat settings saved'); chatCard($('#chat')); } catch (x) { toast(x.message, true); }
+  });
+};
 // messages from "Contact us" on the pricing page and "Get Support" in the app (also emailed to the contact email)
 function inquiriesCard(box) {
   const L = D.inquiries || [];

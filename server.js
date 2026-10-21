@@ -18,6 +18,7 @@ const referrals = require('./lib/referrals');
 const maintenance = require('./lib/maintenance');
 const stripeLib = require('./lib/stripe');
 const social = require('./lib/social');
+const chat = require('./lib/chat');
 const { db, uploadDir } = tenancy;
 const baseUrl = () => tenancy.tenantUrl(tenancy.current()); // this account's web address, for links in messages
 
@@ -2123,6 +2124,7 @@ function dispatch(req, res) {
   if (brandLib.serve(req, res)) return; // the application logo (lib/brand.js), on every address
   if (maintenance.handle(req, res)) return; // maintenance mode (Alpha → Settings): the maintenance page for everyone but you
   const p = req.url.split('?')[0]; const r = tenancy.resolve(req.headers.host);
+  if (chat.handle(req, res, { tenant: r.kind === 'tenant' ? r.tenant : null })) return; // the chat button (lib/chat.js), on every address
   // pages and API replies depend on who is logged in: hosting caches (e.g. SiteGround's dynamic cache) must never store or share them
   if (!/\.(js|css|png|jpe?g|gif|webp|svg|ico|woff2?)$/i.test(p)) res.setHeader('Cache-Control', 'private, no-store');
   else if (/\.(js|css)$/i.test(p)) res.setHeader('Cache-Control', 'no-cache'); // the app's code: always check for a newer version, so a deploy shows up right away
