@@ -603,7 +603,7 @@ function accountInfo() {
     url: tenancy.tenantUrl(t), subdomainUrl: tenancy.subdomainUrl(t), rootDomain: tenancy.ROOT_DOMAIN, serverIp: process.env.SERVER_IP || '',
     domains: (t.domains || []).map(({ host, verified, primary, addedAt, verifiedAt }) => ({ host, verified: !!verified, primary: !!primary, addedAt, verifiedAt: verifiedAt || null })),
     productName: tenancy.platform().settings.productName, product: brandLib.brand(), contactEmail: tenancy.platform().settings.contactEmail, helpUrl: tenancy.helpUrl(), managed: !tenancy.isDefault(),
-    referrals: referrals.openTo(t),
+    referrals: referrals.openTo(t), cardReady: !!stripeKey(), // card payments set up (App Settings → Card payments)
     expiry: (() => { const x = expiryOf(t); return x && { ...x, when: whenText(x) }; })(),
     featureList: tenancy.FEATURES.map(({ key, label, desc }) => ({ key, label, desc, beta: tenancy.isBeta(key), included: plan.features.includes(key) })), alwaysIncluded: tenancy.ALWAYS_INCLUDED,
   };
@@ -1185,7 +1185,7 @@ const PAY_DEFAULTS = { quoteCard: true, quoteAch: false, invoiceCard: true, invo
 const paySettings = () => ({ ...PAY_DEFAULTS, ...(db.company.paySettings || {}) });
 // the online methods a client can use for an invoice or a quote deposit ([] = none); bank (ACH) needs a live Stripe connection
 function onlineMethods(kind, doc) {
-  const s = paySettings(); if (s.disabled || !tenancy.has('onlinePayments') || doc.allowCard === 'off') return [];
+  const s = paySettings(); if (s.disabled || !tenancy.has('onlinePayments') || doc.allowCard === 'off' || !stripeKey()) return []; // not set up yet: no card option for clients
   return [s[kind + 'Card'] && 'card', s[kind + 'Ach'] && stripeKey() && 'us_bank_account'].filter(Boolean);
 }
 const payButtonLabel = (methods, amount, what = '') => (methods.length > 1 ? `Pay ${what}${money(amount)} online` : methods[0] === 'us_bank_account' ? `Pay ${what}${money(amount)} from your bank` : `Pay ${what}${money(amount)} with card`);
@@ -1296,8 +1296,7 @@ app.get('/pay/:token', (req, res) => {
   const account = db.invoices.filter((i) => i.clientId === inv.clientId && i.status !== 'paid' && i.status !== 'draft').reduce((s, i) => s + withStatus(i).balanceDue, 0);
   const card = !methods.length ? '' : live
     ? `<form method="post" action="/pay/${esc(inv.token)}/checkout"><button class="btn">${payButtonLabel(methods, due)}</button></form>${methods.length > 1 ? '<p class="muted">Card or bank account (ACH)</p>' : ''}`
-    : !methods.includes('card') ? '' : `<p class="muted">Demo mode: card payments aren’t connected yet, so this simulates a card payment and nobody is charged.</p>
-<form method="post" action="/pay/${esc(inv.token)}/demo"><label>Name on card<input name="name" required value="${esc(c?.name)}"></label><label>Card number<input name="card" required placeholder="4242 4242 4242 4242"></label><button class="btn">Pay ${money(due)}</button></form>`;
+    : '';
   const zelle = on('allowZelle') ? zelleBox(due, `Invoice ${inv.number}`, `/pay/${inv.token}/zelle-sent`, inv.zelleSentAt) : '';
   res.send(shell(`Invoice ${inv.number}`, `<h1>Invoice ${esc(inv.number)} <span class="badge ${st === 'paid' ? 'paid' : ''}">${esc(st === 'overdue' ? 'past due' : st)}</span></h1>
 ${st === 'overdue' && on('showLateStamp') ? '<div style="display:inline-block;margin:8px 0;padding:4px 14px;border:2px solid #dc2626;color:#dc2626;border-radius:6px;font-weight:800;letter-spacing:.08em;transform:rotate(-2deg)">PAST DUE</div>' : ''}
@@ -1314,13 +1313,6 @@ app.post('/pay/:token/zelle-sent', (req, res) => {
   if (!inv) return res.status(404).send('Not found');
   if (inv.status !== 'paid' && !inv.zelleSentAt) { inv.zelleSentAt = iso(new Date()); save(); tellBusinessZelle(`invoice ${inv.number}`, withStatus(inv).balanceDue, findClient(inv.clientId)?.name); }
   res.redirect(`/pay/${inv.token}`);
-});
-app.post('/pay/:token/demo', (req, res) => {
-  const inv = db.invoices.find((x) => x.token === req.params.token);
-  if (!inv) return res.status(404).send('Not found');
-  if (stripeKey()) return res.status(400).send('Demo payments are disabled when Stripe is configured');
-  if (!onlineMethods('invoice', inv).includes('card')) return res.status(400).send('Card payment is not available for this invoice');
-  inv.status = 'paid'; inv.paidAt = iso(new Date()); inv.paymentMethod = 'demo-card'; save(); res.redirect(`/pay/${inv.token}`);
 });
 app.post('/pay/:token/checkout', async (req, res) => {
   const inv = db.invoices.find((x) => x.token === req.params.token);
@@ -1358,7 +1350,7 @@ app.get('/p/quote/:token', (req, res) => {
       depositSection = `<div style="background:#fef3c7;padding:16px;border-radius:8px;margin-top:16px;border:1px solid #fcd34d">
 <h3 style="margin-top:0">Deposit required: ${money(q.depositFee)}</h3>
 <p>Your quote has been signed. A deposit of ${money(q.depositFee)} is required to proceed with the work.</p>
-${onlineMethods('quote', q).length && (stripeKey() || onlineMethods('quote', q).includes('card')) ? `<form method="post" action="/p/quote/${esc(q.token)}/pay-deposit" style="display:flex;gap:8px">
+${onlineMethods('quote', q).length ? `<form method="post" action="/p/quote/${esc(q.token)}/pay-deposit" style="display:flex;gap:8px">
 <button class="btn">${payButtonLabel(onlineMethods('quote', q), q.depositFee, 'deposit of ')}</button>
 </form>` : ''}
 ${q.allowZelle !== 'off' ? zelleBox(q.depositFee, `Deposit for quote ${q.number}`, `/p/quote/${q.token}/zelle-sent`, q.zelleSentAt) : ''}
@@ -1408,17 +1400,11 @@ app.post('/api/quotes/:id/mark-deposit-paid', (req, res) => {
 app.post('/p/quote/:token/pay-deposit', (req, res) => {
   const q = db.quotes.find((x) => x.token === req.params.token);
   if (!q || !q.depositFee) return res.status(400).send('No deposit required');
-  const methods = onlineMethods('quote', q); if (!methods.length || (!stripeKey() && !methods.includes('card'))) return res.status(400).send('Online payment is not available for this quote');
+  if (!onlineMethods('quote', q).length) return res.status(400).send('Online payment is not available for this quote'); // only once card payments are set up
   if (q.depositPaidAt) return res.redirect(`/p/quote/${q.token}`);
-  if (stripeKey()) {
-    stripeCheckout({ amount: q.depositFee, name: `Deposit for Quote ${q.number}`, client: findClient(q.clientId), meta: { quoteId: q.id }, successUrl: `${baseUrl()}/p/quote/${q.token}/deposit-success`, cancelUrl: `${baseUrl()}/p/quote/${q.token}`, methods })
+  stripeCheckout({ amount: q.depositFee, name: `Deposit for Quote ${q.number}`, client: findClient(q.clientId), meta: { quoteId: q.id }, successUrl: `${baseUrl()}/p/quote/${q.token}/deposit-success`, cancelUrl: `${baseUrl()}/p/quote/${q.token}`, methods })
       .then((s) => res.redirect(303, s.url))
       .catch((e) => res.status(502).send(shell('Payment error', `<h1>Payment error</h1><p>${esc(e.message)}</p><p><a href="/p/quote/${esc(q.token)}">Back to the quote</a></p>`)));
-  } else {
-    q.depositPaidAt = iso(new Date()); q.depositStatus = 'paid'; q.depositPaidAmount = q.depositFee; q.depositMethod = 'demo';
-    save();
-    res.redirect(`/p/quote/${q.token}`);
-  }
 });
 app.get('/p/quote/:token/deposit-success', async (req, res) => {
   const q = db.quotes.find((x) => x.token === req.params.token);

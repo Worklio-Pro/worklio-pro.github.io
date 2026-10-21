@@ -646,16 +646,16 @@ function stripeConn(integ) {
   if (S.ownKeys) { const M = S.methods || ['standard'];
     return { ...base, status: connChip('on', 'Connected') + mode, button: 'Manage', body: `<p>Card payments use the Stripe API keys you saved earlier.${S.available && M.length ? ' You can switch to the newer setup, which is simpler to look after.' : ''}</p>
 <div class="sms-test">${S.available && M.includes('embedded') ? '<a class="btn" href="/settings/card-payments" data-link>Set up card payments</a>' : ''}${S.available && M.includes('standard') ? '<button type="button" class="btn" data-act="connectStripe">Connect with Stripe</button>' : ''}<button type="button" class="btn danger sm" data-act="rmStripe">Remove saved keys</button></div>` }; }
-  if (!S.available) return { ...base, status: connChip('off', 'Not available yet'), button: '', body: '', desc: base.desc + ' Until card payments are switched on for this service, the pay page runs a demo checkout that charges nobody.' };
+  if (!S.available) return { ...base, status: connChip('off', 'Not available yet'), button: '', body: '', desc: base.desc + ' Until card payments are switched on for this service, clients can’t pay by card.' };
   if (S.accountId) return { ...base, status: connChip('wait', 'Setup not finished'), button: 'Manage', open: true, body: `<p>${S.detailsSubmitted ? 'Stripe is reviewing your details. This usually takes a few minutes; you’ll be able to take card payments once it’s done.' : 'You started connecting Stripe but didn’t finish. Pick up where you left off: it takes about 5 minutes.'}</p>
 <div class="sms-test"><button type="button" class="btn" data-act="connectStripe">${S.detailsSubmitted ? 'Review details in Stripe' : 'Finish setting up Stripe'}</button><button type="button" class="btn alt" data-act="refreshStripe">Check again</button><button type="button" class="btn danger sm" data-act="rmStripe">Cancel</button></div>` };
   // not set up yet: the ways the platform offers (Alpha → Settings → Integrations → Stripe)
   const M = S.methods || ['standard']; const inApp = M.includes('embedded'); const viaStripe = M.includes('standard');
-  if (!M.length) return { ...base, status: connChip('off', 'Not available yet'), button: '', body: '', desc: base.desc + ' Until card payments are switched on for this service, the pay page runs a demo checkout that charges nobody.' };
+  if (!M.length) return { ...base, status: connChip('off', 'Not available yet'), button: '', body: '', desc: base.desc + ' Until card payments are switched on for this service, clients can’t pay by card.' };
   const steps = inApp ? '<li>Click <strong>Set up card payments</strong>.</li><li>Enter your business details and the bank account for payouts, right here. It takes about 10 minutes, and you don’t need a Stripe account.</li><li>Clients can pay you by card.</li>'
     : '<li>Click <strong>Connect with Stripe</strong>. You’ll go to Stripe’s secure site.</li><li>Set up your Stripe account: your business details and the bank account for payouts.</li><li>You come back here, and clients can pay you by card.</li>';
   return { ...base, desc: inApp ? 'Let clients pay invoices and quote deposits by card. The money goes straight to your bank account.' : base.desc, status: connChip('off', 'Not connected'), button: 'Connect', body: `<ol class="pay-steps">${steps}</ol>
-<p class="muted" style="font-size:13px">Stripe charges its standard card processing fees${S.feePercent ? `, plus a ${S.feePercent}% platform fee on each payment` : ''}. Until you ${inApp ? 'set up card payments' : 'connect'}, the pay page runs a demo checkout that charges nobody.</p>
+<p class="muted" style="font-size:13px">Stripe charges its standard card processing fees${S.feePercent ? `, plus a ${S.feePercent}% platform fee on each payment` : ''}. Until you ${inApp ? 'set up card payments' : 'connect'}, clients can’t pay by card.</p>
 <div class="sms-test">${inApp ? '<a class="btn" href="/settings/card-payments" data-link>Set up card payments</a>' : ''}${viaStripe ? `<button type="button" class="btn ${inApp ? 'alt' : ''}" data-act="connectStripe">Connect with Stripe</button>` : ''}</div>
 ${inApp && viaStripe ? '<p class="muted" style="font-size:13px;margin-top:8px">Already use Stripe? <strong>Connect with Stripe</strong> links your own Stripe account instead, and you manage payments in your Stripe dashboard.</p>' : ''}` };
 }
@@ -1072,7 +1072,7 @@ PAGES['/payments/settings'] = {
     const bal = S.balance ? S.balance.pending + S.balance.available : 0;
     main.innerHTML = `<div class="head"><div><a href="/payments" data-link class="muted">← Payments</a><h1>Payment settings</h1></div></div>
 <div class="pay-grid"><div>
-${!can ? '<div class="notice">Online payments aren’t included in your plan. You can still record cash, check and other payments on invoices.</div>' : !S.connected ? `<div class="notice">Connect Stripe in <a href="/settings#payments" data-link>App Settings → Card payments</a> to take online payments. Until then, the pay page runs a demo checkout that charges nobody.</div>` : ''}
+${!can ? '<div class="notice">Online payments aren’t included in your plan. You can still record cash, check and other payments on invoices.</div>' : !S.connected ? `<div class="notice">Connect Stripe in <a href="/settings#payments" data-link>App Settings → Card payments</a> to take online payments. Until then, clients can’t pay by card.</div>` : ''}
 <div class="card"><h2>Client payments</h2>
 <h3 class="pay-h">Quote payments<small class="muted">Let clients pay deposits online when viewing quotes</small></h3>${methodRows('quote')}
 <h3 class="pay-h">Invoice payments<small class="muted">Let clients pay online when viewing invoices</small></h3>${methodRows('invoice')}</div>
