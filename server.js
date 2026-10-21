@@ -591,6 +591,24 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const COLLECTIONS = ['clients', 'services', 'staff', 'quotes', 'jobs', 'invoices', 'expenses', 'photos'];
 
+// an account with a last day of access (Alpha): days left (0 = today is the last day), and whether to warn yet
+const expiryOf = (t) => {
+  if (!t.expiresAt || tenancy.isDefault(t)) return null; const S = tenancy.platform().settings;
+  const daysLeft = Math.round((Date.parse(t.expiresAt) - Date.parse(iso(new Date()))) / 864e5);
+  return { lastDay: t.expiresAt, daysLeft, banner: daysLeft <= (S.expiryBannerDays ?? 7), remind: daysLeft >= 0 && daysLeft <= (S.expiryReminderDays ?? 3) };
+};
+const whenText = (x) => (x.daysLeft === 0 ? 'today' : x.daysLeft === 1 ? 'tomorrow' : `on ${new Date(x.lastDay + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}`);
+// once a day (checked hourly): email each owner whose last day is close, once per end date
+function remindExpiring() {
+  for (const t of tenancy.platform().tenants) {
+    const x = t.status === 'active' && expiryOf(t); if (!x || !x.remind || t.expiryReminded === t.expiresAt) continue;
+    t.expiryReminded = t.expiresAt; tenancy.savePlatform();
+    tenancy.run(t, () => {
+      const o = db.users.find((u) => u.role === 'owner'); if (!o || !o.email) return;
+      sendTemplate('expiryReminder', o.email, { name: o.name, business: db.company.name || t.name, plan: tenancy.planOf(t).name, when: whenText(x), days_left: String(x.daysLeft), link: `${baseUrl()}/settings/billing` }, { server: true }).catch(() => {});
+    });
+  }
+}
 // the account's plan: which features it has, which pages are locked, its web addresses
 function accountInfo() {
   const t = tenancy.current(); const plan = tenancy.planOf(t);
@@ -599,6 +617,7 @@ function accountInfo() {
     url: tenancy.tenantUrl(t), subdomainUrl: tenancy.subdomainUrl(t), rootDomain: tenancy.ROOT_DOMAIN, serverIp: process.env.SERVER_IP || '',
     domains: (t.domains || []).map(({ host, verified, primary, addedAt, verifiedAt }) => ({ host, verified: !!verified, primary: !!primary, addedAt, verifiedAt: verifiedAt || null })),
     productName: tenancy.platform().settings.productName, product: brandLib.brand(), contactEmail: tenancy.platform().settings.contactEmail, helpUrl: tenancy.helpUrl(), managed: !tenancy.isDefault(),
+    expiry: (() => { const x = expiryOf(t); return x && { ...x, when: whenText(x) }; })(),
     featureList: tenancy.FEATURES.map(({ key, label, desc }) => ({ key, label, desc, beta: tenancy.isBeta(key), included: plan.features.includes(key) })), alwaysIncluded: tenancy.ALWAYS_INCLUDED,
   };
 }
@@ -1752,7 +1771,7 @@ app.post('/api/account/billing/plan', async (req, res) => {
   const want = req.body.interval === 'year' ? 'year' : 'month'; const c = stripeLib.planCharge(to, want);
   if (c && c.interval !== want) return res.status(400).json({ error: `${to.name} isn’t available ${want === 'year' ? 'yearly' : 'monthly'}` });
   const label = `${to.name}${c ? ` (${want === 'year' ? 'yearly' : 'monthly'})` : ''}`;
-  const switched = (message) => { if (c) b.interval = c.interval; tenancy.savePlatform(); tellPlatform(`Plan changed: ${t.name} → ${label}`, `${u.name} (${u.email}) changed ${t.name} from ${from.name} to ${label}. ${message}`); res.json({ ok: true, message }); };
+  const switched = (message) => { if (c) b.interval = c.interval; if (t.planId === to.id) delete t.expiresAt; tenancy.savePlatform(); tellPlatform(`Plan changed: ${t.name} → ${label}`, `${u.name} (${u.email}) changed ${t.name} from ${from.name} to ${label}. ${message}`); res.json({ ok: true, message }); };
   try {
     const sub = stripeLib.platformKey() ? await liveSubscription(b) : null;
     const nowInterval = (sub && sub.items.data[0].price.recurring && sub.items.data[0].price.recurring.interval) || b.interval || 'month';
@@ -1795,6 +1814,7 @@ app.post('/api/account/billing/return', async (req, res) => {
       const to = tenancy.platform().plans.find((p) => p.id === s.metadata.planId);
       if (to && s.subscription && b.subscriptionId !== s.subscription) {
         const from = tenancy.planOf(t); t.planId = to.id;
+        delete t.expiresAt; // paid for a plan: no end date
         Object.assign(b, { customerId: s.customer, subscriptionId: s.subscription, status: 'paid', subscriptionStatus: 'active', interval: s.metadata.interval === 'year' ? 'year' : 'month' }); delete b.pendingPlanId; delete b.endsAt; delete b.demo;
         if (b.pausedForBilling) { t.status = 'active'; delete b.pausedForBilling; }
         tenancy.savePlatform(); tellPlatform(`New subscription: ${t.name} → ${to.name}`, `${currentUser(req).name} subscribed ${t.name} to ${to.name} (was ${from.name}).`);
@@ -1932,6 +1952,7 @@ if (rpp > 0) { // same for the platform console login: node server.js --reset-pl
   for (const [k, s] of Object.entries(P.sessions)) if (s.adminId === a.id) delete P.sessions[k]; // log out everywhere
   tenancy.savePlatform(); console.log(`Platform password updated for ${a.email}`); process.exit(0);
 }
+setTimeout(remindExpiring, 10e3); setInterval(remindExpiring, 3600e3); // reminder emails before an account's last day of access
 require('http').createServer(dispatch).listen(PORT, () => {
   console.log(`App running at ${BASE_URL}`);
   console.log(tenancy.devMode ? `Alpha console: ${BASE_URL}/alpha (set PLATFORM_DOMAIN to host accounts on their own addresses)` : `Platform: ${tenancy.platformUrl()}  ·  accounts at <address>.${tenancy.PLATFORM_DOMAIN}`);
