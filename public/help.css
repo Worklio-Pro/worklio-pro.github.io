@@ -108,3 +108,6 @@ ol.steps>li::before{content:counter(s);position:absolute;left:0;top:0;width:28px
 .fb-more textarea{display:block;width:100%;margin-top:8px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:inherit;font-size:15px;background:var(--card);color:var(--text);resize:vertical}
 .fb-acts{display:flex;align-items:center;gap:14px;margin-top:10px;font-size:14px}.fb-acts .btn{padding:8px 16px;font-size:14px}
 .note>p,.tip>p{margin:0 0 8px}.note>p:last-child,.tip>p:last-child{margin-bottom:0}
+/* screenshots in articles: <figure class="shot"><img src="/img/help/…" alt="…"><figcaption>…</figcaption></figure> */
+.article figure.shot{margin:16px 0 22px;text-align:center}.article figure.shot img{max-width:100%;height:auto;border:1px solid var(--line);border-radius:10px;box-shadow:0 4px 14px rgba(15,23,42,.08);background:#fff}
+.article figure.shot figcaption{font-size:13px;color:var(--muted);margin-top:8px}

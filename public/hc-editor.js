@@ -1,12 +1,14 @@
 'use strict';
 // Visual editor for help center articles (platform console → Help Center → article editor): a formatting bar over an
 // editable area styled like the published article. What it saves is cleaned HTML with only the tags the help center
-// styles (headings, paragraphs, bold/italic, links, lists, steps, note/tip boxes, code, keys, tables).
+// styles (headings, paragraphs, bold/italic, links, lists, steps, note/tip boxes, code, keys, tables, and screenshots from /img/help or Alpha uploads).
 (function () {
-  const ALLOWED = new Set(['P', 'H2', 'H3', 'STRONG', 'EM', 'A', 'UL', 'OL', 'LI', 'DIV', 'CODE', 'KBD', 'BR', 'TABLE', 'THEAD', 'TBODY', 'TR', 'TH', 'TD']);
+  const ALLOWED = new Set(['P', 'H2', 'H3', 'STRONG', 'EM', 'A', 'UL', 'OL', 'LI', 'DIV', 'CODE', 'KBD', 'BR', 'TABLE', 'THEAD', 'TBODY', 'TR', 'TH', 'TD', 'FIGCAPTION']);
   const RENAME = { B: 'STRONG', I: 'EM', H1: 'H2', H4: 'H3', H5: 'H3', H6: 'H3' };
-  const DROP = new Set(['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'NOSCRIPT', 'TEMPLATE', 'META', 'LINK', 'svg', 'SVG', 'IMG', 'VIDEO', 'AUDIO', 'FORM', 'INPUT', 'BUTTON', 'SELECT', 'TEXTAREA']);
-  const BLOCK = new Set(['P', 'H2', 'H3', 'UL', 'OL', 'DIV', 'TABLE']);
+  const DROP = new Set(['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'NOSCRIPT', 'TEMPLATE', 'META', 'LINK', 'svg', 'SVG', 'VIDEO', 'AUDIO', 'FORM', 'INPUT', 'BUTTON', 'SELECT', 'TEXTAREA']);
+  const BLOCK = new Set(['P', 'H2', 'H3', 'UL', 'OL', 'DIV', 'TABLE', 'FIGURE']);
+  // screenshots: only the app's own help pictures (/img/help/…) and images uploaded in Alpha (/brand/media-…)
+  const safeImg = (s) => (/^\/(img\/help\/[a-z0-9-]+\.(png|jpg|webp)|brand\/media-\d+\.(png|jpg|gif|webp))$/.test(String(s || '')) ? s : '');
   const safeHref = (h) => { const v = String(h || '').trim(); return /^(https?:\/\/|mailto:|\/|#)/i.test(v) ? v : ''; };
   const escHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -23,6 +25,9 @@
       (k.some((n) => n.nodeType === 1 && BLOCK.has(n.tagName)) ? flatten(k, true) : k).forEach((n) => d.appendChild(n)); return [d]; // plain text stays as is; paragraphs and lists stay blocks
     }
     if (tag === 'SPAN' && /font-weight:\s*(bold|[6-9]00)/i.test(node.getAttribute('style') || '')) { const s = document.createElement('strong'); kids().forEach((k) => s.appendChild(k)); return [s]; } // bold pasted from Google Docs
+    if (tag === 'IMG') { const src = safeImg(node.getAttribute('src')); if (!src) return []; const i = document.createElement('img'); i.setAttribute('src', src); i.setAttribute('alt', node.getAttribute('alt') || ''); return [i]; }
+    if (tag === 'FIGURE') { const f = document.createElement('figure'); f.className = 'shot'; kids().forEach((k) => f.appendChild(k)); return f.querySelector('img') ? [f] : [...f.childNodes].map((n) => (n.tagName === 'FIGCAPTION' ? document.createTextNode(n.textContent) : n)); } // a screenshot with its caption
+    if (tag === 'FIGCAPTION' && !(node.parentElement && node.parentElement.tagName === 'FIGURE')) return kids(); // a caption only belongs in a figure
     if (!ALLOWED.has(tag)) return kids(); // spans, fonts and anything else: keep the text, drop the wrapper
     const el = document.createElement(tag);
     if (tag === 'A') { const h = safeHref(node.getAttribute('href')); if (!h) return kids(); el.setAttribute('href', h); }
