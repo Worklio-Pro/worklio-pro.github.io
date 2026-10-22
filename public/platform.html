@@ -115,6 +115,22 @@
     .ic-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;max-height:60vh;overflow:auto;padding:2px}
     .ic-opt{display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 6px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--text);cursor:pointer;font:inherit;font-size:12px;text-align:center}
     .ic-opt:hover{border-color:var(--brand)}.ic-opt.on{border-color:var(--brand);background:var(--tint)}
+    /* Automations */
+    #main[data-tab=automations] .card>h2:first-child{display:flex;align-items:center;gap:8px;margin:-18px -18px 14px;padding:12px 18px;background:var(--tint);border-bottom:1px solid var(--line);border-radius:12px 12px 0 0;font-size:16px}
+    .au-list{display:grid}.au-row{display:flex;align-items:center;gap:16px;padding:14px 0;border-top:1px solid var(--line)}.au-row:first-child{border-top:0;padding-top:0}.au-row.off .au-main{opacity:.6}
+    .au-main{flex:1;min-width:0}.au-main .sm{font-size:13px;color:var(--muted);margin-top:2px}
+    .au-stats{display:flex;align-items:center;gap:16px;text-align:center}.au-stats b{display:block;font-size:18px}.au-stats span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+    .au-sw{position:relative;flex:none;cursor:pointer}.au-sw input{position:absolute;opacity:0;width:1px;height:1px}.au-sw i{display:block;width:40px;height:22px;border-radius:99px;background:var(--line);position:relative;transition:background .15s}
+    .au-sw i::after{content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s}.au-sw input:checked+i{background:var(--ok)}.au-sw input:checked+i::after{left:21px}.au-sw input:focus-visible+i{outline:2px solid var(--brand);outline-offset:2px}
+    .au-starters{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-top:10px}
+    .au-starter{display:grid;gap:4px;text-align:left;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);color:var(--text);font:inherit;cursor:pointer}.au-starter:hover{border-color:var(--brand)}.au-starter .sm{color:var(--muted);font-size:12px}
+    .pf-modal .au-form{max-height:72vh;overflow:auto;padding-right:6px}.au-h{font-size:14px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:16px 0 8px;padding-top:12px;border-top:1px solid var(--line)}
+    .au-checks{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin:0 0 10px;font-size:14px}.au-checks>span{font-weight:600;min-width:64px}.au-checks label{display:flex;align-items:center;gap:5px;margin:0}.au-checks em{font-size:12px;color:var(--muted)}
+    .au-range{display:flex;align-items:center;gap:8px;margin:0 0 8px;font-size:14px}.au-range>span:first-child{font-weight:600;min-width:64px}.au-range input{width:90px;margin:0}
+    .au-vars{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.au-var{border:1px solid var(--line);background:var(--surface-2);color:var(--text);border-radius:6px;padding:3px 7px;font:12px ui-monospace,Menlo,monospace;cursor:pointer}.au-var:hover{border-color:var(--brand)}
+    .au-who{background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:14px;margin:8px 0}.au-who ul{margin:8px 0 0;padding-left:18px}.au-who li{margin:3px 0}.au-who .sm{color:var(--muted);font-size:12px}
+    .au-foot{position:sticky;bottom:-1px;background:var(--card);padding:12px 0 2px;margin-top:6px;border-top:1px solid var(--line)}
+    @media (max-width:760px){.au-row{flex-wrap:wrap}.au-stats{order:3;width:100%;justify-content:flex-start}}
     .set-tabs{display:flex;flex-wrap:wrap;width:max-content;max-width:100%}.mt-on{background:#fee2e2;color:#991b1b}
     .card-save{display:flex;justify-content:flex-end;margin-top:6px}
     /* integrations tab: one box per service, two columns on wide screens */
@@ -260,6 +276,6 @@
   <div id="toast"></div>
   <script src="/hc-editor.js?v=2"></script>
   <script src="/brand.js?v=1"></script>
-  <script src="/platform.js?v=56"></script>
+  <script src="/platform.js?v=57"></script>
 </body>
 </html>

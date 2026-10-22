@@ -99,6 +99,7 @@ const TAB_ICONS = { // bottom bar icons (phones)
   accounts: ico('<path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 9h1M14 9h1M9 13h1M14 13h1M10 21v-4h4v4"/>'),
   discounts: ico('<path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="8" cy="8" r="1.5"/>'),
   integrations: ico('<path d="M9 2v6M15 2v6"/><path d="M6 8h12v3a6 6 0 0 1-12 0z"/><path d="M12 17v5"/>'),
+  automations: ico('<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>'),
   messages: ico('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>'),
   plans: ico('<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14.5 17.5l2 2 4-4"/>'),
   settings: ico('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>'),
@@ -112,7 +113,7 @@ function render() {
     $('#root').innerHTML = '<main class="pf-main pf-pop" id="main"><div class="card" id="chat"></div></main>';
     return chatCard($('#chat'));
   }
-  const tabs = [['accounts', 'Accounts'], ['plans', 'Plans & features'], ['discounts', 'Promotions'], ['messages', 'Messages'], ['help', 'Help Center'], ['integrations', 'Integrations'], ['settings', 'Settings']].filter(([k]) => tabsFor().includes(k));
+  const tabs = [['accounts', 'Accounts'], ['plans', 'Plans & features'], ['discounts', 'Promotions'], ['messages', 'Messages'], ['automations', 'Automations'], ['help', 'Help Center'], ['integrations', 'Integrations'], ['settings', 'Settings']].filter(([k]) => tabsFor().includes(k));
   document.title = `${tabs.find((t) => t[0] === tab)[1]} · ${D.settings.productName} Alpha`;
   $('#root').innerHTML = `<header class="pf-top"><div class="pf-bar"><div class="pf-brand">${brandImg(siteBrand(), 'dark')}${siteBrand().logoHasName ? '' : esc(D.settings.productName)} <small>Alpha</small></div>
 <nav class="pf-tabs">${tabs.map(([k, l]) => `<a href="#${k}" class="${tab === k ? 'on' : ''}">${l}${k === 'messages' && D.chatWaiting ? ` <span class="msg-n" title="Chats waiting for you">${D.chatWaiting}</span>` : ''}</a>`).join('')}</nav>
@@ -121,14 +122,14 @@ ${D.maintenance && D.maintenance.on ? `<div class="mt-bar" role="status"><strong
 <main class="pf-main" id="main"></main>
 <nav class="pf-bnav" aria-label="Alpha sections">${tabs.filter(([k]) => !NOT_ON_PHONES.includes(k)).map(([k, l]) => `<a href="#${k}" class="${tab === k ? 'on' : ''}"${tab === k ? ' aria-current="page"' : ''}>${TAB_ICONS[k]}<span>${SHORT_TABS[k] || l}</span></a>`).join('')}</nav>`;
   $('#main').dataset.tab = tab; // box title bands are styled per tab (platform.html)
-  ({ accounts: accountsView, plans: plansView, discounts: promoView, messages: messagesView, help: helpView, integrations: integrationsView, settings: settingsView })[tab]($('#main'));
+  ({ accounts: accountsView, plans: plansView, discounts: promoView, messages: messagesView, automations: automationsView, help: helpView, integrations: integrationsView, settings: settingsView })[tab]($('#main'));
 }
-const TABS = ['accounts', 'plans', 'discounts', 'messages', 'help', 'integrations', 'settings'];
+const TABS = ['accounts', 'plans', 'discounts', 'messages', 'automations', 'help', 'integrations', 'settings'];
 // support users (Settings → Alpha team) get Accounts, Messages and Help Center; the server enforces the same
 const isSupport = () => !!(D && D.admin && D.admin.role === 'support');
 const tabsFor = () => (isSupport() ? ['accounts', 'messages', 'help'] : TABS);
 const tabFromHash = () => { const h = location.hash.slice(1); return tabsFor().includes(h) ? h : 'accounts'; };
-const NOT_ON_PHONES = ['plans', 'integrations', 'settings']; // left off the phone tab bar for everyone (they need a bigger screen)
+const NOT_ON_PHONES = ['plans', 'automations', 'integrations', 'settings']; // left off the phone tab bar for everyone (they need a bigger screen)
 const SHORT_TABS = { plans: 'Plans', help: 'Help', discounts: 'Promos', integrations: 'Services' }; // the phone tab bar has room for short names only
 window.addEventListener('hashchange', () => { if (POPOUT) return; tab = tabFromHash(); if (D) render(); });
 
@@ -962,6 +963,101 @@ A.rmOauthApp = async (d) => {
   await api('DELETE', '/api/platform/oauth-apps/' + d.p); toast('Keys removed'); integrationsCard($('#integ'));
 };
 A.rmMailServer = async () => { if (!confirm('Stop sending through your mail server?')) return; await api('DELETE', '/api/platform/mail-server'); toast('Mail server removed'); integrationsCard($('#integ')); };
+/* ===== Automations (lib/automations.js): emails to businesses by schedule and rules ===== */
+let AU = null;
+const AU_TZ = [['America/New_York', 'Eastern'], ['America/Chicago', 'Central'], ['America/Denver', 'Mountain'], ['America/Phoenix', 'Arizona'], ['America/Los_Angeles', 'Pacific']];
+const auHour = (h) => `${h % 12 || 12} ${h < 12 ? 'AM' : 'PM'}`;
+// ready-made starting points
+const AU_STARTERS = {
+  welcome: { name: 'Welcome tips', trigger: 'signup', days: 1, hour: 9, subject: 'Three quick wins in {{product}}', body: '# Welcome aboard, {{name}}\n\nHere are three things that get {{business}} running fast:\n\n**1. Add your first client.** Import them from a spreadsheet or add them one by one.\n\n**2. Send a quote.** Clients approve and sign it online.\n\n**3. Schedule the job.** Your team sees it on the calendar.\n\n[Open {{business}}]({{account_url}})' },
+  setup: { name: 'Finish setting up', trigger: 'signup', days: 3, hour: 10, rules: { clientsMax: 0 }, subject: '{{name}}, your account is ready when you are', body: '# Let’s get {{business}} set up\n\nYou signed up a few days ago but haven’t added a client yet. It takes about two minutes, and our help center walks you through it.\n\n[Add your first client]({{account_url}}/clients)\n\nQuestions? Just reply to this email.' },
+  inactive: { name: 'We miss you', trigger: 'inactive', days: 14, hour: 10, rules: { statuses: ['active'] }, subject: 'Anything we can help with, {{name}}?', body: '# It’s been a little while\n\nNo one from {{business}} has logged in for two weeks. If something got in the way, reply and tell us. We read every message.\n\n[Log in to {{business}}]({{account_url}})' },
+  ending: { name: 'Last day reminder', trigger: 'expiry', days: 2, hour: 9, subject: 'Your {{product}} access ends in {{days_left}} days', body: '# Keep {{business}} running\n\nYour access ends in **{{days_left}} days**. Choose a plan to keep your clients, jobs and invoices.\n\n[Choose a plan]({{billing_url}})' },
+  thanks: { name: 'Thanks for subscribing', trigger: 'paid', days: 0, hour: 11, subject: 'Thank you for choosing {{product}}', body: '# Thank you, {{name}}\n\nWe’re glad {{business}} is on the {{plan}} plan. If you ever need a hand, our help center has step-by-step guides.\n\n[Visit the help center]({{help_url}})' },
+};
+async function automationsView(main) {
+  if (!AU) { main.innerHTML = '<p class="muted">Loading…</p>'; try { AU = await api('GET', '/api/platform/automations'); } catch (x) { main.innerHTML = `<div class="card">${esc(x.message)}</div>`; return; } }
+  const SAME_DAY = { signup: 'The day an account signs up', paid: 'The day an account starts paying', expiry: 'On an account’s last day of access', inactive: 'The day after anyone last logged in' };
+  const summary = (a) => `${a.trigger === 'date' ? `On ${fmtDate(a.date)}` : !a.days ? SAME_DAY[a.trigger] : `${a.days} ${a.days === 1 ? AU.triggers[a.trigger].replace('days', 'day') : AU.triggers[a.trigger]}`} · ${auHour(a.hour)} ${(AU_TZ.find((z) => z[0] === a.tz) || [, a.tz])[1]}${a.weekdays ? ', weekdays' : ''} · to the ${a.to === 'admins' ? 'owner and admins' : 'owner'}`;
+  const ruleText = (a) => { const r = a.rules || {}; const out = [];
+    if (r.plans.length) out.push(r.plans.map((p) => (AU.plans.find((x) => x.id === p) || { name: p }).name).join(' or ') + ' plan');
+    if (r.statuses.length) out.push(r.statuses.map((s) => AU.statuses[s]).join(' or '));
+    for (const [k, l] of [['clients', 'clients'], ['jobs', 'jobs'], ['invoices', 'invoices']]) { const lo = r[k + 'Min']; const hi = r[k + 'Max']; if (lo !== '' && hi !== '') out.push(`${lo}–${hi} ${l}`); else if (lo !== '') out.push(`${lo}+ ${l}`); else if (hi !== '') out.push(hi === 0 ? `no ${l}` : `up to ${hi} ${l}`); }
+    if (r.cards !== 'any') out.push(r.cards === 'yes' ? 'card payments set up' : 'no card payments'); if (r.confirmed !== 'any') out.push(r.confirmed === 'yes' ? 'email confirmed' : 'email not confirmed');
+    return out.length ? out.join(' · ') : 'Every account'; };
+  main.innerHTML = `<div class="head"><div><h1>Automations</h1><p class="sub" style="margin:4px 0 0">Emails to businesses that send themselves, by time and rules. Checked every hour; each account gets each one once per event.${AU.optedOut ? ` ${AU.optedOut} ${AU.optedOut === 1 ? 'person has' : 'people have'} unsubscribed.` : ''}</p></div>
+<div class="acts"><button type="button" class="btn alt" data-act="auRun" title="Check every automation now instead of waiting for the hourly run">Run now</button><button type="button" class="btn" data-act="auNew">New automation</button></div></div>
+<div class="card"><h2>Your automations</h2>${AU.automations.length ? `<div class="au-list">${AU.automations.map((a) => `<div class="au-row ${a.enabled ? '' : 'off'}">
+<label class="au-sw" title="${a.enabled ? 'On' : 'Off'}"><input type="checkbox" data-act="auToggle" data-id="${a.id}" ${a.enabled ? 'checked' : ''}><i></i></label>
+<div class="au-main"><strong>${esc(a.name)}</strong><div class="sm">${esc(summary(a))}</div><div class="sm">Who: ${esc(ruleText(a))}</div></div>
+<div class="au-stats"><div><b>${a.sentCount || 0}</b><span>sent</span></div>${a.enabled ? `<div><b>${a.waiting}</b><span>due now</span></div>` : ''}<div class="sm">${a.lastSentAt ? `Last ${fmtDate(a.lastSentAt.slice(0, 10))}` : 'Not sent yet'}</div></div>
+<div class="acts"><button type="button" class="btn alt sm" data-act="auEdit" data-id="${a.id}">Edit</button><button type="button" class="btn danger sm" data-act="auDel" data-id="${a.id}">Delete</button></div></div>`).join('')}</div>`
+    : '<p class="muted">No automations yet. Start with one of these:</p>'}
+${AU.automations.length ? '' : `<div class="au-starters">${Object.entries(AU_STARTERS).map(([k, s]) => `<button type="button" class="au-starter" data-act="auNew" data-k="${k}"><strong>${esc(s.name)}</strong><span class="sm">${esc(s.trigger === 'expiry' ? `${s.days} days before the last day of access` : `${s.days} ${AU.triggers[s.trigger]}`)}</span></button>`).join('')}</div>`}</div>
+<div class="card"><h2>Recently sent</h2>${AU.log.length ? `<div class="tablewrap"><table class="acc"><thead><tr><th>When</th><th>Automation</th><th>Business</th><th>To</th><th>Status</th></tr></thead><tbody>${AU.log.slice(0, 50).map((l) => `<tr><td class="sm">${esc(new Date(l.at).toLocaleString())}</td><td>${esc(l.automation)}</td><td>${esc(l.business)}</td><td class="sm">${esc(l.to)}</td><td><span class="cstatus ${l.status === 'sent' ? 'active' : l.status === 'failed' ? 'q-draft' : 'q-sent'}" title="${esc(l.detail)}">${esc(l.status === 'simulated' ? 'Not sent (email not set up)' : l.status)}</span></td></tr>`).join('')}</tbody></table></div>` : '<p class="muted" style="margin:0">Nothing sent yet.</p>'}</div>`;
+}
+A.auRun = async (d, el) => { el.disabled = true; try { AU = await api('POST', '/api/platform/automations/run'); toast('Checked every automation'); automationsView($('#main')); } catch (x) { toast(x.message, true); el.disabled = false; } };
+A.auToggle = async (d, el) => {
+  const a = AU.automations.find((x) => x.id === d.id);
+  if (el.checked && !confirm(`Turn on “${a.name}”? It starts sending at the next hourly check${a.catchUp ? ', including to accounts already past this point' : ''}.`)) { el.checked = false; return; }
+  try { AU = await api('POST', `/api/platform/automations/${d.id}/enable`, { on: el.checked }); toast(el.checked ? 'Automation on' : 'Automation off'); automationsView($('#main')); } catch (x) { el.checked = !el.checked; toast(x.message, true); }
+};
+A.auDel = async (d) => { const a = AU.automations.find((x) => x.id === d.id); if (!confirm(`Delete “${a.name}”? Its send history stays in the log.`)) return; AU = await api('DELETE', '/api/platform/automations/' + d.id); toast('Automation deleted'); automationsView($('#main')); };
+A.auNew = (d) => auEditor({ trigger: 'signup', days: 1, hour: 9, tz: 'America/Chicago', to: 'owner', rules: {}, ...(d.k ? structuredClone(AU_STARTERS[d.k]) : { name: '', subject: '', body: '' }) });
+A.auEdit = (d) => auEditor(structuredClone(AU.automations.find((x) => x.id === d.id)));
+function auEditor(a) {
+  const r = { plans: [], statuses: [], clientsMin: '', clientsMax: '', jobsMin: '', jobsMax: '', invoicesMin: '', invoicesMax: '', cards: 'any', confirmed: 'any', ...(a.rules || {}) };
+  const opt = (v, cur, l) => `<option value="${v}" ${String(cur) === String(v) ? 'selected' : ''}>${l}</option>`;
+  const range = (k, l) => `<div class="au-range"><span>${l}</span><input type="number" min="0" name="${k}Min" value="${esc(r[k + 'Min'])}" placeholder="any" aria-label="${l} at least"><span>to</span><input type="number" min="0" name="${k}Max" value="${esc(r[k + 'Max'])}" placeholder="any" aria-label="${l} at most"></div>`;
+  const m = modal(a.id ? `Edit “${a.name}”` : 'New automation', `<form id="auf" class="au-form">
+${a.id ? '' : `<label>Start from<select id="auStart"><option value="">Blank</option>${Object.entries(AU_STARTERS).map(([k, s]) => opt(k, '', s.name)).join('')}</select></label>`}
+<label>Name (only you see it)<input name="name" required maxlength="80" value="${esc(a.name || '')}" placeholder="e.g. Welcome tips"></label>
+<h3 class="au-h">When</h3>
+<div class="row"><label>Trigger<select name="trigger">${Object.entries(AU.triggers).map(([k, l]) => opt(k, a.trigger, k === 'date' ? 'On a date (one time)' : l.replace(/^days /, '').replace(/^./, (c) => c.toUpperCase()))).join('')}</select></label>
+<label class="au-days">Days<input type="number" name="days" min="0" max="3650" value="${esc(a.days ?? 1)}"></label><label class="au-date">Date<input type="date" name="date" value="${esc(a.date || '')}"></label></div>
+<div class="row"><label>Send at<select name="hour">${Array.from({ length: 24 }, (_, i) => opt(i, a.hour ?? 9, auHour(i))).join('')}</select></label><label>Time zone<select name="tz">${AU_TZ.map(([z, l]) => opt(z, a.tz || 'America/Chicago', l)).join('')}</select></label></div>
+<label class="switchline"><input type="checkbox" name="weekdays" ${a.weekdays ? 'checked' : ''}> Weekdays only (waits for Monday)</label>
+<label class="switchline au-catch"><input type="checkbox" name="catchUp" ${a.catchUp ? 'checked' : ''}> Also send to accounts already past this point when it’s turned on</label>
+<h3 class="au-h">Who</h3>
+<div class="row"><label>Send to<select name="to">${opt('owner', a.to, 'The account owner')}${opt('admins', a.to, 'The owner and admins')}</select></label><div></div></div>
+<div class="au-checks"><span>Plans</span>${AU.plans.map((p) => `<label><input type="checkbox" name="plans" value="${esc(p.id)}" ${r.plans.includes(p.id) ? 'checked' : ''}> ${esc(p.name)}</label>`).join('')}<em>none ticked = all plans</em></div>
+<div class="au-checks"><span>Status</span>${Object.entries(AU.statuses).map(([k, l]) => `<label><input type="checkbox" name="statuses" value="${k}" ${r.statuses.includes(k) ? 'checked' : ''}> ${l}</label>`).join('')}<em>none ticked = any status</em></div>
+${range('clients', 'Clients')}${range('jobs', 'Jobs')}${range('invoices', 'Invoices')}
+<div class="row"><label>Card payments<select name="cards">${opt('any', r.cards, 'Any')}${opt('yes', r.cards, 'Set up')}${opt('no', r.cards, 'Not set up')}</select></label><label>Owner’s email<select name="confirmed">${opt('any', r.confirmed, 'Any')}${opt('yes', r.confirmed, 'Confirmed')}${opt('no', r.confirmed, 'Not confirmed')}</select></label></div>
+<h3 class="au-h">Email</h3>
+<label>Subject<input name="subject" required maxlength="200" value="${esc(a.subject || '')}"></label>
+<label>Message<textarea name="body" rows="10" required>${esc(a.body || '')}</textarea></label>
+<div class="au-vars"><span class="sm">Insert:</span>${['product', ...Object.keys(AU.vars)].map((v) => `<button type="button" class="au-var" data-act="auVar" data-v="${v}" title="${esc(v === 'product' ? 'Your product name' : AU.vars[v])}">{{${v}}}</button>`).join('')}</div>
+<p class="muted" style="font-size:12px;margin:4px 0 10px"><code># </code>starts a heading, <code>**bold**</code>, and a line with just <code>[Button text](link)</code> becomes a button. An unsubscribe link is added at the end.</p>
+<div id="auPreview"></div>
+<div class="acts au-foot"><button type="button" class="btn alt" data-act="auWho">Who gets it?</button><button type="button" class="btn alt" data-act="auTest">Send me a test</button><span style="flex:1"></span><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save</button></div></form>`, { wide: true, sticky: true });
+  const f = $('#auf', m); f.dataset.id = a.id || '';
+  const showWhen = () => { const t = f.trigger.value; $('.au-days', f).hidden = t === 'date'; $('.au-date', f).hidden = t !== 'date'; $('.au-catch', f).hidden = t === 'date'; };
+  f.trigger.addEventListener('change', showWhen); showWhen();
+  const st = $('#auStart', f); if (st) st.addEventListener('change', () => { if (st.value) auEditor({ trigger: 'signup', days: 1, hour: 9, tz: 'America/Chicago', to: 'owner', rules: {}, ...structuredClone(AU_STARTERS[st.value]) }); });
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault(); const b = auRead(f);
+    try { AU = await api(a.id ? 'PUT' : 'POST', a.id ? `/api/platform/automations/${a.id}` : '/api/platform/automations', b); closeModal(); toast(a.id ? 'Automation saved' : 'Automation saved. Turn it on when you’re ready.'); automationsView($('#main')); } catch (x) { toast(x.message, true); }
+  });
+}
+function auRead(f) {
+  const fd = new FormData(f); const g = (k) => fd.get(k);
+  return { id: f.dataset.id || undefined, name: g('name'), trigger: g('trigger'), days: g('days'), date: g('date'), hour: g('hour'), tz: g('tz'), weekdays: !!g('weekdays'), catchUp: !!g('catchUp'), to: g('to'), subject: g('subject'), body: g('body'),
+    rules: { plans: fd.getAll('plans'), statuses: fd.getAll('statuses'), clientsMin: g('clientsMin'), clientsMax: g('clientsMax'), jobsMin: g('jobsMin'), jobsMax: g('jobsMax'), invoicesMin: g('invoicesMin'), invoicesMax: g('invoicesMax'), cards: g('cards'), confirmed: g('confirmed') } };
+}
+A.auVar = (d) => { const ta = $('#auf [name=body]'); const s = ta.selectionStart; const ins = `{{${d.v}}}`; ta.value = ta.value.slice(0, s) + ins + ta.value.slice(ta.selectionEnd); ta.focus(); ta.selectionStart = ta.selectionEnd = s + ins.length; };
+A.auWho = async () => {
+  const box = $('#auPreview'); box.innerHTML = '<p class="muted">Checking accounts…</p>';
+  try {
+    const L = await api('POST', '/api/platform/automations/preview', auRead($('#auf'))); const ready = L.filter((x) => x.ready); const done = L.filter((x) => x.sent); const later = L.filter((x) => !x.ready && !x.sent);
+    box.innerHTML = `<div class="au-who"><strong>${L.length} account${L.length === 1 ? '' : 's'} match the rules</strong>: ${ready.length} due now, ${later.length} later or already past, ${done.length} already sent.
+${L.length ? `<ul>${L.slice(0, 12).map((x) => `<li>${esc(x.business)} <span class="sm">${esc(x.plan)} · ${x.sent ? 'sent' : x.ready ? 'due now' : `due ${fmtDate(x.due)}`} · ${x.to.length ? esc(x.to.join(', ')) : 'no one to email'}</span></li>`).join('')}${L.length > 12 ? `<li class="sm">and ${L.length - 12} more</li>` : ''}</ul>` : ''}</div>`;
+  } catch (x) { box.innerHTML = `<p class="msg err">${esc(x.message)}</p>`; }
+};
+A.auTest = async (d, el) => {
+  el.disabled = true; try { const r = await api('POST', '/api/platform/automations/test', auRead($('#auf'))); toast(r.status === 'sent' ? `Test sent to ${D.admin.email} (filled in with ${r.example})` : `Not sent: ${r.detail || r.status}`, r.status !== 'sent'); } catch (x) { toast(x.message, true); } el.disabled = false;
+};
+
 /* ===== actions ===== */
 A.closeModal = closeModal;
 
