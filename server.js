@@ -18,6 +18,7 @@ const referrals = require('./lib/referrals');
 const maintenance = require('./lib/maintenance');
 const stripeLib = require('./lib/stripe');
 const social = require('./lib/social');
+const rolesLib = require('./lib/roles');
 const { createPdf } = require('./lib/pdf');
 const chat = require('./lib/chat');
 const { db, uploadDir } = tenancy;
@@ -95,6 +96,7 @@ const save = () => tenancy.saveStore();
 function migrate() {
   ensureAuthStore(); ensureOwnerStaff();
   for (const u of db.users) if (u.role === 'member') u.role = 'technician'; // the old "team member" role is now Technician
+  if (!Array.isArray(db.roles)) db.roles = rolesLib.defaults(); // team roles (Settings → Roles & Permissions) start as Manager and Technician
   [...db.quotes, ...db.invoices].forEach(computeTotals); // cost/markup fields, deposit amount
   // the first client importer stored the company as a "Company: …" line in notes; move it to the company field
   db.clients.forEach((c) => {
@@ -341,7 +343,7 @@ const checkPassword = (pw, u) => { const a = Buffer.from(hashPassword(pw, u.salt
 const normEmail = (e) => String(e || '').trim().toLowerCase();
 // linked team member: by staffId, or by matching email (e.g. an owner who is also on the team)
 const staffOfUser = (u) => (db.staff || []).find((s) => s.id === u.staffId) || (db.staff || []).find((s) => normEmail(s.email) === u.email);
-const publicUser = (u) => u && { id: u.id, name: u.name, email: u.email, role: u.role, photo: (staffOfUser(u) || u).photo || '' };
+const publicUser = (u) => u && { id: u.id, name: u.name, email: u.email, role: u.role, roleName: rolesLib.nameOf(teamRoles(), roleKey(u)), photo: (staffOfUser(u) || u).photo || '' };
 // a login linked to a team member stops working when that member is deactivated
 const staffBlocked = (u) => { const st = u.staffId && db.staff.find((x) => x.id === u.staffId); return !!(st && st.status === 'deactivated'); };
 const isAdmin = (u) => !!u && (u.role === 'owner' || u.role === 'admin');
@@ -385,23 +387,16 @@ app.use((req, res, next) => {
   if (currentUser(req)) return next();
   res.redirect('/login' + (p !== '/' ? '?next=' + encodeURIComponent(req.url) : ''));
 });
-// Access levels: owner/admin can do everything. Others only reach the routes listed for their role:
-//  technician: view jobs (no prices), clients and the schedule
-//  manager: add/edit/delete jobs, quotes and invoices, the Money section (products & services, expenses, reports, tax), add/edit clients
-const ROLES = ['admin', 'manager', 'technician']; // assignable to team members (the owner role is fixed)
-const ID = '[^/]+';
-const route = (method, re) => [method, new RegExp('^/api/' + re + '$')];
-const SUPPORT_API = [route('GET', 'account/support-access'), route('POST', `account/support-access/${ID}/(grant|decline|revoke)`)];
-const ROLE_API = {
-  technician: [route('GET', '(jobs|clients|staff|company)'), route('GET', 'auth/.+'), route('POST', 'auth/.+'), route('POST', 'support'), route('POST', 'feedback'), ...SUPPORT_API, route('POST', `jobs/${ID}/signature`)],
-  manager: [
-    route('GET', 'auth/.+'), route('POST', 'auth/.+'), route('POST', 'support'), route('POST', 'feedback'), ...SUPPORT_API,
-    route('GET', '(jobs|clients|staff|services|photos|company|quotes|invoices|expenses|reports|tax-summary|overview|email-templates)'), route('GET', 'payments/stripe'), route('GET', 'payment-detail/[\\w-]+'), route('GET', 'payment-detail/[\\w-]+/pdf'), route('POST', 'payment-detail/[\\w-]+/receipt'), route('GET', 'reviews'), route('PUT', 'reviews/reply'), route('DELETE', 'reviews/reply'), route('GET', 'social-posts'), route('POST', 'social-posts'),
-    route('POST', '(jobs|quotes|invoices|expenses|services|clients|photos)'), route('POST', 'services/describe'), route('PUT', `(jobs|quotes|invoices|expenses|services|clients)/${ID}`),
-    route('DELETE', `(jobs|quotes|invoices|expenses|services|photos)/${ID}`),
-    route('POST', `quotes/${ID}/(send|approve|convert-to-job|mark-deposit-paid|set-deposit)`), route('POST', `invoices/${ID}/(send|mark-paid|payments)`), route('DELETE', `invoices/${ID}/payments/${ID}`), route('POST', `jobs/${ID}/(create-invoice|remind|signature)`), route('DELETE', `jobs/${ID}/signature`),
-  ],
-};
+// Access: the owner and admins can do everything. Everyone else gets the permissions of their role (lib/roles.js),
+// which the business edits in Settings → Roles & Permissions; each permission opens certain pages and API routes.
+// Custom roles is a plan feature. Without it there are three levels: Owner, Manager and Team Member (fixed);
+// a login whose role isn't one of those (e.g. after a downgrade) gets Team Member access. Existing admins keep full access.
+const customRolesOn = () => tenancy.has('customRoles');
+const teamRoles = () => (customRolesOn() ? db.roles || [] : rolesLib.fixed());
+const roleKey = (u) => (rolesLib.isAdminRole(u.role) || teamRoles().some((r) => r.id === u.role) ? u.role : 'technician');
+const roleValid = (r) => (r === 'admin' ? customRolesOn() : teamRoles().some((x) => x.id === r));
+const defaultRole = () => (teamRoles().find((r) => r.id === 'technician') || teamRoles()[0] || { id: 'admin' }).id;
+const can = (u, key) => !!u && rolesLib.can(teamRoles(), roleKey(u), key);
 // a support session works like the owner, but can't change the owner's own login, the subscription, or support access itself
 const SUPPORT_BLOCKED = /^\/api\/(auth\/(password|profile|hours)|account\/(billing|support-access)(\/.*)?)$/;
 app.use('/api', (req, res, next) => {
@@ -410,7 +405,7 @@ app.use('/api', (req, res, next) => {
 });
 app.use('/api', (req, res, next) => {
   const u = currentUser(req); if (!u || isAdmin(u)) return next();
-  if ((ROLE_API[u.role] || []).some(([m, re]) => m === req.method && re.test(req.path))) return next();
+  if (rolesLib.allows(rolesLib.routesFor(teamRoles(), roleKey(u)), req.method, req.path)) return next();
   res.status(403).json({ error: 'Your access level doesn’t include this. Ask the account owner.' });
 });
 // features the account's plan doesn't include: lists come back empty (so pages still load), everything else is refused
@@ -419,8 +414,8 @@ app.use('/api', (req, res, next) => {
   if (req.method === 'GET' && /^\/api\/[a-z-]+$/.test(req.path) && COLLECTIONS.includes(req.path.slice(5))) return res.json([]);
   res.status(403).json({ error: `${f.label} isn’t included in your ${tenancy.planOf(tenancy.current()).name} plan`, upgrade: f.key });
 });
-// technicians see jobs without prices, totals or line items
-const isMemberReq = (req) => { const u = currentUser(req); return !!u && u.role === 'technician'; };
+// without the "See prices on jobs" permission, jobs come without prices, totals or line items
+const isMemberReq = (req) => { const u = currentUser(req); return !!u && !can(u, 'jobs.prices'); };
 // what a team member may see/change on a job: no prices, totals or line items
 const MONEY_KEYS = ['items', 'subtotal', 'discount', 'discountType', 'discountValue', 'tax', 'total', 'taxRate', 'depositType', 'depositValue', 'depositFee'];
 const jobForMember = (j) => Object.fromEntries(Object.entries(j).filter(([k]) => !MONEY_KEYS.includes(k)));
@@ -430,10 +425,17 @@ const MEMBER_JOB_FIELDS = ['title', 'clientId', 'address', 'date', 'startTime', 
 const INVITE_DAYS = 7;
 const userRow = (u) => ({ ...publicUser(u), staffId: u.staffId || null, status: u.passwordHash ? 'active' : 'invited', invitedAt: u.invitedAt || null, lastLoginAt: u.lastLoginAt || null });
 app.get('/api/users', (req, res) => res.json(db.users.map(userRow)));
+// Roles & Permissions (owner/admin): the catalog, the roles, and how many logins have each; saving replaces the whole list
+const rolesView = () => ({ custom: customRolesOn(), catalog: rolesLib.catalog(), roles: teamRoles().map((r) => ({ ...r, users: db.users.filter((u) => u.role !== 'owner' && u.role !== 'admin' && roleKey(u) === r.id).length })), admins: db.users.filter((u) => u.role === 'admin').length });
+app.get('/api/roles', (req, res) => res.json(rolesView()));
+app.put('/api/roles', (req, res) => {
+  const inUse = {}; for (const u of db.users) inUse[u.role] = (inUse[u.role] || 0) + 1;
+  try { db.roles = rolesLib.validate(req.body && req.body.roles, inUse); save(); res.json(rolesView()); } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
 app.post('/api/users/invite', async (req, res) => { // invite (or re-invite) a team member; returns the link so it can also be shared by hand
   const st = db.staff.find((x) => x.id === (req.body && req.body.staffId)); if (!st) return res.status(404).json({ error: 'Team member not found' });
   const email = normEmail(st.email); if (!email.includes('@')) return res.status(400).json({ error: 'Add an email address for this team member first' });
-  const role = ROLES.includes(req.body.role) ? req.body.role : 'technician';
+  const role = roleValid(req.body.role) ? req.body.role : defaultRole();
   let user = db.users.find((u) => u.staffId === st.id) || db.users.find((u) => u.email === email);
   if (user && user.role === 'owner') return res.status(400).json({ error: 'This email belongs to the account owner' });
   if (user && user.passwordHash) return res.status(400).json({ error: 'They already have a login' });
@@ -450,7 +452,8 @@ app.post('/api/users/invite', async (req, res) => { // invite (or re-invite) a t
 app.put('/api/users/:id', (req, res) => {
   const u = db.users.find((x) => x.id === req.params.id); if (!u) return res.status(404).json({ error: 'Not found' });
   if (u.role === 'owner') return res.status(400).json({ error: 'The owner’s role can’t be changed' });
-  u.role = ROLES.includes(req.body && req.body.role) ? req.body.role : 'technician'; save(); res.json(userRow(u));
+  if (!roleValid(req.body && req.body.role)) return res.status(400).json({ error: req.body && req.body.role === 'admin' ? 'The Admin role comes with Custom roles, which isn’t in your plan' : 'Choose one of your roles' });
+  u.role = req.body.role; save(); res.json(userRow(u));
 });
 function removeUser(u) {
   db.users = db.users.filter((x) => x.id !== u.id);
@@ -479,7 +482,9 @@ app.post('/api/auth/accept-invite', (req, res) => {
 });
 app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
 app.get('/api/auth/state', (req, res) => res.json({ needsSetup: !db.users.length, user: publicUser(currentUser(req)), company: { name: db.company.name, logo: db.company.logo, brandColor: db.company.brandColor }, product: brandLib.brand(), emailReady: !!emailProvider() }));
-app.get('/api/auth/me', (req, res) => (currentUser(req) ? res.json({ ...publicUser(currentUser(req)), ...(req._support ? { support: { adminName: req._support.adminName, expires: req._support.expires } } : {}) }) : res.status(401).json({ error: 'Please log in' })));
+// what this login may open: its permissions, the pages they unlock, and which lists it can load
+const accessOf = (u) => { const rk = roleKey(u); const routes = rolesLib.routesFor(teamRoles(), rk); return { perms: rolesLib.permsOf(teamRoles(), rk), pages: rolesLib.isAdminRole(u.role) ? null : rolesLib.pagesFor(teamRoles(), rk), collections: rolesLib.isAdminRole(u.role) ? COLLECTIONS : COLLECTIONS.filter((c) => rolesLib.allows(routes, 'GET', '/api/' + c)) }; };
+app.get('/api/auth/me', (req, res) => (currentUser(req) ? res.json({ ...publicUser(currentUser(req)), ...accessOf(currentUser(req)), ...(req._support ? { support: { adminName: req._support.adminName, expires: req._support.expires } } : {}) }) : res.status(401).json({ error: 'Please log in' })));
 app.post('/api/auth/setup', (req, res) => { // first run only: create the owner account
   if (db.users.length) return res.status(403).json({ error: 'An account already exists. Log in instead.' });
   const { name, email, password } = req.body || {};
@@ -789,7 +794,7 @@ app.post('/api/integrations/stripe/disconnect', (req, res) => {
   const sec = { ...secrets() }; for (const k of ['stripeAccountId', 'stripeAccountType', 'stripeChargesEnabled', 'stripePayoutsEnabled', 'stripeDetailsSubmitted', 'stripeAccountName', 'stripeBank', 'stripeDue', 'stripeSecretKey', 'stripeWebhookSecret']) delete sec[k];
   db.secrets = sec; save(); res.json({ ok: true });
 });
-// the account's own email and Twilio accounts (owner/admin only: these routes aren't in ROLE_API). Blank secrets keep the saved ones.
+// the account's own email and Twilio accounts (owner/admin only: no role permission opens these routes). Blank secrets keep the saved ones.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 app.post('/api/integrations/test', async (req, res) => {
   const b = req.body || {}; const to = String(b.to || '').trim();
@@ -1284,7 +1289,7 @@ app.post('/api/stripe/webhook', (req, res) => {
   res.json({ received: true });
 });
 // ---------- Payments page ----------
-// settings (owner/admin only: not in ROLE_API)
+// settings (owner/admin only: no role permission opens these)
 app.put('/api/payments/settings', (req, res) => {
   const b = req.body || {}; const s = paySettings();
   for (const k of Object.keys(PAY_DEFAULTS)) if (k in b) s[k] = b[k] === true;
@@ -1882,7 +1887,7 @@ app.get('/api/reviews', async (req, res) => {
   const c = connOf('google'); if (!c || c.reviews === false) return res.json({ connected: !!c, on: false });
   try { const r = await social.googleReviews(c, String(req.query.page || '')); save(); res.json({ connected: true, on: true, title: c.title, mapsUrl: c.mapsUrl, reviewUrl: c.reviewUrl, ...r }); } catch (e) { connFail(res, e); }
 });
-const canReply = (req, res) => { const u = currentUser(req); if (isAdmin(u) || u.role === 'manager') return true; res.status(403).json({ error: 'Ask a manager or admin to reply to reviews' }); return false; };
+const canReply = (req, res) => { const u = currentUser(req); if (can(u, 'reviews')) return true; res.status(403).json({ error: 'Ask a manager or admin to reply to reviews' }); return false; };
 app.put('/api/reviews/reply', async (req, res) => {
   if (!canReply(req, res)) return; const c = connOf('google'); if (!c) return res.status(400).json({ error: 'Connect your Google Business Profile first' });
   const comment = String((req.body && req.body.comment) || '').trim(); if (!comment) return res.status(400).json({ error: 'Write a reply first' });

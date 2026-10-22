@@ -61,7 +61,7 @@ PAGES['/calendar'] = {
       const js = jobsOn(s); const cap = cal.view === 'month' ? 3 : 99;
       cells += `<div class="day ${out ? 'out' : ''} ${s === today ? 'today' : ''}"><div class="dn" data-act="newJobOn" data-date="${s}" title="Add job on this day"><span>${d.getDate()}</span><span class="muted">+</span></div>${js.slice(0, cap).map(chip).join('')}${js.length > cap ? `<div class="muted">+${js.length - cap} more</div>` : ''}</div>`;
     }
-    main.innerHTML = `<div class="head"><div><h1>Job Schedule</h1><p class="sub">All scheduled jobs by date. Click a job to edit, or the day number to add one.</p></div><button class="btn no-tech" data-act="newJob">+ New job</button></div>
+    main.innerHTML = `<div class="head"><div><h1>Job Schedule</h1><p class="sub">All scheduled jobs by date. Click a job to edit, or the day number to add one.</p></div><button class="btn need-jobs-edit" data-act="newJob">+ New job</button></div>
 <div class="load">${load.map((l) => `<div><strong>${parseD(l.s).toLocaleDateString('en-US', { weekday: 'short' })} ${parseD(l.s).getDate()}</strong><div class="muted">${l.n} job${l.n === 1 ? '' : 's'} · ${l.h.toFixed(1)}h</div><div class="bar"><i style="width:${(l.h / maxH) * 100}%"></i></div></div>`).join('')}</div>
 <div class="card"><div class="head" style="margin-bottom:10px"><div class="actions"><button class="btn alt sm" data-act="calPrev">‹</button><button class="btn alt sm" data-act="calToday">Today</button><button class="btn alt sm" data-act="calNext">›</button></div><h2 style="margin:0">${esc(title)}</h2>
 <div class="tabs" style="margin:0"><button class="${cal.view === 'month' ? 'on' : ''}" data-act="calView" data-v="month">Month</button><button class="${cal.view === 'week' ? 'on' : ''}" data-act="calView" data-v="week">Week</button></div></div>
@@ -88,7 +88,7 @@ PAGES['/staff-schedules'] = {
       return `<tr><td class="person">${s ? `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${esc(s.color)};margin-right:6px"></span><span class="p-name">${esc(s.name)}</span><div class="muted p-role">${esc(s.role)}</div>` : 'Unassigned'}<div class="muted p-load">${week.flat().length} jobs · ${h.toFixed(1)}h</div></td>${week.map((l, i) => { const off = s && !staffHours(s)[WEEK[days[i].getDay()][0]].on; return `<td class="${ymd(days[i]) === today ? 'today' : ''} ${off ? 'off' : ''}">${cell(l) || (off ? '<span class="off-l">Off</span>' : '')}</td>`; }).join('')}</tr>`;
     };
     const unassigned = days.some((d) => forPerson(null, ymd(d)).length);
-    main.innerHTML = `<div class="head"><div><h1>Staff Schedules</h1><p class="sub">Weekly workload and upcoming appointments for each team member.</p></div><div class="actions"><button class="btn alt admin-only" data-act="manageStaff">Manage staff</button><button class="btn no-tech" data-act="newJob">+ New job</button></div></div>
+    main.innerHTML = `<div class="head"><div><h1>Staff Schedules</h1><p class="sub">Weekly workload and upcoming appointments for each team member.</p></div><div class="actions"><button class="btn alt admin-only" data-act="manageStaff">Manage staff</button><button class="btn need-jobs-edit" data-act="newJob">+ New job</button></div></div>
 <div class="card sched-card"><div class="head" style="margin-bottom:10px"><div class="actions"><button class="btn alt sm" data-act="swPrev">‹</button><button class="btn alt sm" data-act="swToday">This week</button><button class="btn alt sm" data-act="swNext">›</button></div><h2 style="margin:0">Week of ${fmtDate(ymd(staffWeek))}</h2></div>
 <div class="tablewrap"><table class="sched"><tr><th class="person"><span class="c-full">Team member</span><span class="c-short">Team</span></th>${days.map((d) => `<th class="${ymd(d) === today ? 'today' : ''}"><span class="c-full">${d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span><span class="c-short">${d.toLocaleDateString('en-US', { weekday: 'narrow' })}<b>${d.getDate()}</b></span></th>`).join('')}</tr>
 ${D.staff.filter((s) => staffActive(s) || days.some((d) => forPerson(s.id, ymd(d)).length)).map(row).join('') || '<tr><td colspan="8" class="empty">No staff yet. Use “Manage staff” to add your team.</td></tr>'}${unassigned ? row(null) : ''}</table></div></div>`;
@@ -199,20 +199,16 @@ ${hoursHtml(hours)}</div>
 let teamUsers = [];
 const userFor = (s) => teamUsers.find((u) => u.staffId === s.id) || (s.email ? teamUsers.find((u) => u.email === String(s.email).trim().toLowerCase()) : null);
 const isOwnerMember = (s) => !!(s && s.id && teamUsers.some((u) => u.role === 'owner' && u.staffId === s.id));
-const ROLE_LABEL = { owner: 'Owner', admin: 'Admin', manager: 'Manager', technician: 'Technician' };
-const ROLE_CLASS = { owner: 'active', admin: 'active', manager: 'q-approved', technician: 'q-converted' };
-// what each access level can do; the server enforces the same rules
-const ROLE_OPTIONS = [
-  ['technician', 'Technician: view jobs, clients and the schedule only (no prices)'],
-  ['manager', 'Manager: add, edit and delete jobs, quotes and invoices, plus the Money section'],
-  ['admin', 'Admin: full access, including team and settings'],
-];
-const loginBadge = (u) => (!u ? '<span class="muted">No login</span>' : u.status === 'invited' ? '<span class="cstatus q-sent">Invited</span>' : `<span class="cstatus ${ROLE_CLASS[u.role] || 'active'}">${ROLE_LABEL[u.role] || esc(u.role)}</span>`);
-const roleSelect = (u) => `<label class="role-pick">Access<select id="loginRole">
-${ROLE_OPTIONS.map(([k, l]) => `<option value="${k}" ${(u ? u.role : 'technician') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`;
+// the business's roles (Settings → Roles & Permissions), plus Admin; the server enforces what each can do
+let teamRoles = []; let teamCustom = false; // teamCustom: the plan includes Custom roles (otherwise Manager and Team Member only)
+const roleOptions = (cur) => [...teamRoles.map((r) => [r.id, r.name + (r.desc ? `: ${r.desc}` : '')]), ...(teamCustom || cur === 'admin' ? [['admin', 'Admin: full access, including team and settings']] : [])];
+const loginBadge = (u) => (!u ? '<span class="muted">No login</span>' : u.status === 'invited' ? '<span class="cstatus q-sent">Invited</span>' : `<span class="cstatus ${['owner', 'admin'].includes(u.role) ? 'active' : 'q-approved'}">${esc(u.roleName || u.role)}</span>`);
+const roleSelect = (u) => { const opts = roleOptions(u && u.role); const cur = u ? u.role : (teamRoles.find((r) => r.id === 'technician') || teamRoles[0] || { id: 'admin' }).id;
+  return `<label class="role-pick">Role<select id="loginRole">${opts.some(([k]) => k === cur) ? '' : '<option value="" selected disabled>Choose a role</option>'}${opts.map(([k, l]) => `<option value="${k}" ${cur === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+<p class="muted" style="font-size:13px;margin:6px 0 0">${teamCustom ? 'Change what each role can do in <a href="/settings/roles" data-link>Roles &amp; Permissions</a>.' : `Want your own roles and an Admin role? <strong>Custom roles &amp; permissions</strong> is included on other plans.${role() === 'owner' ? ' <a href="/settings/billing?upgrade=1" data-link>See plans</a>' : ''}`}</p>`; };
 async function renderLoginCard(s, note) {
   const box = $('#loginCard'); if (!box) return;
-  teamUsers = await api('GET', '/api/users'); const u = userFor(s);
+  [teamUsers, teamRoles] = await Promise.all([api('GET', '/api/users'), api('GET', '/api/roles').then((r) => { teamCustom = r.custom; return r.roles; })]); const u = userFor(s);
   let body;
   if (u && u.role === 'owner') body = `<p>Account owner, logs in as <strong>${esc(u.email)}</strong>. Owners always have full access.</p>`;
   else if (!u && !String(s.email || '').includes('@')) body = '<p class="muted">Add an email address above and save, then you can invite them to log in.</p>';
@@ -222,10 +218,10 @@ ${staffActive(s) ? '' : '<p class="notice">This team member is deactivated, so t
 <div class="foot" style="justify-content:flex-start">${u.status === 'invited' ? `<button type="button" class="btn alt" data-act="tmInvite" data-id="${s.id}">Resend invite</button>` : ''}<button type="button" class="btn danger" data-act="tmRevoke" data-id="${s.id}">Remove login access</button></div>`;
   box.innerHTML = `<div class="qcard-h"><h2>Login access</h2>${loginBadge(u)}</div>${body}${note || ''}`;
   const sel = $('#loginRole', box);
-  if (sel && u && u.role !== 'owner') sel.addEventListener('change', async () => { await api('PUT', '/api/users/' + u.id, { role: sel.value }); toast(`${s.name} is now ${sel.value === 'admin' ? 'an' : 'a'} ${ROLE_LABEL[sel.value].toLowerCase()}`); renderLoginCard(s); });
+  if (sel && u && u.role !== 'owner') sel.addEventListener('change', async () => { await api('PUT', '/api/users/' + u.id, { role: sel.value }); toast(`${s.name}’s role is now ${sel.options[sel.selectedIndex].text.split(':')[0]}`); renderLoginCard(s); });
 }
 A.tmInvite = async (d) => {
-  const s = byId(D.staff, d.id); const role = ($('#loginRole') || {}).value || 'technician';
+  const s = byId(D.staff, d.id); const role = ($('#loginRole') || {}).value; if (!role) return toast('Choose a role first', true);
   const r = await api('POST', '/api/users/invite', { staffId: s.id, role });
   const note = r.emailed ? `<p class="msg-ok">Invite emailed to ${esc(s.email)}. The link works for 7 days.</p>`
     : `<div class="notice" style="margin-top:12px">The invite email couldn't be sent (${esc(r.detail || 'email not set up')}). Send ${esc(s.name)} this link yourself, by text for example. It works for 7 days:
@@ -363,6 +359,43 @@ PAGES['/tax-summary'] = {
   },
 };
 
+/* ===== /settings/roles: Roles & Permissions. Owner and Admin have full access; the business makes its other roles ===== */
+let roleDraft = null; let roleData = null;
+PAGES['/settings/roles'] = {
+  title: 'Roles & Permissions',
+  async render(main) {
+    if (!roleDraft) { roleData = await api('GET', '/api/roles'); roleDraft = structuredClone(roleData.roles); }
+    const C = roleData.catalog; const groups = [...new Set(C.map((p) => p.group))];
+    const dirty = JSON.stringify(roleDraft.map(({ id, name, desc, perms }) => ({ id, name, desc, perms }))) !== JSON.stringify(roleData.roles.map(({ id, name, desc, perms }) => ({ id, name, desc, perms })));
+    const head = (r, i) => `<th class="rp-col"><input class="rp-name" data-i="${i}" data-k="name" value="${esc(r.name)}" maxlength="40" placeholder="Role name" aria-label="Role name">
+<input class="rp-desc" data-i="${i}" data-k="desc" value="${esc(r.desc || '')}" maxlength="160" placeholder="What this role is for" aria-label="Description">
+<div class="rp-meta"><span class="muted">${r.users ? `${r.users} ${r.users === 1 ? 'person' : 'people'}` : 'No one yet'}</span><button type="button" class="link-btn danger" data-act="roleRm" data-i="${i}" ${r.users ? 'disabled title="Give these team members another role first"' : ''}>Remove</button></div></th>`;
+    const cell = (r, i, p) => `<td class="rp-c"><input type="checkbox" data-act="roleTick" data-i="${i}" data-k="${p.key}" ${r.perms.includes(p.key) ? 'checked' : ''} aria-label="${esc(r.name || 'New role')}: ${esc(p.label)}"></td>`;
+    main.innerHTML = `<div class="head"><div><h1>Roles &amp; Permissions</h1><p class="sub">Choose what each team role can see and do. The <strong>Owner</strong> and <strong>Admins</strong> always have full access. Give someone a role in <a href="/team" data-link>Manage Team</a>.</p></div>
+<button type="button" class="btn" data-act="roleAdd">+ Add role</button></div>
+<div class="card rp-card"><div class="tablewrap"><table class="rp"><thead><tr><th class="rp-first">Permission</th><th class="rp-fixed">Owner<div class="muted">Full access</div></th><th class="rp-fixed">Admin<div class="muted">Full access${roleData.admins ? ` · ${roleData.admins}` : ''}</div></th>${roleDraft.map(head).join('')}</tr></thead>
+<tbody>${groups.map((g) => `<tr class="rp-grp"><td class="rp-first">${esc(g)}</td><td></td><td></td>${roleDraft.map(() => '<td></td>').join('')}</tr>` + C.filter((p) => p.group === g).map((p) => `<tr><td class="rp-first"><strong>${esc(p.label)}</strong>${p.feature && !planHas(p.feature) ? ' <span class="badge draft" title="Your plan doesn’t include this yet">Not in your plan</span>' : ''}${p.desc ? `<div class="muted">${esc(p.desc)}</div>` : ''}${p.needs ? `<div class="muted rp-needs">Includes “${esc(C.find((x) => x.key === p.needs).label)}”</div>` : ''}</td>
+<td class="rp-c rp-yes" aria-label="Included">✓</td><td class="rp-c rp-yes" aria-label="Included">✓</td>${roleDraft.map((r, i) => cell(r, i, p)).join('')}</tr>`).join('')).join('')}</tbody></table></div>
+<div class="rp-save"><span class="muted">${dirty ? 'Unsaved changes' : 'All changes saved'}</span>${dirty ? '<button type="button" class="btn alt" data-act="roleDiscard">Discard</button>' : ''}<button type="button" class="btn" data-act="roleSave" ${dirty ? '' : 'disabled'}>Save roles</button></div></div>
+<p class="muted" style="font-size:13px">Settings pages (company profile, app settings, team, roles, email templates, connections and billing) are for the Owner and Admins only.</p>`;
+    $$('.rp-name, .rp-desc', main).forEach((el) => el.addEventListener('input', () => { roleDraft[el.dataset.i][el.dataset.k] = el.value; const s = $('.rp-save', main); if (s) { s.querySelector('.muted').textContent = 'Unsaved changes'; s.querySelector('[data-act=roleSave]').disabled = false; } }));
+  },
+};
+// ticking a permission brings along the one it needs (editing clients needs seeing them); unticking one removes those that need it
+A.roleTick = (d, el) => {
+  const r = roleDraft[d.i]; const C = roleData.catalog; const set = new Set(r.perms);
+  if (el.checked) { set.add(d.k); const p = C.find((x) => x.key === d.k); if (p.needs) set.add(p.needs); } else { set.delete(d.k); C.filter((x) => x.needs === d.k).forEach((x) => set.delete(x.key)); }
+  r.perms = C.map((x) => x.key).filter((k) => set.has(k)); PAGES['/settings/roles'].render($('#main'));
+};
+A.roleAdd = () => { roleDraft.push({ id: '', name: '', desc: '', perms: ['schedule', 'clients.view', 'jobs.view'], users: 0 }); PAGES['/settings/roles'].render($('#main')); const n = $$('.rp-name'); n[n.length - 1].focus(); };
+A.roleRm = (d) => { const r = roleDraft[d.i]; if (r.users) return; if (r.id && !confirm(`Remove the ${r.name} role?`)) return; roleDraft.splice(Number(d.i), 1); PAGES['/settings/roles'].render($('#main')); };
+A.roleDiscard = () => { roleDraft = structuredClone(roleData.roles); PAGES['/settings/roles'].render($('#main')); };
+A.roleSave = async (d, el) => {
+  el.disabled = true;
+  try { roleData = await api('PUT', '/api/roles', { roles: roleDraft.map(({ id, name, desc, perms }) => ({ id, name, desc, perms })) }); roleDraft = structuredClone(roleData.roles); toast('Roles saved. Team members see the changes the next time a page loads.'); PAGES['/settings/roles'].render($('#main')); }
+  catch (x) { el.disabled = false; toast(x.message, true); }
+};
+
 /* ===== /reviews: Google reviews from the connected Business Profile, with replies ===== */
 let revState = { filter: 'all', list: [], next: '' };
 const starRow = (n, size = 16) => `<span class="stars" style="--sz:${size}px" aria-label="${n} out of 5 stars">${[1, 2, 3, 4, 5].map((i) => `<i class="${i <= Math.round(n) ? 'on' : ''}">★</i>`).join('')}</span>`;
@@ -391,7 +424,7 @@ ${R.mapsUrl ? `<p style="margin:10px 0 0;font-size:13px"><a href="${esc(R.mapsUr
 function drawReviews() {
   const box = $('#rvList'); if (!box) return;
   const f = revState.filter; const list = revState.list.filter((r) => f === 'all' || (f === 'open' ? !r.reply : !!r.reply));
-  const canReply = role() !== 'technician';
+  const canReply = canDo('reviews');
   box.innerHTML = (list.length ? list.map((r) => `<article class="card rv" data-name="${esc(r.name)}">
 <header>${r.photo ? `<img src="${esc(r.photo)}" alt="" referrerpolicy="no-referrer">` : `<span class="rv-ini">${esc((r.reviewer[0] || '?').toUpperCase())}</span>`}<div><strong>${esc(r.reviewer)}</strong><div>${starRow(r.stars)} <span class="muted">${fmtDate(String(r.createdAt || '').slice(0, 10))}</span></div></div></header>
 ${r.comment ? `<p class="rv-text">${esc(r.comment)}</p>` : '<p class="muted rv-text">A rating with no comment.</p>'}
@@ -1138,7 +1171,7 @@ PAGES['/profile'] = {
     const p = await api('GET', '/api/auth/profile'); let photo = p.photo || '';
     const pw = (name, label, ac) => `<label class="fl pwf"><span>${label}</span><input name="${name}" type="password" autocomplete="${ac}"><button type="button" class="eye" data-act="pfEye" aria-label="Show password">Show</button></label>`;
     main.innerHTML = `<h1 class="tm-title">My profile</h1>
-<form class="tmform" id="pfInfo"><div class="qcard"><div class="qcard-h"><h2>Personal info</h2>${loginBadge({ role: p.role })}</div>
+<form class="tmform" id="pfInfo"><div class="qcard"><div class="qcard-h"><h2>Personal info</h2>${loginBadge({ role: p.role, roleName: me && me.roleName })}</div>
 <div class="tm-photo"><span class="tm-av">${avatarHtml(p, 72)}</span><label class="btn alt sm">Upload photo<input type="file" id="pfPhoto" accept="image/png,image/jpeg,image/webp" hidden></label>
 <button type="button" class="btn alt sm" data-act="pfPhotoRemove" ${photo ? '' : 'hidden'}>Remove</button></div>
 <div class="tm-grid"><div>

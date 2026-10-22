@@ -61,11 +61,10 @@ function closeModal() { const o = $('#overlay'); if (o) o.remove(); }
 
 /* ===== state + data ===== */
 let D = {}; let company = {};
-// technicians can't read services, quotes, invoices or expenses (the server returns 403), so those load as empty lists
-const TECH_DATA = ['clients', 'staff', 'jobs'];
+// lists this login's role can't read (the server would refuse) load as empty
 async function loadAll() {
   const names = ['clients', 'services', 'staff', 'quotes', 'jobs', 'invoices', 'expenses'];
-  const res = await Promise.all(names.map((n) => (isTech() && !TECH_DATA.includes(n) ? [] : api('GET', '/api/' + n))));
+  const res = await Promise.all(names.map((n) => (me && me.collections && !me.collections.includes(n) ? [] : api('GET', '/api/' + n))));
   const out = {}; names.forEach((n, i) => { out[n] = res[i]; }); return out;
 }
 const clientName = (id) => (byId(D.clients, id) || {}).name || '—';
@@ -81,7 +80,7 @@ const NAV = [
   ['Records', [['/project-gallery', 'Project Gallery'], ['/notifications', 'Notifications Log']]],
 ];
 // the Settings pages live in the top bar's gear menu, not the sidebar
-const SETTINGS_NAV = [['/settings/company', 'Company Profile'], ['/team', 'Manage Team'], ['/settings/emails', 'Email Templates'], ['/settings', 'App Settings'], ['/settings/connections', 'Account Connections'], ['/settings/billing', 'Account and Billing'], ['/rewards', 'Refer & Earn'], ['/settings/support-access', 'Support Access']];
+const SETTINGS_NAV = [['/settings/company', 'Company Profile'], ['/team', 'Manage Team'], ['/settings/roles', 'Roles & Permissions'], ['/settings/emails', 'Email Templates'], ['/settings', 'App Settings'], ['/settings/connections', 'Account Connections'], ['/settings/billing', 'Account and Billing'], ['/rewards', 'Refer & Earn'], ['/settings/support-access', 'Support Access']];
 const navPaths = [...NAV.flatMap(([, items]) => items.map(([p]) => p)), ...SETTINGS_NAV.map(([p]) => p)];
 const curPath = () => location.pathname.replace(/\/+$/, '') || '/';
 function navigate(url) { history.pushState({}, '', url); window.scrollTo(0, 0); return render(); }
@@ -102,14 +101,13 @@ let me = null; // the logged-in staff account
 // access levels (the server enforces the same rules): owner/admin see everything;
 // a manager runs jobs, quotes, invoices and the Money section; a technician only views jobs (no prices), clients and the schedule
 const role = () => (me && me.role) || 'owner';
-const isTech = () => role() === 'technician';
-const ROLE_PAGES = {
-  technician: ['/calendar', '/staff-schedules', '/clients', '/jobs', '/jobs/edit', '/profile', '/settings/support-access'],
-  manager: ['/business-overview', '/calendar', '/staff-schedules', '/clients', '/quotes', '/quotes/new', '/quotes/edit', '/jobs', '/jobs/new', '/jobs/edit',
-    '/invoices', '/invoices/new', '/invoices/edit', '/payments', '/payments/view', '/services', '/expenses', '/reports', '/tax-summary', '/project-gallery', '/reviews', '/social-posts', '/profile', '/settings/support-access'],
-};
+// the owner and admins can do everything; anyone else has their role's permissions (Settings → Roles & Permissions), sent with /api/auth/me
+const isAdminMe = () => ['owner', 'admin'].includes(role());
+const canDo = (k) => isAdminMe() || !!(me && (me.perms || []).includes(k));
 const OWNER_PAGES = ['/settings/billing']; // the business's subscription: the owner only
-const memberCan = (path) => (OWNER_PAGES.includes(path) ? role() === 'owner' : !ROLE_PAGES[role()] || ROLE_PAGES[role()].includes(path));
+const memberCan = (path) => (OWNER_PAGES.includes(path) ? role() === 'owner' : isAdminMe() || !!(me && me.pages && me.pages.includes(path)));
+// body classes that hide what a role can't do (styles.css): .limit for anyone but owner/admin, p-<permission> for each permission
+function permClasses() { const b = document.body; const lim = !isAdminMe(); b.classList.toggle('limit', lim); [...b.classList].filter((c) => c.startsWith('p-')).forEach((c) => b.classList.remove(c)); if (lim) (me && me.perms || []).forEach((k) => b.classList.add('p-' + k.replace('.', '-'))); }
 // the account's plan (from /api/company): features it includes and pages it doesn't. The server enforces the same.
 const planHas = (f) => !(company.account && company.account.features) || company.account.features.includes(f);
 const planLocked = (path) => !!(company.account && (company.account.lockedPages || []).includes(path));
@@ -163,7 +161,7 @@ const FEATURE_WORDS = {
   '/business-overview': 'dashboard overview', '/calendar': 'schedule appointments visits', '/staff-schedules': 'working hours availability', '/clients': 'customers contacts',
   '/quotes': 'estimates proposals', '/jobs': 'work orders visits', '/invoices': 'billing', '/payments': 'card online stripe', '/services': 'catalog products price list items',
   '/expenses': 'costs receipts spending', '/reports': 'revenue profit charts', '/tax-summary': 'sales tax', '/project-gallery': 'photos pictures', '/reviews': 'google reviews ratings stars reply', '/social-posts': 'facebook instagram social media post marketing', '/notifications': 'emails texts sms sent messages log',
-  '/settings/company': 'business details logo address phone social media facebook instagram tiktok tax', '/team': 'staff employees users access roles technicians', '/settings/emails': 'templates text messages sms reminders',
+  '/settings/roles': 'roles permissions access manager technician what team can see do', '/settings/company': 'business details logo address phone social media facebook instagram tiktok tax', '/team': 'staff employees users access roles technicians', '/settings/emails': 'templates text messages sms reminders',
   '/settings': 'number prefixes branding brand color zelle defaults ai stripe card payments online payments regional time zone date format time format week', '/settings/connections': 'integrations google facebook instagram ai', '/settings/billing': 'subscription plan upgrade payment method', '/settings/support-access': 'grant revoke help troubleshoot permission',
 };
 const featureList = () => {
@@ -325,7 +323,7 @@ async function render() {
   const path = curPath();
   const isPortal = path === '/client-portal' && new URLSearchParams(location.search).get('c');
   if (!isPortal && !me) { try { me = await api('GET', '/api/auth/me'); } catch (e) { /* api() sends you to the login page */ } } // needed before picking the start page
-  if (path === '/') { history.replaceState({}, '', isTech() ? '/calendar' : '/business-overview'); return render(); }
+  if (path === '/') { const start = memberCan('/business-overview') ? '/business-overview' : (navPaths.find((p) => memberCan(p) && !planLocked(p)) || '/profile'); history.replaceState({}, '', start); return render(); }
   const main = $('#main');
   const portal = path === '/client-portal' && new URLSearchParams(location.search).get('c');
   try { company = await api('GET', '/api/company'); } catch (e) { /* ignore */ }
@@ -336,7 +334,7 @@ async function render() {
   main.className = portal ? 'portal' : '';
   showTheme(portal ? 'light' : getTheme()); // clients always see their portal in light mode
   const page = PAGES[path];
-  document.body.classList.toggle('role-technician', isTech()); document.body.classList.toggle('role-manager', role() === 'manager');
+  permClasses();
   if (!portal) { renderSide(path); renderTopbar(path); }
   const sb = $('#supportBar'); sb.hidden = portal || !(me && me.support);
   if (!sb.hidden) sb.innerHTML = `${svgIcon(ICONS.shield, 18)}<span><strong>Support session.</strong> ${esc(me.support.adminName)} from ${esc((company.account && company.account.productName) || 'support')} is signed in as ${esc(me.name)} with the owner’s Support Access. It ends ${new Date(me.support.expires).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.</span><button type="button" class="btn alt sm" data-act="logout">End session</button>`;
@@ -573,7 +571,7 @@ PAGES['/clients'] = {
     const shown = list.slice(v.page * per, (v.page + 1) * per);
     const sinceLabel = v.since === yStart ? 'this year' : 'past 30 days';
     const arrow = (k) => `<span class="sort ${v.sort === k ? 'on' : ''}">${v.sort === k ? (v.dir > 0 ? '▲' : '▼') : '⇅'}</span>`;
-    main.innerHTML = `<div class="head"><h1>Clients</h1><div class="actions no-tech"><button class="btn" data-act="newClient">New Client</button>
+    main.innerHTML = `<div class="head"><h1>Clients</h1><div class="actions need-clients-edit"><button class="btn" data-act="newClient">New Client</button>
 <details class="menu"><summary class="btn alt">⋯ More Actions</summary><div class="menu-list">${planHas('clientImport') ? '<a href="/clients/import" data-link class="admin-only">Import clients</a>' : ''}<button data-act="exportClients">Export to CSV</button></div></details></div></div>
 <div class="cstats">
 <button class="cstat" data-act="clientCard" data-k="leads"><div class="cs-h"><strong>New leads</strong><span>↗</span></div><div class="muted">Past 30 days</div><div class="cs-v">${leadsNow} ${change(leadsNow, leadsPrev)}</div></button>
@@ -641,10 +639,10 @@ function clientForm(c) {
 <div class="row"><label>Email<input name="email" type="email" value="${esc(c.email)}"></label><label>Mobile (for texts)<input name="phone" value="${esc(c.phone)}" placeholder="+17135550100"></label></div>
 <label>Service address<input name="address" value="${esc(c.address)}"></label><label>Tags (separate with commas)<input name="tags" value="${esc(clientTags(c).join(', '))}" placeholder="e.g. commercial, monthly"></label><label>Notes<textarea name="notes">${esc(c.notes)}</textarea></label>
 ${c.id && planHas('clientPortal') ? `<label>Client portal link<input readonly value="${esc(location.origin + '/client-portal?c=' + c.portalToken)}" onclick="this.select()"></label>` : ''}
-<div class="foot">${c.id ? `<button type="button" class="btn danger admin-only" data-act="delClient" data-id="${c.id}">Delete</button><button type="button" class="btn alt no-tech" data-act="newQuoteFor" data-id="${c.id}">New quote</button><button type="button" class="btn alt no-tech" data-act="newJobFor" data-id="${c.id}">New job</button>` : ''}<button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn no-tech">Save</button></div></form>`);
-  if (isTech()) $$('input, select, textarea', mb).forEach((el) => { if (el.readOnly !== undefined) el.readOnly = true; if (el.tagName === 'SELECT') el.disabled = true; }); // view-only for technicians
+<div class="foot">${c.id ? `<button type="button" class="btn danger admin-only" data-act="delClient" data-id="${c.id}">Delete</button><button type="button" class="btn alt need-quotes" data-act="newQuoteFor" data-id="${c.id}">New quote</button><button type="button" class="btn alt need-jobs-edit" data-act="newJobFor" data-id="${c.id}">New job</button>` : ''}<button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn need-clients-edit">Save</button></div></form>`);
+  if (!canDo('clients.edit')) $$('input, select, textarea', mb).forEach((el) => { if (el.readOnly !== undefined) el.readOnly = true; if (el.tagName === 'SELECT') el.disabled = true; }); // view only without “Add and edit clients”
   $('form', mb).addEventListener('submit', async (e) => {
-    e.preventDefault(); if (isTech()) return; const body = Object.fromEntries(new FormData(e.target));
+    e.preventDefault(); if (!canDo('clients.edit')) return; const body = Object.fromEntries(new FormData(e.target));
     delete body.undefined; body.tags = [...new Set(String(body.tags || '').split(',').map((t) => t.trim()).filter(Boolean))];
     c.id ? await api('PUT', '/api/clients/' + c.id, body) : await api('POST', '/api/clients', body);
     closeModal(); toast('Client saved'); refresh();
@@ -1078,10 +1076,10 @@ function jobPage(main, job, preset) {
 <div class="qtop"><div class="qtop-l"><a href="/jobs" data-link class="back">← Jobs</a><span class="cstatus ${J_CLASS[st]}">${J_STATUS[st]}</span></div>
 <div class="actions">${j.id ? `<details class="menu"><summary class="btn alt">⋯ More</summary><div class="menu-list">
 ${j.signature || !planHas('signatures') ? '' : `<button type="button" data-act="collectSignature" data-id="${j.id}">Collect signature</button>`}
-<button type="button" class="no-tech" data-act="jobRemind" data-id="${j.id}">${planHas('sms') ? 'Text' : 'Email'} reminder to client</button>${planHas('invoices') ? `<button type="button" class="no-tech" data-act="jobInvoice" data-id="${j.id}">Create invoice</button>` : ''}
-<a href="/calendar" data-link>Open job calendar</a><button type="button" class="danger-text no-tech" data-act="delJob" data-id="${j.id}">Delete job</button></div></details>
-${j.status === 'scheduled' ? `<button type="button" class="btn alt no-tech" data-act="completeJob" data-id="${j.id}">Mark complete</button>` : `<button type="button" class="btn alt no-tech" data-act="reopenJob" data-id="${j.id}">↺ Reopen job</button>`}
-<button class="btn no-tech">Save</button>` : '<a class="btn alt" href="/jobs" data-link>Cancel</a><button class="btn">Save job</button>'}</div></div>
+<button type="button" class="need-jobs-edit" data-act="jobRemind" data-id="${j.id}">${planHas('sms') ? 'Text' : 'Email'} reminder to client</button>${planHas('invoices') ? `<button type="button" class="need-invoices" data-act="jobInvoice" data-id="${j.id}">Create invoice</button>` : ''}
+<a href="/calendar" data-link>Open job calendar</a><button type="button" class="danger-text need-jobs-edit" data-act="delJob" data-id="${j.id}">Delete job</button></div></details>
+${j.status === 'scheduled' ? `<button type="button" class="btn alt need-jobs-edit" data-act="completeJob" data-id="${j.id}">Mark complete</button>` : `<button type="button" class="btn alt need-jobs-edit" data-act="reopenJob" data-id="${j.id}">↺ Reopen job</button>`}
+<button class="btn need-jobs-edit">Save</button>` : '<a class="btn alt" href="/jobs" data-link>Cancel</a><button class="btn">Save job</button>'}</div></div>
 <input name="title" class="qtitle" required value="${esc(j.title || '')}" placeholder="Job title (e.g. Streamer Install)" aria-label="Job title">
 <div class="qhead"><div class="qclient"><select name="clientId" required aria-label="Client">${clientOptions(j.clientId || p.clientId)}</select>
 <label class="fl"><span>Property address</span><input name="address" value="${esc(j.address || '')}" placeholder="Defaults to the client's address"></label><div class="jcontact"></div></div>
@@ -1089,13 +1087,13 @@ ${j.status === 'scheduled' ? `<button type="button" class="btn alt no-tech" data
 <dt>Status</dt><dd><select name="status" aria-label="Status">${[['scheduled', 'Scheduled'], ['completed', 'Completed'], ['cancelled', 'Cancelled']].map(([k, l]) => `<option value="${k}" ${(j.status || 'scheduled') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></dd>
 <dt>Created</dt><dd>${fmtDate((j.createdAt || ymd(new Date())).slice(0, 10))}</dd>
 <dt>From quote</dt><dd>${q ? `<a href="/quotes/edit?id=${q.id}" data-link>${esc(q.number)}</a>` : '<span class="muted">—</span>'}</dd></dl></div>
-${isTech() ? '' : itemsCard(items, '<div class="jdeposit"></div>', j.taxRate !== undefined ? j : q || j)}
+${!canDo('jobs.prices') ? '' : itemsCard(items, '<div class="jdeposit"></div>', j.taxRate !== undefined ? j : q || j)}
 <div class="qcard"><h2>Scheduled visit</h2><div class="row3"><label>Date<input type="date" name="date" required value="${esc(j.date || p.date || ymd(new Date()))}"></label>
 <label>Start<input type="time" name="startTime" value="${esc(j.startTime || '09:00')}"></label><label>End<input type="time" name="endTime" value="${esc(j.endTime || '11:00')}"></label></div>
 <div class="muted qlabel">Assigned team</div><div class="team-pick">${team.map((s) => `<label><input type="checkbox" name="staff" value="${s.id}" ${(j.staffIds || []).includes(s.id) ? 'checked' : ''}>${avatarHtml(s, 24)}${esc(s.name)}</label>`).join('') || '<span class="muted">Add team members on Manage Team first</span>'}</div>
 <label>Instructions<textarea name="description" rows="3" placeholder="What the team needs to know for this visit">${esc(j.description || '')}</textarea></label></div>
 ${j.id && j.signature ? sigCard(j) : ''}
-<div class="qcard no-tech"><div class="qcard-h"><h2>Billing</h2>${j.id ? `<button type="button" class="btn alt sm" data-act="jobInvoice" data-id="${j.id}">+ Create invoice</button>` : ''}</div>
+<div class="qcard need-jobs-prices"><div class="qcard-h"><h2>Billing</h2>${j.id ? `<button type="button" class="btn alt sm" data-act="jobInvoice" data-id="${j.id}">+ Create invoice</button>` : ''}</div>
 ${!j.id ? '<p class="muted">Save the job first, then create invoices from it.</p>' : invs.length ? `<div class="tablewrap"><table class="mini"><tr><th>Invoice</th><th>Due date</th><th>Status</th><th>Subject</th><th class="r">Total</th><th class="r">Balance</th></tr>
 ${invs.map((i) => `<tr><td><a href="/invoices/edit?id=${i.id}" data-link>${esc(i.number)}</a></td><td>${fmtDate(i.dueDate)}</td><td>${iBadge(i.displayStatus)}</td><td>${esc(invSubject(i))}</td><td class="r">${money(i.total)}</td><td class="r">${money(invBalance(i))}</td></tr>`).join('')}</table></div>`
     : '<p class="muted">No invoices yet. Create one when the work is done.</p>'}</div></div>
@@ -1115,7 +1113,7 @@ ${paid ? `<div class="crow-line"><span>Deposit collected <span class="muted">· 
 <div class="crow-line"><strong>Outstanding deposit</strong><strong>${money(Math.max(0, q.depositFee - paid))}</strong></div>`;
   };
   wireItems(form); contact();
-  if (isTech()) $$('input, select, textarea', form).forEach((el) => { el.disabled = true; }); // technicians view jobs only
+  if (!canDo('jobs.edit')) $$('input, select, textarea', form).forEach((el) => { el.disabled = true; }); // view only without “Create, edit and delete jobs”
   form.addEventListener('change', (e) => { if (e.target.name === 'clientId') contact(); });
   form.addEventListener('submit', async (e) => {
     e.preventDefault(); const fd = new FormData(form);
@@ -1135,7 +1133,7 @@ const fmtStamp = (isoStr) => { const d = new Date(isoStr); return isNaN(d) ? '' 
 const sigCard = (j) => { const s = j.signature; return `<div class="qcard sig-card"><div class="qcard-h"><h2>Client signature</h2>${s ? '<span class="cstatus q-approved">Signed</span>' : ''}</div>
 ${s ? `<div class="sig-show"><img class="sig-img" src="${esc(s.file)}" alt="Signature of ${esc(s.name)}"></div>
 <p class="sig-meta">Signed by <strong>${esc(s.name)}</strong> on ${esc(fmtStamp(s.signedAt))}${s.collectedBy ? ` <span class="muted">· collected by ${esc(s.collectedBy)}</span>` : ''}</p>
-${s.statement ? `<p class="muted sig-stmt">“${esc(s.statement)}”</p>` : ''}<button type="button" class="btn danger sm no-tech" data-act="rmSignature" data-id="${j.id}">Remove signature</button>`
+${s.statement ? `<p class="muted sig-stmt">“${esc(s.statement)}”</p>` : ''}<button type="button" class="btn danger sm need-jobs-edit" data-act="rmSignature" data-id="${j.id}">Remove signature</button>`
     : ''}</div>`; };
 A.collectSignature = (d) => {
   const j = byId(D.jobs, d.id); const c = byId(D.clients, j.clientId) || {};
@@ -1179,7 +1177,7 @@ PAGES['/jobs/edit'] = {
 };
 A.newJob = () => { closeModal(); navigate('/jobs/new'); };
 A.newJobFor = (d) => { closeModal(); navigate('/jobs/new?client=' + d.id); };
-A.newJobOn = (d) => isTech() || navigate('/jobs/new?date=' + d.date);
+A.newJobOn = (d) => !canDo('jobs.edit') || navigate('/jobs/new?date=' + d.date);
 A.editJob = (d) => { closeModal(); navigate('/jobs/edit?id=' + d.id); };
 A.delJob = async (d) => { if (!confirm('Delete this job?')) return; await api('DELETE', '/api/jobs/' + d.id); closeModal(); toast('Job deleted'); curPath() === '/jobs/edit' ? navigate('/jobs') : refresh(); };
 A.reopenJob = async (d) => { await api('PUT', '/api/jobs/' + d.id, { status: 'scheduled' }); toast('Job reopened'); refresh(); };
@@ -1222,13 +1220,13 @@ PAGES['/jobs'] = {
     list.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0) * v.dir);
     const th = (k, label, cls = '') => `<th class="${cls}"><button class="th-btn" data-act="jobSort" data-k="${k}">${label} <span class="sort ${v.sort === k ? 'on' : ''}">${v.sort === k ? (v.dir > 0 ? '▲' : '▼') : '⇅'}</span></button></th>`;
     const team = (j) => (j.staffIds || []).map((id) => byId(D.staff, id)).filter(Boolean).map((s) => s.name).join(', ');
-    main.innerHTML = `<div class="head"><h1>Jobs</h1><div class="actions"><button class="btn no-tech" data-act="newJob">New Job</button>
+    main.innerHTML = `<div class="head"><h1>Jobs</h1><div class="actions"><button class="btn need-jobs-edit" data-act="newJob">New Job</button>
 <details class="menu"><summary class="btn alt">⋯ More Actions</summary><div class="menu-list"><button data-act="exportJobs">Export to CSV</button><a href="/calendar" data-link>Open job calendar</a></div></details></div></div>
 <div class="cstats">
 <div class="cstat"><strong class="cs-h">Overview</strong><div class="qov">${[['late', 'q-declined'], ['invoice', 'q-sent'], ['today', 'q-converted'], ['upcoming', 'q-approved']].map(([s, c]) => `<button data-act="jobFilter" data-s="${s}"><i class="dot ${c}"></i>${J_STATUS[s]} (${count(s)})</button>`).join('')}</div></div>
 <button class="cstat" data-act="jobCard" data-k="recent"><div class="cs-h"><strong>Recent visits</strong><span>↗</span></div><div class="muted">Past 30 days</div><div class="cs-v">${recNow.length} ${change(recNow.length, recPrev.length)}</div><div class="muted money">${moneyShort(sum(recNow))}</div></button>
 <button class="cstat" data-act="jobCard" data-k="upcoming"><div class="cs-h"><strong>Visits scheduled</strong><span>↗</span></div><div class="muted">Next 30 days</div><div class="cs-v">${upcoming.length}</div><div class="muted money">${moneyShort(sum(upcoming))}</div></button>
-<div class="cstat no-tech"><div class="cs-h"><strong>Requires invoicing</strong></div><div class="muted">Completed, not invoiced yet</div><div class="cs-v">${count('invoice')}</div><div class="muted">${moneyShort(sum(D.jobs.filter((j) => jobStatus(j) === 'invoice')))}</div></div></div>
+<div class="cstat need-invoices"><div class="cs-h"><strong>Requires invoicing</strong></div><div class="muted">Completed, not invoiced yet</div><div class="cs-v">${count('invoice')}</div><div class="muted">${moneyShort(sum(D.jobs.filter((j) => jobStatus(j) === 'invoice')))}</div></div></div>
 <h2 class="ftitle">All jobs <span class="muted">(${list.length} result${list.length === 1 ? '' : 's'})</span></h2>
 <div class="cfilters"><label class="pill">Status<select data-jv="status"><option value="all">All</option>${order.map((s) => `<option value="${s}" ${v.status === s ? 'selected' : ''}>${J_STATUS[s]}</option>`).join('')}</select></label>
 <label class="pill">Team member<select data-jv="staff"><option value="">All</option>${D.staff.map((s) => `<option value="${s.id}" ${v.staff === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>
