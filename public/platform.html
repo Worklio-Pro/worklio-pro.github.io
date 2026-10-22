@@ -213,7 +213,8 @@
     .slug input{border:0;border-radius:0;margin:0!important;min-width:0}.slug span{padding:0 10px;color:var(--muted);font-size:13px;white-space:nowrap;background:var(--surface-2);align-self:stretch;display:flex;align-items:center}
     .hint{font-size:12px;margin-top:4px;min-height:16px}.hint.bad{color:var(--danger)}.hint.good{color:var(--ok)}
     /* login */
-    .pf-auth{max-width:380px;margin:12vh auto;padding:0 16px}.pf-auth h1{font-size:22px;margin:0 0 6px;text-align:center}.pf-auth p{text-align:center}
+    .pf-auth{max-width:380px;width:calc(100% - 32px);box-sizing:border-box;margin:12vh auto;padding:28px} /* the same space on every side; 16px from the screen edges on phones */
+    .pf-auth form{margin:0}.pf-auth form>:last-child{margin-bottom:0}.pf-auth h1{font-size:22px;margin:0 0 6px;text-align:center}.pf-auth p{text-align:center}
     .pf-auth .btn{width:100%;height:44px;font-size:15px;margin-top:6px}
     .msg{padding:10px 12px;border-radius:8px;font-size:14px;margin-bottom:12px}.msg.err{background:var(--bad-bg);color:var(--bad-fg)}
     /* bottom tab bar (phones) */
