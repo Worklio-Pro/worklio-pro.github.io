@@ -364,7 +364,7 @@ window.addEventListener('beforeunload', (e) => { if (D && draftPlans && plansDir
 
 /* ===== settings ===== */
 // Settings shows one box at a time, picked from these tabs
-const SET_TABS = [['product', 'Your product'], ['team', 'Alpha team'], ['expiry', 'Access end dates'], ['maintenance', 'Maintenance mode'], ['reserved', 'Reserved addresses'], ['terms', 'Terms and privacy']];
+const SET_TABS = [['product', 'Your product'], ['team', 'Alpha team'], ['icons', 'Menu icons'], ['expiry', 'Access end dates'], ['maintenance', 'Maintenance mode'], ['reserved', 'Reserved addresses'], ['terms', 'Terms and privacy']];
 let setTab = 'product';
 A.setTab = (d) => { setTab = d.k; settingsView($('#main')); };
 A.goMaint = () => { setTab = 'maintenance'; if (tab === 'settings') settingsView($('#main')); else location.hash = 'settings'; }; // the maintenance banner's link
@@ -391,7 +391,7 @@ function settingsView(main) {
 <p class="muted" style="font-size:13px">Pricing page: <a href="${esc(site)}" target="_blank" rel="noopener">${esc(site)}</a>. Businesses that choose a paid plan pay for it at checkout before their account opens (see <a href="#integrations">Integrations → Stripe</a>).</p>
 <div class="card-save"><button class="btn">Save</button></div></div>
 </form></div>
-<div class="card" id="teamCard" data-set="team"></div>
+<div class="card" id="teamCard" data-set="team"></div><div class="card" id="iconsCard" data-set="icons"></div>
 <form id="sf2" class="set-form"><div class="card" data-set="expiry"><h2>Accounts with a last day of access</h2>
 <div class="row"><label>Show a banner in their app (days before)<input name="expiryBannerDays" type="number" min="0" max="60" value="${esc(s.expiryBannerDays ?? 7)}"></label><label>Email the owner a reminder (days before)<input name="expiryReminderDays" type="number" min="0" max="60" value="${esc(s.expiryReminderDays ?? 3)}"></label></div>
 <p class="muted" style="font-size:13px;margin-top:-4px">For accounts you gave a last day of access (e.g. trials). Owners and admins see the banner; owners can choose a plan from it, which removes the end date. The reminder is sent once per end date; edit its wording in Messages → Email templates → Access ending soon. 0 means on the last day itself.</p>
@@ -402,8 +402,27 @@ function settingsView(main) {
     e.preventDefault(); const b = Object.fromEntries(new FormData(e.target)); if (e.target.elements.allowSignups) b.allowSignups = !!b.allowSignups; // only the form with the switch sends it
     try { await api('PUT', '/api/platform/settings', b); await load(); toast('Settings saved'); render(); } catch (x) { toast(x.message, true); }
   }));
-  maintenanceCard($('#mtCard', main)); logoCard($('#logoCard', main)); reservedCard($('#reserved', main)); teamCard($('#teamCard', main));
+  maintenanceCard($('#mtCard', main)); logoCard($('#logoCard', main)); reservedCard($('#reserved', main)); teamCard($('#teamCard', main)); if (setTab === 'icons') iconsCard($('#iconsCard', main));
 }
+// the business app's menu icons: one from the built-in library for each link, for every account
+let IC = null;
+const icSvg = (d, size = 20) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+async function iconsCard(box) {
+  if (!box) return; try { IC = await api('GET', '/api/platform/nav-icons'); } catch (x) { box.innerHTML = `<h2>Menu icons</h2><p class="muted">${esc(x.message)}</p>`; return; }
+  const lib = Object.fromEntries(IC.library.map((i) => [i.key, i])); const groups = [...new Set(IC.links.map((l) => l.group))];
+  box.innerHTML = `<h2>Menu icons</h2><p class="muted" style="font-size:13px;margin-top:0">The icons beside each link in every business’s menu (the sidebar and the phone menu). Changes show the next time a page loads.</p>
+<div class="ic-wrap"><div class="ic-list">${groups.map((g) => `<div class="ic-grp">${esc(g)}</div>` + IC.links.filter((l) => l.group === g).map((l) => `<div class="ic-row"><span class="ic-prev">${icSvg(lib[l.icon].d)}</span><div class="ic-l"><strong>${esc(l.label)}</strong><span class="sm">${esc(lib[l.icon].label)}${l.icon === l.default ? ' · default' : ''}</span></div>
+<div class="acts">${l.icon !== l.default ? `<button type="button" class="btn alt sm" data-act="icReset" data-p="${esc(l.path)}">Reset</button>` : ''}<button type="button" class="btn alt sm" data-act="icPick" data-p="${esc(l.path)}">Change</button></div></div>`).join('')).join('')}</div>
+<div class="ic-preview" aria-label="Preview"><div class="sm" style="margin-bottom:8px">Preview</div><div class="ic-side">${groups.map((g) => `<div class="ic-sg">${esc(g)}</div>` + IC.links.filter((l) => l.group === g).map((l) => `<div class="ic-sl">${icSvg(lib[l.icon].d, 18)}<span>${esc(l.label)}</span></div>`).join('')).join('')}</div></div></div>`;
+}
+A.icPick = (d) => {
+  const l = IC.links.find((x) => x.path === d.p);
+  const m = modal(`Icon for ${l.label}`, `<div class="ic-grid">${IC.library.map((i) => `<button type="button" class="ic-opt ${i.key === l.icon ? 'on' : ''}" data-act="icSet" data-p="${esc(l.path)}" data-k="${i.key}" title="${esc(i.label)}">${icSvg(i.d, 24)}<span>${esc(i.label)}${i.key === l.default ? ' (default)' : ''}</span></button>`).join('')}</div>
+<div class="acts" style="margin-top:12px"><button type="button" class="btn alt" data-act="closeModal">Cancel</button></div>`, { wide: true });
+  return m;
+};
+A.icSet = async (d) => { try { IC = await api('PUT', '/api/platform/nav-icons', { path: d.p, icon: d.k }); closeModal(); toast('Icon changed'); iconsCard($('#iconsCard')); } catch (x) { toast(x.message, true); } };
+A.icReset = async (d) => { try { IC = await api('PUT', '/api/platform/nav-icons', { path: d.p, icon: null }); toast('Back to the default icon'); iconsCard($('#iconsCard')); } catch (x) { toast(x.message, true); } };
 // the Alpha team: you (the owner) and support users, who see only Accounts, Messages and Help Center
 async function teamCard(box) {
   let T; try { T = await api('GET', '/api/platform/team'); } catch (x) { box.innerHTML = `<h2>Alpha team</h2><p class="muted">${esc(x.message)}</p>`; return; }

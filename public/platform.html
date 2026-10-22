@@ -99,6 +99,15 @@
     .ig-tabbed{max-width:1000px}.ig-tabbed .ig-grid{display:block}.ig-tabbed .ig-col,.ig-tabbed .ig-wide{display:contents}.ig-tabbed section.ig[hidden]{display:none}
     .ig-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--line);margin-right:7px;vertical-align:1px}.ig-dot.on{background:var(--ok)}
     .hc-one{max-width:900px}.hc-one>.card{margin-bottom:18px}#main [data-hc][hidden]{display:none}
+    .ic-wrap{display:grid;grid-template-columns:minmax(0,1fr) 230px;gap:24px;align-items:start}@media (max-width:820px){.ic-wrap{grid-template-columns:1fr}.ic-preview{display:none}}
+    .ic-grp{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:14px 0 4px}.ic-grp:first-child{margin-top:0}
+    .ic-row{display:flex;align-items:center;gap:12px;padding:8px 0;border-top:1px solid var(--line)}.ic-l{flex:1;min-width:0;display:grid}.ic-l .sm{font-size:12px;color:var(--muted)}
+    .ic-prev{flex:none;width:36px;height:36px;border-radius:8px;background:#0f1f3d;color:#e2e8f0;display:flex;align-items:center;justify-content:center}
+    .ic-side{background:#0b1324;border-radius:12px;padding:12px 10px;color:#cbd5e1}.ic-sg{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#7d8fb3;margin:10px 6px 4px}.ic-sg:first-child{margin-top:0}
+    .ic-sl{display:flex;align-items:center;gap:12px;padding:5px 6px;font-size:13px}.ic-sl svg{flex:none;opacity:.85}
+    .ic-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;max-height:60vh;overflow:auto;padding:2px}
+    .ic-opt{display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 6px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--text);cursor:pointer;font:inherit;font-size:12px;text-align:center}
+    .ic-opt:hover{border-color:var(--brand)}.ic-opt.on{border-color:var(--brand);background:var(--tint)}
     .set-tabs{display:flex;flex-wrap:wrap;width:max-content;max-width:100%}.mt-on{background:#fee2e2;color:#991b1b}
     .card-save{display:flex;justify-content:flex-end;margin-top:6px}
     /* integrations tab: one box per service, two columns on wide screens */
@@ -244,6 +253,6 @@
   <div id="toast"></div>
   <script src="/hc-editor.js?v=2"></script>
   <script src="/brand.js?v=1"></script>
-  <script src="/platform.js?v=54"></script>
+  <script src="/platform.js?v=55"></script>
 </body>
 </html>

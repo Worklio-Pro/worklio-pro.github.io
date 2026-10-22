@@ -823,3 +823,7 @@ a.conn-chip{text-decoration:none}a.conn-chip:hover{text-decoration:underline}
 #side a.nav-link.on .nav-ic,#side a.nav-link:hover .nav-ic{opacity:1}
 #side .nav-l{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #side a.nav-link .nav-n,#side a.nav-link .beta-tag{margin-left:0;flex:none}
+/* a page in beta testing: a banner at the top of the page */
+.beta-bar{display:flex;align-items:center;gap:12px;margin:0 0 16px;padding:10px 14px;border-radius:10px;background:var(--warn-bg);color:var(--warn-fg);border:1px solid var(--warn-border);font-size:14px;line-height:1.45}
+.beta-bar .link-btn{margin:0;color:inherit;font-size:inherit}
+.beta-pill{flex:none;padding:2px 9px;border-radius:99px;background:var(--warn);color:#fff;font-size:12px;font-weight:700;letter-spacing:.03em}

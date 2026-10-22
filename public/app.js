@@ -120,10 +120,12 @@ const planLocked = (path) => !!(company.account && (company.account.lockedPages 
 const betaPage = (path) => !!(company.account && (company.account.betaPages || []).includes(path));
 const navFor = () => NAV.map(([g, items]) => [g, items.filter(([p]) => memberCan(p) && !planLocked(p))]).filter(([, items]) => items.length);
 // the sidebar's Requests link shows how many time-off requests are waiting for this approver
+// a page in beta testing (Alpha → Plans & features) says so in a banner at the top, instead of a tag in the menu
+const BETA_BAR = '<div class="beta-bar" role="status"><span class="beta-pill">Beta</span><span>This page is in beta testing. It works, but it may change and you might run into rough edges. <button type="button" class="link-btn" data-act="feedbackForm">Tell us</button> if something doesn’t look right.</span></div>';
 function timeOffBadge() { const a = $('#side a[href="/requests"]'); if (a && D.timeOffWaiting) a.insertAdjacentHTML('beforeend', ` <span class="nav-n" title="Requests waiting for you">${D.timeOffWaiting}</span>`); }
 function renderSide(path) {
   $('#side').innerHTML = `<div class="side-nav"><div class="brand">${company.logo ? `<a href="/" data-link class="brand-logo" title="Home"><img src="${esc(company.logo)}" alt="Home"></a>` : brandImg(company.account && company.account.product, 'dark')}<span>${esc(company.name || (company.account && company.account.productName) || 'Worklio Pro')}</span></div>` +
-    navFor().map(([g, items]) => `<div class="grp">${g}</div>` + items.map(([p, l]) => `<a href="${p}" data-link class="nav-link ${p === path || (!navPaths.includes(path) && path.startsWith(p + '/')) ? 'on' : ''}">${navIcon(p)}<span class="nav-l">${l}</span>${betaPage(p) ? ' <span class="beta-tag" title="This feature is in beta testing">Beta</span>' : ''}</a>`).join('')).join('') + `</div>${themeSwitch()}${me ? `<div class="side-user"><a href="/profile" data-link class="side-user-name${path === '/profile' ? ' on' : ''}" title="My profile (${esc(me.email)})">${avatarHtml(me, 26)}<span>${esc(me.name)}</span></a><button type="button" data-act="logout">Log out</button></div>` : ''}`;
+    navFor().map(([g, items]) => `<div class="grp">${g}</div>` + items.map(([p, l]) => `<a href="${p}" data-link class="nav-link ${p === path || (!navPaths.includes(path) && path.startsWith(p + '/')) ? 'on' : ''}">${navIcon(p)}<span class="nav-l">${l}</span></a>`).join('')).join('') + `</div>${themeSwitch()}${me ? `<div class="side-user"><a href="/profile" data-link class="side-user-name${path === '/profile' ? ' on' : ''}" title="My profile (${esc(me.email)})">${avatarHtml(me, 26)}<span>${esc(me.name)}</span></a><button type="button" data-act="logout">Log out</button></div>` : ''}`;
   $('#side').classList.remove('open');
   renderBottomNav(path);
 }
@@ -152,10 +154,12 @@ const NAV_ICONS = {
   '/project-gallery': '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>',
   '/notifications': '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
 };
-const navIcon = (p) => (NAV_ICONS[p] ? `<span class="nav-ic">${bico(NAV_ICONS[p])}</span>` : '<span class="nav-ic"></span>');
+// Alpha → Settings → Menu icons can change them (sent with the account info)
+const iconOf = (p) => (company.account && company.account.navIcons && company.account.navIcons[p]) || NAV_ICONS[p];
+const navIcon = (p) => (iconOf(p) ? `<span class="nav-ic">${bico(iconOf(p))}</span>` : '<span class="nav-ic"></span>');
 function renderBottomNav(path) {
   const items = BNAV.filter(([p]) => memberCan(p) && !planLocked(p)).slice(0, 4);
-  $('#bnav').innerHTML = items.map(([p, l, d]) => { const on = p === path || (!navPaths.includes(path) && path.startsWith(p + '/')); return `<a href="${p}" data-link class="${on ? 'on' : ''}"${on ? ' aria-current="page"' : ''}>${bico(d)}<span>${l}</span></a>`; }).join('')
+  $('#bnav').innerHTML = items.map(([p, l, d]) => { const on = p === path || (!navPaths.includes(path) && path.startsWith(p + '/')); return `<a href="${p}" data-link class="${on ? 'on' : ''}"${on ? ' aria-current="page"' : ''}>${bico(iconOf(p) || d)}<span>${l}</span></a>`; }).join('')
     + `<button type="button" data-act="toggleSide" aria-label="More menu" aria-expanded="false">${bico('<path d="M4 6h16M4 12h16M4 18h16"/>')}<span>More</span></button>`;
 }
 /* ===== top bar: feature search, help panel, settings (gear) menu ===== */
@@ -226,7 +230,7 @@ function renderTopbar(path) {
   $('.tb-ref').hidden = !(referralsOn() && memberCan('/rewards'));
   const isOn = (p) => p === path || (!navPaths.includes(path) && path.startsWith(p + '/'));
   $('summary', gear).classList.toggle('on', items.some(([p]) => isOn(p)));
-  $('#gearMenu').innerHTML = '<div class="menu-h">Settings</div>' + items.map(([p, l]) => `<a href="${p}" data-link class="${isOn(p) ? 'on' : ''}">${l}${betaPage(p) ? ' <span class="beta-tag" title="This feature is in beta testing">Beta</span>' : ''}</a>`).join('');
+  $('#gearMenu').innerHTML = '<div class="menu-h">Settings</div>' + items.map(([p, l]) => `<a href="${p}" data-link class="${isOn(p) ? 'on' : ''}">${l}</a>`).join('');
 }
 // short how-to guides shown in the help panel; each step can link to the page it mentions
 const HELP_TOPICS = [
@@ -370,7 +374,7 @@ async function render() {
   if (page && planLocked(path)) { document.title = page.title; main.innerHTML = `<div class="card upgrade-card"><h1>${esc(page.title)} isn’t in your plan</h1><p class="muted">You’re on the ${esc(company.account.plan.name)} plan. Upgrade to get ${esc(page.title)} and more.</p><p><a href="/settings" data-link class="btn alt">See your plan</a></p></div>`; return; }
   if (!page) { document.title = 'Not found'; main.innerHTML = '<div class="card"><h1>Page not found</h1><p><a href="/business-overview" data-link>Go to dashboard</a></p></div>'; return; }
   document.title = `${page.title} · ${company.name || (company.account && company.account.productName) || 'Worklio Pro'}`;
-  try { D = portal ? {} : await loadAll(); timeOffBadge(); await page.render(main); }
+  try { D = portal ? {} : await loadAll(); timeOffBadge(); await page.render(main); if (betaPage(path)) main.insertAdjacentHTML('afterbegin', BETA_BAR); }
   catch (e) { main.innerHTML = `<div class="card"><h2>Something went wrong</h2><p>${esc(e.message)}</p></div>`; }
 }
 window.addEventListener('popstate', render);
