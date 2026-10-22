@@ -409,8 +409,20 @@ A.teamLink = async (d) => {
 };
 A.teamRm = async (d) => { if (!confirm(`Remove ${d.name}? They’re logged out right away and can’t log in to Alpha anymore.`)) return; try { await api('DELETE', '/api/platform/team/' + d.id); toast(`${d.name} removed`); teamCard($('#teamCard')); } catch (x) { toast(x.message, true); } };
 // the Integrations tab: one box per service, in two columns on wide screens
+// one service at a time, picked from tabs; the dot shows whether it's set up
+const IG_TABS = [['email', 'Email', 'Email'], ['sms', 'Text messages', 'Text messages (Twilio)'], ['stripe', 'Stripe', 'Stripe'], ['google', 'Google', 'Google Business Profile'], ['meta', 'Facebook & Instagram', 'Facebook & Instagram (Meta)'], ['ai', 'AI', 'AI descriptions']];
+let igTab = 'email';
+function igTabs(box) {
+  const secs = $$('section.ig', box);
+  $('#igTabs').innerHTML = IG_TABS.map(([k, l, title]) => {
+    const sec = secs.find((s) => $('h3', s).textContent === title); if (!sec) return '';
+    sec.dataset.ig = k; sec.hidden = k !== igTab; const ok = !!$('.ig-h .cstatus.active', sec);
+    return `<button type="button" role="tab" aria-selected="${igTab === k}" class="${igTab === k ? 'on' : ''}" data-act="igTab" data-k="${k}"><i class="ig-dot${ok ? ' on' : ''}" title="${ok ? 'Set up' : 'Not set up'}"></i>${l}</button>`;
+  }).join('');
+}
+A.igTab = (d) => { igTab = d.k; $$('#integ section.ig').forEach((s) => { s.hidden = s.dataset.ig !== igTab; }); $$('#igTabs button').forEach((b) => { b.classList.toggle('on', b.dataset.k === igTab); b.setAttribute('aria-selected', String(b.dataset.k === igTab)); }); };
 function integrationsView(main) {
-  main.innerHTML = '<div class="head"><div><h1>Integrations</h1><p class="muted" style="margin:4px 0 0">Shared by every account. Keys in the <code>.env</code> file next to <code>server.js</code> need a restart after changing; secrets are never shown here.</p></div></div><div id="integ"><p class="muted">Checking…</p></div>';
+  main.innerHTML = '<div class="head"><div><h1>Integrations</h1><p class="muted" style="margin:4px 0 0">Shared by every account. Keys in the <code>.env</code> file next to <code>server.js</code> need a restart after changing; secrets are never shown here.</p></div></div><div class="hc-seg msg-seg set-tabs" id="igTabs" role="tablist"></div><div id="integ" class="ig-tabbed"><p class="muted">Checking…</p></div>';
   integrationsCard($('#integ', main));
 }
 /* ===== promotions: discount codes, the referral program and its activity ===== */
@@ -821,6 +833,7 @@ ${copy(S.connectWebhookUrl, 'Connect webhook URL')}
 ${copy(S.billingWebhookUrl, 'Billing webhook URL')}
 ${I.localhost ? '<p class="muted ig-p" style="margin-top:8px">Stripe can’t reach localhost: set <code>BASE_URL</code> (or <code>PLATFORM_DOMAIN</code>) to your public address first.</p>' : ''}</div></div>`)}
 </div>`;
+  igTabs(box);
   $('#mailForm', box).addEventListener('submit', async (e) => {
     e.preventDefault(); try { await api('PUT', '/api/platform/mail-server', Object.fromEntries(new FormData(e.target))); toast('Mail server saved. Send a test email to check it.'); integrationsCard(box); } catch (x) { toast(x.message, true); }
   });
