@@ -35,11 +35,38 @@ function authView(state, err) {
 <form id="af">${err ? `<div class="msg err" role="alert">${esc(err)}</div>` : ''}${setup ? '<label>Your name<input name="name" required autocomplete="name"></label>' : ''}
 <label>Email<input name="email" type="email" required autocomplete="username"></label>
 <label>Password${setup ? ' (10+ characters)' : ''}<input name="password" type="password" required autocomplete="${setup ? 'new-password' : 'current-password'}" ${setup ? 'minlength="10"' : ''}></label>
-<button class="btn">${setup ? 'Create and continue' : 'Log in'}</button></form></div>`;
+<button class="btn">${setup ? 'Create and continue' : 'Log in'}</button></form>${setup ? '' : '<p class="pf-auth-alt"><a href="#" data-act="forgot">Forgot your password?</a></p>'}</div>`;
+  A.forgot = () => forgotView(state, { step: 'email', email: $('#af [name=email]').value.trim() });
   $('#af input').focus();
   $('#af').addEventListener('submit', async (e) => {
     e.preventDefault(); const b = Object.fromEntries(new FormData(e.target));
     try { await api('POST', setup ? '/api/platform/setup' : '/api/platform/login', b); boot(); } catch (x) { authView(state, x.message); }
+  });
+}
+
+// Forgot your password? 1) your email  2) the 6-digit code we email you  3) a new password
+function forgotView(state, f, err) {
+  const brand = state.brand && state.brand.logo ? `<div class="pf-auth-logo">${brandImg(state.brand)}</div>` : '';
+  const back = '<p class="pf-auth-alt"><a href="#" data-act="backToLogin">Back to log in</a></p>';
+  const msg = err ? `<div class="msg err" role="alert">${esc(err)}</div>` : '';
+  const steps = {
+    email: ['Reset your password', 'Enter the email you log in with. We’ll email you a 6-digit code.', `<label>Email<input name="email" type="email" required autocomplete="username" value="${esc(f.email || '')}"></label><button class="btn">Email me a code</button>`],
+    code: ['Check your email', `If <strong>${esc(f.email)}</strong> has an Alpha login, we sent it a 6-digit code. It works for 15 minutes.`, '<label>Verification code<input name="code" required inputmode="numeric" autocomplete="one-time-code" pattern="\\d{6}" maxlength="6" placeholder="123456" class="pf-code"></label><button class="btn">Continue</button><p class="pf-auth-alt"><a href="#" data-act="forgotResend">Send a new code</a></p>'],
+    password: ['Choose a new password', 'Your other devices will be logged out.', '<label>New password (10+ characters)<input name="password" type="password" required minlength="10" autocomplete="new-password"></label><label>Type it again<input name="again" type="password" required minlength="10" autocomplete="new-password"></label><button class="btn">Save and log in</button>'],
+  };
+  const [title, lead, fields] = steps[f.step];
+  $('#root').innerHTML = `<div class="pf-auth card">${brand}<h1>${title}</h1><p class="muted">${lead}</p><form id="fgf">${msg}${fields}</form>${back}</div>`;
+  A.backToLogin = () => authView(state);
+  A.forgotResend = async () => { try { await api('POST', '/api/platform/forgot', { email: f.email }); forgotView(state, f); toast('A new code is on its way'); } catch (x) { forgotView(state, f, x.message); } };
+  $('#fgf input').focus();
+  $('#fgf').addEventListener('submit', async (e) => {
+    e.preventDefault(); const b = Object.fromEntries(new FormData(e.target)); const btn = $('#fgf .btn'); btn.disabled = true;
+    try {
+      if (f.step === 'email') { await api('POST', '/api/platform/forgot', { email: b.email }); return forgotView(state, { step: 'code', email: b.email.trim().toLowerCase() }); }
+      if (f.step === 'code') { const code = b.code.replace(/\D/g, ''); await api('POST', '/api/platform/forgot/verify', { email: f.email, code, check: true }); return forgotView(state, { ...f, step: 'password', code }); }
+      if (b.password !== b.again) return forgotView(state, f, 'The two passwords don’t match');
+      await api('POST', '/api/platform/forgot/verify', { email: f.email, code: f.code, password: b.password }); toast('Password changed'); boot();
+    } catch (x) { forgotView(state, x.message.includes('Request a new one') ? { ...f, step: 'code' } : f, x.message); }
   });
 }
 
