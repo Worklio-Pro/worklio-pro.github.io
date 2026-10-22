@@ -17,7 +17,11 @@
     .pf-tabs a{color:#cbd5e1;text-decoration:none;padding:8px 12px;border-radius:8px;font-size:14px;white-space:nowrap}
     .pf-tabs a:hover{background:rgba(255,255,255,.08);color:#fff}.pf-tabs a.on{background:rgba(255,255,255,.14);color:#fff}
     .pf-user{font-size:13px;color:#94a3b8;display:flex;gap:10px;align-items:center}
-    .pf-user button{background:none;border:0;color:#cbd5e1;font:inherit;cursor:pointer;padding:4px 8px;border-radius:6px}.pf-user button:hover{background:rgba(255,255,255,.08);color:#fff}
+    .pf-menu{position:relative}.pf-menu summary{list-style:none;cursor:pointer;color:#cbd5e1;padding:6px 10px;border-radius:8px;white-space:nowrap}.pf-menu summary::-webkit-details-marker{display:none}
+    .pf-menu summary:hover,.pf-menu[open] summary{background:rgba(255,255,255,.08);color:#fff}
+    .pf-menu-list{position:absolute;right:0;top:calc(100% + 6px);z-index:30;min-width:210px;background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow-lg);padding:6px}
+    .pf-menu-who{padding:6px 10px 8px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--line);margin-bottom:4px;overflow-wrap:anywhere}
+    .pf-menu-list button{display:block;width:100%;text-align:left;background:none;border:0;padding:9px 10px;border-radius:6px;font:inherit;font-size:14px;color:var(--text);cursor:pointer}.pf-menu-list button:hover{background:var(--surface-2)}
     .pf-main{max-width:1180px;margin:0 auto;padding:24px 16px 64px}
     .pf-main h1{margin:0;font-size:24px}
     .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:18px}
@@ -238,6 +242,6 @@
   <div id="toast"></div>
   <script src="/hc-editor.js?v=2"></script>
   <script src="/brand.js?v=1"></script>
-  <script src="/platform.js?v=50"></script>
+  <script src="/platform.js?v=51"></script>
 </body>
 </html>

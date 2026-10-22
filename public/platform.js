@@ -89,7 +89,7 @@ function render() {
   document.title = `${tabs.find((t) => t[0] === tab)[1]} · ${D.settings.productName} Alpha`;
   $('#root').innerHTML = `<header class="pf-top"><div class="pf-bar"><div class="pf-brand">${brandImg(siteBrand(), 'dark')}${siteBrand().logoHasName ? '' : esc(D.settings.productName)} <small>Alpha</small></div>
 <nav class="pf-tabs">${tabs.map(([k, l]) => `<a href="#${k}" class="${tab === k ? 'on' : ''}">${l}${k === 'messages' && D.chatWaiting ? ` <span class="msg-n" title="Chats waiting for you">${D.chatWaiting}</span>` : ''}</a>`).join('')}</nav>
-<div class="pf-user"><span>${esc(D.admin.name)}${isSupport() ? ' <small class="pf-role">Support</small>' : ''}</span><button type="button" data-act="logout">Log out</button></div></div></header>
+<details class="pf-user pf-menu"><summary>${esc(D.admin.name)}${isSupport() ? ' <small class="pf-role">Support</small>' : ''} <span aria-hidden="true">▾</span></summary><div class="pf-menu-list"><div class="pf-menu-who">${esc(D.admin.email)}</div><button type="button" data-act="myPassword">Change password</button><button type="button" data-act="logout">Log out</button></div></details></div></header>
 ${D.maintenance && D.maintenance.on ? `<div class="mt-bar" role="status"><strong>Maintenance mode is on.</strong> Visitors and businesses see the maintenance page; you can still use everything. ${isSupport() ? 'The owner can turn it off in Settings.' : '<a href="#settings" data-act="goMaint">Turn it off in Settings</a>'}</div>` : ''}
 <main class="pf-main" id="main"></main>
 <nav class="pf-bnav" aria-label="Alpha sections">${tabs.filter(([k]) => !NOT_ON_PHONES.includes(k)).map(([k, l]) => `<a href="#${k}" class="${tab === k ? 'on' : ''}"${tab === k ? ' aria-current="page"' : ''}>${TAB_ICONS[k]}<span>${SHORT_TABS[k] || l}</span></a>`).join('')}</nav>`;
@@ -1006,6 +1006,21 @@ A.hcReset = async (d, el) => {
   const slug = el.closest('.pf-modal').dataset.slug; if (!confirm('Reset this article’s votes and comments to zero?')) return;
   try { HC = await api('POST', `/api/platform/help/articles/${encodeURIComponent(slug)}/reset-feedback`, {}); toast('Feedback reset'); el.closest('.hc-fb').textContent = '👍 0 · 👎 0 · no votes yet'; helpView($('#main')); } catch (x) { toast(x.message, true); }
 };
+// change your own password (top bar → your name)
+A.myPassword = () => {
+  $$('details.pf-menu[open]').forEach((m) => { m.open = false; });
+  const m = modal('Change your password', `<form id="mpf"><label>Current password<input name="current" type="password" required autocomplete="current-password"></label>
+<label>New password (10+ characters)<input name="password" type="password" required minlength="10" autocomplete="new-password"></label>
+<label>Type the new password again<input name="again" type="password" required minlength="10" autocomplete="new-password"></label>
+<p class="muted" style="font-size:13px;margin:0">You stay logged in here; any other devices are logged out.</p>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Change password</button></div></form>`);
+  $('#mpf', m).addEventListener('submit', async (e) => {
+    e.preventDefault(); const b = Object.fromEntries(new FormData(e.target));
+    if (b.password !== b.again) return toast('The new passwords don’t match', true);
+    try { await api('PUT', '/api/platform/me/password', { current: b.current, password: b.password }); closeModal(); toast('Password changed'); } catch (x) { toast(x.message, true); }
+  });
+};
+document.addEventListener('click', (e) => { $$('details.pf-menu[open]').forEach((m) => { if (!m.contains(e.target)) m.open = false; }); });
 A.logout = async () => { await api('POST', '/api/platform/logout', {}); D = null; draftPlans = null; draftBeta = null; boot(); };
 document.addEventListener('click', (e) => {
   const el = e.target.closest('[data-act]'); if (!el || el.disabled) return;
