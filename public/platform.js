@@ -63,20 +63,25 @@ function render() {
     $('#root').innerHTML = '<main class="pf-main pf-pop" id="main"><div class="card" id="chat"></div></main>';
     return chatCard($('#chat'));
   }
-  const tabs = [['accounts', 'Accounts'], ['plans', 'Plans & features'], ['discounts', 'Promotions'], ['messages', 'Messages'], ['help', 'Help Center'], ['integrations', 'Integrations'], ['settings', 'Settings']];
+  const tabs = [['accounts', 'Accounts'], ['plans', 'Plans & features'], ['discounts', 'Promotions'], ['messages', 'Messages'], ['help', 'Help Center'], ['integrations', 'Integrations'], ['settings', 'Settings']].filter(([k]) => tabsFor().includes(k));
   document.title = `${tabs.find((t) => t[0] === tab)[1]} · ${D.settings.productName} Alpha`;
   $('#root').innerHTML = `<header class="pf-top"><div class="pf-bar"><div class="pf-brand">${brandImg(siteBrand(), 'dark')}${siteBrand().logoHasName ? '' : esc(D.settings.productName)} <small>Alpha</small></div>
 <nav class="pf-tabs">${tabs.map(([k, l]) => `<a href="#${k}" class="${tab === k ? 'on' : ''}">${l}${k === 'messages' && D.chatWaiting ? ` <span class="msg-n" title="Chats waiting for you">${D.chatWaiting}</span>` : ''}</a>`).join('')}</nav>
-<div class="pf-user"><span>${esc(D.admin.name)}</span><button type="button" data-act="logout">Log out</button></div></div></header>
-${D.maintenance && D.maintenance.on ? `<div class="mt-bar" role="status"><strong>Maintenance mode is on.</strong> Visitors and businesses see the maintenance page; you can still use everything. <a href="#settings">Turn it off in Settings</a></div>` : ''}
+<div class="pf-user"><span>${esc(D.admin.name)}${isSupport() ? ' <small class="pf-role">Support</small>' : ''}</span><button type="button" data-act="logout">Log out</button></div></div></header>
+${D.maintenance && D.maintenance.on ? `<div class="mt-bar" role="status"><strong>Maintenance mode is on.</strong> Visitors and businesses see the maintenance page; you can still use everything. ${isSupport() ? 'The owner can turn it off in Settings.' : '<a href="#settings">Turn it off in Settings</a>'}</div>` : ''}
 <main class="pf-main" id="main"></main>
-<nav class="pf-bnav" aria-label="Alpha sections">${tabs.map(([k, l]) => `<a href="#${k}" class="${tab === k ? 'on' : ''}"${tab === k ? ' aria-current="page"' : ''}>${TAB_ICONS[k]}<span>${SHORT_TABS[k] || l}</span></a>`).join('')}</nav>`;
+<nav class="pf-bnav" aria-label="Alpha sections">${tabs.filter(([k]) => !NOT_ON_PHONES.includes(k)).map(([k, l]) => `<a href="#${k}" class="${tab === k ? 'on' : ''}"${tab === k ? ' aria-current="page"' : ''}>${TAB_ICONS[k]}<span>${SHORT_TABS[k] || l}</span></a>`).join('')}</nav>`;
   $('#main').dataset.tab = tab; // box title bands are styled per tab (platform.html)
   ({ accounts: accountsView, plans: plansView, discounts: promoView, messages: messagesView, help: helpView, integrations: integrationsView, settings: settingsView })[tab]($('#main'));
 }
 const TABS = ['accounts', 'plans', 'discounts', 'messages', 'help', 'integrations', 'settings'];
+// support users (Settings → Alpha team) get Accounts, Messages and Help Center; the server enforces the same
+const isSupport = () => !!(D && D.admin && D.admin.role === 'support');
+const tabsFor = () => (isSupport() ? ['accounts', 'messages', 'help'] : TABS);
+const tabFromHash = () => { const h = location.hash.slice(1); return tabsFor().includes(h) ? h : 'accounts'; };
+const NOT_ON_PHONES = ['plans', 'integrations', 'settings']; // left off the phone tab bar for everyone (they need a bigger screen)
 const SHORT_TABS = { plans: 'Plans', help: 'Help', discounts: 'Promos', integrations: 'Services' }; // the phone tab bar has room for short names only
-window.addEventListener('hashchange', () => { if (POPOUT) return; tab = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'accounts'; if (D) render(); });
+window.addEventListener('hashchange', () => { if (POPOUT) return; tab = tabFromHash(); if (D) render(); });
 
 /* ===== accounts ===== */
 const statusChip = (a) => (a.status === 'active' ? `<span class="cstatus active">Active</span>${a.expiresAt ? `<div class="sm">Until ${fmtDate(a.expiresAt)}</div>` : ''}${a.billing && a.billing.status === 'paid' ? `<div class="sm">${a.billing.demo ? 'Demo checkout' : 'Paid by card'}</div>` : ''}`
@@ -328,7 +333,7 @@ function settingsView(main) {
 <p class="muted" style="font-size:13px">Pricing page: <a href="${esc(site)}" target="_blank" rel="noopener">${esc(site)}</a>. Businesses that choose a paid plan pay for it at checkout before their account opens (see <a href="#integrations">Integrations → Stripe</a>).</p>
 <div class="card-save"><button class="btn">Save</button></div></div>
 </form></div>
-<div class="set-col"><div class="card" id="logoCard"></div>
+<div class="set-col"><div class="card" id="teamCard"></div><div class="card" id="logoCard"></div>
 <form id="sf2" class="set-form"><div class="card"><h2>Accounts with a last day of access</h2>
 <div class="row"><label>Show a banner in their app (days before)<input name="expiryBannerDays" type="number" min="0" max="60" value="${esc(s.expiryBannerDays ?? 7)}"></label><label>Email the owner a reminder (days before)<input name="expiryReminderDays" type="number" min="0" max="60" value="${esc(s.expiryReminderDays ?? 3)}"></label></div>
 <p class="muted" style="font-size:13px;margin-top:-4px">For accounts you gave a last day of access (e.g. trials). Owners and admins see the banner; owners can choose a plan from it, which removes the end date. The reminder is sent once per end date; edit its wording in Messages → Email templates → Access ending soon. 0 means on the last day itself.</p>
@@ -338,8 +343,39 @@ function settingsView(main) {
     e.preventDefault(); const b = Object.fromEntries(new FormData(e.target)); if (e.target.elements.allowSignups) b.allowSignups = !!b.allowSignups; // only the form with the switch sends it
     try { await api('PUT', '/api/platform/settings', b); await load(); toast('Settings saved'); render(); } catch (x) { toast(x.message, true); }
   }));
-  maintenanceCard($('#mtCard', main)); logoCard($('#logoCard', main)); reservedCard($('#reserved', main));
+  maintenanceCard($('#mtCard', main)); logoCard($('#logoCard', main)); reservedCard($('#reserved', main)); teamCard($('#teamCard', main));
 }
+// the Alpha team: you (the owner) and support users, who see only Accounts, Messages and Help Center
+async function teamCard(box) {
+  let T; try { T = await api('GET', '/api/platform/team'); } catch (x) { box.innerHTML = `<h2>Alpha team</h2><p class="muted">${esc(x.message)}</p>`; return; }
+  const when = (s) => (s ? new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Never');
+  box.innerHTML = `<h2>Alpha team</h2><p class="muted" style="font-size:13px;margin-top:0">Support users log in at this same Alpha address and see only <strong>Accounts</strong>, <strong>Messages</strong> (including Live chat) and <strong>Help Center</strong>.</p>
+<div class="tablewrap"><table class="acc"><thead><tr><th>Name</th><th>Access</th><th>Last login</th><th></th></tr></thead><tbody>${T.map((a) => `<tr><td class="nm">${esc(a.name)}${a.id === D.admin.id ? ' <span class="sm">(you)</span>' : ''}<div class="sm">${esc(a.email)}</div></td>
+<td><span class="cstatus ${a.role === 'owner' ? 'active' : ''}">${a.role === 'owner' ? 'Owner: everything' : 'Support'}</span></td><td class="sm">${when(a.lastLoginAt)}</td>
+<td><div class="acts">${a.role === 'support' ? `<button type="button" class="btn alt sm" data-act="teamPw" data-id="${a.id}" data-name="${esc(a.name)}">Reset password</button><button type="button" class="btn danger sm" data-act="teamRm" data-id="${a.id}" data-name="${esc(a.name)}">Remove</button>` : ''}</div></td></tr>`).join('')}</tbody></table></div>
+<button type="button" class="btn alt sm" data-act="teamAdd" style="margin-top:12px">+ Add a support user</button>`;
+}
+A.teamAdd = () => {
+  const m = modal('Add a support user', `<form id="tmf"><p class="muted" style="margin-top:0">They’ll see Accounts, Messages and Help Center. Share the password with them yourself; they log in at <strong>${esc(location.origin)}/alpha</strong>.</p>
+<div class="row"><label>Name<input name="name" required maxlength="100" autocomplete="off"></label><label>Email<input name="email" type="email" required autocomplete="off"></label></div>
+<label>Password (10+ characters)<div class="pw-row"><input name="password" required minlength="10" autocomplete="new-password"><button type="button" class="btn alt sm" data-act="teamGen">Make one</button></div></label>
+<div class="acts" style="margin-top:12px"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Add support user</button></div></form>`);
+  $('#tmf', m).addEventListener('submit', async (e) => {
+    e.preventDefault(); const b = Object.fromEntries(new FormData(e.target));
+    try { await api('POST', '/api/platform/team', b); closeModal(); toast(`${b.name} can now log in to Alpha`); teamCard($('#teamCard')); } catch (x) { toast(x.message, true); }
+  });
+};
+// a readable random password: four groups of letters and digits
+A.teamGen = (d, el) => { const c = 'abcdefghjkmnpqrstuvwxyz23456789'; const r = crypto.getRandomValues(new Uint32Array(16)); const p = [...r].map((n) => c[n % c.length]).join('').replace(/(.{4})(?!$)/g, '$1-'); const i = el.parentElement.querySelector('input'); i.value = p; i.select(); };
+A.teamPw = (d) => {
+  const m = modal(`New password for ${d.name}`, `<form id="tpf"><p class="muted" style="margin-top:0">They’re logged out everywhere and log in again with the new password. Share it with them yourself.</p>
+<label>New password (10+ characters)<div class="pw-row"><input name="password" required minlength="10" autocomplete="new-password"><button type="button" class="btn alt sm" data-act="teamGen">Make one</button></div></label>
+<div class="acts" style="margin-top:12px"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save password</button></div></form>`);
+  $('#tpf', m).addEventListener('submit', async (e) => {
+    e.preventDefault(); try { await api('PUT', '/api/platform/team/' + d.id, Object.fromEntries(new FormData(e.target))); closeModal(); toast('Password changed'); } catch (x) { toast(x.message, true); }
+  });
+};
+A.teamRm = async (d) => { if (!confirm(`Remove ${d.name}? They’re logged out right away and can’t log in to Alpha anymore.`)) return; try { await api('DELETE', '/api/platform/team/' + d.id); toast(`${d.name} removed`); teamCard($('#teamCard')); } catch (x) { toast(x.message, true); } };
 // the Integrations tab: one box per service, in two columns on wide screens
 function integrationsView(main) {
   main.innerHTML = '<div class="head"><div><h1>Integrations</h1><p class="muted" style="margin:4px 0 0">Shared by every account. Keys in the <code>.env</code> file next to <code>server.js</code> need a restart after changing; secrets are never shown here.</p></div></div><div id="integ"><p class="muted">Checking…</p></div>';
@@ -933,7 +969,6 @@ document.addEventListener('click', (e) => {
 async function boot() {
   const state = await api('GET', '/api/platform/state');
   if (!state.admin) { document.title = 'Alpha'; return authView(state); }
-  tab = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'accounts';
-  await load(); render();
+  await load(); tab = tabFromHash(); render();
 }
 boot();
