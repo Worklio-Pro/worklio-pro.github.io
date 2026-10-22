@@ -101,6 +101,7 @@ const TAB_ICONS = { // bottom bar icons (phones)
   integrations: ico('<path d="M9 2v6M15 2v6"/><path d="M6 8h12v3a6 6 0 0 1-12 0z"/><path d="M12 17v5"/>'),
   automations: ico('<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>'),
   messages: ico('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>'),
+  forum: ico('<path d="M17 9a6 6 0 0 0-11.5-2.4A5 5 0 0 0 3 15.3L2 19l3.7-1A6 6 0 0 0 17 9z"/><path d="M14 18.6A6 6 0 0 0 22 13a5 5 0 0 0-2.5-4.3"/>'),
   plans: ico('<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14.5 17.5l2 2 4-4"/>'),
   settings: ico('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>'),
 };
@@ -113,25 +114,25 @@ function render() {
     $('#root').innerHTML = '<main class="pf-main pf-pop" id="main"><div class="card" id="chat"></div></main>';
     return chatCard($('#chat'));
   }
-  const tabs = [['accounts', 'Accounts'], ['plans', 'Plans & features'], ['discounts', 'Promotions'], ['messages', 'Messages'], ['help', 'Help Center'], ['integrations', 'Integrations'], ['settings', 'Settings']].filter(([k]) => tabsFor().includes(k));
+  const tabs = [['accounts', 'Accounts'], ['plans', 'Plans & features'], ['discounts', 'Promotions'], ['messages', 'Messages'], ['forum', 'Forum'], ['help', 'Help Center'], ['integrations', 'Integrations'], ['settings', 'Settings']].filter(([k]) => tabsFor().includes(k));
   document.title = `${tabs.find((t) => t[0] === tab)[1]} · ${D.settings.productName} Alpha`;
   $('#root').innerHTML = `<header class="pf-top"><div class="pf-bar"><div class="pf-brand">${brandImg(siteBrand(), 'dark')}${siteBrand().logoHasName ? '' : esc(D.settings.productName)} <small>Alpha</small></div>
-<nav class="pf-tabs">${tabs.map(([k, l]) => `<a href="#${k}" class="${tab === k ? 'on' : ''}">${l}${k === 'messages' && D.chatWaiting ? ` <span class="msg-n" title="Chats waiting for you">${D.chatWaiting}</span>` : ''}</a>`).join('')}</nav>
+<nav class="pf-tabs">${tabs.map(([k, l]) => `<a href="#${k}" class="${tab === k ? 'on' : ''}">${l}${k === 'messages' && D.chatWaiting ? ` <span class="msg-n" title="Chats waiting for you">${D.chatWaiting}</span>` : ''}${k === 'forum' && D.forumNew ? ` <span class="msg-n" title="New posts">${D.forumNew}</span>` : ''}</a>`).join('')}</nav>
 <details class="pf-user pf-menu"><summary>${esc(D.admin.name)}${isSupport() ? ' <small class="pf-role">Support</small>' : ''} <span aria-hidden="true">▾</span></summary><div class="pf-menu-list"><div class="pf-menu-who">${esc(D.admin.email)}</div><button type="button" data-act="myEmail">Change email</button><button type="button" data-act="myPassword">Change password</button><button type="button" data-act="logout">Log out</button></div></details></div></header>
 ${D.maintenance && D.maintenance.on ? `<div class="mt-bar" role="status"><strong>Maintenance mode is on.</strong> Visitors and businesses see the maintenance page; you can still use everything. ${isSupport() ? 'The owner can turn it off in Settings.' : '<a href="#settings" data-act="goMaint">Turn it off in Settings</a>'}</div>` : ''}
 <main class="pf-main" id="main"></main>
 <nav class="pf-bnav" aria-label="Alpha sections">${tabs.filter(([k]) => !NOT_ON_PHONES.includes(k)).map(([k, l]) => `<a href="#${k}" class="${tab === k ? 'on' : ''}"${tab === k ? ' aria-current="page"' : ''}>${TAB_ICONS[k]}<span>${SHORT_TABS[k] || l}</span></a>`).join('')}</nav>`;
   $('#main').dataset.tab = tab; // box title bands are styled per tab (platform.html)
-  ({ accounts: accountsView, plans: plansView, discounts: promoView, messages: messagesView, help: helpView, integrations: integrationsView, settings: settingsView })[tab]($('#main'));
+  ({ accounts: accountsView, plans: plansView, discounts: promoView, messages: messagesView, forum: forumView, help: helpView, integrations: integrationsView, settings: settingsView })[tab]($('#main'));
 }
-const TABS = ['accounts', 'plans', 'discounts', 'messages', 'help', 'integrations', 'settings'];
-// support users (Settings → Alpha team) get Accounts, Messages and Help Center; the server enforces the same
+const TABS = ['accounts', 'plans', 'discounts', 'messages', 'forum', 'help', 'integrations', 'settings'];
+// support users (Settings → Alpha team) get Accounts, Messages, Forum and Help Center; the server enforces the same
 const isSupport = () => !!(D && D.admin && D.admin.role === 'support');
-const tabsFor = () => (isSupport() ? ['accounts', 'messages', 'help'] : TABS);
+const tabsFor = () => (isSupport() ? ['accounts', 'messages', 'forum', 'help'] : TABS);
 const tabFromHash = () => { const h = location.hash.slice(1); if (h === 'automations' && !isSupport()) { msgTab = 'automations'; return 'messages'; } return tabsFor().includes(h) ? h : 'accounts'; };
 const NOT_ON_PHONES = ['plans', 'integrations', 'settings']; // left off the phone tab bar for everyone (they need a bigger screen)
 const SHORT_TABS = { plans: 'Plans', help: 'Help', discounts: 'Promos', integrations: 'Services' }; // the phone tab bar has room for short names only
-window.addEventListener('hashchange', () => { if (POPOUT) return; tab = tabFromHash(); if (D) render(); });
+window.addEventListener('hashchange', () => { if (POPOUT) return; tab = tabFromHash(); if (tab === 'forum') { FR = null; frSel = ''; } if (D) render(); });
 
 /* ===== accounts ===== */
 const statusChip = (a) => (a.status === 'active' ? `<span class="cstatus active">Active</span>${a.expiresAt ? `<div class="sm">Until ${fmtDate(a.expiresAt)}</div>` : ''}${a.billing && a.billing.status === 'paid' ? `<div class="sm">${a.billing.demo ? 'Demo checkout' : 'Paid by card'}</div>` : ''}`
@@ -458,13 +459,13 @@ A.icPick = (d) => {
 };
 A.icSet = async (d) => { try { IC = await api('PUT', '/api/platform/nav-icons', { path: d.p, icon: d.k }); closeModal(); toast('Icon changed'); iconsCard($('#iconsCard')); } catch (x) { toast(x.message, true); } };
 A.icReset = async (d) => { try { IC = await api('PUT', '/api/platform/nav-icons', { path: d.p, icon: null }); toast('Back to the default icon'); iconsCard($('#iconsCard')); } catch (x) { toast(x.message, true); } };
-// the Alpha team: you (the owner) and support users, who see only Accounts, Messages and Help Center
+// the Alpha team: you (the owner) and support users, who see only Accounts, Messages, Forum and Help Center
 async function teamCard(box) {
   let T; try { T = await api('GET', '/api/platform/team'); } catch (x) { box.innerHTML = `<h2>Alpha team</h2><p class="muted">${esc(x.message)}</p>`; return; }
   const when = (s) => (s ? new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Never');
   const status = (a) => (a.role === 'owner' ? '<span class="cstatus active">Owner: everything</span>'
     : a.pending ? `<span class="cstatus q-sent">${a.linkExpired ? 'Link expired' : a.lastLoginAt ? 'Reset sent' : 'Invite sent'}</span>${a.linkSentAt ? `<div class="sm">${when(a.linkSentAt)}</div>` : ''}` : '<span class="cstatus">Support</span>');
-  box.innerHTML = `<h2>Alpha team</h2><p class="muted" style="font-size:13px;margin-top:0">Support users log in at this same Alpha address and see only <strong>Accounts</strong>, <strong>Messages</strong> (including Live chat) and <strong>Help Center</strong>. They get a welcome email with a link to choose their password.</p>
+  box.innerHTML = `<h2>Alpha team</h2><p class="muted" style="font-size:13px;margin-top:0">Support users log in at this same Alpha address and see only <strong>Accounts</strong>, <strong>Messages</strong> (including Live chat), <strong>Forum</strong> and <strong>Help Center</strong>. They get a welcome email with a link to choose their password.</p>
 <div class="tablewrap"><table class="acc"><thead><tr><th>Name</th><th>Access</th><th>Last login</th><th></th></tr></thead><tbody>${T.map((a) => `<tr><td class="nm">${esc(a.name)}${a.id === D.admin.id ? ' <span class="sm">(you)</span>' : ''}<div class="sm">${esc(a.email)}</div></td>
 <td>${status(a)}</td><td class="sm">${when(a.lastLoginAt)}</td>
 <td><div class="acts">${a.role === 'support' ? `<button type="button" class="btn alt sm" data-act="teamLink" data-id="${a.id}" data-name="${esc(a.name)}" data-pending="${a.pending && !a.lastLoginAt ? 1 : ''}">${a.pending && !a.lastLoginAt ? 'Resend invite' : 'Send password reset'}</button><button type="button" class="btn danger sm" data-act="teamRm" data-id="${a.id}" data-name="${esc(a.name)}">Remove</button>` : ''}</div></td></tr>`).join('')}</tbody></table></div>
@@ -478,7 +479,7 @@ function teamLinkResult(r, name) {
 <div class="acts" style="margin-top:12px"><button type="button" class="btn" data-act="closeModal">Done</button></div>`);
 }
 A.teamAdd = () => {
-  const m = modal('Add a support user', `<form id="tmf"><p class="muted" style="margin-top:0">They’ll get a welcome email with a link to activate their login and choose a password. They’ll see Accounts, Messages and Help Center.</p>
+  const m = modal('Add a support user', `<form id="tmf"><p class="muted" style="margin-top:0">They’ll get a welcome email with a link to activate their login and choose a password. They’ll see Accounts, Messages, Forum and Help Center.</p>
 <div class="row"><label>Name<input name="name" required maxlength="100" autocomplete="off"></label><label>Email<input name="email" type="email" required autocomplete="off"></label></div>
 <div class="acts" style="margin-top:12px"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Send invite</button></div></form>`);
   $('#tmf', m).addEventListener('submit', async (e) => {
@@ -1247,3 +1248,92 @@ async function boot() {
   await load(); tab = tabFromHash(); render();
 }
 boot();
+
+/* ===== Forum (lib/forum.js): issues and feature requests from businesses' owners and admins.
+   Set a post's status (with an optional note, posted as a team reply), pin or lock it, reply as the team, delete posts and comments. ===== */
+let FR = null; let frSel = ''; const frView = { kind: 'all', status: '', sort: 'new', q: '' };
+const frAgo = (iso) => { const s = (Date.now() - new Date(iso)) / 1000; return s < 3600 ? `${Math.max(1, Math.floor(s / 60))} min ago` : s < 86400 ? `${Math.floor(s / 3600)} h ago` : fmtDate(iso); };
+const frWho = (a) => (!a ? '' : a.team ? `<span class="fr-team">${esc(D.settings.productName)} team</span> <span class="muted">(${esc(a.name)})</span>`
+  : `<strong>${esc(a.name)}</strong> · ${a.account ? `<a href="${esc(a.account)}" target="_blank" rel="noopener">${esc(a.company)}</a>` : esc(a.company)} · <span class="muted">${esc(a.role)} · <a href="mailto:${esc(a.email)}">${esc(a.email)}</a></span>`);
+const frChip = (cls, l) => `<span class="fr-chip ${cls}">${esc(l)}</span>`;
+async function forumView(main) {
+  if (!FR) { main.innerHTML = '<div class="head"><h1>Forum</h1></div><p class="muted">Loading…</p>'; try { FR = await api('GET', '/api/platform/forum'); } catch (e) { main.innerHTML = `<div class="head"><h1>Forum</h1></div><p class="muted">${esc(e.message)}</p>`; return; } }
+  D.forumNew = FR.posts.filter((p) => p.status === 'open').length;
+  const p = frSel && FR.posts.find((x) => x.id === frSel); if (!p) frSel = '';
+  return p ? frPost(main, p) : frList(main);
+}
+function frList(main) {
+  const v = frView; const K = FR.kinds; const S = FR.statuses; const s = FR.settings; const q = v.q.trim().toLowerCase();
+  const list = FR.posts.filter((p) => (v.kind === 'all' || p.kind === v.kind) && (!v.status || p.status === v.status)
+    && (!q || [p.title, p.body, p.author.name, p.author.company, p.author.email].join(' ').toLowerCase().includes(q)));
+  const by = { new: (a, b) => b.at.localeCompare(a.at), top: (a, b) => b.likes - a.likes || b.at.localeCompare(a.at), active: (a, b) => b.lastAt.localeCompare(a.lastAt), talk: (a, b) => b.comments.length - a.comments.length };
+  list.sort(by[v.sort]);
+  const n = (f) => FR.posts.filter(f).length;
+  main.innerHTML = `<div class="head"><div><h1>Forum</h1><p class="sub" style="margin:4px 0 0">Issues and feature requests from businesses’ owners and admins, who can like and comment on each other’s posts. Set a status so everyone sees what’s planned.</p></div>
+${isSupport() ? '' : '<button type="button" class="btn alt" data-act="frSettings">Settings</button>'}</div>
+${s.on ? '' : '<div class="mt-bar" role="status" style="margin:0 0 14px;border-radius:10px"><strong>The forum is closed.</strong> Businesses don’t see it. Open it again in Settings.</div>'}
+<div class="stats fr-stats"><div class="card"><div class="l">New, not reviewed yet</div><div class="v">${n((p) => p.status === 'open')}</div></div><div class="card"><div class="l">Feature requests</div><div class="v">${n((p) => p.kind === 'idea')}</div></div>
+<div class="card"><div class="l">Issues</div><div class="v">${n((p) => p.kind === 'issue')}</div></div><div class="card"><div class="l">Planned or in progress</div><div class="v">${n((p) => p.status === 'planned' || p.status === 'progress')}</div></div></div>
+<div class="fr-bar"><div class="hc-seg" role="tablist">${[['all', 'All'], ['idea', 'Feature requests'], ['issue', 'Issues']].map(([k, l]) => `<button type="button" class="${v.kind === k ? 'on' : ''}" data-act="frKind" data-k="${k}">${l}</button>`).join('')}</div>
+<select data-frv="status" aria-label="Status"><option value="">Any status</option>${Object.entries(S).map(([k, l]) => `<option value="${k}" ${v.status === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>
+<select data-frv="sort" aria-label="Sort">${[['new', 'Newest'], ['top', 'Most liked'], ['active', 'Recent activity'], ['talk', 'Most comments']].map(([k, l]) => `<option value="${k}" ${v.sort === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+<input type="search" id="frQ" placeholder="Search posts, people, businesses…" value="${esc(v.q)}"></div>
+<div class="card fr-card">${list.length ? `<table class="hc-table fr-table"><thead><tr><th class="r">Likes</th><th>Post</th><th>Status</th><th class="r">Comments</th><th>Last activity</th></tr></thead><tbody>
+${list.map((p) => `<tr data-act="frOpen" data-id="${esc(p.id)}"><td class="r"><strong>${p.likes}</strong></td><td><div class="fr-tl">${p.pinned ? '📌 ' : ''}${p.locked ? '🔒 ' : ''}<strong>${esc(p.title)}</strong></div>
+<div class="sm">${frChip('k-' + p.kind, K[p.kind])} ${esc(p.author.name)} · ${esc(p.author.company)} · ${frAgo(p.at)}</div></td><td>${frChip('s-' + p.status, S[p.status])}</td><td class="r">${p.comments.filter((c) => !c.deleted).length}</td><td class="sm">${frAgo(p.lastAt)}</td></tr>`).join('')}</tbody></table>`
+  : `<p class="muted" style="margin:0">${FR.posts.length ? 'No posts match.' : 'No posts yet. Owners and admins open the forum from the Forum button in their app’s top bar.'}</p>`}</div>`;
+  $$('[data-frv]', main).forEach((el) => el.addEventListener('change', () => { frView[el.dataset.frv] = el.value; frList(main); }));
+  let t; $('#frQ').addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(() => { frView.q = e.target.value; frList(main); const i = $('#frQ'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }, 250); });
+}
+function frPost(main, p) {
+  const K = FR.kinds; const S = FR.statuses;
+  const one = (c) => `<div class="fr-c ${c.author && c.author.team ? 'team' : ''}">${c.deleted ? '<p class="muted" style="margin:0;font-style:italic">Deleted by its author</p>' : `<div class="sm">${frWho(c.author)} · ${frAgo(c.at)}${c.likes ? ` · 👍 ${c.likes}` : ''}</div>
+<div class="fr-body">${esc(c.body)}</div><div class="fr-acts"><button type="button" class="link-btn" data-act="frReplyTo" data-c="${esc(c.id)}">Reply</button><button type="button" class="link-btn danger-text" data-act="frDelC" data-c="${esc(c.id)}">Delete</button></div>`}</div>`;
+  const top = p.comments.filter((c) => !c.parentId);
+  main.innerHTML = `<p style="margin:0 0 10px"><a href="#forum" data-act="frBack">‹ All posts</a></p>
+<div class="fr-grid"><div><div class="card"><div class="fr-tags">${frChip('k-' + p.kind, K[p.kind])} ${frChip('s-' + p.status, S[p.status])}${p.pinned ? ' 📌 Pinned' : ''}${p.locked ? ' 🔒 Locked' : ''}</div>
+<h2 class="fr-h">${esc(p.title)}</h2><div class="sm">${frWho(p.author)}<br>${new Date(p.at).toLocaleString()}${p.editedAt ? ' · edited' : ''} · 👍 ${p.likes} like${p.likes === 1 ? '' : 's'}</div>
+<div class="fr-body">${esc(p.body)}</div></div>
+<div class="card"><h2>Comments</h2>${top.map((c) => `${one(c)}${p.comments.filter((r) => r.parentId === c.id).map((r) => `<div class="fr-reply">${one(r)}</div>`).join('')}`).join('') || '<p class="muted">No comments yet.</p>'}
+<form id="frReply" class="fr-form"><div class="sm" id="frReplyTo" hidden></div><label>Reply as the ${esc(D.settings.productName)} team<textarea name="body" rows="3" maxlength="4000" required placeholder="Everyone in the forum sees this, with a team badge."></textarea></label>
+<input type="hidden" name="parentId"><div style="display:flex;justify-content:flex-end;gap:8px"><button class="btn">Post reply</button></div></form></div></div>
+<div><div class="card"><h2>Manage</h2><form id="frManage"><label>Status<select name="status">${Object.entries(S).map(([k, l]) => `<option value="${k}" ${p.status === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+<label>Note with the status change (optional)<textarea name="note" rows="3" maxlength="4000" placeholder="e.g. Thanks! This is planned for next month."></textarea></label>
+<label>Type<select name="kind">${Object.entries(K).map(([k, l]) => `<option value="${k}" ${p.kind === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+<label class="chk"><input type="checkbox" name="pinned" ${p.pinned ? 'checked' : ''}> Pin to the top of the forum</label><label class="chk"><input type="checkbox" name="locked" ${p.locked ? 'checked' : ''}> Lock (no new comments)</label>
+<button class="btn" style="width:100%;margin-top:6px">Save</button></form>
+<p class="muted" style="font-size:12px">The author gets an email when the status changes${FR.settings.emailReplies ? '' : ' (turned off in Settings)'}. A note is posted as a team reply.</p>
+<button type="button" class="btn danger" style="width:100%" data-act="frDel">Delete post</button></div></div></div>`;
+  $('#frManage').addEventListener('submit', async (e) => {
+    e.preventDefault(); const f = e.target; const btn = $('button.btn', f); btn.disabled = true;
+    try { const r = await api('PUT', `/api/platform/forum/${encodeURIComponent(p.id)}`, { status: f.status.value, note: f.note.value, kind: f.kind.value, pinned: f.pinned.checked, locked: f.locked.checked }); frPut(r.post); toast('Saved'); render(); }
+    catch (x) { toast(x.message, true); btn.disabled = false; }
+  });
+  $('#frReply').addEventListener('submit', async (e) => {
+    e.preventDefault(); const f = e.target; const btn = $('button.btn', f); btn.disabled = true;
+    try { const r = await api('POST', `/api/platform/forum/${encodeURIComponent(p.id)}/comments`, { body: f.body.value, parentId: f.parentId.value || null }); frPut(r.post); toast('Reply posted'); render(); }
+    catch (x) { toast(x.message, true); btn.disabled = false; }
+  });
+}
+const frPut = (post) => { const i = FR.posts.findIndex((x) => x.id === post.id); if (i >= 0) FR.posts[i] = post; };
+A.frOpen = (d) => { frSel = d.id; render(); window.scrollTo(0, 0); };
+A.frBack = () => { frSel = ''; render(); };
+A.frKind = (d) => { frView.kind = d.k; frList($('#main')); };
+A.frReplyTo = (d) => {
+  const p = FR.posts.find((x) => x.id === frSel); const c = p.comments.find((x) => x.id === d.c); const f = $('#frReply');
+  f.parentId.value = d.c; const w = $('#frReplyTo'); w.hidden = false; w.innerHTML = `Replying to ${esc(c.author.team ? 'the team' : c.author.name)} · <button type="button" class="link-btn" data-act="frReplyClear">Cancel</button>`; f.body.focus();
+};
+A.frReplyClear = () => { const f = $('#frReply'); f.parentId.value = ''; $('#frReplyTo').hidden = true; };
+A.frDelC = async (d) => { if (!confirm('Delete this comment? Its replies are deleted too.')) return; try { const r = await api('DELETE', `/api/platform/forum/${encodeURIComponent(frSel)}/comments/${encodeURIComponent(d.c)}`); frPut(r.post); toast('Comment deleted'); render(); } catch (x) { toast(x.message, true); } };
+A.frDel = async () => { if (!confirm('Delete this post and all its comments? This can’t be undone.')) return; try { FR = await api('DELETE', `/api/platform/forum/${encodeURIComponent(frSel)}`); frSel = ''; toast('Post deleted'); render(); } catch (x) { toast(x.message, true); } };
+A.frSettings = () => {
+  const s = FR.settings;
+  const m = modal('Forum settings', `<form><label class="chk"><input type="checkbox" name="on" ${s.on ? 'checked' : ''}> <span><strong>Forum is open</strong><br><span class="muted">Owners and admins see a Forum button in their app’s top bar. Closed, it’s hidden and posts are kept.</span></span></label>
+<label class="chk"><input type="checkbox" name="emailNew" ${s.emailNew ? 'checked' : ''}> <span><strong>Email me about new posts</strong><br><span class="muted">${D.settings.contactEmail ? `Sent to ${esc(D.settings.contactEmail)}` : 'Add a contact email in Settings first'}.</span></span></label>
+<label class="chk"><input type="checkbox" name="emailReplies" ${s.emailReplies ? 'checked' : ''}> <span><strong>Email authors about replies and status changes</strong><br><span class="muted">At most one email per post every 10 minutes.</span></span></label>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save</button></div></form>`);
+  $('form', m).addEventListener('submit', async (e) => {
+    e.preventDefault(); const f = e.target;
+    try { FR = await api('PUT', '/api/platform/forum/settings', { on: f.on.checked, emailNew: f.emailNew.checked, emailReplies: f.emailReplies.checked }); closeModal(); toast('Forum settings saved'); render(); } catch (x) { toast(x.message, true); }
+  });
+};

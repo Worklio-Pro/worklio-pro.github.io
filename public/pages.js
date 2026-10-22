@@ -1886,3 +1886,105 @@ ${yt ? `<div class="rf-embed"><iframe src="https://www.youtube-nocookie.com/embe
   },
 };
 A.copyRefLink = () => { const l = $('#main')._refLink; navigator.clipboard.writeText(l).then(() => toast('Referral link copied'), () => prompt('Copy your referral link:', l)); };
+
+/* ===== /forum: owners and admins of every business share issues and feature requests, like them and comment (lib/forum.js).
+   Not a support queue: the team reads it to decide what to improve, and sets each post's status in Alpha → Forum. ===== */
+let forumView = { kind: 'all', status: '', sort: 'top', q: '', mine: false };
+let FO = null; // the last list or post from the server
+const foAgo = (iso) => { const s = (Date.now() - new Date(iso)) / 1000; if (s < 60) return 'just now'; if (s < 3600) return `${Math.floor(s / 60)} min ago`; if (s < 86400) return `${Math.floor(s / 3600)} h ago`; if (s < 86400 * 7) { const d = Math.floor(s / 86400); return `${d} day${d === 1 ? '' : 's'} ago`; } return fmtDate(String(iso).slice(0, 10)); };
+const foWho = (a) => (a ? (a.team ? `<span class="fo-team">${esc(a.name)}</span>` : `<strong>${esc(a.name)}</strong> · ${esc(a.company)}`) : '');
+const foStatus = (p, S) => `<span class="fo-st fo-st-${p.status}">${esc(S[p.status])}</span>`;
+const foKind = (p, K) => `<span class="fo-kind fo-k-${p.kind}">${esc(K[p.kind])}</span>`;
+const foLike = (n, on, act, attrs) => `<button type="button" class="fo-like ${on ? 'on' : ''}" data-act="${act}" ${attrs} aria-pressed="${on}" title="${on ? 'Unlike' : 'Like'}">${svgIcon('<path d="M7 10v11M2 10h5v11H2zM7 10l4-8a3 3 0 0 1 3 3v4h5.5a2 2 0 0 1 2 2.3l-1.4 8a2 2 0 0 1-2 1.7H7"/>', 16)}<span>${n}</span></button>`;
+const foText = (s) => esc(s).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+PAGES['/forum'] = {
+  title: 'Forum',
+  async render(main) {
+    if (!isAdminMe()) { main.innerHTML = '<div class="card"><h1>Forum</h1><p class="muted">The forum is for account owners and admins.</p></div>'; return; }
+    const id = qp('p');
+    try { FO = await api('GET', id ? '/api/forum/' + encodeURIComponent(id) : '/api/forum'); }
+    catch (e) { main.innerHTML = `<div class="card"><h1>Forum</h1><p class="muted">${esc(e.message)}</p>${id ? '<p><a href="/forum" data-link>Back to the forum</a></p>' : ''}</div>`; return; }
+    return id ? foPost(main) : foList(main);
+  },
+};
+function foList(main) {
+  const v = forumView; const K = FO.kinds; const S = FO.statuses; const product = (company.account && company.account.productName) || 'Worklio Pro';
+  const q = v.q.trim().toLowerCase();
+  const list = FO.posts.filter((p) => (v.kind === 'all' || p.kind === v.kind) && (!v.status || p.status === v.status) && (!v.mine || p.mine) && (!q || (p.title + ' ' + p.excerpt + ' ' + p.author.name + ' ' + (p.author.company || '')).toLowerCase().includes(q)));
+  const by = { top: (a, b) => b.likes - a.likes || b.comments - a.comments || b.at.localeCompare(a.at), new: (a, b) => b.at.localeCompare(a.at), active: (a, b) => b.lastAt.localeCompare(a.lastAt) }[v.sort];
+  list.sort((a, b) => (b.pinned - a.pinned) || by(a, b));
+  const count = (k) => FO.posts.filter((p) => k === 'all' || p.kind === k).length;
+  main.innerHTML = `<div class="head"><div><h1>Forum</h1><p class="sub">Suggest features and report issues. Like the posts that matter to you and join the conversation. The ${esc(product)} team reads everything here to decide what to improve next.</p></div><button class="btn" data-act="foNew">New post</button></div>
+<div class="fo-bar"><div class="tabs fo-tabs">${[['all', 'All'], ['idea', 'Feature requests'], ['issue', 'Issues']].map(([k, l]) => `<button class="${v.kind === k ? 'on' : ''}" data-act="foKindTab" data-k="${k}">${l} <span class="muted">${count(k)}</span></button>`).join('')}</div>
+<div class="fo-filters"><label class="pill">Status<select data-fv="status"><option value="">Any</option>${Object.entries(S).map(([k, l]) => `<option value="${k}" ${v.status === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+<label class="pill">Sort<select data-fv="sort">${[['top', 'Most liked'], ['new', 'Newest'], ['active', 'Recent activity']].map(([k, l]) => `<option value="${k}" ${v.sort === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+<label class="fo-mine"><input type="checkbox" data-fv="mine" ${v.mine ? 'checked' : ''}> My posts</label>
+<input id="foQ" class="csearch" type="search" placeholder="Search the forum…" value="${esc(v.q)}"></div></div>
+<div class="fo-list">${list.map((p) => `<div class="card fo-item" data-id="${esc(p.id)}">${foLike(p.likes, p.liked, 'foLike', `data-id="${esc(p.id)}"`)}
+<div class="fo-main"><div class="fo-tags">${p.pinned ? '<span class="fo-pin">📌 Pinned</span>' : ''}${foKind(p, K)}${foStatus(p, S)}${p.locked ? '<span class="fo-lock">🔒 Locked</span>' : ''}</div>
+<a class="fo-title" href="/forum?p=${esc(p.id)}" data-link>${esc(p.title)}</a><p class="fo-ex">${esc(p.excerpt)}${p.excerpt.length >= 220 ? '…' : ''}</p>
+<div class="fo-meta">${foWho(p.author)} · ${foAgo(p.at)} · <a href="/forum?p=${esc(p.id)}" data-link>${p.comments} comment${p.comments === 1 ? '' : 's'}</a></div></div></div>`).join('')
+  || `<div class="card empty">${FO.posts.length ? 'No posts match these filters.' : 'No posts yet. Be the first to suggest a feature or report an issue.'}</div>`}</div>`;
+  $$('[data-fv]', main).forEach((s) => s.addEventListener('change', (e) => { forumView[e.target.dataset.fv] = e.target.type === 'checkbox' ? e.target.checked : e.target.value; foList(main); }));
+  let t; $('#foQ').addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(() => { forumView.q = e.target.value; foList(main); const i = $('#foQ'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }, 250); });
+}
+function foPost(main) {
+  const p = FO.post; const K = FO.kinds; const S = FO.statuses;
+  const top = p.comments.filter((c) => !c.parentId); const replies = (id) => p.comments.filter((c) => c.parentId === id);
+  const one = (c) => `<div class="fo-c ${c.author && c.author.team ? 'team' : ''}" id="c-${esc(c.id)}">${c.deleted ? '<p class="muted fo-del">This comment was deleted.</p>' : `<div class="fo-meta">${foWho(c.author)} · ${foAgo(c.at)}</div>
+<div class="fo-body">${foText(c.body)}</div>
+<div class="fo-acts">${foLike(c.likes, c.liked, 'foLikeC', `data-c="${esc(c.id)}"`)}${p.locked ? '' : `<button type="button" class="fo-a" data-act="foReply" data-c="${esc(c.id)}">Reply</button>`}${c.mine ? `<button type="button" class="fo-a" data-act="foDelC" data-c="${esc(c.id)}">Delete</button>` : ''}</div>`}</div>`;
+  main.innerHTML = `<p class="fo-back"><a href="/forum" data-link>${svgIcon(ICONS.back, 16)} Forum</a></p>
+<div class="card fo-post"><div class="fo-item">${foLike(p.likes, p.liked, 'foLike', `data-id="${esc(p.id)}"`)}<div class="fo-main">
+<div class="fo-tags">${p.pinned ? '<span class="fo-pin">📌 Pinned</span>' : ''}${foKind(p, K)}${foStatus(p, S)}${p.locked ? '<span class="fo-lock">🔒 Locked</span>' : ''}</div>
+<h1 class="fo-h">${esc(p.title)}</h1><div class="fo-meta">${foWho(p.author)} · ${foAgo(p.at)}${p.editedAt ? ' · edited' : ''}</div>
+<div class="fo-body">${foText(p.body)}</div>
+${p.mine ? `<div class="fo-acts">${p.locked ? '' : '<button type="button" class="fo-a" data-act="foEdit">Edit</button>'}<button type="button" class="fo-a" data-act="foDel">Delete</button></div>` : ''}</div></div></div>
+<div class="card fo-thread"><h2>${p.comments.filter((c) => !c.deleted).length} comment${p.comments.filter((c) => !c.deleted).length === 1 ? '' : 's'}</h2>
+${top.map((c) => `<div class="fo-tc">${one(c)}${replies(c.id).length ? `<div class="fo-replies">${replies(c.id).map(one).join('')}</div>` : ''}</div>`).join('') || '<p class="muted">No comments yet.</p>'}
+${p.locked ? '<p class="notice">This post is locked, so it can’t get new comments.</p>' : `<form class="fo-form" id="foComment"><textarea name="body" rows="3" maxlength="4000" placeholder="Add a comment…" required></textarea><div><button class="btn">Comment</button></div></form>`}</div>`;
+  const f = $('#foComment'); if (f) f.addEventListener('submit', (e) => { e.preventDefault(); foSend(f, null); });
+  const hash = location.hash.slice(1); if (hash) { const el = document.getElementById(hash); if (el) el.scrollIntoView({ block: 'center' }); }
+}
+async function foSend(form, parentId) {
+  const body = form.body.value.trim(); if (!body) return; const btn = $('button.btn', form); btn.disabled = true;
+  try { FO = { ...FO, ...(await api('POST', `/api/forum/${encodeURIComponent(FO.post.id)}/comments`, { body, parentId })) }; foPost($('#main')); }
+  catch (e) { toast(e.message, true); btn.disabled = false; }
+}
+function foForm(p) {
+  const K = FO.kinds; p = p || { kind: 'idea', title: '', body: '' };
+  const mb = modal(p.id ? 'Edit post' : 'New post', `<form class="fo-new"><div class="fo-pick">${Object.entries(K).map(([k, l]) => `<label><input type="radio" name="kind" value="${k}" ${p.kind === k ? 'checked' : ''}><span><strong>${esc(l)}</strong><small class="muted">${k === 'idea' ? 'Something you’d like the app to do' : 'Something that isn’t working right'}</small></span></label>`).join('')}</div>
+<label>Title<input name="title" required maxlength="140" value="${esc(p.title)}" placeholder="${p.kind === 'issue' ? 'e.g. Invoice PDF cuts off long descriptions' : 'e.g. Let clients pick a time on the booking page'}"></label>
+<label>Details<textarea name="body" required rows="7" maxlength="6000" placeholder="What would help, and why? For an issue: what you did, what you expected and what happened.">${esc(p.body)}</textarea></label>
+<p class="muted" style="font-size:13px;margin:-4px 0 12px">Owners and admins of other businesses can see your post, with your first name, last initial and business name.</p>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">${p.id ? 'Save' : 'Post'}</button></div></form>`);
+  $('form', mb).addEventListener('submit', async (e) => {
+    e.preventDefault(); const body = Object.fromEntries(new FormData(e.target)); const btn = $('.foot .btn:not(.alt)', mb); btn.disabled = true;
+    try {
+      const r = p.id ? await api('PUT', '/api/forum/' + encodeURIComponent(p.id), body) : await api('POST', '/api/forum', body);
+      closeModal(); toast(p.id ? 'Post saved' : 'Posted'); navigate('/forum?p=' + encodeURIComponent(r.post.id));
+    } catch (err) { toast(err.message, true); btn.disabled = false; }
+  });
+}
+A.foNew = () => foForm();
+A.foEdit = () => foForm(FO.post);
+A.foDel = async () => { if (!confirm('Delete your post and its comments?')) return; try { await api('DELETE', '/api/forum/' + encodeURIComponent(FO.post.id)); toast('Post deleted'); navigate('/forum'); } catch (e) { toast(e.message, true); } };
+A.foKindTab = (d) => { forumView.kind = d.k; foList($('#main')); };
+A.foLike = async (d, el) => {
+  try { const r = await api('POST', `/api/forum/${encodeURIComponent(d.id)}/like`); el.classList.toggle('on', r.liked); el.setAttribute('aria-pressed', r.liked); $('span', el).textContent = r.likes;
+    const p = FO.posts ? FO.posts.find((x) => x.id === d.id) : FO.post; if (p) Object.assign(p, r); } catch (e) { toast(e.message, true); }
+};
+A.foLikeC = async (d, el) => {
+  try { const r = await api('POST', `/api/forum/${encodeURIComponent(FO.post.id)}/comments/${encodeURIComponent(d.c)}/like`); el.classList.toggle('on', r.liked); el.setAttribute('aria-pressed', r.liked); $('span', el).textContent = r.likes;
+    Object.assign(FO.post.comments.find((c) => c.id === d.c) || {}, r); } catch (e) { toast(e.message, true); }
+};
+A.foReply = (d, el) => {
+  const c = el.closest('.fo-c'); const open = $('.fo-form', c); if (open) { open.remove(); return; }
+  c.insertAdjacentHTML('beforeend', `<form class="fo-form fo-rform"><textarea name="body" rows="2" maxlength="4000" placeholder="Write a reply…" required></textarea><div><button type="button" class="btn alt sm" data-act="foReplyX">Cancel</button><button class="btn sm">Reply</button></div></form>`);
+  const f = $('.fo-rform', c); f.body.focus(); f.addEventListener('submit', (e) => { e.preventDefault(); foSend(f, d.c); });
+};
+A.foReplyX = (d, el) => el.closest('form').remove();
+A.foDelC = async (d) => {
+  if (!confirm('Delete your comment?')) return;
+  try { FO = { ...FO, ...(await api('DELETE', `/api/forum/${encodeURIComponent(FO.post.id)}/comments/${encodeURIComponent(d.c)}`)) }; foPost($('#main')); toast('Comment deleted'); } catch (e) { toast(e.message, true); }
+};

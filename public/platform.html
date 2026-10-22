@@ -255,6 +255,17 @@
     .pf-auth form{margin:0}.pf-auth form>:last-child{margin-bottom:0}.pf-auth h1{font-size:22px;margin:0 0 6px;text-align:center}.pf-auth p{text-align:center}
     .pf-auth .btn{width:100%;height:44px;font-size:15px;margin-top:6px}
     .msg{padding:10px 12px;border-radius:8px;font-size:14px;margin-bottom:12px}.msg.err{background:var(--bad-bg);color:var(--bad-fg)}
+    /* forum tab */
+    .fr-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}.fr-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}.fr-bar select,.fr-bar input{width:auto;margin:0}.fr-bar input{flex:1;min-width:200px}
+    .fr-card{padding:0;overflow:auto}.fr-card>p{padding:18px}.fr-table{width:100%}.fr-table td,.fr-table th{padding:10px 14px}.fr-table tbody tr{cursor:pointer}.fr-table tbody tr:hover{background:var(--surface-2)}.fr-tl{margin-bottom:3px}.fr-table .sm,.fr-grid div.sm{font-size:13px;color:var(--muted)}
+    .fr-chip{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:99px;background:var(--neutral-bg);color:var(--neutral-fg)}.fr-chip.k-idea{background:#ede9fe;color:#6d28d9}.fr-chip.k-issue{background:#fef3c7;color:#b45309}
+    .fr-chip.s-open{background:#dbeafe;color:#1d4ed8}.fr-chip.s-review{background:#cffafe;color:#0e7490}.fr-chip.s-planned{background:#ffedd5;color:#7c2d12}.fr-chip.s-progress{background:#fef9c3;color:#a16207}.fr-chip.s-done{background:#dcfce7;color:#15803d}
+    .fr-grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;align-items:start}.fr-grid .card{margin:0 0 16px}.fr-h{font-size:20px;margin:8px 0 6px}.fr-body{white-space:pre-wrap;overflow-wrap:anywhere;margin:10px 0 6px;line-height:1.55}
+    .fr-c{padding:12px 0;border-top:1px solid var(--line)}.fr-c.team{border-left:3px solid var(--brand);padding-left:12px}.fr-reply{margin-left:24px;padding-left:12px;border-left:2px solid var(--line)}.fr-reply .fr-c{border-top:0;padding-top:4px}
+    .fr-acts{display:flex;gap:14px;justify-content:flex-start}.fr-acts button{width:auto;flex:none;margin:0}.fr-grid h2+.fr-c{border-top:0;padding-top:0}.fr-acts .danger-text{color:var(--danger)}.fr-team{display:inline-block;font-weight:700;color:#fff;background:var(--brand);padding:1px 8px;border-radius:99px;font-size:12px}
+    .fr-form{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}.fr-form textarea,#frManage textarea{width:100%}
+    label.chk{display:flex;gap:10px;align-items:flex-start;font-weight:400;margin:10px 0}label.chk input{width:auto;margin:3px 0 0;flex:none}
+    @media (max-width:860px){.fr-stats{grid-template-columns:1fr 1fr}.fr-grid{grid-template-columns:1fr}}
     /* bottom tab bar (phones) */
     .pf-bnav{display:none}
     @media (max-width:760px){
@@ -276,6 +287,6 @@
   <div id="toast"></div>
   <script src="/hc-editor.js?v=2"></script>
   <script src="/brand.js?v=1"></script>
-  <script src="/platform.js?v=58"></script>
+  <script src="/platform.js?v=59"></script>
 </body>
 </html>

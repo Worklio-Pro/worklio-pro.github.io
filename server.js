@@ -22,6 +22,7 @@ const rolesLib = require('./lib/roles');
 const iconsLib = require('./lib/icons');
 const { createPdf } = require('./lib/pdf');
 const chat = require('./lib/chat');
+const forum = require('./lib/forum');
 const { db, uploadDir } = tenancy;
 const baseUrl = () => tenancy.tenantUrl(tenancy.current()); // this account's web address, for links in messages
 
@@ -687,6 +688,7 @@ function accountInfo() {
     slug: t.slug, plan: { id: plan.id, name: plan.name }, features: plan.features, lockedPages: tenancy.lockedPages(t), betaPages: tenancy.betaPages(), maxUsers: plan.maxUsers || 0,
     url: tenancy.tenantUrl(t), subdomainUrl: tenancy.subdomainUrl(t), rootDomain: tenancy.ROOT_DOMAIN, serverIp: process.env.SERVER_IP || '',
     domains: (t.domains || []).map(({ host, verified, primary, addedAt, verifiedAt }) => ({ host, verified: !!verified, primary: !!primary, addedAt, verifiedAt: verifiedAt || null })),
+    forum: forum.isOn(), // Alpha → Forum → Settings can close the forum
     navIcons: iconsLib.navIcons(), navOrder: iconsLib.order(), // the menu's icons, order and sections (Alpha → Settings → Menu)
     productName: tenancy.platform().settings.productName, product: brandLib.brand(), contactEmail: tenancy.platform().settings.contactEmail, helpUrl: tenancy.helpUrl(), managed: !tenancy.isDefault(),
     referrals: referrals.openTo(t), cardReady: !!stripeKey(), // card payments set up (App Settings → Card payments)
@@ -2137,6 +2139,27 @@ app.post('/api/feedback', async (req, res) => {
   }
   res.json({ ok: true });
 });
+// ---------- Forum (lib/forum.js): owners and admins of every business post issues and feature requests, like and comment ----------
+forum.init({
+  send: (key, to, vars) => sendTemplate(key, to, vars, { server: true }),
+  notifyTo: () => tenancy.platform().settings.contactEmail || '',
+  // a login who can still use the forum (an owner or admin of that account), for reply emails
+  user: (slug, id) => { const t = tenancy.platform().tenants.find((x) => x.slug === slug); return t ? tenancy.run(t, () => { const u = db.users.find((x) => x.id === id); return u && isAdmin(u) && !staffBlocked(u) ? { name: u.name, email: u.email } : null; }) : null; },
+});
+const forumDo = (fn) => (req, res) => {
+  const u = currentUser(req); if (!isAdmin(u)) return res.status(403).json({ error: 'The forum is for account owners and admins' });
+  const t = tenancy.current(); const who = { t: t.slug, u: u.id, name: u.name, email: u.email, role: u.role, company: db.company.name || t.slug };
+  try { res.json(fn(who, req.params, req.body || {})); } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+};
+app.get('/api/forum', forumDo((who) => forum.list(who)));
+app.post('/api/forum', forumDo((who, p, b) => forum.create(who, b)));
+app.get('/api/forum/:id', forumDo((who, p) => forum.get(p.id, who)));
+app.put('/api/forum/:id', forumDo((who, p, b) => forum.edit(who, p.id, b)));
+app.delete('/api/forum/:id', forumDo((who, p) => forum.remove(who, p.id)));
+app.post('/api/forum/:id/like', forumDo((who, p) => forum.like(who, p.id)));
+app.post('/api/forum/:id/comments', forumDo((who, p, b) => forum.comment(who, p.id, b)));
+app.delete('/api/forum/:id/comments/:cid', forumDo((who, p) => forum.removeComment(who, p.id, p.cid)));
+app.post('/api/forum/:id/comments/:cid/like', forumDo((who, p) => forum.likeComment(who, p.id, p.cid)));
 // ---------- Support Access (lib/support.js): any login can grant the platform's support team access for four weeks ----------
 support.setOwnerLookup((t) => tenancy.run(t, () => { const o = db.users.find((u) => u.role === 'owner'); return o && { id: o.id, name: o.name }; }));
 // the console's one-time link: signs the support admin in as the person who granted access, until the grant ends or is revoked

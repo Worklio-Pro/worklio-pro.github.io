@@ -182,6 +182,7 @@ const ICONS = {
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
   feedback: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M12 7v4M12 14h.01"/>',
   shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
+  forum: '<path d="M17 9a6 6 0 0 0-11.5-2.4A5 5 0 0 0 3 15.3L2 19l3.7-1A6 6 0 0 0 17 9z"/><path d="M14 18.6A6 6 0 0 0 22 13a5 5 0 0 0-2.5-4.3"/>',
 };
 // Refer & Earn shows while the platform's referral program is on
 const referralsOn = () => !!(company.account && company.account.referrals);
@@ -189,7 +190,7 @@ const settingsFor = () => SETTINGS_NAV.filter(([p]) => memberCan(p) && !planLock
 // pages the search finds besides the menu items, and extra words each page answers to
 const FEATURE_EXTRAS = [['/quotes/new', 'New quote', 'Quotes', 'create estimate'], ['/jobs/new', 'New job', 'Jobs', 'create schedule visit'], ['/invoices/new', 'New invoice', 'Invoices', 'create bill'],
   ['/clients/import', 'Import clients', 'Clients', 'csv upload spreadsheet'], ['/team/new', 'Add team member', 'Settings', 'invite staff employee user'],
-  ['/payments/settings', 'Payment settings', 'Money', 'card online payouts processing rates disputes'], ['/profile', 'My profile', 'Account', 'password photo name email login']];
+  ['/payments/settings', 'Payment settings', 'Money', 'card online payouts processing rates disputes'], ['/profile', 'My profile', 'Account', 'password photo name email login'], ['/forum', 'Forum', 'Account', 'community ideas suggestions feature requests issues bugs vote']];
 const FEATURE_WORDS = {
   '/business-overview': 'dashboard overview', '/calendar': 'schedule schedules appointments visits tasks events job calendar', '/clients': 'customers contacts',
   '/quotes': 'estimates proposals', '/jobs': 'work orders visits', '/invoices': 'billing', '/payments': 'card online stripe', '/services': 'catalog products price list items',
@@ -198,7 +199,7 @@ const FEATURE_WORDS = {
   '/settings': 'number prefixes branding brand color zelle defaults ai stripe card payments online payments regional time zone date format time format week', '/settings/connections': 'integrations google facebook instagram ai', '/settings/billing': 'subscription plan upgrade payment method', '/settings/support-access': 'grant revoke help troubleshoot permission',
 };
 const featureList = () => {
-  const open = (p) => PAGES[p] && memberCan(p) && !planLocked(p) && !planLocked(p.split('/').slice(0, 2).join('/'));
+  const open = (p) => PAGES[p] && memberCan(p) && !planLocked(p) && !planLocked(p.split('/').slice(0, 2).join('/')) && (p !== '/forum' || !!(company.account && company.account.forum));
   return [...navFor().flatMap(([g, items]) => items.map(([p, l]) => [p, l, g])), ...settingsFor().map(([p, l]) => [p, l, 'Settings']), ...FEATURE_EXTRAS.filter(([p]) => open(p))]
     .map(([p, l, g, k]) => ({ p, l, g, words: `${l} ${g} ${k || ''} ${FEATURE_WORDS[p] || ''}`.toLowerCase() }));
 };
@@ -209,7 +210,7 @@ function searchFeatures(q) {
 }
 function buildTopbar() {
   $('#topbar').innerHTML = `<div class="tb-search" role="search">${svgIcon(ICONS.search, 18)}<input id="featSearch" type="search" placeholder="Press / to search" autocomplete="off" spellcheck="false" aria-label="Search features" role="combobox" aria-autocomplete="list" aria-controls="featResults" aria-expanded="false"><div id="featResults" class="tb-results" role="listbox" hidden></div></div>
-<a class="tb-fb tb-ref" href="/rewards" data-link title="Refer other businesses and earn free months" hidden>${svgIcon(ICONS.gift, 18)}<span>Refer &amp; earn</span></a><button type="button" class="tb-fb" data-act="feedbackForm" title="Send feedback about the app">${svgIcon(ICONS.feedback, 18)}<span>Feedback</span></button>
+<a class="tb-fb tb-ref" href="/rewards" data-link title="Refer other businesses and earn free months" hidden>${svgIcon(ICONS.gift, 18)}<span>Refer &amp; earn</span></a><a class="tb-fb tb-forum" href="/forum" data-link title="Suggest features and report issues, with other businesses" hidden>${svgIcon(ICONS.forum, 18)}<span>Forum</span></a><button type="button" class="tb-fb" data-act="feedbackForm" title="Send feedback about the app">${svgIcon(ICONS.feedback, 18)}<span>Feedback</span></button>
 <button type="button" class="tb-icon" data-act="openHelp" title="Help and support" aria-label="Help and support">${svgIcon(ICONS.help)}</button>
 <details class="menu tb-gear"><summary class="tb-icon" title="Settings" aria-label="Settings">${svgIcon(ICONS.gear)}</summary><div class="menu-list" id="gearMenu"></div></details>`;
   const input = $('#featSearch'); const box = $('#featResults'); let hits = []; let sel = 0;
@@ -234,6 +235,7 @@ function renderTopbar(path) {
   const input = $('#featSearch'); input.value = ''; input.blur(); $('#featResults').hidden = true; input.setAttribute('aria-expanded', 'false');
   const items = settingsFor(); const gear = $('.tb-gear'); gear.open = false; gear.hidden = !items.length;
   $('.tb-ref').hidden = !(referralsOn() && memberCan('/rewards'));
+  const fo = $('.tb-forum'); fo.hidden = !(isAdminMe() && company.account && company.account.forum); fo.classList.toggle('on', path === '/forum'); // owners and admins, while the forum is open
   const isOn = (p) => p === path || (!navPaths.includes(path) && path.startsWith(p + '/'));
   $('summary', gear).classList.toggle('on', items.some(([p]) => isOn(p)));
   $('#gearMenu').innerHTML = '<div class="menu-h">Settings</div>' + items.map(([p, l]) => `<a href="${p}" data-link class="${isOn(p) ? 'on' : ''}">${l}</a>`).join('');
