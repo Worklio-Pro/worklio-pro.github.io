@@ -99,11 +99,11 @@ A.swNext = () => { staffWeek = addDays(staffWeek, 7); refresh(); };
 A.swToday = () => { staffWeek = startOfWeek(new Date()); refresh(); };
 A.manageStaff = () => navigate('/team');
 
-/* ===== /time-off: team members ask for time off; the owner, admins and anyone who can edit jobs approve it (a plan feature) ===== */
+/* ===== /requests (Requests): team members ask for time off; the owner, admins and anyone who can edit jobs approve it (a plan feature) ===== */
 const TO_STATUS = { pending: ['Waiting', 'q-sent'], approved: ['Approved', 'active'], declined: ['Declined', 'q-draft'], canceled: ['Canceled', 'q-draft'] };
 const toJobs = (r) => (r.jobs && r.jobs.length ? `<div class="to-jobs"><strong>${r.jobs.length} job${r.jobs.length === 1 ? '' : 's'} then:</strong> ${r.jobs.map((j) => `<a href="/jobs/edit?id=${j.id}" data-link>${esc(j.number)} ${esc(j.title)}</a> <span class="muted">(${fmtDate(j.date)}${j.startTime ? ', ' + esc(fmtTime(j.startTime)) : ''})</span>`).join(', ')}</div>` : '');
-PAGES['/time-off'] = {
-  title: 'Time Off',
+PAGES['/requests'] = {
+  title: 'Requests',
   async render(main) {
     const T = await api('GET', '/api/time-off'); const today = ymd(new Date()); toState = T;
     const review = T.approver ? T.requests.filter((r) => r.status === 'pending' && !r.mine) : [];
@@ -112,7 +112,7 @@ PAGES['/time-off'] = {
     const past = T.approver ? T.requests.filter((r) => !r.mine && r.status !== 'pending' && !(r.status === 'approved' && r.to >= today)).slice(0, 20) : [];
     const who = (r) => `<span class="to-dot" style="background:${esc(r.color || '#64748b')}"></span><strong>${esc(r.person)}</strong>`;
     const badge = (r) => `<span class="cstatus ${TO_STATUS[r.status][1]}">${TO_STATUS[r.status][0]}</span>`;
-    main.innerHTML = `<div class="head"><div><h1>Time Off</h1><p class="sub">${T.approver ? 'Requests from your team, and who’s off.' : 'Ask for time off and see who’s off.'} Approved time off shows on Staff Schedules.</p></div>
+    main.innerHTML = `<div class="head"><div><h1>Requests</h1><p class="sub">${T.approver ? 'Requests from your team, and who’s off.' : 'Ask for time off and see who’s off.'} Approved time off shows on Staff Schedules.</p></div>
 ${T.canRequest ? '<button class="btn" data-act="requestOff">Request time off</button>' : ''}</div>
 ${T.approver ? `<div class="card"><h2>Waiting for you${review.length ? ` <span class="msg-n">${review.length}</span>` : ''}</h2>${review.length ? `<div class="to-list">${review.map((r) => `<div class="to-row"><div class="to-main"><div>${who(r)} · ${esc(r.when)}</div><p class="to-reason">${esc(r.reason)}</p>${toJobs(r)}<div class="muted to-meta">Asked ${fmtDate((r.createdAt || '').slice(0, 10))}</div></div>
 <div class="to-acts"><button type="button" class="btn alt sm" data-act="toDecide" data-id="${r.id}" data-ok="">Decline</button><button type="button" class="btn sm" data-act="toDecide" data-id="${r.id}" data-ok="1">Approve</button></div></div>`).join('')}</div>` : '<p class="muted" style="margin:0">No requests waiting.</p>'}</div>` : ''}
@@ -143,7 +143,7 @@ A.requestOff = (d, el, pre = {}) => {
   [f.to, f.start, f.end].forEach((x) => x.addEventListener('change', conf)); conf();
   f.addEventListener('submit', async (e) => {
     e.preventDefault(); const btn = $('button.btn:not(.alt)', f); btn.disabled = true;
-    try { await api('POST', '/api/time-off', { ...read(), reason: f.reason.value, jobId: pre.jobId || '' }); closeModal(); toast('Request sent. You’ll get an email when it’s decided.'); curPath() === '/time-off' ? refresh() : navigate('/time-off'); }
+    try { await api('POST', '/api/time-off', { ...read(), reason: f.reason.value, jobId: pre.jobId || '' }); closeModal(); toast('Request sent. You’ll get an email when it’s decided.'); curPath() === '/requests' ? refresh() : navigate('/requests'); }
     catch (x) { btn.disabled = false; toast(x.message, true); }
   });
 };

@@ -459,7 +459,7 @@ app.post('/api/time-off', async (req, res) => {
   // tell everyone who can approve it (not the person asking)
   const jobs = timeOffJobs(s.id, r); const jobsText = jobs.length ? `They’re assigned to ${jobs.length} job${jobs.length === 1 ? '' : 's'} then: ${jobs.map((j) => `${j.number} ${j.title} (${niceDate(j.date)})`).join('; ')}.` : 'They aren’t assigned to any jobs then.';
   for (const a of db.users.filter((x) => x.id !== u.id && x.passwordHash && x.email && canApproveTimeOff(x) && !staffBlocked(x))) {
-    sendTemplate('timeOffRequested', a.email, { name: a.name.split(/\s+/)[0], person: s.name, when: timeOffWhen(r), reason, jobs: jobsText, business: db.company.name, link: `${baseUrl()}/time-off` }).catch(() => {});
+    sendTemplate('timeOffRequested', a.email, { name: a.name.split(/\s+/)[0], person: s.name, when: timeOffWhen(r), reason, jobs: jobsText, business: db.company.name, link: `${baseUrl()}/requests` }).catch(() => {});
   }
   res.status(201).json(timeOffRow(r, u));
 });
@@ -473,7 +473,7 @@ app.post('/api/time-off/:id/decide', async (req, res) => {
   let removed = 0; if (approve && b.unassign) for (const j of timeOffJobs(r.staffId, r)) { j.staffIds = j.staffIds.filter((x) => x !== r.staffId); removed++; }
   save();
   const who = db.users.find((x) => x.id === r.userId) || db.users.find((x) => x.staffId === r.staffId);
-  if (who && who.email) sendTemplate('timeOffDecided', who.email, { name: who.name.split(/\s+/)[0], decision: approve ? 'approved' : 'declined', when: timeOffWhen(r), note: r.note ? `> ${r.note}` : '', decider: u.name, business: db.company.name, link: `${baseUrl()}/time-off` }).catch(() => {});
+  if (who && who.email) sendTemplate('timeOffDecided', who.email, { name: who.name.split(/\s+/)[0], decision: approve ? 'approved' : 'declined', when: timeOffWhen(r), note: r.note ? `> ${r.note}` : '', decider: u.name, business: db.company.name, link: `${baseUrl()}/requests` }).catch(() => {});
   res.json({ ...timeOffRow(r, u), removedFrom: removed });
 });
 // cancel your own request (before it starts); approvers can cancel anyone's approved time off too

@@ -80,7 +80,7 @@ const clientOptions = (sel) => `<option value="">Select client…</option>` + D.
 /* ===== router ===== */
 const PAGES = {};
 const NAV = [
-  ['Operations', [['/business-overview', 'Home'], ['/calendar', 'Job Calendar'], ['/staff-schedules', 'Staff Schedules'], ['/time-off', 'Time Off'], ['/clients', 'Clients'], ['/quotes', 'Quotes'], ['/jobs', 'Jobs'], ['/invoices', 'Invoices']]],
+  ['Operations', [['/business-overview', 'Home'], ['/calendar', 'Job Calendar'], ['/staff-schedules', 'Staff Schedules'], ['/requests', 'Requests'], ['/clients', 'Clients'], ['/quotes', 'Quotes'], ['/jobs', 'Jobs'], ['/invoices', 'Invoices']]],
   ['Money', [['/payments', 'Payments'], ['/services', 'Products & Services'], ['/expenses', 'Expenses'], ['/reports', 'Financial Reports'], ['/tax-summary', 'Tax Summary']]],
   ['Marketing', [['/reviews', 'Reviews'], ['/social-posts', 'Social Posts']]],
   ['Records', [['/project-gallery', 'Project Gallery'], ['/notifications', 'Notifications Log']]],
@@ -119,8 +119,8 @@ const planHas = (f) => !(company.account && company.account.features) || company
 const planLocked = (path) => !!(company.account && (company.account.lockedPages || []).includes(path));
 const betaPage = (path) => !!(company.account && (company.account.betaPages || []).includes(path));
 const navFor = () => NAV.map(([g, items]) => [g, items.filter(([p]) => memberCan(p) && !planLocked(p))]).filter(([, items]) => items.length);
-// the sidebar's Time Off link shows how many requests are waiting for this approver
-function timeOffBadge() { const a = $('#side a[href="/time-off"]'); if (a && D.timeOffWaiting) a.insertAdjacentHTML('beforeend', ` <span class="nav-n" title="Requests waiting for you">${D.timeOffWaiting}</span>`); }
+// the sidebar's Requests link shows how many time-off requests are waiting for this approver
+function timeOffBadge() { const a = $('#side a[href="/requests"]'); if (a && D.timeOffWaiting) a.insertAdjacentHTML('beforeend', ` <span class="nav-n" title="Requests waiting for you">${D.timeOffWaiting}</span>`); }
 function renderSide(path) {
   $('#side').innerHTML = `<div class="side-nav"><div class="brand">${company.logo ? `<a href="/" data-link class="brand-logo" title="Home"><img src="${esc(company.logo)}" alt="Home"></a>` : brandImg(company.account && company.account.product, 'dark')}<span>${esc(company.name || (company.account && company.account.productName) || 'Worklio Pro')}</span></div>` +
     navFor().map(([g, items]) => `<div class="grp">${g}</div>` + items.map(([p, l]) => `<a href="${p}" data-link class="${p === path || (!navPaths.includes(path) && path.startsWith(p + '/')) ? 'on' : ''}">${l}${betaPage(p) ? ' <span class="beta-tag" title="This feature is in beta testing">Beta</span>' : ''}</a>`).join('')).join('') + `</div>${themeSwitch()}${me ? `<div class="side-user"><a href="/profile" data-link class="side-user-name${path === '/profile' ? ' on' : ''}" title="My profile (${esc(me.email)})">${avatarHtml(me, 26)}<span>${esc(me.name)}</span></a><button type="button" data-act="logout">Log out</button></div>` : ''}`;
@@ -169,7 +169,7 @@ const FEATURE_WORDS = {
   '/business-overview': 'dashboard overview', '/calendar': 'schedule appointments visits', '/staff-schedules': 'working hours availability', '/clients': 'customers contacts',
   '/quotes': 'estimates proposals', '/jobs': 'work orders visits', '/invoices': 'billing', '/payments': 'card online stripe', '/services': 'catalog products price list items',
   '/expenses': 'costs receipts spending', '/reports': 'revenue profit charts', '/tax-summary': 'sales tax', '/project-gallery': 'photos pictures', '/reviews': 'google reviews ratings stars reply', '/social-posts': 'facebook instagram social media post marketing', '/notifications': 'emails texts sms sent messages log',
-  '/settings/roles': 'roles permissions access manager technician what team can see do', '/settings/company': 'business details logo address phone social media facebook instagram tiktok tax', '/team': 'staff employees users access roles technicians', '/settings/emails': 'templates text messages sms reminders',
+  '/requests': 'time off day off vacation sick leave request approve', '/settings/roles': 'roles permissions access manager technician what team can see do', '/settings/company': 'business details logo address phone social media facebook instagram tiktok tax', '/team': 'staff employees users access roles technicians', '/settings/emails': 'templates text messages sms reminders',
   '/settings': 'number prefixes branding brand color zelle defaults ai stripe card payments online payments regional time zone date format time format week', '/settings/connections': 'integrations google facebook instagram ai', '/settings/billing': 'subscription plan upgrade payment method', '/settings/support-access': 'grant revoke help troubleshoot permission',
 };
 const featureList = () => {
@@ -331,6 +331,7 @@ async function render() {
   const path = curPath();
   const isPortal = path === '/client-portal' && new URLSearchParams(location.search).get('c');
   if (!isPortal && !me) { try { me = await api('GET', '/api/auth/me'); } catch (e) { /* api() sends you to the login page */ } } // needed before picking the start page
+  if (path === '/time-off') { history.replaceState({}, '', '/requests'); return render(); } // the page's old address (links in earlier emails)
   if (path === '/') { const start = memberCan('/business-overview') ? '/business-overview' : (navPaths.find((p) => memberCan(p) && !planLocked(p)) || '/profile'); history.replaceState({}, '', start); return render(); }
   const main = $('#main');
   const portal = path === '/client-portal' && new URLSearchParams(location.search).get('c');
