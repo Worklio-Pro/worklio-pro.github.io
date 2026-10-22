@@ -191,19 +191,24 @@ const withStatus = (inv) => ({ ...inv, displayStatus: invoiceStatus(inv), ...inv
 
 // ---------- messaging adapters (email / SMS) ----------
 // minimal SMTP client over TLS (port 465): enough to send through Gmail with an app password, no npm packages
-function smtpSend({ host, port, user, pass }, { from, fromName, to, replyTo, subject, text, html }) {
+function smtpSend({ host, port, user, pass }, { from, fromName, to, replyTo, subject, text, html, attachments = [] }) {
   const clean = (s) => String(s || '').replace(/[\r\n]+/g, ' ').trim(); // no header injection
   const word = (s) => (/[^\x20-\x7e]/.test(s) ? `=?UTF-8?B?${Buffer.from(s).toString('base64')}?=` : s);
   const b64 = (s) => Buffer.from(String(s)).toString('base64').replace(/.{76}/g, '$&\r\n');
   const part = (type, s) => [`Content-Type: ${type}; charset=UTF-8`, 'Content-Transfer-Encoding: base64', '', b64(s)];
   const edge = 'b' + crypto.randomBytes(12).toString('hex'); // an HTML email goes as multipart/alternative with a plain-text copy
+  const body = () => (html ? [`Content-Type: multipart/alternative; boundary="${edge}"`, '', `--${edge}`, ...part('text/plain', text), `--${edge}`, ...part('text/html', html), `--${edge}--`] : part('text/plain', text));
+  // with files: multipart/mixed, the message first, then each file (e.g. a CSV export)
+  const outer = 'm' + crypto.randomBytes(12).toString('hex');
+  const file = (a) => [`Content-Type: ${clean(a.type || 'application/octet-stream')}; name="${clean(a.name).replace(/"/g, '')}"`, 'Content-Transfer-Encoding: base64', `Content-Disposition: attachment; filename="${clean(a.name).replace(/"/g, '')}"`, '', Buffer.from(a.content).toString('base64').replace(/.{76}/g, '$&\r\n')];
+  const mixed = () => [`Content-Type: multipart/mixed; boundary="${outer}"`, '', `--${outer}`, ...body(), ...attachments.flatMap((a) => [`--${outer}`, ...file(a)]), `--${outer}--`];
   const msg = [
     `From: ${/[^\x20-\x7e]/.test(clean(fromName)) ? word(clean(fromName)) : `"${clean(fromName).replace(/["\\]/g, '')}"`} <${clean(from)}>`,
     `To: <${clean(to)}>`, ...(replyTo ? [`Reply-To: <${clean(replyTo)}>`] : []),
     `Subject: ${word(clean(subject))}`, `Date: ${new Date().toUTCString()}`,
     `Message-ID: <${crypto.randomUUID()}@${clean(from).split('@')[1] || 'localhost'}>`,
     'MIME-Version: 1.0',
-    ...(html ? [`Content-Type: multipart/alternative; boundary="${edge}"`, '', `--${edge}`, ...part('text/plain', text), `--${edge}`, ...part('text/html', html), `--${edge}--`] : part('text/plain', text)),
+    ...(attachments.length ? mixed() : body()),
   ].join('\r\n');
   return new Promise((resolve, reject) => {
     const sock = tls.connect({ host, port, servername: host });
@@ -236,16 +241,17 @@ const smsReady = () => !!envTwilio();
 const platformSmtp = () => { const m = tenancy.platform().mailServer; return m && m.host && m.user && m.pass ? m : null; };
 const serverEmailProvider = () => (platformSmtp() ? 'Mail server' : process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD ? 'Gmail' : process.env.SENDGRID_API_KEY && process.env.EMAIL_FROM ? 'SendGrid' : '');
 const emailProvider = serverEmailProvider;
-async function sendgridSend(key, { from, fromName, to, replyTo, subject, text, html }) {
+async function sendgridSend(key, { from, fromName, to, replyTo, subject, text, html, attachments = [] }) {
   const msg = { personalizations: [{ to: [{ email: to }] }], from: { email: from, name: fromName }, subject, content: [{ type: 'text/plain', value: text }, ...(html ? [{ type: 'text/html', value: html }] : [])] };
   if (replyTo) msg.reply_to = { email: replyTo };
+  if (attachments.length) msg.attachments = attachments.map((a) => ({ filename: a.name, type: a.type, content: Buffer.from(a.content).toString('base64'), disposition: 'attachment' }));
   const r = await fetch('https://api.sendgrid.com/v3/mail/send', { method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }, body: JSON.stringify(msg) });
   if (r.ok) return;
   const j = await r.json().catch(() => ({}));
   throw new Error(`${r.status}: ${(j.errors || []).map((e) => e.message).join('; ') || 'request rejected'}`);
 }
 // server: true sends through the server's own settings even inside an account (platform emails, platform tests)
-async function sendEmail(to, subject, body, { server = false, replyTo: replyOverride = '', html = '' } = {}) {
+async function sendEmail(to, subject, body, { server = false, replyTo: replyOverride = '', html = '', attachments = [] } = {}) { // attachments: [{ name, type, content }]
   if (!to) return { status: 'failed', detail: 'Client has no email address' };
   const { SENDGRID_API_KEY: key, EMAIL_FROM: from, GMAIL_USER: gUser, GMAIL_APP_PASSWORD: gPass } = process.env;
   // the server's email service is shared by every account. A business's emails (to its clients and team) carry its name, with replies to its email;
@@ -256,21 +262,21 @@ async function sendEmail(to, subject, body, { server = false, replyTo: replyOver
   const ms = platformSmtp();
   if (ms) {
     try {
-      await smtpSend({ host: ms.host, port: Number(ms.port) || 465, user: ms.user, pass: ms.pass }, { from: ms.from || ms.user, fromName: fromName || db.company.name, to, replyTo: replyTo || db.company.email, subject, text: body, html });
+      await smtpSend({ host: ms.host, port: Number(ms.port) || 465, user: ms.user, pass: ms.pass }, { from: ms.from || ms.user, fromName: fromName || db.company.name, to, replyTo: replyTo || db.company.email, subject, text: body, html, attachments });
       return { status: 'sent', detail: `Mail server (${ms.host})` };
     } catch (e) { return { status: 'failed', detail: `Mail server ${ms.host}: ${e.message}${/^535/.test(e.message) ? ' (check the username and password in Alpha → Settings → Integrations)' : ''}` }; }
   }
   if (serverEmailProvider() === 'Gmail') {
     try {
       await smtpSend({ host: 'smtp.gmail.com', port: 465, user: gUser, pass: gPass.replace(/\s/g, '') },
-        { from: from || gUser, fromName: fromName || db.company.name, to, replyTo: replyTo || db.company.email, subject, text: body, html });
+        { from: from || gUser, fromName: fromName || db.company.name, to, replyTo: replyTo || db.company.email, subject, text: body, html, attachments });
       return { status: 'sent', detail: 'Gmail' };
     } catch (e) {
       return { status: 'failed', detail: `Gmail: ${e.message}${/^535/.test(e.message) ? ' (check GMAIL_USER and use a Google app password, not your normal password)' : ''}` };
     }
   }
   if (key && from) {
-    try { await sendgridSend(key, { from, fromName: fromName || db.company.name, to, replyTo: replyTo || db.company.email, subject, text: body, html }); return { status: 'sent', detail: 'SendGrid' }; }
+    try { await sendgridSend(key, { from, fromName: fromName || db.company.name, to, replyTo: replyTo || db.company.email, subject, text: body, html, attachments }); return { status: 'sent', detail: 'SendGrid' }; }
     catch (e) { return { status: 'failed', detail: `SendGrid ${e.message}` }; }
   }
   return { status: 'simulated', detail: server ? 'No email provider set up (Alpha → Settings → Integrations, or GMAIL_* / SENDGRID_* in .env)' : 'Email isn’t set up on this service yet' };
@@ -1365,13 +1371,14 @@ app.put('/api/payments/settings', (req, res) => {
 // a new payment, a refund or an account update from Stripe clears it
 const payCache = new Map(); // account id -> { at, data }
 const clearPayCache = () => { try { payCache.delete(tenancy.current().id); } catch (e) { /* no account in this context */ } };
-app.get('/api/payments/stripe', async (req, res) => {
-  if (!tenancy.has('onlinePayments') || !stripeKey()) return res.json({ connected: false });
+// Stripe's side of the Payments page (also used for the payouts CSV)
+async function stripePayments(fresh) {
+  if (!tenancy.has('onlinePayments') || !stripeKey()) return { connected: false };
   const key = tenancy.current().id; const hit = payCache.get(key);
-  if (hit && Date.now() - hit.at < 60e3 && !req.query.fresh) return res.json({ ...hit.data, cachedAt: new Date(hit.at).toISOString() });
+  if (hit && Date.now() - hit.at < 60e3 && !fresh) return { ...hit.data, cachedAt: new Date(hit.at).toISOString() };
   let failed = 0; const get = (ep) => stripeApi('GET', ep).catch((e) => { failed++; console.error('Stripe:', e.message); return null; });
   // charges without their fee details (the heavy part); payout dates come from the balance list fetched alongside
-  const [bal, charges, payouts, disputes, txns] = await Promise.all([get('balance'), get('charges?limit=100'), get('payouts?limit=50&expand[]=data.destination'), get('disputes?limit=100'), get('balance_transactions?limit=100')]);
+  const [bal, charges, payouts, disputes, txns] = await Promise.all([get('balance'), get('charges?limit=100'), get('payouts?limit=100&expand[]=data.destination'), get('disputes?limit=100'), get('balance_transactions?limit=100')]);
   const day = (t) => (t ? iso(new Date(t * 1000)) : null); const usd = (l) => round2((l || []).filter((x) => x.currency === 'usd').reduce((s, x) => s + x.amount, 0) / 100);
   const acct = (d) => (d && typeof d === 'object' ? { name: d.bank_name || d.brand || 'Bank account', last4: d.last4 || '' } : null);
   const charge = {}; const availOn = {}; for (const t of (txns && txns.data) || []) if (t.source) availOn[t.source] = t.available_on;
@@ -1389,11 +1396,28 @@ app.get('/api/payments/stripe', async (req, res) => {
     ...Object.entries(due).filter(([, c]) => c > 0).map(([date, c]) => ({ date, amount: round2(c / 100) }))].sort((a, b) => (a.date < b.date ? -1 : 1));
   const ready = bal ? usd(bal.available) : 0; if (ready > 0) upcoming.unshift({ date: null, amount: ready, next: true });
   const out = { connected: true, mode: stripeMode(), feePercent: connectedAccount() ? Number(tenancy.platform().settings.platformFeePercent) || 0 : 0, balance: bal ? { available: usd(bal.available), pending: usd(bal.pending) } : null, charges: charge, upcoming,
-    payouts: pl.map((p) => ({ id: p.id, amount: round2(p.amount / 100), arrival: day(p.arrival_date), status: p.status, bank: acct(p.destination) })),
+    payouts: pl.map((p) => ({ id: p.id, amount: round2(p.amount / 100), arrival: day(p.arrival_date), created: day(p.created), status: p.status, method: p.method === 'instant' ? 'instant' : 'standard', bank: acct(p.destination) })),
     bank: (pl.map((p) => acct(p.destination)).find(Boolean)) || null,
     disputes: { open: dl.filter((d) => /needs_response|under_review/.test(d.status)).length, total: dl.length }, partial: failed > 0 };
   if (!failed) payCache.set(key, { at: Date.now(), data: out }); // only a complete answer is kept
-  res.json(out);
+  return out;
+}
+app.get('/api/payments/stripe', async (req, res) => res.json(await stripePayments(!!req.query.fresh)));
+// Payouts tab → Email CSV: the payouts shown (by type and dates) as a spreadsheet, emailed to whoever asked
+app.post('/api/payments/payouts/email', async (req, res) => {
+  const u = currentUser(req); if (!u.email) return res.status(400).json({ error: 'Your login has no email address' });
+  const S = await stripePayments(false); if (!S.connected) return res.status(400).json({ error: 'Card payments aren’t set up, so there are no payouts yet' });
+  const b = req.body || {}; const ok = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d || '');
+  const list = (S.payouts || []).filter((p) => (!b.method || b.method === 'all' || p.method === b.method) && (!ok(b.from) || p.arrival >= b.from) && (!ok(b.to) || p.arrival <= b.to));
+  if (!list.length) return res.status(400).json({ error: 'No payouts match these filters' });
+  const cell = (v) => (/[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
+  const STATUS = { paid: 'Paid', pending: 'Pending', in_transit: 'In transit', canceled: 'Canceled', failed: 'Failed' };
+  const csv = [['Arrival date', 'Payout ID', 'Type', 'Status', 'Amount', 'Bank account'].join(','), ...list.map((p) => [p.arrival, p.id, p.method === 'instant' ? 'Instant' : 'Standard', STATUS[p.status] || p.status, p.amount.toFixed(2), p.bank ? `${p.bank.name} ••••${p.bank.last4}` : ''].map(cell).join(','))].join('\r\n');
+  const range = ok(b.from) || ok(b.to) ? ` from ${ok(b.from) ? niceDate(b.from) : 'the start'} to ${ok(b.to) ? niceDate(b.to) : 'today'}` : '';
+  const sent = await sendEmail(u.email, `Payouts for ${db.company.name || 'your business'}`, `Hi ${u.name.split(/\s+/)[0]},\n\nAttached are ${list.length} payout${list.length === 1 ? '' : 's'}${range}, as a spreadsheet (CSV) you can open in Excel, Numbers or Google Sheets.\n\nTotal: ${money(list.reduce((s, p) => s + p.amount, 0))}`,
+    { attachments: [{ name: `payouts-${iso(new Date())}.csv`, type: 'text/csv', content: '\ufeff' + csv }] });
+  if (sent.status === 'failed') return res.status(502).json({ error: sent.detail || 'The email couldn’t be sent' });
+  res.json({ ok: true, to: u.email, count: list.length, status: sent.status });
 });
 // ---------- one payment (Payments → a row): what was paid, by whom, how, and when the money reaches the bank ----------
 // ids as on the Payments list: an invoice payment's id, "i-<invoice>" (an invoice marked paid before payments were itemized), "q-<quote>" (a deposit)

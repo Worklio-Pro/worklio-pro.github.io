@@ -828,3 +828,11 @@ a.conn-chip{text-decoration:none}a.conn-chip:hover{text-decoration:underline}
 .beta-bar .link-btn{margin:0;color:inherit;font-size:inherit}
 .beta-pill{flex:none;padding:2px 9px;border-radius:99px;background:var(--warn);color:#fff;font-size:12px;font-weight:700;letter-spacing:.03em}
 .pay-wait{color:var(--muted)}.pay-note{margin:0 0 12px;font-size:13px}.pay-note .link-btn{margin:0 0 0 4px;font-size:13px}
+/* Payments → Payouts tab */
+.po-stats{grid-template-columns:repeat(2,minmax(0,1fr));max-width:1100px}
+.po-v2{margin-top:12px}.po-q{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;border:1.5px solid currentColor;font-size:10px;margin-left:4px;opacity:.7;cursor:help;vertical-align:2px}
+.po-id{font-size:12px;color:var(--muted);margin-top:2px;font-family:ui-monospace,Menlo,monospace}
+.po-table td{vertical-align:middle}
+@media (max-width:640px){.po-stats{grid-template-columns:1fr}}
+.po-stats .cstat{justify-content:flex-start;gap:2px}.po-stats .cs-h{margin-bottom:6px}
+.po-stats .cs-v{margin-top:0}.po-stats .cs-v.po-v2{margin-top:12px}

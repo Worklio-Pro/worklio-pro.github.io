@@ -1418,6 +1418,23 @@ function payStripeState() {
   return { connected: true, loading: !payStripe.error, failed: !!payStripe.error, error: payStripe.error, charges: {}, payouts: [], disputes: { open: 0 }, upcoming: [] };
 }
 A.payStripeRetry = () => { payStripe.at = 0; PAGES['/payments'].render($('#main')); };
+// Payouts tab filters and sort
+let poView = { method: 'all', date: 'all', sort: 'date', dir: -1 };
+function poRange(k) {
+  const d = new Date(); const ago = (n) => ymd(addDays(d, -n));
+  if (k === 'week') { const w = addDays(d, -((d.getDay() + 6) % 7)); return { from: ymd(w), to: ymd(addDays(w, 6)) }; }
+  if (k === 'month') return { from: ymd(new Date(d.getFullYear(), d.getMonth(), 1)), to: ymd(new Date(d.getFullYear(), d.getMonth() + 1, 0)) };
+  if (k === '30' || k === '90') return { from: ago(Number(k)), to: '' };
+  if (k === 'year') return { from: d.getFullYear() + '-01-01', to: '' };
+  return { from: '', to: '' };
+}
+A.poSort = (d) => { poView = { ...poView, sort: d.k, dir: poView.sort === d.k ? -poView.dir : -1 }; PAGES['/payments'].render($('#main')); };
+A.poEmail = async (d, el) => {
+  el.disabled = true; el.textContent = 'Sending…'; const r0 = poRange(poView.date);
+  try { const r = await api('POST', '/api/payments/payouts/email', { method: poView.method, from: r0.from, to: r0.to }); toast(r.status === 'sent' ? `Emailed ${r.count} payout${r.count === 1 ? '' : 's'} to ${r.to}` : 'Email isn’t set up on this service yet, so the CSV couldn’t be sent', r.status !== 'sent'); }
+  catch (x) { toast(x.message, true); }
+  el.disabled = false; el.textContent = 'Email CSV';
+};
 let payView = { tab: 'overview', status: 'all', method: 'all', date: 'all', q: '', sort: 'date', dir: -1 };
 PAGES['/payments'] = {
   title: 'Payments',
@@ -1453,8 +1470,9 @@ PAGES['/payments'] = {
     const methods = [...new Set(rows.filter((r) => !online(r.method)).map((r) => r.method))];
     const docLink = ([kind, d]) => `<a href="/${kind}s/edit?id=${d.id}" data-link>${kind === 'quote' ? 'Quote' : 'Invoice'} ${esc(d.number)}</a>`;
     const admin = !me || ['owner', 'admin'].includes(me.role);
+    const upBox = `<div class="cstat"><div class="cs-h"><strong>Upcoming payouts</strong></div><div class="cs-v">${S.loading || S.failed ? '<span class="pay-wait">—</span>' : money(upcoming)}</div><div class="muted">${S.loading ? 'Checking Stripe…' : S.failed ? 'Not available right now' : !S.connected ? 'Payouts appear here once you connect Stripe and collect online payments' : UP.length ? `<button type="button" class="link-btn up-link" data-act="viewPayouts">View ${UP.length} payout${UP.length === 1 ? '' : 's'}</button>` : 'Upcoming payouts appear after you collect payments'}</div></div>`;
     const overview = `<div class="cstats pay-stats">
-<div class="cstat"><div class="cs-h"><strong>Upcoming payouts</strong></div><div class="cs-v">${S.loading || S.failed ? '<span class="pay-wait">—</span>' : money(upcoming)}</div><div class="muted">${S.loading ? 'Checking Stripe…' : S.failed ? 'Not available right now' : !S.connected ? 'Payouts appear here once you connect Stripe and collect online payments' : UP.length ? `<button type="button" class="link-btn up-link" data-act="viewPayouts">View ${UP.length} payout${UP.length === 1 ? '' : 's'}</button>` : 'Upcoming payouts appear after you collect payments'}</div></div>
+${upBox}
 <button class="cstat" data-act="payInvoices"><div class="cs-h"><strong>Invoice payment time</strong><span>↗</span></div><div class="muted">Past 30 days</div><div class="pts">${stat(payDays, 30, true, (d) => `${d} ${d === 1 ? 'day' : 'days'}`)}</div></button>
 <div class="cstat"><div class="cs-h"><strong>Invoices paid on time</strong></div><div class="muted">Last 60 days</div><div class="pts">${stat(onTime, 60, false, (p) => p + '%')}</div></div></div>
 <h2 class="ftitle">All payments <span class="muted">(${list.length} result${list.length === 1 ? '' : 's'})</span></h2>
@@ -1466,16 +1484,34 @@ PAGES['/payments'] = {
 ${list.map((r) => `<tr class="crow" data-id="${esc(r.id)}" title="See this payment"><td><strong>${esc(cname(r))}</strong><div class="pay-ref">${docLink(r.doc)}</div></td><td style="white-space:nowrap">${fmtDate(r.date)}</td>
 <td><span class="badge ${PAY_STATUS[r.status][1]}">${PAY_STATUS[r.status][0]}</span></td><td>${r.method === 'stripe' ? '💳 ' : ''}${esc(r.methodLabel)}</td><td style="white-space:nowrap">${esc(r.payout)}</td><td class="r"><strong>${money(r.amount)}</strong></td></tr>`).join('')
   || `<tr><td colspan="6" class="empty">${rows.length ? 'No payments match these filters' : 'No payments yet. Payments show up here when clients pay online or you record a payment on an invoice.'}</td></tr>`}</table></div></div>`;
-    const payouts = S.loading || S.failed ? `<div class="card"><h2>Payouts</h2><p class="muted">${S.failed ? 'Payouts didn’t load from Stripe. Try again in a moment.' : 'Loading payouts from Stripe…'}</p></div>` : !S.connected ? `<div class="card"><h2>Payouts</h2><p class="muted">When clients pay online, Stripe sends the money to your bank account. ${admin ? '<a href="/settings#payments" data-link>Connect Stripe</a> in App Settings to start taking online payments.' : 'Ask the account owner to connect Stripe.'}</p></div>`
-      : `<div class="card ctable"><div class="tablewrap"><table><tr><th>Arrival date</th><th>Status</th><th>Bank account</th><th class="r">Amount</th></tr>
-${S.payouts.map((p) => `<tr><td>${fmtDate(p.arrival)}</td><td><span class="badge ${p.status === 'paid' ? 'paid' : p.status === 'failed' || p.status === 'canceled' ? 'failed' : 'sent'}">${esc({ paid: 'Paid', pending: 'Pending', in_transit: 'In transit', canceled: 'Canceled', failed: 'Failed' }[p.status] || p.status)}</span></td><td>${p.bank ? `${esc(p.bank.name)} •••• ${esc(p.bank.last4)}` : '—'}</td><td class="r"><strong>${money(p.amount)}</strong></td></tr>`).join('')
-  || '<tr><td colspan="4" class="empty">No payouts yet. Stripe pays out after your first online payments clear.</td></tr>'}</table></div></div>`;
+    // Payouts tab: upcoming (same box as Overview), what reached the bank this week and month, and every payout with filters
+    const PO_STATUS = { paid: ['Paid', 'paid'], pending: ['Pending', 'sent'], in_transit: ['In transit', 'sent'], canceled: ['Canceled', 'failed'], failed: ['Failed', 'failed'] };
+    const d0 = new Date(); const wk = addDays(d0, -((d0.getDay() + 6) % 7)); const wkEnd = addDays(wk, 6); const mo = new Date(d0.getFullYear(), d0.getMonth(), 1); const moEnd = new Date(d0.getFullYear(), d0.getMonth() + 1, 0);
+    const short = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const deposited = (from, to) => (S.payouts || []).filter((p) => p.status === 'paid' && p.arrival >= ymd(from) && p.arrival <= ymd(to)).reduce((s, p) => s + p.amount, 0);
+    const pv = poView; const range = poRange(pv.date);
+    const pl = (S.payouts || []).filter((p) => (pv.method === 'all' || p.method === pv.method) && (!range.from || p.arrival >= range.from) && (!range.to || p.arrival <= range.to))
+      .sort((a, b) => (pv.sort === 'amount' ? a.amount - b.amount : a.arrival.localeCompare(b.arrival)) * pv.dir);
+    const poTh = (k, label, cls = '') => `<th class="${cls}"><button class="th-btn" data-act="poSort" data-k="${k}">${label} <span class="sort ${pv.sort === k ? 'on' : ''}">${pv.sort === k ? (pv.dir > 0 ? '▲' : '▼') : '⇅'}</span></button></th>`;
+    const payouts = S.loading || S.failed ? `<div class="card"><h2>Payouts</h2><p class="muted">${S.failed ? 'Payouts didn’t load from Stripe. Try again in a moment.' : 'Loading payouts from Stripe…'}</p></div>`
+      : !S.connected ? `<div class="card"><h2>Payouts</h2><p class="muted">When clients pay online, Stripe sends the money to your bank account. ${admin ? '<a href="/settings#payments" data-link>Set up card payments</a> in App Settings to start taking online payments.' : 'Ask the account owner to set up card payments.'}</p></div>`
+      : `<div class="cstats po-stats">${upBox}
+<div class="cstat"><div class="cs-h"><strong>Deposited <span class="po-q" title="Payouts that have reached your bank account">?</span></strong></div>
+<div class="cs-v">${money(deposited(wk, wkEnd))}</div><div class="muted">This week (${short(wk)} - ${short(wkEnd)})</div><div class="cs-v po-v2">${money(deposited(mo, moEnd))}</div><div class="muted">This month (${short(mo)} - ${short(moEnd)})</div></div></div>
+<h2 class="ftitle">All payouts <span class="muted">(${pl.length} result${pl.length === 1 ? '' : 's'})</span></h2>
+<div class="cfilters"><label class="pill">Method<select data-po="method">${[['all', 'All'], ['standard', 'Standard'], ['instant', 'Instant']].map(([k, l]) => `<option value="${k}" ${pv.method === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+<label class="pill">📅 Date<select data-po="date">${[['all', 'All'], ['week', 'This week'], ['month', 'This month'], ['30', 'Past 30 days'], ['90', 'Past 90 days'], ['year', 'This year']].map(([k, l]) => `<option value="${k}" ${pv.date === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+<button type="button" class="btn alt" data-act="poEmail" ${pl.length ? '' : 'disabled'}>Email CSV</button></div>
+<div class="card ctable"><div class="tablewrap"><table class="po-table"><tr>${poTh('date', 'Date')}<th>Type</th><th>Payout status</th>${poTh('amount', 'Amount', 'r')}</tr>
+${pl.map((p) => `<tr><td><strong>${fmtDate(p.arrival)}</strong><div class="po-id">${esc(p.id)}</div></td><td>${p.method === 'instant' ? 'Instant' : 'Standard'}</td><td><span class="badge ${(PO_STATUS[p.status] || ['', 'sent'])[1]}">${esc((PO_STATUS[p.status] || [p.status])[0])}</span></td><td class="r"><strong>${money(p.amount)}</strong></td></tr>`).join('')
+  || `<tr><td colspan="4" class="empty">${(S.payouts || []).length ? 'No payouts match these filters' : 'No payouts yet. Stripe pays out after your first online payments clear.'}</td></tr>`}</table></div></div>`;
     main.innerHTML = `<div class="head"><h1>Payments</h1><div class="actions">${admin ? '<a class="btn alt" href="/payments/settings" data-link>Settings</a>' : ''}${S.connected ? `<a class="btn alt" href="https://dashboard.stripe.com/disputes" target="_blank" rel="noopener">Disputes${S.disputes.open ? ` (${S.disputes.open})` : ''}</a>` : ''}</div></div>
 ${S.error ? `<div class="notice pay-note">Stripe’s details didn’t load (${esc(S.error)}). The list below is from your records. <button type="button" class="link-btn" data-act="payStripeRetry">Try again</button></div>` : S.partial ? '<div class="notice pay-note">Some details from Stripe didn’t load, so a few statuses or payout dates may be missing. <button type="button" class="link-btn" data-act="payStripeRetry">Try again</button></div>' : ''}
 <nav class="ptabs">${[['overview', 'Overview'], ['payouts', 'Payouts']].map(([k, l]) => `<button type="button" class="${v.tab === k ? 'on' : ''}" data-act="payTab" data-t="${k}">${l}</button>`).join('')}</nav>
 ${v.tab === 'payouts' ? payouts : overview}`;
     $$('.crow', main).forEach((r) => r.addEventListener('click', (e) => { if (!e.target.closest('a')) navigate('/payments/view?id=' + encodeURIComponent(r.dataset.id)); }));
     $$('[data-pv]', main).forEach((s) => s.addEventListener('change', (e) => { payView[e.target.dataset.pv] = e.target.value; refresh(); }));
+    $$('[data-po]', main).forEach((s) => s.addEventListener('change', (e) => { poView[e.target.dataset.po] = e.target.value; PAGES['/payments'].render(main); }));
     let t; const q = $('#pq', main); if (q) q.addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(async () => { payView.q = e.target.value; await refresh(); const n = $('#pq'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 250); });
   },
 };
