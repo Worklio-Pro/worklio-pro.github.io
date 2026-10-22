@@ -116,7 +116,7 @@ function render() {
   document.title = `${tabs.find((t) => t[0] === tab)[1]} · ${D.settings.productName} Alpha`;
   $('#root').innerHTML = `<header class="pf-top"><div class="pf-bar"><div class="pf-brand">${brandImg(siteBrand(), 'dark')}${siteBrand().logoHasName ? '' : esc(D.settings.productName)} <small>Alpha</small></div>
 <nav class="pf-tabs">${tabs.map(([k, l]) => `<a href="#${k}" class="${tab === k ? 'on' : ''}">${l}${k === 'messages' && D.chatWaiting ? ` <span class="msg-n" title="Chats waiting for you">${D.chatWaiting}</span>` : ''}</a>`).join('')}</nav>
-<details class="pf-user pf-menu"><summary>${esc(D.admin.name)}${isSupport() ? ' <small class="pf-role">Support</small>' : ''} <span aria-hidden="true">▾</span></summary><div class="pf-menu-list"><div class="pf-menu-who">${esc(D.admin.email)}</div><button type="button" data-act="myPassword">Change password</button><button type="button" data-act="logout">Log out</button></div></details></div></header>
+<details class="pf-user pf-menu"><summary>${esc(D.admin.name)}${isSupport() ? ' <small class="pf-role">Support</small>' : ''} <span aria-hidden="true">▾</span></summary><div class="pf-menu-list"><div class="pf-menu-who">${esc(D.admin.email)}</div><button type="button" data-act="myEmail">Change email</button><button type="button" data-act="myPassword">Change password</button><button type="button" data-act="logout">Log out</button></div></details></div></header>
 ${D.maintenance && D.maintenance.on ? `<div class="mt-bar" role="status"><strong>Maintenance mode is on.</strong> Visitors and businesses see the maintenance page; you can still use everything. ${isSupport() ? 'The owner can turn it off in Settings.' : '<a href="#settings" data-act="goMaint">Turn it off in Settings</a>'}</div>` : ''}
 <main class="pf-main" id="main"></main>
 <nav class="pf-bnav" aria-label="Alpha sections">${tabs.filter(([k]) => !NOT_ON_PHONES.includes(k)).map(([k, l]) => `<a href="#${k}" class="${tab === k ? 'on' : ''}"${tab === k ? ' aria-current="page"' : ''}>${TAB_ICONS[k]}<span>${SHORT_TABS[k] || l}</span></a>`).join('')}</nav>`;
@@ -1033,6 +1033,35 @@ A.hcReset = async (d, el) => {
   const slug = el.closest('.pf-modal').dataset.slug; if (!confirm('Reset this article’s votes and comments to zero?')) return;
   try { HC = await api('POST', `/api/platform/help/articles/${encodeURIComponent(slug)}/reset-feedback`, {}); toast('Feedback reset'); el.closest('.hc-fb').textContent = '👍 0 · 👎 0 · no votes yet'; helpView($('#main')); } catch (x) { toast(x.message, true); }
 };
+// change your own email (top bar → your name): password, then a code sent to the new address
+A.myEmail = () => {
+  $$('details.pf-menu[open]').forEach((m) => { m.open = false; });
+  const m = modal('Change your email', `<form id="mef"><p class="muted" style="margin-top:0">You log in with <strong>${esc(D.admin.email)}</strong>. We’ll send a code to the new address to make sure it’s yours.</p>
+<label>New email<input name="email" type="email" required autocomplete="email"></label>
+<label>Your password<input name="password" type="password" required autocomplete="current-password"></label>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Send code</button></div></form>`);
+  $('#mef', m).addEventListener('submit', async (e) => {
+    e.preventDefault(); const b = Object.fromEntries(new FormData(e.target)); const btn = $('button.btn:not(.alt)', e.target); btn.disabled = true;
+    try { const r = await api('POST', '/api/platform/me/email', b); myEmailCode(r.email); } catch (x) { btn.disabled = false; toast(x.message, true); }
+  });
+};
+function myEmailCode(email) {
+  const m = modal('Enter the code', `<form id="mec"><p class="muted" style="margin-top:0">We sent a 6-digit code to <strong>${esc(email)}</strong>. It works for 15 minutes.</p>
+<label>Code<input name="code" required inputmode="numeric" autocomplete="one-time-code" pattern="\\d{6}" maxlength="6" placeholder="123456" class="pf-code"></label>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Change email</button></div></form>`);
+  $('#mec', m).addEventListener('submit', async (e) => {
+    e.preventDefault(); const code = new FormData(e.target).get('code'); const btn = $('button.btn:not(.alt)', e.target); btn.disabled = true;
+    try {
+      const r = await api('POST', '/api/platform/me/email/verify', { code }); const old = D.admin.email; D.admin.email = r.email; closeModal(); render(); toast(`You now log in with ${r.email}`);
+      // your contact email in Settings was the old address: offer to switch it too
+      if (r.contactEmailWas) {
+        modal('Update your contact email too?', `<p>Your contact email in Settings (where new sign-ups, messages and chats are sent) is still <strong>${esc(old)}</strong>.</p>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Keep it</button><button type="button" class="btn" data-act="useNewContact">Use ${esc(r.email)}</button></div>`);
+        A.useNewContact = async () => { try { await api('PUT', '/api/platform/settings', { contactEmail: r.email }); await load(); closeModal(); render(); toast('Contact email updated'); } catch (x) { toast(x.message, true); } };
+      }
+    } catch (x) { btn.disabled = false; toast(x.message, true); if (/Start again/.test(x.message)) closeModal(); }
+  });
+}
 // change your own password (top bar → your name)
 A.myPassword = () => {
   $$('details.pf-menu[open]').forEach((m) => { m.open = false; });
