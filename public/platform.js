@@ -398,7 +398,8 @@ function referralProgramView(box) {
     try { RF = await api('PUT', '/api/platform/referrals/program', { ...b, heroImage: rfDraft.heroImage, milestones: rfDraft.milestones }); rfDraft = null; await load(); toast(RF.program.enabled ? 'Referral program saved and on' : 'Referral program saved (off)'); render(); } catch (x) { toast(x.message, true); }
   });
 }
-const rpRedraw = () => { const f = $('#rpf'); if (f) f._readMiles(); const keep = f ? Object.fromEntries(new FormData(f)) : {}; referralProgramView($('#promoBody')); const g = $('#rpf'); Object.entries(keep).forEach(([k, v]) => { const el = g.elements[k]; if (el && el.type !== 'checkbox') el.value = v; }); if (f) g.enabled.checked = keep.enabled === 'on'; };
+// callers read the milestone fields before changing the list, so this only redraws (re-reading after a removal would use the old row numbers)
+const rpRedraw = () => { const f = $('#rpf'); const keep = f ? Object.fromEntries(new FormData(f)) : {}; referralProgramView($('#promoBody')); const g = $('#rpf'); Object.entries(keep).forEach(([k, v]) => { const el = g.elements[k]; if (el && el.type !== 'checkbox') el.value = v; }); if (f) g.enabled.checked = keep.enabled === 'on'; };
 A.rpMileAdd = () => { $('#rpf')._readMiles(); rfDraft.milestones.push({ title: '', desc: '', count: (rfDraft.milestones.slice(-1)[0] || { count: 0 }).count * 1 + 3 || 3, image: '' }); rpRedraw(); };
 A.rpMileRm = (d) => { $('#rpf')._readMiles(); rfDraft.milestones.splice(Number(d.i), 1); rpRedraw(); };
 A.rpMileImg = async (d) => { const url = await pickImage(); if (!url) return; $('#rpf')._readMiles(); rfDraft.milestones[d.i].image = url; rpRedraw(); };
