@@ -74,7 +74,9 @@ ${both ? `<label>Billing<select name="interval"><option value="month" ${period =
       const r = await fetch('/api/site/discount-check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: v, plan: sel.value, interval: iv ? iv.value : 'month', email: $('[name=email]', f).value }) });
       const j = await r.json().catch(() => ({})); if (code.value.trim() !== v) return;
       codeHint.className = 'hint ' + (r.ok ? 'good' : 'bad'); codeHint.textContent = r.ok ? `${j.code}: ${j.summary}` : j.error || 'That code can’t be used';
-      const c2 = chosen(); $('#payNote').textContent = r.ok && c2 && c2.v ? `Next you’ll pay ${amount(j.first / 100)} for ${c2.p.name} with your discount.` : $('#payNote').textContent;
+      const c2 = chosen(); $('.go', f).textContent = r.ok && j.trial ? 'Start free trial' : goLabel();
+      if (r.ok && j.trial) { $('#payNote').textContent = `No card needed. Your free trial of ${c2.p.name} runs until ${new Date(j.endsAt + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}.`; return; }
+      $('#payNote').textContent = r.ok && c2 && c2.v ? `Next you’ll pay ${amount(j.first / 100)} for ${c2.p.name} with your discount.` : $('#payNote').textContent;
     }, 350); };
   code.addEventListener('input', checkCode); sel.addEventListener('change', checkCode); if (iv) iv.addEventListener('change', checkCode);
   sel.addEventListener('change', syncPlan); syncPlan();

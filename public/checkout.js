@@ -25,7 +25,7 @@ function render() {
   const main = $('#main');
   if (C.status !== 'pending') { // already paid (or moved to a free plan)
     main.innerHTML = `<div class="done"><div class="card pad"><h1 style="margin:0 0 8px;font-size:24px">You’re all set</h1>
-<p class="muted">${esc(C.company)} is ready at <strong>${esc(C.address)}</strong>.</p><a class="btn pay" style="line-height:30px" href="${esc(C.loginUrl)}">Log in to your account</a></div></div>`;
+<p class="muted">${esc(C.company)} is ready at <strong>${esc(C.address)}</strong>.${C.trialEndsAt ? ` Your free trial runs until ${esc(new Date(C.trialEndsAt + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }))}, no card needed. Add a card any time in Account and billing.` : ''}</p><a class="btn pay" style="line-height:30px" href="${esc(C.loginUrl)}">Log in to your account</a></div></div>`;
     return;
   }
   const p = C.plan; const c = p.charge; const D = C.discount; const due = D ? D.first : c.cents; const label = Object.fromEntries(C.features.map((f) => [f.key, f.label]));

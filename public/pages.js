@@ -1710,11 +1710,13 @@ PAGES['/settings/billing'] = {
     } else if (qs.has('canceled') || qs.has('upgrade')) history.replaceState(null, '', location.pathname);
     const B = billingData = await api('GET', '/api/account/billing'); const sub = B.subscription;
     const per = (i) => (i === 'year' ? 'yearly' : 'monthly');
-    const ending = sub && sub.cancelAtPeriodEnd;
-    const statusText = ending ? `Active until ${fmtDate(sub.periodEnd)}` : sub && sub.status === 'past_due' ? 'Payment past due' : B.status === 'suspended' ? 'Paused' : 'Active';
+    const ending = sub && sub.cancelAtPeriodEnd; const T = B.trial;
+    const statusText = T ? `${T.cancelled ? 'Trial cancelled, ends' : 'Free trial until'} ${fmtDate(T.endsAt)}` : ending ? `Active until ${fmtDate(sub.periodEnd)}` : sub && sub.status === 'past_due' ? 'Payment past due' : B.status === 'suspended' ? 'Paused' : 'Active';
     const contact = '<button type="button" class="btn alt" data-act="supportForm" data-title="Contact us" data-topic="Account and billing">Contact us</button>'; // the support form, sent to the platform's inbox
     const addr = (a) => (a && a.line1 ? [a.line1, a.line2, [a.city, a.state].filter(Boolean).join(', ') + (a.postal_code ? ' ' + a.postal_code : ''), a.country].filter((x) => x && x.trim()).map(esc).join('<br>') : '<span class="muted">No address yet</span>');
     const subText = !B.managed ? '<p class="muted">This is your platform’s own account, so it has no subscription.</p>'
+      : T && T.cancelled ? `<p>Your free trial is cancelled. You can keep using ${esc(B.productName)} until <strong>${fmtDate(T.endsAt)}</strong>, then the account is paused.</p><button type="button" class="btn" data-act="billKeep">Keep my trial</button>`
+      : T ? `<p>You’re on a free trial of ${esc(B.plan.name)} until <strong>${fmtDate(T.endsAt)}</strong>, with no card on file. ${B.live ? `Add a card to keep your account after that: your first payment${B.plan.charge ? ` of ${money(B.plan.charge.cents / 100)}/${B.plan.charge.interval}` : ''} is taken when the trial ends, and you can cancel anytime before then.` : 'After that, the account is paused unless you choose a plan.'}</p>${B.live ? '<button type="button" class="btn" data-act="billCard">Add card</button>' : ''}`
       : ending && B.pendingPlan ? `<p>Your plan changes to <strong>${esc(B.pendingPlan)}</strong> on ${fmtDate(sub.periodEnd)}. You won’t be charged again.</p><button type="button" class="btn alt sm" data-act="billKeep">Stay on ${esc(B.plan.name)}</button>`
       : ending ? `<p>Your subscription is cancelled. You can keep using ${esc(B.productName)} until <strong>${fmtDate(sub.periodEnd)}</strong>, then the account is paused.</p><button type="button" class="btn" data-act="billKeep">Keep my subscription</button>`
       : sub ? `<p>You will be charged <strong>${money(sub.amount)} USD</strong> for your ${per(sub.interval)} ${esc(B.plan.name)} subscription on ${fmtDate(sub.periodEnd)}, and every ${sub.interval} after that. Plus taxes where applicable.</p>${sub.status === 'past_due' ? '<p class="bill-warn">Your last payment didn’t go through. Update your card and we’ll retry it right away.</p>' : ''}`
@@ -1723,7 +1725,7 @@ PAGES['/settings/billing'] = {
       : `<p class="muted">Your ${esc(B.plan.name)} plan isn’t billed automatically yet. Choose it under Change plan to set up automatic payments.</p>`;
     const inv = billingAll ? B.invoices : B.invoices.slice(0, 6);
     main.innerHTML = `<div class="head"><h1>Account and billing</h1></div>
-<div class="card bill-ov"><div class="bill-h"><h2>Account overview</h2><div class="actions">${B.managed ? '<button type="button" class="btn" data-act="billPlans">Change plan</button>' : ''}${B.live && B.managed ? '<button type="button" class="btn alt" data-act="billCard">Update card</button>' : ''}</div></div>
+<div class="card bill-ov"><div class="bill-h"><h2>Account overview</h2><div class="actions">${B.managed ? '<button type="button" class="btn" data-act="billPlans">Change plan</button>' : ''}${B.live && B.managed ? `<button type="button" class="btn alt" data-act="billCard">${B.card ? 'Update card' : 'Add card'}</button>` : ''}</div></div>
 <dl class="bill-dl"><div><dt>Active since</dt><dd>${B.activeSince ? fmtDate(B.activeSince) : '—'}</dd></div><div><dt>Account status</dt><dd>${esc(statusText)}</dd></div>
 <div><dt>Current plan</dt><dd>${esc(B.plan.name)}${B.plan.charge ? ` <span class="muted">(${B.plan.charge.interval === 'year' ? 'yearly' : 'monthly'}, ${money(B.plan.charge.cents / 100).replace(/\.00$/, '')}/${B.plan.charge.interval})</span>` : B.plan.price ? ` <span class="muted">(${esc(B.plan.price)})</span>` : ''}</dd></div></dl></div>
 <div class="bill-grid">
@@ -1737,8 +1739,9 @@ ${B.managed ? `<div class="bill-two"><div><strong>Name</strong><div>${esc(B.cust
 <td class="r">${i.receiptUrl ? `<a class="btn alt sm" href="${esc(i.receiptUrl)}" target="_blank" rel="noopener">${i.status === 'open' ? 'Pay' : 'Receipt'}</a>` : ''}</td></tr>`).join('')}</table>${!billingAll && B.invoices.length > inv.length ? '<button type="button" class="link-btn" data-act="billMore">View more payments</button>' : ''}`
   : '<p class="muted">No payments yet.</p>'}</div>
 ${B.managed ? `<div class="card bill-change"><h2>Change subscription</h2><p>Switch plans any time. Moving to a bigger plan takes effect right away and you’re charged the difference for the rest of this billing period; moving to a smaller plan credits the difference to your next bill.</p>
+${T && !T.cancelled ? `<p class="muted">You can also cancel your free trial. You keep using ${esc(B.productName)} until ${fmtDate(T.endsAt)}; after that the account is paused and your team can’t log in.</p>` : ''}
 ${sub && !ending ? `<p class="muted">You can also cancel anytime. You keep using ${esc(B.productName)} until the end of the period you’ve paid for; after that the account is paused and your team can’t log in.</p>` : ''}
-<div class="bill-acts">${contact}<button type="button" class="btn alt" data-act="billPlans">Change plan</button>${sub && !ending ? '<button type="button" class="link-btn bill-cancel" data-act="billCancel">Cancel subscription</button>' : ''}</div></div>` : ''}
+<div class="bill-acts">${contact}<button type="button" class="btn alt" data-act="billPlans">Change plan</button>${(sub && !ending) || (T && !T.cancelled) ? `<button type="button" class="link-btn bill-cancel" data-act="billCancel">Cancel ${T ? 'free trial' : 'subscription'}</button>` : ''}</div></div>` : ''}
 </div>`;
     if (qs.has('upgrade') && B.managed) A.billPlans(); // from an “Upgrade your plan” link
   },
@@ -1772,6 +1775,7 @@ A.billPlans = () => {
     const v = priceFor(p); const per = perFor(p); go.textContent = p.id === B.plan.id ? `Switch to ${per === 'year' ? 'yearly' : 'monthly'} billing` : `Switch to ${p.name}`;
     note.textContent = !v ? (sub ? `You’ll keep ${B.plan.name} until ${fmtDate(sub.periodEnd)}, then move to ${p.name}. You won’t be charged again.` : `You’ll move to ${p.name} right away.`)
       : sub && per !== B.interval ? `Your unused time is credited, then ${amt(v)} is charged to your card${B.card ? ` ending in ${B.card.last4}` : ''} now and every ${per} after that.`
+      : B.trial ? `You’ll move to ${p.name} now. It’s free until your trial ends on ${fmtDate(B.trial.endsAt)}, then ${amt(v)}/${per} once you add a card.`
       : sub ? `Your card${B.card ? ` ending in ${B.card.last4}` : ''} is charged or credited the difference for the rest of this billing period, then ${amt(v)}/${per} from your next bill.`
       : `You’ll go to Stripe’s secure checkout to pay ${amt(v)}/${per}. After that, Stripe charges your card automatically every ${per}.`;
   };
@@ -1794,7 +1798,13 @@ A.billEdit = () => {
   });
 };
 A.billCancel = () => {
-  const B = billingData; const m = modal('Cancel subscription', `<form id="bcf"><p style="margin-top:0">Your ${esc(B.plan.name)} subscription will end on <strong>${fmtDate(B.subscription.periodEnd)}</strong>, and you won’t be charged again. Until then, everything keeps working as normal.</p>
+  const B = billingData;
+  if (B.trial) { const m = modal('Cancel free trial', `<form id="bcf"><p style="margin-top:0">Your free trial ends on <strong>${fmtDate(B.trial.endsAt)}</strong>. Until then, everything keeps working as normal, and you won’t be charged.</p>
+<p class="muted">After that, the account is paused: you and your team can’t log in, and clients can’t open their quotes, invoices or portal. Your data is kept, so you can come back.</p>
+<label>Why are you leaving? (optional)<textarea name="reason" rows="3" maxlength="500"></textarea></label>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Keep my trial</button><button class="btn danger">Cancel free trial</button></div></form>`);
+    $('#bcf', m).addEventListener('submit', (e) => { e.preventDefault(); billGo('/api/account/billing/cancel', Object.fromEntries(new FormData(e.target)), $('.btn.danger', e.target)); }); return; }
+  const m = modal('Cancel subscription', `<form id="bcf"><p style="margin-top:0">Your ${esc(B.plan.name)} subscription will end on <strong>${fmtDate(B.subscription.periodEnd)}</strong>, and you won’t be charged again. Until then, everything keeps working as normal.</p>
 <p class="muted">After that, the account is paused: you and your team can’t log in, and clients can’t open their quotes, invoices or portal. Your data is kept, so you can come back.</p>
 <label>Why are you leaving? (optional)<textarea name="reason" rows="3" maxlength="500"></textarea></label>
 <div class="foot"><button type="button" class="btn alt" data-act="closeModal">Keep subscription</button><button class="btn danger">Cancel subscription</button></div></form>`);

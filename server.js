@@ -663,17 +663,19 @@ function calItemProblem(b, partial) {
   return '';
 }
 
+// on a free trial from a trial code (lib/discounts.js) and no card yet: t.expiresAt is the trial's last day
+const onTrial = (t) => !!(t.billing && t.billing.status === 'trial' && t.billing.trial && t.expiresAt);
 // an account with a last day of access (Alpha): days left (0 = today is the last day), and whether to warn yet
 const expiryOf = (t) => {
   if (!t.expiresAt || tenancy.isDefault(t)) return null; const S = tenancy.platform().settings;
   const daysLeft = Math.round((Date.parse(t.expiresAt) - Date.parse(iso(new Date()))) / 864e5);
-  return { lastDay: t.expiresAt, daysLeft, banner: daysLeft <= (S.expiryBannerDays ?? 7), remind: daysLeft >= 0 && daysLeft <= (S.expiryReminderDays ?? 3) };
+  return { lastDay: t.expiresAt, daysLeft, trial: onTrial(t), banner: daysLeft <= (S.expiryBannerDays ?? 7), remind: daysLeft >= 0 && daysLeft <= (S.expiryReminderDays ?? 3) };
 };
 const whenText = (x) => (x.daysLeft === 0 ? 'today' : x.daysLeft === 1 ? 'tomorrow' : `on ${new Date(x.lastDay + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}`);
 // once a day (checked hourly): email each owner whose last day is close, once per end date
 function remindExpiring() {
   for (const t of tenancy.platform().tenants) {
-    const x = t.status === 'active' && expiryOf(t); if (!x || !x.remind || t.expiryReminded === t.expiresAt) continue;
+    const x = t.status === 'active' && expiryOf(t); if (!x || !x.remind || t.expiryReminded === t.expiresAt || (t.billing && t.billing.trial && t.billing.trial.cancelled)) continue;
     t.expiryReminded = t.expiresAt; tenancy.savePlatform();
     tenancy.run(t, () => {
       const o = db.users.find((u) => u.role === 'owner'); if (!o || !o.email) return;
@@ -2063,7 +2065,7 @@ app.get('/api/account/billing', async (req, res) => {
     productName: P.settings.productName, contactEmail: P.settings.contactEmail, live: !!stripeLib.platformKey(), billed: !!(b.customerId && stripeLib.platformKey()),
     demo: !!b.demo, managed: !tenancy.isDefault(), plans: P.plans.filter((p) => !p.hidden || p.id === plan.id).map((p) => ({ id: p.id, name: p.name, price: p.price || '', description: p.description || '', month: (stripeLib.planCharge(p, 'month') || {}).interval === 'month' ? stripeLib.planCharge(p, 'month').cents / 100 : null, year: (stripeLib.planCharge(p, 'year') || {}).interval === 'year' ? stripeLib.planCharge(p, 'year').cents / 100 : null })),
     interval: charge ? charge.interval : b.interval || 'month',
-    card: null, customer: null, subscription: null, invoices: [], endsAt: b.endsAt || null, pendingPlan: b.pendingPlanId ? (P.plans.find((p) => p.id === b.pendingPlanId) || {}).name || null : null };
+    card: null, customer: null, subscription: null, invoices: [], endsAt: b.endsAt || null, trial: onTrial(t) ? { endsAt: t.expiresAt, code: b.trial.code, cancelled: !!b.trial.cancelled } : null, pendingPlan: b.pendingPlanId ? (P.plans.find((p) => p.id === b.pendingPlanId) || {}).name || null : null };
   if (out.billed) {
     const get = (ep) => billingCall('GET', ep).catch((e) => { console.error('Billing:', e.message); return null; });
     const [cust, sub, inv] = await Promise.all([get(`customers/${encodeURIComponent(b.customerId)}?expand[]=invoice_settings.default_payment_method`),
@@ -2226,11 +2228,15 @@ app.post('/api/account/billing/plan', async (req, res) => {
   const want = req.body.interval === 'year' ? 'year' : 'month'; const c = stripeLib.planCharge(to, want);
   if (c && c.interval !== want) return res.status(400).json({ error: `${to.name} isn’t available ${want === 'year' ? 'yearly' : 'monthly'}` });
   const label = `${to.name}${c ? ` (${want === 'year' ? 'yearly' : 'monthly'})` : ''}`;
-  const switched = (message) => { if (c) b.interval = c.interval; if (t.planId === to.id) delete t.expiresAt; tenancy.savePlatform(); if (c && t.planId === to.id) referrals.paid(t).catch(() => {}); tellPlatform(`Plan changed: ${t.name} → ${label}`, `${u.name} (${u.email}) changed ${t.name} from ${from.name} to ${label}. ${message}`); res.json({ ok: true, message }); };
+  const switched = (message) => { if (c) b.interval = c.interval; if (t.planId === to.id && !onTrial(t)) delete t.expiresAt; tenancy.savePlatform(); if (c && t.planId === to.id && !onTrial(t)) referrals.paid(t).catch(() => {}); tellPlatform(`Plan changed: ${t.name} → ${label}`, `${u.name} (${u.email}) changed ${t.name} from ${from.name} to ${label}. ${message}`); res.json({ ok: true, message }); };
   try {
     const sub = stripeLib.platformKey() ? await liveSubscription(b) : null;
     const nowInterval = (sub && sub.items.data[0].price.recurring && sub.items.data[0].price.recurring.interval) || b.interval || 'month';
     if (to.id === t.planId && !b.pendingPlanId && (!c || c.interval === nowInterval)) return res.status(400).json({ error: `You’re already on ${label}` });
+    if (onTrial(t) && !sub) { // free trial, no card yet: switch now; a paid plan stays free until the trial ends, a free plan ends the trial
+      t.planId = to.id; if (!c) { b.status = 'free'; delete b.trial; delete t.expiresAt; return switched(`You’re now on ${to.name}.`); }
+      return switched(`You’re now on ${label}. It’s free until your trial ends on ${niceDate(t.expiresAt)}. Add a card before then to keep your account.`);
+    }
     if (!stripeLib.platformKey()) { t.planId = to.id; delete b.pendingPlanId; delete b.endsAt; return switched(`You’re now on ${label}.`); } // no Stripe on this server: demo
     if (!c) { // free plan
       if (!sub) { t.planId = to.id; delete b.pendingPlanId; delete b.endsAt; return switched(`You’re now on ${to.name}.`); }
@@ -2249,15 +2255,26 @@ app.post('/api/account/billing/plan', async (req, res) => {
         : `You’re now on ${label}. Any difference for the rest of this billing period is charged or credited now, and you’ll pay ${money(c.cents / 100)} each ${c.interval} from your next bill.`);
     }
     // no paid subscription yet: pay at Stripe Checkout; the plan switches when the payment goes through
-    const p = { mode: 'subscription', client_reference_id: t.id, 'metadata[tenantId]': t.id, 'metadata[planId]': to.id, 'metadata[interval]': c.interval, 'subscription_data[metadata][tenantId]': t.id,
-      'line_items[0][quantity]': '1', 'line_items[0][price_data][currency]': 'usd', 'line_items[0][price_data][product]': await planProduct(to),
-      'line_items[0][price_data][unit_amount]': String(c.cents), 'line_items[0][price_data][recurring][interval]': c.interval,
-      success_url: `${baseUrl()}/settings/billing?checkout={CHECKOUT_SESSION_ID}`, cancel_url: `${baseUrl()}/settings/billing` };
-    if (b.customerId) p.customer = b.customerId; else p.customer_email = u.email;
-    Object.assign(p, referrals.bankedTrial(t)); // free months earned by referring other businesses
-    const s = await billingCall('POST', 'checkout/sessions', p); res.json({ redirect: s.url });
+    const s = await subscribeSession(t, u, to, c); res.json({ redirect: s.url });
   } catch (e) { stripeError(res, 'change the plan', e); }
 });
+// Stripe Checkout for a new subscription. On a free trial the card is saved now and the first charge waits until the trial ends
+// (Stripe needs that to be at least 48 hours away, so a trial in its last two days gets the extra time).
+async function subscribeSession(t, u, to, c) {
+  const b = t.billing || {};
+  const p = { mode: 'subscription', client_reference_id: t.id, 'metadata[tenantId]': t.id, 'metadata[planId]': to.id, 'metadata[interval]': c.interval, 'subscription_data[metadata][tenantId]': t.id,
+    'line_items[0][quantity]': '1', 'line_items[0][price_data][currency]': 'usd', 'line_items[0][price_data][product]': await planProduct(to),
+    'line_items[0][price_data][unit_amount]': String(c.cents), 'line_items[0][price_data][recurring][interval]': c.interval,
+    success_url: `${baseUrl()}/settings/billing?checkout={CHECKOUT_SESSION_ID}`, cancel_url: `${baseUrl()}/settings/billing` };
+  if (b.customerId) p.customer = b.customerId; else p.customer_email = u.email;
+  Object.assign(p, referrals.bankedTrial(t)); // free months earned by referring other businesses
+  if (onTrial(t)) {
+    const end = Math.max(Math.floor((Date.parse(t.expiresAt) + 864e5) / 1000), Math.ceil(Date.now() / 1000) + 49 * 3600);
+    if (!(Number(p['subscription_data[trial_end]']) > end)) p['subscription_data[trial_end]'] = String(end);
+    p['metadata[firstCharge]'] = unix(Number(p['subscription_data[trial_end]']));
+  }
+  return billingCall('POST', 'checkout/sessions', p);
+}
 // back from Checkout (new subscription) or the card page (new card): check the session with Stripe, then apply it
 app.post('/api/account/billing/return', async (req, res) => {
   if (!ownerOnly(req, res)) return;
@@ -2276,7 +2293,7 @@ app.post('/api/account/billing/return', async (req, res) => {
         referrals.useBanked(t, s.metadata.creditUntil); referrals.paid(t).catch(() => {}); // free months from referrals; and reward whoever referred this account
         tenancy.savePlatform(); tellPlatform(`New subscription: ${t.name} → ${to.name}`, `${currentUser(req).name} subscribed ${t.name} to ${to.name} (was ${from.name}).`);
       }
-      return res.json({ ok: true, message: to ? `You’re now on ${to.name}. Thank you!` : 'Payment received' });
+      return res.json({ ok: true, message: s.metadata.firstCharge ? `Your card is saved. Your ${to ? to.name : ''} plan’s first payment is on ${niceDate(s.metadata.firstCharge)}.` : to ? `You’re now on ${to.name}. Thank you!` : 'Payment received' });
     }
     const pm = s.setup_intent && s.setup_intent.payment_method; if (!pm) return res.status(400).json({ error: 'No card was saved' });
     await useCard(b, typeof pm === 'string' ? pm : pm.id);
@@ -2301,6 +2318,10 @@ app.post('/api/account/billing/card', async (req, res) => {
   if (!stripeLib.platformKey()) return res.status(400).json({ error: 'Card payments aren’t set up on this server' });
   const t = tenancy.current();
   try {
+    if (onTrial(t) && !(await liveSubscription(t.billing))) { // free trial: the card goes on a subscription to the current plan, charged when the trial ends
+      const plan = tenancy.planOf(t); const c = stripeLib.planCharge(plan, t.billing.interval);
+      if (c) { const s = await subscribeSession(t, currentUser(req), plan, c); return res.json({ redirect: s.url }); }
+    }
     const customer = await ensureCustomer(t, currentUser(req));
     const s = await billingCall('POST', 'checkout/sessions', { mode: 'setup', customer, currency: 'usd', 'payment_method_types[0]': 'card', 'metadata[tenantId]': t.id,
       success_url: `${baseUrl()}/settings/billing?card={CHECKOUT_SESSION_ID}`, cancel_url: `${baseUrl()}/settings/billing` });
@@ -2325,6 +2346,11 @@ app.put('/api/account/billing/details', async (req, res) => {
 app.post('/api/account/billing/cancel', async (req, res) => {
   if (!ownerOnly(req, res)) return;
   const t = tenancy.current(); const b = t.billing || {}; const undo = !!(req.body && req.body.undo); const u = currentUser(req);
+  if (onTrial(t)) { // free trial, no card: it keeps working until the trial's last day, then pauses (undo keeps the trial going)
+    if (undo) delete b.trial.cancelled; else b.trial.cancelled = new Date().toISOString(); tenancy.savePlatform();
+    tellPlatform(`${undo ? 'Trial cancellation withdrawn' : 'Trial cancelled'}: ${t.name}`, `${u.name} (${u.email}) ${undo ? 'kept the free trial' : `cancelled the free trial for ${t.name}. It keeps working until ${niceDate(t.expiresAt)}, then it’s paused`}.${!undo && req.body && req.body.reason ? `\n\nReason: ${req.body.reason}` : ''}`);
+    return res.json({ ok: true, message: undo ? 'Your free trial continues' : `Your trial is cancelled. You can use ${tenancy.platform().settings.productName} until ${niceDate(t.expiresAt)}.` });
+  }
   if (!stripeLib.platformKey()) return res.status(400).json({ error: 'This account doesn’t have a subscription to cancel. Contact us to close it.' });
   try {
     const sub = await liveSubscription(b); if (!sub) return res.status(400).json({ error: 'This account doesn’t have a subscription to cancel. Contact us to close it.' });
