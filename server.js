@@ -1008,6 +1008,7 @@ app.delete('/api/:col/:id', (req, res, next) => {
   if (col === 'staff' && isOwnerStaff(db.staff[i])) return res.status(400).json({ error: 'The account owner can’t be removed from the team' });
   const [removed] = db[col].splice(i, 1);
   if (col === 'staff') db.users.filter((u) => u.staffId === removed.id && u.role !== 'owner').forEach(removeUser);
+  if (col === 'staff') (db.timeOff || []).filter((r) => r.staffId === removed.id && (r.status === 'pending' || (r.status === 'approved' && r.to >= iso(new Date())))).forEach((r) => { r.status = 'canceled'; r.canceledBy = 'Removed from the team'; }); // nothing left waiting for someone who's gone
   if (col === 'photos' && removed.file) fs.rmSync(path.join(uploadDir(), path.basename(removed.file)), { force: true });
   save(); res.json({ ok: true });
 });
