@@ -672,9 +672,10 @@ function clientForm(c) {
   c = c || {};
   const mb = modal(c.id ? 'Edit client' : 'New client', `<form><div class="row"><label>Name<input name="name" required value="${esc(c.name)}"></label><label>Company (optional)<input name="company" value="${esc(c.company)}"></label></div>
 <div class="row"><label>Email<input name="email" type="email" value="${esc(c.email)}"></label><label>Mobile (for texts)<input name="phone" value="${esc(c.phone)}" placeholder="+17135550100"></label></div>
-<label>Service address<input name="address" value="${esc(c.address)}"></label><label>Tags (separate with commas)<input name="tags" value="${esc(clientTags(c).join(', '))}" placeholder="e.g. commercial, monthly"></label><label>Notes<textarea name="notes">${esc(c.notes)}</textarea></label>
+<label>Service address<input name="address" value="${esc(c.address)}"></label><div class="cmap" ${String(c.address || '').trim() ? '' : 'hidden'}><iframe title="Map of the service address" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe></div><label>Tags (separate with commas)<input name="tags" value="${esc(clientTags(c).join(', '))}" placeholder="e.g. commercial, monthly"></label><label>Notes<textarea name="notes">${esc(c.notes)}</textarea></label>
 ${c.id && planHas('clientPortal') ? `<label>Client portal link<input readonly value="${esc(location.origin + '/client-portal?c=' + c.portalToken)}" onclick="this.select()"></label>` : ''}
 <div class="foot">${c.id ? `<button type="button" class="btn danger admin-only" data-act="delClient" data-id="${c.id}">Delete</button><button type="button" class="btn alt need-quotes" data-act="newQuoteFor" data-id="${c.id}">New quote</button><button type="button" class="btn alt need-jobs-edit" data-act="newJobFor" data-id="${c.id}">New job</button>` : ''}<button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn need-clients-edit">Save</button></div></form>`);
+  clientMap(mb);
   if (!canDo('clients.edit')) $$('input, select, textarea', mb).forEach((el) => { if (el.readOnly !== undefined) el.readOnly = true; if (el.tagName === 'SELECT') el.disabled = true; }); // view only without “Add and edit clients”
   $('form', mb).addEventListener('submit', async (e) => {
     e.preventDefault(); if (!canDo('clients.edit')) return; const body = Object.fromEntries(new FormData(e.target));
@@ -682,6 +683,15 @@ ${c.id && planHas('clientPortal') ? `<label>Client portal link<input readonly va
     c.id ? await api('PUT', '/api/clients/' + c.id, body) : await api('POST', '/api/clients', body);
     closeModal(); toast('Client saved'); refresh();
   });
+}
+// a map with a pin on the service address, under the address field; it follows the address as it's typed
+function clientMap(mb) {
+  const box = $('.cmap', mb); const input = $('[name=address]', mb); let t; let shown = '';
+  const show = () => {
+    const a = input.value.trim(); box.hidden = !a; if (!a || a === shown) return; shown = a;
+    $('iframe', box).src = 'https://maps.google.com/maps?q=' + encodeURIComponent(a) + '&z=15&output=embed'; // Google's own “Open in Maps” link is on the map
+  };
+  show(); input.addEventListener('input', () => { clearTimeout(t); t = setTimeout(show, 700); });
 }
 A.newClient = () => clientForm();
 A.editClient = (d) => clientForm(byId(D.clients, d.id));
