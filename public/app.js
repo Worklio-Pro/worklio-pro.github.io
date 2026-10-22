@@ -123,7 +123,7 @@ const navFor = () => NAV.map(([g, items]) => [g, items.filter(([p]) => memberCan
 function timeOffBadge() { const a = $('#side a[href="/requests"]'); if (a && D.timeOffWaiting) a.insertAdjacentHTML('beforeend', ` <span class="nav-n" title="Requests waiting for you">${D.timeOffWaiting}</span>`); }
 function renderSide(path) {
   $('#side').innerHTML = `<div class="side-nav"><div class="brand">${company.logo ? `<a href="/" data-link class="brand-logo" title="Home"><img src="${esc(company.logo)}" alt="Home"></a>` : brandImg(company.account && company.account.product, 'dark')}<span>${esc(company.name || (company.account && company.account.productName) || 'Worklio Pro')}</span></div>` +
-    navFor().map(([g, items]) => `<div class="grp">${g}</div>` + items.map(([p, l]) => `<a href="${p}" data-link class="${p === path || (!navPaths.includes(path) && path.startsWith(p + '/')) ? 'on' : ''}">${l}${betaPage(p) ? ' <span class="beta-tag" title="This feature is in beta testing">Beta</span>' : ''}</a>`).join('')).join('') + `</div>${themeSwitch()}${me ? `<div class="side-user"><a href="/profile" data-link class="side-user-name${path === '/profile' ? ' on' : ''}" title="My profile (${esc(me.email)})">${avatarHtml(me, 26)}<span>${esc(me.name)}</span></a><button type="button" data-act="logout">Log out</button></div>` : ''}`;
+    navFor().map(([g, items]) => `<div class="grp">${g}</div>` + items.map(([p, l]) => `<a href="${p}" data-link class="nav-link ${p === path || (!navPaths.includes(path) && path.startsWith(p + '/')) ? 'on' : ''}">${navIcon(p)}<span class="nav-l">${l}</span>${betaPage(p) ? ' <span class="beta-tag" title="This feature is in beta testing">Beta</span>' : ''}</a>`).join('')).join('') + `</div>${themeSwitch()}${me ? `<div class="side-user"><a href="/profile" data-link class="side-user-name${path === '/profile' ? ' on' : ''}" title="My profile (${esc(me.email)})">${avatarHtml(me, 26)}<span>${esc(me.name)}</span></a><button type="button" data-act="logout">Log out</button></div>` : ''}`;
   $('#side').classList.remove('open');
   renderBottomNav(path);
 }
@@ -138,6 +138,21 @@ const BNAV = [
   ['/staff-schedules', 'Schedules', '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'],
   ['/clients', 'Clients', '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6.5 6.5 0 0 1 3.5 6"/>'],
 ];
+// sidebar icons: the phone tab bar's where it has one, so both match; the rest drawn in the same style
+const NAV_ICONS = {
+  ...Object.fromEntries(BNAV.map(([p, , d]) => [p, d])),
+  '/requests': '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/><path d="M10 14l4 4M14 14l-4 4"/>',
+  '/payments': '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/>',
+  '/services': '<path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="8" cy="8" r="1.5"/>',
+  '/expenses': '<path d="M19 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/><path d="M21 12h-6a2 2 0 0 0 0 4h6v-4z"/><path d="M3 7h16"/>',
+  '/reports': '<path d="M3 3v18h18"/><path d="M8 17v-5M13 17V8M18 17v-9"/>',
+  '/tax-summary': '<path d="M19 5L5 19"/><circle cx="7" cy="7" r="2.5"/><circle cx="17" cy="17" r="2.5"/>',
+  '/reviews': '<path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/>',
+  '/social-posts': '<path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1z"/><path d="M15 9a4 4 0 0 1 0 6M18 6a8 8 0 0 1 0 12"/>',
+  '/project-gallery': '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>',
+  '/notifications': '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+};
+const navIcon = (p) => (NAV_ICONS[p] ? `<span class="nav-ic">${bico(NAV_ICONS[p])}</span>` : '<span class="nav-ic"></span>');
 function renderBottomNav(path) {
   const items = BNAV.filter(([p]) => memberCan(p) && !planLocked(p)).slice(0, 4);
   $('#bnav').innerHTML = items.map(([p, l, d]) => { const on = p === path || (!navPaths.includes(path) && path.startsWith(p + '/')); return `<a href="${p}" data-link class="${on ? 'on' : ''}"${on ? ' aria-current="page"' : ''}>${bico(d)}<span>${l}</span></a>`; }).join('')

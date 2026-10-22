@@ -816,3 +816,10 @@ a.conn-chip{text-decoration:none}a.conn-chip:hover{text-decoration:underline}
 @media (max-width:640px){.to-row{flex-direction:column}.to-acts{align-self:flex-end}}
 .to-acts .to-big{min-width:120px;height:44px;font-size:15px;font-weight:600}
 @media (max-width:640px){.to-acts:has(.to-big){align-self:stretch}.to-acts .to-big{flex:1}}
+/* sidebar links: an icon, then the name, always 12px apart; badges sit at the right */
+#side a.nav-link{display:flex;align-items:center;gap:12px}
+#side .nav-ic{flex:none;width:20px;height:20px;display:flex;align-items:center;justify-content:center;opacity:.8}
+#side .nav-ic svg{width:19px;height:19px}
+#side a.nav-link.on .nav-ic,#side a.nav-link:hover .nav-ic{opacity:1}
+#side .nav-l{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#side a.nav-link .nav-n,#side a.nav-link .beta-tag{margin-left:0;flex:none}
