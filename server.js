@@ -807,6 +807,7 @@ async function stripeOnboardingLink() {
 }
 // read the connected account's status from Stripe (charges switch on once Stripe has verified the business)
 async function syncStripeAccount() {
+  clearPayCache(); // Stripe told us something changed
   const sec = { ...secrets() }; if (!sec.stripeAccountId || !stripeLib.platformKey()) return;
   try {
     const a = await stripeLib.request(stripeLib.platformKey(), 'GET', 'accounts/' + encodeURIComponent(sec.stripeAccountId));
@@ -1310,6 +1311,7 @@ async function stripeCheckout({ amount, name, client, meta, successUrl, cancelUr
 // record a paid Checkout session on its invoice or quote (safe to call more than once for the same session)
 function applyStripeSession(s) {
   if (!s || s.payment_status !== 'paid') return null;
+  clearPayCache(); // a new payment: the Payments page asks Stripe again
   const amount = round2((Number(s.amount_total) || 0) / 100); const meta = s.metadata || {};
   const tell = (what, clientId) => {
     const c = findClient(clientId); const set = paySettings();
@@ -1359,15 +1361,24 @@ app.put('/api/payments/settings', (req, res) => {
   db.company.paySettings = s; save(); res.json(s);
 });
 // what Stripe knows: balance, payouts, disputes, and each charge's status and payout date (keyed by payment intent, the reference on recorded payments)
+// Stripe's answer for the Payments page is kept for a minute per account, so going back and forth is instant;
+// a new payment, a refund or an account update from Stripe clears it
+const payCache = new Map(); // account id -> { at, data }
+const clearPayCache = () => { try { payCache.delete(tenancy.current().id); } catch (e) { /* no account in this context */ } };
 app.get('/api/payments/stripe', async (req, res) => {
   if (!tenancy.has('onlinePayments') || !stripeKey()) return res.json({ connected: false });
-  const get = (ep) => stripeApi('GET', ep).catch((e) => { console.error('Stripe:', e.message); return null; });
-  const [bal, charges, payouts, disputes, txns] = await Promise.all([get('balance'), get('charges?limit=100&expand[]=data.balance_transaction'), get('payouts?limit=50&expand[]=data.destination'), get('disputes?limit=100'), get('balance_transactions?limit=100')]);
+  const key = tenancy.current().id; const hit = payCache.get(key);
+  if (hit && Date.now() - hit.at < 60e3 && !req.query.fresh) return res.json({ ...hit.data, cachedAt: new Date(hit.at).toISOString() });
+  let failed = 0; const get = (ep) => stripeApi('GET', ep).catch((e) => { failed++; console.error('Stripe:', e.message); return null; });
+  // charges without their fee details (the heavy part); payout dates come from the balance list fetched alongside
+  const [bal, charges, payouts, disputes, txns] = await Promise.all([get('balance'), get('charges?limit=100'), get('payouts?limit=50&expand[]=data.destination'), get('disputes?limit=100'), get('balance_transactions?limit=100')]);
   const day = (t) => (t ? iso(new Date(t * 1000)) : null); const usd = (l) => round2((l || []).filter((x) => x.currency === 'usd').reduce((s, x) => s + x.amount, 0) / 100);
   const acct = (d) => (d && typeof d === 'object' ? { name: d.bank_name || d.brand || 'Bank account', last4: d.last4 || '' } : null);
-  const charge = {};
+  const charge = {}; const availOn = {}; for (const t of (txns && txns.data) || []) if (t.source) availOn[t.source] = t.available_on;
+  const oldest = Math.min(...((txns && txns.data) || []).map((t) => t.created), Infinity);
   for (const c of (charges && charges.data) || []) if (c.payment_intent) {
-    charge[c.payment_intent] = { payoutDate: day(c.balance_transaction && c.balance_transaction.available_on),
+    // older than the balance list: its money was paid out long ago
+    charge[c.payment_intent] = { payoutDate: day(availOn[c.id]), paidOut: !availOn[c.id] && c.created < oldest,
       status: c.disputed ? 'disputed' : c.refunded ? 'refunded' : c.amount_refunded ? 'partly refunded' : c.status === 'failed' ? 'failed' : c.status === 'pending' ? 'processing' : 'succeeded' };
   }
   const pl = (payouts && payouts.data) || []; const dl = (disputes && disputes.data) || [];
@@ -1377,10 +1388,12 @@ app.get('/api/payments/stripe', async (req, res) => {
   const upcoming = [...pl.filter((p) => ['pending', 'in_transit'].includes(p.status)).map((p) => ({ date: day(p.arrival_date), amount: round2(p.amount / 100), inTransit: true, bank: acct(p.destination) })),
     ...Object.entries(due).filter(([, c]) => c > 0).map(([date, c]) => ({ date, amount: round2(c / 100) }))].sort((a, b) => (a.date < b.date ? -1 : 1));
   const ready = bal ? usd(bal.available) : 0; if (ready > 0) upcoming.unshift({ date: null, amount: ready, next: true });
-  res.json({ connected: true, mode: stripeMode(), feePercent: connectedAccount() ? Number(tenancy.platform().settings.platformFeePercent) || 0 : 0, balance: bal ? { available: usd(bal.available), pending: usd(bal.pending) } : null, charges: charge, upcoming,
+  const out = { connected: true, mode: stripeMode(), feePercent: connectedAccount() ? Number(tenancy.platform().settings.platformFeePercent) || 0 : 0, balance: bal ? { available: usd(bal.available), pending: usd(bal.pending) } : null, charges: charge, upcoming,
     payouts: pl.map((p) => ({ id: p.id, amount: round2(p.amount / 100), arrival: day(p.arrival_date), status: p.status, bank: acct(p.destination) })),
     bank: (pl.map((p) => acct(p.destination)).find(Boolean)) || null,
-    disputes: { open: dl.filter((d) => /needs_response|under_review/.test(d.status)).length, total: dl.length } });
+    disputes: { open: dl.filter((d) => /needs_response|under_review/.test(d.status)).length, total: dl.length }, partial: failed > 0 };
+  if (!failed) payCache.set(key, { at: Date.now(), data: out }); // only a complete answer is kept
+  res.json(out);
 });
 // ---------- one payment (Payments → a row): what was paid, by whom, how, and when the money reaches the bank ----------
 // ids as on the Payments list: an invoice payment's id, "i-<invoice>" (an invoice marked paid before payments were itemized), "q-<quote>" (a deposit)
@@ -1443,6 +1456,7 @@ app.post('/api/payment-detail/:id/refund', async (req, res) => {
       Object.assign(r, { stripeRefundId: sr.id, status: sr.status === 'succeeded' ? 'succeeded' : sr.status === 'failed' || sr.status === 'canceled' ? sr.status : 'pending' });
     } catch (e) { return res.status(502).json({ error: `Stripe couldn’t refund this payment: ${e.message}` }); }
   } else if (['demo', 'demo-card'].includes(f.p.method)) return res.status(400).json({ error: 'Demo payments charged nobody, so there’s nothing to refund' });
+  clearPayCache(); // the Payments page shows the refund right away
   if (f.kind === 'quote') { f.doc.depositRefunds = [...(f.doc.depositRefunds || []), r]; }
   else { f.p.refunds = [...(f.p.refunds || []), r]; settleInvoice(f.doc); }
   save(); res.json(await paymentDetail(findPayment(req.params.id)));

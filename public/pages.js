@@ -1381,7 +1381,7 @@ A.pdRefund = () => {
     if (!(v > 0) || v > left + 0.004) return toast(`Enter an amount up to ${money(left)}`, true);
     if (!confirm(`Refund ${money(v)} to the client?${viaStripe ? ' This can’t be undone.' : ''}`)) return;
     go.disabled = true; go.textContent = 'Refunding…';
-    try { await api('POST', `/api/payment-detail/${encodeURIComponent(P.id)}/refund`, { amount: v, reason: f.reason.value, note: f.note.value }); closeModal(); toast(viaStripe ? `Refund of ${money(v)} sent` : `Refund of ${money(v)} recorded`); refresh(); }
+    try { await api('POST', `/api/payment-detail/${encodeURIComponent(P.id)}/refund`, { amount: v, reason: f.reason.value, note: f.note.value }); payStripe.at = 0; closeModal(); toast(viaStripe ? `Refund of ${money(v)} sent` : `Refund of ${money(v)} recorded`); refresh(); }
     catch (x) { go.disabled = false; go.textContent = `Refund ${money(v)}`; toast(x.message, true); }
   });
 };
@@ -1405,15 +1405,29 @@ function paymentRows() {
 }
 const PAY_STATUS = { succeeded: ['Succeeded', 'paid'], processing: ['Processing', 'sent'], refunded: ['Refunded', 'draft'], 'partly refunded': ['Partly refunded', 'draft'], disputed: ['Disputed', 'overdue'], failed: ['Failed', 'failed'] };
 const online = (m) => m === 'stripe' || m === 'demo' || m === 'demo-card';
+// Stripe's details for the Payments page: the last answer is shown at once (even while a newer one loads); it's asked for again after a minute
+let payStripe = { data: null, at: 0, loading: false, error: '' };
+function payStripeState() {
+  if (!planHas('onlinePayments') || (company.account && company.account.cardReady === false)) return { connected: false }; // no card payments set up: nothing to ask Stripe
+  if (!payStripe.loading && Date.now() - payStripe.at > 60e3) {
+    payStripe.loading = true; payStripe.error = '';
+    api('GET', '/api/payments/stripe').then((d) => { payStripe = { data: d, at: Date.now(), loading: false, error: '' }; }, (e) => { payStripe = { ...payStripe, loading: false, error: e.message, at: Date.now() - 50e3 }; })
+      .then(() => { if (curPath() === '/payments' && !document.activeElement.matches('input, select, textarea')) PAGES['/payments'].render($('#main')); });
+  }
+  if (payStripe.data) return { ...payStripe.data, error: payStripe.error };
+  return { connected: true, loading: !payStripe.error, failed: !!payStripe.error, error: payStripe.error, charges: {}, payouts: [], disputes: { open: 0 }, upcoming: [] };
+}
+A.payStripeRetry = () => { payStripe.at = 0; PAGES['/payments'].render($('#main')); };
 let payView = { tab: 'overview', status: 'all', method: 'all', date: 'all', q: '', sort: 'date', dir: -1 };
 PAGES['/payments'] = {
   title: 'Payments',
   async render(main) {
-    const v = payView; const S = planHas('onlinePayments') ? await api('GET', '/api/payments/stripe').catch(() => ({ connected: false })) : { connected: false };
+    // the list draws right away from Worklio's records; Stripe's details (statuses, payout dates, upcoming payouts) fill in when they arrive
+    const v = payView; const S = payStripeState();
     const day = (s) => (s || '').slice(0, 10); const ago = (n) => ymd(addDays(new Date(), -n)); const tomorrow = ymd(addDays(new Date(), 1));
     const rows = paymentRows().map((r) => {
       const ch = r.method === 'stripe' && S.charges ? S.charges[r.reference] : null;
-      return { ...r, status: (ch && ch.status) || refundStatus(r.amount, r.refunded || 0), payout: r.method === 'stripe' ? (ch && ch.payoutDate ? fmtDate(ch.payoutDate) : 'In Stripe') : online(r.method) ? 'Demo: no payout' : 'Manually deposited',
+      return { ...r, status: (ch && ch.status) || refundStatus(r.amount, r.refunded || 0), payout: r.method === 'stripe' ? (S.loading && !ch ? 'Checking Stripe…' : S.failed ? '—' : ch && ch.payoutDate ? fmtDate(ch.payoutDate) : ch && ch.paidOut ? 'Paid out' : 'In Stripe') : online(r.method) ? 'Demo: no payout' : 'Manually deposited',
         payoutKey: ch && ch.payoutDate ? ch.payoutDate : '', methodLabel: r.method === 'stripe' ? 'Online (Stripe)' : online(r.method) ? 'Demo checkout' : payLabel(r.method) };
     });
     const cname = (r) => { const c = byId(D.clients, r.clientId); return c ? c.company || c.name : 'Unknown client'; };
@@ -1440,7 +1454,7 @@ PAGES['/payments'] = {
     const docLink = ([kind, d]) => `<a href="/${kind}s/edit?id=${d.id}" data-link>${kind === 'quote' ? 'Quote' : 'Invoice'} ${esc(d.number)}</a>`;
     const admin = !me || ['owner', 'admin'].includes(me.role);
     const overview = `<div class="cstats pay-stats">
-<div class="cstat"><div class="cs-h"><strong>Upcoming payouts</strong></div><div class="cs-v">${money(upcoming)}</div><div class="muted">${!S.connected ? 'Payouts appear here once you connect Stripe and collect online payments' : UP.length ? `<button type="button" class="link-btn up-link" data-act="viewPayouts">View ${UP.length} payout${UP.length === 1 ? '' : 's'}</button>` : 'Upcoming payouts appear after you collect payments'}</div></div>
+<div class="cstat"><div class="cs-h"><strong>Upcoming payouts</strong></div><div class="cs-v">${S.loading || S.failed ? '<span class="pay-wait">—</span>' : money(upcoming)}</div><div class="muted">${S.loading ? 'Checking Stripe…' : S.failed ? 'Not available right now' : !S.connected ? 'Payouts appear here once you connect Stripe and collect online payments' : UP.length ? `<button type="button" class="link-btn up-link" data-act="viewPayouts">View ${UP.length} payout${UP.length === 1 ? '' : 's'}</button>` : 'Upcoming payouts appear after you collect payments'}</div></div>
 <button class="cstat" data-act="payInvoices"><div class="cs-h"><strong>Invoice payment time</strong><span>↗</span></div><div class="muted">Past 30 days</div><div class="pts">${stat(payDays, 30, true, (d) => `${d} ${d === 1 ? 'day' : 'days'}`)}</div></button>
 <div class="cstat"><div class="cs-h"><strong>Invoices paid on time</strong></div><div class="muted">Last 60 days</div><div class="pts">${stat(onTime, 60, false, (p) => p + '%')}</div></div></div>
 <h2 class="ftitle">All payments <span class="muted">(${list.length} result${list.length === 1 ? '' : 's'})</span></h2>
@@ -1452,11 +1466,12 @@ PAGES['/payments'] = {
 ${list.map((r) => `<tr class="crow" data-id="${esc(r.id)}" title="See this payment"><td><strong>${esc(cname(r))}</strong><div class="pay-ref">${docLink(r.doc)}</div></td><td style="white-space:nowrap">${fmtDate(r.date)}</td>
 <td><span class="badge ${PAY_STATUS[r.status][1]}">${PAY_STATUS[r.status][0]}</span></td><td>${r.method === 'stripe' ? '💳 ' : ''}${esc(r.methodLabel)}</td><td style="white-space:nowrap">${esc(r.payout)}</td><td class="r"><strong>${money(r.amount)}</strong></td></tr>`).join('')
   || `<tr><td colspan="6" class="empty">${rows.length ? 'No payments match these filters' : 'No payments yet. Payments show up here when clients pay online or you record a payment on an invoice.'}</td></tr>`}</table></div></div>`;
-    const payouts = !S.connected ? `<div class="card"><h2>Payouts</h2><p class="muted">When clients pay online, Stripe sends the money to your bank account. ${admin ? '<a href="/settings#payments" data-link>Connect Stripe</a> in App Settings to start taking online payments.' : 'Ask the account owner to connect Stripe.'}</p></div>`
+    const payouts = S.loading || S.failed ? `<div class="card"><h2>Payouts</h2><p class="muted">${S.failed ? 'Payouts didn’t load from Stripe. Try again in a moment.' : 'Loading payouts from Stripe…'}</p></div>` : !S.connected ? `<div class="card"><h2>Payouts</h2><p class="muted">When clients pay online, Stripe sends the money to your bank account. ${admin ? '<a href="/settings#payments" data-link>Connect Stripe</a> in App Settings to start taking online payments.' : 'Ask the account owner to connect Stripe.'}</p></div>`
       : `<div class="card ctable"><div class="tablewrap"><table><tr><th>Arrival date</th><th>Status</th><th>Bank account</th><th class="r">Amount</th></tr>
 ${S.payouts.map((p) => `<tr><td>${fmtDate(p.arrival)}</td><td><span class="badge ${p.status === 'paid' ? 'paid' : p.status === 'failed' || p.status === 'canceled' ? 'failed' : 'sent'}">${esc({ paid: 'Paid', pending: 'Pending', in_transit: 'In transit', canceled: 'Canceled', failed: 'Failed' }[p.status] || p.status)}</span></td><td>${p.bank ? `${esc(p.bank.name)} •••• ${esc(p.bank.last4)}` : '—'}</td><td class="r"><strong>${money(p.amount)}</strong></td></tr>`).join('')
   || '<tr><td colspan="4" class="empty">No payouts yet. Stripe pays out after your first online payments clear.</td></tr>'}</table></div></div>`;
     main.innerHTML = `<div class="head"><h1>Payments</h1><div class="actions">${admin ? '<a class="btn alt" href="/payments/settings" data-link>Settings</a>' : ''}${S.connected ? `<a class="btn alt" href="https://dashboard.stripe.com/disputes" target="_blank" rel="noopener">Disputes${S.disputes.open ? ` (${S.disputes.open})` : ''}</a>` : ''}</div></div>
+${S.error ? `<div class="notice pay-note">Stripe’s details didn’t load (${esc(S.error)}). The list below is from your records. <button type="button" class="link-btn" data-act="payStripeRetry">Try again</button></div>` : S.partial ? '<div class="notice pay-note">Some details from Stripe didn’t load, so a few statuses or payout dates may be missing. <button type="button" class="link-btn" data-act="payStripeRetry">Try again</button></div>' : ''}
 <nav class="ptabs">${[['overview', 'Overview'], ['payouts', 'Payouts']].map(([k, l]) => `<button type="button" class="${v.tab === k ? 'on' : ''}" data-act="payTab" data-t="${k}">${l}</button>`).join('')}</nav>
 ${v.tab === 'payouts' ? payouts : overview}`;
     $$('.crow', main).forEach((r) => r.addEventListener('click', (e) => { if (!e.target.closest('a')) navigate('/payments/view?id=' + encodeURIComponent(r.dataset.id)); }));

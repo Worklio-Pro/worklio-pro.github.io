@@ -827,3 +827,4 @@ a.conn-chip{text-decoration:none}a.conn-chip:hover{text-decoration:underline}
 .beta-bar{display:flex;align-items:center;gap:12px;margin:0 0 16px;padding:10px 14px;border-radius:10px;background:var(--warn-bg);color:var(--warn-fg);border:1px solid var(--warn-border);font-size:14px;line-height:1.45}
 .beta-bar .link-btn{margin:0;color:inherit;font-size:inherit}
 .beta-pill{flex:none;padding:2px 9px;border-radius:99px;background:var(--warn);color:#fff;font-size:12px;font-weight:700;letter-spacing:.03em}
+.pay-wait{color:var(--muted)}.pay-note{margin:0 0 12px;font-size:13px}.pay-note .link-btn{margin:0 0 0 4px;font-size:13px}
