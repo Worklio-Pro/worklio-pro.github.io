@@ -85,7 +85,7 @@ PAGES['/staff-schedules'] = {
     const forPerson = (sid, s) => D.jobs.filter((j) => j.date === s && j.status !== 'cancelled' && (sid ? (j.staffIds || []).includes(sid) : !(j.staffIds || []).length)).sort((a, b) => a.startTime.localeCompare(b.startTime));
     const row = (s) => {
       const week = days.map((d) => forPerson(s && s.id, ymd(d))); const h = week.flat().reduce((t, j) => t + hoursOf(j), 0);
-      return `<tr><td class="person">${s ? `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${esc(s.color)};margin-right:6px"></span><span class="p-name">${esc(s.name)}</span><div class="muted p-role">${esc(s.role)}</div>` : 'Unassigned'}<div class="muted p-load">${week.flat().length} jobs · ${h.toFixed(1)}h</div></td>${week.map((l, i) => { const off = s && !staffHours(s)[WEEK[days[i].getDay()][0]].on; return `<td class="${ymd(days[i]) === today ? 'today' : ''} ${off ? 'off' : ''}">${cell(l) || (off ? '<span class="off-l">Off</span>' : '')}</td>`; }).join('')}</tr>`;
+      return `<tr><td class="person">${s ? `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${esc(s.color)};margin-right:6px"></span><span class="p-name">${esc(s.name)}</span><div class="muted p-role">${esc(s.role)}</div>` : 'Unassigned'}<div class="muted p-load">${week.flat().length} jobs · ${h.toFixed(1)}h</div></td>${week.map((l, i) => { const off = s && !staffHours(s)[WEEK[days[i].getDay()][0]].on; const away = s && offOn(s.id, ymd(days[i])); return `<td class="${ymd(days[i]) === today ? 'today' : ''} ${off || (away && !away.start) ? 'off' : ''}">${away ? `<span class="to-l" title="Approved time off: ${esc(away.when)}">${away.start ? `Off ${esc(fmtTime(away.start))}–${esc(fmtTime(away.end))}` : 'Time off'}</span>` : ''}${cell(l) || (off && !away ? '<span class="off-l">Off</span>' : '')}</td>`; }).join('')}</tr>`;
     };
     const unassigned = days.some((d) => forPerson(null, ymd(d)).length);
     main.innerHTML = `<div class="head"><div><h1>Staff Schedules</h1><p class="sub">Weekly workload and upcoming appointments for each team member.</p></div><div class="actions"><button class="btn alt admin-only" data-act="manageStaff">Manage staff</button><button class="btn need-jobs-edit" data-act="newJob">+ New job</button></div></div>
@@ -98,6 +98,71 @@ A.swPrev = () => { staffWeek = addDays(staffWeek, -7); refresh(); };
 A.swNext = () => { staffWeek = addDays(staffWeek, 7); refresh(); };
 A.swToday = () => { staffWeek = startOfWeek(new Date()); refresh(); };
 A.manageStaff = () => navigate('/team');
+
+/* ===== /time-off: team members ask for time off; the owner, admins and anyone who can edit jobs approve it (a plan feature) ===== */
+const TO_STATUS = { pending: ['Waiting', 'q-sent'], approved: ['Approved', 'active'], declined: ['Declined', 'q-draft'], canceled: ['Canceled', 'q-draft'] };
+const toJobs = (r) => (r.jobs && r.jobs.length ? `<div class="to-jobs"><strong>${r.jobs.length} job${r.jobs.length === 1 ? '' : 's'} then:</strong> ${r.jobs.map((j) => `<a href="/jobs/edit?id=${j.id}" data-link>${esc(j.number)} ${esc(j.title)}</a> <span class="muted">(${fmtDate(j.date)}${j.startTime ? ', ' + esc(fmtTime(j.startTime)) : ''})</span>`).join(', ')}</div>` : '');
+PAGES['/time-off'] = {
+  title: 'Time Off',
+  async render(main) {
+    const T = await api('GET', '/api/time-off'); const today = ymd(new Date()); toState = T;
+    const review = T.approver ? T.requests.filter((r) => r.status === 'pending' && !r.mine) : [];
+    const mine = T.requests.filter((r) => r.mine);
+    const off = T.requests.filter((r) => r.status === 'approved' && r.to >= today).sort((a, b) => a.from.localeCompare(b.from));
+    const past = T.approver ? T.requests.filter((r) => !r.mine && r.status !== 'pending' && !(r.status === 'approved' && r.to >= today)).slice(0, 20) : [];
+    const who = (r) => `<span class="to-dot" style="background:${esc(r.color || '#64748b')}"></span><strong>${esc(r.person)}</strong>`;
+    const badge = (r) => `<span class="cstatus ${TO_STATUS[r.status][1]}">${TO_STATUS[r.status][0]}</span>`;
+    main.innerHTML = `<div class="head"><div><h1>Time Off</h1><p class="sub">${T.approver ? 'Requests from your team, and who’s off.' : 'Ask for time off and see who’s off.'} Approved time off shows on Staff Schedules.</p></div>
+${T.canRequest ? '<button class="btn" data-act="requestOff">Request time off</button>' : ''}</div>
+${T.approver ? `<div class="card"><h2>Waiting for you${review.length ? ` <span class="msg-n">${review.length}</span>` : ''}</h2>${review.length ? `<div class="to-list">${review.map((r) => `<div class="to-row"><div class="to-main"><div>${who(r)} · ${esc(r.when)}</div><p class="to-reason">${esc(r.reason)}</p>${toJobs(r)}<div class="muted to-meta">Asked ${fmtDate((r.createdAt || '').slice(0, 10))}</div></div>
+<div class="to-acts"><button type="button" class="btn alt sm" data-act="toDecide" data-id="${r.id}" data-ok="">Decline</button><button type="button" class="btn sm" data-act="toDecide" data-id="${r.id}" data-ok="1">Approve</button></div></div>`).join('')}</div>` : '<p class="muted" style="margin:0">No requests waiting.</p>'}</div>` : ''}
+${T.canRequest ? `<div class="card"><h2>Your requests</h2>${mine.length ? `<div class="to-list">${mine.map((r) => `<div class="to-row"><div class="to-main"><div><strong>${esc(r.when)}</strong> ${badge(r)}</div><p class="to-reason">${esc(r.reason)}</p>${r.note ? `<p class="to-note"><strong>${esc(r.decidedBy)}:</strong> ${esc(r.note)}</p>` : r.decidedBy && r.status !== 'canceled' ? `<div class="muted to-meta">${TO_STATUS[r.status][0]} by ${esc(r.decidedBy)}</div>` : ''}${r.status === 'pending' ? toJobs(r) : ''}</div>
+<div class="to-acts">${['pending', 'approved'].includes(r.status) && r.to >= today ? `<button type="button" class="btn alt sm" data-act="toCancel" data-id="${r.id}">Cancel</button>` : ''}</div></div>`).join('')}</div>` : '<p class="muted" style="margin:0">You haven’t asked for time off yet.</p>'}</div>` : ''}
+<div class="card"><h2>Who’s off</h2>${off.length ? `<div class="to-list">${off.map((r) => `<div class="to-row"><div class="to-main"><div>${who(r)} · ${esc(r.when)}${r.from <= today ? ' <span class="cstatus active">Off now</span>' : ''}</div></div>
+<div class="to-acts">${T.approver && !r.mine ? `<button type="button" class="btn alt sm" data-act="toCancel" data-id="${r.id}">Cancel</button>` : ''}</div></div>`).join('')}</div>` : '<p class="muted" style="margin:0">No one has time off coming up.</p>'}</div>
+${past.length ? `<div class="card"><h2>Recent decisions</h2><div class="to-list">${past.map((r) => `<div class="to-row"><div class="to-main"><div>${who(r)} · ${esc(r.when)} ${badge(r)}</div><div class="muted to-meta">${r.decidedBy ? `${TO_STATUS[r.status][0]} by ${esc(r.decidedBy)}` : ''}${r.note ? ` · “${esc(r.note)}”` : ''}</div></div></div>`).join('')}</div></div>` : ''}`;
+  },
+};
+let toState = null;
+// ask for time off; from a job page it starts with that job's day and hours
+A.requestOff = (d, el, pre = {}) => {
+  const today = ymd(new Date());
+  const m = modal('Request time off', `<form id="tof"><label class="switchline"><input type="checkbox" name="allDay" ${pre.start ? '' : 'checked'}> All day</label>
+<div class="row"><label>${pre.start ? 'Day' : 'First day'}<input type="date" name="from" required min="${today}" value="${esc(pre.from || today)}"></label><label class="to-to" ${pre.start ? 'hidden' : ''}>Last day<input type="date" name="to" min="${today}" value="${esc(pre.from || today)}"></label></div>
+<div class="row to-hours" ${pre.start ? '' : 'hidden'}><label>From<input type="time" name="start" value="${esc(pre.start || '08:00')}"></label><label>To<input type="time" name="end" value="${esc(pre.end || '17:00')}"></label></div>
+<label>Reason<textarea name="reason" rows="3" maxlength="500" required placeholder="e.g. Doctor’s appointment"></textarea></label>
+<div id="toConf" class="to-conf"></div>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Send request</button></div></form>`);
+  const f = $('#tof', m.closest('.modal') || document);
+  const read = () => { const all = f.allDay.checked; return { allDay: all, from: f.from.value, to: all ? f.to.value || f.from.value : f.from.value, start: all ? '' : f.start.value, end: all ? '' : f.end.value }; };
+  // the jobs you're assigned to then, so whoever approves knows what needs covering
+  const conf = () => { const r = read(); const jobs = (D.jobs || []).filter((j) => (j.staffIds || []).includes(me && me.staffId) && !['cancelled', 'completed'].includes(j.status) && j.date >= r.from && j.date <= r.to && (r.allDay || (j.startTime < r.end && (j.endTime || j.startTime) > r.start)));
+    $('#toConf').innerHTML = jobs.length ? `<p class="notice">You’re assigned to ${jobs.length} job${jobs.length === 1 ? '' : 's'} then: ${jobs.map((j) => `${esc(j.number)} ${esc(j.title)} (${fmtDate(j.date)})`).join(', ')}. Your manager will see this.</p>` : ''; };
+  f.allDay.addEventListener('change', () => { $('.to-to', f).hidden = !f.allDay.checked; $('.to-hours', f).hidden = f.allDay.checked; conf(); });
+  f.from.addEventListener('change', () => { if (f.to.value < f.from.value) f.to.value = f.from.value; f.to.min = f.from.value; conf(); });
+  [f.to, f.start, f.end].forEach((x) => x.addEventListener('change', conf)); conf();
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault(); const btn = $('button.btn:not(.alt)', f); btn.disabled = true;
+    try { await api('POST', '/api/time-off', { ...read(), reason: f.reason.value, jobId: pre.jobId || '' }); closeModal(); toast('Request sent. You’ll get an email when it’s decided.'); curPath() === '/time-off' ? refresh() : navigate('/time-off'); }
+    catch (x) { btn.disabled = false; toast(x.message, true); }
+  });
+};
+A.jobRequestOff = (d) => { $$('details.menu[open]').forEach((x) => { x.open = false; }); const j = byId(D.jobs, d.id); A.requestOff(d, null, { from: j.date, start: j.startTime, end: j.endTime || '', jobId: j.id }); };
+A.toDecide = (d) => {
+  const r = toState.requests.find((x) => x.id === d.id); const ok = !!d.ok;
+  const m = modal(ok ? `Approve ${r.person}’s time off` : `Decline ${r.person}’s time off`, `<form id="tdf"><p style="margin-top:0"><strong>${esc(r.when)}</strong></p><p class="to-reason">${esc(r.reason)}</p>
+${ok && r.jobs.length ? `<label class="switchline"><input type="checkbox" name="unassign" checked> Take ${esc(r.person.split(' ')[0])} off the ${r.jobs.length} job${r.jobs.length === 1 ? '' : 's'} then, so I can reassign ${r.jobs.length === 1 ? 'it' : 'them'}</label>${toJobs(r)}` : ''}
+<label>Note to ${esc(r.person.split(' ')[0])} (optional)<textarea name="note" rows="2" maxlength="500" placeholder="${ok ? 'e.g. Enjoy your time off' : 'e.g. We’re short-staffed that week'}"></textarea></label>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn ${ok ? '' : 'danger'}">${ok ? 'Approve' : 'Decline'}</button></div></form>`);
+  const f = $('#tdf', m.closest('.modal') || document);
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault(); const btn = $('button.btn:not(.alt)', f); btn.disabled = true;
+    try { const res = await api('POST', `/api/time-off/${r.id}/decide`, { approve: ok, note: f.note.value, unassign: !!(f.unassign && f.unassign.checked) }); closeModal();
+      toast(ok ? `Approved${res.removedFrom ? `. ${r.person.split(' ')[0]} was taken off ${res.removedFrom} job${res.removedFrom === 1 ? '' : 's'}; reassign ${res.removedFrom === 1 ? 'it' : 'them'} in Jobs.` : ''}` : 'Declined'); refresh(); }
+    catch (x) { btn.disabled = false; toast(x.message, true); }
+  });
+};
+A.toCancel = async (d) => { const r = toState.requests.find((x) => x.id === d.id); if (!confirm(`Cancel ${r.mine ? 'your' : `${r.person}’s`} time off ${r.when}?`)) return; try { await api('POST', `/api/time-off/${d.id}/cancel`, {}); toast('Time off canceled'); refresh(); } catch (x) { toast(x.message, true); } };
 
 /* ===== /team ===== */
 // Team members are the staff list (also used for job assignment and Staff Schedules). There are no logins yet,

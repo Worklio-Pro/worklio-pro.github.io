@@ -65,8 +65,14 @@ let D = {}; let company = {};
 async function loadAll() {
   const names = ['clients', 'services', 'staff', 'quotes', 'jobs', 'invoices', 'expenses'];
   const res = await Promise.all(names.map((n) => (me && me.collections && !me.collections.includes(n) ? [] : api('GET', '/api/' + n))));
-  const out = {}; names.forEach((n, i) => { out[n] = res[i]; }); return out;
+  const out = {}; names.forEach((n, i) => { out[n] = res[i]; });
+  // time off (a plan feature): approved time off for the schedule and job warnings; requests waiting for whoever approves
+  out.timeOff = []; out.timeOffWaiting = 0;
+  if (planHas('timeOff')) { const T = await api('GET', '/api/time-off').catch(() => null); if (T) { out.timeOff = T.requests.filter((r) => r.status === 'approved'); out.timeOffWaiting = T.approver ? T.requests.filter((r) => r.status === 'pending' && !r.mine).length : 0; } }
+  return out;
 }
+// approved time off for this team member covering a date (and the hours, if it's part of a day)
+const offOn = (staffId, date, start, end) => (D.timeOff || []).find((r) => r.staffId === staffId && r.from <= date && r.to >= date && (!r.start || !start || (r.start < (end || start) && r.end > start)));
 const clientName = (id) => (byId(D.clients, id) || {}).name || '—';
 const staffDots = (ids) => (ids || []).map((id) => { const s = byId(D.staff, id); return s ? `<span title="${esc(s.name)}"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${esc(s.color)};margin-right:4px"></span>${esc(s.name)}</span>` : ''; }).join('<br>') || '<span class="muted">Unassigned</span>';
 const clientOptions = (sel) => `<option value="">Select client…</option>` + D.clients.map((c) => `<option value="${c.id}" ${c.id === sel ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
@@ -74,7 +80,7 @@ const clientOptions = (sel) => `<option value="">Select client…</option>` + D.
 /* ===== router ===== */
 const PAGES = {};
 const NAV = [
-  ['Operations', [['/business-overview', 'Home'], ['/calendar', 'Job Calendar'], ['/staff-schedules', 'Staff Schedules'], ['/clients', 'Clients'], ['/quotes', 'Quotes'], ['/jobs', 'Jobs'], ['/invoices', 'Invoices']]],
+  ['Operations', [['/business-overview', 'Home'], ['/calendar', 'Job Calendar'], ['/staff-schedules', 'Staff Schedules'], ['/time-off', 'Time Off'], ['/clients', 'Clients'], ['/quotes', 'Quotes'], ['/jobs', 'Jobs'], ['/invoices', 'Invoices']]],
   ['Money', [['/payments', 'Payments'], ['/services', 'Products & Services'], ['/expenses', 'Expenses'], ['/reports', 'Financial Reports'], ['/tax-summary', 'Tax Summary']]],
   ['Marketing', [['/reviews', 'Reviews'], ['/social-posts', 'Social Posts']]],
   ['Records', [['/project-gallery', 'Project Gallery'], ['/notifications', 'Notifications Log']]],
@@ -113,6 +119,8 @@ const planHas = (f) => !(company.account && company.account.features) || company
 const planLocked = (path) => !!(company.account && (company.account.lockedPages || []).includes(path));
 const betaPage = (path) => !!(company.account && (company.account.betaPages || []).includes(path));
 const navFor = () => NAV.map(([g, items]) => [g, items.filter(([p]) => memberCan(p) && !planLocked(p))]).filter(([, items]) => items.length);
+// the sidebar's Time Off link shows how many requests are waiting for this approver
+function timeOffBadge() { const a = $('#side a[href="/time-off"]'); if (a && D.timeOffWaiting) a.insertAdjacentHTML('beforeend', ` <span class="nav-n" title="Requests waiting for you">${D.timeOffWaiting}</span>`); }
 function renderSide(path) {
   $('#side').innerHTML = `<div class="side-nav"><div class="brand">${company.logo ? `<a href="/" data-link class="brand-logo" title="Home"><img src="${esc(company.logo)}" alt="Home"></a>` : brandImg(company.account && company.account.product, 'dark')}<span>${esc(company.name || (company.account && company.account.productName) || 'Worklio Pro')}</span></div>` +
     navFor().map(([g, items]) => `<div class="grp">${g}</div>` + items.map(([p, l]) => `<a href="${p}" data-link class="${p === path || (!navPaths.includes(path) && path.startsWith(p + '/')) ? 'on' : ''}">${l}${betaPage(p) ? ' <span class="beta-tag" title="This feature is in beta testing">Beta</span>' : ''}</a>`).join('')).join('') + `</div>${themeSwitch()}${me ? `<div class="side-user"><a href="/profile" data-link class="side-user-name${path === '/profile' ? ' on' : ''}" title="My profile (${esc(me.email)})">${avatarHtml(me, 26)}<span>${esc(me.name)}</span></a><button type="button" data-act="logout">Log out</button></div>` : ''}`;
@@ -346,7 +354,7 @@ async function render() {
   if (page && planLocked(path)) { document.title = page.title; main.innerHTML = `<div class="card upgrade-card"><h1>${esc(page.title)} isn’t in your plan</h1><p class="muted">You’re on the ${esc(company.account.plan.name)} plan. Upgrade to get ${esc(page.title)} and more.</p><p><a href="/settings" data-link class="btn alt">See your plan</a></p></div>`; return; }
   if (!page) { document.title = 'Not found'; main.innerHTML = '<div class="card"><h1>Page not found</h1><p><a href="/business-overview" data-link>Go to dashboard</a></p></div>'; return; }
   document.title = `${page.title} · ${company.name || (company.account && company.account.productName) || 'Worklio Pro'}`;
-  try { D = portal ? {} : await loadAll(); await page.render(main); }
+  try { D = portal ? {} : await loadAll(); timeOffBadge(); await page.render(main); }
   catch (e) { main.innerHTML = `<div class="card"><h2>Something went wrong</h2><p>${esc(e.message)}</p></div>`; }
 }
 window.addEventListener('popstate', render);
@@ -1075,7 +1083,7 @@ function jobPage(main, job, preset) {
   main.innerHTML = `<form class="qform jform"><div class="qpage"><div class="qmain">
 <div class="qtop"><div class="qtop-l"><a href="/jobs" data-link class="back">← Jobs</a><span class="cstatus ${J_CLASS[st]}">${J_STATUS[st]}</span></div>
 <div class="actions">${j.id ? `<details class="menu"><summary class="btn alt">⋯ More</summary><div class="menu-list">
-${j.signature || !planHas('signatures') ? '' : `<button type="button" data-act="collectSignature" data-id="${j.id}">Collect signature</button>`}
+${j.signature || !planHas('signatures') ? '' : `<button type="button" data-act="collectSignature" data-id="${j.id}">Collect signature</button>`}${planHas('timeOff') && me && me.staffId && (j.staffIds || []).includes(me.staffId) && j.date >= ymd(new Date()) ? `<button type="button" data-act="jobRequestOff" data-id="${j.id}">Request off for this job</button>` : ''}
 <button type="button" class="need-jobs-edit" data-act="jobRemind" data-id="${j.id}">${planHas('sms') ? 'Text' : 'Email'} reminder to client</button>${planHas('invoices') ? `<button type="button" class="need-invoices" data-act="jobInvoice" data-id="${j.id}">Create invoice</button>` : ''}
 <a href="/calendar" data-link>Open job calendar</a><button type="button" class="danger-text need-jobs-edit" data-act="delJob" data-id="${j.id}">Delete job</button></div></details>
 ${j.status === 'scheduled' ? `<button type="button" class="btn alt need-jobs-edit" data-act="completeJob" data-id="${j.id}">Mark complete</button>` : `<button type="button" class="btn alt need-jobs-edit" data-act="reopenJob" data-id="${j.id}">↺ Reopen job</button>`}
@@ -1122,6 +1130,8 @@ ${paid ? `<div class="crow-line"><span>Deposit collected <span class="muted">· 
     const clash = jobConflicts({ id: j.id, ...body });
     if (clash.length && !confirm(`Schedule conflict: ${clash.map((c) => c.number + ' ' + c.title).join(', ')} overlaps for an assigned staff member. Save anyway?`)) return;
     const offHours = body.staffIds.map((id) => byId(D.staff, id)).filter((s) => s && !withinHours(s, body.date, body.startTime, body.endTime));
+    const away = body.staffIds.map((id) => [byId(D.staff, id), offOn(id, body.date, body.startTime, body.endTime)]).filter(([s, r]) => s && r);
+    if (away.length && !confirm(`Time off: ${away.map(([s, r]) => `${s.name} (${r.when})`).join(', ')} ${away.length === 1 ? 'has' : 'have'} approved time off then. Save anyway?`)) return;
     if (offHours.length && !confirm(`Outside working hours: ${offHours.map((s) => s.name).join(', ')} ${offHours.length === 1 ? "isn't" : "aren't"} scheduled to work then (see Manage team). Save anyway?`)) return;
     const saved = j.id ? await api('PUT', '/api/jobs/' + j.id, body) : await api('POST', '/api/jobs', body);
     toast('Job saved'); if (j.id) refresh(); else navigate('/jobs/edit?id=' + saved.id);

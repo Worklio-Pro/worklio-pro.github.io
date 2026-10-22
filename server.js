@@ -425,6 +425,66 @@ const MEMBER_JOB_FIELDS = ['title', 'clientId', 'address', 'date', 'startTime', 
 const INVITE_DAYS = 7;
 const userRow = (u) => ({ ...publicUser(u), staffId: u.staffId || null, status: u.passwordHash ? 'active' : 'invited', invitedAt: u.invitedAt || null, lastLoginAt: u.lastLoginAt || null });
 app.get('/api/users', (req, res) => res.json(db.users.map(userRow)));
+// ---------- Time off (a plan feature): team members ask for time off; the owner, admins and anyone who can edit jobs approve it ----------
+// A request covers whole days (from–to) or some hours of one day. Approving can take the person off the jobs they're assigned to then.
+const t12 = (t) => { const [h, m] = String(t || '0:0').split(':').map(Number); return `${h % 12 || 12}${m ? ':' + String(m).padStart(2, '0') : ''} ${h < 12 ? 'AM' : 'PM'}`; };
+const timeOffWhen = (r) => (r.from === r.to ? niceDate(r.from) : `${niceDate(r.from)} to ${niceDate(r.to)}`) + (r.start ? `, ${t12(r.start)}–${t12(r.end)}` : '');
+const canApproveTimeOff = (u) => isAdmin(u) || can(u, 'jobs.edit');
+// jobs this person is on during the request (not cancelled or done)
+const timeOffJobs = (staffId, r) => db.jobs.filter((j) => (j.staffIds || []).includes(staffId) && !['cancelled', 'completed'].includes(j.status) && j.date >= r.from && j.date <= r.to
+  && (!r.start || (j.startTime < r.end && (j.endTime || j.startTime) > r.start)));
+const timeOffRow = (r, u) => { const s = db.staff.find((x) => x.id === r.staffId); const mine = u && u.staffId === r.staffId; const full = mine || canApproveTimeOff(u);
+  return { id: r.id, staffId: r.staffId, person: s ? s.name : 'Former team member', color: s ? s.color : '', from: r.from, to: r.to, start: r.start || '', end: r.end || '', status: r.status, when: timeOffWhen(r), mine,
+    ...(full ? { reason: r.reason, note: r.note || '', createdAt: r.createdAt, decidedBy: r.decidedBy || '', decidedAt: r.decidedAt || '', jobs: timeOffJobs(r.staffId, r).map((j) => ({ id: j.id, number: j.number, title: j.title, date: j.date, startTime: j.startTime })) } : {}) }; };
+app.get('/api/time-off', (req, res) => {
+  const u = currentUser(req); db.timeOff = db.timeOff || []; const approver = canApproveTimeOff(u);
+  // everyone sees who's off (approved) on the schedule; requests themselves: your own, or all of them if you approve
+  const list = db.timeOff.filter((r) => r.status === 'approved' || approver || r.staffId === u.staffId).sort((a, b) => (b.status === 'pending') - (a.status === 'pending') || b.from.localeCompare(a.from)); // waiting ones first, then newest dates
+  res.json({ approver, canRequest: !!db.staff.find((s) => s.id === u.staffId), requests: list.slice(0, 300).map((r) => timeOffRow(r, u)) });
+});
+app.post('/api/time-off', async (req, res) => {
+  const u = currentUser(req); const s = db.staff.find((x) => x.id === u.staffId); if (!s) return res.status(400).json({ error: 'Your login isn’t linked to a team member. Ask the owner.' });
+  const b = req.body || {}; const ok = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d || ''); const tm = (t) => /^([01]\d|2[0-3]):[0-5]\d$/.test(t || '');
+  const from = b.from; const to = b.allDay === false ? b.from : b.to || b.from;
+  if (!ok(from) || !ok(to)) return res.status(400).json({ error: 'Choose the dates you’ll be off' });
+  if (to < from) return res.status(400).json({ error: 'The last day can’t be before the first day' });
+  if (from < iso(new Date())) return res.status(400).json({ error: 'Time off can’t start in the past' });
+  if ((Date.parse(to) - Date.parse(from)) / 864e5 > 90) return res.status(400).json({ error: 'Ask for up to 90 days at a time' });
+  const part = b.allDay === false; if (part && (!tm(b.start) || !tm(b.end) || b.end <= b.start)) return res.status(400).json({ error: 'Choose a start time and a later end time' });
+  const reason = String(b.reason || '').trim().slice(0, 500); if (!reason) return res.status(400).json({ error: 'Add a short reason' });
+  db.timeOff = db.timeOff || [];
+  if (db.timeOff.some((r) => r.staffId === s.id && ['pending', 'approved'].includes(r.status) && r.from <= to && r.to >= from && (!part || !r.start || (r.start < b.end && r.end > b.start)))) return res.status(400).json({ error: 'You already asked for time off then' });
+  const r = { id: uid(), staffId: s.id, userId: u.id, from, to, start: part ? b.start : '', end: part ? b.end : '', reason, status: 'pending', createdAt: new Date().toISOString(), jobId: String(b.jobId || '') };
+  db.timeOff.push(r); save();
+  // tell everyone who can approve it (not the person asking)
+  const jobs = timeOffJobs(s.id, r); const jobsText = jobs.length ? `They’re assigned to ${jobs.length} job${jobs.length === 1 ? '' : 's'} then: ${jobs.map((j) => `${j.number} ${j.title} (${niceDate(j.date)})`).join('; ')}.` : 'They aren’t assigned to any jobs then.';
+  for (const a of db.users.filter((x) => x.id !== u.id && x.passwordHash && x.email && canApproveTimeOff(x) && !staffBlocked(x))) {
+    sendTemplate('timeOffRequested', a.email, { name: a.name.split(/\s+/)[0], person: s.name, when: timeOffWhen(r), reason, jobs: jobsText, business: db.company.name, link: `${baseUrl()}/time-off` }).catch(() => {});
+  }
+  res.status(201).json(timeOffRow(r, u));
+});
+app.post('/api/time-off/:id/decide', async (req, res) => {
+  const u = currentUser(req); if (!canApproveTimeOff(u)) return res.status(403).json({ error: 'Ask the owner, an admin or a manager to decide this' });
+  const r = (db.timeOff || []).find((x) => x.id === req.params.id); if (!r) return res.status(404).json({ error: 'Request not found' });
+  if (r.status !== 'pending') return res.status(400).json({ error: `This request was already ${r.status}` });
+  if (r.staffId === u.staffId && !isAdmin(u)) return res.status(403).json({ error: 'Someone else needs to decide your own request' });
+  const b = req.body || {}; const approve = !!b.approve;
+  Object.assign(r, { status: approve ? 'approved' : 'declined', note: String(b.note || '').trim().slice(0, 500), decidedBy: u.name, decidedAt: new Date().toISOString() });
+  let removed = 0; if (approve && b.unassign) for (const j of timeOffJobs(r.staffId, r)) { j.staffIds = j.staffIds.filter((x) => x !== r.staffId); removed++; }
+  save();
+  const who = db.users.find((x) => x.id === r.userId) || db.users.find((x) => x.staffId === r.staffId);
+  if (who && who.email) sendTemplate('timeOffDecided', who.email, { name: who.name.split(/\s+/)[0], decision: approve ? 'approved' : 'declined', when: timeOffWhen(r), note: r.note ? `> ${r.note}` : '', decider: u.name, business: db.company.name, link: `${baseUrl()}/time-off` }).catch(() => {});
+  res.json({ ...timeOffRow(r, u), removedFrom: removed });
+});
+// cancel your own request (before it starts); approvers can cancel anyone's approved time off too
+app.post('/api/time-off/:id/cancel', (req, res) => {
+  const u = currentUser(req); const r = (db.timeOff || []).find((x) => x.id === req.params.id); if (!r) return res.status(404).json({ error: 'Request not found' });
+  if (r.staffId !== u.staffId && !canApproveTimeOff(u)) return res.status(403).json({ error: 'You can only cancel your own time off' });
+  if (!['pending', 'approved'].includes(r.status)) return res.status(400).json({ error: `This request was already ${r.status}` });
+  if (r.to < iso(new Date())) return res.status(400).json({ error: 'This time off is already over' });
+  r.status = 'canceled'; r.canceledBy = u.name; save(); res.json(timeOffRow(r, u));
+});
+
 // Roles & Permissions (owner/admin): the catalog, the roles, and how many logins have each; saving replaces the whole list
 const rolesView = () => ({ custom: customRolesOn(), catalog: rolesLib.catalog(), roles: teamRoles().map((r) => ({ ...r, users: db.users.filter((u) => u.role !== 'owner' && u.role !== 'admin' && roleKey(u) === r.id).length })), admins: db.users.filter((u) => u.role === 'admin').length });
 app.get('/api/roles', (req, res) => res.json(rolesView()));
@@ -483,7 +543,7 @@ app.post('/api/auth/accept-invite', (req, res) => {
 app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
 app.get('/api/auth/state', (req, res) => res.json({ needsSetup: !db.users.length, user: publicUser(currentUser(req)), company: { name: db.company.name, logo: db.company.logo, brandColor: db.company.brandColor }, product: brandLib.brand(), emailReady: !!emailProvider() }));
 // what this login may open: its permissions, the pages they unlock, and which lists it can load
-const accessOf = (u) => { const rk = roleKey(u); const routes = rolesLib.routesFor(teamRoles(), rk); return { perms: rolesLib.permsOf(teamRoles(), rk), pages: rolesLib.isAdminRole(u.role) ? null : rolesLib.pagesFor(teamRoles(), rk), collections: rolesLib.isAdminRole(u.role) ? COLLECTIONS : COLLECTIONS.filter((c) => rolesLib.allows(routes, 'GET', '/api/' + c)) }; };
+const accessOf = (u) => { const rk = roleKey(u); const routes = rolesLib.routesFor(teamRoles(), rk); return { staffId: u.staffId || null, perms: rolesLib.permsOf(teamRoles(), rk), pages: rolesLib.isAdminRole(u.role) ? null : rolesLib.pagesFor(teamRoles(), rk), collections: rolesLib.isAdminRole(u.role) ? COLLECTIONS : COLLECTIONS.filter((c) => rolesLib.allows(routes, 'GET', '/api/' + c)) }; };
 app.get('/api/auth/me', (req, res) => (currentUser(req) ? res.json({ ...publicUser(currentUser(req)), ...accessOf(currentUser(req)), ...(req._support ? { support: { adminName: req._support.adminName, expires: req._support.expires } } : {}) }) : res.status(401).json({ error: 'Please log in' })));
 app.post('/api/auth/setup', (req, res) => { // first run only: create the owner account
   if (db.users.length) return res.status(403).json({ error: 'An account already exists. Log in instead.' });
