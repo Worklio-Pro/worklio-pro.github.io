@@ -787,3 +787,4 @@ a.conn-chip{text-decoration:none}a.conn-chip:hover{text-decoration:underline}
 .pd-ref{color:var(--danger)}
 .money-in{display:flex;align-items:center;border:1px solid var(--border);border-radius:8px;background:var(--card);overflow:hidden;margin-top:4px}
 .money-in span{padding:0 10px;color:var(--muted)}.money-in input{border:0;margin:0!important;border-radius:0;min-width:0}
+.rf-page{max-width:1156px;margin:0 auto} /* Refer & Earn: centered on wide screens */

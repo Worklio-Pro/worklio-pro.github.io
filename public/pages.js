@@ -1586,7 +1586,7 @@ PAGES['/rewards'] = {
     const share = encodeURIComponent(R.link); const text = encodeURIComponent(`I run my business on ${company.account.productName}. Try it:`);
     const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
     const yt = R.video && youTubeId(R.video.url);
-    main.innerHTML = `<section class="rf-hero${R.heroImage ? ' has-img' : ''}"><div class="rf-hero-copy"><h1>${esc(R.title)}</h1><p>${esc(R.intro)}</p>${R.friendOffer ? `<p class="rf-offer">Your friends get <strong>${esc(R.friendOffer)}</strong>.</p>` : ''}
+    main.innerHTML = `<div class="rf-page"><section class="rf-hero${R.heroImage ? ' has-img' : ''}"><div class="rf-hero-copy"><h1>${esc(R.title)}</h1><p>${esc(R.intro)}</p>${R.friendOffer ? `<p class="rf-offer">Your friends get <strong>${esc(R.friendOffer)}</strong>.</p>` : ''}
 <button type="button" class="rf-copy" data-act="copyRefLink">Copy your referral link</button>
 <form id="refForm" class="rf-form"><div class="rf-row"><input name="firstName" placeholder="First name" aria-label="Friend’s first name" required maxlength="60"><input name="company" placeholder="Company name" aria-label="Friend’s company" maxlength="100"></div>
 <input name="email" type="email" placeholder="Email" aria-label="Friend’s email" required>
@@ -1611,7 +1611,7 @@ ${R.milestones.length ? `<h2 class="rf-h">Milestone rewards</h2><p class="muted 
 <div class="card ctable"><div class="tablewrap"><table><tr><th>Name</th><th class="m-hide">Email</th><th>Date referred</th><th>Status</th></tr>
 ${R.referrals.map((r) => `<tr><td><strong>${esc(r.name || '—')}</strong>${r.company ? `<div class="muted">${esc(r.company)}</div>` : ''}<div class="muted m-only">${esc(r.email)}</div></td><td class="m-hide">${esc(r.email)}</td><td>${fmtDate((r.date || '').slice(0, 10))}${r.via === 'link' ? '<div class="muted">Used your link</div>' : ''}</td><td><span class="cstatus ${REF_STATUS[r.status][1]}">${REF_STATUS[r.status][0]}</span></td></tr>`).join('') || '<tr><td colspan="4" class="empty">You haven’t sent any referrals yet.</td></tr>'}</table></div></div>
 ${R.video ? `<section class="rf-video card"><div><h2>${esc(R.video.title || 'How referrals work')}</h2>${R.video.text ? `<p>${esc(R.video.text)}</p>` : ''}${yt ? '' : `<a class="btn" href="${esc(R.video.url)}" target="_blank" rel="noopener">Watch the video</a>`}</div>
-${yt ? `<div class="rf-embed"><iframe src="https://www.youtube-nocookie.com/embed/${yt}" title="${esc(R.video.title || 'Video')}" allow="accelerometer; encrypted-media; picture-in-picture" allowfullscreen loading="lazy"></iframe></div>` : ''}</section>` : ''}`;
+${yt ? `<div class="rf-embed"><iframe src="https://www.youtube-nocookie.com/embed/${yt}" title="${esc(R.video.title || 'Video')}" allow="accelerometer; encrypted-media; picture-in-picture" allowfullscreen loading="lazy"></iframe></div>` : ''}</section>` : ''}</div>`;
     main._refLink = R.link;
     $('#refForm', main).addEventListener('submit', async (e) => {
       e.preventDefault(); const f = e.target; const b = $('.btn', f); b.disabled = true;
