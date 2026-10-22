@@ -879,6 +879,12 @@ app.post('/api/:col', (req, res, next) => {
   if (!COLLECTIONS.includes(col) || col === 'photos') return next();
   let b = req.body || {};
   if (col === 'jobs' && isMemberReq(req)) b = Object.fromEntries(Object.entries(b).filter(([k]) => MEMBER_JOB_FIELDS.includes(k)));
+  if (col === 'staff') { // a new team member needs a name, an email and a mobile number
+    const name = String(b.name || '').trim(); const email = String(b.email || '').trim(); const phone = String(b.phone || '').replace(/\D/g, '');
+    if (!name) return res.status(400).json({ error: 'Enter the team member’s full name' });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Enter the team member’s email address' });
+    if (phone.length < 10) return res.status(400).json({ error: 'Enter the team member’s mobile number with the area code' });
+  }
   let doc = { ...b, id: uid(), createdAt: iso(new Date()) };
   if (DOC_NUM[col] && String(b.number || '').trim()) { const r = customNumber(col, b.number); if (r.error) return res.status(400).json({ error: r.error }); doc.number = r.number; }
   if (col === 'clients') { doc.portalToken = token(); }

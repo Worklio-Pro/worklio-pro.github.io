@@ -161,14 +161,15 @@ const avatarHtml = (s, size) => (s.photo ? `<img class="avatar" src="${esc(s.pho
 function teamMemberPage(main, s) {
   s = s || {}; const palette = ['#2563eb', '#16a34a', '#d97706', '#9333ea', '#dc2626', '#0891b2', '#db2777'];
   const hours = staffHours(s); let photo = s.photo || '';
+  const req = s.id ? '' : '*'; // a new team member needs a name, email and mobile number
   main.innerHTML = `<a href="/team" data-link class="back">← Manage team</a><h1 class="tm-title">${esc(s.name) || 'New team member'}</h1>
 <form class="tmform"><div class="qcard"><h2>Personal info</h2>
 <div class="tm-photo"><span class="tm-av">${avatarHtml({ ...s, name: s.name || '?' }, 72)}</span><label class="btn alt sm">Upload image<input type="file" id="tmPhoto" accept="image/png,image/jpeg,image/webp" hidden></label>
 <button type="button" class="btn alt sm" data-act="tmPhotoRemove" ${photo ? '' : 'hidden'}>Remove</button></div>
 <div class="tm-grid"><div>
-<label class="fl"><span>Full name</span><input name="name" required value="${esc(s.name)}"></label>
-<label class="fl"><span>Email address</span><input name="email" type="email" value="${esc(s.email)}"></label>
-<label class="fl"><span>Mobile phone number</span><input name="phone" value="${esc(s.phone)}" placeholder="+17135550100"></label>
+<label class="fl"><span>Full name${req}</span><input name="name" required maxlength="100" autocomplete="off" value="${esc(s.name)}"></label>
+<label class="fl"><span>Email address${req}</span><input name="email" type="email" ${s.id ? '' : 'required'} autocomplete="off" value="${esc(s.email)}"></label>
+<label class="fl"><span>Mobile phone number${req}</span><input name="phone" type="tel" ${s.id ? '' : 'required'} autocomplete="off" value="${esc(s.phone)}" placeholder="(713) 555-0100"></label>
 <label class="fl"><span>Role</span><input name="role" value="${esc(s.role)}" placeholder="e.g. Owner, Technician, Installer"></label></div>
 <div class="addr"><input name="street" value="${esc(s.street)}" placeholder="Street address" aria-label="Street address"><input name="city" value="${esc(s.city)}" placeholder="City" aria-label="City">
 <input name="state" value="${esc(s.state)}" placeholder="State" aria-label="State"><div class="addr-row"><input name="zip" value="${esc(s.zip)}" placeholder="ZIP code" aria-label="ZIP code"><input name="country" value="${esc(s.country || 'United States')}" placeholder="Country" aria-label="Country"></div></div></div>
@@ -189,6 +190,7 @@ ${hoursHtml(hours)}</div>
     e.preventDefault();
     const b = Object.fromEntries(new FormData(form)); b.photo = photo; b.hours = readHours();
     const bad = badHours(b.hours); if (bad) return toast(bad, true);
+    if (!s.id && String(b.phone || '').replace(/\D/g, '').length < 10) { toast('Enter a mobile number with the area code', true); return $('[name=phone]', form).focus(); }
     s.id ? await api('PUT', '/api/staff/' + s.id, b) : await api('POST', '/api/staff', b);
     toast(s.id ? 'Team member saved' : 'Team member added'); navigate('/team');
   });
