@@ -623,6 +623,21 @@ a.hp-nav{color:var(--text);text-decoration:none;padding:6px 8px;margin:0 -8px 10
 .h-links a[aria-current]{color:var(--link);font-weight:700}
 .h-top .btn{height:40px;line-height:22px;font-weight:600;font-size:15px}
 @media (max-width:640px){.h-wrap{padding:0 16px}.h-links{display:none}.h-top .btn{margin-left:auto}}
+/* the Industries menu (lib/industries.js, public/menu.js); on phones it's the only header link */
+.h-menu{position:relative}
+.h-menu-btn{display:flex;align-items:center;gap:4px;background:none;border:0;color:var(--text);font:inherit;font-size:15px;font-weight:500;padding:8px 12px;border-radius:8px;cursor:pointer}
+.h-menu-btn:hover,.h-menu-btn[aria-expanded=true]{background:var(--tint)}
+.h-menu-btn svg{transition:transform .15s}.h-menu-btn[aria-expanded=true] svg{transform:rotate(180deg)}
+.h-drop{position:absolute;top:calc(100% + 10px);left:50%;transform:translateX(-50%);width:min(640px,calc(100vw - 32px));background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-lg);padding:10px;z-index:20}
+.h-drop-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:2px}
+.h-links .h-drop a{display:flex;align-items:center;gap:10px;font-size:14px;padding:9px 10px}
+.h-drop a span{font-size:17px;width:22px;text-align:center;flex:none}
+.h-links .h-drop .h-drop-all{justify-content:center;margin-top:8px;border-top:1px solid var(--line);border-radius:0 0 8px 8px;padding-top:12px;font-weight:700;color:var(--link)}
+@media (max-width:640px){.h-top .h-wrap{gap:6px}.h-brand,.h-top .btn{white-space:nowrap}.h-links{display:flex}.h-links>a{display:none}.h-top .btn{margin-left:0;padding:9px 12px;font-size:14px}.h-menu-btn{padding:8px 6px;font-size:14px}
+  .h-menu{position:static}.h-drop{position:fixed;top:64px;left:16px;right:16px;width:auto;transform:none;max-height:calc(100vh - 80px);overflow:auto}.h-drop-grid{grid-template-columns:1fr 1fr}}
+@media (max-width:420px){.h-brand{font-size:17px;gap:6px}.h-brand i{width:26px;height:26px}}
+@media (max-width:359px){.h-brand{font-size:15px}.h-menu-btn svg{display:none}.h-top .btn{padding:8px 10px;font-size:13px}}
+@media (prefers-reduced-motion:reduce){.h-menu-btn svg{transition:none}}
 /* Refer & Earn (/rewards) */
 .m-only{display:none}@media (max-width:760px){.m-only{display:block}}
 .tb-fb[hidden]{display:none}a.tb-fb{text-decoration:none}
