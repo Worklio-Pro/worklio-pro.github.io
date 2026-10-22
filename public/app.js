@@ -118,7 +118,14 @@ function permClasses() { const b = document.body; const lim = !isAdminMe(); b.cl
 const planHas = (f) => !(company.account && company.account.features) || company.account.features.includes(f);
 const planLocked = (path) => !!(company.account && (company.account.lockedPages || []).includes(path));
 const betaPage = (path) => !!(company.account && (company.account.betaPages || []).includes(path));
-const navFor = () => NAV.map(([g, items]) => [g, items.filter(([p]) => memberCan(p) && !planLocked(p))]).filter(([, items]) => items.length);
+// the menu in the order and sections set in Alpha → Settings → Menu (sent with the account info); NAV is the default
+function navList() {
+  const ord = company.account && company.account.navOrder; if (!ord) return NAV;
+  const label = Object.fromEntries(NAV.flatMap(([, items]) => items)); const home = Object.fromEntries(NAV.flatMap(([g, items]) => items.map(([p]) => [p, g])));
+  const list = ord.filter((o) => label[o.path]); for (const p of Object.keys(label)) if (!list.some((o) => o.path === p)) list.push({ path: p, group: home[p] }); // pages Alpha doesn't know about yet
+  return NAV.map(([g]) => [g, list.filter((o) => o.group === g).map((o) => [o.path, label[o.path]])]);
+}
+const navFor = () => navList().map(([g, items]) => [g, items.filter(([p]) => memberCan(p) && !planLocked(p))]).filter(([, items]) => items.length);
 // the sidebar's Requests link shows how many time-off requests are waiting for this approver
 // a page in beta testing (Alpha → Plans & features) says so in a banner at the top, instead of a tag in the menu
 const BETA_BAR = '<div class="beta-bar" role="status"><span class="beta-pill">Beta</span><span>This page is in beta testing. It works, but it may change and you might run into rough edges. <button type="button" class="link-btn" data-act="feedbackForm">Tell us</button> if something doesn’t look right.</span></div>';
