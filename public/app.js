@@ -63,7 +63,7 @@ function closeModal() { const o = $('#overlay'); if (o) o.remove(); }
 let D = {}; let company = {};
 // lists this login's role can't read (the server would refuse) load as empty
 async function loadAll() {
-  const names = ['clients', 'services', 'staff', 'quotes', 'jobs', 'invoices', 'expenses'];
+  const names = ['clients', 'services', 'staff', 'quotes', 'jobs', 'invoices', 'expenses', 'tasks', 'events'];
   const res = await Promise.all(names.map((n) => (me && me.collections && !me.collections.includes(n) ? [] : api('GET', '/api/' + n))));
   const out = {}; names.forEach((n, i) => { out[n] = res[i]; });
   // time off (a plan feature): approved time off for the schedule and job warnings; requests waiting for whoever approves
@@ -80,7 +80,7 @@ const clientOptions = (sel) => `<option value="">Select client…</option>` + D.
 /* ===== router ===== */
 const PAGES = {};
 const NAV = [
-  ['Operations', [['/business-overview', 'Home'], ['/calendar', 'Job Calendar'], ['/staff-schedules', 'Staff Schedules'], ['/requests', 'Requests'], ['/clients', 'Clients'], ['/quotes', 'Quotes'], ['/jobs', 'Jobs'], ['/invoices', 'Invoices']]],
+  ['Operations', [['/business-overview', 'Home'], ['/calendar', 'Job Calendar'], ['/staff-schedules', 'Schedules'], ['/requests', 'Requests'], ['/clients', 'Clients'], ['/quotes', 'Quotes'], ['/jobs', 'Jobs'], ['/invoices', 'Invoices']]],
   ['Money', [['/payments', 'Payments'], ['/services', 'Products & Services'], ['/expenses', 'Expenses'], ['/reports', 'Financial Reports'], ['/tax-summary', 'Tax Summary']]],
   ['Marketing', [['/reviews', 'Reviews'], ['/social-posts', 'Social Posts']]],
   ['Records', [['/project-gallery', 'Project Gallery'], ['/notifications', 'Notifications Log']]],
@@ -249,7 +249,7 @@ const HELP_TOPICS = [
   { id: 'schedule', hc: 'schedule', title: 'Schedule', blurb: 'Plan jobs on the calendar, assign team members and keep track of who’s working when.', steps: [
     ['Open the job calendar and pick a day to schedule a new job.', '/calendar', 'Job Calendar'],
     ['Assign team members to a job from the job page.', '/jobs', 'Jobs'],
-    ['Set each team member’s working hours.', '/staff-schedules', 'Staff Schedules']] },
+    ['Set each team member’s working hours.', '/staff-schedules', 'Schedules']] },
   { id: 'work', hc: 'work', title: 'Work', blurb: 'Every step of your workflow: quotes, jobs, invoices, payments and expenses.', steps: [
     ['Create a quote and send it to your client to approve.', '/quotes/new', 'New quote'],
     ['Turn approved work into a scheduled job.', '/jobs', 'Jobs'],
@@ -1125,6 +1125,7 @@ ${j.status === 'scheduled' ? `<button type="button" class="btn alt need-jobs-edi
 ${!canDo('jobs.prices') ? '' : itemsCard(items, '<div class="jdeposit"></div>', j.taxRate !== undefined ? j : q || j)}
 <div class="qcard"><h2>Scheduled visit</h2><div class="row3"><label>Date<input type="date" name="date" required value="${esc(j.date || p.date || ymd(new Date()))}"></label>
 <label>Start<input type="time" name="startTime" value="${esc(j.startTime || '09:00')}"></label><label>End<input type="time" name="endTime" value="${esc(j.endTime || '11:00')}"></label></div>
+<label class="switchline"><input type="checkbox" name="anytime" ${j.anytime ? 'checked' : ''}> Anytime that day (no set time)</label>
 <div class="muted qlabel">Assigned team</div><div class="team-pick">${team.map((s) => `<label><input type="checkbox" name="staff" value="${s.id}" ${(j.staffIds || []).includes(s.id) ? 'checked' : ''}>${avatarHtml(s, 24)}${esc(s.name)}</label>`).join('') || '<span class="muted">Add team members on Manage Team first</span>'}</div>
 <label>Instructions<textarea name="description" rows="3" placeholder="What the team needs to know for this visit">${esc(j.description || '')}</textarea></label></div>
 ${j.id && j.signature ? sigCard(j) : ''}
@@ -1152,7 +1153,7 @@ ${paid ? `<div class="crow-line"><span>Deposit collected <span class="muted">· 
   form.addEventListener('change', (e) => { if (e.target.name === 'clientId') contact(); });
   form.addEventListener('submit', async (e) => {
     e.preventDefault(); const fd = new FormData(form);
-    const body = { title: fd.get('title'), clientId: fd.get('clientId'), status: fd.get('status'), address: fd.get('address') || (byId(D.clients, fd.get('clientId')) || {}).address || '', date: fd.get('date'), startTime: fd.get('startTime'), endTime: fd.get('endTime'), description: fd.get('description'), staffIds: fd.getAll('staff'), internalNotes: fd.get('internalNotes'), taxRate: fd.get('taxRate'), discountType: fd.get('discountType'), discountValue: fd.get('discountValue'), items: readItems(form).filter((i) => i.desc) };
+    const body = { title: fd.get('title'), clientId: fd.get('clientId'), status: fd.get('status'), address: fd.get('address') || (byId(D.clients, fd.get('clientId')) || {}).address || '', date: fd.get('date'), startTime: fd.get('startTime'), endTime: fd.get('endTime'), anytime: !!fd.get('anytime'), description: fd.get('description'), staffIds: fd.getAll('staff'), internalNotes: fd.get('internalNotes'), taxRate: fd.get('taxRate'), discountType: fd.get('discountType'), discountValue: fd.get('discountValue'), items: readItems(form).filter((i) => i.desc) };
     if (body.endTime <= body.startTime) return toast('End time must be after start time', true);
     const clash = jobConflicts({ id: j.id, ...body });
     if (clash.length && !confirm(`Schedule conflict: ${clash.map((c) => c.number + ' ' + c.title).join(', ')} overlaps for an assigned staff member. Save anyway?`)) return;
@@ -1203,7 +1204,7 @@ A.rmSignature = async (d) => {
   if (!confirm('Remove this signature? Unsaved changes on this page will be lost. You can collect a new one afterwards.')) return;
   await api('DELETE', `/api/jobs/${d.id}/signature`); toast('Signature removed'); refresh();
 };
-PAGES['/jobs/new'] = { title: 'New job', render: (main) => jobPage(main, null, { clientId: qp('client'), date: qp('date') }) };
+PAGES['/jobs/new'] = { title: 'New job', render: (main) => { const draft = typeof jobDraft !== 'undefined' && jobDraft; if (draft) jobDraft = null; jobPage(main, draft || null, { clientId: qp('client'), date: qp('date') }); } }; // a draft: Schedules → More Options
 PAGES['/jobs/edit'] = {
   title: 'Job',
   render(main) {

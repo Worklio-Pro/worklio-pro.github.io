@@ -96,6 +96,7 @@ const save = () => tenancy.saveStore();
 // run once each time an account's data is loaded: brings data saved by older versions up to date
 function migrate() {
   ensureAuthStore(); ensureOwnerStaff();
+  db.tasks = db.tasks || []; db.events = db.events || []; // the Schedules page's tasks and events (besides jobs)
   for (const u of db.users) if (u.role === 'member') u.role = 'technician'; // the old "team member" role is now Technician
   if (!Array.isArray(db.roles)) db.roles = rolesLib.defaults(); // team roles (Settings → Roles & Permissions) start as Manager and Technician
   [...db.quotes, ...db.invoices].forEach(computeTotals); // cost/markup fields, deposit amount
@@ -426,7 +427,7 @@ const isMemberReq = (req) => { const u = currentUser(req); return !!u && !can(u,
 // what a team member may see/change on a job: no prices, totals or line items
 const MONEY_KEYS = ['items', 'subtotal', 'discount', 'discountType', 'discountValue', 'tax', 'total', 'taxRate', 'depositType', 'depositValue', 'depositFee'];
 const jobForMember = (j) => Object.fromEntries(Object.entries(j).filter(([k]) => !MONEY_KEYS.includes(k)));
-const MEMBER_JOB_FIELDS = ['title', 'clientId', 'address', 'date', 'startTime', 'endTime', 'staffIds', 'status', 'description', 'internalNotes'];
+const MEMBER_JOB_FIELDS = ['title', 'clientId', 'address', 'date', 'startTime', 'endTime', 'anytime', 'staffIds', 'status', 'description', 'internalNotes'];
 
 // ---------- team logins (owner/admin only; the /api guard above blocks members) ----------
 const INVITE_DAYS = 7;
@@ -624,7 +625,7 @@ app.post('/api/auth/profile', (req, res) => {
   if (st) { st.name = name; st.email = email; }
   u.name = name; u.email = email; save(); res.json(profileOf(u));
 });
-// a team member sets their own weekly availability (shown on Staff Schedules, used for booking warnings)
+// a team member sets their own weekly availability (shown on Schedules, used for booking warnings)
 const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']; const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 app.post('/api/auth/hours', (req, res) => {
   const u = currentUser(req); if (!u) return res.status(401).json({ error: 'Please log in' });
@@ -652,7 +653,14 @@ app.post('/api/auth/password', (req, res) => {
 app.use('/uploads', (req, res, next) => express.static(uploadDir())(req, res, next)); // each account's own uploads folder
 app.use(express.static(path.join(__dirname, 'public')));
 
-const COLLECTIONS = ['clients', 'services', 'staff', 'quotes', 'jobs', 'invoices', 'expenses', 'photos'];
+const COLLECTIONS = ['clients', 'services', 'staff', 'quotes', 'jobs', 'invoices', 'expenses', 'photos', 'tasks', 'events'];
+// a task or event on Schedules: what it is and when (a whole day when anytime)
+function calItemProblem(b, partial) {
+  if ((!partial || 'title' in b) && !String(b.title || '').trim()) return 'Give it a title';
+  if ((!partial || 'date' in b) && !/^\d{4}-\d{2}-\d{2}$/.test(b.date || '')) return 'Choose a date';
+  if (!b.anytime && (b.startTime || b.endTime) && !(String(b.endTime) > String(b.startTime))) return 'The end time must be after the start time';
+  return '';
+}
 
 // an account with a last day of access (Alpha): days left (0 = today is the last day), and whether to warn yet
 const expiryOf = (t) => {
@@ -959,6 +967,7 @@ app.post('/api/:col', (req, res, next) => {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Enter the team member’s email address' });
     if (phone.length < 10) return res.status(400).json({ error: 'Enter the team member’s mobile number with the area code' });
   }
+  if (col === 'tasks' || col === 'events') { const bad = calItemProblem(b); if (bad) return res.status(400).json({ error: bad }); }
   let doc = { ...b, id: uid(), createdAt: iso(new Date()) };
   if (DOC_NUM[col] && String(b.number || '').trim()) { const r = customNumber(col, b.number); if (r.error) return res.status(400).json({ error: r.error }); doc.number = r.number; }
   if (col === 'clients') { doc.portalToken = token(); }
@@ -995,6 +1004,7 @@ app.put('/api/:col/:id', (req, res, next) => {
     const r = customNumber(col, req.body.number, req.params.id); if (r.error) return res.status(400).json({ error: r.error }); upd.number = r.number;
   }
   if (col === 'jobs' && isMemberReq(req)) upd = Object.fromEntries(Object.entries(upd).filter(([k]) => MEMBER_JOB_FIELDS.includes(k)));
+  if (col === 'tasks' || col === 'events') { const bad = calItemProblem({ ...db[col][i], ...upd }); if (bad) return res.status(400).json({ error: bad }); }
   let doc = { ...db[col][i], ...upd };
   if (col === 'quotes') applyDepositPaymentEdit(doc, upd);
   if (col === 'quotes' || col === 'invoices' || (col === 'jobs' && Array.isArray(doc.items))) computeTotals(doc); // jobs are priced once they have line items

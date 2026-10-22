@@ -77,26 +77,175 @@ A.calView = (d) => { cal.view = d.v; refresh(); };
 let staffWeek = startOfWeek(new Date());
 // compact start time for the phone layout: 9a, 1:30p (12-hour) or 09:30 (24-hour)
 const shortTime = (t) => { const [h, m] = String(t || '0:0').split(':').map(Number); return company.timeFormat === '24' ? fmtTime(t) : `${((h + 11) % 12) + 1}${m ? ':' + String(m).padStart(2, '0') : ''}${h < 12 ? 'a' : 'p'}`; };
+/* ===== /staff-schedules (Schedules): a week or day on a time grid with everyone's jobs, tasks and events.
+   Click an empty time to add a Job, Task or Event there; drag anything to another day or time to move it. ===== */
+const SC_START = 6; const SC_END = 21; const SC_HOUR = 48; // the grid runs 6 AM to 9 PM, 48px per hour
+let scState = { anchor: new Date(), view: innerWidth < 700 ? 'day' : 'week', hidden: [] };
+try { const saved = JSON.parse(localStorage.getItem('sched') || '{}'); if (saved.view) scState.view = innerWidth < 700 ? 'day' : saved.view; if (saved.hidden) scState.hidden = saved.hidden; } catch (e) { /* private mode */ }
+const scSave = () => { try { localStorage.setItem('sched', JSON.stringify({ view: scState.view, hidden: scState.hidden })); } catch (e) { /* private mode */ } };
+const scMin = (t) => { const [h, m] = String(t || '0:0').split(':').map(Number); return h * 60 + (m || 0); };
+const scTime = (min) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+const scDays = () => (scState.view === 'day' ? [new Date(scState.anchor.getFullYear(), scState.anchor.getMonth(), scState.anchor.getDate())] : Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(scState.anchor), i)));
+// everything on one day: jobs, tasks and events, filtered by the team calendars shown
+function scItems(day) {
+  const shownStaff = (ids) => { const list = ids || []; return list.length ? list.some((id) => !scState.hidden.includes(id)) : !scState.hidden.includes('none'); };
+  const out = [];
+  for (const j of D.jobs) if (j.date === day && j.status !== 'cancelled' && shownStaff(j.staffIds)) out.push({ kind: 'job', id: j.id, title: j.title, sub: clientName(j.clientId), start: j.startTime, end: j.endTime, anytime: !!j.anytime, staffIds: j.staffIds || [], done: j.status === 'completed' });
+  for (const t of D.tasks || []) if (t.date === day && shownStaff(t.staffIds)) out.push({ kind: 'task', id: t.id, title: t.title, sub: t.clientId ? clientName(t.clientId) : t.address || '', start: t.startTime, end: t.endTime, anytime: !!t.anytime, staffIds: t.staffIds || [], done: !!t.done });
+  for (const e of D.events || []) if (e.date === day) out.push({ kind: 'event', id: e.id, title: e.title, sub: '', start: e.startTime, end: e.endTime, anytime: !!e.anytime, staffIds: [] });
+  return out;
+}
+const scColor = (it) => { const s = byId(D.staff, it.staffIds[0]); return it.kind === 'event' ? '#7c3aed' : s ? s.color : '#64748b'; };
+// overlapping items share the width of the day
+function scLayout(items) {
+  const L = items.map((it) => ({ ...it, s: scMin(it.start), e: Math.max(scMin(it.end), scMin(it.start) + 15) })).sort((a, b) => a.s - b.s || b.e - a.e);
+  let group = []; let groupEnd = -1; const done = [];
+  const flush = () => { const cols = []; for (const it of group) { let c = cols.findIndex((end) => end <= it.s); if (c < 0) { c = cols.length; cols.push(0); } cols[c] = it.e; it.col = c; } group.forEach((it) => { it.cols = cols.length; done.push(it); }); group = []; };
+  for (const it of L) { if (it.s >= groupEnd && group.length) flush(); group.push(it); groupEnd = Math.max(groupEnd, it.e); }
+  flush(); return done;
+}
 PAGES['/staff-schedules'] = {
-  title: 'Staff Schedules',
+  title: 'Schedules',
   async render(main) {
-    const days = Array.from({ length: 7 }, (_, i) => addDays(staffWeek, i)); const today = ymd(new Date());
-    const cell = (list) => list.map((j) => `<button class="chip ${j.status === 'completed' ? 'done' : ''}" data-act="editJob" data-id="${j.id}" title="${esc(fmtTime(j.startTime))} · ${esc(j.title)} · ${esc(clientName(j.clientId))}"><span class="c-full">${esc(j.startTime)}–${esc(j.endTime)}<br>${esc(j.title)}</span><span class="c-short">${shortTime(j.startTime)}</span></button>`).join('');
-    const forPerson = (sid, s) => D.jobs.filter((j) => j.date === s && j.status !== 'cancelled' && (sid ? (j.staffIds || []).includes(sid) : !(j.staffIds || []).length)).sort((a, b) => a.startTime.localeCompare(b.startTime));
-    const row = (s) => {
-      const week = days.map((d) => forPerson(s && s.id, ymd(d))); const h = week.flat().reduce((t, j) => t + hoursOf(j), 0);
-      return `<tr><td class="person">${s ? `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${esc(s.color)};margin-right:6px"></span><span class="p-name">${esc(s.name)}</span><div class="muted p-role">${esc(s.role)}</div>` : 'Unassigned'}<div class="muted p-load">${week.flat().length} jobs · ${h.toFixed(1)}h</div></td>${week.map((l, i) => { const off = s && !staffHours(s)[WEEK[days[i].getDay()][0]].on; const away = s && offOn(s.id, ymd(days[i])); return `<td class="${ymd(days[i]) === today ? 'today' : ''} ${off || (away && !away.start) ? 'off' : ''}">${away ? `<span class="to-l" title="Approved time off: ${esc(away.when)}">${away.start ? `Off ${esc(fmtTime(away.start))}–${esc(fmtTime(away.end))}` : 'Time off'}</span>` : ''}${cell(l) || (off && !away ? '<span class="off-l">Off</span>' : '')}</td>`; }).join('')}</tr>`;
-    };
-    const unassigned = days.some((d) => forPerson(null, ymd(d)).length);
-    main.innerHTML = `<div class="head"><div><h1>Staff Schedules</h1><p class="sub">Weekly workload and upcoming appointments for each team member.</p></div><div class="actions"><button class="btn alt admin-only" data-act="manageStaff">Manage staff</button><button class="btn need-jobs-edit" data-act="newJob">+ New job</button></div></div>
-<div class="card sched-card"><div class="head" style="margin-bottom:10px"><div class="actions"><button class="btn alt sm" data-act="swPrev">‹</button><button class="btn alt sm" data-act="swToday">This week</button><button class="btn alt sm" data-act="swNext">›</button></div><h2 style="margin:0">Week of ${fmtDate(ymd(staffWeek))}</h2></div>
-<div class="tablewrap"><table class="sched"><tr><th class="person"><span class="c-full">Team member</span><span class="c-short">Team</span></th>${days.map((d) => `<th class="${ymd(d) === today ? 'today' : ''}"><span class="c-full">${d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span><span class="c-short">${d.toLocaleDateString('en-US', { weekday: 'narrow' })}<b>${d.getDate()}</b></span></th>`).join('')}</tr>
-${D.staff.filter((s) => staffActive(s) || days.some((d) => forPerson(s.id, ymd(d)).length)).map(row).join('') || '<tr><td colspan="8" class="empty">No staff yet. Use “Manage staff” to add your team.</td></tr>'}${unassigned ? row(null) : ''}</table></div></div>`;
+    const days = scDays(); const today = ymd(new Date()); const edit = canDo('jobs.edit');
+    const a = scState.anchor; const first = new Date(a.getFullYear(), a.getMonth(), 1); const gridStart = startOfWeek(first);
+    const range = scState.view === 'day' ? a.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+      : `${days[0].toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}–${days[0].getMonth() === days[6].getMonth() ? days[6].getDate() : days[6].toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}, ${days[6].getFullYear()}`;
+    const week = days.map(ymd);
+    const mini = `<div class="sc-mini"><div class="sc-mini-h"><strong>${first.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</strong><span><button type="button" data-act="scMonth" data-n="-1" aria-label="Previous month">‹</button><button type="button" data-act="scMonth" data-n="1" aria-label="Next month">›</button></span></div>
+<div class="sc-mini-g">${Array.from({ length: 7 }, (_, i) => `<span class="dow">${addDays(gridStart, i).toLocaleDateString('en-US', { weekday: 'short' }).slice(0, 2)}</span>`).join('')}${Array.from({ length: 42 }, (_, i) => { const d = addDays(gridStart, i); const s = ymd(d);
+      return d.getMonth() !== first.getMonth() && i >= 35 ? '' : `<button type="button" class="${d.getMonth() !== first.getMonth() ? 'out ' : ''}${week.includes(s) ? 'in ' : ''}${s === today ? 'today' : ''}" data-act="scGo" data-d="${s}">${d.getDate()}</button>`; }).join('')}</div></div>`;
+    const team = [['none', 'Unassigned', '#64748b'], ...D.staff.filter(staffActive).map((s) => [s.id, s.name, s.color])];
+    const lane = (s) => { const it = scItems(s).filter((x) => x.anytime); const off = D.staff.filter((st) => !scState.hidden.includes(st.id)).map((st) => [st, offOn(st.id, s)]).filter(([, r]) => r && !r.start);
+      return `<div class="sc-lane" data-d="${s}">${off.map(([st]) => `<span class="sc-off" title="Approved time off">${esc(st.name.split(' ')[0])} off</span>`).join('')}${it.map((x) => `<div class="sc-chip k-${x.kind}${x.done ? ' done' : ''}" style="--c:${esc(scColor(x))}" data-kind="${x.kind}" data-id="${x.id}" ${edit ? 'data-drag="1"' : ''}>${esc(x.title)}</div>`).join('')}</div>`; };
+    const col = (s) => `<div class="sc-col${s === today ? ' today' : ''}" data-d="${s}">${scLayout(scItems(s).filter((x) => !x.anytime && x.start)).map((x) => { const top = (Math.max(x.s, SC_START * 60) - SC_START * 60) / 60 * SC_HOUR; const h = Math.max(18, (Math.min(x.e, SC_END * 60) - Math.max(x.s, SC_START * 60)) / 60 * SC_HOUR);
+      return `<div class="sc-item k-${x.kind}${x.done ? ' done' : ''}" style="--c:${esc(scColor(x))};top:${top}px;height:${h}px;left:calc(${(100 / x.cols) * x.col}% + 2px);width:calc(${100 / x.cols}% - 4px)" data-kind="${x.kind}" data-id="${x.id}" data-start="${x.start}" data-end="${x.end}" ${edit ? 'data-drag="1"' : ''} title="${esc(`${fmtTime(x.start)}–${fmtTime(x.end)} · ${x.title}${x.sub ? ' · ' + x.sub : ''}`)}">
+<span class="sc-t">${esc(fmtTime(x.start))}</span><strong>${esc(x.title)}</strong>${x.sub && h > 40 ? `<span class="sc-s">${esc(x.sub)}</span>` : ''}</div>`; }).join('')}${s === today && new Date().getHours() >= SC_START && new Date().getHours() < SC_END ? `<div class="sc-now" style="top:${(new Date().getHours() * 60 + new Date().getMinutes() - SC_START * 60) / 60 * SC_HOUR}px"></div>` : ''}</div>`;
+    main.innerHTML = `<div class="sc">
+<aside class="sc-side">${mini}<div class="sc-team"><h3>Team calendars</h3>${team.map(([id, n, c]) => `<label><input type="checkbox" data-act="scTeam" data-id="${esc(id)}" ${scState.hidden.includes(id) ? '' : 'checked'} style="accent-color:${esc(c)}"> ${esc(n)}</label>`).join('')}</div>
+${edit ? '<p class="muted sc-tip">Click a time to add a job, task or event. Drag anything to move it.</p>' : ''}</aside>
+<section class="sc-main"><div class="sc-bar"><button type="button" class="btn alt sm" data-act="scToday">Today</button><button type="button" class="btn alt sm sc-arrow" data-act="scStep" data-n="-1" aria-label="Previous">‹</button><button type="button" class="btn alt sm sc-arrow" data-act="scStep" data-n="1" aria-label="Next">›</button>
+<h1 class="sc-range">${esc(range)}</h1><span style="flex:1"></span><div class="sc-views">${[['day', 'Day'], ['week', 'Week']].map(([k, l]) => `<button type="button" class="${scState.view === k ? 'on' : ''}" data-act="scView" data-v="${k}">${l}</button>`).join('')}</div></div>
+<div class="sc-grid" style="--days:${days.length}">
+<div class="sc-head"><div class="sc-gut">${esc(Intl.DateTimeFormat().resolvedOptions().timeZone.split('/').pop().replace('_', ' '))}</div>${days.map((d) => `<div class="sc-dh${ymd(d) === today ? ' today' : ''}"><span>${d.toLocaleDateString('en-US', { weekday: 'short' })}</span><b>${d.getDate()}</b></div>`).join('')}</div>
+<div class="sc-head sc-anyrow"><div class="sc-gut">Anytime</div>${week.map(lane).join('')}</div>
+<div class="sc-body" id="scBody"><div class="sc-hours">${Array.from({ length: SC_END - SC_START }, (_, i) => `<div style="height:${SC_HOUR}px"><span>${fmtTime(scTime((SC_START + i) * 60)).replace(':00', '')}</span></div>`).join('')}</div>
+<div class="sc-cols" style="height:${(SC_END - SC_START) * SC_HOUR}px">${week.map(col).join('')}</div></div></div></section></div>`;
+    const body = $('#scBody'); const nowH = new Date().getHours(); body.scrollTop = Math.max(0, ((week.includes(today) ? nowH - 1 : 7) - SC_START) * SC_HOUR);
+    scWire(main, edit);
   },
 };
-A.swPrev = () => { staffWeek = addDays(staffWeek, -7); refresh(); };
-A.swNext = () => { staffWeek = addDays(staffWeek, 7); refresh(); };
-A.swToday = () => { staffWeek = startOfWeek(new Date()); refresh(); };
+A.scView = (d) => { scState.view = d.v; scSave(); refresh(); };
+A.scToday = () => { scState.anchor = new Date(); refresh(); };
+A.scStep = (d) => { scState.anchor = addDays(scState.anchor, Number(d.n) * (scState.view === 'day' ? 1 : 7)); refresh(); };
+A.scMonth = (d) => { const a = scState.anchor; scState.anchor = new Date(a.getFullYear(), a.getMonth() + Number(d.n), 1); refresh(); };
+A.scGo = (d) => { scState.anchor = parseD(d.d); refresh(); };
+A.scTeam = (d, el) => { scState.hidden = el.checked ? scState.hidden.filter((x) => x !== d.id) : [...new Set([...scState.hidden, d.id])]; scSave(); refresh(); };
+// clicks on empty time, and dragging items to a new day or time (pointer events: works with a mouse and on touch screens)
+function scWire(main, edit) {
+  const cols = $$('.sc-col', main); const lanes = $$('.sc-lane', main);
+  const at = (x, y) => { const c = cols.find((el) => { const r = el.getBoundingClientRect(); return x >= r.left && x <= r.right; }); if (!c) return null; const r = c.getBoundingClientRect(); return { col: c, day: c.dataset.d, min: SC_START * 60 + (y - r.top) / SC_HOUR * 60 }; };
+  if (edit) cols.forEach((c) => c.addEventListener('click', (e) => {
+    if (e.target.closest('.sc-item') || scDragged) return;
+    const p = at(e.clientX, e.clientY); const start = Math.min(SC_END * 60 - 60, Math.max(SC_START * 60, Math.floor(p.min / 30) * 30));
+    scQuick({ date: p.day, startTime: scTime(start), endTime: scTime(start + 60) }, e.clientX, e.clientY);
+  }));
+  if (edit) lanes.forEach((l) => l.addEventListener('click', (e) => { if (e.target.closest('.sc-chip')) return; scQuick({ date: l.dataset.d, startTime: '09:00', endTime: '10:00', anytime: true }, e.clientX, e.clientY); }));
+  $$('.sc-item, .sc-chip', main).forEach((el) => {
+    el.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return; const sx = e.clientX; const sy = e.clientY; const box = el.getBoundingClientRect(); const grabY = sy - box.top; let ghost = null; let target = null;
+      const isChip = el.classList.contains('sc-chip'); const dur = isChip ? 60 : scMin(el.dataset.end) - scMin(el.dataset.start);
+      const move = (m) => {
+        if (!el.dataset.drag) return;
+        if (!ghost && Math.hypot(m.clientX - sx, m.clientY - sy) < 5) return;
+        if (!ghost) { ghost = el.cloneNode(true); ghost.classList.add('sc-ghost'); ghost.style.width = box.width + 'px'; ghost.style.height = box.height + 'px'; document.body.appendChild(ghost); el.classList.add('sc-dragging'); }
+        const lane = isChip && lanes.find((l) => { const r = l.getBoundingClientRect(); return m.clientX >= r.left && m.clientX <= r.right && m.clientY >= r.top && m.clientY <= r.bottom; });
+        if (lane) { target = { day: lane.dataset.d, anytime: true }; ghost.style.left = m.clientX - 20 + 'px'; ghost.style.top = m.clientY - 10 + 'px'; ghost.querySelector('.sc-t') && (ghost.querySelector('.sc-t').textContent = 'Anytime'); return; }
+        const p = at(m.clientX, m.clientY - grabY); if (!p) return;
+        const start = Math.max(SC_START * 60, Math.min(SC_END * 60 - Math.min(dur, 60), Math.round(p.min / 15) * 15));
+        target = { day: p.day, start }; const r = p.col.getBoundingClientRect();
+        ghost.style.left = r.left + 2 + 'px'; ghost.style.width = r.width - 4 + 'px'; ghost.style.top = r.top + (start - SC_START * 60) / 60 * SC_HOUR + 'px';
+        const t = ghost.querySelector('.sc-t'); if (t) t.textContent = `${fmtTime(scTime(start))}–${fmtTime(scTime(start + dur))}`;
+      };
+      const up = async () => {
+        removeEventListener('pointermove', move); removeEventListener('pointerup', up);
+        if (!ghost) { scOpen(el.dataset.kind, el.dataset.id, sx, sy); return; } // a click
+        ghost.remove(); el.classList.remove('sc-dragging'); scDragged = true; setTimeout(() => { scDragged = false; }, 0);
+        if (!target) return;
+        const upd = target.anytime ? { date: target.day, anytime: true } : { date: target.day, startTime: scTime(target.start), endTime: scTime(target.start + dur), anytime: false };
+        const col = { job: 'jobs', task: 'tasks', event: 'events' }[el.dataset.kind];
+        try { await api('PUT', `/api/${col}/${el.dataset.id}`, upd); toast(`Moved to ${fmtDate(target.day)}${target.anytime ? ' (anytime)' : `, ${fmtTime(upd.startTime)}`}`); refresh(); } catch (x) { toast(x.message, true); refresh(); }
+      };
+      addEventListener('pointermove', move); addEventListener('pointerup', up);
+    });
+  });
+}
+let scDragged = false;
+// open what was clicked: a job opens its page; a task or event opens in the quick pop-up to edit
+function scOpen(kind, id, x, y) {
+  if (kind === 'job') return navigate('/jobs/edit?id=' + id);
+  const it = byId(kind === 'task' ? D.tasks : D.events, id); if (!it) return;
+  scQuick({ ...it }, x, y, kind);
+}
+// the quick pop-up: Job / Task / Event with the date and time filled in; drag it by its top bar
+function scQuick(p, x, y, editKind) {
+  $$('.qc').forEach((el) => el.remove());
+  let kind = editKind || 'job'; const edit = !!editKind && p.id;
+  const box = document.createElement('div'); box.className = 'qc'; box.setAttribute('role', 'dialog'); box.setAttribute('aria-label', edit ? 'Edit' : 'Add to the schedule');
+  const clientOpts = D.clients.map((c) => `<option value="${esc(c.name)}${c.address ? ' · ' + esc(c.address) : ''}" data-id="${c.id}"></option>`).join('');
+  const draw = () => {
+    const team = D.staff.filter(staffActive);
+    const opened = box._open || {};
+    box.innerHTML = `<div class="qc-bar" title="Drag to move"><span class="qc-grip" aria-hidden="true">⠿</span><span class="qc-h">${edit ? `Edit ${kind}` : ''}</span><button type="button" class="qc-x" aria-label="Close">×</button></div>
+${edit ? '' : `<div class="qc-tabs" role="tablist">${[['job', 'Job'], ['task', 'Task'], ['event', 'Event']].map(([k, l]) => `<button type="button" role="tab" aria-selected="${kind === k}" class="${kind === k ? 'on' : ''}" data-k="${k}">${l}</button>`).join('')}</div>`}
+<form class="qc-f">${kind !== 'event' ? `<input name="client" list="qcClients" placeholder="Search client or address" autocomplete="off" value="${esc(p.clientId ? (byId(D.clients, p.clientId) || {}).name || '' : p.address || '')}" ${kind === 'job' ? 'required' : ''}><datalist id="qcClients">${clientOpts}</datalist>` : ''}
+<input name="title" placeholder="Title" required maxlength="120" value="${esc(p.title || '')}">
+${opened.notes || p.description || p.details ? `<textarea name="notes" rows="2" placeholder="${kind === 'event' ? 'Details' : 'Instructions'}">${esc(p.description || p.details || '')}</textarea>` : `<button type="button" class="qc-add" data-open="notes">+ ${kind === 'event' ? 'Add Details' : 'Add Instructions'}</button>`}
+${kind === 'job' ? (opened.item ? '<div class="qc-item"><input name="itemDesc" placeholder="Product or service"><input name="itemQty" type="number" min="0" step="any" value="1" aria-label="Quantity"><input name="itemPrice" type="number" min="0" step="0.01" placeholder="Price" aria-label="Price"></div>' : '<button type="button" class="qc-add" data-open="item">+ Add Line Item</button>') : ''}
+${kind !== 'event' ? (opened.assign || (p.staffIds || []).length ? `<div class="qc-team">${team.map((s) => `<label><input type="checkbox" name="staff" value="${s.id}" ${(p.staffIds || []).includes(s.id) ? 'checked' : ''}>${avatarHtml(s, 20)} ${esc(s.name)}</label>`).join('') || '<span class="muted">Add team members first</span>'}</div>` : '<button type="button" class="qc-add" data-open="assign">+ Assign</button>') : ''}
+<div class="qc-when"><label class="fl"><span>Start date</span><input type="date" name="date" required value="${esc(p.date || ymd(new Date()))}"></label>
+<div class="qc-times" ${p.anytime ? 'hidden' : ''}><label class="fl"><span>Start</span><input type="time" name="startTime" value="${esc(p.startTime || '09:00')}"></label><label class="fl"><span>End</span><input type="time" name="endTime" value="${esc(p.endTime || '10:00')}"></label></div></div>
+<label class="qc-any"><input type="checkbox" name="anytime" ${p.anytime ? 'checked' : ''}> Anytime</label>
+<div class="qc-foot">${edit ? '<button type="button" class="btn danger" data-qc="delete">Delete</button>' : `<button type="button" class="btn alt" data-qc="more">More Options</button>`}<button class="btn">Save</button></div></form>`;
+    const f = $('.qc-f', box);
+    $$('.qc-tabs button', box).forEach((b) => b.addEventListener('click', () => { keep(); kind = b.dataset.k; draw(); }));
+    $$('.qc-add', box).forEach((b) => b.addEventListener('click', () => { keep(); box._open = { ...(box._open || {}), [b.dataset.open]: true }; draw(); const t = $(`[name=${b.dataset.open === 'notes' ? 'notes' : b.dataset.open === 'item' ? 'itemDesc' : 'staff'}]`, box); if (t) t.focus(); }));
+    $('.qc-x', box).addEventListener('click', () => box.remove());
+    f.anytime.addEventListener('change', () => { $('.qc-times', box).hidden = f.anytime.checked; });
+    const more = $('[data-qc=more]', box); if (more) more.addEventListener('click', () => { const v = read(); if (kind === 'job') { jobDraft = { title: v.title, clientId: v.clientId, date: v.date, startTime: v.startTime || '09:00', endTime: v.endTime || '10:00', staffIds: v.staffIds, description: v.notes, items: v.items }; box.remove(); navigate('/jobs/new'); } else { toast('Tasks and events have everything right here'); } });
+    const del = $('[data-qc=delete]', box); if (del) del.addEventListener('click', async () => { if (!confirm(`Delete this ${kind}?`)) return; try { await api('DELETE', `/api/${kind}s/${p.id}`); box.remove(); toast(`${kind === 'task' ? 'Task' : 'Event'} deleted`); refresh(); } catch (x) { toast(x.message, true); } });
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault(); const v = read();
+      if (kind === 'job' && !v.clientId) return toast('Choose a client from the list', true);
+      if (!v.anytime && v.endTime <= v.startTime) return toast('The end time must be after the start time', true);
+      const btn = $('.qc-foot .btn:not(.alt):not(.danger)', box); btn.disabled = true;
+      try {
+        if (kind === 'job') await api('POST', '/api/jobs', { title: v.title, clientId: v.clientId, address: (byId(D.clients, v.clientId) || {}).address || '', date: v.date, startTime: v.startTime || '09:00', endTime: v.endTime || '10:00', anytime: v.anytime, staffIds: v.staffIds, description: v.notes, ...(v.items ? { items: v.items } : {}) });
+        else { const doc = { title: v.title, date: v.date, startTime: v.anytime ? '' : v.startTime, endTime: v.anytime ? '' : v.endTime, anytime: v.anytime, ...(kind === 'task' ? { clientId: v.clientId, address: v.clientId ? '' : v.address, description: v.notes, staffIds: v.staffIds } : { details: v.notes }) };
+          await api(edit ? 'PUT' : 'POST', edit ? `/api/${kind}s/${p.id}` : `/api/${kind}s`, doc); }
+        box.remove(); toast(`${kind[0].toUpperCase() + kind.slice(1)} ${edit ? 'saved' : 'added'}`); refresh();
+      } catch (x) { btn.disabled = false; toast(x.message, true); }
+    });
+  };
+  // what's typed carries over when switching tabs or opening a section
+  const read = () => { const f = $('.qc-f', box); const fd = new FormData(f); const typed = String(fd.get('client') || ''); const opt = $$('#qcClients option', box).find((o) => o.value === typed);
+    const desc = String(fd.get('itemDesc') || '').trim();
+    return { clientId: opt ? opt.dataset.id : '', address: opt ? '' : typed, title: String(fd.get('title') || '').trim(), notes: String(fd.get('notes') || ''), date: fd.get('date'), startTime: fd.get('startTime') || '', endTime: fd.get('endTime') || '', anytime: !!fd.get('anytime'), staffIds: fd.getAll('staff'),
+      items: desc ? [{ desc, qty: Number(fd.get('itemQty')) || 1, cost: Number(fd.get('itemPrice')) || 0, price: Number(fd.get('itemPrice')) || 0, markup: 0, markupType: 'percent' }] : null }; };
+  const keep = () => { const v = read(); Object.assign(p, { clientId: v.clientId, address: v.address, title: v.title, description: v.notes, details: v.notes, date: v.date, startTime: v.startTime, endTime: v.endTime, anytime: v.anytime, staffIds: v.staffIds }); };
+  draw(); document.body.appendChild(box);
+  // place it beside the click, inside the window
+  const w = box.offsetWidth; const h = box.offsetHeight; box.style.left = Math.max(8, Math.min(innerWidth - w - 8, x + 12)) + 'px'; box.style.top = Math.max(8, Math.min(innerHeight - h - 8, y - 40)) + 'px';
+  const t = $('[name=client]', box) || $('[name=title]', box); t.focus();
+  // move it by dragging the top bar
+  $('.qc-bar', box).addEventListener('pointerdown', (e) => {
+    if (e.target.closest('.qc-x')) return; e.preventDefault(); const ox = e.clientX - box.offsetLeft; const oy = e.clientY - box.offsetTop;
+    const mv = (m) => { box.style.left = Math.max(0, Math.min(innerWidth - 60, m.clientX - ox)) + 'px'; box.style.top = Math.max(0, Math.min(innerHeight - 40, m.clientY - oy)) + 'px'; };
+    const end = () => { removeEventListener('pointermove', mv); removeEventListener('pointerup', end); };
+    addEventListener('pointermove', mv); addEventListener('pointerup', end);
+  });
+}
+let jobDraft = null; // More Options: the quick pop-up's job, opened in the full job form
 A.manageStaff = () => navigate('/team');
 
 /* ===== /requests (Requests): team members ask for time off; the owner, admins and anyone who can edit jobs approve it (a plan feature) ===== */
@@ -112,7 +261,7 @@ PAGES['/requests'] = {
     const past = T.approver ? T.requests.filter((r) => !r.mine && r.status !== 'pending' && !(r.status === 'approved' && r.to >= today)).slice(0, 20) : [];
     const who = (r) => `<span class="to-dot" style="background:${esc(r.color || '#64748b')}"></span><strong>${esc(r.person)}</strong>`;
     const badge = (r) => `<span class="cstatus ${TO_STATUS[r.status][1]}">${TO_STATUS[r.status][0]}</span>`;
-    main.innerHTML = `<div class="head"><div><h1>Requests</h1><p class="sub">${T.approver ? 'Requests from your team, and who’s off.' : 'Ask for time off and see who’s off.'} Approved time off shows on Staff Schedules.</p></div>
+    main.innerHTML = `<div class="head"><div><h1>Requests</h1><p class="sub">${T.approver ? 'Requests from your team, and who’s off.' : 'Ask for time off and see who’s off.'} Approved time off shows on Schedules.</p></div>
 ${T.canRequest ? '<button class="btn" data-act="requestOff">Request time off</button>' : ''}</div>
 ${T.approver ? `<div class="card"><h2>Waiting for you${review.length ? ` <span class="msg-n">${review.length}</span>` : ''}</h2>${review.length ? `<div class="to-list">${review.map((r) => `<div class="to-row"><div class="to-main"><div>${who(r)} · ${esc(r.when)}</div><p class="to-reason">${esc(r.reason)}</p>${toJobs(r)}<div class="muted to-meta">Asked ${fmtDate((r.createdAt || '').slice(0, 10))}</div></div>
 <div class="to-acts"><button type="button" class="btn alt to-big" data-act="toDecide" data-id="${r.id}" data-ok="">Decline</button><button type="button" class="btn to-big" data-act="toDecide" data-id="${r.id}" data-ok="1">Approve</button></div></div>`).join('')}</div>` : '<p class="muted" style="margin:0">No requests waiting.</p>'}</div>` : ''}
@@ -165,7 +314,7 @@ ${ok && r.jobs.length ? `<label class="switchline"><input type="checkbox" name="
 A.toCancel = async (d) => { const r = toState.requests.find((x) => x.id === d.id); if (!confirm(`Cancel ${r.mine ? 'your' : `${r.person}’s`} time off ${r.when}?`)) return; try { await api('POST', `/api/time-off/${d.id}/cancel`, {}); toast('Time off canceled'); refresh(); } catch (x) { toast(x.message, true); } };
 
 /* ===== /team ===== */
-// Team members are the staff list (also used for job assignment and Staff Schedules). There are no logins yet,
+// Team members are the staff list (also used for job assignment and Schedules). There are no logins yet,
 // so "last active" is the member's most recent job, and adding a member doesn't send an invitation.
 const staffActive = (s) => s.status !== 'deactivated';
 const initials = (n) => String(n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('');
@@ -184,7 +333,7 @@ PAGES['/team'] = {
     const th = (k, label) => `<th><button class="th-btn" data-act="teamSort" data-k="${k}">${label} <span class="sort ${v.sort === k ? 'on' : ''}">${v.sort === k ? (v.dir > 0 ? '▲' : '▼') : '⇅'}</span></button></th>`;
     const active = D.staff.filter(staffActive).length;
     main.innerHTML = `<div class="head"><h1>Manage team</h1><div class="actions"><span class="seat-pill"><strong>${active}</strong> active member${active === 1 ? '' : 's'}</span><button class="btn" data-act="newStaff">Add Team Member</button></div></div>
-<p class="sub" style="margin-top:-6px">Manage your team members in one place. Team members can be assigned to jobs and appear on Staff Schedules.</p>
+<p class="sub" style="margin-top:-6px">Manage your team members in one place. Team members can be assigned to jobs and appear on Schedules.</p>
 <div class="cfilters"><div class="search-x" style="max-width:none"><input id="tq" type="search" placeholder="Search team members" value="${esc(v.q)}" aria-label="Search team members"><button type="button" class="icon-btn" data-act="teamClear" aria-label="Clear search" ${v.q ? '' : 'hidden'}>✕</button></div></div>
 <h2 class="ftitle" style="font-size:15px">Team members (${list.length})</h2>
 <div class="card ctable"><div class="tablewrap"><table><tr>${th('name', 'Name')}${th('role', 'Role')}${th('last', 'Last job')}<th>Next job</th>${th('status', 'Status')}<th>Login</th><th>Contact</th></tr>
@@ -241,7 +390,7 @@ function teamMemberPage(main, s) {
 <div class="row tm-extra"><label>Calendar color<input name="color" type="color" value="${esc(s.color || palette[D.staff.length % palette.length])}"></label>
 ${isOwnerMember(s) ? '' : `<label>Status<select name="status"><option value="active">Active</option><option value="deactivated" ${s.status === 'deactivated' ? 'selected' : ''}>Deactivated (hidden from scheduling)</option></select></label>`}</div>
 <hr class="tm-hr"><h2>Schedule</h2><h3>Working hours</h3>
-<p class="muted">Working hours show on Staff Schedules (days off are marked) and you'll get a warning when a job is booked outside them.</p>
+<p class="muted">Working hours show on Schedules (days off are marked) and you'll get a warning when a job is booked outside them.</p>
 ${hoursHtml(hours)}</div>
 <div class="foot">${s.id && !isOwnerMember(s) ? `<button type="button" class="btn danger" data-act="delStaff" data-id="${s.id}">Remove team member</button>` : ''}<a class="btn alt" href="/team" data-link>Cancel</a><button class="btn">${s.id ? 'Save' : 'Add team member'}</button></div></form>${s.id ? '<div class="qcard login-card" id="loginCard"><h2>Login access</h2><p class="muted">Loading…</p></div>' : ''}`;
   const form = $('form', main); if (s.id) renderLoginCard(s);
@@ -1249,7 +1398,7 @@ ${p.jobTitle ? `<p class="muted">Role: ${esc(p.jobTitle)}. Ask the account owner
 <input name="state" value="${esc(p.state)}" placeholder="State" aria-label="State" autocomplete="address-level1"><div class="addr-row"><input name="zip" value="${esc(p.zip)}" placeholder="ZIP code" aria-label="ZIP code" autocomplete="postal-code"><input name="country" value="${esc(p.country || 'United States')}" placeholder="Country" aria-label="Country" autocomplete="country-name"></div></div></div>
 <div class="foot"><button class="btn">Save profile</button></div></div></form>
 ${p.linked ? `<form class="tmform" id="pfHours"><div class="qcard login-card"><h2>Working hours</h2>
-<p class="muted">When you're available to work. Your hours show on Staff Schedules (days off are marked) and the office gets a warning if a job is booked outside them.</p>
+<p class="muted">When you're available to work. Your hours show on Schedules (days off are marked) and the office gets a warning if a job is booked outside them.</p>
 ${hoursHtml(staffHours(p))}<div class="foot"><button class="btn">Save hours</button></div></div></form>` : ''}
 <form class="tmform" id="pfPass"><div class="qcard login-card"><h2>Change password</h2><p class="muted">Use at least 8 characters. Changing it signs you out on your other devices.</p>
 <div class="pf-pw"><input type="email" name="username" value="${esc(p.email)}" autocomplete="username" hidden>
