@@ -501,6 +501,13 @@ app.put('/api/roles', (req, res) => {
   const inUse = {}; for (const u of db.users) inUse[u.role] = (inUse[u.role] || 0) + 1;
   try { db.roles = rolesLib.validate(req.body && req.body.roles, inUse); save(); res.json(rolesView()); } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
+// the login cap: the current plan's, or a scheduled downgrade's if that's lower (so logins can't be added after booking one)
+const logins = (n) => `${n} login${n === 1 ? '' : 's'}`;
+function loginLimit() {
+  const t = tenancy.current(); const pending = t.billing && t.billing.pendingPlanId && tenancy.platform().plans.find((p) => p.id === t.billing.pendingPlanId);
+  const caps = [tenancy.planOf(t), pending].filter((p) => p && p.maxUsers > 0).sort((a, b) => a.maxUsers - b.maxUsers);
+  return caps[0] ? { max: caps[0].maxUsers, name: caps[0].name } : null;
+}
 app.post('/api/users/invite', async (req, res) => { // invite (or re-invite) a team member; returns the link so it can also be shared by hand
   const st = db.staff.find((x) => x.id === (req.body && req.body.staffId)); if (!st) return res.status(404).json({ error: 'Team member not found' });
   const email = normEmail(st.email); if (!email.includes('@')) return res.status(400).json({ error: 'Add an email address for this team member first' });
@@ -508,8 +515,8 @@ app.post('/api/users/invite', async (req, res) => { // invite (or re-invite) a t
   let user = db.users.find((u) => u.staffId === st.id) || db.users.find((u) => u.email === email);
   if (user && user.role === 'owner') return res.status(400).json({ error: 'This email belongs to the account owner' });
   if (user && user.passwordHash) return res.status(400).json({ error: 'They already have a login' });
-  const max = tenancy.planOf(tenancy.current()).maxUsers || 0;
-  if (max && !user && db.users.length >= max) return res.status(403).json({ error: `Your ${tenancy.planOf(tenancy.current()).name} plan includes ${max} login${max === 1 ? '' : 's'}. Upgrade to add more of your team.`, upgrade: 'users' });
+  const lim = loginLimit();
+  if (lim && !user && db.users.length >= lim.max) return res.status(403).json({ error: `Your ${lim.name} plan includes ${logins(lim.max)}. Upgrade to add more of your team.`, upgrade: 'users' });
   if (!user) { user = { id: uid(), createdAt: iso(new Date()) }; db.users.push(user); }
   Object.assign(user, { name: st.name, email, role, staffId: st.id, invitedAt: iso(new Date()), invitedBy: currentUser(req).id });
   for (const [k, t] of Object.entries(db.resetTokens)) if (t.userId === user.id) delete db.resetTokens[k]; // old invite links stop working
@@ -2225,6 +2232,8 @@ app.post('/api/account/billing/plan', async (req, res) => {
   if (tenancy.isDefault(t)) return res.status(400).json({ error: 'Your platform’s own account doesn’t have a plan to change' });
   const to = P.plans.find((p) => p.id === (req.body && req.body.planId) && !p.hidden); if (!to) return res.status(400).json({ error: 'Choose a plan' });
   const from = tenancy.planOf(t); const b = t.billing || (t.billing = {});
+  if (to.id !== t.planId && to.maxUsers > 0 && db.users.length > to.maxUsers) { const extra = db.users.length - to.maxUsers; // a smaller team plan: remove the extra logins first
+    return res.status(400).json({ error: `${to.name} includes ${logins(to.maxUsers)} and you have ${db.users.length}. Remove login access for ${extra} team member${extra === 1 ? '' : 's'} first (Manage team → open a team member → Remove login access), then switch.`, upgrade: 'users' }); }
   const want = req.body.interval === 'year' ? 'year' : 'month'; const c = stripeLib.planCharge(to, want);
   if (c && c.interval !== want) return res.status(400).json({ error: `${to.name} isn’t available ${want === 'year' ? 'yearly' : 'monthly'}` });
   const label = `${to.name}${c ? ` (${want === 'year' ? 'yearly' : 'monthly'})` : ''}`;
