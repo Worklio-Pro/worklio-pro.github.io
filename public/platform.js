@@ -43,6 +43,28 @@ function authView(state, err) {
   });
 }
 
+// the link in a support user's welcome or password-reset email: /alpha?invite=…
+async function inviteView(token, state) {
+  const brand = state.brand && state.brand.logo ? `<div class="pf-auth-logo">${brandImg(state.brand)}</div>` : '';
+  let I; try { I = await api('GET', '/api/platform/invite?token=' + encodeURIComponent(token)); }
+  catch (x) { $('#root').innerHTML = `<div class="pf-auth card">${brand}<h1>Link expired</h1><p class="muted">${esc(x.message)}</p><a class="btn alt" href="/alpha">Go to the Alpha login</a></div>`; return; }
+  const welcome = I.kind === 'invite'; document.title = welcome ? 'Activate your login · Alpha' : 'Choose a new password · Alpha';
+  const draw = (err) => {
+    $('#root').innerHTML = `<div class="pf-auth card">${brand}<h1>${welcome ? `Welcome, ${esc(I.name.split(/\s+/)[0])}` : 'Choose a new password'}</h1>
+<p class="muted">${welcome ? `Choose a password to activate your support login for ${esc(I.productName)} Alpha.` : 'Choose a new password for your Alpha login.'}</p>
+<form id="ivf">${err ? `<div class="msg err" role="alert">${esc(err)}</div>` : ''}<label>Email<input value="${esc(I.email)}" readonly autocomplete="username"></label>
+<label>Password (10+ characters)<input name="password" type="password" required minlength="10" autocomplete="new-password"></label>
+<label>Type it again<input name="again" type="password" required minlength="10" autocomplete="new-password"></label>
+<button class="btn">${welcome ? 'Activate and log in' : 'Save and log in'}</button></form></div>`;
+    $('#ivf [name=password]').focus();
+    $('#ivf').addEventListener('submit', async (e) => {
+      e.preventDefault(); const b = Object.fromEntries(new FormData(e.target)); if (b.password !== b.again) return draw('The two passwords don’t match');
+      try { await api('POST', '/api/platform/invite', { token, password: b.password }); history.replaceState(null, '', '/alpha'); boot(); } catch (x) { draw(x.message); }
+    });
+  };
+  draw();
+}
+
 /* ===== shell ===== */
 const ico = (d) => `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const TAB_ICONS = { // bottom bar icons (phones)
@@ -349,31 +371,33 @@ function settingsView(main) {
 async function teamCard(box) {
   let T; try { T = await api('GET', '/api/platform/team'); } catch (x) { box.innerHTML = `<h2>Alpha team</h2><p class="muted">${esc(x.message)}</p>`; return; }
   const when = (s) => (s ? new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Never');
-  box.innerHTML = `<h2>Alpha team</h2><p class="muted" style="font-size:13px;margin-top:0">Support users log in at this same Alpha address and see only <strong>Accounts</strong>, <strong>Messages</strong> (including Live chat) and <strong>Help Center</strong>.</p>
+  const status = (a) => (a.role === 'owner' ? '<span class="cstatus active">Owner: everything</span>'
+    : a.pending ? `<span class="cstatus q-sent">${a.linkExpired ? 'Link expired' : a.lastLoginAt ? 'Reset sent' : 'Invite sent'}</span>${a.linkSentAt ? `<div class="sm">${when(a.linkSentAt)}</div>` : ''}` : '<span class="cstatus">Support</span>');
+  box.innerHTML = `<h2>Alpha team</h2><p class="muted" style="font-size:13px;margin-top:0">Support users log in at this same Alpha address and see only <strong>Accounts</strong>, <strong>Messages</strong> (including Live chat) and <strong>Help Center</strong>. They get a welcome email with a link to choose their password.</p>
 <div class="tablewrap"><table class="acc"><thead><tr><th>Name</th><th>Access</th><th>Last login</th><th></th></tr></thead><tbody>${T.map((a) => `<tr><td class="nm">${esc(a.name)}${a.id === D.admin.id ? ' <span class="sm">(you)</span>' : ''}<div class="sm">${esc(a.email)}</div></td>
-<td><span class="cstatus ${a.role === 'owner' ? 'active' : ''}">${a.role === 'owner' ? 'Owner: everything' : 'Support'}</span></td><td class="sm">${when(a.lastLoginAt)}</td>
-<td><div class="acts">${a.role === 'support' ? `<button type="button" class="btn alt sm" data-act="teamPw" data-id="${a.id}" data-name="${esc(a.name)}">Reset password</button><button type="button" class="btn danger sm" data-act="teamRm" data-id="${a.id}" data-name="${esc(a.name)}">Remove</button>` : ''}</div></td></tr>`).join('')}</tbody></table></div>
+<td>${status(a)}</td><td class="sm">${when(a.lastLoginAt)}</td>
+<td><div class="acts">${a.role === 'support' ? `<button type="button" class="btn alt sm" data-act="teamLink" data-id="${a.id}" data-name="${esc(a.name)}" data-pending="${a.pending && !a.lastLoginAt ? 1 : ''}">${a.pending && !a.lastLoginAt ? 'Resend invite' : 'Send password reset'}</button><button type="button" class="btn danger sm" data-act="teamRm" data-id="${a.id}" data-name="${esc(a.name)}">Remove</button>` : ''}</div></td></tr>`).join('')}</tbody></table></div>
 <button type="button" class="btn alt sm" data-act="teamAdd" style="margin-top:12px">+ Add a support user</button>`;
 }
+// after an invite or reset: confirm it was emailed, or hand over the link when email isn't working
+function teamLinkResult(r, name) {
+  if (r.invite.sent) return toast(r.invite.kind === 'invite' ? `Welcome email sent to ${name}` : `Password reset sent to ${name}`);
+  modal(r.invite.kind === 'invite' ? 'Share the invite link' : 'Share the reset link', `<p>The email couldn’t be sent (${esc(r.invite.detail)}). Send ${esc(name)} this link yourself. It works for 7 days.</p>
+<div class="linkbox"><input readonly value="${esc(r.invite.link)}" aria-label="Link"><button type="button" class="btn alt" data-act="copy">Copy</button></div>
+<div class="acts" style="margin-top:12px"><button type="button" class="btn" data-act="closeModal">Done</button></div>`);
+}
 A.teamAdd = () => {
-  const m = modal('Add a support user', `<form id="tmf"><p class="muted" style="margin-top:0">They’ll see Accounts, Messages and Help Center. Share the password with them yourself; they log in at <strong>${esc(location.origin)}/alpha</strong>.</p>
+  const m = modal('Add a support user', `<form id="tmf"><p class="muted" style="margin-top:0">They’ll get a welcome email with a link to activate their login and choose a password. They’ll see Accounts, Messages and Help Center.</p>
 <div class="row"><label>Name<input name="name" required maxlength="100" autocomplete="off"></label><label>Email<input name="email" type="email" required autocomplete="off"></label></div>
-<label>Password (10+ characters)<div class="pw-row"><input name="password" required minlength="10" autocomplete="new-password"><button type="button" class="btn alt sm" data-act="teamGen">Make one</button></div></label>
-<div class="acts" style="margin-top:12px"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Add support user</button></div></form>`);
+<div class="acts" style="margin-top:12px"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Send invite</button></div></form>`);
   $('#tmf', m).addEventListener('submit', async (e) => {
-    e.preventDefault(); const b = Object.fromEntries(new FormData(e.target));
-    try { await api('POST', '/api/platform/team', b); closeModal(); toast(`${b.name} can now log in to Alpha`); teamCard($('#teamCard')); } catch (x) { toast(x.message, true); }
+    e.preventDefault(); const b = Object.fromEntries(new FormData(e.target)); const btn = $('button.btn:not(.alt)', e.target); btn.disabled = true;
+    try { const r = await api('POST', '/api/platform/team', b); closeModal(); teamCard($('#teamCard')); teamLinkResult(r, b.name.trim().split(/\s+/)[0]); } catch (x) { btn.disabled = false; toast(x.message, true); }
   });
 };
-// a readable random password: four groups of letters and digits
-A.teamGen = (d, el) => { const c = 'abcdefghjkmnpqrstuvwxyz23456789'; const r = crypto.getRandomValues(new Uint32Array(16)); const p = [...r].map((n) => c[n % c.length]).join('').replace(/(.{4})(?!$)/g, '$1-'); const i = el.parentElement.querySelector('input'); i.value = p; i.select(); };
-A.teamPw = (d) => {
-  const m = modal(`New password for ${d.name}`, `<form id="tpf"><p class="muted" style="margin-top:0">They’re logged out everywhere and log in again with the new password. Share it with them yourself.</p>
-<label>New password (10+ characters)<div class="pw-row"><input name="password" required minlength="10" autocomplete="new-password"><button type="button" class="btn alt sm" data-act="teamGen">Make one</button></div></label>
-<div class="acts" style="margin-top:12px"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save password</button></div></form>`);
-  $('#tpf', m).addEventListener('submit', async (e) => {
-    e.preventDefault(); try { await api('PUT', '/api/platform/team/' + d.id, Object.fromEntries(new FormData(e.target))); closeModal(); toast('Password changed'); } catch (x) { toast(x.message, true); }
-  });
+A.teamLink = async (d) => {
+  if (!d.pending && !confirm(`Send ${d.name} a password reset? Their current password stops working until they choose a new one from the email.`)) return;
+  try { const r = await api('POST', `/api/platform/team/${d.id}/link`, {}); teamCard($('#teamCard')); teamLinkResult(r, d.name); } catch (x) { toast(x.message, true); }
 };
 A.teamRm = async (d) => { if (!confirm(`Remove ${d.name}? They’re logged out right away and can’t log in to Alpha anymore.`)) return; try { await api('DELETE', '/api/platform/team/' + d.id); toast(`${d.name} removed`); teamCard($('#teamCard')); } catch (x) { toast(x.message, true); } };
 // the Integrations tab: one box per service, in two columns on wide screens
@@ -968,6 +992,7 @@ document.addEventListener('click', (e) => {
 
 async function boot() {
   const state = await api('GET', '/api/platform/state');
+  const invite = new URLSearchParams(location.search).get('invite'); if (invite) return inviteView(invite, state);
   if (!state.admin) { document.title = 'Alpha'; return authView(state); }
   await load(); tab = tabFromHash(); render();
 }
