@@ -106,7 +106,7 @@ const isTech = () => role() === 'technician';
 const ROLE_PAGES = {
   technician: ['/calendar', '/staff-schedules', '/clients', '/jobs', '/jobs/edit', '/profile', '/settings/support-access'],
   manager: ['/business-overview', '/calendar', '/staff-schedules', '/clients', '/quotes', '/quotes/new', '/quotes/edit', '/jobs', '/jobs/new', '/jobs/edit',
-    '/invoices', '/invoices/new', '/invoices/edit', '/payments', '/services', '/expenses', '/reports', '/tax-summary', '/project-gallery', '/reviews', '/social-posts', '/profile', '/settings/support-access'],
+    '/invoices', '/invoices/new', '/invoices/edit', '/payments', '/payments/view', '/services', '/expenses', '/reports', '/tax-summary', '/project-gallery', '/reviews', '/social-posts', '/profile', '/settings/support-access'],
 };
 const OWNER_PAGES = ['/settings/billing']; // the business's subscription: the owner only
 const memberCan = (path) => (OWNER_PAGES.includes(path) ? role() === 'owner' : !ROLE_PAGES[role()] || ROLE_PAGES[role()].includes(path));

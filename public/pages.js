@@ -1191,10 +1191,113 @@ A.pfEye = (d, el) => { const i = el.parentElement.querySelector('input'); const 
 
 /* ===== /payments: payment history, payouts and payment settings ===== */
 // every payment the business has received: invoice payments, quote deposits, and older invoices marked paid without a payment record
+/* ===== /payments/view?id=…: one payment, with its timeline (opened from a row on Payments) ===== */
+const CARD_BRAND = { visa: 'Visa', mastercard: 'Mastercard', amex: 'American Express', discover: 'Discover', diners: 'Diners Club', jcb: 'JCB', unionpay: 'UnionPay' };
+const WALLET = { apple_pay: 'Apple Pay', google_pay: 'Google Pay', samsung_pay: 'Samsung Pay', link: 'Link', amex_express_checkout: 'Amex Express Checkout', masterpass: 'Masterpass', visa_checkout: 'Visa Checkout' };
+const pdWhen = (s) => { if (!s) return ''; const d = new Date(s); return `${fmtDate(s.slice(0, 10))} @ ${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`; };
+PAGES['/payments/view'] = {
+  title: 'Payment',
+  async render(main) {
+    const rowId = new URLSearchParams(location.search).get('id');
+    let R; try { R = await api('GET', '/api/payment-detail/' + encodeURIComponent(rowId || '')); } catch (e) { main.innerHTML = `<div class="card"><h2>Payment not found</h2><p class="muted">${esc(e.message)}</p><a class="btn alt" href="/payments" data-link>Back to Payments</a></div>`; return; }
+    const P = R.payment; const X = R.stripe; const C = R.client; const docName = `${R.doc.kind === 'quote' ? 'Quote' : 'Invoice'} #${R.doc.number}`;
+    const docHref = `/${R.doc.kind}s/edit?id=${R.doc.id}`;
+    const refunded = Math.max(P.refunded || 0, X ? X.refunded || 0 : 0); // refunds made here, or in Stripe's dashboard
+    const status = X && !['succeeded', 'refunded', 'partly refunded'].includes(X.status) ? X.status : refundStatus(P.amount, refunded); const [stLabel, stCls] = PAY_STATUS[status] || PAY_STATUS.succeeded;
+    const isOnline = online(P.method); const demo = isOnline && P.method !== 'stripe';
+    const methodLabel = X ? (X.card ? (X.card.funding === 'debit' ? 'Debit card' : 'Credit card') : X.bank ? 'Bank payment (ACH)' : 'Online payment') : demo ? 'Demo checkout' : payLabel(P.method);
+    const field = (label, value) => (value ? `<div class="pd-f"><span>${label}</span><div>${value}</div></div>` : '');
+    const details = [
+      field('Transaction date', esc(fmtDate(P.date))),
+      field('Method', esc(methodLabel)),
+      X && X.card ? field('Card number', `•••• •••• •••• ${esc(X.card.last4)} ${esc(CARD_BRAND[X.card.brand] || X.card.brand || '')}`) : '',
+      X && X.card && X.card.expMonth ? field('Expiry', `${String(X.card.expMonth).padStart(2, '0')}/${String(X.card.expYear).slice(-2)}`) : '',
+      X && X.bank ? field('Bank account', `${esc(X.bank.name)} •••• ${esc(X.bank.last4)}`) : '',
+      X ? field(X.card ? 'Name on card' : 'Account holder', esc(X.name)) : '',
+      X ? field('Billing address', esc(X.address)) : '',
+      X ? field('Paid through', X.card && X.card.wallet ? `Digital wallet (${esc(WALLET[X.card.wallet] || X.card.wallet)})` : 'Online payment page') : '',
+      field('Transaction number', X ? `<code>${esc(X.chargeId || X.paymentIntent)}</code>` : P.reference ? esc(P.reference) : ''),
+      !X ? field('Recorded by', esc(P.recordedBy)) : '',
+      field('Details', `Payment applied to ${esc(docName)}`),
+      field('Applied to', `<a href="${docHref}" data-link>${esc(docName)}</a>`),
+      field('Note', esc(P.note)),
+    ].join('');
+    // timeline: collected, then the payout (Stripe), or "recorded" for payments you entered yourself
+    const step = (state, title, sub) => `<li class="tl-${state}"><span class="tl-ic">${state === 'done' ? '✓' : state === 'now' ? '<i class="tl-spin"></i>' : ''}</span><div><strong>${title}</strong>${sub ? `<small>${sub}</small>` : ''}</div></li>`;
+    function refundSteps() { return P.refunds.map((r) => step(r.status === 'pending' ? 'now' : r.status === 'failed' || r.status === 'canceled' ? 'todo' : 'done', `${r.status === 'pending' ? 'Refund pending' : r.status === 'failed' ? 'Refund failed' : 'Refunded'} ${money(r.amount)}`, `${esc(pdWhen(r.at))}${r.by ? ` by ${esc(r.by)}` : ''}${r.stripe ? '' : '<br>Recorded: you returned this yourself'}`)); }
+    let steps;
+    if (X) {
+      const po = X.payout;
+      steps = [step('done', 'Payment collected', esc(pdWhen(X.created))),
+        ...refundSteps(), !P.refunds.length && X.refunded ? step('done', `Refunded ${money(X.refunded)}`, 'In your Stripe dashboard') : '',
+        !po ? step('now', 'Upcoming payout', 'Waiting for Stripe to schedule it')
+          : po.status === 'deposited' ? step('done', 'Paid out', '') + step('done', 'Deposited', esc(fmtDate(po.date.slice(0, 10))))
+            : po.status === 'on_the_way' ? step('now', 'Payout on the way', `Arrives ${esc(fmtDate(po.date.slice(0, 10)))}`) + step('todo', 'Deposited', '')
+              : step('now', 'Upcoming payout', `Estimated ${esc(fmtDate(po.date.slice(0, 10)))}`) + step('todo', 'Deposited', '')].join('');
+    } else if (demo) steps = step('done', 'Payment collected', esc(fmtDate(P.date))) + step('todo', 'No payout', 'Demo payments charge nobody');
+    else steps = step('done', 'Payment recorded', `${esc(P.createdAt ? pdWhen(P.createdAt) : fmtDate(P.date))}${P.recordedBy ? ` by ${esc(P.recordedBy)}` : ''}`) + step('done', 'Deposited', 'You deposit this payment yourself') + refundSteps().join('');
+    const sent = R.receipts.length ? `<h3 class="tl-h">Receipts</h3><ul class="tl-list">${R.receipts.map((r) => `<li>${r.status === 'failed' ? 'Not delivered to' : 'Sent to'} ${esc(r.to)}<small>${esc(pdWhen(r.at))}</small></li>`).join('')}</ul>` : '';
+    const summary = `<div class="pd-sum"><h3>Payment summary</h3><div class="pd-l"><span>Payment amount</span><span>${money(P.amount)}</span></div>
+${refunded ? `<div class="pd-l pd-ref"><span>Refunded</span><span>−${money(refunded)}</span></div>` : ''}
+${X && X.fee != null ? `<div class="pd-l muted"><span>Processing fees</span><span>−${money(X.fee)}</span></div><div class="pd-l muted"><span>Net to you</span><span>${money(X.net - refunded)}</span></div>` : ''}
+<div class="pd-l pd-tot"><span>Paid</span><span>${money(P.amount - refunded)}</span></div></div>`;
+    const canRefund = ['owner', 'admin'].includes(role()) && P.refundable && !demo && P.amount - refunded > 0.004;
+    const more = `<a class="mi" href="/api/payment-detail/${encodeURIComponent(P.id)}/pdf" download>${MI.pdf}Download PDF</a>${canRefund ? `<button type="button" class="mi" data-act="pdRefund">${MI.refund}Issue a Refund</button>` : ''}`;
+    pdState = { P, X, refunded, docName };
+    main.innerHTML = `<div class="pd"><div class="pd-main">
+<div class="pd-top"><a class="pd-back" href="/payments" data-link aria-label="Back to Payments">‹ Payments</a><span class="badge ${stCls}">${stLabel}</span>
+<div class="pd-acts"><details class="menu"><summary class="btn alt">⋯ More</summary><div class="menu-list">${more}</div></details>${C && C.email ? `<button type="button" class="btn" data-act="pdReceipt" data-id="${esc(P.id)}">Send receipt</button>` : ''}</div></div>
+<div class="pd-amt">${money(P.amount)}</div>
+${R.stripeError ? `<div class="note">Couldn’t load the card details from Stripe: ${esc(R.stripeError)}</div>` : ''}
+${C ? `<div class="card pd-client"><div class="pd-cn"><strong>${esc(C.name)}</strong>${C.company ? `<span class="muted"> · ${esc(C.company)}</span>` : ''}<button type="button" class="link-btn" data-act="pdClient" data-id="${C.id}">View client</button></div>
+${C.address ? `<div class="pd-addr">${esc(C.address).replace(/,\s*/, '<br>')}</div>` : ''}${C.phone ? `<a href="tel:${esc(C.phone)}">${esc(fmtUsPhone(C.phone))}</a>` : ''}${C.email ? `<a href="mailto:${esc(C.email)}">${esc(C.email)}</a>` : ''}</div>` : ''}
+<div class="card">${summary}</div>
+<h2 class="pd-h">Details</h2><div class="pd-grid">${details}</div></div>
+<aside class="pd-side"><h2>Timeline</h2><ol class="tl">${steps}</ol>${sent}
+${X && X.payout && X.payout.estimate ? `<p class="muted pd-note">Payout dates are estimates until the money is deposited. <a href="${esc((company.account && company.account.helpUrl) || '')}/articles/payout-schedule" target="_blank" rel="noopener">About payout schedules</a></p>` : ''}</aside></div>`;
+  },
+};
+// the More menu's icons
+const MI = {
+  pdf: '<svg class="mi-ic pdf" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9.5 17.5c1.5-1 3-4 3.2-6.5.1-1.2-1.3-1.4-1.5-.3-.4 2.2 2.6 5.5 4.6 5.3 1.1-.1.9-1.5-.4-1.4-2.1.2-4.5 1.7-5.9 2.9z"/></svg>',
+  refund: '<svg class="mi-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>',
+};
+let pdState = null;
+// Issue a refund: back through Stripe for card and bank payments; recorded only for payments you entered (you hand that money back yourself)
+A.pdRefund = () => {
+  $$('details.menu[open]').forEach((x) => { x.open = false; });
+  const { P, X, refunded, docName } = pdState; const left = Math.round((P.amount - refunded) * 100) / 100; const viaStripe = P.method === 'stripe';
+  const m = modal('Issue a refund', `<form id="rfForm">
+<p class="muted" style="margin-top:0">${viaStripe ? `The money goes back to the client’s ${X && X.card ? `${esc(CARD_BRAND[X.card.brand] || 'card')} ending in ${esc(X.card.last4)}` : 'card or bank account'}. Refunds usually arrive in 5 to 10 business days. Stripe’s processing fee isn’t returned.` : `This records a refund on this ${esc(payLabel(P.method).toLowerCase())} payment. Give the money back to the client yourself; nothing is sent automatically.`}</p>
+<div class="row"><label>Amount to refund<div class="money-in"><span>$</span><input name="amount" type="number" min="0.01" max="${left}" step="0.01" value="${left.toFixed(2)}" required></div><small class="muted">Up to ${money(left)}${refunded ? ` (${money(refunded)} already refunded)` : ''}</small></label>
+<label>Reason<select name="reason"><option value="requested_by_customer">Requested by the client</option><option value="duplicate">Duplicate payment</option><option value="fraudulent">Fraudulent</option><option value="other">Other</option></select></label></div>
+<label>Note (optional, only you see it)<textarea name="note" rows="2" maxlength="500" placeholder="e.g. Job canceled"></textarea></label>
+<p class="muted" style="font-size:13px">${esc(docName)} will show the refunded amount as unpaid again.</p>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn danger" id="rfGo">Refund ${money(left)}</button></div></form>`);
+  const f = $('#rfForm', m.closest('.modal') || document); const go = $('#rfGo');
+  f.amount.addEventListener('input', () => { const v = Number(f.amount.value); go.textContent = v > 0 ? `Refund ${money(v)}` : 'Refund'; });
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault(); const v = Number(f.amount.value);
+    if (!(v > 0) || v > left + 0.004) return toast(`Enter an amount up to ${money(left)}`, true);
+    if (!confirm(`Refund ${money(v)} to the client?${viaStripe ? ' This can’t be undone.' : ''}`)) return;
+    go.disabled = true; go.textContent = 'Refunding…';
+    try { await api('POST', `/api/payment-detail/${encodeURIComponent(P.id)}/refund`, { amount: v, reason: f.reason.value, note: f.note.value }); closeModal(); toast(viaStripe ? `Refund of ${money(v)} sent` : `Refund of ${money(v)} recorded`); refresh(); }
+    catch (x) { go.disabled = false; go.textContent = `Refund ${money(v)}`; toast(x.message, true); }
+  });
+};
+A.pdCopy = async (d) => { try { await navigator.clipboard.writeText(d.v); toast('Transaction number copied'); } catch (e) { toast(d.v); } };
+A.pdClient = (d) => clientForm(byId(D.clients, d.id));
+A.pdReceipt = async (d, el) => {
+  el.disabled = true; el.textContent = 'Sending…';
+  try { const r = await api('POST', `/api/payment-detail/${encodeURIComponent(d.id)}/receipt`, {}); toast(`Receipt sent to ${r.to}`); refresh(); } catch (e) { toast(e.message, true); el.disabled = false; el.textContent = 'Send receipt'; }
+};
+
+const refundSum = (l) => (l || []).filter((r) => r.status !== 'failed' && r.status !== 'canceled').reduce((s, r) => s + (Number(r.amount) || 0), 0);
+const refundStatus = (amount, refunded) => (refunded >= amount - 0.004 && refunded > 0 ? 'refunded' : refunded > 0 ? 'partly refunded' : 'succeeded');
 function paymentRows() {
   const rows = [];
   for (const i of D.invoices) {
-    for (const p of i.payments || []) rows.push({ id: p.id, clientId: i.clientId, doc: ['invoice', i], date: (p.date || '').slice(0, 10), method: p.method, amount: Number(p.amount) || 0, reference: p.reference || '' });
+    for (const p of i.payments || []) rows.push({ id: p.id, clientId: i.clientId, doc: ['invoice', i], date: (p.date || '').slice(0, 10), method: p.method, amount: Number(p.amount) || 0, reference: p.reference || '', refunded: refundSum(p.refunds) });
     if (!(i.payments || []).length && i.status === 'paid' && i.paidAt) rows.push({ id: 'i-' + i.id, clientId: i.clientId, doc: ['invoice', i], date: i.paidAt.slice(0, 10), method: i.paymentMethod || 'other', amount: Number(i.paidAmount || i.total) || 0, reference: '' });
   }
   for (const q of D.quotes) if (q.depositPaidAt) rows.push({ id: 'q-' + q.id, clientId: q.clientId, doc: ['quote', q], date: q.depositPaidAt.slice(0, 10), method: q.depositMethod || 'other', amount: Number(q.depositPaidAmount ?? q.depositFee) || 0, reference: q.depositReference || '' });
@@ -1210,7 +1313,7 @@ PAGES['/payments'] = {
     const day = (s) => (s || '').slice(0, 10); const ago = (n) => ymd(addDays(new Date(), -n)); const tomorrow = ymd(addDays(new Date(), 1));
     const rows = paymentRows().map((r) => {
       const ch = r.method === 'stripe' && S.charges ? S.charges[r.reference] : null;
-      return { ...r, status: (ch && ch.status) || 'succeeded', payout: r.method === 'stripe' ? (ch && ch.payoutDate ? fmtDate(ch.payoutDate) : 'In Stripe') : online(r.method) ? 'Demo: no payout' : 'Manually deposited',
+      return { ...r, status: (ch && ch.status) || refundStatus(r.amount, r.refunded || 0), payout: r.method === 'stripe' ? (ch && ch.payoutDate ? fmtDate(ch.payoutDate) : 'In Stripe') : online(r.method) ? 'Demo: no payout' : 'Manually deposited',
         payoutKey: ch && ch.payoutDate ? ch.payoutDate : '', methodLabel: r.method === 'stripe' ? 'Online (Stripe)' : online(r.method) ? 'Demo checkout' : payLabel(r.method) };
     });
     const cname = (r) => { const c = byId(D.clients, r.clientId); return c ? c.company || c.name : 'Unknown client'; };
@@ -1246,7 +1349,7 @@ PAGES['/payments'] = {
 <label class="pill">📅 Date<select data-pv="date">${[['all', 'All'], ['30', 'Past 30 days'], ['90', 'Past 90 days'], ['year', 'This year']].map(([k, l]) => `<option value="${k}" ${v.date === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
 <input id="pq" class="csearch" type="search" placeholder="Search payments…" value="${esc(v.q)}"></div>
 <div class="card ctable"><div class="tablewrap"><table><tr>${th('client', 'Client')}${th('date', 'Payment date')}${th('status', 'Payment status')}${th('method', 'Method')}${th('payout', 'Payout date')}${th('amount', 'Amount', 'r')}</tr>
-${list.map((r) => `<tr><td><strong>${esc(cname(r))}</strong><div class="pay-ref">${docLink(r.doc)}</div></td><td style="white-space:nowrap">${fmtDate(r.date)}</td>
+${list.map((r) => `<tr class="crow" data-id="${esc(r.id)}" title="See this payment"><td><strong>${esc(cname(r))}</strong><div class="pay-ref">${docLink(r.doc)}</div></td><td style="white-space:nowrap">${fmtDate(r.date)}</td>
 <td><span class="badge ${PAY_STATUS[r.status][1]}">${PAY_STATUS[r.status][0]}</span></td><td>${r.method === 'stripe' ? '💳 ' : ''}${esc(r.methodLabel)}</td><td style="white-space:nowrap">${esc(r.payout)}</td><td class="r"><strong>${money(r.amount)}</strong></td></tr>`).join('')
   || `<tr><td colspan="6" class="empty">${rows.length ? 'No payments match these filters' : 'No payments yet. Payments show up here when clients pay online or you record a payment on an invoice.'}</td></tr>`}</table></div></div>`;
     const payouts = !S.connected ? `<div class="card"><h2>Payouts</h2><p class="muted">When clients pay online, Stripe sends the money to your bank account. ${admin ? '<a href="/settings#payments" data-link>Connect Stripe</a> in App Settings to start taking online payments.' : 'Ask the account owner to connect Stripe.'}</p></div>`
@@ -1256,6 +1359,7 @@ ${S.payouts.map((p) => `<tr><td>${fmtDate(p.arrival)}</td><td><span class="badge
     main.innerHTML = `<div class="head"><h1>Payments</h1><div class="actions">${admin ? '<a class="btn alt" href="/payments/settings" data-link>Settings</a>' : ''}${S.connected ? `<a class="btn alt" href="https://dashboard.stripe.com/disputes" target="_blank" rel="noopener">Disputes${S.disputes.open ? ` (${S.disputes.open})` : ''}</a>` : ''}</div></div>
 <nav class="ptabs">${[['overview', 'Overview'], ['payouts', 'Payouts']].map(([k, l]) => `<button type="button" class="${v.tab === k ? 'on' : ''}" data-act="payTab" data-t="${k}">${l}</button>`).join('')}</nav>
 ${v.tab === 'payouts' ? payouts : overview}`;
+    $$('.crow', main).forEach((r) => r.addEventListener('click', (e) => { if (!e.target.closest('a')) navigate('/payments/view?id=' + encodeURIComponent(r.dataset.id)); }));
     $$('[data-pv]', main).forEach((s) => s.addEventListener('change', (e) => { payView[e.target.dataset.pv] = e.target.value; refresh(); }));
     let t; const q = $('#pq', main); if (q) q.addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(async () => { payView.q = e.target.value; await refresh(); const n = $('#pq'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 250); });
   },

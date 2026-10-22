@@ -18,6 +18,7 @@ const referrals = require('./lib/referrals');
 const maintenance = require('./lib/maintenance');
 const stripeLib = require('./lib/stripe');
 const social = require('./lib/social');
+const { createPdf } = require('./lib/pdf');
 const chat = require('./lib/chat');
 const { db, uploadDir } = tenancy;
 const baseUrl = () => tenancy.tenantUrl(tenancy.current()); // this account's web address, for links in messages
@@ -170,14 +171,16 @@ function invoiceStatus(inv) {
 }
 // A deposit paid on the quote behind this invoice's job is credited against it (only on the job's first invoice).
 // Computed on read, never stored, so it follows later edits to the deposit payment.
-// balanceDue = total − deposit credit − recorded payments (0 once paid, unless ignoreStatus)
+// money given back on a payment (Payments → a payment → Issue a refund)
+const refundedOf = (list) => round2((list || []).filter((r) => r.status !== 'failed' && r.status !== 'canceled').reduce((s, r) => s + (Number(r.amount) || 0), 0));
+// balanceDue = total − deposit credit − recorded payments, less refunds (0 once paid, unless ignoreStatus)
 function invoiceCredits(inv, ignoreStatus) {
   const job = inv.jobId && db.jobs.find((j) => j.id === inv.jobId);
   const q = job && job.quoteId && db.quotes.find((x) => x.id === job.quoteId);
   const first = job && db.invoices.filter((i) => i.jobId === job.id).sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || '') || String(a.number).localeCompare(String(b.number)))[0];
   // inv.depositCreditRemoved: the admin deleted the deposit line from this invoice, so it isn't credited here
-  const credit = q && q.depositPaidAt && first && first.id === inv.id && !inv.depositCreditRemoved ? Math.min(inv.total || 0, round2(Number(q.depositPaidAmount ?? q.depositFee) || 0)) : 0;
-  const paid = round2((inv.payments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0));
+  const credit = q && q.depositPaidAt && first && first.id === inv.id && !inv.depositCreditRemoved ? Math.min(inv.total || 0, Math.max(0, round2((Number(q.depositPaidAmount ?? q.depositFee) || 0) - refundedOf(q.depositRefunds)))) : 0;
+  const paid = round2((inv.payments || []).reduce((s, p) => s + (Number(p.amount) || 0) - refundedOf(p.refunds), 0));
   const balance = Math.max(0, round2((inv.total || 0) - credit - paid));
   return { depositApplied: credit, depositAppliedAt: credit ? q.depositPaidAt : null, depositQuote: credit ? q.number : null, amountPaid: paid, balanceDue: !ignoreStatus && inv.status === 'paid' ? 0 : balance };
 }
@@ -393,7 +396,7 @@ const ROLE_API = {
   technician: [route('GET', '(jobs|clients|staff|company)'), route('GET', 'auth/.+'), route('POST', 'auth/.+'), route('POST', 'support'), route('POST', 'feedback'), ...SUPPORT_API, route('POST', `jobs/${ID}/signature`)],
   manager: [
     route('GET', 'auth/.+'), route('POST', 'auth/.+'), route('POST', 'support'), route('POST', 'feedback'), ...SUPPORT_API,
-    route('GET', '(jobs|clients|staff|services|photos|company|quotes|invoices|expenses|reports|tax-summary|overview|email-templates)'), route('GET', 'payments/stripe'), route('GET', 'reviews'), route('PUT', 'reviews/reply'), route('DELETE', 'reviews/reply'), route('GET', 'social-posts'), route('POST', 'social-posts'),
+    route('GET', '(jobs|clients|staff|services|photos|company|quotes|invoices|expenses|reports|tax-summary|overview|email-templates)'), route('GET', 'payments/stripe'), route('GET', 'payment-detail/[\\w-]+'), route('GET', 'payment-detail/[\\w-]+/pdf'), route('POST', 'payment-detail/[\\w-]+/receipt'), route('GET', 'reviews'), route('PUT', 'reviews/reply'), route('DELETE', 'reviews/reply'), route('GET', 'social-posts'), route('POST', 'social-posts'),
     route('POST', '(jobs|quotes|invoices|expenses|services|clients|photos)'), route('POST', 'services/describe'), route('PUT', `(jobs|quotes|invoices|expenses|services|clients)/${ID}`),
     route('DELETE', `(jobs|quotes|invoices|expenses|services|photos)/${ID}`),
     route('POST', `quotes/${ID}/(send|approve|convert-to-job|mark-deposit-paid|set-deposit)`), route('POST', `invoices/${ID}/(send|mark-paid|payments)`), route('DELETE', `invoices/${ID}/payments/${ID}`), route('POST', `jobs/${ID}/(create-invoice|remind|signature)`), route('DELETE', `jobs/${ID}/signature`),
@@ -1305,6 +1308,116 @@ app.get('/api/payments/stripe', async (req, res) => {
     bank: (pl.map((p) => acct(p.destination)).find(Boolean)) || null,
     disputes: { open: dl.filter((d) => /needs_response|under_review/.test(d.status)).length, total: dl.length } });
 });
+// ---------- one payment (Payments → a row): what was paid, by whom, how, and when the money reaches the bank ----------
+// ids as on the Payments list: an invoice payment's id, "i-<invoice>" (an invoice marked paid before payments were itemized), "q-<quote>" (a deposit)
+function findPayment(rowId) {
+  const id = String(rowId || '');
+  if (id.startsWith('q-')) { const q = db.quotes.find((x) => x.id === id.slice(2)); return q && q.depositPaidAt ? { kind: 'quote', doc: q, p: { id, amount: Number(q.depositPaidAmount ?? q.depositFee) || 0, method: q.depositMethod || 'other', date: q.depositPaidAt.slice(0, 10), reference: q.depositReference || '', refunds: q.depositRefunds || [] }, what: `the deposit on quote ${q.number}` } : null; }
+  if (id.startsWith('i-')) { const inv = db.invoices.find((x) => x.id === id.slice(2)); return inv && inv.paidAt ? { kind: 'invoice', doc: inv, p: { id, amount: Number(inv.paidAmount || inv.total) || 0, method: inv.paymentMethod || 'other', date: inv.paidAt.slice(0, 10), reference: '' }, what: `invoice ${inv.number}` } : null; }
+  for (const inv of db.invoices) { const p = (inv.payments || []).find((x) => x.id === id); if (p) return { kind: 'invoice', doc: inv, p, what: `invoice ${inv.number}` }; }
+  return null;
+}
+async function paymentDetail(f) {
+  const c = findClient(f.doc.clientId); const p = f.p;
+  const out = { payment: { id: p.id, amount: round2(Number(p.amount) || 0), method: p.method, date: (p.date || '').slice(0, 10), reference: p.reference || '', recordedBy: p.recordedBy || '', createdAt: p.createdAt || '', note: p.note || '',
+      refunds: (p.refunds || []).map((r) => ({ id: r.id, amount: r.amount, at: r.at, by: r.by || '', reason: r.reason || '', note: r.note || '', status: r.status || 'succeeded', stripe: !!r.stripeRefundId })), refunded: refundedOf(p.refunds), refundable: !p.id.startsWith('i-') },
+    doc: { kind: f.kind, id: f.doc.id, number: f.doc.number, total: f.doc.total }, client: c ? { id: c.id, name: c.name, company: c.company || '', email: c.email || '', phone: c.phone || '', address: c.address || '' } : null,
+    receipts: db.notifications.filter((n) => n.kind === 'receipt' && n.refId === f.doc.id).slice(0, 5).map((n) => ({ at: n.at, to: n.to, status: n.status })), stripe: null };
+  // a card or bank payment through Stripe: the charge's details, fees, and the payout it's in
+  if (p.method === 'stripe' && /^pi_/.test(p.reference) && stripeKey()) {
+    try {
+      const pi = await stripeApi('GET', `payment_intents/${p.reference}?expand[]=latest_charge.balance_transaction`); const ch = pi.latest_charge || {}; const bt = ch.balance_transaction || {};
+      const pm = ch.payment_method_details || {}; const card = pm.card; const bank = pm.us_bank_account; const ad = (ch.billing_details && ch.billing_details.address) || {};
+      const day = (t) => (t ? new Date(t * 1000).toISOString() : null);
+      let payout = null;
+      if (bt.available_on) { // the first payout made once the money became available holds it (automatic payouts)
+        const po = await stripeApi('GET', `payouts?limit=100&created[gte]=${bt.available_on - 86400}`).catch(() => null);
+        const first = ((po && po.data) || []).filter((x) => x.created >= bt.available_on - 3600 && x.status !== 'canceled' && x.status !== 'failed').sort((a, b) => a.created - b.created)[0];
+        payout = first ? { status: first.status === 'paid' ? 'deposited' : 'on_the_way', date: day(first.arrival_date) } : { status: 'upcoming', date: day(bt.available_on), estimate: true };
+      }
+      out.stripe = {
+        status: ch.disputed ? 'disputed' : ch.refunded ? 'refunded' : ch.amount_refunded ? 'partly refunded' : ch.status === 'failed' ? 'failed' : ch.status === 'pending' ? 'processing' : 'succeeded',
+        created: day(ch.created || pi.created), chargeId: ch.id || '', paymentIntent: pi.id, receiptUrl: ch.receipt_url || '',
+        type: pm.type || '', card: card ? { brand: card.brand, last4: card.last4, expMonth: card.exp_month, expYear: card.exp_year, funding: card.funding, wallet: card.wallet ? card.wallet.type : '' } : null,
+        bank: bank ? { name: bank.bank_name || 'Bank account', last4: bank.last4 || '' } : null,
+        name: (ch.billing_details && ch.billing_details.name) || '', address: [ad.line1, ad.line2, ad.city, [ad.state, ad.postal_code].filter(Boolean).join(' '), ad.country].filter(Boolean).join(', '),
+        refunded: round2((ch.amount_refunded || 0) / 100), fee: bt.fee != null ? round2(bt.fee / 100) : null, net: bt.net != null ? round2(bt.net / 100) : null, payout,
+      };
+    } catch (e) { out.stripeError = e.message; }
+  }
+  return out;
+}
+app.get('/api/payment-detail/:id', async (req, res) => {
+  const f = findPayment(req.params.id); if (!f) return res.status(404).json({ error: 'Payment not found' });
+  res.json(await paymentDetail(f));
+});
+// Issue a refund: card and bank payments go back through Stripe; payments you recorded (cash, check…) are marked refunded, since you return that money yourself
+const REFUND_REASONS = { requested_by_customer: 'Requested by the client', duplicate: 'Duplicate payment', fraudulent: 'Fraudulent', other: 'Other' };
+app.post('/api/payment-detail/:id/refund', async (req, res) => {
+  if (!isAdmin(currentUser(req))) return res.status(403).json({ error: 'Only the account owner or an admin can issue refunds' });
+  const f = findPayment(req.params.id); if (!f) return res.status(404).json({ error: 'Payment not found' });
+  if (f.p.id.startsWith('i-')) return res.status(400).json({ error: 'This older payment wasn’t itemized, so it can’t be refunded here. Remove the payment from the invoice instead.' });
+  const b = req.body || {}; const amount = round2(Number(b.amount)); const left = round2((Number(f.p.amount) || 0) - refundedOf(f.p.refunds));
+  if (!(amount > 0)) return res.status(400).json({ error: 'Enter the amount to refund' });
+  if (amount > left + 0.004) return res.status(400).json({ error: left > 0 ? `You can refund up to ${money(left)}` : 'This payment has already been refunded in full' });
+  const reason = REFUND_REASONS[b.reason] ? b.reason : 'requested_by_customer'; const note = String(b.note || '').trim().slice(0, 500);
+  const r = { id: uid(), amount, reason, note, at: new Date().toISOString(), by: currentUser(req).name || '', status: 'succeeded' };
+  if (f.p.method === 'stripe') {
+    if (!/^pi_/.test(f.p.reference || '') || !stripeKey()) return res.status(400).json({ error: 'This online payment can’t be refunded from here. Refund it in your Stripe dashboard.' });
+    try {
+      const sr = await stripeApi('POST', 'refunds', { payment_intent: f.p.reference, amount: String(Math.round(amount * 100)), ...(reason !== 'other' ? { reason } : {}), 'metadata[by]': r.by, 'metadata[payment]': f.p.id });
+      Object.assign(r, { stripeRefundId: sr.id, status: sr.status === 'succeeded' ? 'succeeded' : sr.status === 'failed' || sr.status === 'canceled' ? sr.status : 'pending' });
+    } catch (e) { return res.status(502).json({ error: `Stripe couldn’t refund this payment: ${e.message}` }); }
+  } else if (['demo', 'demo-card'].includes(f.p.method)) return res.status(400).json({ error: 'Demo payments charged nobody, so there’s nothing to refund' });
+  if (f.kind === 'quote') { f.doc.depositRefunds = [...(f.doc.depositRefunds || []), r]; }
+  else { f.p.refunds = [...(f.p.refunds || []), r]; settleInvoice(f.doc); }
+  save(); res.json(await paymentDetail(findPayment(req.params.id)));
+});
+// Download PDF: a receipt for this payment
+app.get('/api/payment-detail/:id/pdf', async (req, res) => {
+  const f = findPayment(req.params.id); if (!f) return res.status(404).json({ error: 'Payment not found' });
+  const d = await paymentDetail(f); const P = d.payment; const X = d.stripe; const co = db.company; const C = d.client;
+  const pdf = createPdf(); const L = 54; const R = 558; let y = 64;
+  // the business
+  pdf.text(L, y, co.name || 'Receipt', { size: 18, bold: true }); y += 18;
+  for (const s of [co.address, [co.phone ? fmtUsPhone(co.phone) : '', co.email].filter(Boolean).join('  ·  '), co.website].filter(Boolean)) { y = pdf.para(L, y, s, 300, { size: 10, color: '#475569', lineHeight: 14 }); }
+  pdf.text(R, 64, 'PAYMENT RECEIPT', { size: 11, bold: true, color: '#475569', align: 'right' });
+  pdf.text(R, 82, `Receipt for ${d.doc.kind === 'quote' ? 'Quote' : 'Invoice'} #${d.doc.number}`, { size: 10, color: '#475569', align: 'right' });
+  pdf.text(R, 96, `Paid ${niceDate(P.date)}`, { size: 10, color: '#475569', align: 'right' });
+  y = Math.max(y, 110) + 16; pdf.line(L, y, R, y); y += 34;
+  pdf.text(L, y, 'Amount paid', { size: 10, color: '#475569' }); y += 30; pdf.text(L, y, money(P.amount), { size: 30, bold: true }); y += 30;
+  if (P.refunded) { pdf.text(L, y, `Refunded ${money(P.refunded)}  ·  Net paid ${money(P.amount - P.refunded)}`, { size: 11, color: '#b91c1c' }); y += 18; }
+  y += 14;
+  // who paid, and how
+  const top = y; pdf.text(L, y, 'RECEIVED FROM', { size: 9, bold: true, color: '#64748b' }); y += 16;
+  if (C) { pdf.text(L, y, C.company ? `${C.name} (${C.company})` : C.name, { size: 11, bold: true }); y += 15; for (const s of [C.address, C.email, C.phone ? fmtUsPhone(C.phone) : ''].filter(Boolean)) y = pdf.para(L, y, s, 230, { size: 10, color: '#334155', lineHeight: 14 }); }
+  let y2 = top; const M = 320; pdf.text(M, y2, 'PAYMENT DETAILS', { size: 9, bold: true, color: '#64748b' }); y2 += 16;
+  const brand = { visa: 'Visa', mastercard: 'Mastercard', amex: 'American Express', discover: 'Discover' };
+  const how = X ? (X.card ? `${brand[X.card.brand] || X.card.brand || 'Card'} •••• ${X.card.last4}${X.card.wallet ? ` (${{ apple_pay: 'Apple Pay', google_pay: 'Google Pay', link: 'Link' }[X.card.wallet] || 'digital wallet'})` : ''}` : X.bank ? `${X.bank.name} •••• ${X.bank.last4}` : 'Online payment')
+    : { cash: 'Cash', check: 'Check', card: 'Credit/debit card', bank: 'Bank payment', zelle: 'Zelle', cashapp: 'Cash App', paypal: 'PayPal', venmo: 'Venmo' }[P.method] || 'Other';
+  for (const [k, v] of [['Method', how], ['Date', niceDate(P.date)], ['Transaction', X ? X.chargeId || X.paymentIntent : P.reference], ['Applied to', `${d.doc.kind === 'quote' ? 'Deposit on quote' : 'Invoice'} #${d.doc.number}`]]) {
+    if (!v) continue; pdf.text(M, y2, k, { size: 10, color: '#64748b' }); y2 = pdf.para(M + 78, y2, v, R - M - 78, { size: 10, lineHeight: 14 }) + 2;
+  }
+  y = Math.max(y, y2) + 22;
+  // summary
+  pdf.rect(L, y, R - L, P.refunded ? 92 : 66, { fill: '#f1f5fb' }); y += 24;
+  const row = (k, v, bold) => { pdf.text(L + 14, y, k, { size: 11, bold }); pdf.text(R - 14, y, v, { size: 11, bold, align: 'right' }); y += 22; };
+  row('Payment amount', money(P.amount)); if (P.refunded) row('Refunded', '-' + money(P.refunded)); row('Total paid', money(P.amount - P.refunded), true);
+  y += 30; pdf.text(L, y, `Thank you for your business${co.name ? ', from all of us at ' + co.name : ''}.`, { size: 11, color: '#334155' });
+  pdf.text(306, 760, `Receipt generated ${niceDate(iso(new Date()))}`, { size: 8, color: '#94a3b8', align: 'center' });
+  const name = `Receipt-${String(d.doc.number).replace(/[^\w-]+/g, '')}-${P.date}.pdf`;
+  res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Content-Disposition', `attachment; filename="${name}"`); res.end(pdf.toBuffer(`Receipt ${d.doc.number}`));
+});
+// send (or resend) a receipt for one payment to the client's email
+app.post('/api/payment-detail/:id/receipt', async (req, res) => {
+  const f = findPayment(req.params.id); if (!f) return res.status(404).json({ error: 'Payment not found' });
+  const c = findClient(f.doc.clientId); if (!c || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email || '')) return res.status(400).json({ error: 'This client has no email address. Add one to their client details first.' });
+  const rm = renderEmail('receipt', { client_name: c.name, company_name: db.company.name, amount: money(Number(f.p.amount) || 0), paid_for: f.what, date: niceDate((f.p.date || '').slice(0, 10)), reference: f.p.reference || f.doc.number });
+  const n = await notify({ clientId: c.id, channel: 'email', kind: 'receipt', refId: f.doc.id, refNumber: f.doc.number, subject: rm.subject, body: rm.text, html: rm.html }); save();
+  if (n.status === 'failed') return res.status(502).json({ error: n.detail || 'The receipt couldn’t be sent' });
+  res.json({ ok: true, to: c.email, status: n.status });
+});
+
 function tellBusinessZelle(what, amount, clientName) {
   if (!db.company.email) return;
   sendTemplate('zelleReported', db.company.email, { client: clientName || 'A client', amount: money(amount), what, business: db.company.name, account_url: baseUrl() }).catch(() => {});
