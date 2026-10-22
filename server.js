@@ -23,6 +23,7 @@ const iconsLib = require('./lib/icons');
 const { createPdf } = require('./lib/pdf');
 const chat = require('./lib/chat');
 const forum = require('./lib/forum');
+const industries = require('./lib/industries');
 const { db, uploadDir } = tenancy;
 const baseUrl = () => tenancy.tenantUrl(tenancy.current()); // this account's web address, for links in messages
 
@@ -704,6 +705,7 @@ function accountInfo() {
     // how: 'embedded' (set up in the app, payout bank changed in the app), 'standard' (own Stripe account), 'server' (the platform's own account), or null
     cardSetupType: secrets().stripeAccountId ? secrets().stripeAccountType || 'standard' : stripeKey() ? 'server' : null, payoutBank: secrets().stripeBank || null,
     expiry: (() => { const x = expiryOf(t); return x && { ...x, when: whenText(x) }; })(),
+    industries: industries.CHOICES, // the Industry choices in Company Profile
     featureList: tenancy.FEATURES.map(({ key, label, desc }) => ({ key, label, desc, beta: tenancy.isBeta(key), included: plan.features.includes(key) })), alwaysIncluded: tenancy.ALWAYS_INCLUDED,
   };
 }
@@ -726,6 +728,8 @@ app.put('/api/company', (req, res) => {
   }
   const b = req.body;
   for (const [k, ok] of Object.entries(REGIONAL)) if (k in b && !ok(b[k])) return res.status(400).json({ error: `Choose a valid ${k === 'timezone' ? 'time zone' : k === 'dateFormat' ? 'date format' : k === 'timeFormat' ? 'time format' : 'first day of the week'}` });
+  // the kind of business (asked at sign-up; lib/industries.js): saved as industry + industryOther
+  if ('industry' in b) { const i = industries.choose(b.industry, b.industryOther); if (i.error) return res.status(400).json({ error: i.error }); Object.assign(db.company, i); }
   if ('hours' in b) { const h = readHours(b.hours); if (!h) return res.status(400).json({ error: 'Check the business hours: each open day needs an end time after its start time' }); b.hours = h; }
   // social media pages (Company Profile): a link, or a handle for the networks that have them
   if (Object.keys(b).some((k) => k.startsWith('social_'))) {
@@ -2403,6 +2407,7 @@ const tenantStats = (t) => tenancy.run(t, () => {
   const owner = db.users.find((u) => u.role === 'owner');
   return { owner: owner ? { name: owner.name, email: owner.email, active: !!owner.passwordHash, unconfirmed: !!owner.emailVerify && !owner.emailVerifiedAt } : null, users: db.users.length,
     logins: db.users.map((u) => ({ id: u.id, name: u.name, email: u.email, role: u.role, active: !!u.passwordHash && !staffBlocked(u) })), clients: db.clients.length, jobs: db.jobs.length, invoices: db.invoices.length,
+    industry: db.company.industry || '', industryOther: db.company.industryOther || '',
     lastLoginAt: db.users.map((u) => u.lastLoginAt || '').sort().pop() || null };
 });
 const helpApp = require('./lib/help')({ sendTemplate, normEmail, emails });
@@ -2410,6 +2415,7 @@ const legal = require('./lib/legal');
 const platformApp = require('./lib/platform')({
   hashPassword, checkPassword, sha, normEmail, cookies, tooMany, recordFailure, clearFailures: (k) => failures.delete(k),
   createOwner, ownerLink, sendVerifyEmail, tenantStats, endSupportSessions, sendEmail, sendTemplate, sendSms, emailProvider: serverEmailProvider, applyStripeSession, syncStripeAccount, resetDemo, saveConnection, setCompanyEmail: (e) => { if (!db.company.email) { db.company.email = e; save(); } },
+  setCompanyIndustry: (i) => { Object.assign(db.company, i); save(); },
 });
 // which app answers: the platform's (its own domain, or /alpha… while developing) or an account's
 const PLATFORM_PATHS = /^\/(alpha(\/.*)?|platform(\/.*)?|stripe\/go\/[a-z]+|oauth\/(google|meta)\/callback|home|pricing|signup|industries(\/[a-z-]+)?|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;

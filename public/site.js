@@ -48,6 +48,8 @@ ${S.allowSignups ? `<a class="btn ${i === mid ? '' : 'alt'}" href="#signup" data
   $('#signup').innerHTML = `<form id="sf" novalidate><div id="err"></div><input type="hidden" name="ref" value="${esc(ref)}"><label>Plan<select name="plan">${S.plans.map((p) => `<option value="${esc(p.id)}" ${p.id === S.signupPlan ? 'selected' : ''}>${esc(p.name)}${p.price ? ` (${esc(p.price)})` : ''}</option>`).join('')}</select></label>
 ${both ? `<label>Billing<select name="interval"><option value="month" ${period === 'month' ? 'selected' : ''}>Monthly</option><option value="year" ${period === 'year' ? 'selected' : ''}>Yearly${best > 0 ? ` (save up to ${best}%)` : ''}</option></select></label>` : ''}
 <label>Business name<input name="company" required maxlength="100" autocomplete="organization"></label>
+<label>What kind of work do you do?<select name="industry" required><option value="">Choose your industry</option>${(S.industries || []).map((i) => `<option value="${esc(i.slug)}" ${i.slug === qs.get('industry') ? 'selected' : ''}>${esc(i.name)}</option>`).join('')}</select></label>
+<label id="indOther" hidden>Your industry<input name="industryOther" maxlength="80" placeholder="e.g. Septic pumping"></label>
 <label>Your web address<div class="slug"><input name="slug" required maxlength="32" autocomplete="off" spellcheck="false"><span>.${esc(root)}</span></div><div class="hint" id="hint"></div></label>
 <div class="c-row"><label>Your name<input name="name" required maxlength="100" autocomplete="name"></label>
 <label>Email<input name="email" type="email" required autocomplete="email"></label></div>
@@ -58,6 +60,7 @@ ${both ? `<label>Billing<select name="interval"><option value="month" ${period =
   const check = () => { clearTimeout(t); const v = slug.value.trim().toLowerCase(); if (!v) { hint.textContent = ''; return; }
     t = setTimeout(async () => { const r = await (await fetch('/api/site/slug-check?slug=' + encodeURIComponent(v))).json(); hint.className = 'hint ' + (r.ok ? 'good' : 'bad'); hint.textContent = r.ok ? `${v}.${root} is available` : r.error; }, 250); };
   slug.addEventListener('input', () => { slug.dataset.touched = '1'; check(); });
+  $('[name=industry]', f).addEventListener('change', (e) => { $('#indOther').hidden = e.target.value !== 'other'; if (e.target.value === 'other') $('[name=industryOther]', f).focus(); });
   $('[name=company]', f).addEventListener('input', (e) => { if (!slug.dataset.touched) { slug.value = slugify(e.target.value); check(); } });
   // paid plans go on to the checkout page after the account is created
   const sel = $('[name=plan]', f); const iv = $('[name=interval]', f);

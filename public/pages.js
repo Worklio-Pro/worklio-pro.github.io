@@ -884,6 +884,12 @@ ${flSelect('Date format', 'dateFormat', ['MMM D, YYYY', 'MM/DD/YYYY', 'DD/MM/YYY
 ${flSelect('Time format', 'timeFormat', [['12', '12 Hour (1:30 PM)'], ['24', '24 Hour (13:30)']], c.timeFormat || '12')}
 ${flSelect('First day of the week', 'weekStart', [['sun', 'Sunday'], ['mon', 'Monday']], c.weekStart || 'mon')}</div>`.replace(/<select name=/g, '<select form="cf" name=');
 }
+// the kind of business (asked at sign-up; the choices come with the account info)
+function industryHtml(c) {
+  const L = (c.account && c.account.industries) || []; if (!L.length) return '';
+  return `<div class="fl-split">${flSelect('Industry', 'industry', [['', 'Choose your industry'], ...L.map((i) => [i.slug, i.name])], c.industry || '')}
+${fl('Your industry', `<input name="industryOther" maxlength="80" value="${esc(c.industryOther || '')}">`).replace('<label class="fl"', `<label class="fl" data-other ${c.industry === 'other' ? '' : 'hidden'}`)}</div>`;
+}
 function companySettingsHtml(c, logoBox = '') {
   const hasParts = ['addrStreet1', 'addrStreet2', 'addrCity', 'addrState', 'addrZip'].some((k) => c[k]);
   const v = (k) => esc(c[k] ?? '');
@@ -891,6 +897,7 @@ function companySettingsHtml(c, logoBox = '') {
   return `<div class="cs-cols"><div class="cs-col"><div class="card cs"><h2>Company details</h2>
 ${fl('Company name', `<input name="name" required value="${v('name')}">`)}${fl('Phone number', `<input name="phone" type="tel" value="${v('phone')}">`)}
 ${fl('Website URL', `<input name="website" value="${v('website')}">`)}${fl('Email address', `<input name="email" type="email" value="${v('email')}">`)}
+${industryHtml(c)}
 <div class="fl-group">${fl('Street 1', `<input name="addrStreet1" value="${hasParts ? v('addrStreet1') : esc(c.address || '')}">`)}${fl('Street 2', `<input name="addrStreet2" value="${v('addrStreet2')}">`)}
 <div class="fl-split">${fl('City', `<input name="addrCity" value="${v('addrCity')}">`)}${fl('State', `<input name="addrState" value="${v('addrState')}">`)}</div>
 <div class="fl-split">${fl('Zip code', `<input name="addrZip" value="${v('addrZip')}">`)}${flSelect('Country', 'addrCountry', [...new Set([...COUNTRIES, country])].map((x) => [x, x]), country)}</div></div>
@@ -926,9 +933,11 @@ ${full ? `<div class="as-cols"><div class="as-col">${webAddressCard(c.account)}$
 <form id="cf"><div class="as-save"><button class="btn">Save changes</button></div></form>` : `<form id="cf" class="cs-form">${companySettingsHtml(c, logoBox)}<div class="cs-foot"><button class="btn">Update settings</button></div></form>`}`;
   $$('.prefix-row input').forEach((i) => i.addEventListener('input', () => { i.nextElementSibling.textContent = 'e.g. ' + i.value.trim() + i.dataset.sample; }));
   if (!full) { wireHours(main); phoneMask($('#cf input[name=phone]', main)); }
+  const ind = $('#cf select[name=industry]', main); if (ind) ind.addEventListener('change', () => { $('#cf [data-other]', main).hidden = ind.value !== 'other'; });
   $('#cf').addEventListener('submit', async (e) => {
     e.preventDefault(); const b = Object.fromEntries(new FormData(e.target));
     if (!full) { b.hours = readHoursFrom(e.target); const bad = badHours(b.hours); if (bad) return toast(bad, true); }
+    if ('industry' in b && !b.industry) delete b.industry; // not chosen yet: leave it unset
     await api('PUT', '/api/company', b); toast('Settings saved'); refresh();
   });
   A.toggleAi = async () => { const on = c.aiEnabled === false; await api('PUT', '/api/company', { aiEnabled: on }); toast(on ? 'AI assistance turned on' : 'AI assistance turned off'); refresh(); };

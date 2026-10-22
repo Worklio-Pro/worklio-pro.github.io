@@ -143,23 +143,38 @@ const ymdLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
 const inDays = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return ymdLocal(d); };
 const expiryField = (v) => `<label>Last day of access (optional)<input name="expiresAt" type="date" min="${ymdLocal(new Date())}" value="${esc(v || '')}"></label>`;
 const planName = (id) => (D.plans.find((p) => p.id === id) || {}).name || id;
+// the industry a business picked at sign-up or in Company Profile (lib/industries.js); 'none' = not chosen yet
+const indName = (k) => (D.industries.find((i) => i.slug === k) || {}).name || '';
+const indLabel = (a) => (a.industry === 'other' ? `Other${a.industryOther ? ': ' + a.industryOther : ''}` : indName(a.industry));
+const industryFields = (a) => `<label>Industry<select name="industry"><option value="">Not set</option>${D.industries.map((i) => `<option value="${esc(i.slug)}" ${i.slug === a.industry ? 'selected' : ''}>${esc(i.name)}</option>`).join('')}</select></label>
+<label data-other style="${a.industry === 'other' ? '' : 'display:none'}">Their industry<input name="industryOther" maxlength="80" value="${esc(a.industryOther || '')}"></label>`;
+const wireIndustry = (f) => { const s = $('[name=industry]', f); s.addEventListener('change', () => { $('[data-other]', f).style.display = s.value === 'other' ? '' : 'none'; }); };
+let accIndustry = ''; // the accounts list's industry filter: '' = all
 function accountsView(main) {
   const active = D.accounts.filter((a) => a.status === 'active').length;
   const byPlan = D.plans.map((p) => `${D.accounts.filter((a) => a.planId === p.id).length} ${esc(p.name)}`).join(' · ');
+  const count = (k) => D.accounts.filter((a) => (a.industry || 'none') === k).length;
+  const top = D.industries.map((i) => [i, count(i.slug)]).filter(([, n]) => n).sort((x, y) => y[1] - x[1]).slice(0, 3).map(([i, n]) => `${n} ${esc(i.name)}`).join(' · ');
+  const shown = D.accounts.filter((a) => !accIndustry || (a.industry || 'none') === accIndustry);
   main.innerHTML = `<div class="head"><div><h1>Accounts</h1><p class="sub" style="margin:4px 0 0">Each business gets its own web address, data and logins.</p></div><button class="btn" data-act="newAccount">New account</button></div>
 ${D.devMode ? `<div class="note">Running locally: accounts open at <code>&lt;address&gt;.${esc(D.rootDomain)}</code> in this browser. Set <code>PLATFORM_DOMAIN</code> (e.g. yourapp.com) on your server to give each account <code>&lt;address&gt;.yourapp.com</code>.</div>` : ''}
 <div class="stats"><div class="card"><div class="l">Accounts</div><div class="v">${D.accounts.length}</div></div><div class="card"><div class="l">Active</div><div class="v">${active}</div></div>
-<div class="card"><div class="l">By plan</div><div style="margin-top:8px;font-size:14px">${byPlan}</div></div><div class="card"><div class="l">Logins across accounts</div><div class="v">${D.accounts.reduce((s, a) => s + a.users, 0)}</div></div></div>
-<div class="card"><div class="tablewrap"><table class="acc"><thead><tr><th>Business</th><th>Web address</th><th>Plan</th><th>Status</th><th>Usage</th><th>Created</th><th></th></tr></thead><tbody>
-${D.accounts.map((a) => `<tr data-id="${a.id}"><td class="acc-biz"><div class="nm">${esc(a.name)}${a.isDefault ? ' <span class="pf-chip">Your own account</span>' : ''}</div><div class="sm">${a.owner ? `${esc(a.owner.name)} · ${esc(a.owner.email)}${a.owner.active ? '' : ' · <em>invite not accepted</em>'}${a.owner.unconfirmed ? ' · <em>email not confirmed</em>' : ''}` : 'No owner login yet'}</div></td>
+<div class="card"><div class="l">By plan</div><div style="margin-top:8px;font-size:14px">${byPlan}</div></div><div class="card"><div class="l">Logins across accounts</div><div class="v">${D.accounts.reduce((s, a) => s + a.users, 0)}</div></div>
+<div class="card"><div class="l">Top industries</div><div style="margin-top:8px;font-size:14px">${top || 'None chosen yet'}</div></div></div>
+<div class="acc-tools"><label>Industry<select id="accInd"><option value="">All industries (${D.accounts.length})</option>${[...D.industries, { slug: 'none', name: 'Not set yet' }].map((i) => `<option value="${esc(i.slug)}" ${i.slug === accIndustry ? 'selected' : ''}>${esc(i.name)} (${count(i.slug)})</option>`).join('')}</select></label>
+<button type="button" class="btn alt sm" data-act="accountsCsv">Download CSV</button><span class="sm">${accIndustry ? `${shown.length} of ${D.accounts.length} accounts` : ''}</span></div>
+<div class="card"><div class="tablewrap"><table class="acc"><thead><tr><th>Business</th><th>Industry</th><th>Web address</th><th>Plan</th><th>Status</th><th>Usage</th><th>Created</th><th></th></tr></thead><tbody>
+${shown.map((a) => `<tr data-id="${a.id}"><td class="acc-biz"><div class="nm">${esc(a.name)}${a.isDefault ? ' <span class="pf-chip">Your own account</span>' : ''}</div><div class="sm">${a.owner ? `${esc(a.owner.name)} · ${esc(a.owner.email)}${a.owner.active ? '' : ' · <em>invite not accepted</em>'}${a.owner.unconfirmed ? ' · <em>email not confirmed</em>' : ''}` : 'No owner login yet'}</div></td>
+<td class="sm">${a.industry ? esc(indLabel(a)) : '<span class="muted">Not set</span>'}</td>
 <td><a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(host(a.url))}</a>${a.domains.length ? `<div class="chips">${a.domains.map((d) => `<span class="pf-chip ${d.verified ? 'ok' : 'wait'}" title="${d.verified ? 'Connected' : 'Waiting for DNS'}">${esc(d.host)}</span>`).join('')}</div>` : ''}</td>
 <td><select data-plan="${a.id}" aria-label="Plan for ${esc(a.name)}">${D.plans.map((p) => `<option value="${esc(p.id)}" ${p.id === a.planId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></td>
 <td class="acc-st">${statusChip(a)}${a.support.length ? ` <span class="pf-chip ${a.support.some((r) => r.status === 'granted') ? 'ok' : 'wait'}" title="Support Access">${a.support.some((r) => r.status === 'granted') ? 'Support access' : 'Access requested'}</span>` : ''}</td>
 <td class="sm">${a.users} login${a.users === 1 ? '' : 's'} · ${a.clients} clients · ${a.jobs} jobs${a.lastLoginAt ? `<br>Last login ${fmtDate(a.lastLoginAt)}` : ''}</td>
 <td class="sm">${fmtDate(a.createdAt)}</td>
-<td><div class="acts"><button class="btn alt sm" data-act="editAccount" data-id="${a.id}">Manage</button></div></td></tr>`).join('') || '<tr><td colspan="7" class="muted">No accounts yet.</td></tr>'}
+<td><div class="acts"><button class="btn alt sm" data-act="editAccount" data-id="${a.id}">Manage</button></div></td></tr>`).join('') || `<tr><td colspan="8" class="muted">${accIndustry ? 'No accounts in this industry.' : 'No accounts yet.'}</td></tr>`}
 </tbody></table></div></div>`;
   wirePlanSelects(main);
+  $('#accInd', main).addEventListener('change', (e) => { accIndustry = e.target.value; accountsView(main); });
   // on phones the table shows only the business and its status; tapping the row opens Manage for the rest
   $$('.acc tbody tr[data-id]', main).forEach((tr) => tr.addEventListener('click', (e) => {
     if (!matchMedia('(max-width:640px)').matches || e.target.closest('a,button,select')) return;
@@ -190,6 +205,16 @@ function wireSlug(form, initial) {
   i.addEventListener('input', () => { i.dataset.touched = '1'; check(); }); return check;
 }
 const A = {};
+// the accounts in the list (with its industry filter) as a spreadsheet: owner contacts by industry, for marketing
+A.accountsCsv = () => {
+  const rows = D.accounts.filter((a) => !accIndustry || (a.industry || 'none') === accIndustry);
+  // names come from public sign-ups: a leading = + - @ is quoted so a spreadsheet never runs it as a formula
+  const cell = (v) => { const t = String(v ?? '').replace(/^[=+\-@\t\r]/, "'$&"); return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+  const head = ['Business', 'Owner', 'Owner email', 'Industry', 'Plan', 'Status', 'Web address', 'Clients', 'Jobs', 'Invoices', 'Created', 'Last login'];
+  const lines = rows.map((a) => [a.name, a.owner ? a.owner.name : '', a.owner ? a.owner.email : '', indLabel(a), planName(a.planId), a.status, a.url, a.clients, a.jobs, a.invoices, (a.createdAt || '').slice(0, 10), (a.lastLoginAt || '').slice(0, 10)].map(cell).join(','));
+  const url = URL.createObjectURL(new Blob([[head.join(','), ...lines].join('\n')], { type: 'text/csv' }));
+  const link = document.createElement('a'); link.href = url; link.download = `accounts${accIndustry ? '-' + accIndustry : ''}-${ymdLocal(new Date())}.csv`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
 A.newAccount = () => {
   const m = modal('New account', `<form id="nf"><div class="row"><label>Business name<input name="name" required maxlength="100"></label>${slugField('slug', '')}</div>
 <div class="row"><label>Plan<select name="planId">${D.plans.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}${p.price ? ` (${esc(p.price)})` : ''}</option>`).join('')}</select></label>${expiryField('')}</div>
@@ -222,9 +247,11 @@ A.editAccount = (d) => {
 <dt>Status</dt><dd>${statusChip(a)}</dd>
 <dt>Plan</dt><dd><select data-plan="${a.id}" aria-label="Plan for ${esc(a.name)}">${D.plans.map((p) => `<option value="${esc(p.id)}" ${p.id === a.planId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></dd>
 <dt>Usage</dt><dd>${a.users} login${a.users === 1 ? '' : 's'} · ${a.clients} clients · ${a.jobs} jobs${a.lastLoginAt ? `<br>Last login ${fmtDate(a.lastLoginAt)}` : ''}</dd>
+<dt>Industry</dt><dd>${a.industry ? esc(indLabel(a)) : 'Not set'}</dd>
 <dt>Created</dt><dd>${fmtDate(a.createdAt)}</dd></dl></div>
 <div class="am-grid"><div class="am-col"><form id="ef"><label>Business name<input name="name" value="${esc(a.name)}" required maxlength="100"></label>${slugField('slug', a.slug)}
 <p class="muted" style="font-size:13px;margin:-4px 0 12px">Changing the address breaks links already sent to clients at the old address.</p>
+${industryFields(a)}
 <div class="foot" style="margin-top:0"><button class="btn">Save</button></div></form>
 <h3 style="font-size:15px;margin:18px 0 6px">Owner login</h3><p class="muted" style="font-size:14px;margin:0 0 8px">${a.owner ? `${esc(a.owner.name)} (${esc(a.owner.email)}). ${a.owner.active ? 'Get a password reset link if they’re locked out.' : 'They haven’t chosen a password yet.'}` : 'No owner login.'}</p>
 ${a.owner ? `<button type="button" class="btn alt sm" data-act="ownerLink" data-id="${a.id}">${a.owner.active ? 'Get password reset link' : 'Get a new invite link'}</button>` : ''}
@@ -242,7 +269,7 @@ ${a.status === 'active' ? '' : a.status === 'pending' ? '<p class="muted" style=
 <div class="foot"><button type="button" class="btn alt" data-act="closeModal">Close</button></div>`, { wide: true });
   m.dataset.id = a.id;
   wirePlanSelects(m, (x) => A.editAccount({ id: x.id }));
-  const f = $('#ef', m); wireSlug(f, a.slug);
+  const f = $('#ef', m); wireSlug(f, a.slug); wireIndustry(f);
   const xf = $('#xf', m); if (xf) xf.addEventListener('submit', async (e) => { e.preventDefault(); try { await api('PUT', `/api/platform/accounts/${a.id}`, { expiresAt: xf.expiresAt.value }); toast(xf.expiresAt.value ? `Last day of access: ${fmtDate(xf.expiresAt.value)}` : 'End date removed'); await load(); render(); A.editAccount({ id: a.id }); } catch (x) { toast(x.message, true); } });
   const sf = $('#saf', m);
   if (sf) sf.addEventListener('submit', async (e) => {
@@ -250,7 +277,7 @@ ${a.status === 'active' ? '' : a.status === 'pending' ? '<p class="muted" style=
     try { const who = a.logins.find((u) => u.id === sf.userId.value); const r = await api('POST', `/api/platform/accounts/${a.id}/support-access`, { userId: sf.userId.value, reason: sf.reason.value }); toast(r.emailed ? `Request sent to ${who.email}` : `Request saved. ${who.name} wasn’t emailed (email isn’t connected), so let them know to check Settings → Support Access.`); await load(); render(); A.editAccount({ id: a.id }); }
     catch (x) { b.disabled = false; toast(x.message, true); }
   });
-  f.addEventListener('submit', async (e) => { e.preventDefault(); try { await api('PUT', `/api/platform/accounts/${a.id}`, Object.fromEntries(new FormData(f))); toast('Saved'); await load(); render(); A.editAccount({ id: a.id }); } catch (x) { toast(x.message, true); } });
+  f.addEventListener('submit', async (e) => { e.preventDefault(); const b = Object.fromEntries(new FormData(f)); if (!b.industry) delete b.industry; try { await api('PUT', `/api/platform/accounts/${a.id}`, b); toast('Saved'); await load(); render(); A.editAccount({ id: a.id }); } catch (x) { toast(x.message, true); } });
 };
 // Support Access: ask any of the account's logins; they approve it on their Support Access page, and while it's granted
 // you can open the account as them (with their access level). They, or the account owner, can revoke it any time.
@@ -1002,6 +1029,7 @@ async function automationsView(main) {
   const ruleText = (a) => { const r = a.rules || {}; const out = [];
     if (r.plans.length) out.push(r.plans.map((p) => (AU.plans.find((x) => x.id === p) || { name: p }).name).join(' or ') + ' plan');
     if (r.statuses.length) out.push(r.statuses.map((s) => AU.statuses[s]).join(' or '));
+    if ((r.industries || []).length) out.push(r.industries.map((i) => (AU.industries.find((x) => x.slug === i) || { name: i }).name).join(' or '));
     for (const [k, l] of [['clients', 'clients'], ['jobs', 'jobs'], ['invoices', 'invoices']]) { const lo = r[k + 'Min']; const hi = r[k + 'Max']; if (lo !== '' && hi !== '') out.push(`${lo}–${hi} ${l}`); else if (lo !== '') out.push(`${lo}+ ${l}`); else if (hi !== '') out.push(hi === 0 ? `no ${l}` : `up to ${hi} ${l}`); }
     if (r.cards !== 'any') out.push(r.cards === 'yes' ? 'card payments set up' : 'no card payments'); if (r.confirmed !== 'any') out.push(r.confirmed === 'yes' ? 'email confirmed' : 'email not confirmed');
     return out.length ? out.join(' · ') : 'Every account'; };
@@ -1042,6 +1070,7 @@ ${a.id ? '' : `<label>Start from<select id="auStart"><option value="">Blank</opt
 <div class="row"><label>Send to<select name="to">${opt('owner', a.to, 'The account owner')}${opt('admins', a.to, 'The owner and admins')}</select></label><div></div></div>
 <div class="au-checks"><span>Plans</span>${AU.plans.map((p) => `<label><input type="checkbox" name="plans" value="${esc(p.id)}" ${r.plans.includes(p.id) ? 'checked' : ''}> ${esc(p.name)}</label>`).join('')}<em>none ticked = all plans</em></div>
 <div class="au-checks"><span>Status</span>${Object.entries(AU.statuses).map(([k, l]) => `<label><input type="checkbox" name="statuses" value="${k}" ${r.statuses.includes(k) ? 'checked' : ''}> ${l}</label>`).join('')}<em>none ticked = any status</em></div>
+<div class="au-checks"><span>Industry</span>${AU.industries.map((i) => `<label><input type="checkbox" name="industries" value="${esc(i.slug)}" ${(r.industries || []).includes(i.slug) ? 'checked' : ''}> ${esc(i.name)}</label>`).join('')}<em>none ticked = any industry</em></div>
 ${range('clients', 'Clients')}${range('jobs', 'Jobs')}${range('invoices', 'Invoices')}
 <div class="row"><label>Card payments<select name="cards">${opt('any', r.cards, 'Any')}${opt('yes', r.cards, 'Set up')}${opt('no', r.cards, 'Not set up')}</select></label><label>Owner’s email<select name="confirmed">${opt('any', r.confirmed, 'Any')}${opt('yes', r.confirmed, 'Confirmed')}${opt('no', r.confirmed, 'Not confirmed')}</select></label></div>
 <h3 class="au-h">Email</h3>
@@ -1063,7 +1092,7 @@ ${range('clients', 'Clients')}${range('jobs', 'Jobs')}${range('invoices', 'Invoi
 function auRead(f) {
   const fd = new FormData(f); const g = (k) => fd.get(k);
   return { id: f.dataset.id || undefined, name: g('name'), trigger: g('trigger'), days: g('days'), date: g('date'), hour: g('hour'), tz: g('tz'), weekdays: !!g('weekdays'), catchUp: !!g('catchUp'), to: g('to'), subject: g('subject'), body: g('body'),
-    rules: { plans: fd.getAll('plans'), statuses: fd.getAll('statuses'), clientsMin: g('clientsMin'), clientsMax: g('clientsMax'), jobsMin: g('jobsMin'), jobsMax: g('jobsMax'), invoicesMin: g('invoicesMin'), invoicesMax: g('invoicesMax'), cards: g('cards'), confirmed: g('confirmed') } };
+    rules: { plans: fd.getAll('plans'), statuses: fd.getAll('statuses'), industries: fd.getAll('industries'), clientsMin: g('clientsMin'), clientsMax: g('clientsMax'), jobsMin: g('jobsMin'), jobsMax: g('jobsMax'), invoicesMin: g('invoicesMin'), invoicesMax: g('invoicesMax'), cards: g('cards'), confirmed: g('confirmed') } };
 }
 A.auVar = (d) => { const ta = $('#auf [name=body]'); const s = ta.selectionStart; const ins = `{{${d.v}}}`; ta.value = ta.value.slice(0, s) + ins + ta.value.slice(ta.selectionEnd); ta.focus(); ta.selectionStart = ta.selectionEnd = s + ins.length; };
 A.auWho = async () => {
