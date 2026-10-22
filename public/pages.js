@@ -42,42 +42,7 @@ ${o.productivity.map((p) => `<tr><td><span style="display:inline-block;width:9px
   },
 };
 
-/* ===== /calendar ===== */
-const cal = { view: 'month', date: new Date() };
-PAGES['/calendar'] = {
-  title: 'Job Calendar',
-  async render(main) {
-    const today = ymd(new Date()); const jobsOn = (s) => D.jobs.filter((j) => j.date === s && j.status !== 'cancelled').sort((a, b) => a.startTime.localeCompare(b.startTime));
-    const chip = (j) => { const s = byId(D.staff, (j.staffIds || [])[0]); return `<button class="chip ${j.status === 'completed' ? 'done' : ''}" style="border-left-color:${s ? esc(s.color) : '#9ca3af'}" data-act="editJob" data-id="${j.id}" title="${esc(j.title + ' · ' + clientName(j.clientId))}">${esc(fmtTime(j.startTime))} ${esc(j.title)}</button>`; };
-    let start; let count; let title;
-    if (cal.view === 'week') { start = startOfWeek(cal.date); count = 7; title = `Week of ${fmtDate(ymd(start))}`; }
-    else { const f = new Date(cal.date.getFullYear(), cal.date.getMonth(), 1); start = startOfWeek(f); count = Math.ceil((dayInWeek(f) + new Date(f.getFullYear(), f.getMonth() + 1, 0).getDate()) / 7) * 7; title = cal.date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }); }
-    const wk = startOfWeek(cal.view === 'week' ? cal.date : new Date());
-    const load = Array.from({ length: 7 }, (_, i) => { const s = ymd(addDays(wk, i)); const js = jobsOn(s); return { s, n: js.length, h: js.reduce((t, j) => t + hoursOf(j), 0) }; });
-    const maxH = Math.max(...load.map((l) => l.h), 1);
-    let cells = Array.from({ length: 7 }, (_, i) => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][(i + weekStartDay()) % 7]).map((d) => `<div class="dow">${d}</div>`).join('');
-    for (let i = 0; i < count; i++) {
-      const d = addDays(start, i); const s = ymd(d); const out = cal.view === 'month' && d.getMonth() !== cal.date.getMonth();
-      const js = jobsOn(s); const cap = cal.view === 'month' ? 3 : 99;
-      cells += `<div class="day ${out ? 'out' : ''} ${s === today ? 'today' : ''}"><div class="dn" data-act="newJobOn" data-date="${s}" title="Add job on this day"><span>${d.getDate()}</span><span class="muted">+</span></div>${js.slice(0, cap).map(chip).join('')}${js.length > cap ? `<div class="muted">+${js.length - cap} more</div>` : ''}</div>`;
-    }
-    main.innerHTML = `<div class="head"><div><h1>Job Schedule</h1><p class="sub">All scheduled jobs by date. Click a job to edit, or the day number to add one.</p></div><button class="btn need-jobs-edit" data-act="newJob">+ New job</button></div>
-<div class="load">${load.map((l) => `<div><strong>${parseD(l.s).toLocaleDateString('en-US', { weekday: 'short' })} ${parseD(l.s).getDate()}</strong><div class="muted">${l.n} job${l.n === 1 ? '' : 's'} · ${l.h.toFixed(1)}h</div><div class="bar"><i style="width:${(l.h / maxH) * 100}%"></i></div></div>`).join('')}</div>
-<div class="card"><div class="head" style="margin-bottom:10px"><div class="actions"><button class="btn alt sm" data-act="calPrev">‹</button><button class="btn alt sm" data-act="calToday">Today</button><button class="btn alt sm" data-act="calNext">›</button></div><h2 style="margin:0">${esc(title)}</h2>
-<div class="tabs" style="margin:0"><button class="${cal.view === 'month' ? 'on' : ''}" data-act="calView" data-v="month">Month</button><button class="${cal.view === 'week' ? 'on' : ''}" data-act="calView" data-v="week">Week</button></div></div>
-<div class="cal ${cal.view}">${cells}</div></div>`;
-  },
-};
-A.calPrev = () => { cal.date = cal.view === 'week' ? addDays(cal.date, -7) : new Date(cal.date.getFullYear(), cal.date.getMonth() - 1, 1); refresh(); };
-A.calNext = () => { cal.date = cal.view === 'week' ? addDays(cal.date, 7) : new Date(cal.date.getFullYear(), cal.date.getMonth() + 1, 1); refresh(); };
-A.calToday = () => { cal.date = new Date(); refresh(); };
-A.calView = (d) => { cal.view = d.v; refresh(); };
-
-/* ===== /staff-schedules ===== */
-let staffWeek = startOfWeek(new Date());
-// compact start time for the phone layout: 9a, 1:30p (12-hour) or 09:30 (24-hour)
-const shortTime = (t) => { const [h, m] = String(t || '0:0').split(':').map(Number); return company.timeFormat === '24' ? fmtTime(t) : `${((h + 11) % 12) + 1}${m ? ':' + String(m).padStart(2, '0') : ''}${h < 12 ? 'a' : 'p'}`; };
-/* ===== /staff-schedules (Schedules): a week or day on a time grid with everyone's jobs, tasks and events.
+/* ===== /calendar (Calendar): a week or day on a time grid with everyone's jobs, tasks and events.
    Click an empty time to add a Job, Task or Event there; drag anything to another day or time to move it. ===== */
 const SC_START = 6; const SC_END = 21; const SC_HOUR = 48; // the grid runs 6 AM to 9 PM, 48px per hour
 let scState = { anchor: new Date(), view: innerWidth < 700 ? 'day' : 'week', hidden: [] };
@@ -104,8 +69,8 @@ function scLayout(items) {
   for (const it of L) { if (it.s >= groupEnd && group.length) flush(); group.push(it); groupEnd = Math.max(groupEnd, it.e); }
   flush(); return done;
 }
-PAGES['/staff-schedules'] = {
-  title: 'Schedules',
+PAGES['/calendar'] = {
+  title: 'Calendar',
   async render(main) {
     const days = scDays(); const today = ymd(new Date()); const edit = canDo('jobs.edit');
     const a = scState.anchor; const first = new Date(a.getFullYear(), a.getMonth(), 1); const gridStart = startOfWeek(first);
@@ -314,7 +279,7 @@ ${ok && r.jobs.length ? `<label class="switchline"><input type="checkbox" name="
 A.toCancel = async (d) => { const r = toState.requests.find((x) => x.id === d.id); if (!confirm(`Cancel ${r.mine ? 'your' : `${r.person}’s`} time off ${r.when}?`)) return; try { await api('POST', `/api/time-off/${d.id}/cancel`, {}); toast('Time off canceled'); refresh(); } catch (x) { toast(x.message, true); } };
 
 /* ===== /team ===== */
-// Team members are the staff list (also used for job assignment and Schedules). There are no logins yet,
+// Team members are the staff list (also used for job assignment and the Calendar). There are no logins yet,
 // so "last active" is the member's most recent job, and adding a member doesn't send an invitation.
 const staffActive = (s) => s.status !== 'deactivated';
 const initials = (n) => String(n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('');
@@ -333,7 +298,7 @@ PAGES['/team'] = {
     const th = (k, label) => `<th><button class="th-btn" data-act="teamSort" data-k="${k}">${label} <span class="sort ${v.sort === k ? 'on' : ''}">${v.sort === k ? (v.dir > 0 ? '▲' : '▼') : '⇅'}</span></button></th>`;
     const active = D.staff.filter(staffActive).length;
     main.innerHTML = `<div class="head"><h1>Manage team</h1><div class="actions"><span class="seat-pill"><strong>${active}</strong> active member${active === 1 ? '' : 's'}</span><button class="btn" data-act="newStaff">Add Team Member</button></div></div>
-<p class="sub" style="margin-top:-6px">Manage your team members in one place. Team members can be assigned to jobs and appear on Schedules.</p>
+<p class="sub" style="margin-top:-6px">Manage your team members in one place. Team members can be assigned to jobs and appear on the Calendar.</p>
 <div class="cfilters"><div class="search-x" style="max-width:none"><input id="tq" type="search" placeholder="Search team members" value="${esc(v.q)}" aria-label="Search team members"><button type="button" class="icon-btn" data-act="teamClear" aria-label="Clear search" ${v.q ? '' : 'hidden'}>✕</button></div></div>
 <h2 class="ftitle" style="font-size:15px">Team members (${list.length})</h2>
 <div class="card ctable"><div class="tablewrap"><table><tr>${th('name', 'Name')}${th('role', 'Role')}${th('last', 'Last job')}<th>Next job</th>${th('status', 'Status')}<th>Login</th><th>Contact</th></tr>
@@ -390,7 +355,7 @@ function teamMemberPage(main, s) {
 <div class="row tm-extra"><label>Calendar color<input name="color" type="color" value="${esc(s.color || palette[D.staff.length % palette.length])}"></label>
 ${isOwnerMember(s) ? '' : `<label>Status<select name="status"><option value="active">Active</option><option value="deactivated" ${s.status === 'deactivated' ? 'selected' : ''}>Deactivated (hidden from scheduling)</option></select></label>`}</div>
 <hr class="tm-hr"><h2>Schedule</h2><h3>Working hours</h3>
-<p class="muted">Working hours show on Schedules (days off are marked) and you'll get a warning when a job is booked outside them.</p>
+<p class="muted">You'll get a warning when a job is booked outside them.</p>
 ${hoursHtml(hours)}</div>
 <div class="foot">${s.id && !isOwnerMember(s) ? `<button type="button" class="btn danger" data-act="delStaff" data-id="${s.id}">Remove team member</button>` : ''}<a class="btn alt" href="/team" data-link>Cancel</a><button class="btn">${s.id ? 'Save' : 'Add team member'}</button></div></form>${s.id ? '<div class="qcard login-card" id="loginCard"><h2>Login access</h2><p class="muted">Loading…</p></div>' : ''}`;
   const form = $('form', main); if (s.id) renderLoginCard(s);
@@ -1398,7 +1363,7 @@ ${p.jobTitle ? `<p class="muted">Role: ${esc(p.jobTitle)}. Ask the account owner
 <input name="state" value="${esc(p.state)}" placeholder="State" aria-label="State" autocomplete="address-level1"><div class="addr-row"><input name="zip" value="${esc(p.zip)}" placeholder="ZIP code" aria-label="ZIP code" autocomplete="postal-code"><input name="country" value="${esc(p.country || 'United States')}" placeholder="Country" aria-label="Country" autocomplete="country-name"></div></div></div>
 <div class="foot"><button class="btn">Save profile</button></div></div></form>
 ${p.linked ? `<form class="tmform" id="pfHours"><div class="qcard login-card"><h2>Working hours</h2>
-<p class="muted">When you're available to work. Your hours show on Schedules (days off are marked) and the office gets a warning if a job is booked outside them.</p>
+<p class="muted">When you're available to work. The office gets a warning if a job is booked outside them.</p>
 ${hoursHtml(staffHours(p))}<div class="foot"><button class="btn">Save hours</button></div></div></form>` : ''}
 <form class="tmform" id="pfPass"><div class="qcard login-card"><h2>Change password</h2><p class="muted">Use at least 8 characters. Changing it signs you out on your other devices.</p>
 <div class="pf-pw"><input type="email" name="username" value="${esc(p.email)}" autocomplete="username" hidden>

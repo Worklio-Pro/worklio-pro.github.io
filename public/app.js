@@ -80,7 +80,7 @@ const clientOptions = (sel) => `<option value="">Select client…</option>` + D.
 /* ===== router ===== */
 const PAGES = {};
 const NAV = [
-  ['Operations', [['/business-overview', 'Home'], ['/calendar', 'Job Calendar'], ['/staff-schedules', 'Schedules'], ['/requests', 'Requests'], ['/clients', 'Clients'], ['/quotes', 'Quotes'], ['/jobs', 'Jobs'], ['/invoices', 'Invoices']]],
+  ['Operations', [['/business-overview', 'Home'], ['/calendar', 'Calendar'], ['/requests', 'Requests'], ['/clients', 'Clients'], ['/quotes', 'Quotes'], ['/jobs', 'Jobs'], ['/invoices', 'Invoices']]],
   ['Money', [['/payments', 'Payments'], ['/services', 'Products & Services'], ['/expenses', 'Expenses'], ['/reports', 'Financial Reports'], ['/tax-summary', 'Tax Summary']]],
   ['Marketing', [['/reviews', 'Reviews'], ['/social-posts', 'Social Posts']]],
   ['Records', [['/project-gallery', 'Project Gallery'], ['/notifications', 'Notifications Log']]],
@@ -144,7 +144,6 @@ const BNAV = [
   ['/quotes', 'Quotes', '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>'],
   ['/jobs', 'Jobs', '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 13h18"/>'],
   ['/invoices', 'Invoices', '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h3"/>'],
-  ['/staff-schedules', 'Schedules', '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'],
   ['/clients', 'Clients', '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6.5 6.5 0 0 1 3.5 6"/>'],
 ];
 // sidebar icons: the phone tab bar's where it has one, so both match; the rest drawn in the same style
@@ -192,7 +191,7 @@ const FEATURE_EXTRAS = [['/quotes/new', 'New quote', 'Quotes', 'create estimate'
   ['/clients/import', 'Import clients', 'Clients', 'csv upload spreadsheet'], ['/team/new', 'Add team member', 'Settings', 'invite staff employee user'],
   ['/payments/settings', 'Payment settings', 'Money', 'card online payouts processing rates disputes'], ['/profile', 'My profile', 'Account', 'password photo name email login']];
 const FEATURE_WORDS = {
-  '/business-overview': 'dashboard overview', '/calendar': 'schedule appointments visits', '/staff-schedules': 'working hours availability', '/clients': 'customers contacts',
+  '/business-overview': 'dashboard overview', '/calendar': 'schedule schedules appointments visits tasks events job calendar', '/clients': 'customers contacts',
   '/quotes': 'estimates proposals', '/jobs': 'work orders visits', '/invoices': 'billing', '/payments': 'card online stripe', '/services': 'catalog products price list items',
   '/expenses': 'costs receipts spending', '/reports': 'revenue profit charts', '/tax-summary': 'sales tax', '/project-gallery': 'photos pictures', '/reviews': 'google reviews ratings stars reply', '/social-posts': 'facebook instagram social media post marketing', '/notifications': 'emails texts sms sent messages log',
   '/requests': 'time off day off vacation sick leave request approve', '/settings/roles': 'roles permissions access manager technician what team can see do', '/settings/company': 'business details logo address phone social media facebook instagram tiktok tax', '/team': 'staff employees users access roles technicians', '/settings/emails': 'templates text messages sms reminders',
@@ -247,9 +246,9 @@ const HELP_TOPICS = [
     ['Add your products and services so quotes and invoices fill in prices for you.', '/services', 'Products & Services'],
     ['Invite your team and choose what each person can access.', '/team', 'Manage Team']] },
   { id: 'schedule', hc: 'schedule', title: 'Schedule', blurb: 'Plan jobs on the calendar, assign team members and keep track of who’s working when.', steps: [
-    ['Open the job calendar and pick a day to schedule a new job.', '/calendar', 'Job Calendar'],
+    ['Open the calendar and click a time to schedule a job, task or event.', '/calendar', 'Calendar'],
     ['Assign team members to a job from the job page.', '/jobs', 'Jobs'],
-    ['Set each team member’s working hours.', '/staff-schedules', 'Schedules']] },
+    ['Set each team member’s working hours.', '/team', 'Manage Team']] },
   { id: 'work', hc: 'work', title: 'Work', blurb: 'Every step of your workflow: quotes, jobs, invoices, payments and expenses.', steps: [
     ['Create a quote and send it to your client to approve.', '/quotes/new', 'New quote'],
     ['Turn approved work into a scheduled job.', '/jobs', 'Jobs'],
@@ -358,6 +357,7 @@ async function render() {
   const isPortal = path === '/client-portal' && new URLSearchParams(location.search).get('c');
   if (!isPortal && !me) { try { me = await api('GET', '/api/auth/me'); } catch (e) { /* api() sends you to the login page */ } } // needed before picking the start page
   if (path === '/time-off') { history.replaceState({}, '', '/requests'); return render(); } // the page's old address (links in earlier emails)
+  if (path === '/staff-schedules') { history.replaceState({}, '', '/calendar'); return render(); } // Schedules became Calendar
   if (path === '/') { const start = memberCan('/business-overview') ? '/business-overview' : (navPaths.find((p) => memberCan(p) && !planLocked(p)) || '/profile'); history.replaceState({}, '', start); return render(); }
   const main = $('#main');
   const portal = path === '/client-portal' && new URLSearchParams(location.search).get('c');
@@ -1122,7 +1122,7 @@ function jobPage(main, job, preset) {
 <div class="actions">${j.id ? `<details class="menu"><summary class="btn alt">⋯ More</summary><div class="menu-list">
 ${j.signature || !planHas('signatures') ? '' : `<button type="button" data-act="collectSignature" data-id="${j.id}">Collect signature</button>`}${planHas('timeOff') && me && me.staffId && (j.staffIds || []).includes(me.staffId) && j.date >= ymd(new Date()) ? `<button type="button" data-act="jobRequestOff" data-id="${j.id}">Request off for this job</button>` : ''}
 <button type="button" class="need-jobs-edit" data-act="jobRemind" data-id="${j.id}">${planHas('sms') ? 'Text' : 'Email'} reminder to client</button>${planHas('invoices') ? `<button type="button" class="need-invoices" data-act="jobInvoice" data-id="${j.id}">Create invoice</button>` : ''}
-<a href="/calendar" data-link>Open job calendar</a><button type="button" class="danger-text need-jobs-edit" data-act="delJob" data-id="${j.id}">Delete job</button></div></details>
+<a href="/calendar" data-link>Open calendar</a><button type="button" class="danger-text need-jobs-edit" data-act="delJob" data-id="${j.id}">Delete job</button></div></details>
 ${j.status === 'scheduled' ? `<button type="button" class="btn alt need-jobs-edit" data-act="completeJob" data-id="${j.id}">Mark complete</button>` : `<button type="button" class="btn alt need-jobs-edit" data-act="reopenJob" data-id="${j.id}">↺ Reopen job</button>`}
 <button class="btn need-jobs-edit">Save</button>` : '<a class="btn alt" href="/jobs" data-link>Cancel</a><button class="btn">Save job</button>'}</div></div>
 <input name="title" class="qtitle" required value="${esc(j.title || '')}" placeholder="Job title (e.g. Streamer Install)" aria-label="Job title">
@@ -1269,7 +1269,7 @@ PAGES['/jobs'] = {
     const th = (k, label, cls = '') => `<th class="${cls}"><button class="th-btn" data-act="jobSort" data-k="${k}">${label} <span class="sort ${v.sort === k ? 'on' : ''}">${v.sort === k ? (v.dir > 0 ? '▲' : '▼') : '⇅'}</span></button></th>`;
     const team = (j) => (j.staffIds || []).map((id) => byId(D.staff, id)).filter(Boolean).map((s) => s.name).join(', ');
     main.innerHTML = `<div class="head"><h1>Jobs</h1><div class="actions"><button class="btn need-jobs-edit" data-act="newJob">New Job</button>
-<details class="menu"><summary class="btn alt">⋯ More Actions</summary><div class="menu-list"><button data-act="exportJobs">Export to CSV</button><a href="/calendar" data-link>Open job calendar</a></div></details></div></div>
+<details class="menu"><summary class="btn alt">⋯ More Actions</summary><div class="menu-list"><button data-act="exportJobs">Export to CSV</button><a href="/calendar" data-link>Open calendar</a></div></details></div></div>
 <div class="cstats">
 <div class="cstat"><strong class="cs-h">Overview</strong><div class="qov">${[['late', 'q-declined'], ['invoice', 'q-sent'], ['today', 'q-converted'], ['upcoming', 'q-approved']].map(([s, c]) => `<button data-act="jobFilter" data-s="${s}"><i class="dot ${c}"></i>${J_STATUS[s]} (${count(s)})</button>`).join('')}</div></div>
 <button class="cstat" data-act="jobCard" data-k="recent"><div class="cs-h"><strong>Recent visits</strong><span>↗</span></div><div class="muted">Past 30 days</div><div class="cs-v">${recNow.length} ${change(recNow.length, recPrev.length)}</div><div class="muted money">${moneyShort(sum(recNow))}</div></button>
