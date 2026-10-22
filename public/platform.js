@@ -90,7 +90,7 @@ function render() {
   $('#root').innerHTML = `<header class="pf-top"><div class="pf-bar"><div class="pf-brand">${brandImg(siteBrand(), 'dark')}${siteBrand().logoHasName ? '' : esc(D.settings.productName)} <small>Alpha</small></div>
 <nav class="pf-tabs">${tabs.map(([k, l]) => `<a href="#${k}" class="${tab === k ? 'on' : ''}">${l}${k === 'messages' && D.chatWaiting ? ` <span class="msg-n" title="Chats waiting for you">${D.chatWaiting}</span>` : ''}</a>`).join('')}</nav>
 <div class="pf-user"><span>${esc(D.admin.name)}${isSupport() ? ' <small class="pf-role">Support</small>' : ''}</span><button type="button" data-act="logout">Log out</button></div></div></header>
-${D.maintenance && D.maintenance.on ? `<div class="mt-bar" role="status"><strong>Maintenance mode is on.</strong> Visitors and businesses see the maintenance page; you can still use everything. ${isSupport() ? 'The owner can turn it off in Settings.' : '<a href="#settings">Turn it off in Settings</a>'}</div>` : ''}
+${D.maintenance && D.maintenance.on ? `<div class="mt-bar" role="status"><strong>Maintenance mode is on.</strong> Visitors and businesses see the maintenance page; you can still use everything. ${isSupport() ? 'The owner can turn it off in Settings.' : '<a href="#settings" data-act="goMaint">Turn it off in Settings</a>'}</div>` : ''}
 <main class="pf-main" id="main"></main>
 <nav class="pf-bnav" aria-label="Alpha sections">${tabs.filter(([k]) => !NOT_ON_PHONES.includes(k)).map(([k, l]) => `<a href="#${k}" class="${tab === k ? 'on' : ''}"${tab === k ? ' aria-current="page"' : ''}>${TAB_ICONS[k]}<span>${SHORT_TABS[k] || l}</span></a>`).join('')}</nav>`;
   $('#main').dataset.tab = tab; // box title bands are styled per tab (platform.html)
@@ -336,31 +336,39 @@ A.savePlans = async () => {
 window.addEventListener('beforeunload', (e) => { if (D && draftPlans && plansDirty()) e.preventDefault(); });
 
 /* ===== settings ===== */
+// Settings shows one box at a time, picked from these tabs
+const SET_TABS = [['product', 'Your product'], ['team', 'Alpha team'], ['logo', 'Logo'], ['signups', 'Sign-ups'], ['expiry', 'Access end dates'], ['maintenance', 'Maintenance mode'], ['reserved', 'Reserved addresses'], ['terms', 'Terms and privacy']];
+let setTab = 'product';
+A.setTab = (d) => { setTab = d.k; settingsView($('#main')); };
+A.goMaint = () => { setTab = 'maintenance'; if (tab === 'settings') settingsView($('#main')); else location.hash = 'settings'; }; // the maintenance banner's link
 function settingsView(main) {
   const s = D.settings; const site = `${location.origin}/pricing`;
+  if (!SET_TABS.some(([k]) => k === setTab)) setTab = 'product';
   main.innerHTML = `<div class="head"><div><h1>Settings</h1></div></div>
-<div class="set-grid"><div class="set-col"><div class="card" id="mtCard"></div>
-<form id="sf" class="set-form"><div class="card"><h2>Your product</h2>
+<div class="hc-seg msg-seg set-tabs" role="tablist">${SET_TABS.map(([k, l]) => `<button type="button" role="tab" aria-selected="${setTab === k}" class="${setTab === k ? 'on' : ''}" data-act="setTab" data-k="${k}">${l}${k === 'maintenance' && D.maintenance && D.maintenance.on ? ' <span class="msg-n mt-on">On</span>' : ''}</button>`).join('')}</div>
+<div class="set-grid set-one"><div class="card" id="mtCard" data-set="maintenance"></div>
+<form id="sf" class="set-form"><div class="card" data-set="product"><h2>Your product</h2>
 <div class="row"><label>Product name<input name="productName" value="${esc(s.productName)}" required maxlength="60"></label><label>Contact email<input name="contactEmail" type="email" value="${esc(s.contactEmail)}" placeholder="sales@yourapp.com"></label></div>
 <p class="muted" style="font-size:13px;margin-top:-4px">The product name appears on the pricing page and in account emails. Accounts see the contact email when they want to change plans, and new sign-ups are reported to it.</p>
 <div class="card-save"><button class="btn">Save</button></div></div>
-<div class="card"><h2>Terms and privacy</h2>
+<div class="card" data-set="terms"><h2>Terms and privacy</h2>
 <div class="row"><label>Legal business name<input name="legalName" value="${esc(s.legalName || '')}" maxlength="120" placeholder="e.g. Worklio Pro LLC"></label><label>Governing law<input name="governingLaw" value="${esc(s.governingLaw || '')}" maxlength="80" placeholder="e.g. the State of Texas"></label></div>
 <p class="muted" style="font-size:13px;margin-top:-4px">Used in the <a href="/terms" target="_blank" rel="noopener">Terms of Service</a> and <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>, which every address shows at /terms and /privacy. Leave the governing law blank to leave that sentence out. The wording itself is in lib/legal.js; have a lawyer review it.</p>
 <div class="card-save"><button class="btn">Save</button></div></div>
-<div class="card"><h2>Sign-ups</h2>
+<div class="card" data-set="signups"><h2>Sign-ups</h2>
 <label class="switchline"><input type="checkbox" name="allowSignups" ${s.allowSignups ? 'checked' : ''}> Let businesses create an account themselves on the pricing page</label>
 <label style="max-width:320px">Plan for businesses that sign up without choosing one<select name="signupPlan">${D.plans.filter((p) => !p.hidden).map((p) => `<option value="${esc(p.id)}" ${p.id === s.signupPlan ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
 <label style="max-width:320px">“Most popular” badge on the pricing page<select name="popularPlan"><option value="" ${!s.popularPlan ? 'selected' : ''}>Automatic (the middle plan)</option>${D.plans.filter((p) => !p.hidden).map((p) => `<option value="${esc(p.id)}" ${p.id === s.popularPlan ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}<option value="none" ${s.popularPlan === 'none' ? 'selected' : ''}>None</option></select></label>
 <p class="muted" style="font-size:13px">Pricing page: <a href="${esc(site)}" target="_blank" rel="noopener">${esc(site)}</a>. Businesses that choose a paid plan pay for it at checkout before their account opens (see <a href="#integrations">Integrations → Stripe</a>).</p>
 <div class="card-save"><button class="btn">Save</button></div></div>
-</form></div>
-<div class="set-col"><div class="card" id="teamCard"></div><div class="card" id="logoCard"></div>
-<form id="sf2" class="set-form"><div class="card"><h2>Accounts with a last day of access</h2>
+</form>
+<div class="card" id="teamCard" data-set="team"></div><div class="card" id="logoCard" data-set="logo"></div>
+<form id="sf2" class="set-form"><div class="card" data-set="expiry"><h2>Accounts with a last day of access</h2>
 <div class="row"><label>Show a banner in their app (days before)<input name="expiryBannerDays" type="number" min="0" max="60" value="${esc(s.expiryBannerDays ?? 7)}"></label><label>Email the owner a reminder (days before)<input name="expiryReminderDays" type="number" min="0" max="60" value="${esc(s.expiryReminderDays ?? 3)}"></label></div>
 <p class="muted" style="font-size:13px;margin-top:-4px">For accounts you gave a last day of access (e.g. trials). Owners and admins see the banner; owners can choose a plan from it, which removes the end date. The reminder is sent once per end date; edit its wording in Messages → Email templates → Access ending soon. 0 means on the last day itself.</p>
 <div class="card-save"><button class="btn">Save</button></div></div></form>
-<div class="card" id="reserved"></div></div></div>`;
+<div class="card" id="reserved" data-set="reserved"></div></div>`;
+  $$('[data-set]', main).forEach((c) => { c.hidden = c.dataset.set !== setTab; });
   $$('#sf, #sf2', main).forEach((f) => f.addEventListener('submit', async (e) => {
     e.preventDefault(); const b = Object.fromEntries(new FormData(e.target)); if (e.target.elements.allowSignups) b.allowSignups = !!b.allowSignups; // only the form with the switch sends it
     try { await api('PUT', '/api/platform/settings', b); await load(); toast('Settings saved'); render(); } catch (x) { toast(x.message, true); }

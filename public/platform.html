@@ -89,6 +89,8 @@
     .set-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 18px;align-items:start}.set-col>.card{margin-bottom:18px}
     @media (max-width:1000px){.set-grid{grid-template-columns:minmax(0,1fr)}}
     .set-grid .card>h2:first-child,#main[data-tab=help] .card>h2:first-child,#main[data-tab=messages] .card>h2:first-child{display:flex;align-items:center;gap:8px;margin:-18px -18px 14px;padding:12px 18px;background:var(--tint);border-bottom:1px solid var(--line);border-radius:12px 12px 0 0;font-size:16px}
+    .set-one{display:block;max-width:900px}.set-one>.card,.set-one .set-form>.card{margin-bottom:18px}.set-one [hidden]{display:none!important}
+    .set-tabs{display:flex;flex-wrap:wrap;width:max-content;max-width:100%}.mt-on{background:#fee2e2;color:#991b1b}
     .card-save{display:flex;justify-content:flex-end;margin-top:6px}
     /* integrations tab: one box per service, two columns on wide screens */
     .ig-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 18px;align-items:start}
@@ -231,6 +233,6 @@
   <div id="toast"></div>
   <script src="/hc-editor.js?v=2"></script>
   <script src="/brand.js?v=1"></script>
-  <script src="/platform.js?v=46"></script>
+  <script src="/platform.js?v=47"></script>
 </body>
 </html>
