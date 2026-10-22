@@ -113,7 +113,7 @@ function render() {
     $('#root').innerHTML = '<main class="pf-main pf-pop" id="main"><div class="card" id="chat"></div></main>';
     return chatCard($('#chat'));
   }
-  const tabs = [['accounts', 'Accounts'], ['plans', 'Plans & features'], ['discounts', 'Promotions'], ['messages', 'Messages'], ['automations', 'Automations'], ['help', 'Help Center'], ['integrations', 'Integrations'], ['settings', 'Settings']].filter(([k]) => tabsFor().includes(k));
+  const tabs = [['accounts', 'Accounts'], ['plans', 'Plans & features'], ['discounts', 'Promotions'], ['messages', 'Messages'], ['help', 'Help Center'], ['integrations', 'Integrations'], ['settings', 'Settings']].filter(([k]) => tabsFor().includes(k));
   document.title = `${tabs.find((t) => t[0] === tab)[1]} · ${D.settings.productName} Alpha`;
   $('#root').innerHTML = `<header class="pf-top"><div class="pf-bar"><div class="pf-brand">${brandImg(siteBrand(), 'dark')}${siteBrand().logoHasName ? '' : esc(D.settings.productName)} <small>Alpha</small></div>
 <nav class="pf-tabs">${tabs.map(([k, l]) => `<a href="#${k}" class="${tab === k ? 'on' : ''}">${l}${k === 'messages' && D.chatWaiting ? ` <span class="msg-n" title="Chats waiting for you">${D.chatWaiting}</span>` : ''}</a>`).join('')}</nav>
@@ -122,14 +122,14 @@ ${D.maintenance && D.maintenance.on ? `<div class="mt-bar" role="status"><strong
 <main class="pf-main" id="main"></main>
 <nav class="pf-bnav" aria-label="Alpha sections">${tabs.filter(([k]) => !NOT_ON_PHONES.includes(k)).map(([k, l]) => `<a href="#${k}" class="${tab === k ? 'on' : ''}"${tab === k ? ' aria-current="page"' : ''}>${TAB_ICONS[k]}<span>${SHORT_TABS[k] || l}</span></a>`).join('')}</nav>`;
   $('#main').dataset.tab = tab; // box title bands are styled per tab (platform.html)
-  ({ accounts: accountsView, plans: plansView, discounts: promoView, messages: messagesView, automations: automationsView, help: helpView, integrations: integrationsView, settings: settingsView })[tab]($('#main'));
+  ({ accounts: accountsView, plans: plansView, discounts: promoView, messages: messagesView, help: helpView, integrations: integrationsView, settings: settingsView })[tab]($('#main'));
 }
-const TABS = ['accounts', 'plans', 'discounts', 'messages', 'automations', 'help', 'integrations', 'settings'];
+const TABS = ['accounts', 'plans', 'discounts', 'messages', 'help', 'integrations', 'settings'];
 // support users (Settings → Alpha team) get Accounts, Messages and Help Center; the server enforces the same
 const isSupport = () => !!(D && D.admin && D.admin.role === 'support');
 const tabsFor = () => (isSupport() ? ['accounts', 'messages', 'help'] : TABS);
-const tabFromHash = () => { const h = location.hash.slice(1); return tabsFor().includes(h) ? h : 'accounts'; };
-const NOT_ON_PHONES = ['plans', 'automations', 'integrations', 'settings']; // left off the phone tab bar for everyone (they need a bigger screen)
+const tabFromHash = () => { const h = location.hash.slice(1); if (h === 'automations' && !isSupport()) { msgTab = 'automations'; return 'messages'; } return tabsFor().includes(h) ? h : 'accounts'; };
+const NOT_ON_PHONES = ['plans', 'integrations', 'settings']; // left off the phone tab bar for everyone (they need a bigger screen)
 const SHORT_TABS = { plans: 'Plans', help: 'Help', discounts: 'Promos', integrations: 'Services' }; // the phone tab bar has room for short names only
 window.addEventListener('hashchange', () => { if (POPOUT) return; tab = tabFromHash(); if (D) render(); });
 
@@ -629,11 +629,11 @@ A.discDelete = async (d, el) => {
 /* ===== messages: contact requests, user feedback and the platform's email templates ===== */
 let msgTab = 'chat';
 function messagesView(main) {
-  const subs = [['chat', 'Live chat', D.chatWaiting || 0], ['inquiries', 'Contact requests', (D.inquiries || []).length], ['feedback', 'User feedback', (D.feedback || []).length], ['emails', 'Email templates']];
+  const subs = [['chat', 'Live chat', D.chatWaiting || 0], ['inquiries', 'Contact requests', (D.inquiries || []).length], ['feedback', 'User feedback', (D.feedback || []).length], ['emails', 'Email templates'], ...(isSupport() ? [] : [['automations', 'Automations']])];
   main.innerHTML = `<div class="head"><div><h1>Messages</h1><p class="sub" style="margin:4px 0 0">What people send you, and the emails ${esc(D.settings.productName)} sends.</p></div></div>
 <div class="hc-seg msg-seg" role="tablist">${subs.map(([k, l, n]) => `<button type="button" role="tab" aria-selected="${msgTab === k}" class="${msgTab === k ? 'on' : ''}" data-act="msgTab" data-k="${k}">${l}${n || k === 'chat' ? ` <span class="msg-n"${n ? '' : ' hidden'}>${n}</span>` : ''}</button>`).join('')}</div>
-<div class="card" style="max-width:${msgTab === 'chat' ? 'none' : '860px'}" id="${msgTab}"></div>`;
-  ({ chat: chatCard, inquiries: inquiriesCard, feedback: feedbackCard, emails: emailsCard })[msgTab]($('#' + msgTab, main));
+${msgTab === 'automations' ? '<div id="automations"></div>' : `<div class="card" style="max-width:${msgTab === 'chat' ? 'none' : '860px'}" id="${msgTab}"></div>`}`;
+  ({ chat: chatCard, inquiries: inquiriesCard, feedback: feedbackCard, emails: emailsCard, automations: automationsView })[msgTab]($('#' + msgTab, main));
 }
 A.msgTab = (d) => { msgTab = d.k; messagesView($('#main')); };
 /* ===== Messages → Live chat (lib/chat.js): chats from the chat button; the open chat refreshes every few seconds ===== */
@@ -967,6 +967,9 @@ A.rmMailServer = async () => { if (!confirm('Stop sending through your mail serv
 let AU = null;
 const AU_TZ = [['America/New_York', 'Eastern'], ['America/Chicago', 'Central'], ['America/Denver', 'Mountain'], ['America/Phoenix', 'Arizona'], ['America/Los_Angeles', 'Pacific']];
 const auHour = (h) => `${h % 12 || 12} ${h < 12 ? 'AM' : 'PM'}`;
+// "3 days after an account signs up", "1 day before…", "The day an account starts paying"
+const AU_SAME_DAY = { signup: 'The day an account signs up', paid: 'The day an account starts paying', expiry: 'On an account’s last day of access', inactive: 'The day after anyone last logged in' };
+const auWhen = (a) => (a.trigger === 'date' ? `On ${fmtDate(a.date)}` : !Number(a.days) ? AU_SAME_DAY[a.trigger] : `${a.days} ${Number(a.days) === 1 ? AU.triggers[a.trigger].replace('days', 'day') : AU.triggers[a.trigger]}`);
 // ready-made starting points
 const AU_STARTERS = {
   welcome: { name: 'Welcome tips', trigger: 'signup', days: 1, hour: 9, subject: 'Three quick wins in {{product}}', body: '# Welcome aboard, {{name}}\n\nHere are three things that get {{business}} running fast:\n\n**1. Add your first client.** Import them from a spreadsheet or add them one by one.\n\n**2. Send a quote.** Clients approve and sign it online.\n\n**3. Schedule the job.** Your team sees it on the calendar.\n\n[Open {{business}}]({{account_url}})' },
@@ -977,15 +980,14 @@ const AU_STARTERS = {
 };
 async function automationsView(main) {
   if (!AU) { main.innerHTML = '<p class="muted">Loading…</p>'; try { AU = await api('GET', '/api/platform/automations'); } catch (x) { main.innerHTML = `<div class="card">${esc(x.message)}</div>`; return; } }
-  const SAME_DAY = { signup: 'The day an account signs up', paid: 'The day an account starts paying', expiry: 'On an account’s last day of access', inactive: 'The day after anyone last logged in' };
-  const summary = (a) => `${a.trigger === 'date' ? `On ${fmtDate(a.date)}` : !a.days ? SAME_DAY[a.trigger] : `${a.days} ${a.days === 1 ? AU.triggers[a.trigger].replace('days', 'day') : AU.triggers[a.trigger]}`} · ${auHour(a.hour)} ${(AU_TZ.find((z) => z[0] === a.tz) || [, a.tz])[1]}${a.weekdays ? ', weekdays' : ''} · to the ${a.to === 'admins' ? 'owner and admins' : 'owner'}`;
+  const summary = (a) => `${auWhen(a)} · ${auHour(a.hour)} ${(AU_TZ.find((z) => z[0] === a.tz) || [, a.tz])[1]}${a.weekdays ? ', weekdays' : ''} · to the ${a.to === 'admins' ? 'owner and admins' : 'owner'}`;
   const ruleText = (a) => { const r = a.rules || {}; const out = [];
     if (r.plans.length) out.push(r.plans.map((p) => (AU.plans.find((x) => x.id === p) || { name: p }).name).join(' or ') + ' plan');
     if (r.statuses.length) out.push(r.statuses.map((s) => AU.statuses[s]).join(' or '));
     for (const [k, l] of [['clients', 'clients'], ['jobs', 'jobs'], ['invoices', 'invoices']]) { const lo = r[k + 'Min']; const hi = r[k + 'Max']; if (lo !== '' && hi !== '') out.push(`${lo}–${hi} ${l}`); else if (lo !== '') out.push(`${lo}+ ${l}`); else if (hi !== '') out.push(hi === 0 ? `no ${l}` : `up to ${hi} ${l}`); }
     if (r.cards !== 'any') out.push(r.cards === 'yes' ? 'card payments set up' : 'no card payments'); if (r.confirmed !== 'any') out.push(r.confirmed === 'yes' ? 'email confirmed' : 'email not confirmed');
     return out.length ? out.join(' · ') : 'Every account'; };
-  main.innerHTML = `<div class="head"><div><h1>Automations</h1><p class="sub" style="margin:4px 0 0">Emails to businesses that send themselves, by time and rules. Checked every hour; each account gets each one once per event.${AU.optedOut ? ` ${AU.optedOut} ${AU.optedOut === 1 ? 'person has' : 'people have'} unsubscribed.` : ''}</p></div>
+  main.innerHTML = `<div class="au-top"><div><p class="sub" style="margin:0">Emails to businesses that send themselves, by time and rules. Checked every hour; each account gets each one once per event.${AU.optedOut ? ` ${AU.optedOut} ${AU.optedOut === 1 ? 'person has' : 'people have'} unsubscribed.` : ''}</p></div>
 <div class="acts"><button type="button" class="btn alt" data-act="auRun" title="Check every automation now instead of waiting for the hourly run">Run now</button><button type="button" class="btn" data-act="auNew">New automation</button></div></div>
 <div class="card"><h2>Your automations</h2>${AU.automations.length ? `<div class="au-list">${AU.automations.map((a) => `<div class="au-row ${a.enabled ? '' : 'off'}">
 <label class="au-sw" title="${a.enabled ? 'On' : 'Off'}"><input type="checkbox" data-act="auToggle" data-id="${a.id}" ${a.enabled ? 'checked' : ''}><i></i></label>
@@ -993,16 +995,16 @@ async function automationsView(main) {
 <div class="au-stats"><div><b>${a.sentCount || 0}</b><span>sent</span></div>${a.enabled ? `<div><b>${a.waiting}</b><span>due now</span></div>` : ''}<div class="sm">${a.lastSentAt ? `Last ${fmtDate(a.lastSentAt.slice(0, 10))}` : 'Not sent yet'}</div></div>
 <div class="acts"><button type="button" class="btn alt sm" data-act="auEdit" data-id="${a.id}">Edit</button><button type="button" class="btn danger sm" data-act="auDel" data-id="${a.id}">Delete</button></div></div>`).join('')}</div>`
     : '<p class="muted">No automations yet. Start with one of these:</p>'}
-${AU.automations.length ? '' : `<div class="au-starters">${Object.entries(AU_STARTERS).map(([k, s]) => `<button type="button" class="au-starter" data-act="auNew" data-k="${k}"><strong>${esc(s.name)}</strong><span class="sm">${esc(s.trigger === 'expiry' ? `${s.days} days before the last day of access` : `${s.days} ${AU.triggers[s.trigger]}`)}</span></button>`).join('')}</div>`}</div>
+${AU.automations.length ? '' : `<div class="au-starters">${Object.entries(AU_STARTERS).map(([k, s]) => `<button type="button" class="au-starter" data-act="auNew" data-k="${k}"><strong>${esc(s.name)}</strong><span class="sm">${esc(auWhen(s))}</span></button>`).join('')}</div>`}</div>
 <div class="card"><h2>Recently sent</h2>${AU.log.length ? `<div class="tablewrap"><table class="acc"><thead><tr><th>When</th><th>Automation</th><th>Business</th><th>To</th><th>Status</th></tr></thead><tbody>${AU.log.slice(0, 50).map((l) => `<tr><td class="sm">${esc(new Date(l.at).toLocaleString())}</td><td>${esc(l.automation)}</td><td>${esc(l.business)}</td><td class="sm">${esc(l.to)}</td><td><span class="cstatus ${l.status === 'sent' ? 'active' : l.status === 'failed' ? 'q-draft' : 'q-sent'}" title="${esc(l.detail)}">${esc(l.status === 'simulated' ? 'Not sent (email not set up)' : l.status)}</span></td></tr>`).join('')}</tbody></table></div>` : '<p class="muted" style="margin:0">Nothing sent yet.</p>'}</div>`;
 }
-A.auRun = async (d, el) => { el.disabled = true; try { AU = await api('POST', '/api/platform/automations/run'); toast('Checked every automation'); automationsView($('#main')); } catch (x) { toast(x.message, true); el.disabled = false; } };
+A.auRun = async (d, el) => { el.disabled = true; try { AU = await api('POST', '/api/platform/automations/run'); toast('Checked every automation'); automationsView($('#automations')); } catch (x) { toast(x.message, true); el.disabled = false; } };
 A.auToggle = async (d, el) => {
   const a = AU.automations.find((x) => x.id === d.id);
   if (el.checked && !confirm(`Turn on “${a.name}”? It starts sending at the next hourly check${a.catchUp ? ', including to accounts already past this point' : ''}.`)) { el.checked = false; return; }
-  try { AU = await api('POST', `/api/platform/automations/${d.id}/enable`, { on: el.checked }); toast(el.checked ? 'Automation on' : 'Automation off'); automationsView($('#main')); } catch (x) { el.checked = !el.checked; toast(x.message, true); }
+  try { AU = await api('POST', `/api/platform/automations/${d.id}/enable`, { on: el.checked }); toast(el.checked ? 'Automation on' : 'Automation off'); automationsView($('#automations')); } catch (x) { el.checked = !el.checked; toast(x.message, true); }
 };
-A.auDel = async (d) => { const a = AU.automations.find((x) => x.id === d.id); if (!confirm(`Delete “${a.name}”? Its send history stays in the log.`)) return; AU = await api('DELETE', '/api/platform/automations/' + d.id); toast('Automation deleted'); automationsView($('#main')); };
+A.auDel = async (d) => { const a = AU.automations.find((x) => x.id === d.id); if (!confirm(`Delete “${a.name}”? Its send history stays in the log.`)) return; AU = await api('DELETE', '/api/platform/automations/' + d.id); toast('Automation deleted'); automationsView($('#automations')); };
 A.auNew = (d) => auEditor({ trigger: 'signup', days: 1, hour: 9, tz: 'America/Chicago', to: 'owner', rules: {}, ...(d.k ? structuredClone(AU_STARTERS[d.k]) : { name: '', subject: '', body: '' }) });
 A.auEdit = (d) => auEditor(structuredClone(AU.automations.find((x) => x.id === d.id)));
 function auEditor(a) {
@@ -1037,7 +1039,7 @@ ${range('clients', 'Clients')}${range('jobs', 'Jobs')}${range('invoices', 'Invoi
   const st = $('#auStart', f); if (st) st.addEventListener('change', () => { if (st.value) auEditor({ trigger: 'signup', days: 1, hour: 9, tz: 'America/Chicago', to: 'owner', rules: {}, ...structuredClone(AU_STARTERS[st.value]) }); });
   f.addEventListener('submit', async (e) => {
     e.preventDefault(); const b = auRead(f);
-    try { AU = await api(a.id ? 'PUT' : 'POST', a.id ? `/api/platform/automations/${a.id}` : '/api/platform/automations', b); closeModal(); toast(a.id ? 'Automation saved' : 'Automation saved. Turn it on when you’re ready.'); automationsView($('#main')); } catch (x) { toast(x.message, true); }
+    try { AU = await api(a.id ? 'PUT' : 'POST', a.id ? `/api/platform/automations/${a.id}` : '/api/platform/automations', b); closeModal(); toast(a.id ? 'Automation saved' : 'Automation saved. Turn it on when you’re ready.'); automationsView($('#automations')); } catch (x) { toast(x.message, true); }
   });
 }
 function auRead(f) {
