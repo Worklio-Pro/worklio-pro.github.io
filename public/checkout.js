@@ -46,8 +46,9 @@ ${C.plans.map((x) => `<label class="opt"><input type="radio" name="plan" value="
 ${D ? `<p class="line disc"><span>Code <strong>${esc(D.code)}</strong> <button type="button" class="linkish" id="rmCode">Remove</button><small>${esc(D.summary)}</small></span><span>−${money(D.off)}</span></p>`
     : `<details class="code"${codeErr ? ' open' : ''}><summary>Have a discount code?</summary><form id="codeForm"><input name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Code" aria-label="Discount code" value="${esc(codeTyped)}"><button class="btn alt">Apply</button></form>${codeErr ? `<div class="msg err" role="alert" style="margin:8px 0 0">${esc(codeErr)}</div>` : ''}</details>`}
 <p class="line total"><span>Due today</span><span>${money(due)}</span></p>
-<button class="btn pay" id="pay"><span class="lock">${C.live ? '🔒 ' : ''}${due ? `Pay ${money(due)} and start` : 'Start my account'}</span></button>
-${C.live ? `<p class="fine">You’ll enter your card on Stripe’s secure checkout page. ${renewText(c, D)}${C.testMode ? '<br><strong>Test mode:</strong> use card 4242 4242 4242 4242.' : ''}</p>`
+<button class="btn pay" id="pay"><span class="lock">${C.live && !(D && D.trial) ? '🔒 ' : ''}${D && D.trial ? 'Start my free trial' : due ? `Pay ${money(due)} and start` : 'Start my account'}</span></button>
+${D && D.trial ? `<p class="fine">No card needed. Your free trial runs for ${D.days} days; add a card any time in Account and billing to keep your account after that.</p>`
+    : C.live ? `<p class="fine">You’ll enter your card on Stripe’s secure checkout page. ${renewText(c, D)}${C.testMode ? '<br><strong>Test mode:</strong> use card 4242 4242 4242 4242.' : ''}</p>`
     : '<div class="msg warn" style="margin:12px 0 0;font-size:13px">Demo checkout: card payments aren’t set up yet, so no card is charged. Your account starts right away.</div>'}
 <details><summary>What’s included in ${esc(p.name)}</summary><ul>${feats.map((f) => `<li>${f}</li>`).join('')}${C.alwaysIncluded.map((f) => `<li>${esc(f)}</li>`).join('')}</ul></details>
 ${C.contactEmail ? `<p class="fine">Questions? <a href="mailto:${esc(C.contactEmail)}">${esc(C.contactEmail)}</a></p>` : ''}</aside></div>`;
