@@ -1715,7 +1715,7 @@ PAGES['/settings/billing'] = {
     const qs = new URLSearchParams(location.search); const back = qs.get('checkout') || qs.get('card');
     if (back) { // back from Stripe's payment or card page
       history.replaceState(null, '', location.pathname);
-      try { const r = await api('POST', '/api/account/billing/return', { sessionId: back }); toast(r.message); company = await api('GET', '/api/company'); } catch (err) { toast(err.message, true); }
+      try { const r = await api('POST', '/api/account/billing/return', { sessionId: back }); toast(r.message); const was = pausedNow(); company = await api('GET', '/api/company'); if (was && !pausedNow()) return refresh(); } catch (err) { toast(err.message, true); }
     } else if (qs.has('canceled') || qs.has('upgrade')) history.replaceState(null, '', location.pathname);
     const B = billingData = await api('GET', '/api/account/billing'); const sub = B.subscription;
     const per = (i) => (i === 'year' ? 'yearly' : 'monthly');
@@ -1734,7 +1734,9 @@ PAGES['/settings/billing'] = {
       : !B.plan.charge ? `<p>You’re on the ${esc(B.plan.name)} plan${B.plan.price ? ` (${esc(B.plan.price)})` : ''}. There’s nothing to pay.</p>`
       : `<p class="muted">Your ${esc(B.plan.name)} plan isn’t billed automatically yet. Choose it under Change plan to set up automatic payments.</p>`;
     const inv = billingAll ? B.invoices : B.invoices.slice(0, 6);
-    main.innerHTML = `<div class="head"><h1>Account and billing</h1></div>
+    const paused = B.paused ? explorePlans(B) : '';
+    if (B.paused && !B.isOwner) { main.innerHTML = `<div class="head"><h1>Account and billing</h1></div>${paused}`; return; } // an admin choosing a plan for a paused account
+    main.innerHTML = `<div class="head"><h1>Account and billing</h1></div>${paused}
 <div class="card bill-ov"><div class="bill-h"><h2>Account overview</h2><div class="actions">${B.managed && !B.prepaidUntil ? '<button type="button" class="btn" data-act="billPlans">Change plan</button>' : ''}${B.live && B.managed ? `<button type="button" class="btn alt" data-act="billCard">${B.card ? 'Update card' : 'Add card'}</button>` : ''}</div></div>
 <dl class="bill-dl"><div><dt>Active since</dt><dd>${B.activeSince ? fmtDate(B.activeSince) : '—'}</dd></div><div><dt>Account status</dt><dd>${esc(statusText)}</dd></div>
 <div><dt>Current plan</dt><dd>${esc(B.plan.name)}${B.plan.charge ? ` <span class="muted">(${B.plan.charge.interval === 'year' ? 'yearly' : 'monthly'}, ${money(B.plan.charge.cents / 100).replace(/\.00$/, '')}/${B.plan.charge.interval})</span>` : B.plan.price ? ` <span class="muted">(${esc(B.plan.price)})</span>` : ''}</dd></div></dl></div>
@@ -1759,6 +1761,33 @@ ${B.managed ? `<div class="card"><h2>Have a supporter code?</h2><p class="muted"
     if (qs.has('upgrade') && B.managed) A.billPlans(); // from an “Upgrade your plan” link
   },
 };
+// a paused account: the plans laid out like the pricing page; choosing one pays at Stripe's checkout (or reopens a free plan right away)
+let xpPeriod = null;
+function explorePlans(B) {
+  const P = B.paused; const ce = B.contactEmail;
+  if (!P.canChoosePlan) return `<div class="card xp-hero"><h2>Your account is paused</h2><p class="muted">${esc(B.productName)} paused this account. Your data is safe, and you can still look around. ${ce ? `Contact <a href="mailto:${esc(ce)}">${esc(ce)}</a>` : 'Contact us'} to reopen it.</p></div>`;
+  const plans = B.plans.filter((p) => !p.hidden);
+  const both = plans.some((p) => p.month) && plans.some((p) => p.year); const best = Math.max(0, ...plans.filter((p) => p.month && p.year).map((p) => Math.round((1 - p.year / (p.month * 12)) * 100)));
+  const period = xpPeriod || (plans.some((p) => p.month) ? 'month' : 'year');
+  const picked = plans.findIndex((p) => p.id === B.popularPlan); const mid = B.popularPlan === 'none' ? -1 : picked >= 0 ? picked : plans.length >= 3 ? Math.floor(plans.length / 2) : -1;
+  const amount = (n) => '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 });
+  const per = (p) => (period === 'year' && p.year ? 'year' : p.month ? 'month' : p.year ? 'year' : '');
+  const priceHtml = (p) => {
+    const k = per(p); const v = k && p[k];
+    if (!v) return `<div class="price">${esc(p.price || 'Free')}</div><div class="per">&nbsp;</div>`;
+    const save = p.month && p.year ? Math.round((1 - p.year / (p.month * 12)) * 100) : 0;
+    return `<div class="price">${amount(v)}<small>/${k}</small></div><div class="per">${k === 'year' ? `${amount(Math.round(v / 12 * 100) / 100)}/month, billed yearly${save > 0 ? ` · <strong>save ${save}%</strong>` : ''}` : period === 'year' ? 'Billed monthly only' : p.year ? `or ${amount(p.year)}/year` : 'Billed monthly'}</div>`;
+  };
+  return `<div class="xp"><div class="xp-hero"><h2>Your account is paused</h2><p class="muted">${P.endedOn ? `Your access ended on ${fmtDate(P.endedOn)}. ` : ''}Your data is safe, and you can still look around. Choose a plan to start creating, changing and deleting again.</p></div>
+${both ? `<div class="xp-period" role="radiogroup" aria-label="Billing period">${[['month', 'Monthly'], ['year', `Yearly${best > 0 ? ` <span class="xp-save">Save up to ${best}%</span>` : ''}`]].map(([k, l]) => `<button type="button" role="radio" aria-checked="${period === k}" class="${period === k ? 'on' : ''}" data-act="xpPeriod" data-per="${k}">${l}</button>`).join('')}</div>` : ''}
+<div class="xp-plans">${plans.map((p, i) => `<article class="card xp-plan ${i === mid ? 'pop' : ''}"><span class="xp-tag">${i === mid ? 'Most popular' : p.id === B.plan.id ? 'Your last plan' : ''}</span><h3>${esc(p.name)}</h3>
+${priceHtml(p)}<p class="desc">${esc(p.description)}</p>
+<ul><li>${p.maxUsers ? `${p.maxUsers} team login${p.maxUsers === 1 ? '' : 's'}` : 'Unlimited team logins'}</li>${p.features.map((f) => `<li>${esc(f)}</li>`).join('')}${(B.alwaysIncluded || []).map((l) => `<li class="base">${esc(l)}</li>`).join('')}</ul>
+<button type="button" class="btn ${i === mid ? '' : 'alt'}" data-act="xpChoose" data-id="${esc(p.id)}" data-per="${per(p) || 'month'}">Choose ${esc(p.name)}</button></article>`).join('')}</div>
+<p class="xp-foot muted">${B.live ? 'Paid plans are paid securely at Stripe’s checkout, and your account opens again as soon as the payment goes through.' : ''} Questions? <button type="button" class="link-btn" data-act="supportForm" data-title="Contact us" data-topic="Account and billing">Contact us</button></p></div>`;
+}
+A.xpPeriod = (d) => { xpPeriod = d.per; refresh(); };
+A.xpChoose = (d, el) => billGo('/api/account/billing/plan', { planId: d.id, interval: d.per }, el);
 const billGo = async (url, body, el) => { // POST, then follow Stripe's page or show the result
   if (el) el.disabled = true;
   try { const r = await api('POST', url, body); if (r.redirect) { location.href = r.redirect; return; } closeModal(); toast(r.message || 'Saved'); refresh(); }

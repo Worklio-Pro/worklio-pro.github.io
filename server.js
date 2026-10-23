@@ -338,7 +338,9 @@ app.use((req, res, next) => {
     return isApi ? res.status(403).json({ error: 'This account isn’t paid for yet' }) : res.status(403).send(notice('Finish your checkout', msg));
   }
   tenancy.expireIfDue(r.tenant); // its last day of access has passed
-  if (r.tenant.status === 'suspended') {
+  // paused: the team can still log in and look around (read-only, see pausedGuard); clients' quote, pay, portal and booking pages stay closed
+  const clientSide = isApi ? req.path.startsWith('/api/portal/') || req.path === '/api/stripe/webhook' : /^\/(p|pay|refer)\/|^\/(client-portal|book)$/.test(req.path);
+  if (r.tenant.status === 'suspended' && clientSide) {
     const msg = `${r.tenant.expiredOn ? `This account’s access ended on ${esc(new Date(r.tenant.expiredOn + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }))}.` : 'This account is paused.'}${P.contactEmail ? ` Contact ${esc(P.contactEmail)} for help.` : ''}`;
     return isApi ? res.status(403).json({ error: r.tenant.expiredOn ? 'This account’s access has ended' : 'This account is paused' }) : res.status(403).send(notice(r.tenant.expiredOn ? 'Access ended' : 'Account paused', msg));
   }
@@ -418,6 +420,15 @@ app.use('/api', (req, res, next) => {
   const u = currentUser(req); if (!u || isAdmin(u)) return next();
   if (rolesLib.allows(rolesLib.routesFor(teamRoles(), roleKey(u)), req.method, req.path)) return next();
   res.status(403).json({ error: 'Your access level doesn’t include this. Ask the account owner.' });
+});
+// a paused account is read-only: anything that creates, changes or deletes is refused, except choosing a plan (owner/admin),
+// logging in and out, your own profile, and asking for help. The app sends owners and admins to Account and billing when it sees `paused`.
+const PAUSED_OK = /^\/api\/(auth\/.*|account\/(billing|support-access)(\/.*)?|support|feedback|forum(\/.*)?|help\/.*|chat\/.*)$/;
+const isPaused = () => tenancy.current().status === 'suspended';
+app.use('/api', (req, res, next) => {
+  if (req.method === 'GET' || !isPaused() || PAUSED_OK.test(req.path)) return next();
+  const u = currentUser(req);
+  res.status(403).json({ error: isAdmin(u) ? 'Your account is paused. Choose a plan to make changes again.' : 'Your company’s account is paused. Contact your company owner or admin.', paused: true });
 });
 // features the account's plan doesn't include: lists come back empty (so pages still load), everything else is refused
 app.use('/api', (req, res, next) => {
@@ -692,6 +703,8 @@ function remindExpiring() {
     });
   }
 }
+// a paused account its owner can reopen by choosing a plan: paused because its subscription or last day of access ended (not paused from Alpha)
+const canReopen = (t) => t.status === 'suspended' && !tenancy.isDefault(t) && !!(t.expiredOn || (t.billing && t.billing.pausedForBilling));
 // the account's plan: which features it has, which pages are locked, its web addresses
 function accountInfo() {
   const t = tenancy.current(); const plan = tenancy.planOf(t);
@@ -706,6 +719,7 @@ function accountInfo() {
     // how: 'embedded' (set up in the app, payout bank changed in the app), 'standard' (own Stripe account), 'server' (the platform's own account), or null
     cardSetupType: secrets().stripeAccountId ? secrets().stripeAccountType || 'standard' : stripeKey() ? 'server' : null, payoutBank: secrets().stripeBank || null,
     expiry: (() => { const x = expiryOf(t); return x && { ...x, when: whenText(x) }; })(),
+    paused: t.status === 'suspended' ? { endedOn: t.expiredOn || null, canChoosePlan: canReopen(t) } : null,
     industries: industries.CHOICES, // the Industry choices in Company Profile
     featureList: tenancy.FEATURES.map(({ key, label, desc }) => ({ key, label, desc, beta: tenancy.isBeta(key), included: plan.features.includes(key) })), alwaysIncluded: tenancy.ALWAYS_INCLUDED,
   };
@@ -2068,15 +2082,17 @@ app.delete('/api/social-posts/:id', (req, res) => {
 // Plans are billed by the platform's Stripe account (lib/platform.js sign-up checkout); t.billing holds the Stripe customer and subscription.
 // The owner changes the plan, card and billing details here; Stripe charges the subscription automatically.
 const ownerOnly = (req, res) => { const u = currentUser(req); if (u && u.role === 'owner') return true; res.status(403).json({ error: 'Only the account owner can manage billing' }); return false; };
+// seeing the plans and choosing one: the owner, or also an admin while the account is paused
+const planChooser = (req, res) => (isAdmin(currentUser(req)) && isPaused()) || ownerOnly(req, res);
 const billingCall = (method, endpoint, params) => stripeLib.request(stripeLib.platformKey(), method, endpoint, params);
 const unix = (t) => (t ? iso(new Date(t * 1000)) : null);
 app.get('/api/account/billing', async (req, res) => {
-  if (!ownerOnly(req, res)) return;
+  if (!planChooser(req, res)) return;
   const t = tenancy.current(); const P = tenancy.platform(); const plan = tenancy.planOf(t); const b = t.billing || {}; let charge = stripeLib.planCharge(plan, b.interval);
-  const out = { activeSince: (b.paidAt || t.createdAt || '').slice(0, 10), status: t.status, plan: { id: plan.id, name: plan.name, price: plan.price || '', charge },
+  const out = { activeSince: (b.paidAt || t.createdAt || '').slice(0, 10), status: t.status, paused: t.status === 'suspended' ? { endedOn: t.expiredOn || null, canChoosePlan: canReopen(t) } : null, isOwner: currentUser(req).role === 'owner', plan: { id: plan.id, name: plan.name, price: plan.price || '', charge },
     productName: P.settings.productName, contactEmail: P.settings.contactEmail, live: !!stripeLib.platformKey(), billed: !!(b.customerId && stripeLib.platformKey()),
-    demo: !!b.demo, managed: !tenancy.isDefault(), plans: P.plans.filter((p) => !p.hidden || p.id === plan.id).map((p) => ({ id: p.id, name: p.name, price: p.price || '', description: p.description || '', month: (stripeLib.planCharge(p, 'month') || {}).interval === 'month' ? stripeLib.planCharge(p, 'month').cents / 100 : null, year: (stripeLib.planCharge(p, 'year') || {}).interval === 'year' ? stripeLib.planCharge(p, 'year').cents / 100 : null })),
-    interval: charge ? charge.interval : b.interval || 'month',
+    demo: !!b.demo, managed: !tenancy.isDefault(), plans: P.plans.filter((p) => !p.hidden || p.id === plan.id).map((p) => ({ id: p.id, name: p.name, price: p.price || '', description: p.description || '', hidden: !!p.hidden, maxUsers: p.maxUsers || 0, features: tenancy.FEATURES.filter((f) => (p.features || []).includes(f.key)).map((f) => f.label), month: (stripeLib.planCharge(p, 'month') || {}).interval === 'month' ? stripeLib.planCharge(p, 'month').cents / 100 : null, year: (stripeLib.planCharge(p, 'year') || {}).interval === 'year' ? stripeLib.planCharge(p, 'year').cents / 100 : null })),
+    interval: charge ? charge.interval : b.interval || 'month', popularPlan: P.settings.popularPlan || '', alwaysIncluded: tenancy.ALWAYS_INCLUDED,
     card: null, customer: null, subscription: null, invoices: [], endsAt: b.endsAt || null, trial: onTrial(t) ? { endsAt: t.expiresAt, code: b.trial.code, cancelled: !!b.trial.cancelled, prepaid: !!b.trial.prepaid } : null, prepaidUntil: supporters.lockedUntil(t), pendingPlan: b.pendingPlanId ? (P.plans.find((p) => p.id === b.pendingPlanId) || {}).name || null : null };
   if (out.billed) {
     const get = (ep) => billingCall('GET', ep).catch((e) => { console.error('Billing:', e.message); return null; });
@@ -2266,7 +2282,7 @@ app.post('/api/account/billing/redeem', async (req, res) => {
 // switch plan: paid → paid changes the subscription price now (difference charged or credited, prorated);
 // → free takes effect when the paid period ends; free/no subscription → paid goes through Stripe Checkout
 app.post('/api/account/billing/plan', async (req, res) => {
-  if (!ownerOnly(req, res)) return;
+  if (!planChooser(req, res)) return;
   const t = tenancy.current(); const P = tenancy.platform(); const u = currentUser(req);
   if (tenancy.isDefault(t)) return res.status(400).json({ error: 'Your platform’s own account doesn’t have a plan to change' });
   const to = P.plans.find((p) => p.id === (req.body && req.body.planId) && !p.hidden); if (!to) return res.status(400).json({ error: 'Choose a plan' });
@@ -2278,6 +2294,7 @@ app.post('/api/account/billing/plan', async (req, res) => {
   const want = req.body.interval === 'year' ? 'year' : 'month'; const c = stripeLib.planCharge(to, want);
   if (c && c.interval !== want) return res.status(400).json({ error: `${to.name} isn’t available ${want === 'year' ? 'yearly' : 'monthly'}` });
   const label = `${to.name}${c ? ` (${want === 'year' ? 'yearly' : 'monthly'})` : ''}`;
+  if (t.status === 'suspended') return reopen(req, res, t, to, c, label);
   const switched = (message) => { if (c) b.interval = c.interval; if (t.planId === to.id && !onTrial(t)) delete t.expiresAt; tenancy.savePlatform(); if (c && t.planId === to.id && !onTrial(t)) referrals.paid(t).catch(() => {}); tellPlatform(`Plan changed: ${t.name} → ${label}`, `${u.name} (${u.email}) changed ${t.name} from ${from.name} to ${label}. ${message}`); res.json({ ok: true, message }); };
   try {
     const sub = stripeLib.platformKey() ? await liveSubscription(b) : null;
@@ -2308,9 +2325,25 @@ app.post('/api/account/billing/plan', async (req, res) => {
     const s = await subscribeSession(t, u, to, c); res.json({ redirect: s.url });
   } catch (e) { stripeError(res, 'change the plan', e); }
 });
+// a paused account choosing a plan: a paid plan goes to Stripe Checkout and reopens the account when it's paid (no trial);
+// a free plan, or any plan on a server without Stripe, reopens it now
+async function reopen(req, res, t, to, c, label) {
+  const P = tenancy.platform(); const u = currentUser(req); const b = t.billing || (t.billing = {});
+  if (!canReopen(t)) return res.status(400).json({ error: `Your account was paused by ${P.settings.productName}.${P.settings.contactEmail ? ` Contact ${P.settings.contactEmail} to reopen it.` : ' Contact us to reopen it.'}` });
+  try {
+    if (c && stripeLib.platformKey()) {
+      if (await liveSubscription(b)) return res.status(400).json({ error: u.role === 'owner' ? 'Your last payment didn’t go through. Update your card under Billing details and we’ll retry it and reopen your account.' : 'Your last payment didn’t go through. Ask the account owner to update the card under Billing details.' });
+      const s = await subscribeSession(t, u, to, c, { trial: false }); return res.json({ redirect: s.url });
+    }
+    const from = tenancy.planOf(t); t.planId = to.id; t.status = 'active'; delete t.expiredOn; delete t.expiresAt; delete b.pausedForBilling; delete b.pendingPlanId; delete b.endsAt;
+    if (c) b.interval = c.interval; else { b.status = 'free'; delete b.trial; }
+    tenancy.savePlatform(); tellPlatform(`Account reopened: ${t.name} → ${label}`, `${u.name} (${u.email}) reopened ${t.name} on ${label} (was ${from.name}).`);
+    res.json({ ok: true, message: `Your account is open again on ${label}.` });
+  } catch (e) { stripeError(res, 'start the payment', e); }
+}
 // Stripe Checkout for a new subscription. On a free trial the card is saved now and the first charge waits until the trial ends
 // (Stripe needs that to be at least 48 hours away, so a trial in its last two days gets the extra time).
-async function subscribeSession(t, u, to, c) {
+async function subscribeSession(t, u, to, c, { trial = onTrial(t) } = {}) {
   const b = t.billing || {};
   const p = { mode: 'subscription', client_reference_id: t.id, 'metadata[tenantId]': t.id, 'metadata[planId]': to.id, 'metadata[interval]': c.interval, 'subscription_data[metadata][tenantId]': t.id,
     'line_items[0][quantity]': '1', 'line_items[0][price_data][currency]': 'usd', 'line_items[0][price_data][product]': await planProduct(to),
@@ -2318,7 +2351,7 @@ async function subscribeSession(t, u, to, c) {
     success_url: `${baseUrl()}/settings/billing?checkout={CHECKOUT_SESSION_ID}`, cancel_url: `${baseUrl()}/settings/billing` };
   if (b.customerId) p.customer = b.customerId; else p.customer_email = u.email;
   Object.assign(p, referrals.bankedTrial(t)); // free months earned by referring other businesses
-  if (onTrial(t)) {
+  if (trial) {
     const end = Math.max(Math.floor((Date.parse(t.expiresAt) + 864e5) / 1000), Math.ceil(Date.now() / 1000) + 49 * 3600);
     if (!(Number(p['subscription_data[trial_end]']) > end)) p['subscription_data[trial_end]'] = String(end);
     p['metadata[firstCharge]'] = unix(Number(p['subscription_data[trial_end]']));
@@ -2327,7 +2360,7 @@ async function subscribeSession(t, u, to, c) {
 }
 // back from Checkout (new subscription) or the card page (new card): check the session with Stripe, then apply it
 app.post('/api/account/billing/return', async (req, res) => {
-  if (!ownerOnly(req, res)) return;
+  if (!planChooser(req, res)) return;
   const t = tenancy.current(); const b = t.billing || (t.billing = {}); const id = String((req.body && req.body.sessionId) || '');
   if (!/^cs_[A-Za-z0-9_]+$/.test(id) || !stripeLib.platformKey()) return res.status(400).json({ error: 'That payment link isn’t valid' });
   try {
@@ -2339,7 +2372,7 @@ app.post('/api/account/billing/return', async (req, res) => {
         const from = tenancy.planOf(t); t.planId = to.id;
         delete t.expiresAt; // paid for a plan: no end date
         Object.assign(b, { customerId: s.customer, subscriptionId: s.subscription, status: 'paid', subscriptionStatus: 'active', interval: s.metadata.interval === 'year' ? 'year' : 'month' }); delete b.pendingPlanId; delete b.endsAt; delete b.demo;
-        if (b.pausedForBilling) { t.status = 'active'; delete b.pausedForBilling; }
+        if (canReopen(t)) { t.status = 'active'; delete t.expiredOn; delete b.trial; } delete b.pausedForBilling;
         referrals.useBanked(t, s.metadata.creditUntil); referrals.paid(t).catch(() => {}); // free months from referrals; and reward whoever referred this account
         tenancy.savePlatform(); tellPlatform(`New subscription: ${t.name} → ${to.name}`, `${currentUser(req).name} subscribed ${t.name} to ${to.name} (was ${from.name}).`);
       }

@@ -43,9 +43,24 @@ function phoneMask(input) {
 async function api(method, url, body) {
   const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
   if (r.status === 401 && !url.startsWith('/api/auth/')) { location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search); throw new Error('Please log in'); } // session ended
-  if (!r.ok) { let m = 'Request failed'; try { m = (await r.json()).error || m; } catch (e) { /* ignore */ } throw new Error(m); }
+  if (!r.ok) { let m = 'Request failed'; let j = {}; try { j = await r.json(); m = j.error || m; } catch (e) { /* ignore */ } if (j.paused) toPlans(); throw new Error(m); }
   return r.json();
 }
+// a paused account (company.account.paused) is read-only: owners and admins who try to create, change or delete something
+// go to Account and billing to choose a plan; everyone else sees a note to contact their owner or admin instead of the page
+const pausedNow = () => !!(company.account && company.account.paused);
+const PAUSED_FREE = ['/settings/billing', '/profile', '/forum', '/settings/support-access']; // pages that still work as normal
+const PAUSED_ACTS = /^(new|edit|add|del|delete|rm|remove|save|create|mark|approve|collect|complete|reopen|merge|import|runImport|upload|send|setDeposit|undoDeposit|quoteToJob|jobInvoice|jobRemind|jobRequestOff|requestOff|manageStaff|tm(Invite|Revoke|HoursEdit)|role(Add|Rm|Save|Tick)|disc(Save|Delete)|rev(Edit|Delete)|sp(Drop|Move|Remove)|social(Connect|Disconnect|Choose)|connectStripe|pay(Bank|Disable|StripeRetry)|pdRefund|toDecide|toCancel|bookingSave|primaryDomain|checkDomain|resetTpl|importTemplate|clientDupes)/;
+function toPlans() {
+  if (!isAdminMe()) return;
+  closeModal(); if (curPath() !== '/settings/billing') navigate('/settings/billing');
+}
+document.addEventListener('click', (e) => {
+  const el = e.target.closest('[data-act]');
+  if (!el || !pausedNow() || !isAdminMe() || PAUSED_FREE.includes(curPath()) || el.closest('#topbar, #side, #bnav, #helpPanel') || !PAUSED_ACTS.test(el.dataset.act)) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  toast('Your account is paused. Choose a plan to make changes again.', true); toPlans();
+}, true);
 function toast(msg, err) {
   const t = document.createElement('div'); t.className = 'toast' + (err ? ' err' : ''); t.textContent = msg;
   $('#toast').appendChild(t); setTimeout(() => t.remove(), err ? 6000 : 3200);
@@ -111,7 +126,7 @@ const role = () => (me && me.role) || 'owner';
 const isAdminMe = () => ['owner', 'admin'].includes(role());
 const canDo = (k) => isAdminMe() || !!(me && (me.perms || []).includes(k));
 const OWNER_PAGES = ['/settings/billing']; // the business's subscription: the owner only
-const memberCan = (path) => (OWNER_PAGES.includes(path) ? role() === 'owner' : isAdminMe() || !!(me && me.pages && me.pages.includes(path)));
+const memberCan = (path) => (OWNER_PAGES.includes(path) ? role() === 'owner' || (role() === 'admin' && pausedNow()) : isAdminMe() || !!(me && me.pages && me.pages.includes(path)));
 // body classes that hide what a role can't do (styles.css): .limit for anyone but owner/admin, p-<permission> for each permission
 function permClasses() { const b = document.body; const lim = !isAdminMe(); b.classList.toggle('limit', lim); [...b.classList].filter((c) => c.startsWith('p-')).forEach((c) => b.classList.remove(c)); if (lim) (me && me.perms || []).forEach((k) => b.classList.add('p-' + k.replace('.', '-'))); }
 // the account's plan (from /api/company): features it includes and pages it doesn't. The server enforces the same.
@@ -376,9 +391,14 @@ async function render() {
   const sb = $('#supportBar'); sb.hidden = portal || !(me && me.support);
   if (!sb.hidden) sb.innerHTML = `${svgIcon(ICONS.shield, 18)}<span><strong>Support session.</strong> ${esc(me.support.adminName)} from ${esc((company.account && company.account.productName) || 'support')} is signed in as ${esc(me.name)} with the owner’s Support Access. It ends ${new Date(me.support.expires).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.</span><button type="button" class="btn alt sm" data-act="logout">End session</button>`;
   // the account's last day of access is near (set by the platform): owners and admins see it, owners can choose a plan
-  const xb = $('#expiryBar'); const xp = !portal && company.account && company.account.expiry; xb.hidden = !(xp && xp.banner && ['owner', 'admin'].includes(role()));
-  if (!xb.hidden) { const owner = role() === 'owner'; const ce = company.account.contactEmail;
+  const xb = $('#expiryBar'); const xp = !portal && company.account && company.account.expiry; const pz = !portal && pausedNow() && company.account.paused;
+  xb.hidden = !((pz || (xp && xp.banner)) && isAdminMe());
+  if (!xb.hidden && pz) { const ce = company.account.contactEmail;
+    xb.innerHTML = `<span><strong>Your account is paused${pz.endedOn ? ` (access ended ${esc(fmtDate(pz.endedOn))})` : ''}.</strong> You can still look around and see your data, but to create, change or delete anything, ${pz.canChoosePlan ? 'choose a plan.' : `contact ${ce ? `<a href="mailto:${esc(ce)}">${esc(ce)}</a>` : 'us'} to reopen it.`}</span>${pz.canChoosePlan && path !== '/settings/billing' ? '<a class="btn sm" href="/settings/billing" data-link>Explore plans</a>' : ''}`; }
+  else if (!xb.hidden) { const owner = role() === 'owner'; const ce = company.account.contactEmail;
     xb.innerHTML = `<span><strong>${xp.daysLeft < 0 ? 'Your access has ended.' : xp.prepaid ? `Your prepaid months end ${esc(xp.when)}${xp.daysLeft > 1 ? ` (${xp.daysLeft} days left)` : ''}.` : xp.trial ? `Your free trial ends ${esc(xp.when)}${xp.daysLeft > 1 ? ` (${xp.daysLeft} days left)` : ''}.` : `Your access to ${esc(company.account.productName)} ends ${esc(xp.when)}${xp.daysLeft > 1 ? ` (${xp.daysLeft} days left)` : ''}.`}</strong> ${owner ? (xp.trial ? 'Add a card to keep your account.' : 'Choose a plan to keep your account.') : 'Ask your account owner to choose a plan.'}${ce ? ` Questions? <a href="mailto:${esc(ce)}">${esc(ce)}</a>` : ''}</span>${owner && path !== '/settings/billing' ? `<a class="btn sm" href="/settings/billing" data-link>${xp.trial ? 'Add a card' : 'Choose a plan'}</a>` : ''}`; }
+  if (pausedNow() && !portal && !isAdminMe()) { document.title = 'Account paused'; main.innerHTML = `<div class="card paused-card">${svgIcon(ICONS.shield, 28)}<h1>Your company’s account is paused</h1><p class="muted">You can’t use ${esc(company.name || 'your company')}’s account right now. Contact your company owner or admin to get it running again.</p></div>`; return; }
+  if (pausedNow() && !portal && isAdminMe() && /\/(new|edit|import)$/.test(path)) { toast('Your account is paused. Choose a plan to make changes again.', true); history.replaceState({}, '', '/settings/billing'); return render(); }
   if (page && !memberCan(path)) { document.title = 'No access'; main.innerHTML = `<div class="card"><h1>You don't have access to this page</h1><p class="muted">Your access level doesn't include this page. Ask the account owner if you need more access.</p><p><a href="/calendar" data-link>Go to the job calendar</a></p></div>`; return; }
   if (page && planLocked(path)) { document.title = page.title; main.innerHTML = `<div class="card upgrade-card"><h1>${esc(page.title)} isn’t in your plan</h1><p class="muted">You’re on the ${esc(company.account.plan.name)} plan. Upgrade to get ${esc(page.title)} and more.</p><p><a href="/settings" data-link class="btn alt">See your plan</a></p></div>`; return; }
   if (!page) { document.title = 'Not found'; main.innerHTML = '<div class="card"><h1>Page not found</h1><p><a href="/business-overview" data-link>Go to dashboard</a></p></div>'; return; }
@@ -484,14 +504,32 @@ document.addEventListener('mousedown', (e) => {
   if (opt) { e.preventDefault(); svcAcPick(Number(opt.dataset.i)); } else if (svcAc.box && e.target !== svcAc.input) svcAcClose();
 });
 A.addItem = (d, el) => { const root = el.closest('form'); $('#items', root).insertAdjacentHTML('beforeend', qItemRow({})); recalc(root); $$('.item-row', root).pop().querySelector('.desc').focus(); };
-A.moveItem = (d, el) => {
-  const row = el.closest('.item-row'); const other = d.dir === '-1' ? row.previousElementSibling : row.nextElementSibling;
+// line items reorder by dragging the dotted handle on the left (mouse or touch), or with the arrow keys while it has focus
+const DRAG_DOTS = '<svg width="12" height="18" viewBox="0 0 12 18" fill="currentColor" aria-hidden="true"><circle cx="3" cy="3" r="1.6"/><circle cx="9" cy="3" r="1.6"/><circle cx="3" cy="9" r="1.6"/><circle cx="9" cy="9" r="1.6"/><circle cx="3" cy="15" r="1.6"/><circle cx="9" cy="15" r="1.6"/></svg>';
+const flashRow = (row) => { row.classList.remove('moved'); void row.offsetWidth; row.classList.add('moved'); }; // brief highlight so it's clear what moved
+document.addEventListener('pointerdown', (e) => {
+  const h = e.target.closest('.item-row .drag-h'); if (!h || e.button !== 0) return;
+  e.preventDefault(); const row = h.closest('.item-row'); const list = row.parentElement; const start = row.nextElementSibling;
+  row.classList.add('dragging'); document.body.classList.add('row-drag'); h.setPointerCapture(e.pointerId);
+  const move = (ev) => { // put the row before the first other row whose middle is below the pointer
+    const next = [...list.children].filter((r) => r !== row).find((r) => { const b = r.getBoundingClientRect(); return ev.clientY < b.top + b.height / 2; });
+    if ((next || null) !== row.nextElementSibling) list.insertBefore(row, next || null);
+    if (ev.clientY < 60) window.scrollBy(0, -12); else if (ev.clientY > innerHeight - 60) window.scrollBy(0, 12);
+  };
+  const end = () => {
+    h.removeEventListener('pointermove', move); h.removeEventListener('pointerup', end); h.removeEventListener('pointercancel', end);
+    row.classList.remove('dragging'); document.body.classList.remove('row-drag');
+    if (row.nextElementSibling !== start) { flashRow(row); recalc(row.closest('form')); }
+  };
+  h.addEventListener('pointermove', move); h.addEventListener('pointerup', end); h.addEventListener('pointercancel', end);
+});
+document.addEventListener('keydown', (e) => {
+  const h = e.target.closest('.item-row .drag-h'); if (!h || !['ArrowUp', 'ArrowDown'].includes(e.key)) return;
+  e.preventDefault(); const row = h.closest('.item-row'); const other = e.key === 'ArrowUp' ? row.previousElementSibling : row.nextElementSibling;
   if (!other) return;
-  d.dir === '-1' ? other.before(row) : other.after(row);
-  row.classList.remove('moved'); void row.offsetWidth; row.classList.add('moved'); // brief highlight so it's clear what moved
-  el.closest('details').open = false; $('.row-menu summary', row).focus();
-  recalc(el.closest('form'));
-};
+  if (e.key === 'ArrowUp') other.before(row); else other.after(row);
+  h.focus(); flashRow(row); recalc(row.closest('form'));
+});
 A.rmItem = (d, el) => { // the last remaining line is cleared instead of removed
   const root = el.closest('form'); const row = el.closest('.item-row');
   if ($$('.item-row', root).length > 1) row.remove(); else row.outerHTML = qItemRow({});
@@ -860,13 +898,13 @@ const DEFAULT_DISCLAIMER = 'This quote is valid for the next 30 days, after whic
 function qItemRow(it) {
   // Jobber-style row: labeled boxes (name, qty, unit cost, markup, total) with the description full width underneath and a ⋯ menu.
   // Unit cost shows $; markup shows $ when flat, or % (percent of cost) from its selector.
-  return `<div class="item-row qi"><label class="fl qi-name"><span>Name</span><input class="desc" autocomplete="off" placeholder="Item name or catalog service" value="${esc(it.desc || '')}"></label>
+  return `<div class="item-row qi"><button type="button" class="drag-h" aria-label="Drag to reorder (or use the arrow keys)" title="Drag to reorder">${DRAG_DOTS}</button><label class="fl qi-name"><span>Name</span><input class="desc" autocomplete="off" placeholder="Item name or catalog service" value="${esc(it.desc || '')}"></label>
 <label class="fl"><span>Quantity</span><input class="qty" type="number" step="any" min="0" value="${it.qty ?? 1}"></label>
 <label class="fl"><span>Unit cost</span><div class="affix"><i>$</i><input class="cost" type="number" step="any" min="0" value="${it.cost ?? it.price ?? 0}"></div></label>
 <label class="fl mk${it.markupType === 'flat' ? ' flat' : ''}"><span>Markup</span><div class="affix"><i class="pre">$</i><input class="markup" type="number" step="any" value="${it.markup ?? 0}"><select class="mtype" aria-label="Markup type"><option value="percent">%</option><option value="flat" ${it.markupType === 'flat' ? 'selected' : ''}>$</option></select></div></label>
 <div class="fl amt-box"><span>Total</span><div class="amt"></div></div>
 <details class="menu row-menu"><summary aria-label="Line item options" title="Line item options">⋯</summary><div class="menu-list">
-<button type="button" class="mv" data-act="moveItem" data-dir="-1">Move up</button><button type="button" class="mv" data-act="moveItem" data-dir="1">Move down</button><button type="button" class="danger-text" data-act="rmItem">Remove line item</button></div></details>
+<button type="button" class="danger-text" data-act="rmItem">Remove line item</button></div></details>
 <label class="fl qi-desc"><span>Description</span><textarea class="details" rows="3" placeholder="Shown to the client (optional)">${esc(it.details || '')}</textarea></label></div>`;
 }
 // hidden "off" + checkbox "on" with the same name: FormData keeps the last one, so unchecked saves "off".
