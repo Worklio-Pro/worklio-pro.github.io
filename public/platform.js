@@ -95,14 +95,15 @@ async function inviteView(token, state) {
 
 /* ===== shell ===== */
 const ico = (d) => `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
-const TAB_ICONS = { // bottom bar icons (phones)
+const TAB_ICONS = { // bottom bar icons (phones), by section
   help: ico('<circle cx="12" cy="12" r="9"/><path d="M9.6 9.2a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.3-2.4 3.9"/><path d="M12 17.2h.01"/>'),
   accounts: ico('<path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 9h1M14 9h1M9 13h1M14 13h1M10 21v-4h4v4"/>'),
-  discounts: ico('<path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="8" cy="8" r="1.5"/>'),
+  pricing: ico('<path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="8" cy="8" r="1.5"/>'),
   integrations: ico('<path d="M9 2v6M15 2v6"/><path d="M6 8h12v3a6 6 0 0 1-12 0z"/><path d="M12 17v5"/>'),
   automations: ico('<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>'),
   messages: ico('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>'),
   forum: ico('<path d="M17 9a6 6 0 0 0-11.5-2.4A5 5 0 0 0 3 15.3L2 19l3.7-1A6 6 0 0 0 17 9z"/><path d="M14 18.6A6 6 0 0 0 22 13a5 5 0 0 0-2.5-4.3"/>'),
+  social: ico('<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/>'),
   plans: ico('<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14.5 17.5l2 2 4-4"/>'),
   settings: ico('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>'),
 };
@@ -115,24 +116,40 @@ function render() {
     $('#root').innerHTML = '<main class="pf-main pf-pop" id="main"><div class="card" id="chat"></div></main>';
     return chatCard($('#chat'));
   }
-  const tabs = [['accounts', 'Accounts'], ['plans', 'Plans & features'], ['discounts', 'Promotions'], ['messages', 'Messages'], ['forum', 'Forum'], ['help', 'Help Center'], ['integrations', 'Integrations'], ['settings', 'Settings']].filter(([k]) => tabsFor().includes(k));
-  document.title = `${tabs.find((t) => t[0] === tab)[1]} · ${D.settings.productName} Alpha`;
+  const secs = NAV.map((n) => ({ ...n, pages: n.pages.filter((k) => tabsFor().includes(k)) })).filter((n) => n.pages.length);
+  const cur = secs.find((n) => n.pages.includes(tab));
+  const badge = (k) => (k === 'messages' && D.chatWaiting ? ` <span class="msg-n" title="Chats waiting for you">${D.chatWaiting}</span>` : k === 'help' && D.forumNew ? ` <span class="msg-n" title="New forum posts">${D.forumNew}</span>` : '');
+  document.title = `${cur.l} · ${D.settings.productName} Alpha`;
   $('#root').innerHTML = `<header class="pf-top"><div class="pf-bar"><div class="pf-brand">${brandHtml()}</div>
-<nav class="pf-tabs">${tabs.map(([k, l]) => `<a href="#${k}" class="${tab === k ? 'on' : ''}">${l}${k === 'messages' && D.chatWaiting ? ` <span class="msg-n" title="Chats waiting for you">${D.chatWaiting}</span>` : ''}${k === 'forum' && D.forumNew ? ` <span class="msg-n" title="New posts">${D.forumNew}</span>` : ''}</a>`).join('')}</nav>
+<nav class="pf-tabs">${secs.map((n) => `<a href="#${n.pages[0]}" class="${n === cur ? 'on' : ''}">${n.l}${badge(n.k)}</a>`).join('')}</nav>
 <details class="pf-user pf-menu"><summary>${esc(D.admin.name)}${isSupport() ? ' <small class="pf-role">Support</small>' : ''} <span aria-hidden="true">▾</span></summary><div class="pf-menu-list"><div class="pf-menu-who">${esc(D.admin.email)}</div><button type="button" data-act="myEmail">Change email</button><button type="button" data-act="myPassword">Change password</button><button type="button" data-act="logout">Log out</button></div></details></div></header>
 ${D.maintenance && D.maintenance.on ? `<div class="mt-bar" role="status"><strong>Maintenance mode is on.</strong> Visitors and businesses see the maintenance page; you can still use everything. ${isSupport() ? 'The owner can turn it off in Settings.' : '<a href="#settings" data-act="goMaint">Turn it off in Settings</a>'}</div>` : ''}
 <main class="pf-main" id="main"></main>
-<nav class="pf-bnav" aria-label="Alpha sections">${tabs.filter(([k]) => !NOT_ON_PHONES.includes(k)).map(([k, l]) => `<a href="#${k}" class="${tab === k ? 'on' : ''}"${tab === k ? ' aria-current="page"' : ''}>${TAB_ICONS[k]}<span>${SHORT_TABS[k] || l}</span></a>`).join('')}</nav>`;
+<nav class="pf-bnav" aria-label="Alpha sections">${secs.filter((n) => !NOT_ON_PHONES.includes(n.k)).map((n) => `<a href="#${n.pages.includes(n.phone) ? n.phone : n.pages[0]}" class="${n === cur ? 'on' : ''}"${n === cur ? ' aria-current="page"' : ''}>${TAB_ICONS[n.k]}<span>${n.short || n.l}</span></a>`).join('')}</nav>`;
   $('#main').dataset.tab = tab; // box title bands are styled per tab (platform.html)
-  ({ accounts: accountsView, plans: plansView, discounts: promoView, messages: messagesView, forum: forumView, help: helpView, integrations: integrationsView, settings: settingsView })[tab]($('#main'));
+  ({ accounts: accountsView, plans: plansView, discounts: promoView, messages: messagesView, forum: forumView, help: helpView, social: socialView, settings: settingsView })[tab]($('#main'));
 }
-const TABS = ['accounts', 'plans', 'discounts', 'messages', 'forum', 'help', 'integrations', 'settings'];
+// the top bar: one link per section, opening its first page. Pricing (Plans & features, Promotions) and Help Center (articles, Forum)
+// hold more than one page, switched by the tabs under their title. Integrations is part of Settings.
+const NAV = [
+  { k: 'accounts', l: 'Accounts', pages: ['accounts'] },
+  { k: 'pricing', l: 'Pricing', pages: ['plans', 'discounts'], phone: 'discounts' },
+  { k: 'messages', l: 'Messages', pages: ['messages'] },
+  { k: 'help', l: 'Help Center', short: 'Help', pages: ['help', 'forum'] },
+  { k: 'social', l: 'Social', pages: ['social'] },
+  { k: 'settings', l: 'Settings', pages: ['settings'] },
+];
+const TABS = NAV.flatMap((n) => n.pages);
 // support users (Settings → Alpha team) get Accounts, Messages, Forum and Help Center; the server enforces the same
 const isSupport = () => !!(D && D.admin && D.admin.role === 'support');
 const tabsFor = () => (isSupport() ? ['accounts', 'messages', 'forum', 'help'] : TABS);
-const tabFromHash = () => { const h = location.hash.slice(1); if (h === 'automations' && !isSupport()) { msgTab = 'automations'; return 'messages'; } return tabsFor().includes(h) ? h : 'accounts'; };
-const NOT_ON_PHONES = ['plans', 'integrations', 'settings']; // left off the phone tab bar for everyone (they need a bigger screen)
-const SHORT_TABS = { plans: 'Plans', help: 'Help', discounts: 'Promos', integrations: 'Services' }; // the phone tab bar has room for short names only
+const tabFromHash = () => {
+  let h = location.hash.slice(1); if (h === 'pricing') h = 'plans';
+  if (h === 'automations' && !isSupport()) { msgTab = 'automations'; return 'messages'; }
+  if (h === 'integrations' && !isSupport()) { setTab = 'integrations'; return 'settings'; } // Integrations moved into Settings; old links still land there
+  return tabsFor().includes(h) ? h : 'accounts';
+};
+const NOT_ON_PHONES = ['settings']; // left off the phone tab bar for everyone (it needs a bigger screen); there Pricing opens on Promotions
 window.addEventListener('hashchange', () => { if (POPOUT) return; tab = tabFromHash(); if (tab === 'forum') { FR = null; frSel = ''; } if (D) render(); });
 
 /* ===== accounts ===== */
@@ -347,7 +364,7 @@ function plansView(main) {
   const rmBtn = (p, i) => (P.length > 1 ? `<button type="button" class="rm-plan" data-act="rmPlan" data-i="${i}" ${used(p.id) ? `disabled title="Move its accounts to another plan first"` : ''}>Remove plan</button>` : '');
   const dirty = plansDirty();
   planIx = Math.min(planIx, P.length - 1);
-  const head = `<div class="head"><div><h1>Plans & features</h1><p class="sub" style="margin:4px 0 0">Tick what each plan includes. Accounts get changes as soon as you save.</p></div><button class="btn alt" data-act="addPlan">Add plan</button></div>`;
+  const head = `<div class="head"><div><h1>Pricing</h1><p class="sub" style="margin:4px 0 0">Tick what each plan includes. Accounts get changes as soon as you save.</p></div><button class="btn alt" data-act="addPlan">Add plan</button></div>${pricingSeg()}`;
   const savebar = `<div class="savebar"><span class="muted">${dirty ? 'Unsaved changes' : 'All changes saved'}</span>${dirty ? '<button type="button" class="btn alt" data-act="discardPlans">Discard</button>' : ''}<button type="button" class="btn" data-act="savePlans" ${dirty ? '' : 'disabled'}>Save plans</button></div>`;
   if (narrow.matches) {
     const i = planIx; const p = P[i];
@@ -406,17 +423,29 @@ A.savePlans = async () => {
 window.addEventListener('beforeunload', (e) => { if (D && draftPlans && plansDirty()) e.preventDefault(); });
 
 /* ===== settings ===== */
-// Settings shows one box at a time, picked from these tabs
-const SET_TABS = [['product', 'Your product'], ['team', 'Alpha team'], ['icons', 'Menu'], ['expiry', 'Access end dates'], ['maintenance', 'Maintenance mode'], ['reserved', 'Reserved addresses'], ['terms', 'Terms and privacy'], ['seo', 'SEO']];
+const IG_TABS = [['email', 'Email', 'Email'], ['sms', 'Text messages', 'Text messages (Twilio)'], ['stripe', 'Stripe', 'Stripe'], ['google', 'Google', 'Google Business Profile'], ['meta', 'Facebook & Instagram', 'Facebook & Instagram (Meta)'], ['ai', 'AI', 'AI descriptions']];
+let igTab = 'email';
+// Settings shows one box at a time, picked from a grouped list down the left (a dropdown on phones).
+// The Integrations group is one page (setTab 'integrations') showing one service at a time (igTab).
+const SET_GROUPS = [
+  ['Product', [['product', 'Your product'], ['icons', 'Menu'], ['seo', 'SEO'], ['terms', 'Terms and privacy']]],
+  ['Team & access', [['team', 'Alpha team'], ['expiry', 'Access end dates'], ['reserved', 'Reserved addresses']]],
+  ['Integrations', IG_TABS.map(([k, l]) => ['integrations:' + k, l])],
+  ['System', [['maintenance', 'Maintenance mode']]],
+];
 let setTab = 'product';
-A.setTab = (d) => { setTab = d.k; settingsView($('#main')); };
+const setKey = () => (setTab === 'integrations' ? 'integrations:' + igTab : setTab);
+A.setTab = (d) => { const [k, ig] = d.k.split(':'); setTab = k; if (ig) igTab = ig; settingsView($('#main')); };
 A.goMaint = () => { setTab = 'maintenance'; if (tab === 'settings') settingsView($('#main')); else location.hash = 'settings'; }; // the maintenance banner's link
 function settingsView(main) {
   const s = D.settings; const site = `${location.origin}/pricing`;
-  if (!SET_TABS.some(([k]) => k === setTab)) setTab = 'product';
+  if (!SET_GROUPS.some(([, items]) => items.some(([k]) => k === setKey()))) setTab = 'product';
+  const extra = (k) => (k === 'maintenance' && D.maintenance && D.maintenance.on ? ' <span class="msg-n mt-on">On</span>' : '');
   main.innerHTML = `<div class="head"><div><h1>Settings</h1></div></div>
-<div class="hc-seg msg-seg set-tabs" role="tablist">${SET_TABS.map(([k, l]) => `<button type="button" role="tab" aria-selected="${setTab === k}" class="${setTab === k ? 'on' : ''}" data-act="setTab" data-k="${k}">${l}${k === 'maintenance' && D.maintenance && D.maintenance.on ? ' <span class="msg-n mt-on">On</span>' : ''}</button>`).join('')}</div>
+<label class="set-pick"><span class="sr">Settings page</span><select>${SET_GROUPS.map(([g, items]) => `<optgroup label="${g}">${items.map(([k, l]) => `<option value="${k}" ${k === setKey() ? 'selected' : ''}>${l}</option>`).join('')}</optgroup>`).join('')}</select></label>
+<div class="set-layout"><nav class="set-nav" aria-label="Settings">${SET_GROUPS.map(([g, items]) => `<div class="set-nav-g">${g}</div>${items.map(([k, l]) => `<button type="button" class="${k === setKey() ? 'on' : ''}" ${k === setKey() ? 'aria-current="page"' : ''} data-act="setTab" data-k="${k}">${k.startsWith('integrations:') ? `<i class="ig-dot" data-ig-dot="${k.slice(13)}"></i>` : ''}${l}${extra(k)}</button>`).join('')}`).join('')}</nav>
 <div class="set-grid set-one"><div class="card" id="mtCard" data-set="maintenance"></div>
+<div data-set="integrations"><p class="muted" style="margin:0 0 14px">Integrations are shared by every account. Keys in the <code>.env</code> file next to <code>server.js</code> need a restart after changing; secrets are never shown here.</p><div id="integ" class="ig-tabbed"><p class="muted">Checking…</p></div></div>
 <form id="sf" class="set-form"><div class="card" data-set="product"><h2>Your product</h2>
 <div class="row"><label>Product name<input name="productName" value="${esc(s.productName)}" required maxlength="60"></label><label>Contact email<input name="contactEmail" type="email" value="${esc(s.contactEmail)}" placeholder="sales@yourapp.com"></label></div>
 <p class="muted" style="font-size:13px;margin-top:-4px">The product name appears on the pricing page and in account emails. Accounts see the contact email when they want to change plans, and new sign-ups are reported to it.</p>
@@ -432,7 +461,7 @@ function settingsView(main) {
 <label class="switchline"><input type="checkbox" name="allowSignups" ${s.allowSignups ? 'checked' : ''}> Let businesses create an account themselves on the pricing page</label>
 <label style="max-width:320px">Plan for businesses that sign up without choosing one<select name="signupPlan">${D.plans.filter((p) => !p.hidden).map((p) => `<option value="${esc(p.id)}" ${p.id === s.signupPlan ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
 <label style="max-width:320px">“Most popular” badge on the pricing page<select name="popularPlan"><option value="" ${!s.popularPlan ? 'selected' : ''}>Automatic (the middle plan)</option>${D.plans.filter((p) => !p.hidden).map((p) => `<option value="${esc(p.id)}" ${p.id === s.popularPlan ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}<option value="none" ${s.popularPlan === 'none' ? 'selected' : ''}>None</option></select></label>
-<p class="muted" style="font-size:13px">Pricing page: <a href="${esc(site)}" target="_blank" rel="noopener">${esc(site)}</a>. Businesses that choose a paid plan pay for it at checkout before their account opens (see <a href="#integrations">Integrations → Stripe</a>).</p>
+<p class="muted" style="font-size:13px">Pricing page: <a href="${esc(site)}" target="_blank" rel="noopener">${esc(site)}</a>. Businesses that choose a paid plan pay for it at checkout before their account opens (see <a href="#settings" data-act="setTab" data-k="integrations:stripe">Integrations → Stripe</a>).</p>
 <div class="card-save"><span class="as-status">Changes save automatically</span></div></div>
 </form></div></div>
 <div class="card" id="teamCard" data-set="team"></div><div class="card" id="iconsCard" data-set="icons"></div>
@@ -440,7 +469,8 @@ function settingsView(main) {
 <div class="row"><label>Show a banner in their app (days before)<input name="expiryBannerDays" type="number" min="0" max="60" value="${esc(s.expiryBannerDays ?? 7)}"></label><label>Email the owner a reminder (days before)<input name="expiryReminderDays" type="number" min="0" max="60" value="${esc(s.expiryReminderDays ?? 3)}"></label></div>
 <p class="muted" style="font-size:13px;margin-top:-4px">For accounts you gave a last day of access (e.g. trials). Owners and admins see the banner; owners can choose a plan from it, which removes the end date. The reminder is sent once per end date; edit its wording in Messages → Email templates → Access ending soon. 0 means on the last day itself.</p>
 <div class="card-save"><span class="as-status">Changes save automatically</span></div></div></form>
-<div class="card" id="reserved" data-set="reserved"></div><div class="card" id="seoCard" data-set="seo"></div></div>`;
+<div class="card" id="reserved" data-set="reserved"></div><div class="card" id="seoCard" data-set="seo"></div></div></div>`;
+  $('.set-pick select', main).addEventListener('change', (e) => A.setTab({ k: e.target.value }));
   $$('[data-set]', main).forEach((c) => { c.hidden = c.dataset.set !== setTab; });
   $$('#sf, #sf2, #sf3', main).forEach((f) => autosave(f, async (b) => {
     if (f.elements.allowSignups) b.allowSignups = !!b.allowSignups; // only the form with the switch sends it
@@ -448,6 +478,7 @@ function settingsView(main) {
     if (D.settings.productName !== name) { $('.pf-brand').innerHTML = brandHtml(); logoCard($('#logoCard', main)); iconCard($('#iconCard', main)); } // a new name: the header and previews show it
   }));
   maintenanceCard($('#mtCard', main)); logoCard($('#logoCard', main)); iconCard($('#iconCard', main)); reservedCard($('#reserved', main)); teamCard($('#teamCard', main)); if (setTab === 'icons') iconsCard($('#iconsCard', main)); if (setTab === 'seo') seoCard($('#seoCard', main));
+  integrationsCard($('#integ', main)); // always, so the list shows which services are set up
 }
 // Settings → SEO: each public page's title and description (with a search-result preview), indexing, verification, the share image and social profiles (lib/seo.js)
 let SEO = null; let seoDraft = null;
@@ -587,37 +618,48 @@ A.teamLink = async (d) => {
   try { const r = await api('POST', `/api/platform/team/${d.id}/link`, {}); teamCard($('#teamCard')); teamLinkResult(r, d.name); } catch (x) { toast(x.message, true); }
 };
 A.teamRm = async (d) => { if (!confirm(`Remove ${d.name}? They’re logged out right away and can’t log in to Alpha anymore.`)) return; try { await api('DELETE', '/api/platform/team/' + d.id); toast(`${d.name} removed`); teamCard($('#teamCard')); } catch (x) { toast(x.message, true); } };
-// the Integrations tab: one box per service, in two columns on wide screens
-// one service at a time, picked from tabs; the dot shows whether it's set up
-const IG_TABS = [['email', 'Email', 'Email'], ['sms', 'Text messages', 'Text messages (Twilio)'], ['stripe', 'Stripe', 'Stripe'], ['google', 'Google', 'Google Business Profile'], ['meta', 'Facebook & Instagram', 'Facebook & Instagram (Meta)'], ['ai', 'AI', 'AI descriptions']];
-let igTab = 'email';
+// Settings → Integrations: one service at a time, picked from the Settings list; its dot shows whether the service is set up
 function igTabs(box) {
   const secs = $$('section.ig', box);
-  $('#igTabs').innerHTML = IG_TABS.map(([k, l, title]) => {
-    const sec = secs.find((s) => $('h3', s).textContent === title); if (!sec) return '';
+  IG_TABS.forEach(([k, , title]) => {
+    const sec = secs.find((s) => $('h3', s).textContent === title); if (!sec) return;
     sec.dataset.ig = k; sec.hidden = k !== igTab; const ok = !!$('.ig-h .cstatus.active', sec);
-    return `<button type="button" role="tab" aria-selected="${igTab === k}" class="${igTab === k ? 'on' : ''}" data-act="igTab" data-k="${k}"><i class="ig-dot${ok ? ' on' : ''}" title="${ok ? 'Set up' : 'Not set up'}"></i>${l}</button>`;
-  }).join('');
+    const dot = $(`[data-ig-dot="${k}"]`); if (dot) { dot.classList.toggle('on', ok); dot.title = ok ? 'Set up' : 'Not set up'; }
+  });
 }
-A.igTab = (d) => { igTab = d.k; $$('#integ section.ig').forEach((s) => { s.hidden = s.dataset.ig !== igTab; }); $$('#igTabs button').forEach((b) => { b.classList.toggle('on', b.dataset.k === igTab); b.setAttribute('aria-selected', String(b.dataset.k === igTab)); }); };
-function integrationsView(main) {
-  main.innerHTML = '<div class="head"><div><h1>Integrations</h1><p class="muted" style="margin:4px 0 0">Shared by every account. Keys in the <code>.env</code> file next to <code>server.js</code> need a restart after changing; secrets are never shown here.</p></div></div><div class="hc-seg msg-seg set-tabs" id="igTabs" role="tablist"></div><div id="integ" class="ig-tabbed"><p class="muted">Checking…</p></div>';
-  integrationsCard($('#integ', main));
+/* ===== social: posting to Worklio Pro's own Facebook, Instagram and TikTok (being built) ===== */
+function socialView(main) {
+  main.innerHTML = `<div class="head"><div><h1>Social</h1><p class="sub" style="margin:4px 0 0">Post to ${esc(D.settings.productName)}’s Facebook, Instagram and TikTok from one place, now or on a schedule.</p></div></div>
+<div class="card" style="max-width:760px"><h2>Coming next</h2><ul style="margin:0;padding-left:20px;line-height:1.7">
+<li><strong>Compose:</strong> write one post, pick the platforms, then post now or schedule it</li>
+<li><strong>Calendar:</strong> what’s scheduled, what posted and what failed</li>
+<li><strong>AI Studio:</strong> captions from Claude, free stock photos and videos, app screenshots, and AI images when nothing else fits</li>
+<li><strong>History:</strong> every post, with likes and comments</li></ul>
+<p class="muted" style="font-size:13px;margin-bottom:0">Facebook and Instagram sign in with the Meta app keys in <a href="#settings" data-act="setTab" data-k="integrations:meta">Settings → Integrations → Facebook & Instagram</a>.</p></div>`;
 }
+
 /* ===== promotions: discount codes, the referral program and its activity, and the Founding Supporters list ===== */
 let promoTab = 'codes'; let RF = null; // RF: the referral program and its activity (lib/referrals.js)
 let SP = null; // SP: the Founding Supporters list (lib/supporters.js)
 function promoView(main) {
   const due = RF ? RF.rewards.filter((w) => w.status === 'to send').length : 0;
-  main.innerHTML = `<div class="head"><div><h1>Promotions</h1><p class="sub" style="margin:4px 0 0">Discount codes for sign-ups, a referral program for the businesses on ${esc(D.settings.productName)}, and the Founding Supporters page.</p></div></div>
-<div class="hc-seg msg-seg" role="tablist">${[['codes', 'Discount codes'], ['program', 'Referral program'], ['activity', 'Referral activity'], ['supporters', 'Founding Supporters']].map(([k, l]) => `<button type="button" role="tab" aria-selected="${promoTab === k}" class="${promoTab === k ? 'on' : ''}" data-act="promoTab" data-k="${k}">${l}${k === 'activity' && due ? ` <span class="msg-n">${due}</span>` : ''}</button>`).join('')}</div><div id="promoBody"></div>`;
+  main.innerHTML = `<div class="head"><div><h1>Pricing</h1><p class="sub" style="margin:4px 0 0">Discount codes for sign-ups, a referral program for the businesses on ${esc(D.settings.productName)}, and the Founding Supporters page.</p></div></div>
+${pricingSeg(due)}<div id="promoBody"></div>`;
   const box = $('#promoBody', main);
   if (promoTab === 'codes') return discountsView(box);
   if (promoTab === 'supporters') { if (SP) return supportersView(box); box.innerHTML = '<p class="muted">Loading…</p>'; api('GET', '/api/platform/supporters').then((r) => { SP = r; if (tab === 'discounts' && promoTab === 'supporters') promoView($('#main')); }).catch((x) => toast(x.message, true)); return; }
   if (!RF) { box.innerHTML = '<p class="muted">Loading…</p>'; api('GET', '/api/platform/referrals').then((r) => { RF = r; if (tab === 'discounts') promoView($('#main')); }).catch((x) => toast(x.message, true)); return; }
   (promoTab === 'program' ? referralProgramView : referralActivityView)(box);
 }
-A.promoTab = (d) => { promoTab = d.k; promoView($('#main')); };
+// Pricing's tabs: Plans & features is its own page (#plans); the rest are Promotions (#discounts)
+const pricingSeg = (due = 0) => `<div class="hc-seg msg-seg" role="tablist">${[['plans', 'Plans & features'], ['codes', 'Discount codes'], ['program', 'Referral program'], ['activity', 'Referral activity'], ['supporters', 'Founding Supporters']].map(([k, l]) => {
+  const on = tab === 'plans' ? k === 'plans' : promoTab === k;
+  return `<button type="button" role="tab" aria-selected="${on}" class="${on ? 'on' : ''}" data-act="pricingTab" data-k="${k}">${l}${k === 'activity' && due ? ` <span class="msg-n">${due}</span>` : ''}</button>`;
+}).join('')}</div>`;
+A.pricingTab = (d) => {
+  if (d.k === 'plans') { location.hash = 'plans'; return; }
+  promoTab = d.k; if (tab === 'discounts') promoView($('#main')); else location.hash = 'discounts';
+};
 // pick an image file and upload it; resolves to its address (/brand/media-…)
 const pickImage = () => new Promise((resolve) => {
   const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/png,image/jpeg,image/gif,image/webp';
@@ -1300,7 +1342,15 @@ const hcTopicName = (slug) => (HC.topics.find((t) => t.slug === slug) || {}).tit
 const hcSlugify = (s) => String(s || '').toLowerCase().replace(/\{product\}/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80).replace(/-+$/, '');
 // one part at a time: Articles (with what readers were looking for), Topics, Home page
 let hcTab = 'articles';
-A.hcTab = (d) => { hcTab = d.k; helpView($('#main')); };
+// Help Center's tabs: the articles' three parts (#help) and the Forum (#forum)
+const helpSeg = () => `<div class="hc-seg msg-seg set-tabs" role="tablist">${[['articles', 'Articles', HC ? HC.comments.length : 0, 'What people were looking for'], ['topics', 'Topics'], ['home', 'Home page'], ['forum', 'Forum', D.forumNew, 'New posts']].map(([k, l, n, title]) => {
+  const on = tab === 'forum' ? k === 'forum' : hcTab === k;
+  return `<button type="button" role="tab" aria-selected="${on}" class="${on ? 'on' : ''}" data-act="hcTab" data-k="${k}">${l}${n ? ` <span class="msg-n" title="${title}">${n}</span>` : ''}</button>`;
+}).join('')}</div>`;
+A.hcTab = (d) => {
+  if (d.k === 'forum') { if (tab === 'forum') A.frBack(); else location.hash = 'forum'; return; }
+  hcTab = d.k; if (tab === 'help') helpView($('#main')); else location.hash = 'help';
+};
 async function helpView(main) {
   if (!HC) { main.innerHTML = '<p class="muted">Loading…</p>'; try { await hcLoad(); } catch (x) { main.innerHTML = `<div class="card">${esc(x.message)}</div>`; return; } }
   const all = HC.articles.map((a, i) => ({ ...a, i, ...hcStats(a.slug) }));
@@ -1317,9 +1367,9 @@ async function helpView(main) {
 <button type="button" class="btn alt sm" data-act="hcPage" data-p="${hcPage - 1}" ${hcPage > 1 ? '' : 'disabled'}>‹ Previous</button>${Array.from({ length: pages }, (_, i) => `<button type="button" class="btn sm ${i + 1 === hcPage ? '' : 'alt'}" data-act="hcPage" data-p="${i + 1}" ${i + 1 === hcPage ? 'aria-current="page"' : ''} aria-label="Page ${i + 1}">${i + 1}</button>`).join('')}
 <button type="button" class="btn alt sm" data-act="hcPage" data-p="${hcPage + 1}" ${hcPage < pages ? '' : 'disabled'}>Next ›</button></div></nav>` : `<p class="sm" style="margin:10px 0 0">${rows.length} article${rows.length === 1 ? '' : 's'}</p>`;
   main.innerHTML = `<div class="head"><div><h1>Help Center</h1><p class="sub" style="margin:4px 0 0">Articles at <a href="${esc(HC.helpUrl)}" target="_blank" rel="noopener">${esc(host(HC.helpUrl))}</a>. Changes go live as soon as you save. Write <code>{product}</code> for the product name.</p></div><button class="btn" data-act="hcEdit">New article</button></div>
+${helpSeg()}
 <div class="stats"><div class="card"><div class="l">Articles</div><div class="v">${all.length}</div></div><div class="card"><div class="l">Topics</div><div class="v">${HC.topics.length}</div></div>
 <div class="card"><div class="l">Votes</div><div class="v">${votes}</div></div><div class="card"><div class="l">Found it helpful</div><div class="v">${votes ? Math.round((yes / votes) * 100) + '%' : '—'}</div></div></div>
-<div class="hc-seg msg-seg set-tabs" role="tablist">${[['articles', 'Articles', HC.comments.length], ['topics', 'Topics'], ['home', 'Home page']].map(([k, l, n]) => `<button type="button" role="tab" aria-selected="${hcTab === k}" class="${hcTab === k ? 'on' : ''}" data-act="hcTab" data-k="${k}">${l}${n ? ` <span class="msg-n" title="What people were looking for">${n}</span>` : ''}</button>`).join('')}</div>
 <div class="card" data-hc="articles"><h2>Articles</h2><div class="hc-tools"><select id="hcTopic" aria-label="Filter by topic"><option value="">All topics</option>${HC.topics.map((t) => `<option value="${esc(t.slug)}" ${t.slug === hcTopic ? 'selected' : ''}>${esc(t.title)}</option>`).join('')}</select>
 <input id="hcQ" type="search" placeholder="Search articles" value="${esc(hcQ)}" aria-label="Search articles"><span class="sm">Sort by Helpful to find the articles that need work first.</span></div>
 <div class="tablewrap"><table class="acc hc-table"><thead><tr>${th('order', 'Article')}<th>Topic</th>${th('yes', '👍 Yes', 'r')}${th('no', '👎 No', 'r')}${th('helpful', 'Helpful', 'r')}<th></th></tr></thead><tbody>
@@ -1483,7 +1533,7 @@ const frWho = (a) => (!a ? '' : a.team ? `<span class="fr-team">${esc(D.settings
   : `<strong>${esc(a.name)}</strong> · ${a.account ? `<a href="${esc(a.account)}" target="_blank" rel="noopener">${esc(a.company)}</a>` : esc(a.company)} · <span class="muted">${esc(a.role)} · <a href="mailto:${esc(a.email)}">${esc(a.email)}</a></span>`);
 const frChip = (cls, l) => `<span class="fr-chip ${cls}">${esc(l)}</span>`;
 async function forumView(main) {
-  if (!FR) { main.innerHTML = '<div class="head"><h1>Forum</h1></div><p class="muted">Loading…</p>'; try { FR = await api('GET', '/api/platform/forum'); } catch (e) { main.innerHTML = `<div class="head"><h1>Forum</h1></div><p class="muted">${esc(e.message)}</p>`; return; } }
+  if (!FR) { main.innerHTML = `<div class="head"><h1>Help Center</h1></div>${helpSeg()}<p class="muted">Loading…</p>`; try { FR = await api('GET', '/api/platform/forum'); } catch (e) { main.innerHTML = `<div class="head"><h1>Help Center</h1></div>${helpSeg()}<p class="muted">${esc(e.message)}</p>`; return; } }
   D.forumNew = FR.posts.filter((p) => p.status === 'open').length;
   const p = frSel && FR.posts.find((x) => x.id === frSel); if (!p) frSel = '';
   return p ? frPost(main, p) : frList(main);
@@ -1495,9 +1545,10 @@ function frList(main) {
   const by = { new: (a, b) => b.at.localeCompare(a.at), top: (a, b) => b.likes - a.likes || b.at.localeCompare(a.at), active: (a, b) => b.lastAt.localeCompare(a.lastAt), talk: (a, b) => b.comments.length - a.comments.length };
   list.sort(by[v.sort]);
   const n = (f) => FR.posts.filter(f).length;
-  main.innerHTML = `<div class="head"><div><h1>Forum</h1><p class="sub" style="margin:4px 0 0">Issues and feature requests from businesses’ owners and admins, who can like and comment on each other’s posts. Set a status so everyone sees what’s planned.</p></div>
-${isSupport() ? '' : '<button type="button" class="btn alt" data-act="frSettings">Settings</button>'}</div>
-${s.on ? '' : '<div class="mt-bar" role="status" style="margin:0 0 14px;border-radius:10px"><strong>The forum is closed.</strong> Businesses don’t see it. Open it again in Settings.</div>'}
+  main.innerHTML = `<div class="head"><div><h1>Help Center</h1><p class="sub" style="margin:4px 0 0">Forum: issues and feature requests from businesses’ owners and admins, who can like and comment on each other’s posts. Set a status so everyone sees what’s planned.</p></div>
+${isSupport() ? '' : '<button type="button" class="btn alt" data-act="frSettings">Forum settings</button>'}</div>
+${helpSeg()}
+${s.on ? '' : '<div class="mt-bar" role="status" style="margin:0 0 14px;border-radius:10px"><strong>The forum is closed.</strong> Businesses don’t see it. Open it again in Forum settings.</div>'}
 <div class="stats fr-stats"><div class="card"><div class="l">New, not reviewed yet</div><div class="v">${n((p) => p.status === 'open')}</div></div><div class="card"><div class="l">Feature requests</div><div class="v">${n((p) => p.kind === 'idea')}</div></div>
 <div class="card"><div class="l">Issues</div><div class="v">${n((p) => p.kind === 'issue')}</div></div><div class="card"><div class="l">Planned or in progress</div><div class="v">${n((p) => p.status === 'planned' || p.status === 'progress')}</div></div></div>
 <div class="fr-bar"><div class="hc-seg" role="tablist">${[['all', 'All'], ['idea', 'Feature requests'], ['issue', 'Issues']].map(([k, l]) => `<button type="button" class="${v.kind === k ? 'on' : ''}" data-act="frKind" data-k="${k}">${l}</button>`).join('')}</div>

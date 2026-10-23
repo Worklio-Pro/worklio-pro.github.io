@@ -156,7 +156,7 @@ function navList() {
 }
 const navFor = () => navList().map(([g, items]) => [g, items.filter(([p]) => memberCan(p) && !planLocked(p))]).filter(([, items]) => items.length);
 // the sidebar's Requests link shows how many time-off requests are waiting for this approver
-// a page in beta testing (Alpha → Plans & features) says so in a banner at the top, instead of a tag in the menu
+// a page in beta testing (Alpha → Pricing → Plans & features) says so in a banner at the top, instead of a tag in the menu
 const BETA_BAR = '<div class="beta-bar" role="status"><span class="beta-pill">Beta</span><span>This page is in beta testing. It works, but it may change and you might run into rough edges. <button type="button" class="link-btn" data-act="feedbackForm">Tell us</button> if something doesn’t look right.</span></div>';
 function timeOffBadge() { const a = $('#side a[href="/requests"]'); if (a && D.timeOffWaiting) a.insertAdjacentHTML('beforeend', ` <span class="nav-n" title="Requests waiting for you">${D.timeOffWaiting}</span>`); }
 function renderSide(path) {

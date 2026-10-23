@@ -716,7 +716,7 @@ function accountInfo() {
     slug: t.slug, plan: { id: plan.id, name: plan.name }, features: plan.features, lockedPages: tenancy.lockedPages(t), betaPages: tenancy.betaPages(), maxUsers: plan.maxUsers || 0,
     url: tenancy.tenantUrl(t), subdomainUrl: tenancy.subdomainUrl(t), rootDomain: tenancy.ROOT_DOMAIN, serverIp: process.env.SERVER_IP || '',
     domains: (t.domains || []).map(({ host, verified, primary, addedAt, verifiedAt }) => ({ host, verified: !!verified, primary: !!primary, addedAt, verifiedAt: verifiedAt || null })),
-    forum: forum.isOn(), // Alpha → Forum → Settings can close the forum
+    forum: forum.isOn(), // Alpha → Help Center → Forum → Forum settings can close the forum
     navIcons: iconsLib.navIcons(), navOrder: iconsLib.order(), // the menu's icons, order and sections (Alpha → Settings → Menu)
     productName: tenancy.platform().settings.productName, product: brandLib.brand(), contactEmail: tenancy.platform().settings.contactEmail, helpUrl: tenancy.helpUrl(), managed: !tenancy.isDefault(),
     referrals: referrals.openTo(t), cardReady: !!stripeKey(), // card payments set up (App Settings → Card payments)
@@ -2221,7 +2221,7 @@ const supportState = (t, u) => {
     isOwner: owner, grantDays: support.GRANT_DAYS, productName: tenancy.platform().settings.productName };
 };
 const tellSupportAdmin = (r, title, message) => { if (r.adminEmail) sendTemplate('accountActivity', r.adminEmail, { title, message, link: `${tenancy.platformUrl()}/alpha` }, { server: true }).catch(() => {}); };
-// ---------- the referral program (lib/referrals.js; set up in Alpha → Promotions): the business's Refer & earn page ----------
+// ---------- the referral program (lib/referrals.js; set up in Alpha → Pricing): the business's Refer & earn page ----------
 const defaultT = () => tenancy.platform().tenants.find((t) => tenancy.isDefault(t)) || tenancy.platform().tenants[0];
 referrals.init({
   sendTemplate: (key, to, vars, opts = {}) => tenancy.run(defaultT(), () => sendTemplate(key, to, vars, { server: true, ...opts })),

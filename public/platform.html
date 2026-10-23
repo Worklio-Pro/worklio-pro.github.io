@@ -135,6 +135,14 @@
     .au-foot{position:sticky;bottom:-1px;background:var(--card);padding:12px 0 2px;margin-top:6px;border-top:1px solid var(--line)}
     @media (max-width:760px){.au-row{flex-wrap:wrap}.au-stats{order:3;width:100%;justify-content:flex-start}}
     .set-tabs{display:flex;flex-wrap:wrap;width:max-content;max-width:100%}.mt-on{background:#fee2e2;color:#991b1b}
+    /* settings: a grouped list down the left; a dropdown on phones */
+    .set-layout{display:grid;grid-template-columns:210px minmax(0,1fr);gap:24px;align-items:start}.set-layout>.set-one{max-width:none;min-width:0}
+    .set-nav{position:sticky;top:16px;display:flex;flex-direction:column;gap:1px}
+    .set-nav-g{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:14px 10px 4px}.set-nav-g:first-child{margin-top:0}
+    .set-nav button{display:flex;align-items:center;gap:6px;width:100%;text-align:left;border:0;background:none;font:inherit;font-size:14px;padding:7px 10px;border-radius:8px;color:var(--text);cursor:pointer}
+    .set-nav button:hover{background:var(--surface-2)}.set-nav button.on{background:var(--card);box-shadow:var(--shadow-sm);font-weight:600}.set-nav .ig-dot{margin-right:2px;flex:none}.set-nav .msg-n{margin-left:auto}
+    .set-pick{display:none}
+    @media (max-width:760px){.set-layout{display:block}.set-nav{display:none}.set-pick{display:block;margin:0 0 16px}}
     .card-save{display:flex;justify-content:flex-end;margin-top:6px}
     .as-status{font-size:13px;color:var(--muted);min-height:20px}.as-status.ok{color:#15803d}.as-status.err{color:var(--danger)}
     @media (prefers-color-scheme:dark){:root:not([data-theme=light]) .as-status.ok{color:#4ade80}}:root[data-theme=dark] .as-status.ok{color:#4ade80}
@@ -317,6 +325,6 @@
   <div id="toast"></div>
   <script src="/hc-editor.js?v=2"></script>
   <script src="/brand.js?v=1"></script>
-  <script src="/platform.js?v=67"></script>
+  <script src="/platform.js?v=68"></script>
 </body>
 </html>

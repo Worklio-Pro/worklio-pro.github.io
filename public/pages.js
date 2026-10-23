@@ -1894,7 +1894,7 @@ A.supportAnswer = async (d, el) => {
   catch (err) { el.disabled = false; throw err; }
 };
 
-/* ===== /rewards: Refer & Earn (the platform's referral program, set up in Alpha → Promotions) ===== */
+/* ===== /rewards: Refer & Earn (the platform's referral program, set up in Alpha → Pricing) ===== */
 const REF_STATUS = { invited: ['Invited', ''], 'signed up': ['Signed up', 'q-sent'], subscribed: ['Subscribed', 'active'] };
 // a YouTube link plays in the page; any other video opens in a new tab
 const youTubeId = (u) => { const m = /(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{11})/.exec(u || ''); return m ? m[1] : ''; };
@@ -1942,7 +1942,7 @@ ${yt ? `<div class="rf-embed"><iframe src="https://www.youtube-nocookie.com/embe
 A.copyRefLink = () => { const l = $('#main')._refLink; navigator.clipboard.writeText(l).then(() => toast('Referral link copied'), () => prompt('Copy your referral link:', l)); };
 
 /* ===== /forum: owners and admins of every business share issues and feature requests, like them and comment (lib/forum.js).
-   Not a support queue: the team reads it to decide what to improve, and sets each post's status in Alpha → Forum. ===== */
+   Not a support queue: the team reads it to decide what to improve, and sets each post's status in Alpha → Help Center → Forum. ===== */
 let forumView = { kind: 'all', status: '', sort: 'top', q: '', mine: false };
 let FO = null; // the last list or post from the server
 const foAgo = (iso) => { const s = (Date.now() - new Date(iso)) / 1000; if (s < 60) return 'just now'; if (s < 3600) return `${Math.floor(s / 60)} min ago`; if (s < 86400) return `${Math.floor(s / 3600)} h ago`; if (s < 86400 * 7) { const d = Math.floor(s / 86400); return `${d} day${d === 1 ? '' : 's'} ago`; } return fmtDate(String(iso).slice(0, 10)); };
