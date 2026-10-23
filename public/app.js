@@ -51,6 +51,20 @@ async function api(method, url, body) {
 const pausedNow = () => !!(company.account && company.account.paused);
 const PAUSED_FREE = ['/settings/billing', '/profile', '/forum', '/settings/support-access']; // pages that still work as normal
 const PAUSED_ACTS = /^(new|edit|add|del|delete|rm|remove|save|create|mark|approve|collect|complete|reopen|merge|import|runImport|upload|send|setDeposit|undoDeposit|quoteToJob|jobInvoice|jobRemind|jobRequestOff|requestOff|manageStaff|tm(Invite|Revoke|HoursEdit)|role(Add|Rm|Save|Tick)|disc(Save|Delete)|rev(Edit|Delete)|sp(Drop|Move|Remove)|social(Connect|Disconnect|Choose)|connectStripe|pay(Bank|Disable|StripeRetry)|pdRefund|toDecide|toCancel|bookingSave|primaryDomain|checkDomain|resetTpl|importTemplate|clientDupes)/;
+// what a paused account is told, by why it's paused: most reasons the business fixes itself (choose a plan, or update the card);
+// only an account paused by the platform is told to get in touch. btn: the button's label (Explore plans / Update billing), or '' for none
+function pausedMsg(pz) {
+  const product = esc((company.account && company.account.productName) || 'Worklio Pro'); const ce = company.account && company.account.contactEmail; const on = pz.on ? esc(fmtDate(pz.on)) : '';
+  const contact = ce ? `<a href="mailto:${esc(ce)}">${esc(ce)}</a>` : 'us';
+  return {
+    trial: { title: pz.prepaid ? `Your prepaid months ended${on ? ` on ${on}` : ''}` : `Your free trial ended${on ? ` on ${on}` : ''}`, text: `Choose a plan and pay to keep using ${product}. Your data is right where you left it.`, btn: 'Explore plans' },
+    ended: { title: `Your access ended${on ? ` on ${on}` : ''}`, text: `Choose a plan and pay to keep using ${product}. Your data is right where you left it.`, btn: 'Explore plans' },
+    cancelled: { title: `Your subscription ended${on ? ` on ${on}` : ''}`, text: `Choose a plan to start again. Your data is right where you left it.`, btn: 'Explore plans' },
+    billing: pz.fixCard ? { title: 'We couldn’t collect your last payment', text: `Update your billing information to continue with ${product}. We’ll retry the payment right away, and your account opens again as soon as it goes through.`, btn: 'Update billing' }
+      : { title: 'Your subscription ended because a payment didn’t go through', text: 'Choose a plan and add a card that works to continue. Your data is right where you left it.', btn: 'Explore plans' },
+    platform: { title: 'Your account is paused', text: `${product} paused this account. Contact ${contact} to reopen it.`, btn: '' },
+  }[pz.reason] || { title: 'Your account is paused', text: `Contact ${contact} to reopen it.`, btn: '' };
+}
 function toPlans() {
   if (!isAdminMe()) return;
   closeModal(); if (curPath() !== '/settings/billing') navigate('/settings/billing');
@@ -393,8 +407,8 @@ async function render() {
   // the account's last day of access is near (set by the platform): owners and admins see it, owners can choose a plan
   const xb = $('#expiryBar'); const xp = !portal && company.account && company.account.expiry; const pz = !portal && pausedNow() && company.account.paused;
   xb.hidden = !((pz || (xp && xp.banner)) && isAdminMe());
-  if (!xb.hidden && pz) { const ce = company.account.contactEmail;
-    xb.innerHTML = `<span><strong>Your account is paused${pz.endedOn ? ` (access ended ${esc(fmtDate(pz.endedOn))})` : ''}.</strong> You can still look around and see your data, but to create, change or delete anything, ${pz.canChoosePlan ? 'choose a plan.' : `contact ${ce ? `<a href="mailto:${esc(ce)}">${esc(ce)}</a>` : 'us'} to reopen it.`}</span>${pz.canChoosePlan && path !== '/settings/billing' ? '<a class="btn sm" href="/settings/billing" data-link>Explore plans</a>' : ''}`; }
+  if (!xb.hidden && pz) { const m = pausedMsg(pz);
+    xb.innerHTML = `<span><strong>${m.title}.</strong> ${m.text} Until then you can look around, but you can’t create, change or delete anything.</span>${m.btn && path !== '/settings/billing' ? `<a class="btn sm" href="/settings/billing" data-link>${m.btn}</a>` : ''}`; }
   else if (!xb.hidden) { const owner = role() === 'owner'; const ce = company.account.contactEmail;
     xb.innerHTML = `<span><strong>${xp.daysLeft < 0 ? 'Your access has ended.' : xp.prepaid ? `Your prepaid months end ${esc(xp.when)}${xp.daysLeft > 1 ? ` (${xp.daysLeft} days left)` : ''}.` : xp.trial ? `Your free trial ends ${esc(xp.when)}${xp.daysLeft > 1 ? ` (${xp.daysLeft} days left)` : ''}.` : `Your access to ${esc(company.account.productName)} ends ${esc(xp.when)}${xp.daysLeft > 1 ? ` (${xp.daysLeft} days left)` : ''}.`}</strong> ${owner ? (xp.trial ? 'Add a card to keep your account.' : 'Choose a plan to keep your account.') : 'Ask your account owner to choose a plan.'}${ce ? ` Questions? <a href="mailto:${esc(ce)}">${esc(ce)}</a>` : ''}</span>${owner && path !== '/settings/billing' ? `<a class="btn sm" href="/settings/billing" data-link>${xp.trial ? 'Add a card' : 'Choose a plan'}</a>` : ''}`; }
   if (pausedNow() && !portal && !isAdminMe()) { document.title = 'Account paused'; main.innerHTML = `<div class="card paused-card">${svgIcon(ICONS.shield, 28)}<h1>Your company’s account is paused</h1><p class="muted">You can’t use ${esc(company.name || 'your company')}’s account right now. Contact your company owner or admin to get it running again.</p></div>`; return; }

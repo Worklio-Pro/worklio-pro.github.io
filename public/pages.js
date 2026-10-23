@@ -1764,8 +1764,9 @@ ${B.managed ? `<div class="card"><h2>Have a supporter code?</h2><p class="muted"
 // a paused account: the plans laid out like the pricing page; choosing one pays at Stripe's checkout (or reopens a free plan right away)
 let xpPeriod = null;
 function explorePlans(B) {
-  const P = B.paused; const ce = B.contactEmail;
-  if (!P.canChoosePlan) return `<div class="card xp-hero"><h2>Your account is paused</h2><p class="muted">${esc(B.productName)} paused this account. Your data is safe, and you can still look around. ${ce ? `Contact <a href="mailto:${esc(ce)}">${esc(ce)}</a>` : 'Contact us'} to reopen it.</p></div>`;
+  const P = B.paused; const m = pausedMsg(P);
+  if (!P.canChoosePlan) return `<div class="card xp-hero"><h2>${m.title}</h2><p class="muted">${m.text} Your data is safe, and you can still look around.</p></div>`;
+  if (P.fixCard) return `<div class="card xp-hero xp-fix"><h2>${m.title}</h2><p class="muted">${m.text}</p>${B.live ? `<button type="button" class="btn" data-act="billCard">${B.card ? 'Update card' : 'Add card'}</button>` : ''}</div>`;
   const plans = B.plans.filter((p) => !p.hidden);
   const both = plans.some((p) => p.month) && plans.some((p) => p.year); const best = Math.max(0, ...plans.filter((p) => p.month && p.year).map((p) => Math.round((1 - p.year / (p.month * 12)) * 100)));
   const period = xpPeriod || (plans.some((p) => p.month) ? 'month' : 'year');
@@ -1778,7 +1779,7 @@ function explorePlans(B) {
     const save = p.month && p.year ? Math.round((1 - p.year / (p.month * 12)) * 100) : 0;
     return `<div class="price">${amount(v)}<small>/${k}</small></div><div class="per">${k === 'year' ? `${amount(Math.round(v / 12 * 100) / 100)}/month, billed yearly${save > 0 ? ` · <strong>save ${save}%</strong>` : ''}` : period === 'year' ? 'Billed monthly only' : p.year ? `or ${amount(p.year)}/year` : 'Billed monthly'}</div>`;
   };
-  return `<div class="xp"><div class="xp-hero"><h2>Your account is paused</h2><p class="muted">${P.endedOn ? `Your access ended on ${fmtDate(P.endedOn)}. ` : ''}Your data is safe, and you can still look around. Choose a plan to start creating, changing and deleting again.</p></div>
+  return `<div class="xp"><div class="xp-hero"><h2>${m.title}</h2><p class="muted">${m.text}</p></div>
 ${both ? `<div class="xp-period" role="radiogroup" aria-label="Billing period">${[['month', 'Monthly'], ['year', `Yearly${best > 0 ? ` <span class="xp-save">Save up to ${best}%</span>` : ''}`]].map(([k, l]) => `<button type="button" role="radio" aria-checked="${period === k}" class="${period === k ? 'on' : ''}" data-act="xpPeriod" data-per="${k}">${l}</button>`).join('')}</div>` : ''}
 <div class="xp-plans">${plans.map((p, i) => `<article class="card xp-plan ${i === mid ? 'pop' : ''}"><span class="xp-tag">${i === mid ? 'Most popular' : p.id === B.plan.id ? 'Your last plan' : ''}</span><h3>${esc(p.name)}</h3>
 ${priceHtml(p)}<p class="desc">${esc(p.description)}</p>
