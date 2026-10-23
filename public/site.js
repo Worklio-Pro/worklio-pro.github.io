@@ -8,7 +8,7 @@ const slugify = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-')
   const S = await (await fetch('/api/site')).json();
   document.title = `Pricing · ${S.productName}`;
   $('#brand').textContent = S.productName;
-  if (S.brand && S.brand.logo) { $('.h-brand i').outerHTML = brandImg(S.brand); $('#brand').hidden = S.brand.logoHasName; } // the logo from the platform console
+  if (S.brand && S.brand.logo) { $('.h-brand').insertAdjacentHTML('afterbegin', brandImg(S.brand)); $('#brand').hidden = S.brand.logoHasName; } // the logo from the platform console
   if (S.home) document.querySelectorAll('[data-home]').forEach((a) => { a.href = S.home + a.dataset.home; });
   const label = Object.fromEntries(S.features.map((f) => [f.key, f.label]));
   const beta = (f) => (f.beta ? ' <span class="beta-tag" title="In beta testing">Beta</span>' : '');
