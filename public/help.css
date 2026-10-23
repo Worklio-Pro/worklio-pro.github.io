@@ -26,6 +26,9 @@ main{flex:1;outline:0}
 .hc-menu a{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;color:var(--text);text-decoration:none;font-size:14px}.hc-menu a:hover{background:var(--soft)}
 .hc-menu svg{color:var(--brand);flex-shrink:0}
 .hc-theme{width:36px;height:36px;border:0;border-radius:8px;background:none;color:#dbe4f5;font-size:17px;cursor:pointer}.hc-theme:hover{background:rgba(255,255,255,.1);color:#fff}
+/* the phone menu: on wider screens the panel's contents sit inline in the header */
+.hc-panel{display:contents}
+.hc-burger,.hc-close,.hc-scrim,.hc-dtopics,.hc-theme-l{display:none}
 /* hero + search */
 .hc-hero{background:linear-gradient(180deg,var(--hero),var(--hero-2));color:var(--hero-text);padding:44px 0 64px;text-align:center}
 .hc-hero h1{font-size:40px;margin:0 0 20px;letter-spacing:-.02em}
@@ -100,10 +103,24 @@ ol.steps>li::before{content:counter(s);position:absolute;left:0;top:0;width:28px
 @media (max-width:640px){
  .wrap{padding:0 16px}.g3,.row{grid-template-columns:1fr}
  .hc-hero{padding:32px 0 56px}.hc-hero h1{font-size:30px}
- .hc-nav>a:not(.hc-app){display:none}.hc-topics>summary{padding:8px}.hc-menu{right:-60px}
+ /* the header shows a hamburger; the menu slides in from the right */
+ .hc-burger{display:grid;place-items:center;margin-left:auto;width:44px;height:44px;border:0;border-radius:10px;background:none;color:#fff;cursor:pointer}.hc-burger:hover{background:rgba(255,255,255,.1)}
+ .hc-panel{display:flex;flex-direction:column;position:fixed;top:0;right:0;width:min(320px,86vw);height:100vh;height:100dvh;z-index:40;background:var(--card);color:var(--text);border-left:1px solid var(--line);box-shadow:var(--shadow-lg);padding:12px 16px 24px;overflow-y:auto;transform:translateX(105%);visibility:hidden;transition:transform .25s ease,visibility 0s .25s}
+ .hc-panel.open{transform:none;visibility:visible;transition:transform .25s ease}
+ .hc-close{display:grid;place-items:center;align-self:flex-end;flex-shrink:0;width:44px;height:44px;border:0;border-radius:10px;background:none;color:var(--text);cursor:pointer;margin-bottom:4px}.hc-close:hover{background:var(--soft)}
+ .hc-nav{display:contents}.hc-topics{display:none}
+ .hc-nav>a,.hc-nav .hc-theme{display:flex;align-items:center;gap:12px;width:100%;height:auto;padding:13px 12px;border-radius:10px;font-size:16px;color:var(--text);text-align:left}
+ .hc-nav>a:hover,.hc-nav .hc-theme:hover{background:var(--soft);color:var(--text)}
+ .hc-theme-i{width:20px;text-align:center}.hc-theme-l{display:inline}
+ .hc-dtopics{display:block;border-top:1px solid var(--line);margin-top:8px;padding-top:14px}
+ .hc-dtopics h2{margin:0 0 6px 12px;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+ .hc-dtopics a{display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:10px;color:var(--text);text-decoration:none;font-size:15px}.hc-dtopics a:hover{background:var(--soft)}.hc-dtopics svg{color:var(--brand);flex-shrink:0}
+ .hc-nav .hc-app{order:9;margin-top:auto;flex-shrink:0;justify-content:center;padding:14px 18px;font-size:17px;font-weight:700;border-radius:12px;background:var(--brand);color:#fff}.hc-nav .hc-app:hover{background:var(--brand);color:#fff;filter:brightness(1.08)}
+ .hc-dtopics{order:5}.hc-nav .hc-theme{order:4}
+ .hc-scrim{display:block;position:fixed;inset:0;z-index:35;background:rgba(15,23,42,.45);opacity:0;visibility:hidden;transition:opacity .25s ease,visibility 0s .25s}.hc-scrim.open{opacity:1;visibility:visible;transition:opacity .25s ease}
  .hc-brand{font-size:15px}.page-title{font-size:27px}.article{padding:20px}.hc-search kbd{display:none}
 }
-@media (prefers-reduced-motion:reduce){a.card{transition:none}a.card:hover{transform:none}}
+@media (prefers-reduced-motion:reduce){a.card{transition:none}a.card:hover{transform:none}.hc-panel,.hc-panel.open,.hc-scrim,.hc-scrim.open{transition:none}}
 .fb-more{width:100%}.fb-more label{display:block;color:var(--text)}.fb-more .muted{color:var(--muted)}
 .fb-more textarea{display:block;width:100%;margin-top:8px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:inherit;font-size:15px;background:var(--card);color:var(--text);resize:vertical}
 .fb-acts{display:flex;align-items:center;gap:14px;margin-top:10px;font-size:14px}.fb-acts .btn{padding:8px 16px;font-size:14px}

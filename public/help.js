@@ -130,6 +130,22 @@ document.addEventListener('click', (e) => {
   e.preventDefault(); go(a.getAttribute('href'));
 });
 document.addEventListener('click', (e) => { const d = $('.hc-topics'); if (d.open && !d.contains(e.target)) d.open = false; });
+// the phone menu: the hamburger slides the header links and topics in from the right
+(() => {
+  const burger = $('.hc-burger'); const panel = $('#hcPanel'); const scrim = $('.hc-scrim'); const phone = window.matchMedia('(max-width:640px)');
+  const isOpen = () => panel.classList.contains('open');
+  const set = (open, refocus) => {
+    panel.classList.toggle('open', open); scrim.classList.toggle('open', open);
+    burger.setAttribute('aria-expanded', String(open)); document.body.style.overflow = open ? 'hidden' : '';
+    if (open) $('.hc-close').focus(); else if (refocus) burger.focus();
+  };
+  burger.addEventListener('click', () => set(true));
+  $('.hc-close').addEventListener('click', () => set(false, true));
+  scrim.addEventListener('click', () => set(false, true));
+  panel.addEventListener('click', (e) => { if (isOpen() && e.target.closest('a')) set(false); }); // a link was tapped: go there with the menu shut
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && isOpen()) set(false, true); });
+  phone.addEventListener('change', () => { if (!phone.matches && isOpen()) set(false); });
+})();
 // "/" or ⌘K focuses the search box (on pages without one, it goes to the home page's)
 document.addEventListener('keydown', (e) => {
   const typing = e.target.closest('input, textarea, select');
@@ -173,7 +189,7 @@ const theme = () => { try { return localStorage.getItem('theme') || 'system'; } 
 function setTheme(t) {
   if (t === 'system') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t;
   try { localStorage.setItem('theme', t); } catch (e) { /* private mode */ }
-  $('#themeBtn').textContent = { system: '◐', light: '☀', dark: '☾' }[t]; $('#themeBtn').title = `Theme: ${t === 'system' ? 'match your device' : t}`;
+  $('#themeBtn .hc-theme-i').textContent = { system: '◐', light: '☀', dark: '☾' }[t]; $('#themeBtn .hc-theme-l').textContent = { system: 'Theme: match your device', light: 'Theme: light', dark: 'Theme: dark' }[t]; $('#themeBtn').title = `Theme: ${t === 'system' ? 'match your device' : t}`;
 }
 $('#themeBtn').addEventListener('click', () => setTheme(THEMES[(THEMES.indexOf(theme()) + 1) % THEMES.length]));
 setTheme(theme());
@@ -185,6 +201,6 @@ Promise.all([fetch('/api/help/content').then((r) => r.json()), fetch('/api/help/
   $$('.hc-product').forEach((el) => { el.textContent = product; });
   if (i.brand && i.brand.logo) { $('.hc-brand .hc-mark').outerHTML = brandImg(i.brand, 'dark'); if (i.brand.logoHasName) $('.hc-brand .hc-product').hidden = true; } // the logo from the platform console
   $('#appLink').textContent = `Go to ${product}`; $('#appLink').href = i.siteUrl || '/'; $('#siteLink').href = i.siteUrl || '/';
-  $('#topicMenu').innerHTML = TOPICS.map((t) => `<a href="/topics/${t.slug}" data-link>${ic(ICONS[t.icon] || ICONS.help, 18)}${esc(t.title)}</a>`).join('');
+  $('#topicMenu').innerHTML = $('#drawerTopics').innerHTML = TOPICS.map((t) => `<a href="/topics/${t.slug}" data-link>${ic(ICONS[t.icon] || ICONS.help, 18)}${esc(t.title)}</a>`).join(''); // the header dropdown, and the phone menu's list
   render();
 }).catch(() => { $('#main').innerHTML = '<div class="wrap" style="padding:48px 20px">The help center couldn’t load. Refresh the page to try again.</div>'; });

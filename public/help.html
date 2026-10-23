@@ -8,23 +8,30 @@
   <meta name="color-scheme" content="light dark">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='11' fill='%232563eb'/%3E%3Cpath d='M9.4 9.3a2.7 2.7 0 0 1 5.2.9c0 1.8-2.6 2.4-2.6 4.2' fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round'/%3E%3Ccircle cx='12' cy='17.6' r='1.3' fill='%23fff'/%3E%3C/svg%3E">
   <script>try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
-  <link rel="stylesheet" href="/help.css?v=4">
+  <link rel="stylesheet" href="/help.css?v=5">
 </head>
 <body>
   <a class="skip" href="#main">Skip to content</a>
   <header class="hc-head"><div class="wrap hc-bar">
     <a href="/" data-link class="hc-brand"><span class="hc-mark" aria-hidden="true">?</span><span><span class="hc-product"></span> Help Center</span></a>
-    <nav class="hc-nav" aria-label="Help center">
-      <details class="hc-topics"><summary>Browse topics</summary><div class="hc-menu" id="topicMenu"></div></details>
-      <a href="/contact" data-link>Contact support</a>
-      <a id="appLink" class="hc-app" href="/">Go to app</a>
-      <button type="button" class="hc-theme" id="themeBtn" aria-label="Switch light or dark mode" title="Switch light or dark mode">◐</button>
-    </nav>
+    <!-- on phones this slides out from the right (help.js); on wider screens it sits inline in the header -->
+    <div class="hc-panel" id="hcPanel">
+      <button type="button" class="hc-close" aria-label="Close menu"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      <nav class="hc-nav" aria-label="Help center">
+        <details class="hc-topics"><summary>Browse topics</summary><div class="hc-menu" id="topicMenu"></div></details>
+        <a href="/contact" data-link>Contact support</a>
+        <a id="appLink" class="hc-app" href="/">Go to app</a>
+        <button type="button" class="hc-theme" id="themeBtn" aria-label="Switch light or dark mode" title="Switch light or dark mode"><span class="hc-theme-i" aria-hidden="true">◐</span><span class="hc-theme-l">Light or dark mode</span></button>
+        <div class="hc-dtopics"><h2>Browse topics</h2><div id="drawerTopics"></div></div>
+      </nav>
+    </div>
+    <button type="button" class="hc-burger" aria-expanded="false" aria-controls="hcPanel" aria-label="Open menu"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    <div class="hc-scrim" aria-hidden="true"></div>
   </div></header>
   <main id="main" tabindex="-1"></main>
   <footer class="hc-foot"><div class="wrap"><span>© <span id="year"></span> <span class="hc-product"></span></span><span><a href="/" data-link>Help Center home</a> · <a href="/contact" data-link>Contact support</a> · <a href="/terms">Terms of Service</a> · <a href="/privacy">Privacy Policy</a> · <a id="siteLink" href="/">Website</a></span></div></footer>
   <script src="/brand.js?v=1"></script>
-  <script src="/help.js?v=4"></script>
+  <script src="/help.js?v=5"></script>
   <script src="/chat.js?v=6" data-where="help" defer></script>
 </body>
 </html>
