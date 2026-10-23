@@ -51,6 +51,8 @@ your platform owner login; that login is separate from any account's logins.
   team logins (0 = unlimited). Starts with Core, Advanced and Expert; add or remove plans as you like. Changes apply as soon as you save.
 - **Settings:** product name, contact email, whether businesses can sign themselves up on the pricing page (`/pricing`), and
   **Integrations**: the status of email, text messages, AI and Stripe, webhook addresses to copy, test email/text, and your platform fee on card payments.
+- **Promotions:** discount codes, the referral program, and the **Founding Supporters** page at `/supporters` (e.g. for Kickstarter backers):
+  paste names one per line, give each a reward tier, and turn the page on. It shows only while it's on and has at least one name, with a link in the site's footer.
 - **Reset to demo data** for an account is under Accounts → Manage (logins and Stripe connection are kept).
 
 Locked features disappear from the account's menus and are refused by the server. Lists such as expenses come back empty, so pages still load.

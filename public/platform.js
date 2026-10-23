@@ -551,14 +551,16 @@ function integrationsView(main) {
   main.innerHTML = '<div class="head"><div><h1>Integrations</h1><p class="muted" style="margin:4px 0 0">Shared by every account. Keys in the <code>.env</code> file next to <code>server.js</code> need a restart after changing; secrets are never shown here.</p></div></div><div class="hc-seg msg-seg set-tabs" id="igTabs" role="tablist"></div><div id="integ" class="ig-tabbed"><p class="muted">Checking…</p></div>';
   integrationsCard($('#integ', main));
 }
-/* ===== promotions: discount codes, the referral program and its activity ===== */
+/* ===== promotions: discount codes, the referral program and its activity, and the Founding Supporters list ===== */
 let promoTab = 'codes'; let RF = null; // RF: the referral program and its activity (lib/referrals.js)
+let SP = null; // SP: the Founding Supporters list (lib/supporters.js)
 function promoView(main) {
   const due = RF ? RF.rewards.filter((w) => w.status === 'to send').length : 0;
-  main.innerHTML = `<div class="head"><div><h1>Promotions</h1><p class="sub" style="margin:4px 0 0">Discount codes for sign-ups, and a referral program for the businesses on ${esc(D.settings.productName)}.</p></div></div>
-<div class="hc-seg msg-seg" role="tablist">${[['codes', 'Discount codes'], ['program', 'Referral program'], ['activity', 'Referral activity']].map(([k, l]) => `<button type="button" role="tab" aria-selected="${promoTab === k}" class="${promoTab === k ? 'on' : ''}" data-act="promoTab" data-k="${k}">${l}${k === 'activity' && due ? ` <span class="msg-n">${due}</span>` : ''}</button>`).join('')}</div><div id="promoBody"></div>`;
+  main.innerHTML = `<div class="head"><div><h1>Promotions</h1><p class="sub" style="margin:4px 0 0">Discount codes for sign-ups, a referral program for the businesses on ${esc(D.settings.productName)}, and the Founding Supporters page.</p></div></div>
+<div class="hc-seg msg-seg" role="tablist">${[['codes', 'Discount codes'], ['program', 'Referral program'], ['activity', 'Referral activity'], ['supporters', 'Founding Supporters']].map(([k, l]) => `<button type="button" role="tab" aria-selected="${promoTab === k}" class="${promoTab === k ? 'on' : ''}" data-act="promoTab" data-k="${k}">${l}${k === 'activity' && due ? ` <span class="msg-n">${due}</span>` : ''}</button>`).join('')}</div><div id="promoBody"></div>`;
   const box = $('#promoBody', main);
   if (promoTab === 'codes') return discountsView(box);
+  if (promoTab === 'supporters') { if (SP) return supportersView(box); box.innerHTML = '<p class="muted">Loading…</p>'; api('GET', '/api/platform/supporters').then((r) => { SP = r; if (tab === 'discounts' && promoTab === 'supporters') promoView($('#main')); }).catch((x) => toast(x.message, true)); return; }
   if (!RF) { box.innerHTML = '<p class="muted">Loading…</p>'; api('GET', '/api/platform/referrals').then((r) => { RF = r; if (tab === 'discounts') promoView($('#main')); }).catch((x) => toast(x.message, true)); return; }
   (promoTab === 'program' ? referralProgramView : referralActivityView)(box);
 }
@@ -623,6 +625,43 @@ ${L.map((r) => `<tr><td class="nm">${esc(r.referrer)}</td><td>${esc(r.name || '�
 <td><span class="cstatus ${RF_STATUS[r.status][1]}">${RF_STATUS[r.status][0]}</span>${r.status === 'subscribed' && r.creditMonths ? `<div class="sm">${r.creditMonths} month${r.creditMonths === 1 ? '' : 's'} credited${r.credit === 'banked' ? ' (waiting for a subscription)' : ''}</div>` : ''}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">No referrals yet. Turn the program on in Referral program.</p>'}</div>`;
 }
 A.rwMark = async (d) => { RF = await api('POST', `/api/platform/referrals/rewards/${d.id}`, { status: d.s }); toast(d.s === 'sent' ? 'Marked as sent' : 'Marked as not sent'); promoView($('#main')); };
+/* ===== the Founding Supporters list: a thank-you page at /supporters for the people who backed the product ===== */
+function supportersView(box) {
+  const tierOpts = (cur) => ['', ...SP.tiers].map((t) => `<option value="${esc(t)}" ${t === (cur || '') ? 'selected' : ''}>${t ? esc(t) : 'No tier'}</option>`).join('');
+  const L = [...SP.people].sort((a, b) => (SP.tiers.indexOf(a.tier) + 1 || 99) - (SP.tiers.indexOf(b.tier) + 1 || 99) || a.name.localeCompare(b.name));
+  box.innerHTML = `<form id="spf" class="card" style="max-width:860px">
+<label class="switchline"><input type="checkbox" name="enabled" ${SP.enabled ? 'checked' : ''}> <span><strong>Page on.</strong> Shows the list at <a href="/supporters" target="_blank" rel="noopener">/supporters</a>, with a link in the site’s footer. It stays hidden until it has at least one name.</span></label>
+<label style="margin-top:12px">Title<input name="title" value="${esc(SP.title)}" maxlength="80" required></label>
+<label>Introduction<textarea name="intro" rows="2" maxlength="400">${esc(SP.intro)}</textarea></label>
+<p class="muted" style="font-size:12px;margin:-6px 0 0"><code>{product}</code> becomes the product name.</p>
+<div class="savebar"><span class="muted">${SP.people.length} name${SP.people.length === 1 ? '' : 's'} on the list</span><button class="btn">Save page</button></div></form>
+<form id="spAdd" class="card" style="max-width:860px"><h2>Add supporters</h2>
+<label>Names, one per line<textarea name="names" rows="4" placeholder="Jordan Lee&#10;Acme Lawn Care"></textarea></label>
+<p class="muted" style="font-size:12px;margin:-6px 0 12px">Paste the names backers asked to be listed under, e.g. from your Kickstarter backer survey. Names already on the list are skipped.</p>
+<div class="row"><label>Reward tier<select name="tier">${tierOpts('Supporter')}</select></label><div style="align-self:end"><button class="btn">Add to the list</button></div></div></form>
+<div class="card" style="max-width:860px"><h2>On the list</h2>${L.length ? `<div class="tablewrap"><table class="acc"><thead><tr><th>Name</th><th>Tier</th><th>Added</th><th></th></tr></thead><tbody>
+${L.map((p) => `<tr><td class="nm">${esc(p.name)}</td><td><select class="sp-tier" data-id="${p.id}" aria-label="Tier for ${esc(p.name)}">${tierOpts(p.tier)}</select></td><td class="sm">${fmtDate(p.addedAt)}</td>
+<td><div class="acts"><button type="button" class="btn alt sm" data-act="spRename" data-id="${p.id}">Rename</button><button type="button" class="btn alt sm" data-act="spRm" data-id="${p.id}">Remove</button></div></td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">No names yet. Add them above.</p>'}</div>`;
+  $('#spf', box).addEventListener('submit', async (e) => {
+    e.preventDefault(); const f = e.target; const b = Object.fromEntries(new FormData(f)); b.enabled = !!f.enabled.checked;
+    try { SP = await api('PUT', '/api/platform/supporters', b); toast(SP.enabled ? (SP.people.length ? 'Saved. The page is on' : 'Saved. The page shows once it has a name') : 'Saved (page off)'); supportersView(box); } catch (x) { toast(x.message, true); }
+  });
+  $('#spAdd', box).addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try { SP = await api('POST', '/api/platform/supporters/people', Object.fromEntries(new FormData(e.target))); toast(`Added ${SP.added}${SP.skipped ? `, skipped ${SP.skipped} already on the list` : ''}`); supportersView(box); } catch (x) { toast(x.message, true); }
+  });
+  $$('.sp-tier', box).forEach((sel) => sel.addEventListener('change', async () => {
+    try { SP = await api('PUT', '/api/platform/supporters/people/' + sel.dataset.id, { tier: sel.value }); toast('Tier changed'); supportersView(box); } catch (x) { toast(x.message, true); }
+  }));
+}
+A.spRename = async (d) => {
+  const p = SP.people.find((x) => x.id === d.id); const name = prompt('Name as it appears on the page', p ? p.name : ''); if (name == null) return;
+  try { SP = await api('PUT', '/api/platform/supporters/people/' + d.id, { name }); toast('Renamed'); supportersView($('#promoBody')); } catch (x) { toast(x.message, true); }
+};
+A.spRm = async (d) => {
+  const p = SP.people.find((x) => x.id === d.id); if (!confirm(`Remove ${p ? p.name : 'this name'} from the Founding Supporters page?`)) return;
+  try { SP = await api('DELETE', '/api/platform/supporters/people/' + d.id); toast('Removed'); supportersView($('#promoBody')); } catch (x) { toast(x.message, true); }
+};
 /* ===== discounts: codes for sign-ups, each with its rules (lib/discounts.js) ===== */
 const DISC_CHIP = { active: 'active', scheduled: 'q-sent', paused: '', expired: '', 'used up': '' };
 const codeLink = (code) => `${location.origin}/pricing?code=${encodeURIComponent(code)}`;

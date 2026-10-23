@@ -84,7 +84,7 @@ body{background:var(--card)}
 .h-trades li a{display:flex;align-items:center;gap:8px;padding:9px 16px;border:1px solid var(--line);border-radius:99px;font-weight:600;font-size:15px;background:var(--surface-2);color:var(--text);text-decoration:none}
 .h-trades li a:hover{border-color:var(--brand);color:var(--brand)}
 /* industry pages (lib/industries.js) */
-.i-hero-solo{display:block!important;text-align:center;max-width:820px}.i-hero-solo .lead{margin-left:auto;margin-right:auto}
+.i-hero-solo{display:block!important;text-align:center;max-width:820px}.i-hero-solo p.lead{margin-left:auto;margin-right:auto}
 .i-crumbs{display:flex;gap:8px;font-size:14px;color:var(--muted);margin-bottom:14px}.i-crumbs a{color:var(--link);text-decoration:none}.i-crumbs a:hover{text-decoration:underline}
 .h-art img.i-photo{aspect-ratio:4/3;object-fit:cover;border-radius:28px;box-shadow:var(--shadow-lg)}
 .i-pains{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
@@ -101,3 +101,15 @@ body{background:var(--card)}
 @media (max-width:960px){.i-pains,.i-cards{grid-template-columns:1fr 1fr}}
 @media (max-width:640px){.i-pains,.i-cards,.i-helps{grid-template-columns:1fr}}
 @media (prefers-reduced-motion:reduce){.i-card{transition:none}.i-card:hover{transform:none}}
+
+/* the Founding Supporters page (lib/supporters.js) */
+.s-tiers{display:flex;flex-direction:column;gap:20px;max-width:960px}
+.s-tier{border:1px solid var(--line);border-radius:18px;padding:24px 28px;background:var(--card)}
+.s-tier.s-top{background:var(--tint);border-color:transparent;border-left:4px solid var(--brand)}
+.s-tier h2{margin:0 0 14px;font-size:20px;display:flex;align-items:center;gap:10px}
+.s-tier h2 span{font-size:13px;font-weight:600;color:var(--muted);background:var(--tint);border-radius:99px;padding:3px 10px}
+.s-tier.s-top h2 span{background:var(--card)}
+.s-tier ul{list-style:none;margin:0;padding:0;columns:3 200px;column-gap:24px}
+.s-tier li{break-inside:avoid;padding:5px 0;font-size:16px;line-height:1.4}
+.s-tier.s-top li{font-weight:600;font-size:17px}
+@media (max-width:640px){.s-tier{padding:20px}}
