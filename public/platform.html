@@ -163,6 +163,11 @@
     .rp-img{flex:none;width:120px;aspect-ratio:16/9;border:1px dashed var(--border);border-radius:10px;background:var(--surface-2) center/cover no-repeat;color:var(--muted);font:inherit;font-size:13px;cursor:pointer}.rp-img.wide{width:260px;aspect-ratio:auto;height:90px}
     .rp-hero{display:flex;align-items:center;gap:12px;margin-bottom:6px}
     @media (max-width:640px){.rp-mile{flex-wrap:wrap}.rp-img.wide{width:100%}}
+    /* Promotions → Founding Supporters: the page and Add cards side by side; select a row to open a supporter */
+    .sp-top{align-items:stretch}.sp-top>.card{display:flex;flex-direction:column}.sp-top #spf .savebar{margin-top:auto}
+    .sp-addrow{display:flex;align-items:flex-end;gap:10px}.sp-addrow label{flex:1;min-width:0;margin:0}.sp-addrow .btn{height:40px;flex:none}
+    .sp-table tbody tr[data-id]{cursor:pointer}.sp-table tbody tr[data-id]:hover>td{background:var(--soft,rgba(37,99,235,.05))}.sp-table tbody tr[data-id]:focus-visible{outline:2px solid var(--brand,#2563eb);outline-offset:-2px}
+    .sp-code{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-top:4px}.sp-code-h code{margin-left:6px}.sp-code-acts{justify-content:flex-start;margin-top:10px}
     /* Settings → SEO */
     .seo-page{border-top:1px solid var(--line);padding:14px 0 6px}.seo-ph{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}.seo-ph a{margin-left:6px;color:var(--muted)}
     .seo-n{float:right;font-size:12px;color:var(--muted);font-weight:500}.seo-n.over{color:var(--danger);font-weight:700}
@@ -312,6 +317,6 @@
   <div id="toast"></div>
   <script src="/hc-editor.js?v=2"></script>
   <script src="/brand.js?v=1"></script>
-  <script src="/platform.js?v=66"></script>
+  <script src="/platform.js?v=67"></script>
 </body>
 </html>

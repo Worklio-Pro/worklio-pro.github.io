@@ -679,36 +679,32 @@ ${L.map((r) => `<tr><td class="nm">${esc(r.referrer)}</td><td>${esc(r.name || '�
 }
 A.rwMark = async (d) => { RF = await api('POST', `/api/platform/referrals/rewards/${d.id}`, { status: d.s }); toast(d.s === 'sent' ? 'Marked as sent' : 'Marked as not sent'); promoView($('#main')); };
 /* ===== the Founding Supporters list: a thank-you page at /supporters, and codes for prepaid months by email (lib/supporters.js) ===== */
+// Select a supporter's row to edit them, email their code or remove them.
+const spCodeState = (p) => { const c = p.code;
+  if (c && c.redeemedAt) return `<span class="cstatus active">Redeemed</span> by ${esc(c.tenantName)} on ${fmtDate(c.redeemedAt)} · prepaid until ${fmtDate(c.until)}`;
+  if (!p.reward) return 'No code: this tier doesn’t include a plan.';
+  if (!p.email) return `Worth ${esc(p.reward)}. Add their email to send it.`;
+  if (c && c.sentAt) return `${c.simulated ? 'Made, but not delivered (email isn’t set up)' : `Emailed ${fmtDate(c.sentAt)}`}${c.sentTo !== p.email ? ` to ${esc(c.sentTo)}` : ''} · worth ${esc(p.reward)}`;
+  return `Not sent yet · worth ${esc(p.reward)}`; };
 function supportersView(box) {
   const tierOpts = (cur) => ['', ...SP.tiers].map((t) => `<option value="${esc(t)}" ${t === (cur || '') ? 'selected' : ''}>${t ? esc(t) : 'No tier'}${SP.rewards[t] ? ` · ${esc(SP.rewards[t])}` : ''}</option>`).join('');
   const L = [...SP.people].sort((a, b) => (SP.tiers.indexOf(a.tier) + 1 || 99) - (SP.tiers.indexOf(b.tier) + 1 || 99) || a.name.localeCompare(b.name));
   const due = L.filter((p) => p.reward && p.email && !(p.code && p.code.sentAt)).length;
-  // the far-right column: where each supporter's code stands
-  const codeCell = (p) => {
-    const c = p.code;
-    if (c && c.redeemedAt) return `<span class="cstatus active">Redeemed</span><div class="sm">${esc(c.tenantName)} · ${fmtDate(c.redeemedAt)}</div><div class="sm"><code>${esc(c.code)}</code> · prepaid until ${fmtDate(c.until)}</div>`;
-    if (!p.reward) return '<span class="sm muted">No plan in this tier</span>';
-    if (!p.email) return `<div class="sm muted">${esc(p.reward)}</div><button type="button" class="btn alt sm" data-act="spEdit" data-id="${p.id}">Add email</button>`;
-    if (c && c.sentAt) return `<code>${esc(c.code)}</code><div class="sm">${c.simulated ? 'Not delivered (email isn’t set up)' : `Emailed ${fmtDate(c.sentAt)}`}${c.sentTo !== p.email ? ` to ${esc(c.sentTo)}` : ''}</div><button type="button" class="btn alt sm" data-act="spSend" data-id="${p.id}">Resend</button>`;
-    return `<div class="sm muted">${esc(p.reward)}</div><button type="button" class="btn sm" data-act="spSend" data-id="${p.id}">Email code</button>`;
-  };
-  box.innerHTML = `<form id="spf" class="card" style="max-width:1100px">
+  box.innerHTML = `<div class="set-pair sp-top"><form id="spf" class="card"><h2>Public page</h2>
 <label class="switchline"><input type="checkbox" name="enabled" ${SP.enabled ? 'checked' : ''}> <span><strong>Page on.</strong> Shows the list at <a href="/supporters" target="_blank" rel="noopener">/supporters</a>, with a link in the site’s footer. It stays hidden until it has at least one name.</span></label>
 <label style="margin-top:12px">Title<input name="title" value="${esc(SP.title)}" maxlength="80" required></label>
 <label>Introduction<textarea name="intro" rows="2" maxlength="400">${esc(SP.intro)}</textarea></label>
 <p class="muted" style="font-size:12px;margin:-6px 0 0"><code>{product}</code> becomes the product name.</p>
 <div class="savebar"><span class="muted">${SP.people.length} name${SP.people.length === 1 ? '' : 's'} on the list</span><button class="btn">Save page</button></div></form>
-<form id="spAdd" class="card" style="max-width:1100px"><h2>Add supporters</h2>
+<form id="spAdd" class="card"><h2>Add supporters</h2>
 <label>One supporter per line: a name, and their email if you have it<textarea name="names" rows="4" placeholder="Jordan Lee, jordan@example.com&#10;Acme Lawn Care, office@acmelawn.com"></textarea></label>
 <p class="muted" style="font-size:12px;margin:-6px 0 12px">Paste from your Kickstarter backer survey: “Name, email”, “Name &lt;email&gt;” and spreadsheet columns all work. Anyone already on the list is skipped. Only the names show on the page.</p>
-<div class="row"><label>Reward tier<select name="tier">${tierOpts('Supporter')}</select></label><div style="align-self:end"><button class="btn">Add to the list</button></div></div></form>
-<div class="card" style="max-width:1100px"><div class="promo-bar" style="margin:0 0 10px"><h2 style="margin:0">On the list</h2>${due ? `<button type="button" class="btn" data-act="spSendNew">Email codes to ${due} new supporter${due === 1 ? '' : 's'}</button>` : ''}</div>
-<p class="muted" style="font-size:13px;margin:0 0 10px">Each code works once, for a new account (at sign-up) or an existing one (Account and Billing), and is worth its tier’s plan for the months shown. Edit the email in Messages → Email templates → Founding Supporter code.</p>
-${L.length ? `<div class="tablewrap"><table class="acc"><thead><tr><th>Name</th><th>Tier</th><th>Added</th><th></th><th>Code</th></tr></thead><tbody>
-${L.map((p) => `<tr><td class="nm">${esc(p.name)}<div class="sm">${p.email ? esc(p.email) : '<span class="muted">No email</span>'}</div></td>
-<td><select class="sp-tier" data-id="${p.id}" aria-label="Tier for ${esc(p.name)}" ${p.code && p.code.redeemedAt ? 'disabled title="Their code is redeemed, so the tier is set"' : ''}>${tierOpts(p.tier)}</select></td><td class="sm">${fmtDate(p.addedAt)}</td>
-<td><div class="acts"><button type="button" class="btn alt sm" data-act="spEdit" data-id="${p.id}">Edit</button><button type="button" class="btn alt sm" data-act="spRm" data-id="${p.id}">Remove</button></div></td>
-<td class="sp-code">${codeCell(p)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">No names yet. Add them above.</p>'}</div>`;
+<div class="sp-addrow"><label>Reward tier<select name="tier">${tierOpts('Supporter')}</select></label><button class="btn">Add to the list</button></div></form></div>
+<div class="card sp-list"><div class="bill-h"><h2>On the list</h2>${due ? `<button type="button" class="btn sm" data-act="spSendNew">Email codes to ${due} new supporter${due === 1 ? '' : 's'}</button>` : ''}</div>
+<p class="muted" style="font-size:13px;margin:0 0 10px">Select a supporter to edit them, email their code or remove them. Each code works once, for a new account (at sign-up) or an existing one (Account and Billing), and is worth its tier’s plan for the months shown. Edit the email in Messages → Email templates → Founding Supporter code.</p>
+${L.length ? `<div class="tablewrap"><table class="acc sp-table"><thead><tr><th>Name</th><th>Tier</th><th>Added</th></tr></thead><tbody>
+${L.map((p) => `<tr data-id="${p.id}" tabindex="0" aria-label="Edit ${esc(p.name)}"><td class="nm">${esc(p.name)}<div class="sm">${p.email ? esc(p.email) : '<span class="muted">No email</span>'}</div></td>
+<td><select class="sp-tier" data-id="${p.id}" aria-label="Tier for ${esc(p.name)}" ${p.code && p.code.redeemedAt ? 'disabled title="Their code is redeemed, so the tier is set"' : ''}>${tierOpts(p.tier)}</select></td><td class="sm">${fmtDate(p.addedAt)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">No names yet. Add them above.</p>'}</div>`;
   $('#spf', box).addEventListener('submit', async (e) => {
     e.preventDefault(); const f = e.target; const b = Object.fromEntries(new FormData(f)); b.enabled = !!f.enabled.checked;
     try { SP = await api('PUT', '/api/platform/supporters', b); toast(SP.enabled ? (SP.people.length ? 'Saved. The page is on' : 'Saved. The page shows once it has a name') : 'Saved (page off)'); supportersView(box); } catch (x) { toast(x.message, true); }
@@ -720,24 +716,37 @@ ${L.map((p) => `<tr><td class="nm">${esc(p.name)}<div class="sm">${p.email ? esc
   $$('.sp-tier', box).forEach((sel) => sel.addEventListener('change', async () => {
     try { SP = await api('PUT', '/api/platform/supporters/people/' + sel.dataset.id, { tier: sel.value }); toast('Tier changed'); supportersView(box); } catch (x) { toast(x.message, true); supportersView(box); }
   }));
+  // select a row (click, tap, or Enter/Space) to open it; the tier menu still works on its own
+  $$('.sp-table tbody tr[data-id]', box).forEach((tr) => {
+    tr.addEventListener('click', (e) => { if (!e.target.closest('a,button,select')) A.spOpen({ id: tr.dataset.id }); });
+    tr.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target === tr) { e.preventDefault(); A.spOpen({ id: tr.dataset.id }); } });
+  });
 }
 const spRedraw = () => supportersView($('#promoBody'));
-A.spEdit = (d) => {
-  const p = SP.people.find((x) => x.id === d.id); if (!p) return;
-  const m = modal(`Edit ${p.name}`, `<form id="spe"><label>Name on the page<input name="name" value="${esc(p.name)}" maxlength="80" required></label>
-<label>Email (for their code; never shown on the page)<input name="email" type="email" value="${esc(p.email || '')}" maxlength="200"></label>
-<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save</button></div></form>`);
+// one supporter: name, email and tier to edit, their code to email, and Remove
+A.spOpen = (d) => {
+  const p = SP.people.find((x) => x.id === d.id); if (!p) return; const redeemed = !!(p.code && p.code.redeemedAt);
+  const tierOpts = ['', ...SP.tiers].map((t) => `<option value="${esc(t)}" ${t === (p.tier || '') ? 'selected' : ''}>${t ? esc(t) : 'No tier'}${SP.rewards[t] ? ` · ${esc(SP.rewards[t])}` : ''}</option>`).join('');
+  const sendBtn = p.reward && p.email && !redeemed ? `<button type="button" class="btn ${p.code && p.code.sentAt ? 'alt ' : ''}sm" data-act="spSend" data-id="${p.id}">${p.code && p.code.sentAt ? 'Resend code' : 'Email code'}</button>` : '';
+  const m = modal(p.name, `<form id="spe"><div class="row"><label>Name on the page<input name="name" value="${esc(p.name)}" maxlength="80" required></label>
+<label>Email<input name="email" type="email" value="${esc(p.email || '')}" maxlength="200"></label></div>
+<p class="muted" style="font-size:12px;margin:-6px 0 10px">The email is only used to send their code. It’s never shown on the page.</p>
+<label>Reward tier<select name="tier" ${redeemed ? 'disabled' : ''}>${tierOpts}</select></label>${redeemed ? '<p class="muted" style="font-size:12px;margin:-6px 0 10px">Their code is redeemed, so the tier is set.</p>' : ''}
+<div class="sp-code"><div class="sp-code-h"><strong>Supporter code</strong>${p.code ? ` <code>${esc(p.code.code)}</code>` : ''}</div><p class="sm muted" style="margin:4px 0 0">${spCodeState(p)}</p>${sendBtn ? `<div class="acts sp-code-acts">${sendBtn}</div>` : ''}</div>
+<p class="sm muted" style="margin:10px 0 0">Added ${fmtDate(p.addedAt)}</p>
+<div class="foot"><button type="button" class="btn danger" data-act="spRm" data-id="${p.id}" style="margin-right:auto">Remove</button><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save</button></div></form>`);
+  m.tabIndex = -1; m.focus(); // the popup itself, not its first field
   $('#spe', m).addEventListener('submit', async (e) => {
-    e.preventDefault();
-    try { SP = await api('PUT', '/api/platform/supporters/people/' + d.id, Object.fromEntries(new FormData(e.target))); closeModal(); toast('Saved'); spRedraw(); } catch (x) { toast(x.message, true); }
+    e.preventDefault(); const b = Object.fromEntries(new FormData(e.target)); if (redeemed) delete b.tier;
+    try { SP = await api('PUT', '/api/platform/supporters/people/' + p.id, b); closeModal(); toast('Saved'); spRedraw(); } catch (x) { toast(x.message, true); }
   });
 };
 A.spSend = async (d, el) => {
   const p = SP.people.find((x) => x.id === d.id); if (p.code && p.code.sentAt && !confirm(`Email ${p.name} their code again at ${p.email}? It’s the same code.`)) return;
   if (el) el.disabled = true;
-  try { const r = await api('POST', `/api/platform/supporters/people/${d.id}/send`); SP = r; toast(r.simulated ? `Code made, but not delivered: set up email in Integrations first` : `Code emailed to ${r.emailed}`, r.simulated); }
+  try { const r = await api('POST', `/api/platform/supporters/people/${d.id}/send`); SP = r; toast(r.simulated ? 'Code made, but not delivered: set up email in Integrations first' : `Code emailed to ${r.emailed}`, r.simulated); }
   catch (x) { toast(x.message, true); }
-  spRedraw();
+  spRedraw(); if ($('#spe')) A.spOpen({ id: d.id }); // the open popup shows the new state
 };
 A.spSendNew = async (d, el) => {
   const n = SP.people.filter((p) => p.reward && p.email && !(p.code && p.code.sentAt)).length;
@@ -751,7 +760,7 @@ A.spRm = async (d) => {
   const p = SP.people.find((x) => x.id === d.id); if (!p) return;
   const note = p.code && !p.code.redeemedAt ? ' Their code stops working.' : p.code && p.code.redeemedAt ? ' Their redeemed prepaid months stay on their account.' : '';
   if (!confirm(`Remove ${p.name} from the Founding Supporters list?${note}`)) return;
-  try { SP = await api('DELETE', '/api/platform/supporters/people/' + d.id); toast('Removed'); spRedraw(); } catch (x) { toast(x.message, true); }
+  try { SP = await api('DELETE', '/api/platform/supporters/people/' + d.id); closeModal(); toast('Removed'); spRedraw(); } catch (x) { toast(x.message, true); }
 };
 /* ===== discounts: codes for sign-ups, each with its rules (lib/discounts.js) ===== */
 const DISC_CHIP = { active: 'active', scheduled: 'q-sent', paused: '', expired: '', 'used up': '' };
