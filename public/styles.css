@@ -514,6 +514,7 @@ table.domains td{vertical-align:middle}.dom-acts{display:flex;gap:6px;justify-co
 .bill-sub{padding-top:14px;font-size:14px}.bill-sub p{margin:6px 0 10px}.bill-warn{color:var(--danger)}
 .bill-hist{width:100%;font-size:14px}.bill-hist td{padding:10px 4px;border-bottom:1px solid var(--line);vertical-align:middle}
 .bill-change{grid-column:1/-1}.bill-change p{font-size:14px}.bill-acts{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.bill-cancel{margin-left:auto;color:var(--danger)}
+.bill-redeem{display:flex;gap:8px;max-width:420px}.bill-redeem input{flex:1;min-width:0;text-transform:uppercase}
 .bill-plans{display:grid;gap:8px;margin-bottom:12px}.bill-plan{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--border);border-radius:10px;cursor:pointer}
 .bill-plan small{display:block;font-size:13px}.bill-plan:has(input:checked){border-color:var(--brand);background:var(--tint)}
 @media (max-width:900px){.bill-grid,.bill-dl{grid-template-columns:1fr}.bill-cancel{margin-left:0}}

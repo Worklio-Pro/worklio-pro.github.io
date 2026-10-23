@@ -15,6 +15,7 @@ const tenancy = require('./lib/tenancy');
 const emails = require('./lib/emails');
 const brandLib = require('./lib/brand');
 const referrals = require('./lib/referrals');
+const supporters = require('./lib/supporters');
 const maintenance = require('./lib/maintenance');
 const stripeLib = require('./lib/stripe');
 const social = require('./lib/social');
@@ -677,7 +678,7 @@ const onTrial = (t) => !!(t.billing && t.billing.status === 'trial' && t.billing
 const expiryOf = (t) => {
   if (!t.expiresAt || tenancy.isDefault(t)) return null; const S = tenancy.platform().settings;
   const daysLeft = Math.round((Date.parse(t.expiresAt) - Date.parse(iso(new Date()))) / 864e5);
-  return { lastDay: t.expiresAt, daysLeft, trial: onTrial(t), banner: daysLeft <= (S.expiryBannerDays ?? 7), remind: daysLeft >= 0 && daysLeft <= (S.expiryReminderDays ?? 3) };
+  return { lastDay: t.expiresAt, daysLeft, trial: onTrial(t), prepaid: !!(onTrial(t) && t.billing.trial.prepaid), banner: daysLeft <= (S.expiryBannerDays ?? 7), remind: daysLeft >= 0 && daysLeft <= (S.expiryReminderDays ?? 3) };
 };
 const whenText = (x) => (x.daysLeft === 0 ? 'today' : x.daysLeft === 1 ? 'tomorrow' : `on ${new Date(x.lastDay + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}`);
 // once a day (checked hourly): email each owner whose last day is close, once per end date
@@ -2076,7 +2077,7 @@ app.get('/api/account/billing', async (req, res) => {
     productName: P.settings.productName, contactEmail: P.settings.contactEmail, live: !!stripeLib.platformKey(), billed: !!(b.customerId && stripeLib.platformKey()),
     demo: !!b.demo, managed: !tenancy.isDefault(), plans: P.plans.filter((p) => !p.hidden || p.id === plan.id).map((p) => ({ id: p.id, name: p.name, price: p.price || '', description: p.description || '', month: (stripeLib.planCharge(p, 'month') || {}).interval === 'month' ? stripeLib.planCharge(p, 'month').cents / 100 : null, year: (stripeLib.planCharge(p, 'year') || {}).interval === 'year' ? stripeLib.planCharge(p, 'year').cents / 100 : null })),
     interval: charge ? charge.interval : b.interval || 'month',
-    card: null, customer: null, subscription: null, invoices: [], endsAt: b.endsAt || null, trial: onTrial(t) ? { endsAt: t.expiresAt, code: b.trial.code, cancelled: !!b.trial.cancelled } : null, pendingPlan: b.pendingPlanId ? (P.plans.find((p) => p.id === b.pendingPlanId) || {}).name || null : null };
+    card: null, customer: null, subscription: null, invoices: [], endsAt: b.endsAt || null, trial: onTrial(t) ? { endsAt: t.expiresAt, code: b.trial.code, cancelled: !!b.trial.cancelled, prepaid: !!b.trial.prepaid } : null, prepaidUntil: supporters.lockedUntil(t), pendingPlan: b.pendingPlanId ? (P.plans.find((p) => p.id === b.pendingPlanId) || {}).name || null : null };
   if (out.billed) {
     const get = (ep) => billingCall('GET', ep).catch((e) => { console.error('Billing:', e.message); return null; });
     const [cust, sub, inv] = await Promise.all([get(`customers/${encodeURIComponent(b.customerId)}?expand[]=invoice_settings.default_payment_method`),
@@ -2228,6 +2229,40 @@ async function liveSubscription(b) {
   const sub = await billingCall('GET', `subscriptions/${encodeURIComponent(b.subscriptionId)}`).catch(() => null);
   return sub && !['canceled', 'incomplete_expired'].includes(sub.status) ? sub : null;
 }
+// a Founding Supporter code (lib/supporters.js) on an existing account: prepaid months of the code's plan.
+// A live subscription switches to that plan (no charge now) and its next charge moves out by the months; otherwise the
+// account runs on the plan with no card until the last prepaid day, like a free trial.
+app.post('/api/account/billing/redeem', async (req, res) => {
+  if (!ownerOnly(req, res)) return;
+  const t = tenancy.current(); const u = currentUser(req); const b = t.billing || (t.billing = {});
+  if (tenancy.isDefault(t)) return res.status(400).json({ error: 'Your platform’s own account doesn’t have a plan' });
+  const ck = supporters.check(req.body && req.body.code);
+  if (!ck) return res.status(400).json({ error: 'That isn’t a supporter code. Discount codes are used when you sign up or choose a plan.' });
+  if (ck.error) return res.status(400).json({ error: ck.error });
+  const to = ck.plan;
+  if (to.maxUsers > 0 && db.users.length > to.maxUsers) { const extra = db.users.length - to.maxUsers;
+    return res.status(400).json({ error: `This code is for ${to.name}, which includes ${logins(to.maxUsers)}, and you have ${db.users.length}. Remove login access for ${extra} team member${extra === 1 ? '' : 's'} first (Manage team → open a team member → Remove login access), then redeem it.` }); }
+  try {
+    const sub = stripeLib.platformKey() ? await liveSubscription(b) : null; let until; let message;
+    if (sub) {
+      const item = sub.items.data[0]; const end = Math.max(sub.trial_end || 0, sub.current_period_end || item.current_period_end || 0, Math.floor(Date.now() / 1000)); // the next charge, as referral credit does
+      const next = new Date(end * 1000); next.setUTCMonth(next.getUTCMonth() + ck.months);
+      const p = { trial_end: String(Math.floor(next.getTime() / 1000)), proration_behavior: 'none', cancel_at_period_end: 'false', 'metadata[planId]': to.id };
+      const c = stripeLib.planCharge(to, (item.price.recurring && item.price.recurring.interval) || b.interval);
+      if (c && t.planId !== to.id) Object.assign(p, { 'items[0][id]': item.id, 'items[0][price_data][currency]': 'usd', 'items[0][price_data][product]': await planProduct(to), 'items[0][price_data][unit_amount]': String(c.cents), 'items[0][price_data][recurring][interval]': c.interval });
+      await billingCall('POST', `subscriptions/${sub.id}`, p);
+      t.planId = to.id; delete b.pendingPlanId; delete b.endsAt; until = iso(new Date(next.getTime() - 864e5));
+      message = `You’re on ${to.name}, prepaid until ${niceDate(until)}. Your next charge${c ? ` of ${money(c.cents / 100)}` : ''} is on ${niceDate(iso(next))}.`;
+    } else {
+      const today = iso(new Date()); const from = onTrial(t) && t.expiresAt >= today ? iso(new Date(Date.parse(t.expiresAt + 'T12:00:00Z') + 864e5)) : today; // a trial's remaining days come first
+      until = supporters.startPrepaid(t, ck, from);
+      message = `You’re on ${to.name}, prepaid until ${niceDate(until)}. No card needed until then; add one before that date to keep your account after it.`;
+    }
+    supporters.redeemed(t, ck, until); // saves
+    tellPlatform(`Supporter code redeemed: ${t.name}`, `${u.name} (${u.email}) redeemed ${ck.p.name}’s Founding Supporter code ${ck.p.code.code} on ${t.name}: ${ck.months} months of ${to.name}, prepaid until ${niceDate(until)}.`);
+    res.json({ ok: true, message });
+  } catch (e) { stripeError(res, 'redeem the code', e); }
+});
 // switch plan: paid → paid changes the subscription price now (difference charged or credited, prorated);
 // → free takes effect when the paid period ends; free/no subscription → paid goes through Stripe Checkout
 app.post('/api/account/billing/plan', async (req, res) => {
@@ -2235,6 +2270,8 @@ app.post('/api/account/billing/plan', async (req, res) => {
   const t = tenancy.current(); const P = tenancy.platform(); const u = currentUser(req);
   if (tenancy.isDefault(t)) return res.status(400).json({ error: 'Your platform’s own account doesn’t have a plan to change' });
   const to = P.plans.find((p) => p.id === (req.body && req.body.planId) && !p.hidden); if (!to) return res.status(400).json({ error: 'Choose a plan' });
+  const locked = supporters.lockedUntil(t); // prepaid months from a supporter code are for one plan
+  if (locked) return res.status(400).json({ error: `Your ${tenancy.planOf(t).name} plan is prepaid until ${niceDate(locked)}, so it can’t be changed before then. Contact us if you need a different plan.` });
   const from = tenancy.planOf(t); const b = t.billing || (t.billing = {});
   if (to.id !== t.planId && to.maxUsers > 0 && db.users.length > to.maxUsers) { const extra = db.users.length - to.maxUsers; // a smaller team plan: remove the extra logins first
     return res.status(400).json({ error: `${to.name} includes ${logins(to.maxUsers)} and you have ${db.users.length}. Remove login access for ${extra} team member${extra === 1 ? '' : 's'} first (Manage team → open a team member → Remove login access), then switch.`, upgrade: 'users' }); }

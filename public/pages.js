@@ -1720,21 +1720,22 @@ PAGES['/settings/billing'] = {
     const B = billingData = await api('GET', '/api/account/billing'); const sub = B.subscription;
     const per = (i) => (i === 'year' ? 'yearly' : 'monthly');
     const ending = sub && sub.cancelAtPeriodEnd; const T = B.trial;
-    const statusText = T ? `${T.cancelled ? 'Trial cancelled, ends' : 'Free trial until'} ${fmtDate(T.endsAt)}` : ending ? `Active until ${fmtDate(sub.periodEnd)}` : sub && sub.status === 'past_due' ? 'Payment past due' : B.status === 'suspended' ? 'Paused' : 'Active';
+    const statusText = T ? `${T.prepaid ? 'Prepaid until' : T.cancelled ? 'Trial cancelled, ends' : 'Free trial until'} ${fmtDate(T.endsAt)}` : ending ? `Active until ${fmtDate(sub.periodEnd)}` : sub && sub.status === 'past_due' ? 'Payment past due' : B.status === 'suspended' ? 'Paused' : 'Active';
     const contact = '<button type="button" class="btn alt" data-act="supportForm" data-title="Contact us" data-topic="Account and billing">Contact us</button>'; // the support form, sent to the platform's inbox
     const addr = (a) => (a && a.line1 ? [a.line1, a.line2, [a.city, a.state].filter(Boolean).join(', ') + (a.postal_code ? ' ' + a.postal_code : ''), a.country].filter((x) => x && x.trim()).map(esc).join('<br>') : '<span class="muted">No address yet</span>');
     const subText = !B.managed ? '<p class="muted">This is your platform’s own account, so it has no subscription.</p>'
+      : T && T.prepaid ? `<p>Your Founding Supporter code prepaid ${esc(B.plan.name)} until <strong>${fmtDate(T.endsAt)}</strong>, with no card on file. ${B.live ? `Add a card to keep your account after that: your first payment${B.plan.charge ? ` of ${money(B.plan.charge.cents / 100)}/${B.plan.charge.interval}` : ''} is taken when your prepaid months end.` : 'After that, the account is paused unless you choose a plan.'}</p>${B.live ? '<button type="button" class="btn" data-act="billCard">Add card</button>' : ''}`
       : T && T.cancelled ? `<p>Your free trial is cancelled. You can keep using ${esc(B.productName)} until <strong>${fmtDate(T.endsAt)}</strong>, then the account is paused.</p><button type="button" class="btn" data-act="billKeep">Keep my trial</button>`
       : T ? `<p>You’re on a free trial of ${esc(B.plan.name)} until <strong>${fmtDate(T.endsAt)}</strong>, with no card on file. ${B.live ? `Add a card to keep your account after that: your first payment${B.plan.charge ? ` of ${money(B.plan.charge.cents / 100)}/${B.plan.charge.interval}` : ''} is taken when the trial ends, and you can cancel anytime before then.` : 'After that, the account is paused unless you choose a plan.'}</p>${B.live ? '<button type="button" class="btn" data-act="billCard">Add card</button>' : ''}`
       : ending && B.pendingPlan ? `<p>Your plan changes to <strong>${esc(B.pendingPlan)}</strong> on ${fmtDate(sub.periodEnd)}. You won’t be charged again.</p><button type="button" class="btn alt sm" data-act="billKeep">Stay on ${esc(B.plan.name)}</button>`
       : ending ? `<p>Your subscription is cancelled. You can keep using ${esc(B.productName)} until <strong>${fmtDate(sub.periodEnd)}</strong>, then the account is paused.</p><button type="button" class="btn" data-act="billKeep">Keep my subscription</button>`
-      : sub ? `<p>You will be charged <strong>${money(sub.amount)} USD</strong> for your ${per(sub.interval)} ${esc(B.plan.name)} subscription on ${fmtDate(sub.periodEnd)}, and every ${sub.interval} after that. Plus taxes where applicable.</p>${sub.status === 'past_due' ? '<p class="bill-warn">Your last payment didn’t go through. Update your card and we’ll retry it right away.</p>' : ''}`
+      : sub ? `${B.prepaidUntil ? `<p>Prepaid with your Founding Supporter code until <strong>${fmtDate(B.prepaidUntil)}</strong>.</p>` : ''}<p>You will be charged <strong>${money(sub.amount)} USD</strong> for your ${per(sub.interval)} ${esc(B.plan.name)} subscription on ${fmtDate(sub.periodEnd)}, and every ${sub.interval} after that. Plus taxes where applicable.</p>${sub.status === 'past_due' ? '<p class="bill-warn">Your last payment didn’t go through. Update your card and we’ll retry it right away.</p>' : ''}`
       : B.demo ? '<p class="muted">Your account was started with a demo checkout, so nothing is charged. Pick a plan to start a paid subscription.</p>'
       : !B.plan.charge ? `<p>You’re on the ${esc(B.plan.name)} plan${B.plan.price ? ` (${esc(B.plan.price)})` : ''}. There’s nothing to pay.</p>`
       : `<p class="muted">Your ${esc(B.plan.name)} plan isn’t billed automatically yet. Choose it under Change plan to set up automatic payments.</p>`;
     const inv = billingAll ? B.invoices : B.invoices.slice(0, 6);
     main.innerHTML = `<div class="head"><h1>Account and billing</h1></div>
-<div class="card bill-ov"><div class="bill-h"><h2>Account overview</h2><div class="actions">${B.managed ? '<button type="button" class="btn" data-act="billPlans">Change plan</button>' : ''}${B.live && B.managed ? `<button type="button" class="btn alt" data-act="billCard">${B.card ? 'Update card' : 'Add card'}</button>` : ''}</div></div>
+<div class="card bill-ov"><div class="bill-h"><h2>Account overview</h2><div class="actions">${B.managed && !B.prepaidUntil ? '<button type="button" class="btn" data-act="billPlans">Change plan</button>' : ''}${B.live && B.managed ? `<button type="button" class="btn alt" data-act="billCard">${B.card ? 'Update card' : 'Add card'}</button>` : ''}</div></div>
 <dl class="bill-dl"><div><dt>Active since</dt><dd>${B.activeSince ? fmtDate(B.activeSince) : '—'}</dd></div><div><dt>Account status</dt><dd>${esc(statusText)}</dd></div>
 <div><dt>Current plan</dt><dd>${esc(B.plan.name)}${B.plan.charge ? ` <span class="muted">(${B.plan.charge.interval === 'year' ? 'yearly' : 'monthly'}, ${money(B.plan.charge.cents / 100).replace(/\.00$/, '')}/${B.plan.charge.interval})</span>` : B.plan.price ? ` <span class="muted">(${esc(B.plan.price)})</span>` : ''}</dd></div></dl></div>
 <div class="bill-grid">
@@ -1747,10 +1748,13 @@ ${B.managed ? `<div class="bill-two"><div><strong>Name</strong><div>${esc(B.cust
 <td><span class="badge ${i.status === 'paid' ? 'paid' : i.status === 'open' ? 'overdue' : 'draft'}">${esc({ paid: 'Paid', open: 'Unpaid', void: 'Void', uncollectible: 'Unpaid' }[i.status] || i.status)}</span></td>
 <td class="r">${i.receiptUrl ? `<a class="btn alt sm" href="${esc(i.receiptUrl)}" target="_blank" rel="noopener">${i.status === 'open' ? 'Pay' : 'Receipt'}</a>` : ''}</td></tr>`).join('')}</table>${!billingAll && B.invoices.length > inv.length ? '<button type="button" class="link-btn" data-act="billMore">View more payments</button>' : ''}`
   : '<p class="muted">No payments yet.</p>'}</div>
-${B.managed ? `<div class="card bill-change"><h2>Change subscription</h2><p>Switch plans any time. Moving to a bigger plan takes effect right away and you’re charged the difference for the rest of this billing period; moving to a smaller plan credits the difference to your next bill.</p>
-${T && !T.cancelled ? `<p class="muted">You can also cancel your free trial. You keep using ${esc(B.productName)} until ${fmtDate(T.endsAt)}; after that the account is paused and your team can’t log in.</p>` : ''}
+${B.managed ? `<div class="card bill-change"><h2>Change subscription</h2><p${B.prepaidUntil ? " hidden" : ""}>Switch plans any time. Moving to a bigger plan takes effect right away and you’re charged the difference for the rest of this billing period; moving to a smaller plan credits the difference to your next bill.</p>
+${B.prepaidUntil ? `<p class="muted">Your ${esc(B.plan.name)} plan is prepaid until ${fmtDate(B.prepaidUntil)}, so it can’t be changed before then. Contact us if you need a different plan.</p>` : ''}
+${T && !T.cancelled && !T.prepaid ? `<p class="muted">You can also cancel your free trial. You keep using ${esc(B.productName)} until ${fmtDate(T.endsAt)}; after that the account is paused and your team can’t log in.</p>` : ''}
 ${sub && !ending ? `<p class="muted">You can also cancel anytime. You keep using ${esc(B.productName)} until the end of the period you’ve paid for; after that the account is paused and your team can’t log in.</p>` : ''}
-<div class="bill-acts">${contact}<button type="button" class="btn alt" data-act="billPlans">Change plan</button>${(sub && !ending) || (T && !T.cancelled) ? `<button type="button" class="link-btn bill-cancel" data-act="billCancel">Cancel ${T ? 'free trial' : 'subscription'}</button>` : ''}</div></div>` : ''}
+<div class="bill-acts">${contact}${B.prepaidUntil ? '' : '<button type="button" class="btn alt" data-act="billPlans">Change plan</button>'}${(sub && !ending) || (T && !T.cancelled && !T.prepaid) ? `<button type="button" class="link-btn bill-cancel" data-act="billCancel">Cancel ${T ? 'free trial' : 'subscription'}</button>` : ''}</div></div>` : ''}
+${B.managed ? `<div class="card"><h2>Have a supporter code?</h2><p class="muted">Founding Supporters get a code by email worth prepaid months of their reward’s plan.</p>
+<div class="bill-redeem"><input id="supCode" aria-label="Supporter code" placeholder="FS-XXXX-XXXX" maxlength="30" autocomplete="off" spellcheck="false"><button type="button" class="btn" data-act="billRedeem">Redeem</button></div></div>` : ''}
 </div>`;
     if (qs.has('upgrade') && B.managed) A.billPlans(); // from an “Upgrade your plan” link
   },
@@ -1761,6 +1765,7 @@ const billGo = async (url, body, el) => { // POST, then follow Stripe's page or 
   catch (err) { toast(err.message, true); if (el) el.disabled = false; }
 };
 A.billMore = () => { billingAll = true; refresh(); };
+A.billRedeem = (d, el) => { const code = $('#supCode').value.trim(); if (!code) { toast('Enter your supporter code', true); return; } billGo('/api/account/billing/redeem', { code }, el); };
 A.billCard = (d, el) => billGo('/api/account/billing/card', {}, el);
 A.billPlans = () => {
   const B = billingData; const sub = B.subscription; let period = B.interval === 'year' ? 'year' : 'month';

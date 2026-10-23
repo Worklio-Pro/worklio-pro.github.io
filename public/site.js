@@ -54,7 +54,7 @@ ${both ? `<label>Billing<select name="interval"><option value="month" ${period =
 <div class="c-row"><label>Your name<input name="name" required maxlength="100" autocomplete="name"></label>
 <label>Email<input name="email" type="email" required autocomplete="email"></label></div>
 <label>Password (8+ characters)<input name="password" type="password" required minlength="8" autocomplete="new-password"></label>
-<label id="codeRow">Discount code (optional)<input name="code" maxlength="30" autocomplete="off" autocapitalize="characters" spellcheck="false" style="text-transform:uppercase" value="${esc(urlCode)}"><div class="hint" id="codeHint"></div></label>
+<label id="codeRow">Discount or supporter code (optional)<input name="code" maxlength="30" autocomplete="off" autocapitalize="characters" spellcheck="false" style="text-transform:uppercase" value="${esc(urlCode)}"><div class="hint" id="codeHint"></div></label>
 <p class="muted" style="font-size:13px;margin:4px 0 10px">By creating an account, you agree to the <a href="/terms" target="_blank" rel="noopener">Terms of Service</a> and <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</p><button class="btn go">Create account</button><p class="muted" id="payNote" style="font-size:13px;margin:8px 0 0;text-align:center"></p></form>`;
   const f = $('#sf'); const slug = $('[name=slug]', f); const hint = $('#hint'); let t;
   const check = () => { clearTimeout(t); const v = slug.value.trim().toLowerCase(); if (!v) { hint.textContent = ''; return; }
@@ -77,6 +77,10 @@ ${both ? `<label>Billing<select name="interval"><option value="month" ${period =
       const r = await fetch('/api/site/discount-check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: v, plan: sel.value, interval: iv ? iv.value : 'month', email: $('[name=email]', f).value }) });
       const j = await r.json().catch(() => ({})); if (code.value.trim() !== v) return;
       codeHint.className = 'hint ' + (r.ok ? 'good' : 'bad'); codeHint.textContent = r.ok ? `${j.code}: ${j.summary}` : j.error || 'That code can’t be used';
+      if (r.ok && j.prepaid) { // a Founding Supporter code: its own plan, prepaid
+        if (sel.value !== j.planId) { sel.value = j.planId; syncPlan(); }
+        $('.go', f).textContent = 'Create account'; $('#payNote').textContent = `No card needed. ${j.months} months of ${j.plan} are prepaid, until ${new Date(j.endsAt + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}.`; return;
+      }
       const c2 = chosen(); $('.go', f).textContent = r.ok && j.trial ? 'Start free trial' : goLabel();
       if (r.ok && j.trial) { $('#payNote').textContent = `No card needed. Your free trial of ${c2.p.name} runs until ${new Date(j.endsAt + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}.`; return; }
       $('#payNote').textContent = r.ok && c2 && c2.v ? `Next you’ll pay ${amount(j.first / 100)} for ${c2.p.name} with your discount.` : $('#payNote').textContent;

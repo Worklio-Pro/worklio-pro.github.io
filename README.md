@@ -53,6 +53,9 @@ your platform owner login; that login is separate from any account's logins.
   **Integrations**: the status of email, text messages, AI and Stripe, webhook addresses to copy, test email/text, and your platform fee on card payments.
 - **Promotions:** discount codes, the referral program, and the **Founding Supporters** page at `/supporters` (e.g. for Kickstarter backers):
   paste names one per line, give each a reward tier, and turn the page on. It shows only while it's on and has at least one name, with a link in the site's footer.
+  Give a supporter an email and the **Code** column emails them a one-time code (template: Founding Supporter code) worth prepaid months of their tier's plan:
+  Core, Advanced and Expert get 12 months of that plan, Founding Crew 36 months of Expert (`lib/supporters.js`). New businesses enter it at sign-up (no card);
+  existing ones under Account and Billing → Have a supporter code? (a live subscription moves to that plan and its next charge moves out). The plan can't be changed while prepaid months run.
 - **Reset to demo data** for an account is under Accounts → Manage (logins and Stripe connection are kept).
 
 Locked features disappear from the account's menus and are refused by the server. Lists such as expenses come back empty, so pages still load.
