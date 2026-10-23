@@ -113,11 +113,13 @@ function notFound() {
 }
 
 /* ===== router ===== */
+let rendered = false;
 function render() {
   const path = location.pathname.replace(/\/+$/, '') || '/'; const q = new URLSearchParams(location.search).get('q') || '';
   const m = path.match(/^\/(topics|articles)\/([a-z0-9-]+)$/);
   const view = path === '/' ? home() : m ? (m[1] === 'topics' ? topicPage(m[2]) : articlePage(m[2])) : path === '/search' ? searchPage(q) : path === '/contact' ? contactPage() : notFound();
-  document.title = view.title; $('#main').innerHTML = view.html;
+  if (rendered) document.title = view.title; rendered = true; // the first page keeps the title the server wrote for search engines
+  $('#main').innerHTML = view.html;
   $$('.hc-search', $('#main')).forEach(wireSearch);
   wirePage(); $('.hc-topics').open = false;
 }

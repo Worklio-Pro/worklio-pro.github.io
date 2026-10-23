@@ -6,7 +6,6 @@ const slugify = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-')
 
 (async () => {
   const S = await (await fetch('/api/site')).json();
-  document.title = `Pricing · ${S.productName}`;
   $('#brand').textContent = S.productName;
   if (S.brand && S.brand.logo) { $('.h-brand').insertAdjacentHTML('afterbegin', brandImg(S.brand)); $('#brand').hidden = S.brand.logoHasName; } // the logo from the platform console
   if (S.home) document.querySelectorAll('[data-home]').forEach((a) => { a.href = S.home + a.dataset.home; });

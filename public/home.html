@@ -167,7 +167,6 @@
       document.querySelectorAll('.pname').forEach((el) => { el.textContent = s.productName; });
       if (s.home) document.querySelectorAll('.h-brand').forEach((a) => { a.href = s.home; });
       if (s.brand && s.brand.logo) document.querySelectorAll('.h-brand').forEach((a) => { a.insertAdjacentHTML('afterbegin', brandImg(s.brand)); a.querySelector('.pname').hidden = s.brand.logoHasName; }); // the logo from the platform console
-      document.title = s.productName + ' · Field service software for quotes, scheduling and payments';
     }).catch(() => {});
   </script>
   <script src="/chat.js?v=6" data-where="site" defer></script>

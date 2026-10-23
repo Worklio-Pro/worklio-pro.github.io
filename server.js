@@ -16,6 +16,7 @@ const emails = require('./lib/emails');
 const brandLib = require('./lib/brand');
 const referrals = require('./lib/referrals');
 const supporters = require('./lib/supporters');
+const seo = require('./lib/seo');
 const maintenance = require('./lib/maintenance');
 const stripeLib = require('./lib/stripe');
 const social = require('./lib/social');
@@ -2507,6 +2508,8 @@ function dispatch(req, res) {
   if (brandLib.serve(req, res)) return; // the application logo (lib/brand.js), on every address
   if (maintenance.handle(req, res)) return; // maintenance mode (Alpha → Settings): the maintenance page for everyone but you
   const p = req.url.split('?')[0]; const r = tenancy.resolve(req.headers.host);
+  // robots.txt, sitemap.xml, and no search results for account apps, client links or Alpha (lib/seo.js)
+  if (seo.handle(req, res, tenancy.isHelpHost(req.headers.host) ? 'help' : r.kind === 'platform' ? 'platform' : 'account')) return;
   if (chat.handle(req, res, { tenant: r.kind === 'tenant' ? r.tenant : null })) return; // the chat button (lib/chat.js), on every address
   // pages and API replies depend on who is logged in: hosting caches (e.g. SiteGround's dynamic cache) must never store or share them
   if (!/\.(js|css|png|jpe?g|gif|webp|svg|ico|woff2?)$/i.test(p)) res.setHeader('Cache-Control', 'private, no-store');

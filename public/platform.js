@@ -408,7 +408,7 @@ window.addEventListener('beforeunload', (e) => { if (D && draftPlans && plansDir
 
 /* ===== settings ===== */
 // Settings shows one box at a time, picked from these tabs
-const SET_TABS = [['product', 'Your product'], ['team', 'Alpha team'], ['icons', 'Menu'], ['expiry', 'Access end dates'], ['maintenance', 'Maintenance mode'], ['reserved', 'Reserved addresses'], ['terms', 'Terms and privacy']];
+const SET_TABS = [['product', 'Your product'], ['team', 'Alpha team'], ['icons', 'Menu'], ['expiry', 'Access end dates'], ['maintenance', 'Maintenance mode'], ['reserved', 'Reserved addresses'], ['terms', 'Terms and privacy'], ['seo', 'SEO']];
 let setTab = 'product';
 A.setTab = (d) => { setTab = d.k; settingsView($('#main')); };
 A.goMaint = () => { setTab = 'maintenance'; if (tab === 'settings') settingsView($('#main')); else location.hash = 'settings'; }; // the maintenance banner's link
@@ -440,14 +440,66 @@ function settingsView(main) {
 <div class="row"><label>Show a banner in their app (days before)<input name="expiryBannerDays" type="number" min="0" max="60" value="${esc(s.expiryBannerDays ?? 7)}"></label><label>Email the owner a reminder (days before)<input name="expiryReminderDays" type="number" min="0" max="60" value="${esc(s.expiryReminderDays ?? 3)}"></label></div>
 <p class="muted" style="font-size:13px;margin-top:-4px">For accounts you gave a last day of access (e.g. trials). Owners and admins see the banner; owners can choose a plan from it, which removes the end date. The reminder is sent once per end date; edit its wording in Messages → Email templates → Access ending soon. 0 means on the last day itself.</p>
 <div class="card-save"><button class="btn">Save</button></div></div></form>
-<div class="card" id="reserved" data-set="reserved"></div></div>`;
+<div class="card" id="reserved" data-set="reserved"></div><div class="card" id="seoCard" data-set="seo"></div></div>`;
   $$('[data-set]', main).forEach((c) => { c.hidden = c.dataset.set !== setTab; });
   $$('#sf, #sf2, #sf3', main).forEach((f) => f.addEventListener('submit', async (e) => {
     e.preventDefault(); const b = Object.fromEntries(new FormData(e.target)); if (e.target.elements.allowSignups) b.allowSignups = !!b.allowSignups; // only the form with the switch sends it
     try { await api('PUT', '/api/platform/settings', b); await load(); toast('Settings saved'); render(); } catch (x) { toast(x.message, true); }
   }));
-  maintenanceCard($('#mtCard', main)); logoCard($('#logoCard', main)); reservedCard($('#reserved', main)); teamCard($('#teamCard', main)); if (setTab === 'icons') iconsCard($('#iconsCard', main));
+  maintenanceCard($('#mtCard', main)); logoCard($('#logoCard', main)); reservedCard($('#reserved', main)); teamCard($('#teamCard', main)); if (setTab === 'icons') iconsCard($('#iconsCard', main)); if (setTab === 'seo') seoCard($('#seoCard', main));
 }
+// Settings → SEO: each public page's title and description (with a search-result preview), indexing, verification, the share image and social profiles (lib/seo.js)
+let SEO = null; let seoDraft = null;
+const SEO_LIMITS = { title: 60, description: 155 };
+const seoFill = (s, vars) => String(s).replace(/\{([a-z_]+)\}/g, (m, k) => (k in vars ? vars[k] : m)).replace(/\s+/g, ' ').trim();
+async function seoCard(box) {
+  if (!box) return;
+  try { SEO = await api('GET', '/api/platform/seo'); } catch (x) { box.innerHTML = `<h2>SEO</h2><p class="muted">${esc(x.message)}</p>`; return; }
+  seoDraft = { shareImage: SEO.shareImage }; seoDraw(box);
+}
+function seoDraw(box) {
+  const S = SEO; const img = seoDraft.shareImage || S.defaultShareImage;
+  const page = (p) => `<div class="seo-page" data-key="${p.key}"><div class="seo-ph"><div><strong>${esc(p.label)}</strong> <a class="sm" href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.url.replace(/^https?:\/\//, ''))}</a></div>
+<button type="button" class="btn alt sm" data-act="seoReset" data-key="${p.key}">Use recommended</button></div>
+<label>Title <span class="seo-n" data-n="title"></span><input name="title" value="${esc(p.title || p.recommended.title)}" maxlength="120"></label>
+<label>Description <span class="seo-n" data-n="description"></span><textarea name="description" rows="2" maxlength="320">${esc(p.description || p.recommended.description)}</textarea></label>
+<p class="sm muted" style="margin:-6px 0 8px">${p.tokens.map((t) => `<code>{${t}}</code>`).join(' ')}${p.template ? ' · one pattern for every page of this kind' : ''}</p>
+<div class="seo-prev" aria-label="Search result preview"><span class="seo-url">${esc(p.url.replace(/^https?:\/\//, '').replace(/\/$/, '').replace(/\//g, ' › '))}</span><span class="seo-t"></span><span class="seo-d"></span></div></div>`;
+  box.innerHTML = `<form id="seof"><h2>Search engines</h2>
+<label class="switchline"><input type="checkbox" name="indexing" ${S.indexing ? 'checked' : ''}> <span><strong>Show the public site in search results.</strong> Turn off before launch to keep Google out. Account apps, client links, checkout and Alpha are always hidden from search engines.</span></label>
+<div class="row" style="margin-top:12px"><label>Google Search Console verification<input name="googleVerification" value="${esc(S.googleVerification)}" placeholder="Paste the meta tag or its content value" autocomplete="off"></label>
+<label>Bing Webmaster Tools verification<input name="bingVerification" value="${esc(S.bingVerification)}" placeholder="Paste the meta tag or its content value" autocomplete="off"></label></div>
+<p class="muted" style="font-size:13px;margin-top:-4px">After verifying, submit your sitemaps in Search Console and Bing: ${S.sitemaps.map((u) => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(u)}</a>`).join(' and ')}. Robots file: <a href="${esc(S.robots)}" target="_blank" rel="noopener">${esc(S.robots)}</a>.</p>
+<h2 style="margin-top:22px">Pages</h2><p class="muted" style="font-size:13px;margin-top:-6px">What Google shows for each page. Keep titles under ${SEO_LIMITS.title} characters and descriptions under ${SEO_LIMITS.description} so they aren’t cut off. Tokens like <code>{product}</code> fill in automatically, so prices and names stay current.</p>
+<div id="seoPages">${S.pages.map(page).join('')}</div>
+<h2 style="margin-top:22px">Sharing</h2>
+<div class="seo-share"><img src="${esc(img)}" alt="Share image" width="300" height="158"><div><p style="margin-top:0;font-size:14px">The picture shown when a page is shared on Facebook, LinkedIn, X, iMessage or Slack. Use 1200 × 630 pixels.</p>
+<button type="button" class="btn alt sm" data-act="seoImg">Upload image</button>${seoDraft.shareImage ? ' <button type="button" class="btn alt sm" data-act="seoImgRm">Use the default</button>' : ''}</div></div>
+<h2 style="margin-top:22px">Social profiles</h2><p class="muted" style="font-size:13px;margin-top:-6px">Linked to your business in Google’s results, so searches for ${esc(D.settings.productName)} can show them.</p>
+<div class="seo-social">${Object.entries(S.socialLabels).map(([k, l]) => `<label>${esc(l)}<input name="social.${k}" value="${esc(S.social[k] || '')}" placeholder="https://" inputmode="url"></label>`).join('')}
+<label>X handle<input name="social.xHandle" value="${esc(S.social.xHandle || '')}" placeholder="@workliopro"></label></div>
+<div class="card-save"><button class="btn">Save SEO</button></div></form>`;
+  const f = $('#seof', box);
+  const update = (row) => { const k = row.dataset.key; const p = S.pages.find((x) => x.key === k); const vars = { ...S.sample };
+    for (const n of ['title', 'description']) { const v = seoFill($(`[name=${n}]`, row).value, vars); const lim = SEO_LIMITS[n]; const c = $(`[data-n=${n}]`, row); c.textContent = `${v.length}/${lim}`; c.className = 'seo-n' + (v.length > lim ? ' over' : ''); }
+    $('.seo-t', row).textContent = seoFill($('[name=title]', row).value, vars) || seoFill(p.recommended.title, vars);
+    const d = seoFill($('[name=description]', row).value, vars); $('.seo-d', row).textContent = d.length > 158 ? d.slice(0, 155) + '…' : d; };
+  $$('.seo-page', f).forEach((row) => { update(row); row.addEventListener('input', () => update(row)); });
+  f._update = update;
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault(); const b = { indexing: !!f.indexing.checked, googleVerification: f.googleVerification.value, bingVerification: f.bingVerification.value, shareImage: seoDraft.shareImage || '', social: {}, pages: {} };
+    $$('[name^="social."]', f).forEach((i) => { b.social[i.name.slice(7)] = i.value; });
+    $$('.seo-page', f).forEach((row) => { b.pages[row.dataset.key] = { title: $('[name=title]', row).value, description: $('[name=description]', row).value }; });
+    if (!b.indexing && SEO.indexing && !confirm('Hide the whole public site from Google and other search engines? Pages already in results drop out over the next few weeks.')) return;
+    try { SEO = await api('PUT', '/api/platform/seo', b); seoDraft = { shareImage: SEO.shareImage }; toast('SEO saved'); seoDraw(box); } catch (x) { toast(x.message, true); }
+  });
+}
+A.seoReset = (d) => { const row = $(`.seo-page[data-key="${d.key}"]`); const p = SEO.pages.find((x) => x.key === d.key); $('[name=title]', row).value = p.recommended.title; $('[name=description]', row).value = p.recommended.description; $('#seof')._update(row); toast('Recommended text filled in. Save to keep it.'); };
+// the image changes draw the card again, so typed changes are kept first
+const seoKeep = () => { const f = $('#seof'); const keep = {}; $$('input:not([type=checkbox]), textarea', f).forEach((i) => { keep[(i.closest('.seo-page') ? i.closest('.seo-page').dataset.key + ':' : '') + i.name] = i.value; }); keep.indexing = f.indexing.checked; return keep; };
+const seoRestore = (keep) => { const f = $('#seof'); $$('input:not([type=checkbox]), textarea', f).forEach((i) => { const k = (i.closest('.seo-page') ? i.closest('.seo-page').dataset.key + ':' : '') + i.name; if (k in keep) i.value = keep[k]; }); f.indexing.checked = keep.indexing; $$('.seo-page', f).forEach((row) => f._update(row)); };
+A.seoImg = async () => { const url = await pickImage(); if (!url) return; const keep = seoKeep(); seoDraft.shareImage = url; seoDraw($('#seoCard')); seoRestore(keep); toast('Image uploaded. Save to use it.'); };
+A.seoImgRm = () => { const keep = seoKeep(); seoDraft.shareImage = ''; seoDraw($('#seoCard')); seoRestore(keep); };
 // the business app's menu (Settings → Menu): order and sections by drag and drop, and an icon from the built-in library for each link, for every account
 let IC = null;
 const icSvg = (d, size = 20) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;

@@ -51,6 +51,9 @@ your platform owner login; that login is separate from any account's logins.
   team logins (0 = unlimited). Starts with Core, Advanced and Expert; add or remove plans as you like. Changes apply as soon as you save.
 - **Settings:** product name, contact email, whether businesses can sign themselves up on the pricing page (`/pricing`), and
   **Integrations**: the status of email, text messages, AI and Stripe, webhook addresses to copy, test email/text, and your platform fee on card payments.
+- **Settings → SEO** (`lib/seo.js`): each public page's search title and description (with a Google-style preview), Google and Bing verification,
+  the share image, and social profiles. Pages get canonical links, share tags and structured data; `/robots.txt` and `/sitemap.xml` are generated
+  (the Help Center has its own). Account apps, client links, checkout and Alpha are always kept out of search results. Submit both sitemaps in Search Console.
 - **Promotions:** discount codes, the referral program, and the **Founding Supporters** page at `/supporters` (e.g. for Kickstarter backers):
   paste names one per line, give each a reward tier, and turn the page on. It shows only while it's on and has at least one name, with a link in the site's footer.
   Give a supporter an email and the **Code** column emails them a one-time code (template: Founding Supporter code) worth prepaid months of their tier's plan:
