@@ -15,6 +15,7 @@
   const who = () => { try { return typeof me !== 'undefined' && me ? { name: me.name || '', email: me.email || '' } : {}; } catch (e) { return {}; } }; // the logged-in person in the business app
 
   let C = null; let S = null; let msgs = []; let open = false; let timer = null; let unread = 0; let handoff = false;
+  let typing = 0; // bot answers on their way ("Typing…")
   let shown = ''; let footMode = ''; // what's on screen, so checking for new messages doesn't redraw (and steal the typing box) when nothing changed
   const host = document.createElement('div'); host.id = 'chat-root';
   const root = host.attachShadow({ mode: 'open' });
@@ -104,6 +105,9 @@ textarea:focus,input:focus{outline:2px solid var(--brand,#2563eb);outline-offset
   function merge(r) {
     const fresh = r.messages.filter((m) => !msgs.some((x) => x.id === m.id));
     if (msgs[0] && msgs[0].id === 'g') msgs = [];
+    // a message shown while it was sending (tmp…/up…) is replaced by the saved one, even when a check for new messages brings it back before the send finishes
+    const saved = fresh.filter((m) => m.from === 'visitor');
+    msgs = msgs.filter((x) => !(/^(tmp|up)/.test(x.id) && saved.some((m) => (x.file ? m.file && m.file.name === x.file.name : m.text === x.text))));
     msgs.push(...fresh.filter((m) => !msgs.some((x) => x.id === m.id))); msgs.sort((a, b) => (a.at < b.at ? -1 : 1));
     S = { ...S, status: r.status, email: r.email }; C.online = r.online; store.set({ id: S.id, token: S.token, status: r.status });
     if (!open && fresh.some((m) => m.from === 'agent')) { unread += fresh.filter((m) => m.from === 'agent').length; badge(); }
@@ -112,10 +116,11 @@ textarea:focus,input:focus{outline:2px solid var(--brand,#2563eb);outline-offset
   function draw() {
     const st = !S || S.status === 'bot' ? 'Ask us anything' : S.status === 'closed' ? 'Chat ended' : C.online ? 'We’re online' : 'Away · leave a message';
     $('.st').textContent = st; $('.dot').classList.toggle('off', !C.online);
-    const sig = msgs.map((m) => m.id).join() + '|' + (S ? S.status : '');
+    const sig = msgs.map((m) => m.id).join() + '|' + (S ? S.status : '') + '|' + typing;
     if (sig !== shown) { shown = sig;
     $('.list').innerHTML = msgs.map((m) => m.from === 'system' ? `<div class="sys">${esc(m.text)}</div>`
       : `<div class="m ${m.from}${m.file ? ' has-file' : ''}">${m.from === 'agent' ? `<span class="who">${esc(m.agent || 'Support')}</span>` : m.from === 'bot' && S && S.status !== 'bot' ? '<span class="who">Assistant</span>' : ''}${m.file ? fileHtml(m.file) : linkify(m.text)}${m.links ? `<ul>${m.links.map((l) => `<li><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.title)}</a></li>`).join('')}</ul>` : ''}</div>`).join('');
+    if (typing && S && S.status === 'bot') $('.list').insertAdjacentHTML('beforeend', '<div class="typing">Typing…</div>');
     const l = $('.list'); l.scrollTop = l.scrollHeight; l.querySelectorAll('img').forEach((i) => i.addEventListener('load', () => { l.scrollTop = l.scrollHeight; }, { once: true })); // pictures load after the scroll
     $('.chips').innerHTML = !msgs.some((m) => m.from === 'visitor') && C.suggestions.length ? C.suggestions.map((q) => `<button class="chip" type="button">${esc(q)}</button>`).join('') : '';
     root.querySelectorAll('.chip').forEach((b) => b.addEventListener('click', () => sendText(b.textContent)));
@@ -200,12 +205,11 @@ textarea:focus,input:focus{outline:2px solid var(--brand,#2563eb);outline-offset
     const tmp = 'tmp' + Date.now();
     try {
       if (!S) await start();
-      msgs.push({ id: tmp, from: 'visitor', text, at: new Date().toISOString() }); draw();
-      if (S.status === 'bot') $('.list').insertAdjacentHTML('beforeend', '<div class="typing">Typing…</div>');
+      msgs.push({ id: tmp, from: 'visitor', text, at: new Date().toISOString() }); typing++; draw();
       const r = await api('POST', `/api/chat/${S.id}/messages`, { token: S.token, text });
-      msgs = msgs.filter((m) => m.id !== tmp); merge(r);
+      typing--; msgs = msgs.filter((m) => m.id !== tmp); merge(r);
     } catch (x) {
-      msgs = msgs.filter((m) => m.id !== tmp); draw();
+      typing = Math.max(0, typing - 1); msgs = msgs.filter((m) => m.id !== tmp); draw();
       const t2 = $('textarea'); if (t2 && !t2.value) t2.value = text; const e2 = root.querySelector('.err'); if (e2) e2.textContent = x.message;
     }
   }
