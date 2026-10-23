@@ -299,15 +299,12 @@
     }
     /* Accounts: select a row to manage the business; the popup opens with its details */
     .acc-hint{margin:0 0 6px}.acc-list tbody tr[data-id]{cursor:pointer}.acc-list tbody tr[data-id]:hover>td{background:var(--soft,rgba(37,99,235,.05))}.acc-list tbody tr[data-id]:focus-visible{outline:2px solid var(--brand,#2563eb);outline-offset:-2px}
-    .acc-list tbody tr[data-id]>td:last-child{position:relative;padding-right:30px}.acc-list tbody tr[data-id]>td:last-child::after{content:'\203A';position:absolute;right:8px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:20px;line-height:1}
     .am-sum{padding-bottom:12px;border-bottom:1px solid var(--line);margin-bottom:4px}.am-sum>.sm{font-size:13px;color:var(--muted);margin:0 0 10px}
     .am-sum dl{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 18px;margin:0;font-size:14px}.am-sum dl>div{min-width:0}.am-sum dt{color:var(--muted);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}.am-sum dd{margin:0;min-width:0;overflow-wrap:anywhere}
     @media (max-width:640px){.acc thead{display:none}.acc tr{display:block;border-bottom:1px solid var(--line);padding:10px 0}.acc td{display:block;border:0;padding:4px 0}.acts{justify-content:flex-start}
       .stats~.card .acc tbody tr[data-id]{display:flex;align-items:center;gap:10px;cursor:pointer;-webkit-tap-highlight-color:transparent}.stats~.card .acc tbody tr[data-id]>td:not(.acc-biz):not(.acc-st){display:none}
       .stats~.card .acc td.acc-biz{display:block;flex:1;min-width:0}.stats~.card .acc td.acc-biz .sm{display:none}.stats~.card .acc td.acc-st{display:block;text-align:right}
-      .stats~.card .acc tbody tr[data-id]::after{content:'\203A';color:var(--muted);font-size:20px;line-height:1}
-      .am-sum dl{grid-template-columns:minmax(0,1fr)}.am-sum dl>div{display:grid;grid-template-columns:100px minmax(0,1fr);gap:10px;align-items:center}.am-sum dt{margin:0}
-      .acc-list tbody tr[data-id]>td:last-child{padding-right:0}.acc-list tbody tr[data-id]>td:last-child::after{content:none}}
+      .am-sum dl{grid-template-columns:minmax(0,1fr)}.am-sum dl>div{display:grid;grid-template-columns:100px minmax(0,1fr);gap:10px;align-items:center}.am-sum dt{margin:0}}
   </style>
 </head>
 <body>
@@ -315,6 +312,6 @@
   <div id="toast"></div>
   <script src="/hc-editor.js?v=2"></script>
   <script src="/brand.js?v=1"></script>
-  <script src="/platform.js?v=65"></script>
+  <script src="/platform.js?v=66"></script>
 </body>
 </html>
