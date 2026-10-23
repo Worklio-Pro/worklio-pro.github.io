@@ -795,7 +795,7 @@ app.post('/api/company/icon', (req, res) => {
 });
 app.get('/favicon.ico', (req, res) => {
   const m = /^\/uploads\/(icon-[\w-]+\.\w+)$/.exec(db.company.icon || '');
-  if (!m) { res.statusCode = 404; return res.end(); }
+  if (!m) { if (brandLib.serveIcon(req, res)) return; res.statusCode = 404; return res.end(); } // no icon of its own: the platform's app icon
   res.setHeader('Cache-Control', 'no-cache'); // browsers recheck, so a new icon shows on the next page load
   res.sendFile(path.join(uploadDir(), m[1]));
 });
@@ -2510,6 +2510,7 @@ function dispatch(req, res) {
   const p = req.url.split('?')[0]; const r = tenancy.resolve(req.headers.host);
   // robots.txt, sitemap.xml, and no search results for account apps, client links or Alpha (lib/seo.js)
   if (seo.handle(req, res, tenancy.isHelpHost(req.headers.host) ? 'help' : r.kind === 'platform' ? 'platform' : 'account')) return;
+  if ((r.kind === 'platform' || tenancy.isHelpHost(req.headers.host)) && brandLib.serveIcon(req, res)) return; // the app icon (Settings → Your product); accounts fall back to it in /favicon.ico
   if (chat.handle(req, res, { tenant: r.kind === 'tenant' ? r.tenant : null })) return; // the chat button (lib/chat.js), on every address
   // pages and API replies depend on who is logged in: hosting caches (e.g. SiteGround's dynamic cache) must never store or share them
   if (!/\.(js|css|png|jpe?g|gif|webp|svg|ico|woff2?)$/i.test(p)) res.setHeader('Cache-Control', 'private, no-store');

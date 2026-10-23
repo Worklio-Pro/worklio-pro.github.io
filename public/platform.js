@@ -25,6 +25,7 @@ const slugify = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-')
 let D = null; let tab = 'accounts'; let draftPlans = null; let draftBeta = null; // plans and Beta features being edited (saved with the Save button)
 const plansDirty = () => JSON.stringify(draftPlans) !== JSON.stringify(D.plans) || JSON.stringify(draftBeta) !== JSON.stringify(D.betaFeatures);
 const siteBrand = () => ({ name: D.settings.productName, logo: D.settings.logo || '', logoDark: D.settings.logoDark || '', logoHasName: !!(D.settings.logo && D.settings.logoHasName) });
+const brandHtml = () => `${brandImg(siteBrand(), 'dark')}${siteBrand().logoHasName ? '' : esc(D.settings.productName)} <small>Alpha</small>`;
 const host = (u) => String(u || '').replace(/^https?:\/\//, '');
 
 /* ===== login / first-run setup ===== */
@@ -116,7 +117,7 @@ function render() {
   }
   const tabs = [['accounts', 'Accounts'], ['plans', 'Plans & features'], ['discounts', 'Promotions'], ['messages', 'Messages'], ['forum', 'Forum'], ['help', 'Help Center'], ['integrations', 'Integrations'], ['settings', 'Settings']].filter(([k]) => tabsFor().includes(k));
   document.title = `${tabs.find((t) => t[0] === tab)[1]} · ${D.settings.productName} Alpha`;
-  $('#root').innerHTML = `<header class="pf-top"><div class="pf-bar"><div class="pf-brand">${brandImg(siteBrand(), 'dark')}${siteBrand().logoHasName ? '' : esc(D.settings.productName)} <small>Alpha</small></div>
+  $('#root').innerHTML = `<header class="pf-top"><div class="pf-bar"><div class="pf-brand">${brandHtml()}</div>
 <nav class="pf-tabs">${tabs.map(([k, l]) => `<a href="#${k}" class="${tab === k ? 'on' : ''}">${l}${k === 'messages' && D.chatWaiting ? ` <span class="msg-n" title="Chats waiting for you">${D.chatWaiting}</span>` : ''}${k === 'forum' && D.forumNew ? ` <span class="msg-n" title="New posts">${D.forumNew}</span>` : ''}</a>`).join('')}</nav>
 <details class="pf-user pf-menu"><summary>${esc(D.admin.name)}${isSupport() ? ' <small class="pf-role">Support</small>' : ''} <span aria-hidden="true">▾</span></summary><div class="pf-menu-list"><div class="pf-menu-who">${esc(D.admin.email)}</div><button type="button" data-act="myEmail">Change email</button><button type="button" data-act="myPassword">Change password</button><button type="button" data-act="logout">Log out</button></div></details></div></header>
 ${D.maintenance && D.maintenance.on ? `<div class="mt-bar" role="status"><strong>Maintenance mode is on.</strong> Visitors and businesses see the maintenance page; you can still use everything. ${isSupport() ? 'The owner can turn it off in Settings.' : '<a href="#settings" data-act="goMaint">Turn it off in Settings</a>'}</div>` : ''}
@@ -421,32 +422,34 @@ function settingsView(main) {
 <form id="sf" class="set-form"><div class="card" data-set="product"><h2>Your product</h2>
 <div class="row"><label>Product name<input name="productName" value="${esc(s.productName)}" required maxlength="60"></label><label>Contact email<input name="contactEmail" type="email" value="${esc(s.contactEmail)}" placeholder="sales@yourapp.com"></label></div>
 <p class="muted" style="font-size:13px;margin-top:-4px">The product name appears on the pricing page and in account emails. Accounts see the contact email when they want to change plans, and new sign-ups are reported to it.</p>
-<div class="card-save"><button class="btn">Save</button></div></div>
+<div class="card-save"><span class="as-status">Changes save automatically</span></div></div>
 <div class="card" data-set="terms"><h2>Terms and privacy</h2>
 <div class="row"><label>Legal business name<input name="legalName" value="${esc(s.legalName || '')}" maxlength="120" placeholder="e.g. Worklio Pro LLC"></label><label>Governing law<input name="governingLaw" value="${esc(s.governingLaw || '')}" maxlength="80" placeholder="e.g. the State of Texas"></label></div>
 <p class="muted" style="font-size:13px;margin-top:-4px">Used in the <a href="/terms" target="_blank" rel="noopener">Terms of Service</a> and <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>, which every address shows at /terms and /privacy. Leave the governing law blank to leave that sentence out. The wording itself is in lib/legal.js; have a lawyer review it.</p>
-<div class="card-save"><button class="btn">Save</button></div></div>
+<div class="card-save"><span class="as-status">Changes save automatically</span></div></div>
 </form>
 <div class="set-pair" data-set="product"><div class="card" id="logoCard" data-set="product"></div>
+<div class="set-col"><div class="card" id="iconCard" data-set="product"></div>
 <form id="sf3" class="set-form"><div class="card" data-set="product"><h2>Sign-ups</h2>
 <label class="switchline"><input type="checkbox" name="allowSignups" ${s.allowSignups ? 'checked' : ''}> Let businesses create an account themselves on the pricing page</label>
 <label style="max-width:320px">Plan for businesses that sign up without choosing one<select name="signupPlan">${D.plans.filter((p) => !p.hidden).map((p) => `<option value="${esc(p.id)}" ${p.id === s.signupPlan ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
 <label style="max-width:320px">“Most popular” badge on the pricing page<select name="popularPlan"><option value="" ${!s.popularPlan ? 'selected' : ''}>Automatic (the middle plan)</option>${D.plans.filter((p) => !p.hidden).map((p) => `<option value="${esc(p.id)}" ${p.id === s.popularPlan ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}<option value="none" ${s.popularPlan === 'none' ? 'selected' : ''}>None</option></select></label>
 <p class="muted" style="font-size:13px">Pricing page: <a href="${esc(site)}" target="_blank" rel="noopener">${esc(site)}</a>. Businesses that choose a paid plan pay for it at checkout before their account opens (see <a href="#integrations">Integrations → Stripe</a>).</p>
-<div class="card-save"><button class="btn">Save</button></div></div>
-</form></div>
+<div class="card-save"><span class="as-status">Changes save automatically</span></div></div>
+</form></div></div>
 <div class="card" id="teamCard" data-set="team"></div><div class="card" id="iconsCard" data-set="icons"></div>
 <form id="sf2" class="set-form"><div class="card" data-set="expiry"><h2>Accounts with a last day of access</h2>
 <div class="row"><label>Show a banner in their app (days before)<input name="expiryBannerDays" type="number" min="0" max="60" value="${esc(s.expiryBannerDays ?? 7)}"></label><label>Email the owner a reminder (days before)<input name="expiryReminderDays" type="number" min="0" max="60" value="${esc(s.expiryReminderDays ?? 3)}"></label></div>
 <p class="muted" style="font-size:13px;margin-top:-4px">For accounts you gave a last day of access (e.g. trials). Owners and admins see the banner; owners can choose a plan from it, which removes the end date. The reminder is sent once per end date; edit its wording in Messages → Email templates → Access ending soon. 0 means on the last day itself.</p>
-<div class="card-save"><button class="btn">Save</button></div></div></form>
+<div class="card-save"><span class="as-status">Changes save automatically</span></div></div></form>
 <div class="card" id="reserved" data-set="reserved"></div><div class="card" id="seoCard" data-set="seo"></div></div>`;
   $$('[data-set]', main).forEach((c) => { c.hidden = c.dataset.set !== setTab; });
-  $$('#sf, #sf2, #sf3', main).forEach((f) => f.addEventListener('submit', async (e) => {
-    e.preventDefault(); const b = Object.fromEntries(new FormData(e.target)); if (e.target.elements.allowSignups) b.allowSignups = !!b.allowSignups; // only the form with the switch sends it
-    try { await api('PUT', '/api/platform/settings', b); await load(); toast('Settings saved'); render(); } catch (x) { toast(x.message, true); }
+  $$('#sf, #sf2, #sf3', main).forEach((f) => autosave(f, async (b) => {
+    if (f.elements.allowSignups) b.allowSignups = !!b.allowSignups; // only the form with the switch sends it
+    const name = D.settings.productName; D.settings = await api('PUT', '/api/platform/settings', b);
+    if (D.settings.productName !== name) { $('.pf-brand').innerHTML = brandHtml(); logoCard($('#logoCard', main)); iconCard($('#iconCard', main)); } // a new name: the header and previews show it
   }));
-  maintenanceCard($('#mtCard', main)); logoCard($('#logoCard', main)); reservedCard($('#reserved', main)); teamCard($('#teamCard', main)); if (setTab === 'icons') iconsCard($('#iconsCard', main)); if (setTab === 'seo') seoCard($('#seoCard', main));
+  maintenanceCard($('#mtCard', main)); logoCard($('#logoCard', main)); iconCard($('#iconCard', main)); reservedCard($('#reserved', main)); teamCard($('#teamCard', main)); if (setTab === 'icons') iconsCard($('#iconsCard', main)); if (setTab === 'seo') seoCard($('#seoCard', main));
 }
 // Settings → SEO: each public page's title and description (with a search-result preview), indexing, verification, the share image and social profiles (lib/seo.js)
 let SEO = null; let seoDraft = null;
@@ -1012,7 +1015,48 @@ ${b.logo ? `<div class="lg-sample"><span class="muted">Header preview</span><div
   }));
   $('#logoHasName', box).addEventListener('change', async (e) => { try { D.settings = await api('PUT', '/api/platform/settings', { logoHasName: e.target.checked }); render(); } catch (x) { toast(x.message, true); } });
 }
-A.rmLogo = async (d) => { if (!confirm(d.k === 'dark' ? 'Remove the dark background version?' : 'Remove the logo? Pages and emails go back to the standard check mark.')) return; D.settings = await api('DELETE', `/api/platform/logo/${d.k}`); toast('Logo removed'); render(); };
+A.rmLogo = async (d) => {
+  if (!confirm(d.k === 'icon' ? 'Remove the app icon? Browser tabs go back to the standard icon.' : d.k === 'dark' ? 'Remove the dark background version?' : 'Remove the logo? Pages and emails go back to the standard check mark.')) return;
+  D.settings = await api('DELETE', `/api/platform/logo/${d.k}`);
+  if (d.k === 'icon') { toast('App icon removed'); iconCard($('#iconCard')); refreshTabIcon(); } else { toast('Logo removed'); render(); }
+};
+// the app icon (lib/brand.js): browser tabs, bookmarks, Google results and phones' home screens, for the public pages, the Help Center, Alpha,
+// and every business's app until it uploads its own
+const refreshTabIcon = () => { const l = $('link[rel=icon]'); if (l) l.href = '/favicon.ico?v=' + Date.now(); };
+function iconCard(box) {
+  if (!box) return; const s = D.settings;
+  box.innerHTML = `<h2>App icon</h2><p class="muted" style="font-size:13px;margin-top:0">The small square picture in browser tabs, bookmarks and Google search results, and on a phone’s home screen when someone saves your site. Used on your home, pricing and help center pages, here in Alpha, and in every business’s app until it uploads its own (App Settings → App icon).</p>
+<div class="ai-row"><div class="ai-prev">${s.icon ? `<img src="${esc(s.icon)}" alt="App icon">` : '<span class="muted">None</span>'}</div>
+<div class="ai-tabs"><span class="muted" style="font-size:12px">Browser tab</span><div class="ai-tab"><span class="ai-fav">${s.icon ? `<img src="${esc(s.icon)}" alt="">` : ''}</span><span class="ai-t">${esc(s.productName)}</span><span aria-hidden="true">×</span></div></div></div>
+<div class="lg-acts"><label class="btn alt sm">${s.icon ? 'Replace' : 'Upload'}<input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" data-icon hidden></label>${s.icon ? '<button type="button" class="btn alt sm" data-act="rmLogo" data-k="icon">Remove</button>' : ''}</div>
+<p class="muted" style="font-size:13px;margin:10px 0 0">A square PNG at least 512 × 512 pixels works best (phones need PNG or JPG). Simple, bold shapes stay clear at tab size. Up to 700 KB.</p>`;
+  $('[data-icon]', box).addEventListener('change', (e) => {
+    const f = e.target.files[0]; if (!f) return; if (f.size > 700 * 1024) { toast('Use an image under 700 KB', true); e.target.value = ''; return; }
+    const r = new FileReader(); r.onload = () => {
+      const img = new Image(); img.onload = async () => { // a wide image is squashed into a square, so say so (it still uploads)
+        try { D.settings = await api('POST', '/api/platform/logo/icon', { dataUrl: r.result }); iconCard(box); refreshTabIcon();
+          toast(img.naturalWidth && Math.abs(img.naturalWidth - img.naturalHeight) > 2 ? `App icon saved. It’s ${img.naturalWidth} × ${img.naturalHeight}; a square image looks best.` : 'App icon saved'); } catch (x) { toast(x.message, true); }
+      }; img.src = r.result;
+    }; r.readAsDataURL(f);
+  });
+}
+// a settings form saves itself: text a moment after typing stops (or on leaving the field), switches and menus right away.
+// Each card shows how it went where its Save button used to be. save(fields) sends them and throws on a problem.
+function autosave(form, save) {
+  const snap = () => JSON.stringify([...new FormData(form)].concat($$('input[type=checkbox]', form).map((c) => [c.name, c.checked])));
+  let last = snap(); let timer; let queue = Promise.resolve(); let at = null;
+  const status = (el, text, cls = '') => { const s = el && el.closest('.card') && $('.as-status', el.closest('.card')); if (s) { s.textContent = text; s.className = 'as-status ' + cls; } };
+  const run = (el) => { clearTimeout(timer); queue = queue.then(async () => {
+    const now = snap(); if (now === last) { if (el && $('.as-status.editing', el.closest('.card'))) status(el, '✓ Saved', 'ok'); return; }
+    const bad = $$('input,select,textarea', form).find((i) => !i.checkValidity());
+    if (bad) { status(bad, bad.validationMessage || 'Check this field', 'err'); return; }
+    status(el, 'Saving…');
+    try { await save(Object.fromEntries(new FormData(form))); last = now; status(el, '✓ Saved', 'ok'); } catch (x) { status(el, x.message, 'err'); }
+  }); };
+  form.addEventListener('input', (e) => { at = e.target; if (e.target.matches('input[type=checkbox], select')) return; status(e.target, 'Editing…', 'editing'); clearTimeout(timer); timer = setTimeout(() => run(e.target), 900); });
+  form.addEventListener('change', (e) => run(e.target));
+  form.addEventListener('submit', (e) => { e.preventDefault(); run(at || $('input,select', form)); }); // Enter in a field saves now
+};
 // maintenance mode (lib/maintenance.js): everyone but you sees the maintenance page
 function maintenanceCard(box) {
   const m = D.maintenance || {}; const link = m.secret ? `${location.origin}/?bypass=${m.secret}` : '';
