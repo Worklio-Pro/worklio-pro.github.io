@@ -917,6 +917,7 @@ app.post('/api/integrations/test', async (req, res) => {
 });
 
 // ---------- AI: draft a product/service description from its name (needs ANTHROPIC_API_KEY) ----------
+// From a quote, invoice or job line, the description already typed comes along as notes to polish (facts kept, nothing invented).
 let anthropic = null;
 const aiClient = () => {
   if (!process.env.ANTHROPIC_API_KEY) return null;
@@ -926,6 +927,7 @@ const aiClient = () => {
 app.post('/api/services/describe', async (req, res) => {
   const name = String(req.body.name || '').trim().slice(0, 200);
   const kind = req.body.type === 'product' ? 'product' : 'service';
+  const notes = String(req.body.notes || '').trim().slice(0, 2000);
   if (!name) return res.status(400).json({ error: 'Enter a name first' });
   if (db.company.aiEnabled === false) return res.status(403).json({ error: 'AI assistance is turned off in App Settings' });
   const client = aiClient();
@@ -940,8 +942,9 @@ app.post('/api/services/describe', async (req, res) => {
       output_config: { effort: 'low' },
       system: `You write line-item descriptions for the quotes and invoices of ${db.company.name || 'a field service business'}, a field service business. The customer reads them.
 Given the name of a ${kind}, write one or two plain sentences (under 40 words) saying what it includes or what the customer gets.
-Plain text only: no markdown, no quotes, no price, no heading. Don't invent specifics such as brands, warranties, durations or quantities that the name doesn't state.`,
-      messages: [{ role: 'user', content: `${kind === 'product' ? 'Product' : 'Service'} name: ${name}` }],
+If the business gave notes, turn them into that description: keep every fact in them (it may run longer, up to about 80 words, to fit them) and fix spelling and grammar.
+Plain text only: no markdown, no quotes, no price, no heading. Don't invent specifics such as brands, warranties, durations or quantities that the name or notes don't state.`,
+      messages: [{ role: 'user', content: `${kind === 'product' ? 'Product' : 'Service'} name: ${name}${notes ? `\n\nNotes from the business:\n${notes}` : ''}` }],
     });
     if (r.stop_reason === 'refusal') return res.status(422).json({ error: 'The AI couldn\u2019t write a description for that name. Try rewording it.' });
     const description = r.content.filter((b) => b.type === 'text').map((b) => b.text).join('').trim();

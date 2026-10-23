@@ -919,8 +919,24 @@ function qItemRow(it) {
 <div class="fl amt-box"><span>Total</span><div class="amt"></div></div>
 <details class="menu row-menu"><summary aria-label="Line item options" title="Line item options">⋯</summary><div class="menu-list">
 <button type="button" class="danger-text" data-act="rmItem">Remove line item</button></div></details>
-<label class="fl qi-desc"><span>Description</span><textarea class="details" rows="3" placeholder="Shown to the client (optional)">${esc(it.details || '')}</textarea></label></div>`;
+<label class="fl qi-desc"><span>Description</span><textarea class="details" rows="3" placeholder="Shown to the client (optional)">${esc(it.details || '')}</textarea>${aiOn() ? AI_BTN : ''}</label></div>`;
 }
+// ✨ AI in a line's description box (bottom left): drafts the description from the line's name, or polishes what's typed there.
+// It goes in as an edit, so Ctrl/⌘ Z puts back what was there before. Needs the plan's AI feature and AI turned on in App Settings.
+const aiOn = () => company.aiEnabled !== false && planHas('ai');
+const AI_BTN = '<button type="button" class="ai-desc" data-act="aiItemDesc" title="Write the description with AI (uses the name, and polishes anything typed here)">✨ AI</button>';
+A.aiItemDesc = async (d, btn) => {
+  const row = btn.closest('.item-row'); const name = $('.desc', row); const box = $('.details', row);
+  if (!name.value.trim()) { toast('Enter the item’s name first', true); return name.focus(); }
+  const svc = D.services.find((s) => s.name === name.value.trim());
+  btn.disabled = true; btn.classList.add('busy'); btn.textContent = 'Writing…';
+  try {
+    const { description } = await api('POST', '/api/services/describe', { name: name.value, type: svc ? svc.type : 'service', notes: box.value });
+    box.focus(); box.select();
+    if (!document.execCommand('insertText', false, description)) box.value = description; // insertText keeps undo working
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+  } finally { btn.disabled = false; btn.classList.remove('busy'); btn.textContent = '✨ AI'; }
+};
 // hidden "off" + checkbox "on" with the same name: FormData keeps the last one, so unchecked saves "off".
 // A disabled switch submits nothing, leaving the saved value alone.
 // card payments are set up (App Settings → Card payments); until then the switch on quotes and invoices is off and greyed out
