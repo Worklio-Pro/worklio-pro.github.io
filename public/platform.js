@@ -164,23 +164,21 @@ ${D.devMode ? `<div class="note">Running locally: accounts open at <code>&lt;add
 <div class="card"><div class="l">Top industries</div><div style="margin-top:8px;font-size:14px">${top || 'None chosen yet'}</div></div></div>
 <div class="acc-tools"><label>Industry<select id="accInd"><option value="">All industries (${D.accounts.length})</option>${[...D.industries, { slug: 'none', name: 'Not set yet' }].map((i) => `<option value="${esc(i.slug)}" ${i.slug === accIndustry ? 'selected' : ''}>${esc(i.name)} (${count(i.slug)})</option>`).join('')}</select></label>
 <button type="button" class="btn alt sm" data-act="accountsCsv">Download CSV</button><span class="sm">${accIndustry ? `${shown.length} of ${D.accounts.length} accounts` : ''}</span></div>
-<div class="card"><div class="tablewrap"><table class="acc"><thead><tr><th>Business</th><th>Industry</th><th>Web address</th><th>Plan</th><th>Status</th><th>Usage</th><th>Created</th><th></th></tr></thead><tbody>
-${shown.map((a) => `<tr data-id="${a.id}"><td class="acc-biz"><div class="nm">${esc(a.name)}${a.isDefault ? ' <span class="pf-chip">Your own account</span>' : ''}</div><div class="sm">${a.owner ? `${esc(a.owner.name)} · ${esc(a.owner.email)}${a.owner.active ? '' : ' · <em>invite not accepted</em>'}${a.owner.unconfirmed ? ' · <em>email not confirmed</em>' : ''}` : 'No owner login yet'}</div></td>
-<td class="sm">${a.industry ? esc(indLabel(a)) : '<span class="muted">Not set</span>'}</td>
+<div class="card"><p class="sm muted acc-hint">Select a business to manage it.</p><div class="tablewrap"><table class="acc acc-list"><thead><tr><th>Business</th><th>Web address</th><th>Plan</th><th>Status</th></tr></thead><tbody>
+${shown.map((a) => `<tr data-id="${a.id}" tabindex="0" aria-label="Manage ${esc(a.name)}"><td class="acc-biz"><div class="nm">${esc(a.name)}${a.isDefault ? ' <span class="pf-chip">Your own account</span>' : ''}</div><div class="sm">${a.owner ? `${esc(a.owner.name)} · ${esc(a.owner.email)}${a.owner.active ? '' : ' · <em>invite not accepted</em>'}${a.owner.unconfirmed ? ' · <em>email not confirmed</em>' : ''}` : 'No owner login yet'}</div></td>
 <td><a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(host(a.url))}</a>${a.domains.length ? `<div class="chips">${a.domains.map((d) => `<span class="pf-chip ${d.verified ? 'ok' : 'wait'}" title="${d.verified ? 'Connected' : 'Waiting for DNS'}">${esc(d.host)}</span>`).join('')}</div>` : ''}</td>
 <td><select data-plan="${a.id}" aria-label="Plan for ${esc(a.name)}">${D.plans.map((p) => `<option value="${esc(p.id)}" ${p.id === a.planId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></td>
 <td class="acc-st">${statusChip(a)}${a.support.length ? ` <span class="pf-chip ${a.support.some((r) => r.status === 'granted') ? 'ok' : 'wait'}" title="Support Access">${a.support.some((r) => r.status === 'granted') ? 'Support access' : 'Access requested'}</span>` : ''}</td>
-<td class="sm">${a.users} login${a.users === 1 ? '' : 's'} · ${a.clients} clients · ${a.jobs} jobs${a.lastLoginAt ? `<br>Last login ${fmtDate(a.lastLoginAt)}` : ''}</td>
-<td class="sm">${fmtDate(a.createdAt)}</td>
-<td><div class="acts"><button class="btn alt sm" data-act="editAccount" data-id="${a.id}">Manage</button></div></td></tr>`).join('') || `<tr><td colspan="8" class="muted">${accIndustry ? 'No accounts in this industry.' : 'No accounts yet.'}</td></tr>`}
+</tr>`).join('') || `<tr><td colspan="4" class="muted">${accIndustry ? 'No accounts in this industry.' : 'No accounts yet.'}</td></tr>`}
 </tbody></table></div></div>`;
   wirePlanSelects(main);
   $('#accInd', main).addEventListener('change', (e) => { accIndustry = e.target.value; accountsView(main); });
-  // on phones the table shows only the business and its status; tapping the row opens Manage for the rest
-  $$('.acc tbody tr[data-id]', main).forEach((tr) => tr.addEventListener('click', (e) => {
-    if (!matchMedia('(max-width:640px)').matches || e.target.closest('a,button,select')) return;
-    A.editAccount({ id: tr.dataset.id });
-  }));
+  // select a row (click, tap, or Enter/Space) to manage the business; its link and plan menu still work on their own.
+  // On phones the row shows only the business and its status.
+  $$('.acc tbody tr[data-id]', main).forEach((tr) => {
+    tr.addEventListener('click', (e) => { if (!e.target.closest('a,button,select')) A.editAccount({ id: tr.dataset.id }); });
+    tr.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target === tr) { e.preventDefault(); A.editAccount({ id: tr.dataset.id }); } });
+  });
 }
 function wirePlanSelects(root, after) {
   $$('[data-plan]', root).forEach((s) => s.addEventListener('change', async () => {
@@ -243,13 +241,13 @@ function showLink(title, text, link) {
 A.copy = (d, el) => { const i = el.parentElement.querySelector('input'); navigator.clipboard.writeText(i.value).then(() => toast('Copied'), () => { i.select(); toast('Press Ctrl+C to copy', true); }); };
 A.editAccount = (d) => {
   const a = D.accounts.find((x) => x.id === d.id);
-  const m = modal(a.name, `<div class="am-mobile"><p class="sm">${a.owner ? `${esc(a.owner.name)} · ${esc(a.owner.email)}${a.owner.active ? '' : ' · <em>invite not accepted</em>'}${a.owner.unconfirmed ? ' · <em>email not confirmed</em>' : ''}` : 'No owner login yet'}</p>
-<dl><dt>Web address</dt><dd><a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(host(a.url))}</a></dd>
-<dt>Status</dt><dd>${statusChip(a)}</dd>
-<dt>Plan</dt><dd><select data-plan="${a.id}" aria-label="Plan for ${esc(a.name)}">${D.plans.map((p) => `<option value="${esc(p.id)}" ${p.id === a.planId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></dd>
-<dt>Usage</dt><dd>${a.users} login${a.users === 1 ? '' : 's'} · ${a.clients} clients · ${a.jobs} jobs${a.lastLoginAt ? `<br>Last login ${fmtDate(a.lastLoginAt)}` : ''}</dd>
-<dt>Industry</dt><dd>${a.industry ? esc(indLabel(a)) : 'Not set'}</dd>
-<dt>Created</dt><dd>${fmtDate(a.createdAt)}</dd></dl></div>
+  const m = modal(a.name, `<div class="am-sum"><p class="sm">${a.owner ? `${esc(a.owner.name)} · ${esc(a.owner.email)}${a.owner.active ? '' : ' · <em>invite not accepted</em>'}${a.owner.unconfirmed ? ' · <em>email not confirmed</em>' : ''}` : 'No owner login yet'}</p>
+<dl><div><dt>Web address</dt><dd><a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(host(a.url))}</a></dd></div>
+<div><dt>Status</dt><dd>${statusChip(a)}</dd></div>
+<div><dt>Plan</dt><dd><select data-plan="${a.id}" aria-label="Plan for ${esc(a.name)}">${D.plans.map((p) => `<option value="${esc(p.id)}" ${p.id === a.planId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></dd></div>
+<div><dt>Usage</dt><dd>${a.users} login${a.users === 1 ? '' : 's'} · ${a.clients} clients · ${a.jobs} jobs${a.lastLoginAt ? `<br>Last login ${fmtDate(a.lastLoginAt)}` : ''}</dd></div>
+<div><dt>Industry</dt><dd>${a.industry ? esc(indLabel(a)) : 'Not set'}</dd></div>
+<div><dt>Created</dt><dd>${fmtDate(a.createdAt)}</dd></div></dl></div>
 <div class="am-grid"><div class="am-col"><form id="ef"><label>Business name<input name="name" value="${esc(a.name)}" required maxlength="100"></label>${slugField('slug', a.slug)}
 <p class="muted" style="font-size:13px;margin:-4px 0 12px">Changing the address breaks links already sent to clients at the old address.</p>
 ${industryFields(a)}
@@ -268,7 +266,7 @@ ${a.isDefault ? '' : `<button type="button" class="btn alt sm" data-act="status"
 ${a.status === 'active' ? '' : a.status === 'pending' ? '<p class="muted" style="font-size:13px">Awaiting payment: they signed up for a paid plan but haven’t finished checkout. Resume the account to let them in without paying.</p>' : '<p class="muted" style="font-size:13px">Paused: nobody can log in, and client links show “account paused”. Data is kept.</p>'}
 </div></div>
 <div class="foot"><button type="button" class="btn alt" data-act="closeModal">Close</button></div>`, { wide: true });
-  m.dataset.id = a.id;
+  m.dataset.id = a.id; m.tabIndex = -1; m.focus(); // focus the popup itself, not its first field (the plan menu), so nothing changes by accident
   wirePlanSelects(m, (x) => A.editAccount({ id: x.id }));
   const f = $('#ef', m); wireSlug(f, a.slug); wireIndustry(f);
   const xf = $('#xf', m); if (xf) xf.addEventListener('submit', async (e) => { e.preventDefault(); try { await api('PUT', `/api/platform/accounts/${a.id}`, { expiresAt: xf.expiresAt.value }); toast(xf.expiresAt.value ? `Last day of access: ${fmtDate(xf.expiresAt.value)}` : 'End date removed'); await load(); render(); A.editAccount({ id: a.id }); } catch (x) { toast(x.message, true); } });
