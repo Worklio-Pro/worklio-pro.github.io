@@ -361,10 +361,17 @@ body.row-drag,body.row-drag *{cursor:grabbing!important;user-select:none}
 .item-row.qi .qi-name{position:relative}.item-row.qi .qi-name .svc-ac{top:calc(100% + 4px)}
 .item-row.qi .desc{font-weight:400}
 .qi-desc>textarea{min-height:76px;font-size:14px;resize:vertical}
-.qi-desc:has(.ai-desc)>textarea{padding-bottom:28px}
-.ai-desc{position:absolute;left:8px;bottom:6px;display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 9px;border:1px solid var(--border);border-radius:99px;background:var(--card);color:var(--brand);font:inherit;font-size:12px;font-weight:600;cursor:pointer}
-.ai-desc:hover,.ai-desc:focus-visible{background:var(--tint);border-color:var(--brand)}
-.ai-desc.busy{color:var(--muted);cursor:progress}
+/* Rewrite (AI) + revert at the bottom left of a line's description box */
+.qi-desc:has(.ai-bar)>textarea{padding-bottom:38px}
+.ai-bar{position:absolute;left:8px;bottom:8px;display:flex;align-items:center;gap:6px}
+.ai-desc{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font-size:13px;font-weight:600;cursor:pointer;user-select:none}
+.ai-desc:hover,.ai-menu[open] .ai-desc,.ai-desc:focus-visible{background:var(--tint);border-color:var(--brand)}
+.ai-menu.busy .ai-desc{color:var(--muted);cursor:progress;pointer-events:none}
+.ai-menu .menu-list{left:0;right:auto;top:calc(100% + 6px);min-width:200px}
+.ai-h{padding:8px 12px 6px;font-size:13px;color:var(--muted)}
+.ai-undo{width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);cursor:pointer;padding:0}
+.ai-undo:hover:not(:disabled){background:var(--tint);border-color:var(--brand)}
+.ai-undo:disabled{opacity:.45;cursor:default;background:var(--surface-2)}
 .fl .affix{display:flex;align-items:center;gap:3px}
 .fl .affix i{font-style:normal}
 .fl .affix input{flex:1;min-width:0;border:0;padding:0;margin:0;height:24px;background:transparent;box-shadow:none}.fl .affix input:focus{outline:0}

@@ -928,6 +928,9 @@ app.post('/api/services/describe', async (req, res) => {
   const name = String(req.body.name || '').trim().slice(0, 200);
   const kind = req.body.type === 'product' ? 'product' : 'service';
   const notes = String(req.body.notes || '').trim().slice(0, 2000);
+  // Rewrite on a quote/invoice/job line: the tone picked from its menu
+  const tone = { cheerful: 'Make it warm, upbeat and friendly.', casual: 'Make it relaxed and conversational, the way you’d explain it to a neighbor.', professional: 'Make it polished, clear and businesslike.',
+    shorter: 'Make it as short as you can: one sentence, under 20 words, keeping only the key facts (this overrides the length limits above).' }[req.body.tone] || '';
   if (!name) return res.status(400).json({ error: 'Enter a name first' });
   if (db.company.aiEnabled === false) return res.status(403).json({ error: 'AI assistance is turned off in App Settings' });
   const client = aiClient();
@@ -943,7 +946,7 @@ app.post('/api/services/describe', async (req, res) => {
       system: `You write line-item descriptions for the quotes and invoices of ${db.company.name || 'a field service business'}, a field service business. The customer reads them.
 Given the name of a ${kind}, write one or two plain sentences (under 40 words) saying what it includes or what the customer gets.
 If the business gave notes, turn them into that description: keep every fact in them (it may run longer, up to about 80 words, to fit them) and fix spelling and grammar.
-Plain text only: no markdown, no quotes, no price, no heading. Don't invent specifics such as brands, warranties, durations or quantities that the name or notes don't state.`,
+Plain text only: no markdown, no quotes, no price, no heading. Don't invent specifics such as brands, warranties, durations or quantities that the name or notes don't state.${tone ? `\n${tone}` : ''}`,
       messages: [{ role: 'user', content: `${kind === 'product' ? 'Product' : 'Service'} name: ${name}${notes ? `\n\nNotes from the business:\n${notes}` : ''}` }],
     });
     if (r.stop_reason === 'refusal') return res.status(422).json({ error: 'The AI couldn\u2019t write a description for that name. Try rewording it.' });

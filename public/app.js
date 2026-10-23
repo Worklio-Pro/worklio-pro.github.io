@@ -921,22 +921,33 @@ function qItemRow(it) {
 <button type="button" class="danger-text" data-act="rmItem">Remove line item</button></div></details>
 <label class="fl qi-desc"><span>Description</span><textarea class="details" rows="3" placeholder="Shown to the client (optional)">${esc(it.details || '')}</textarea>${aiOn() ? AI_BTN : ''}</label></div>`;
 }
-// ✨ AI in a line's description box (bottom left): drafts the description from the line's name, or polishes what's typed there.
-// It goes in as an edit, so Ctrl/⌘ Z puts back what was there before. Needs the plan's AI feature and AI turned on in App Settings.
+// Rewrite in a line's description box (bottom left): a menu of tones (Cheerful, Casual, Professional, Shorter). It drafts from the line's name,
+// or rewrites what's typed there. The revert button beside it puts back what was there before the first rewrite (and Ctrl/⌘ Z still works).
+// Needs the plan's AI feature and AI turned on in App Settings.
 const aiOn = () => company.aiEnabled !== false && planHas('ai');
-const AI_BTN = '<button type="button" class="ai-desc" data-act="aiItemDesc" title="Write the description with AI (uses the name, and polishes anything typed here)">✨ AI</button>';
-A.aiItemDesc = async (d, btn) => {
-  const row = btn.closest('.item-row'); const name = $('.desc', row); const box = $('.details', row);
+const aiIco = (d) => `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const AI_SPARK = aiIco('<path d="M12 3l1.8 4.7 4.7 1.8-4.7 1.8L12 16l-1.8-4.7-4.7-1.8 4.7-1.8z"/><path d="M19 15l.7 1.8 1.8.7-1.8.7L19 20l-.7-1.8-1.8-.7 1.8-.7z"/>');
+const AI_TONES = [['cheerful', 'Cheerful', '<circle cx="12" cy="12" r="9"/><path d="M8.5 14a4.5 4.5 0 0 0 7 0M9 9.5h.01M15 9.5h.01"/>'],
+  ['casual', 'Casual', '<path d="M3 15h16.5a2 2 0 0 1 0 4H5a2 2 0 0 1-2-2zM3 15V9l4 1 3 3h4l5.5 2"/>'],
+  ['professional', 'Professional', '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 13h18"/>'],
+  ['shorter', 'Shorter', '<path d="M4 9h6M14 9h6M4 15h16"/>']];
+const AI_BTN = `<div class="ai-bar"><details class="menu ai-menu"><summary class="ai-desc" title="Rewrite the description with AI">${AI_SPARK}<span>Rewrite</span></summary><div class="menu-list"><div class="ai-h">Make this more</div>
+${AI_TONES.map(([k, l, d]) => `<button type="button" class="mi" data-act="aiItemDesc" data-tone="${k}">${aiIco(d)}${l}</button>`).join('')}</div></details>
+<button type="button" class="ai-undo" data-act="aiUndo" disabled aria-label="Put back the original description" title="Put back the original description">${aiIco('<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>')}</button></div>`;
+const setBox = (box, text) => { box.focus(); box.select(); if (!document.execCommand('insertText', false, text)) box.value = text; box.dispatchEvent(new Event('input', { bubbles: true })); }; // insertText keeps undo working
+A.aiItemDesc = async (d, el) => {
+  const row = el.closest('.item-row'); const name = $('.desc', row); const box = $('.details', row); const menu = $('.ai-menu', row); const sum = $('summary', menu);
+  menu.open = false;
   if (!name.value.trim()) { toast('Enter the item’s name first', true); return name.focus(); }
   const svc = D.services.find((s) => s.name === name.value.trim());
-  btn.disabled = true; btn.classList.add('busy'); btn.textContent = 'Writing…';
+  menu.classList.add('busy'); $('span', sum).textContent = 'Writing…';
   try {
-    const { description } = await api('POST', '/api/services/describe', { name: name.value, type: svc ? svc.type : 'service', notes: box.value });
-    box.focus(); box.select();
-    if (!document.execCommand('insertText', false, description)) box.value = description; // insertText keeps undo working
-    box.dispatchEvent(new Event('input', { bubbles: true }));
-  } finally { btn.disabled = false; btn.classList.remove('busy'); btn.textContent = '✨ AI'; }
+    const { description } = await api('POST', '/api/services/describe', { name: name.value, type: svc ? svc.type : 'service', notes: box.value, tone: d.tone });
+    if (row._aiOrig === undefined) row._aiOrig = box.value; // the text from before the first rewrite, for revert
+    setBox(box, description); $('.ai-undo', row).disabled = false;
+  } finally { menu.classList.remove('busy'); $('span', sum).textContent = 'Rewrite'; }
 };
+A.aiUndo = (d, el) => { const row = el.closest('.item-row'); if (row._aiOrig === undefined) return; setBox($('.details', row), row._aiOrig); delete row._aiOrig; el.disabled = true; };
 // hidden "off" + checkbox "on" with the same name: FormData keeps the last one, so unchecked saves "off".
 // A disabled switch submits nothing, leaving the saved value alone.
 // card payments are set up (App Settings → Card payments); until then the switch on quotes and invoices is off and greyed out
