@@ -637,6 +637,30 @@ a.hp-nav{color:var(--text);text-decoration:none;padding:6px 8px;margin:0 -8px 10
 @media (max-width:420px){.h-brand{font-size:17px;gap:6px}}
 @media (max-width:359px){.h-brand{font-size:15px}.h-menu-btn svg{display:none}.h-top .btn{padding:8px 10px;font-size:13px}}
 @media (prefers-reduced-motion:reduce){.h-menu-btn svg{transition:none}}
+/* phone menu: a hamburger opens the header links + Get started as a drawer from the right (home, pricing, industries; public/menu.js) */
+.h-has-drawer .h-panel{display:contents}
+.h-has-drawer .h-burger,.h-has-drawer .h-close,.h-scrim{display:none}
+@media (max-width:640px){
+  /* backdrop-filter would make the header the containing block for the fixed drawer */
+  .h-top.h-has-drawer{background:var(--card);backdrop-filter:none;-webkit-backdrop-filter:none}
+  .h-has-drawer .h-burger{display:grid;place-items:center;margin-left:auto;width:44px;height:44px;border:0;border-radius:10px;background:none;color:var(--text);cursor:pointer}
+  .h-has-drawer .h-burger:hover{background:var(--tint)}
+  .h-has-drawer .h-panel{display:flex;flex-direction:column;position:fixed;top:0;right:0;width:min(320px,86vw);height:100vh;height:100dvh;z-index:40;background:var(--card);border-left:1px solid var(--line);box-shadow:var(--shadow-lg);padding:12px 16px 24px;overflow-y:auto;transform:translateX(105%);visibility:hidden;transition:transform .25s ease,visibility 0s .25s}
+  .h-has-drawer .h-panel.open{transform:none;visibility:visible;transition:transform .25s ease}
+  .h-has-drawer .h-close{display:grid;place-items:center;align-self:flex-end;width:44px;height:44px;border:0;border-radius:10px;background:none;color:var(--text);cursor:pointer;margin-bottom:8px}
+  .h-has-drawer .h-close:hover{background:var(--tint)}
+  .h-has-drawer .h-links{display:flex;flex-direction:column;gap:2px;margin:0}
+  .h-has-drawer .h-links>a,.h-has-drawer .h-menu-btn{display:flex;align-items:center;width:100%;font-size:17px;font-weight:600;padding:13px 12px;border-radius:10px}
+  .h-has-drawer .h-menu-btn{justify-content:space-between}.h-has-drawer .h-menu-btn svg{display:block}
+  .h-has-drawer .h-menu{position:static}
+  .h-has-drawer .h-drop{position:static;width:auto;max-height:none;transform:none;border:0;box-shadow:none;padding:2px 0 8px 8px;background:none}
+  .h-has-drawer .h-drop-grid{grid-template-columns:1fr}
+  .h-has-drawer .h-panel>.btn{margin-top:auto;height:auto;padding:14px 18px;font-size:17px;font-weight:700;text-align:center;border-radius:12px}
+  .h-has-drawer .h-links{margin-bottom:24px}
+  .h-scrim{display:block;position:fixed;inset:0;z-index:35;background:rgba(15,23,42,.45);opacity:0;visibility:hidden;transition:opacity .25s ease,visibility 0s .25s}
+  .h-scrim.open{opacity:1;visibility:visible;transition:opacity .25s ease}
+}
+@media (prefers-reduced-motion:reduce){.h-has-drawer .h-panel,.h-has-drawer .h-panel.open,.h-scrim,.h-scrim.open{transition:none}}
 /* Refer & Earn (/rewards) */
 .m-only{display:none}@media (max-width:760px){.m-only{display:block}}
 .tb-fb[hidden]{display:none}a.tb-fb{text-decoration:none}

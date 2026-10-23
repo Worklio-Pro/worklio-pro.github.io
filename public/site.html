@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Pricing</title>
   <meta name="color-scheme" content="light dark">
-  <link rel="stylesheet" href="/styles.css?v=14">
+  <link rel="stylesheet" href="/styles.css?v=15">
   <style>
     body{background:var(--bg)}
     .s-hero{max-width:760px;margin:0 auto;padding:40px 16px 28px;text-align:center}
@@ -41,10 +41,16 @@
   </style>
 </head>
 <body>
-  <header class="h-top"><div class="h-wrap">
+  <header class="h-top h-has-drawer"><div class="h-wrap">
     <a class="h-brand" href="/home" data-home=""><span id="brand"></span></a>
-    <nav class="h-links" aria-label="Site"><a href="/home#features" data-home="#features">Features</a><!--industries-menu--><a href="/home#how" data-home="#how">How it works</a><a href="/home#faq" data-home="#faq">FAQ</a><a href="/pricing" aria-current="page">Pricing</a></nav>
-    <a class="btn" href="#signup" id="topCta" data-contact="">Contact us</a>
+    <!-- on phones this slides out from the right (menu.js); on wider screens it sits inline in the header -->
+    <div class="h-panel" id="h-panel">
+      <button type="button" class="h-close" aria-label="Close menu"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      <nav class="h-links" aria-label="Site"><a href="/home#features" data-home="#features">Features</a><!--industries-menu--><a href="/home#how" data-home="#how">How it works</a><a href="/home#faq" data-home="#faq">FAQ</a><a href="/pricing" aria-current="page">Pricing</a></nav>
+      <a class="btn" href="#signup" id="topCta" data-contact="">Contact us</a>
+    </div>
+    <button type="button" class="h-burger" aria-expanded="false" aria-controls="h-panel" aria-label="Open menu"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    <div class="h-scrim" aria-hidden="true"></div>
   </div></header>
   <section class="s-hero"><h1>Run your service business from one place</h1><p>Quotes, scheduling, invoices and payments for you, your team and your clients.</p></section>
   <div id="period"></div>
@@ -52,7 +58,7 @@
   <div id="signup" hidden></div>
   <footer class="s-foot" id="foot"></footer>
   <script src="/brand.js?v=1"></script>
-  <script src="/menu.js?v=1"></script>
+  <script src="/menu.js?v=2"></script>
   <script src="/site.js?v=12"></script>
   <script src="/chat.js?v=6" data-where="site" defer></script>
 </body>
