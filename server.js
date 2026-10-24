@@ -1047,6 +1047,10 @@ app.put('/api/:col/:id', (req, res, next) => {
   if (col === 'tasks' || col === 'events') { const bad = calItemProblem({ ...db[col][i], ...upd }); if (bad) return res.status(400).json({ error: bad }); }
   let doc = { ...db[col][i], ...upd };
   if (col === 'quotes') applyDepositPaymentEdit(doc, upd);
+  // sent back to the client (Draft or Sent) before any deposit is paid: they approve and sign again, so the old signature goes
+  if (col === 'quotes' && ['draft', 'sent'].includes(doc.status) && doc.status !== db.quotes[i].status && !doc.depositPaidAt) {
+    doc.signedAt = null; doc.signedName = null; if (doc.depositStatus === 'pending') doc.depositStatus = null;
+  }
   if (col === 'quotes' || col === 'invoices' || (col === 'jobs' && Array.isArray(doc.items))) computeTotals(doc); // jobs are priced once they have line items
   if (col === 'jobs') { if (db.jobs[i].signature) doc.signature = db.jobs[i].signature; else delete doc.signature; } // signatures only via /signature
   if (col === 'invoices') { // payments change only through their own endpoints, never through an invoice edit
