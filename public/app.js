@@ -773,23 +773,10 @@ function payDialog({ title, amount, max, method, note, save }) {
 }
 const methodLabel = Object.fromEntries([...PAY_METHODS, ['stripe', 'online card (Stripe)'], ['demo', 'demo checkout'], ['manual', 'manual entry']]);
 const depositPaymentCard = (d) => `<div class="card dep-pay"><h2>Deposit payment</h2>
-<div class="dep-pay-edit"><p class="muted" style="margin-top:0">Recorded as paid${d.depositMethod ? ' by ' + esc(methodLabel[d.depositMethod] || d.depositMethod) : ''}. Correct the amount, date or method if needed, or remove the payment if it was recorded by mistake or refunded.</p>
+<div class="dep-pay-edit"><p class="muted" style="margin-top:0">Recorded as paid${d.depositMethod ? ' by ' + esc(methodLabel[d.depositMethod] || d.depositMethod) : ''}. Correct the amount, date or method if needed. A recorded payment can’t be deleted.</p>
 <div class="row3"><label>Amount paid<input name="depositPaidAmount" type="number" step="0.01" min="0" value="${d.depositPaidAmount ?? d.depositFee ?? 0}"></label><label>Date paid<input name="depositPaidAt" type="date" value="${esc(d.depositPaidAt)}"></label>
 <label>Method<select name="depositMethod">${PAY_METHODS.some(([k]) => k === d.depositMethod) ? '' : `<option value="${esc(d.depositMethod || 'other')}" selected>${esc(payLabel(d.depositMethod))}</option>`}${methodOptions(d.depositMethod)}</select></label></div>
-<div class="row3"><label>Reference<input name="depositReference" maxlength="120" value="${esc(d.depositReference || '')}" placeholder="Check #, transaction ID or note"></label>
-<div class="dep-pay-act"><button type="button" class="btn danger" data-act="removeDepositPay">Remove payment</button></div></div></div>
-<div class="dep-pay-removed notice" hidden>The deposit payment will be removed when you save. The quote goes back to waiting for its deposit. <a href="#" data-act="undoDepositPay">Undo</a></div>
-<input type="hidden" name="depositPayment" value="keep"></div>`;
-A.removeDepositPay = (d, el) => {
-  const card = el.closest('.dep-pay'); $('[name=depositPayment]', card).value = 'delete';
-  $('.dep-pay-edit', card).hidden = true; $('.dep-pay-removed', card).hidden = false;
-  $$('.dep-pay-edit input, .dep-pay-edit select', card).forEach((i) => { i.disabled = true; }); // not submitted while removed
-};
-A.undoDepositPay = (d, el) => {
-  const card = el.closest('.dep-pay'); $('[name=depositPayment]', card).value = 'keep';
-  $('.dep-pay-edit', card).hidden = false; $('.dep-pay-removed', card).hidden = true;
-  $$('.dep-pay-edit input, .dep-pay-edit select', card).forEach((i) => { i.disabled = false; });
-};
+<div class="row3"><label>Reference<input name="depositReference" maxlength="120" value="${esc(d.depositReference || '')}" placeholder="Check #, transaction ID or note"></label></div></div></div>`;
 /* ===== invoice editor (layout modeled on Jobber's invoice page) ===== */
 const TERMS = [['0', 'Due upon receipt'], ['7', 'Net 7'], ['14', 'Net 14'], ['15', 'Net 15'], ['30', 'Net 30'], ['45', 'Net 45'], ['60', 'Net 60'], ['custom', 'Custom date']];
 // deposit paid on the quote behind the linked job, credited on that job's first invoice (mirrors invoiceCredits on the server)
@@ -849,7 +836,7 @@ ${c.phone ? `<a class="qphone" href="tel:${esc(c.phone)}">${esc(c.phone)}</a>` :
     const others = D.invoices.filter((i) => i.clientId === $('[name=clientId]', form).value && i.id !== d.id && i.status !== 'paid' && i.status !== 'draft').reduce((s, i) => s + invBalance(i), 0);
     $('.icredit', form).innerHTML = `${credit ? `<div class="crow-line dep-credit"><span>Deposit collected <span class="muted">· quote ${esc(credit.quote)}, ${fmtDate(credit.date)}</span></span><span>−${money(credit.amount)}</span><button type="button" class="t-rm" data-act="rmDepCredit" aria-label="Remove deposit from this invoice" title="Remove deposit from this invoice">${TRASH}</button></div>`
       : found ? `<div class="crow-line dep-credit off"><span class="muted">Deposit of ${money(found.amount)} from quote ${esc(found.quote)} not applied</span><button type="button" class="link-btn" data-act="applyDepCredit">Apply deposit</button></div>` : ''}
-${[...pays].sort((a, b) => a.date.localeCompare(b.date)).map((p) => `<div class="crow-line dep-credit"><span>Payment · ${esc(payLabel(p.method))} <span class="muted">· ${fmtDate(p.date)}${p.reference ? ' · ' + esc(p.reference) : ''}</span></span><span>−${money(p.amount)}</span><button type="button" class="t-rm" data-act="delInvPayment" data-id="${d.id}" data-pid="${p.id}" aria-label="Delete this payment" title="Delete this payment">${TRASH}</button></div>`).join('')}
+${[...pays].sort((a, b) => a.date.localeCompare(b.date)).map((p) => `<div class="crow-line dep-credit"><span>Payment · ${esc(payLabel(p.method))} <span class="muted">· ${fmtDate(p.date)}${p.reference ? ' · ' + esc(p.reference) : ''}</span></span><span>−${money(p.amount)}</span></div>`).join('')}
 ${d.id && d.status !== 'paid' && balance > 0 ? `<div class="collect-row"><button type="button" class="btn alt sm" data-act="collectPayment" data-id="${d.id}">+ Collect payment</button></div>` : ''}
 <div class="ibal"><div><strong>Invoice balance</strong><strong>${money(d.status === 'paid' ? 0 : balance)}</strong></div><div><span>Account balance (including this ${d.status === 'paid' ? 'invoice' : d.status === 'draft' || !d.id ? 'draft' : 'invoice'})</span><span>${money(others + (d.status === 'paid' ? 0 : balance))}</span></div></div>`;
   };
@@ -1183,11 +1170,6 @@ A.collectPayment = (d) => {
     async save(body) { const r = await api('POST', `/api/invoices/${inv.id}/payments`, body); toast(r.status === 'paid' ? `${inv.number} is paid in full` : `Payment recorded. ${money(r.balanceDue)} still owed`); refresh(); } });
 };
 A.markPaid = A.collectPayment;
-A.delInvPayment = async (d) => {
-  const inv = byId(D.invoices, d.id); const p = (inv.payments || []).find((x) => x.id === d.pid); if (!p) return;
-  if (!confirm(`Delete the ${money(p.amount)} ${payLabel(p.method)} payment from ${fmtDate(p.date)}? Unsaved changes on this page will be lost.`)) return;
-  await api('DELETE', `/api/invoices/${inv.id}/payments/${p.id}`); toast('Payment deleted'); refresh();
-};
 
 /* ===== jobs ===== */
 function jobConflicts(job) { return D.jobs.filter((j) => j.id !== job.id && j.status !== 'completed' && j.date === job.date && j.staffIds.some((s) => (job.staffIds || []).includes(s)) && j.startTime < job.endTime && job.startTime < j.endTime); }

@@ -116,7 +116,6 @@ label>input,label>select,label>textarea{margin-top:4px}
 .tpl-fmt{margin-top:10px;font-size:13px;color:var(--muted)}.tpl-fmt summary{cursor:pointer}.tpl-fmt ul{margin:6px 0 0;padding-left:18px;line-height:1.8}.tpl-fmt code{font-size:12px;background:var(--surface-2);padding:1px 5px;border-radius:4px}
 .pv-warn{margin:10px 0 0}
 .dep-pay-act{display:flex;align-items:flex-end;padding-bottom:10px}.dep-pay-act .btn{height:40px}
-.dep-pay-removed{margin:0}
 .map-tbl td{vertical-align:middle}
 /* clients page */
 .cstats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px}

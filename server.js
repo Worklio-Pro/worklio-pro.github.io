@@ -156,14 +156,16 @@ function computeTotals(doc) {
   doc.depositFee = Math.min(doc.total, round2(doc.depositType === 'percent' ? doc.total * doc.depositValue / 100 : doc.depositValue));
   return doc;
 }
-// admin edits to a recorded deposit payment from the quote editor: change amount/date, or remove the payment
-function applyDepositPaymentEdit(doc, upd) {
-  const action = upd.depositPayment; delete doc.depositPayment;
-  if (action === 'delete') {
-    doc.depositPaidAt = null; doc.depositPaidAmount = null; doc.depositMethod = null; doc.depositReference = null; doc.zelleSentAt = null;
-    doc.depositStatus = doc.signedAt ? 'pending' : null;
-  } else if (doc.depositPaidAt) {
-    doc.depositPaidAmount = Math.max(0, round2(Number(doc.depositPaidAmount ?? doc.depositFee) || 0));
+// admin edits to a recorded deposit payment from the quote editor: correct the amount, date, method or reference. A recorded payment can't be removed.
+function applyDepositPaymentEdit(doc, upd, was) {
+  delete doc.depositPayment;
+  if (was.depositPaidAt) { // paid before this edit: it stays paid
+    if (!doc.depositPaidAt) doc.depositPaidAt = was.depositPaidAt;
+    Object.assign(doc, { depositStatus: 'paid', depositMethod: doc.depositMethod || was.depositMethod });
+  }
+  if (doc.depositPaidAt) {
+    doc.depositPaidAmount = round2(Number(doc.depositPaidAmount ?? doc.depositFee) || 0);
+    if (!(doc.depositPaidAmount > 0)) doc.depositPaidAmount = was.depositPaidAmount ?? was.depositFee ?? doc.depositFee; // 0 would remove it
     if ('depositMethod' in upd && !PAY_METHODS[upd.depositMethod]) doc.depositMethod = db.quotes.find((x) => x.id === doc.id)?.depositMethod || 'other'; // only listed methods can be chosen
     if ('depositReference' in upd) doc.depositReference = String(upd.depositReference || '').trim().slice(0, 120);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(doc.depositPaidAt))) doc.depositPaidAt = iso(new Date());
@@ -1046,7 +1048,7 @@ app.put('/api/:col/:id', (req, res, next) => {
   if (col === 'jobs' && isMemberReq(req)) upd = Object.fromEntries(Object.entries(upd).filter(([k]) => MEMBER_JOB_FIELDS.includes(k)));
   if (col === 'tasks' || col === 'events') { const bad = calItemProblem({ ...db[col][i], ...upd }); if (bad) return res.status(400).json({ error: bad }); }
   let doc = { ...db[col][i], ...upd };
-  if (col === 'quotes') applyDepositPaymentEdit(doc, upd);
+  if (col === 'quotes') applyDepositPaymentEdit(doc, upd, db.quotes[i]);
   // sent back to the client (Draft or Sent) before any deposit is paid: they approve and sign again, so the old signature goes
   if (col === 'quotes' && ['draft', 'sent'].includes(doc.status) && doc.status !== db.quotes[i].status && !doc.depositPaidAt) {
     doc.signedAt = null; doc.signedName = null; if (doc.depositStatus === 'pending') doc.depositStatus = null;
@@ -1263,12 +1265,7 @@ app.post('/api/invoices/:id/payments', (req, res) => {
   inv.payments = [...(inv.payments || []), { id: uid(), ...r.payment, recordedBy: u ? u.name : '', createdAt: new Date().toISOString() }];
   settleInvoice(inv); save(); res.status(201).json(withStatus(inv));
 });
-app.delete('/api/invoices/:id/payments/:pid', (req, res) => {
-  const inv = db.invoices.find((x) => x.id === req.params.id); if (!inv) return res.status(404).json({ error: 'Not found' });
-  const before = (inv.payments || []).length; inv.payments = (inv.payments || []).filter((p) => p.id !== req.params.pid);
-  if (inv.payments.length === before) return res.status(404).json({ error: 'Payment not found' });
-  settleInvoice(inv); save(); res.json(withStatus(inv));
-});
+app.delete('/api/invoices/:id/payments/:pid', (req, res) => res.status(400).json({ error: 'A recorded payment can’t be deleted' }));
 
 app.post('/api/invoices/:id/mark-paid', (req, res) => {
   const inv = db.invoices.find((x) => x.id === req.params.id);
