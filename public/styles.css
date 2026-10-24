@@ -1050,3 +1050,6 @@ body.ms-open{overflow:hidden}
 .ms-list{display:flex;flex-direction:column}.ms-list>a,.ms-list>button{display:flex;align-items:center;gap:16px;width:100%;padding:16px 4px;background:none;border:0;border-top:1px solid var(--line);font:inherit;font-size:18px;color:var(--text);text-decoration:none;text-align:left;cursor:pointer}
 .ms-list>:first-child{border-top:0}.ms-list .danger-text{color:var(--danger)}
 .ms-sw .sw-row{font-size:17px;padding:14px 0}.ms-sw .sw-row:first-child{border-top:0}.ms-note{margin:0;font-size:15px}
+.mnew .md-h,.mnew .md-lead{padding:0 14px}.md-lead{margin:8px 0 0;font-size:16px}
+.mnew-f{display:flex;flex-direction:column;gap:16px;padding:22px 14px}.mnew-f .ms-save{height:54px;font-size:17px;border-radius:12px;justify-content:center;margin-top:8px}
+.md-empty{margin:6px 0 0;font-size:15px}

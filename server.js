@@ -1001,6 +1001,7 @@ app.post('/api/:col', (req, res, next) => {
     if (phone.length < 10) return res.status(400).json({ error: 'Enter the team member’s mobile number with the area code' });
   }
   if (col === 'tasks' || col === 'events') { const bad = calItemProblem(b); if (bad) return res.status(400).json({ error: bad }); }
+  if (PAYMENT_FIELDS[col]) { b = { ...b }; PAYMENT_FIELDS[col].forEach((k) => delete b[k]); } // payments only through their own endpoints
   let doc = { ...b, id: uid(), createdAt: iso(new Date()) };
   if (DOC_NUM[col] && String(b.number || '').trim()) { const r = customNumber(col, b.number); if (r.error) return res.status(400).json({ error: r.error }); doc.number = r.number; }
   if (col === 'clients') { doc.portalToken = token(); }

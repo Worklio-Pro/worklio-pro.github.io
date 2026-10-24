@@ -855,7 +855,7 @@ function docPage(kind, isNew) {
   return {
     title: `${isNew ? 'New' : 'Edit'} ${kind}`,
     async render(main) {
-      if (isNew) return form(main, null, { clientId: qp('client') });
+      if (isNew) return phoneMq.matches ? mobileNew(kind, main, { clientId: qp('client') }) : form(main, null, { clientId: qp('client') });
       const doc = byId(D[kind + 's'], qp('id'));
       if (!doc) { main.innerHTML = `<div class="card"><h1>${kind === 'quote' ? 'Quote' : 'Invoice'} not found</h1><p><a href="/${kind}s" data-link>Back to the list</a></p></div>`; return; }
       form(main, doc);
@@ -1006,7 +1006,7 @@ A.editDoc = (x) => {
   if (q && q.signedAt && q.depositPaidAt) return signatureDialog(() => go('&unsign=1'));
   return go();
 };
-A.sendDoc = (x) => sendDialog(x.kind, byId(D[x.kind + 's'], x.id));
+A.sendDoc = (x) => { const d = byId(D[x.kind + 's'], x.id); if (!(d.items || []).length) return toast('Add a line item first', true); return sendDialog(x.kind, d); };
 const depositPaid = (q) => (q.depositPaidAt ? round2(Number(q.depositPaidAmount ?? q.depositFee) || 0) : 0);
 const vt = (label, value, cls = '') => `<div class="vt ${cls}"><span>${label}</span><span>${value}</span></div>`;
 const payLink = (rowId, label, date, extra = '') => `<a href="/payments/view?id=${encodeURIComponent(rowId)}" data-link class="pay-link">${label}</a> • ${fmtDate(String(date).slice(0, 10))}${extra}`;
@@ -1264,13 +1264,32 @@ ${mTap(kind, d, 'details', `<span class="md-h">${q ? 'Quote' : 'Invoice'} #${esc
 <span class="md-dates"><span><small>${q ? 'Created' : 'Issued'}</small>${fmtDate(((q ? d.createdAt : d.issueDate) || '').slice(0, 10))}</span>${second && second[1] ? `<span><small>${second[0]}</small>${fmtDate(String(second[1]).slice(0, 10))}</span>` : ''}</span>`, 'md-head')}
 <div class="md-acts">${acts.filter(Boolean).join('')}<button type="button" class="btn alt md-more" data-act="mMore" data-kind="${kind}" data-id="${d.id}" aria-label="More actions">⋯</button></div>
 <div class="md-tabs" role="tablist"><button type="button" role="tab" class="on" aria-selected="true" data-act="mTab" data-k="doc">${q ? 'Quote' : 'Invoice'}</button><button type="button" role="tab" aria-selected="false" data-act="mTab" data-k="notes">Notes</button></div>
-<div class="md-pane" data-pane="doc"><section class="md-block"><h2 class="md-sh">Product / Service</h2><div class="md-lh"><strong>Line items</strong><button type="button" class="md-plus" data-act="mEdit" data-kind="${kind}" data-id="${d.id}" data-sec="item" data-i="" aria-label="Add line item">${CHEV('M12 5v14M5 12h14')}</button></div>${items}</section>
+<div class="md-pane" data-pane="doc"><section class="md-block"><h2 class="md-sh">Product / Service</h2><div class="md-lh"><strong>Line items</strong><button type="button" class="md-plus" data-act="mEdit" data-kind="${kind}" data-id="${d.id}" data-sec="item" data-i="" aria-label="Add line item">${CHEV('M12 5v14M5 12h14')}</button></div>${items || '<p class="muted md-empty">No line items yet. Tap + to add one.</p>'}</section>
 <section class="md-block md-totals">${totals}</section>${paySec}${viewSec}
 ${mTextSec(kind, d, 'message', 'Client message', d.notes, 'Add a message for the client')}
 ${mTextSec(kind, d, 'terms', 'Contract / disclaimer', d.disclaimer, 'Add a contract or disclaimer')}</div>
 <div class="md-pane" data-pane="notes" hidden>${mTextSec(kind, d, 'notes', 'Internal notes', d.internalNotes, 'Add a note. Clients never see these.')}</div></div>`;
 }
 phoneMq.addEventListener('change', () => { if ($('.mdoc, .qview')) refresh(); });
+// phones: a new quote or invoice starts with its client and title; it's saved as a draft and opens on the tap-to-edit page, at Add line item
+function mobileNew(kind, main, preset) {
+  const q = kind === 'quote';
+  main.innerHTML = `<div class="mdoc mnew"><a href="/${kind}s" data-link class="md-back" aria-label="Back to ${kind}s">${CHEV('M15 18l-6-6 6-6')}</a>
+<h1 class="md-h">New ${kind}</h1><p class="muted md-lead">Choose who it’s for. You’ll add line items next.</p>
+<form class="mnew-f" novalidate>${mField('Client', `<select name="clientId">${clientOptions(preset.clientId)}</select>`)}
+${mField(q ? 'Title' : 'Subject', `<input name="${q ? 'title' : 'subject'}" maxlength="120" placeholder="${q ? 'e.g. Backyard cleanup' : 'e.g. Camera System Install'}">`)}
+<button class="btn ms-save">Create ${kind}</button></form></div>`;
+  const f = $('form', main);
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault(); const b = Object.fromEntries(new FormData(f)); if (!b.clientId) return toast('Choose a client', true);
+    const btn = $('.ms-save', f); btn.disabled = true;
+    try {
+      const saved = await api('POST', `/api/${kind}s`, { ...b, items: [], disclaimer: q ? company.quoteDisclaimer ?? DEFAULT_DISCLAIMER : company.invoiceDisclaimer ?? '', ...(q ? {} : { paymentTerms: '0' }) });
+      await navigate(`/${kind}s/view?id=${saved.id}`);
+      A.mEdit({ kind, id: saved.id, sec: 'item', i: '' });
+    } catch (x) { toast(x.message, true); btn.disabled = false; }
+  });
+}
 PAGES['/quotes/new'] = docPage('quote', true); PAGES['/quotes/edit'] = docPage('quote', false);
 PAGES['/invoices/new'] = docPage('invoice', true); PAGES['/invoices/edit'] = docPage('invoice', false);
 PAGES['/quotes/view'] = viewPage('quote'); PAGES['/invoices/view'] = viewPage('invoice');
