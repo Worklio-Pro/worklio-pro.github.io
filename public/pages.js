@@ -1424,7 +1424,7 @@ PAGES['/payments/view'] = {
     const rowId = new URLSearchParams(location.search).get('id');
     let R; try { R = await api('GET', '/api/payment-detail/' + encodeURIComponent(rowId || '')); } catch (e) { main.innerHTML = `<div class="card"><h2>Payment not found</h2><p class="muted">${esc(e.message)}</p><a class="btn alt" href="/payments" data-link>Back to Payments</a></div>`; return; }
     const P = R.payment; const X = R.stripe; const C = R.client; const docName = `${R.doc.kind === 'quote' ? 'Quote' : 'Invoice'} #${R.doc.number}`;
-    const docHref = `/${R.doc.kind}s/edit?id=${R.doc.id}`;
+    const docHref = `/${R.doc.kind}s/view?id=${R.doc.id}`;
     const refunded = Math.max(P.refunded || 0, X ? X.refunded || 0 : 0); // refunds made here, or in Stripe's dashboard
     const status = X && !['succeeded', 'refunded', 'partly refunded'].includes(X.status) ? X.status : refundStatus(P.amount, refunded); const [stLabel, stCls] = PAY_STATUS[status] || PAY_STATUS.succeeded;
     const isOnline = online(P.method); const demo = isOnline && P.method !== 'stripe';
@@ -1591,7 +1591,7 @@ PAGES['/payments'] = {
     list.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0) * v.dir);
     const th = (k, label, cls = '') => `<th class="${cls}"><button class="th-btn" data-act="paySort" data-k="${k}">${label} <span class="sort ${v.sort === k ? 'on' : ''}">${v.sort === k ? (v.dir > 0 ? '▲' : '▼') : '⇅'}</span></button></th>`;
     const methods = [...new Set(rows.filter((r) => !online(r.method)).map((r) => r.method))];
-    const docLink = ([kind, d]) => `<a href="/${kind}s/edit?id=${d.id}" data-link>${kind === 'quote' ? 'Quote' : 'Invoice'} ${esc(d.number)}</a>`;
+    const docLink = ([kind, d]) => `<a href="/${kind}s/view?id=${d.id}" data-link>${kind === 'quote' ? 'Quote' : 'Invoice'} ${esc(d.number)}</a>`;
     const admin = !me || ['owner', 'admin'].includes(me.role);
     const upBox = `<div class="cstat"><div class="cs-h"><strong>Upcoming payouts</strong></div><div class="cs-v">${S.loading || S.failed ? '<span class="pay-wait">—</span>' : money(upcoming)}</div><div class="muted">${S.loading ? 'Checking Stripe…' : S.failed ? 'Not available right now' : !S.connected ? 'Payouts appear here once you connect Stripe and collect online payments' : UP.length ? `<button type="button" class="link-btn up-link" data-act="viewPayouts">View ${UP.length} payout${UP.length === 1 ? '' : 's'}</button>` : 'Upcoming payouts appear after you collect payments'}</div></div>`;
     const overview = `<div class="cstats pay-stats">

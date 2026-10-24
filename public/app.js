@@ -568,7 +568,6 @@ const optRow = ({ label, name, value, type, pctLabel }) => { const on = Number(v
 const TRASH = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg>';
 // invoice: take the quote deposit credit off this invoice (or put it back); saved with the invoice
 const setDepCredit = (el, removed) => { const form = el.closest('form'); $('[name=depositCreditRemoved]', form).value = removed ? 'yes' : ''; recalc(form); };
-A.rmDepCredit = (d, el) => setDepCredit(el, true);
 A.applyDepCredit = (d, el) => setDepCredit(el, false);
 A.addOpt = (d, el) => { const row = el.closest('.tl'); el.hidden = true; $('.opt-edit', row).hidden = false; $('.opt-amt', row).hidden = false; $('.t-rm', row).hidden = false; $('.opt-edit input', row).focus(); };
 A.rmOpt = (d, el) => { const row = el.closest('.tl'); $('.opt-edit input', row).value = ''; $('.opt-edit', row).hidden = true; $('.opt-amt', row).hidden = true; el.hidden = true; $('.opt-add', row).hidden = false; recalc(el.closest('form')); };
@@ -771,12 +770,6 @@ function payDialog({ title, amount, max, method, note, save }) {
   });
   $('[name=amount]', mb).select();
 }
-const methodLabel = Object.fromEntries([...PAY_METHODS, ['stripe', 'online card (Stripe)'], ['demo', 'demo checkout'], ['manual', 'manual entry']]);
-const depositPaymentCard = (d) => `<div class="card dep-pay"><h2>Deposit payment</h2>
-<div class="dep-pay-edit"><p class="muted" style="margin-top:0">Recorded as paid${d.depositMethod ? ' by ' + esc(methodLabel[d.depositMethod] || d.depositMethod) : ''}. Correct the amount, date or method if needed. A recorded payment can’t be deleted.</p>
-<div class="row3"><label>Amount paid<input name="depositPaidAmount" type="number" step="0.01" min="0" value="${d.depositPaidAmount ?? d.depositFee ?? 0}"></label><label>Date paid<input name="depositPaidAt" type="date" value="${esc(d.depositPaidAt)}"></label>
-<label>Method<select name="depositMethod">${PAY_METHODS.some(([k]) => k === d.depositMethod) ? '' : `<option value="${esc(d.depositMethod || 'other')}" selected>${esc(payLabel(d.depositMethod))}</option>`}${methodOptions(d.depositMethod)}</select></label></div>
-<div class="row3"><label>Reference<input name="depositReference" maxlength="120" value="${esc(d.depositReference || '')}" placeholder="Check #, transaction ID or note"></label></div></div></div>`;
 /* ===== invoice editor (layout modeled on Jobber's invoice page) ===== */
 const TERMS = [['0', 'Due upon receipt'], ['7', 'Net 7'], ['14', 'Net 14'], ['15', 'Net 15'], ['30', 'Net 30'], ['45', 'Net 45'], ['60', 'Net 60'], ['custom', 'Custom date']];
 // deposit paid on the quote behind the linked job, credited on that job's first invoice (mirrors invoiceCredits on the server)
@@ -785,7 +778,7 @@ function invDepositCredit(inv, jobId, total) {
   if (!q || !q.depositPaidAt) return null;
   const earlier = D.invoices.filter((i) => i.jobId === jobId && i.id !== inv.id && (!inv.id || (i.createdAt || '') < (inv.createdAt || '') || ((i.createdAt || '') === (inv.createdAt || '') && String(i.number) < String(inv.number))));
   if (earlier.length) return null;
-  return { amount: Math.min(total, round2(Number(q.depositPaidAmount ?? q.depositFee) || 0)), date: q.depositPaidAt, quote: q.number };
+  return { amount: Math.min(total, round2(Number(q.depositPaidAmount ?? q.depositFee) || 0)), date: q.depositPaidAt, quote: q.number, quoteId: q.id };
 }
 function invoiceForm(main, doc, preset) {
   const d = doc || {}; const p = preset || {}; const items = d.items && d.items.length ? d.items : [{}];
@@ -797,10 +790,7 @@ function invoiceForm(main, doc, preset) {
   const on = (k) => d[k] !== 'off';
   main.innerHTML = `<form class="qform iform"><div class="qpage"><div class="qmain">
 <div class="qtop"><div class="qtop-l"><a href="/invoices" data-link class="back">← Invoices</a>${iBadge(st)}${d.zelleSentAt && d.status !== 'paid' ? '<span class="badge zelle">Zelle sent</span>' : ''}</div>
-<div class="actions">${d.id ? `<details class="menu"><summary class="btn alt">⋯ More</summary><div class="menu-list">
-<a href="/pay/${d.token}" target="_blank">${d.status === 'paid' ? 'View receipt' : 'View pay page'}</a>
-${d.status !== 'paid' ? `<button type="button" data-act="collectPayment" data-id="${d.id}">Collect payment</button>` : ''}
-<button type="button" class="danger-text" data-act="delDoc" data-kind="invoice" data-id="${d.id}">Delete invoice</button></div></details>
+<div class="actions">${d.id ? `<a class="btn alt" href="/invoices/view?id=${d.id}" data-link>Cancel</a>
 <button class="btn alt" name="after" value="save">Save</button>${d.status !== 'paid' ? '<button class="btn" name="after" value="send" title="Saves your changes, then sends">Send…</button>' : ''}`
     : '<a class="btn alt" href="/invoices" data-link>Cancel</a><button class="btn alt" name="after" value="save">Save</button><button class="btn" name="after" value="send">Save &amp; send…</button>'}</div></div>
 <input name="subject" class="qtitle" value="${esc(d.subject || '')}" placeholder="Invoice subject (e.g. Camera System Install)" aria-label="Invoice subject">
@@ -834,7 +824,7 @@ ${c.phone ? `<a class="qphone" href="tel:${esc(c.phone)}">${esc(c.phone)}</a>` :
     const credit = removed ? null : found; const pays = d.payments || []; const paid = pays.reduce((s, p) => s + (Number(p.amount) || 0), 0);
     const balance = Math.max(0, round2(total - (credit ? credit.amount : 0) - paid));
     const others = D.invoices.filter((i) => i.clientId === $('[name=clientId]', form).value && i.id !== d.id && i.status !== 'paid' && i.status !== 'draft').reduce((s, i) => s + invBalance(i), 0);
-    $('.icredit', form).innerHTML = `${credit ? `<div class="crow-line dep-credit"><span>Deposit collected <span class="muted">· quote ${esc(credit.quote)}, ${fmtDate(credit.date)}</span></span><span>−${money(credit.amount)}</span><button type="button" class="t-rm" data-act="rmDepCredit" aria-label="Remove deposit from this invoice" title="Remove deposit from this invoice">${TRASH}</button></div>`
+    $('.icredit', form).innerHTML = `${credit ? `<div class="crow-line dep-credit"><span>Deposit collected <span class="muted">· quote ${esc(credit.quote)}, ${fmtDate(credit.date)}</span></span><span>−${money(credit.amount)}</span></div>`
       : found ? `<div class="crow-line dep-credit off"><span class="muted">Deposit of ${money(found.amount)} from quote ${esc(found.quote)} not applied</span><button type="button" class="link-btn" data-act="applyDepCredit">Apply deposit</button></div>` : ''}
 ${[...pays].sort((a, b) => a.date.localeCompare(b.date)).map((p) => `<div class="crow-line dep-credit"><span>Payment · ${esc(payLabel(p.method))} <span class="muted">· ${fmtDate(p.date)}${p.reference ? ' · ' + esc(p.reference) : ''}</span></span><span>−${money(p.amount)}</span></div>`).join('')}
 ${d.id && d.status !== 'paid' && balance > 0 ? `<div class="collect-row"><button type="button" class="btn alt sm" data-act="collectPayment" data-id="${d.id}">+ Collect payment</button></div>` : ''}
@@ -855,8 +845,7 @@ ${d.id && d.status !== 'paid' && balance > 0 ? `<div class="collect-row"><button
     if (!body.items.length) return toast('Add at least one line item', true);
     const saved = d.id ? await api('PUT', `/api/invoices/${d.id}`, body) : await api('POST', '/api/invoices', body);
     if ($('#discDefault', form).checked) { await api('PUT', '/api/company', { invoiceDisclaimer: body.disclaimer }); company.invoiceDisclaimer = body.disclaimer; }
-    toast('Invoice saved');
-    if (d.id) await refresh(); else await navigate('/invoices/edit?id=' + saved.id);
+    toast('Invoice saved'); await navigate('/invoices/view?id=' + saved.id);
     if (after === 'send') sendDialog('invoice', saved);
   });
 }
@@ -870,6 +859,8 @@ function docPage(kind, isNew) {
       const doc = byId(D[kind + 's'], qp('id'));
       if (!doc) { main.innerHTML = `<div class="card"><h1>${kind === 'quote' ? 'Quote' : 'Invoice'} not found</h1><p><a href="/${kind}s" data-link>Back to the list</a></p></div>`; return; }
       form(main, doc);
+      const at = { top: '.qtitle', items: '#items', message: '[name=notes]', terms: '[name=disclaimer]', notes: '[name=internalNotes]' }[location.hash.slice(1)];
+      const el = at && $(at, main); if (el) { el.closest('.qcard, .qtitle').scrollIntoView({ block: 'start' }); window.scrollBy(0, -80); }
     },
   };
 }
@@ -883,7 +874,7 @@ const discCard = (kind, text) => `<div class="qcard disc"><div class="qcard-h"><
 async function saveDisclaimer(form, text, msg) {
   const doc = form._doc; const kind = form._kind; const asDefault = $('#discDefault', form).checked;
   if (asDefault) { await api('PUT', '/api/company', { [kind + 'Disclaimer']: text }); company[kind + 'Disclaimer'] = text; }
-  if (doc.id) { await api('PUT', `/api/${kind}s/${doc.id}`, { disclaimer: text }); doc.disclaimer = text; }
+  if (doc.id) { await api('PUT', `/api/${kind}s/${doc.id}`, { disclaimer: text, ...(form._removeSig ? { removeSignature: true } : {}) }); doc.disclaimer = text; }
   form._discSaved = text; $('#discDefault', form).checked = false;
   toast(doc.id ? msg + (asDefault ? `, and set as the default for new ${kind}s` : '') : asDefault ? `Set as the default for new ${kind}s. It will be saved with this ${kind}.` : `It will be saved with this ${kind}`);
 }
@@ -946,16 +937,10 @@ const switchRow = (name, label, on, note, disabled) => `<label class="sw-row"><s
 function quoteForm(main, doc, preset) {
   const d = doc || {}; const p = preset || {}; const items = d.items && d.items.length ? d.items : [{}];
   const status = d.id ? quoteStatus(d) : 'draft'; const job = d.id ? quoteJob(d) : null;
-  const canJob = d.status === 'approved' && !job && (!(d.depositFee > 0) || d.depositPaidAt);
   const addr = (id) => esc((byId(D.clients, id) || {}).address || '');
   main.innerHTML = `<form class="qform"><div class="qpage"><div class="qmain">
 <div class="qtop"><div class="qtop-l"><a href="/quotes" data-link class="back">← Quotes</a>${qBadge(status)}</div>
-<div class="actions">${d.id ? `<details class="menu"><summary class="btn alt">⋯ More</summary><div class="menu-list">
-<a href="/p/quote/${d.token}" target="_blank">View as client</a>
-${d.status === 'sent' ? `<button type="button" data-act="approveQuote" data-id="${d.id}">Mark approved</button>` : ''}
-${d.status !== 'declined' && d.depositFee > 0 && !d.depositPaidAt ? `<button type="button" data-act="markDepositPaid" data-id="${d.id}">Record deposit payment${d.zelleSentAt ? ' (Zelle sent)' : ''}</button>` : ''}
-${canJob ? `<button type="button" data-act="quoteToJob" data-id="${d.id}">Create job</button>` : ''}${job ? `<a href="/jobs" data-link>Go to job ${esc(job.number)}</a>` : ''}
-<button type="button" class="danger-text" data-act="delDoc" data-kind="quote" data-id="${d.id}">Delete quote</button></div></details>
+<div class="actions">${d.id ? `<a class="btn alt" href="/quotes/view?id=${d.id}" data-link>Cancel</a>
 <button class="btn alt" name="after" value="save">Save</button><button class="btn" name="after" value="send" title="Saves your changes, then sends">Send…</button>`
     : '<a class="btn alt" href="/quotes" data-link>Cancel</a><button class="btn alt" name="after" value="save">Save</button><button class="btn" name="after" value="send">Save &amp; send…</button>'}</div></div>
 <input name="title" class="qtitle" value="${esc(d.title || '')}" placeholder="Quote title (e.g. Backyard cleanup)" aria-label="Quote title">
@@ -964,8 +949,7 @@ ${canJob ? `<button type="button" data-act="quoteToJob" data-id="${d.id}">Create
 <dl class="qmeta"><dt>Quote #</dt><dd><input name="number" class="num-in" maxlength="30" value="${esc(d.number || '')}" placeholder="Automatic" aria-label="Quote number" title="Leave blank for the next automatic number"></dd>
 <dt>Created</dt><dd>${fmtDate((d.createdAt || ymd(new Date())).slice(0, 10))}</dd>
 <dt>Status</dt><dd><select name="status" aria-label="Status">${['draft', 'sent', 'approved', 'declined'].map((s) => `<option value="${s}" ${(d.status || 'draft') === s ? 'selected' : ''}>${Q_STATUS[s]}</option>`).join('')}</select></dd></dl></div>
-${itemsCard(items, `${optRow({ label: 'Deposit', name: 'deposit', value: d.depositValue ?? d.depositFee, type: d.depositType, pctLabel: '% of total' })}<div class="dep-out muted"></div>`, d)}
-${d.depositPaidAt ? depositPaymentCard(d) : ''}
+${itemsCard(items, `${optRow({ label: 'Deposit', name: 'deposit', value: d.depositValue ?? d.depositFee, type: d.depositType, pctLabel: '% of total' })}<div class="dep-out muted"></div>${d.depositPaidAt ? `<div class="crow-line dep-credit"><span>Deposit collected <span class="muted">· ${fmtDate(d.depositPaidAt)}</span></span><span>−${money(depositPaid(d))}</span></div>` : ''}`, d)}
 <div class="qcard"><h2>Client message</h2><textarea name="notes" rows="3" placeholder="A message to your client, shown on the quote">${esc(d.notes || '')}</textarea></div>
 ${discCard('quote', d.id ? d.disclaimer || '' : company.quoteDisclaimer ?? DEFAULT_DISCLAIMER)}
 </div>
@@ -975,6 +959,7 @@ ${planHas('zelle') ? switchRow('allowZelle', 'Zelle', d.allowZelle !== 'off' && 
 <div class="qcard"><h3>Notes</h3><textarea name="internalNotes" rows="6" placeholder="Leave an internal note for yourself or a team member. Clients never see this.">${esc(d.internalNotes || '')}</textarea></div></aside></div></form>`;
   const form = $('form', main); wireItems(form);
   form._doc = d; form._kind = 'quote'; form._discSaved = $('[name=disclaimer]', form).value;
+  if (qp('unsign') === '1') form._removeSig = true; // confirmed on the quote page before opening the editor
   if (d.id && d.signedAt && d.depositPaidAt) guardSignature(form);
   form.addEventListener('change', (e) => {
     if (e.target.name === 'clientId') $('.qaddr', form).innerHTML = addr(e.target.value) || '<span class="muted">No address on file</span>';
@@ -986,8 +971,7 @@ ${planHas('zelle') ? switchRow('allowZelle', 'Zelle', d.allowZelle !== 'off' && 
     if (!body.items.length) return toast('Add at least one line item', true);
     const saved = d.id ? await api('PUT', `/api/quotes/${d.id}`, body) : await api('POST', '/api/quotes', body);
     if ($('#discDefault', form).checked) { await api('PUT', '/api/company', { quoteDisclaimer: body.disclaimer }); company.quoteDisclaimer = body.disclaimer; }
-    toast('Quote saved');
-    if (d.id) { await refresh(); } else { await navigate('/quotes/edit?id=' + saved.id); }
+    toast('Quote saved'); await navigate('/quotes/view?id=' + saved.id);
     if (after === 'send') sendDialog('quote', saved);
   });
 }
@@ -998,21 +982,100 @@ function guardSignature(form) {
     const t = e.target;
     if (form._removeSig || !t.closest('.qmain') || t.closest('.qtop') || !t.closest('input, select, textarea, button, label')) return;
     e.preventDefault(); e.stopPropagation(); if (e.type === 'focusin') t.blur();
-    if (!$('#overlay')) signatureDialog(form);
+    if (!$('#overlay')) signatureDialog(() => { form._removeSig = true; toast('You can edit the quote now. The signature is removed when you save a change.'); });
   };
   ['pointerdown', 'click', 'focusin', 'keydown'].forEach((ev) => form.addEventListener(ev, stop, true));
 }
-function signatureDialog(form) {
+function signatureDialog(onConfirm) {
   const mb = modal('Signature will be removed', `<p style="margin-top:0">Editing a paid quote will remove the client’s signature.</p>
 <p>To request a new signature, mark the quote as Awaiting Response, and re-send.</p>
 <label style="display:flex;align-items:center;gap:8px;font-weight:400"><input type="checkbox" class="sig-ok" style="width:auto;margin:0"> I understand</label>
 <div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button type="button" class="btn danger sig-rm" disabled>Remove Signature</button></div>`);
   $('.sig-ok', mb).addEventListener('change', (e) => { $('.sig-rm', mb).disabled = !e.target.checked; });
-  $('.sig-rm', mb).addEventListener('click', () => { form._removeSig = true; closeModal(); toast('You can edit the quote now. The signature is removed when you save a change.'); });
+  $('.sig-rm', mb).addEventListener('click', () => { closeModal(); onConfirm(); });
+}
+/* ===== quote and invoice pages at /quotes/view and /invoices/view: read-only. The pencil at the top right of a section
+   opens the editor at that section. Payments show as links to their payment page and can't be edited anywhere. ===== */
+const PENCIL = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
+const SECTION_NAMES = { top: 'details', items: 'products and services', message: 'client message', terms: 'contract / disclaimer', notes: 'internal notes' };
+const editBtn = (kind, d, sec) => `<button type="button" class="icon-btn sec-edit" data-act="editDoc" data-kind="${kind}" data-id="${d.id}" data-sec="${sec}" title="Edit ${SECTION_NAMES[sec]}" aria-label="Edit ${SECTION_NAMES[sec]}">${PENCIL}</button>`;
+// a signed quote with its deposit paid: confirm first that editing removes the client's signature
+A.editDoc = (x) => {
+  const go = (extra = '') => navigate(`/${x.kind}s/edit?id=${x.id}${extra}#${x.sec}`);
+  const q = x.kind === 'quote' && byId(D.quotes, x.id);
+  if (q && q.signedAt && q.depositPaidAt) return signatureDialog(() => go('&unsign=1'));
+  return go();
+};
+A.sendDoc = (x) => sendDialog(x.kind, byId(D[x.kind + 's'], x.id));
+const depositPaid = (q) => (q.depositPaidAt ? round2(Number(q.depositPaidAmount ?? q.depositFee) || 0) : 0);
+const vt = (label, value, cls = '') => `<div class="vt ${cls}"><span>${label}</span><span>${value}</span></div>`;
+const payLink = (rowId, label, date, extra = '') => `<a href="/payments/view?id=${encodeURIComponent(rowId)}" data-link class="pay-link">${label}</a> • ${fmtDate(String(date).slice(0, 10))}${extra}`;
+const viewItems = (d) => `<table class="vitems"><thead><tr><th>Line Item</th><th class="r">Quantity</th><th class="r">Unit Price</th><th class="r">Total</th></tr></thead><tbody>
+${(d.items || []).map((i) => `<tr><td><strong>${esc(i.desc)}</strong>${i.details ? `<div class="vd">${esc(i.details)}</div>` : ''}</td><td class="r">${esc(i.qty)}</td><td class="r">${money(i.price)}</td><td class="r">${money(round2(i.qty * i.price))}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">No line items</td></tr>'}</tbody></table>`;
+const viewTotals = (d) => vt('Subtotal', money(d.subtotal || 0)) + (d.discount ? vt(`Discount${d.discountType === 'percent' ? ` (${d.discountValue}%)` : ''}`, '−' + money(d.discount)) : '')
+  + vt(`Tax (${Number(d.taxRate) || 0}%)`, money(d.tax || 0)) + vt('<strong>Total</strong>', `<strong>${money(d.total || 0)}</strong>`, 'grand');
+const textCard = (kind, d, sec, title, text, empty) => `<div class="qcard"><div class="qcard-h"><h2>${title}</h2>${editBtn(kind, d, sec)}</div>${text ? `<p class="vtext">${esc(text)}</p>` : `<p class="muted" style="margin:0">${empty}</p>`}</div>`;
+const docCards = (kind, d) => textCard(kind, d, 'message', 'Client Message', d.notes, 'No message for the client')
+  + textCard(kind, d, 'terms', 'Contract / Disclaimer', d.disclaimer, 'No contract or disclaimer')
+  + textCard(kind, d, 'notes', 'Internal Notes', d.internalNotes, 'No internal notes. Clients never see these.');
+function viewPage(kind) {
+  return {
+    title: kind === 'quote' ? 'Quote' : 'Invoice',
+    async render(main) {
+      const d = byId(D[kind + 's'], qp('id'));
+      if (!d) { main.innerHTML = `<div class="card"><h1>${kind === 'quote' ? 'Quote' : 'Invoice'} not found</h1><p><a href="/${kind}s" data-link>Back to the list</a></p></div>`; return; }
+      main.innerHTML = (kind === 'quote' ? quotePage : invoicePage)(d);
+    },
+  };
+}
+function quotePage(d) {
+  const status = quoteStatus(d); const job = quoteJob(d); const c = byId(D.clients, d.clientId) || {};
+  const canJob = d.status === 'approved' && !job && (!(d.depositFee > 0) || d.depositPaidAt); const paid = depositPaid(d);
+  return `<div class="qview"><div class="qtop"><div class="qtop-l"><a href="/quotes" data-link class="back">← Quotes</a>${qBadge(status)}${d.signedAt ? `<span class="vsign">✓ Signed${d.signedName ? ' by ' + esc(d.signedName) : ''} · ${fmtDate(d.signedAt)}</span>` : ''}</div>
+<div class="actions"><details class="menu"><summary class="btn alt">⋯ More</summary><div class="menu-list">
+<a href="/p/quote/${d.token}" target="_blank">View as client</a>
+${d.status === 'sent' ? `<button type="button" data-act="approveQuote" data-id="${d.id}">Mark approved</button>` : ''}
+${d.status !== 'declined' && d.depositFee > 0 && !d.depositPaidAt ? `<button type="button" data-act="markDepositPaid" data-id="${d.id}">Record deposit payment${d.zelleSentAt ? ' (Zelle sent)' : ''}</button>` : ''}
+${canJob ? `<button type="button" data-act="quoteToJob" data-id="${d.id}">Create job</button>` : ''}${job ? `<a href="/jobs/edit?id=${job.id}" data-link>Go to job ${esc(job.number)}</a>` : ''}
+<button type="button" class="danger-text" data-act="delDoc" data-kind="quote" data-id="${d.id}">Delete quote</button></div></details>
+<button type="button" class="btn" data-act="sendDoc" data-kind="quote" data-id="${d.id}">Send…</button></div></div>
+<div class="vhead"><div class="vtitle-row"><h1 class="vtitle">${esc(d.title || 'Untitled quote')}</h1>${editBtn('quote', d, 'top')}</div>
+<div class="qhead"><div class="qclient"><div class="vclient">${esc(c.name || 'No client')}</div><div class="muted qlabel">Property address</div><div class="qaddr">${esc(c.address || '') || '<span class="muted">No address on file</span>'}</div></div>
+<dl class="qmeta"><dt>Quote #</dt><dd>${esc(d.number)}</dd><dt>Created</dt><dd>${fmtDate((d.createdAt || '').slice(0, 10))}</dd>${d.depositFee > 0 ? `<dt>Required deposit</dt><dd>${money(d.depositFee)}</dd>` : ''}</dl></div></div>
+<div class="qcard"><div class="qcard-h"><h2>Product / Service</h2>${editBtn('quote', d, 'items')}</div>${viewItems(d)}
+<div class="vtotals">${viewTotals(d)}${d.depositFee > 0 ? vt('Required deposit', money(d.depositFee))
+    + (d.depositPaidAt ? vt(payLink('q-' + d.id, 'Deposit collected', d.depositPaidAt), '−' + money(paid)) : '')
+    + vt('Outstanding deposit', money(Math.max(0, round2(d.depositFee - paid)))) : ''}</div></div>
+${docCards('quote', d)}</div>`;
+}
+function invoicePage(d) {
+  const c = byId(D.clients, d.clientId) || {}; const job = byId(D.jobs, d.jobId); const st = d.displayStatus || d.status;
+  const termsLabel = (TERMS.find(([k]) => k === String(d.paymentTerms)) || [, 'Custom date'])[1];
+  const pays = [...(d.payments || [])].sort((a, b) => a.date.localeCompare(b.date));
+  const others = D.invoices.filter((i) => i.clientId === d.clientId && i.id !== d.id && i.status !== 'paid' && i.status !== 'draft').reduce((s, i) => s + invBalance(i), 0);
+  return `<div class="qview"><div class="qtop"><div class="qtop-l"><a href="/invoices" data-link class="back">← Invoices</a>${iBadge(st)}${d.zelleSentAt && d.status !== 'paid' ? '<span class="badge zelle">Zelle sent</span>' : ''}</div>
+<div class="actions"><details class="menu"><summary class="btn alt">⋯ More</summary><div class="menu-list">
+<a href="/pay/${d.token}" target="_blank">${d.status === 'paid' ? 'View receipt' : 'View pay page'}</a>
+${d.status !== 'paid' ? `<button type="button" data-act="collectPayment" data-id="${d.id}">Collect payment</button>` : ''}
+<button type="button" class="danger-text" data-act="delDoc" data-kind="invoice" data-id="${d.id}">Delete invoice</button></div></details>
+${d.status !== 'paid' ? `<button type="button" class="btn" data-act="sendDoc" data-kind="invoice" data-id="${d.id}">Send…</button>` : ''}</div></div>
+<div class="vhead"><div class="vtitle-row"><h1 class="vtitle">${esc(d.subject || `Invoice ${d.number}`)}</h1>${editBtn('invoice', d, 'top')}</div>
+<div class="qhead"><div class="qclient"><div class="vclient">${esc(c.name || 'No client')}</div><div class="muted qlabel">Billing address</div><div class="qaddr">${esc(c.address || '') || '<span class="muted">No address on file</span>'}</div>
+<div class="muted qlabel" style="margin-top:10px">Property address</div><div class="qaddr">${job && job.address && job.address !== c.address ? esc(job.address) : '(Same as billing address)'}</div>
+${c.phone || c.email ? `<div class="vclient-c">${c.phone ? `<a href="tel:${esc(c.phone)}">${esc(c.phone)}</a>` : ''}${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ''}</div>` : ''}</div>
+<dl class="qmeta"><dt>Invoice #</dt><dd>${esc(d.number)}</dd>${job ? `<dt>Invoice for</dt><dd><a href="/jobs/edit?id=${job.id}" data-link>${esc(job.number + ' · ' + job.title)}</a></dd>` : ''}
+<dt>Issued</dt><dd>${fmtDate(d.issueDate)}</dd><dt>Payment terms</dt><dd>${esc(termsLabel)}</dd><dt>Due date</dt><dd>${fmtDate(d.dueDate)}</dd></dl></div></div>
+<div class="qcard"><div class="qcard-h"><h2>Product / Service</h2>${editBtn('invoice', d, 'items')}</div>${viewItems(d)}
+<div class="vtotals">${viewTotals(d)}${d.depositApplied ? vt(payLink('q-' + d.depositQuoteId, 'Deposit collected', d.depositAppliedAt, ` <span class="muted">· quote ${esc(d.depositQuote)}</span>`), '−' + money(d.depositApplied)) : ''}
+${pays.map((p) => vt(payLink(p.id, 'Payment collected', p.date, ` <span class="muted">· ${esc(payLabel(p.method))}</span>`), '−' + money(p.amount))).join('')}
+${!pays.length && d.status === 'paid' && d.paidAt ? vt(payLink('i-' + d.id, 'Paid', d.paidAt, d.paymentMethod ? ` <span class="muted">· ${esc(payLabel(d.paymentMethod))}</span>` : ''), '') : ''}
+${vt('Invoice balance', money(invBalance(d)), 'strong')}${vt(`Account balance <span class="muted">(including this ${d.status === 'draft' ? 'draft' : 'invoice'})</span>`, money(others + invBalance(d)))}</div></div>
+${docCards('invoice', d)}</div>`;
 }
 PAGES['/quotes/new'] = docPage('quote', true); PAGES['/quotes/edit'] = docPage('quote', false);
 PAGES['/invoices/new'] = docPage('invoice', true); PAGES['/invoices/edit'] = docPage('invoice', false);
-A.delDoc = async (d) => { if (!confirm('Delete this ' + d.kind + '?')) return; await api('DELETE', `/api/${d.kind}s/${d.id}`); closeModal(); curPath().endsWith('/edit') ? navigate(`/${d.kind}s`) : refresh(); };
+PAGES['/quotes/view'] = viewPage('quote'); PAGES['/invoices/view'] = viewPage('invoice');
+A.delDoc = async (d) => { if (!confirm('Delete this ' + d.kind + '?')) return; await api('DELETE', `/api/${d.kind}s/${d.id}`); closeModal(); /\/(edit|view)$/.test(curPath()) ? navigate(`/${d.kind}s`) : refresh(); };
 A.newQuoteFor = (d) => { closeModal(); navigate('/quotes/new?client=' + d.id); };
 
 
@@ -1072,7 +1135,7 @@ ${list.map((q) => { const c = byId(D.clients, q.clientId) || {}; return `<tr cla
     let t; $('#qq').addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(async () => { quoteView.q = e.target.value; await refresh(); const q = $('#qq'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 250); });
     $('#qSelAll').addEventListener('change', (e) => { list.forEach((q) => (e.target.checked ? quoteSel.add(q.id) : quoteSel.delete(q.id))); refresh(); });
     $$('.qsel').forEach((b) => b.addEventListener('change', (e) => { e.target.checked ? quoteSel.add(e.target.value) : quoteSel.delete(e.target.value); refresh(); }));
-    $$('.crow').forEach((r) => r.addEventListener('click', (e) => { if (!e.target.closest('input')) navigate('/quotes/edit?id=' + r.dataset.id); }));
+    $$('.crow').forEach((r) => r.addEventListener('click', (e) => { if (!e.target.closest('input')) navigate('/quotes/view?id=' + r.dataset.id); }));
   },
 };
 A.quoteFilter = (d) => { quoteView = { ...quoteView, status: d.s }; refresh(); };
@@ -1087,7 +1150,7 @@ A.deleteSelQuotes = async () => {
 A.exportQuotes = () => downloadCsv('quotes.csv', [['Quote', 'Title', 'Client', 'Company', 'Property', 'Created', 'Sent', 'Status', 'Subtotal', 'Tax', 'Total', 'Deposit', 'Deposit paid'],
   ...D.quotes.map((q) => { const c = byId(D.clients, q.clientId) || {}; return [q.number, q.title || '', c.name || '', c.company || '', c.address || '', (q.createdAt || '').slice(0, 10), (q.sentAt || '').slice(0, 10), Q_STATUS[quoteStatus(q)], q.subtotal, q.tax, q.total, q.depositFee || 0, q.depositPaidAt ? (q.depositPaidAmount ?? q.depositFee) : '']; })]);
 A.newQuote = () => navigate('/quotes/new');
-A.editQuote = (d) => navigate('/quotes/edit?id=' + d.id);
+A.editQuote = (d) => navigate('/quotes/view?id=' + d.id);
 A.sendQuote = (d) => sendDialog('quote', byId(D.quotes, d.id));
 A.approveQuote = async (d) => { await api('POST', `/api/quotes/${d.id}/approve`, {}); toast('Quote approved'); refresh(); };
 A.setDeposit = (d) => {
@@ -1171,7 +1234,7 @@ ${list.map((i) => `<tr class="crow" data-id="${i.id}"><td><strong>${esc(cname(i)
 <td class="r"><strong>${money(i.total)}</strong></td><td class="r"><strong>${money(invBalance(i))}</strong></td></tr>`).join('') || `<tr><td colspan="7" class="empty">${D.invoices.length ? 'No invoices match these filters' : 'No invoices yet'}</td></tr>`}</table></div></div>`;
     $$('[data-iv]').forEach((s) => s.addEventListener('change', (e) => { invView[e.target.dataset.iv] = e.target.value; refresh(); }));
     let t; $('#iq').addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(async () => { invView.q = e.target.value; await refresh(); const q = $('#iq'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 250); });
-    $$('.crow').forEach((r) => r.addEventListener('click', () => navigate('/invoices/edit?id=' + r.dataset.id)));
+    $$('.crow').forEach((r) => r.addEventListener('click', () => navigate('/invoices/view?id=' + r.dataset.id)));
   },
 };
 A.invFilter = (d) => { invView = { ...invView, status: d.s }; refresh(); };
@@ -1180,7 +1243,7 @@ A.invSort = (d) => { invView.dir = invView.sort === d.k ? -invView.dir : (['clie
 A.exportInvoices = () => downloadCsv('invoices.csv', [['Invoice', 'Client', 'Company', 'Subject', 'Issued', 'Due', 'Status', 'Subtotal', 'Tax', 'Total', 'Balance', 'Paid on', 'Paid by'],
   ...D.invoices.map((i) => { const c = byId(D.clients, i.clientId) || {}; return [i.number, c.name || '', c.company || '', invSubject(i), i.issueDate, i.dueDate, I_STATUS[i.displayStatus], i.subtotal, i.tax, i.total, invBalance(i), i.paidAt || '', i.paymentMethod ? payLabel(i.paymentMethod) : '']; })]);
 A.newInvoice = () => navigate('/invoices/new');
-A.editInvoice = (d) => navigate('/invoices/edit?id=' + d.id);
+A.editInvoice = (d) => navigate('/invoices/view?id=' + d.id);
 A.sendInvoice = (d) => sendDialog('invoice', byId(D.invoices, d.id));
 // record a payment received outside the app (cash, check, Zelle…) on an invoice; part payments allowed
 A.collectPayment = (d) => {
@@ -1214,7 +1277,7 @@ ${j.status === 'scheduled' ? `<button type="button" class="btn alt need-jobs-edi
 <dl class="qmeta"><dt>Job #</dt><dd>${j.number ? esc(j.number) : '<span class="muted">Assigned when saved</span>'}</dd>
 <dt>Status</dt><dd><select name="status" aria-label="Status">${[['scheduled', 'Scheduled'], ['completed', 'Completed'], ['cancelled', 'Cancelled']].map(([k, l]) => `<option value="${k}" ${(j.status || 'scheduled') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></dd>
 <dt>Created</dt><dd>${fmtDate((j.createdAt || ymd(new Date())).slice(0, 10))}</dd>
-<dt>From quote</dt><dd>${q ? `<a href="/quotes/edit?id=${q.id}" data-link>${esc(q.number)}</a>` : '<span class="muted">—</span>'}</dd></dl></div>
+<dt>From quote</dt><dd>${q ? `<a href="/quotes/view?id=${q.id}" data-link>${esc(q.number)}</a>` : '<span class="muted">—</span>'}</dd></dl></div>
 ${!canDo('jobs.prices') ? '' : itemsCard(items, '<div class="jdeposit"></div>', j.taxRate !== undefined ? j : q || j)}
 <div class="qcard"><h2>Scheduled visit</h2><div class="row3"><label>Date<input type="date" name="date" required value="${esc(j.date || p.date || ymd(new Date()))}"></label>
 <label>Start<input type="time" name="startTime" value="${esc(j.startTime || '09:00')}"></label><label>End<input type="time" name="endTime" value="${esc(j.endTime || '11:00')}"></label></div>
@@ -1224,7 +1287,7 @@ ${!canDo('jobs.prices') ? '' : itemsCard(items, '<div class="jdeposit"></div>', 
 ${j.id && j.signature ? sigCard(j) : ''}
 <div class="qcard need-jobs-prices"><div class="qcard-h"><h2>Billing</h2>${j.id ? `<button type="button" class="btn alt sm" data-act="jobInvoice" data-id="${j.id}">+ Create invoice</button>` : ''}</div>
 ${!j.id ? '<p class="muted">Save the job first, then create invoices from it.</p>' : invs.length ? `<div class="tablewrap"><table class="mini"><tr><th>Invoice</th><th>Due date</th><th>Status</th><th>Subject</th><th class="r">Total</th><th class="r">Balance</th></tr>
-${invs.map((i) => `<tr><td><a href="/invoices/edit?id=${i.id}" data-link>${esc(i.number)}</a></td><td>${fmtDate(i.dueDate)}</td><td>${iBadge(i.displayStatus)}</td><td>${esc(invSubject(i))}</td><td class="r">${money(i.total)}</td><td class="r">${money(invBalance(i))}</td></tr>`).join('')}</table></div>`
+${invs.map((i) => `<tr><td><a href="/invoices/view?id=${i.id}" data-link>${esc(i.number)}</a></td><td>${fmtDate(i.dueDate)}</td><td>${iBadge(i.displayStatus)}</td><td>${esc(invSubject(i))}</td><td class="r">${money(i.total)}</td><td class="r">${money(invBalance(i))}</td></tr>`).join('')}</table></div>`
     : '<p class="muted">No invoices yet. Create one when the work is done.</p>'}</div></div>
 <aside class="qside"><div class="qcard"><h3>Notes</h3><textarea name="internalNotes" rows="8" placeholder="Leave an internal note for yourself or a team member. Clients never see this.">${esc(j.internalNotes || '')}</textarea></div></aside></div></form>`;
   const form = $('form', main);
@@ -1312,7 +1375,7 @@ A.newJobOn = (d) => !canDo('jobs.edit') || navigate('/jobs/new?date=' + d.date);
 A.editJob = (d) => { closeModal(); navigate('/jobs/edit?id=' + d.id); };
 A.delJob = async (d) => { if (!confirm('Delete this job?')) return; await api('DELETE', '/api/jobs/' + d.id); closeModal(); toast('Job deleted'); curPath() === '/jobs/edit' ? navigate('/jobs') : refresh(); };
 A.reopenJob = async (d) => { await api('PUT', '/api/jobs/' + d.id, { status: 'scheduled' }); toast('Job reopened'); refresh(); };
-A.jobInvoice = async (d) => { const inv = await api('POST', `/api/jobs/${d.id}/create-invoice`, {}); closeModal(); toast('Draft invoice created'); navigate('/invoices/edit?id=' + inv.id); };
+A.jobInvoice = async (d) => { const inv = await api('POST', `/api/jobs/${d.id}/create-invoice`, {}); closeModal(); toast('Draft invoice created'); navigate('/invoices/view?id=' + inv.id); };
 A.jobRemind = async (d) => { const r = await api('POST', `/api/jobs/${d.id}/remind`, { channels: [planHas('sms') ? 'sms' : 'email'] }); toast(r.results[0].status === 'simulated' ? 'Reminder logged (no message provider connected)' : 'Reminder ' + r.results[0].status, r.results[0].status === 'failed'); };
 // Job status as shown on the Jobs page, derived from the stored status (scheduled/completed/cancelled), the date and invoices
 const J_STATUS = { late: 'Late', today: 'Today', upcoming: 'Upcoming', invoice: 'Requires invoicing', archived: 'Archived', cancelled: 'Cancelled' };

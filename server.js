@@ -159,21 +159,9 @@ function computeTotals(doc) {
 // what the client agreed to when they signed: everything they see on the quote and its deposit payment (not internal notes or the payment switches)
 const QUOTE_TERMS = ['title', 'clientId', 'number', 'status', 'notes', 'disclaimer', 'items', 'taxRate', 'discountType', 'discountValue', 'depositType', 'depositValue', 'depositFee', 'total', 'depositPaidAt', 'depositPaidAmount', 'depositMethod', 'depositReference'];
 const quoteTerms = (q) => JSON.stringify(QUOTE_TERMS.map((k) => (typeof q[k] === 'string' ? q[k].replace(/\r\n/g, '\n') : q[k] ?? '')));
-// admin edits to a recorded deposit payment from the quote editor: correct the amount, date, method or reference. A recorded payment can't be removed.
-function applyDepositPaymentEdit(doc, upd, was) {
-  delete doc.depositPayment;
-  if (was.depositPaidAt) { // paid before this edit: it stays paid
-    if (!doc.depositPaidAt) doc.depositPaidAt = was.depositPaidAt;
-    Object.assign(doc, { depositStatus: 'paid', depositMethod: doc.depositMethod || was.depositMethod });
-  }
-  if (doc.depositPaidAt) {
-    doc.depositPaidAmount = round2(Number(doc.depositPaidAmount ?? doc.depositFee) || 0);
-    if (!(doc.depositPaidAmount > 0)) doc.depositPaidAmount = was.depositPaidAmount ?? was.depositFee ?? doc.depositFee; // 0 would remove it
-    if ('depositMethod' in upd && !PAY_METHODS[upd.depositMethod]) doc.depositMethod = db.quotes.find((x) => x.id === doc.id)?.depositMethod || 'other'; // only listed methods can be chosen
-    if ('depositReference' in upd) doc.depositReference = String(upd.depositReference || '').trim().slice(0, 120);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(doc.depositPaidAt))) doc.depositPaidAt = iso(new Date());
-  } else { delete doc.depositPaidAmount; } // no payment recorded: ignore stray fields
-}
+// payments are recorded, paid online and refunded through their own endpoints; a quote or invoice edit can never change one
+const PAYMENT_FIELDS = { quotes: ['depositPaidAt', 'depositPaidAmount', 'depositMethod', 'depositReference', 'depositStatus', 'depositRefunds', 'depositPayment'],
+  invoices: ['payments', 'paidAt', 'paidAmount', 'paymentMethod', 'stripeSessionId', 'stripePaymentIntent'] };
 const money = (n) => '$' + Number(n).toFixed(2);
 const findClient = (id) => db.clients.find((c) => c.id === id);
 function invoiceStatus(inv) {
@@ -195,7 +183,7 @@ function invoiceCredits(inv, ignoreStatus) {
   const credit = q && q.depositPaidAt && first && first.id === inv.id && !inv.depositCreditRemoved ? Math.min(inv.total || 0, Math.max(0, round2((Number(q.depositPaidAmount ?? q.depositFee) || 0) - refundedOf(q.depositRefunds)))) : 0;
   const paid = round2((inv.payments || []).reduce((s, p) => s + (Number(p.amount) || 0) - refundedOf(p.refunds), 0));
   const balance = Math.max(0, round2((inv.total || 0) - credit - paid));
-  return { depositApplied: credit, depositAppliedAt: credit ? q.depositPaidAt : null, depositQuote: credit ? q.number : null, amountPaid: paid, balanceDue: !ignoreStatus && inv.status === 'paid' ? 0 : balance };
+  return { depositApplied: credit, depositAppliedAt: credit ? q.depositPaidAt : null, depositQuote: credit ? q.number : null, depositQuoteId: credit ? q.id : null, amountPaid: paid, balanceDue: !ignoreStatus && inv.status === 'paid' ? 0 : balance };
 }
 const withStatus = (inv) => ({ ...inv, displayStatus: invoiceStatus(inv), ...invoiceCredits(inv) });
 
@@ -1045,6 +1033,9 @@ app.put('/api/:col/:id', (req, res, next) => {
   if (i < 0) return res.status(404).json({ error: 'Not found' });
   const protectedKeys = ['id', 'number', 'token', 'portalToken', 'createdAt'];
   let upd = { ...req.body }; protectedKeys.forEach((k) => delete upd[k]);
+  (PAYMENT_FIELDS[col] || []).forEach((k) => delete upd[k]);
+  if (col === 'invoices' && (upd.status === 'paid' || db.invoices[i].status === 'paid')) delete upd.status; // paid only by its payments
+  if (col === 'invoices' && upd.depositCreditRemoved && !db.invoices[i].depositCreditRemoved) delete upd.depositCreditRemoved; // a collected deposit stays credited
   const removeSignature = col === 'quotes' && upd.removeSignature === true; if (col === 'quotes') { delete upd.removeSignature; delete upd.signedAt; delete upd.signedName; } // signatures only from the client's quote page
   if (DOC_NUM[col] && String((req.body || {}).number || '').trim() && req.body.number !== db[col][i].number) { // renumber a quote / invoice
     const r = customNumber(col, req.body.number, req.params.id); if (r.error) return res.status(400).json({ error: r.error }); upd.number = r.number;
@@ -1052,7 +1043,6 @@ app.put('/api/:col/:id', (req, res, next) => {
   if (col === 'jobs' && isMemberReq(req)) upd = Object.fromEntries(Object.entries(upd).filter(([k]) => MEMBER_JOB_FIELDS.includes(k)));
   if (col === 'tasks' || col === 'events') { const bad = calItemProblem({ ...db[col][i], ...upd }); if (bad) return res.status(400).json({ error: bad }); }
   let doc = { ...db[col][i], ...upd };
-  if (col === 'quotes') applyDepositPaymentEdit(doc, upd, db.quotes[i]);
   // sent back to the client (Draft or Sent) before any deposit is paid: they approve and sign again, so the old signature goes
   if (col === 'quotes' && ['draft', 'sent'].includes(doc.status) && doc.status !== db.quotes[i].status && !doc.depositPaidAt) {
     doc.signedAt = null; doc.signedName = null; if (doc.depositStatus === 'pending') doc.depositStatus = null;

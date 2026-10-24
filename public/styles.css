@@ -211,6 +211,19 @@ table.mini th,table.mini td{padding:9px 8px;font-size:14px;vertical-align:middle
 .totals.qtotals{margin:16px 0 0 auto;max-width:560px;text-align:left;padding-top:4px}
 .qtotals .deposit{justify-content:space-between;margin-top:10px}.qtotals .dep-out{text-align:right;font-size:13px}
 .qcard-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}.qcard-h h2{margin:0}
+/* quote and invoice pages: read-only; the pencil at the top right of a section opens the editor there */
+.vtitle-row{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.vtitle-row .sec-edit{flex:none;margin-top:4px}.qview .qmeta{grid-template-columns:150px 1fr}
+.vtitle{font-size:28px;font-weight:800;margin:4px 0 16px;letter-spacing:-.01em;overflow-wrap:anywhere}
+.vclient{font-weight:700;margin-bottom:12px}.vclient-c{display:flex;flex-direction:column;gap:2px;margin-top:10px;font-size:14px}
+.vitems{width:100%;border-collapse:collapse;font-size:14px}.vitems th{text-align:left;font-weight:600;padding:0 0 10px;border-bottom:1px solid var(--line)}
+.vitems td{padding:14px 0;border-bottom:1px solid var(--line);vertical-align:top}.vitems th.r,.vitems td.r{text-align:right;padding-left:16px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.vitems .vd{white-space:pre-wrap;margin-top:10px;line-height:1.5}
+.vtotals{margin:4px 0 0 auto;max-width:560px}.vt{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--line);font-size:14px}
+.vt>:last-child{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}.vt.grand{font-size:17px;font-weight:700;border-bottom:3px solid var(--line)}
+.vt .pay-link{color:var(--brand);font-weight:600;text-decoration:underline}.vt.strong{font-weight:700}
+.vtext{white-space:pre-wrap;margin:0;font-size:14px;line-height:1.55;overflow-wrap:anywhere}
+.vsign{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+@media (max-width:600px){.vitems th:nth-child(2),.vitems th:nth-child(3),.vitems td:nth-child(2),.vitems td:nth-child(3){display:none}}
 .icon-btn{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border:0;border-radius:8px;background:none;color:var(--muted);cursor:pointer}
 .icon-btn:hover{background:var(--bad-bg);color:var(--danger)}
 .fl{position:relative;display:block;margin:0 0 10px;border:1px solid var(--border);border-radius:8px;background:var(--card);padding:20px 12px 6px}
