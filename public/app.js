@@ -1024,7 +1024,7 @@ function viewPage(kind) {
     async render(main) {
       const d = byId(D[kind + 's'], qp('id'));
       if (!d) { main.innerHTML = `<div class="card"><h1>${kind === 'quote' ? 'Quote' : 'Invoice'} not found</h1><p><a href="/${kind}s" data-link>Back to the list</a></p></div>`; return; }
-      main.innerHTML = (kind === 'quote' ? quotePage : invoicePage)(d);
+      main.innerHTML = phoneMq.matches ? mobileDocPage(kind, d) : (kind === 'quote' ? quotePage : invoicePage)(d);
     },
   };
 }
@@ -1072,6 +1072,205 @@ ${!pays.length && d.status === 'paid' && d.paidAt ? vt(payLink('i-' + d.id, 'Pai
 ${vt('Invoice balance', money(invBalance(d)), 'strong')}${vt(`Account balance <span class="muted">(including this ${d.status === 'draft' ? 'draft' : 'invoice'})</span>`, money(others + invBalance(d)))}</div></div>
 ${docCards('invoice', d)}</div>`;
 }
+/* ===== phones: the quote and invoice pages work like an app. Tap a section to change it: a full-screen page
+   (details, line items, discount, deposit, messages) or a sheet from the bottom (tax, client payments, more actions).
+   Each change saves on its own. Payments only link to their payment page. ===== */
+const X_ICO = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+const CHEV = (d) => `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
+const ARROW = '<svg class="md-arrow" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
+// a full-screen page (full) or a sheet that slides up from the bottom; returns its form
+function mSheet(title, html, { full = false, foot = '' } = {}) {
+  mClose(true);
+  const o = document.createElement('div'); o.id = 'msheet'; o.className = `msheet ${full ? 'full' : 'bottom'}`;
+  o.innerHTML = `<div class="ms-panel" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="ms-head"><button type="button" class="ms-x" data-act="mClose" aria-label="Close">${X_ICO}</button><h2>${esc(title)}</h2><span class="ms-sp"></span></div>
+<form class="ms-body" novalidate>${html}${foot ? `<div class="ms-foot">${foot}</div>` : ''}</form></div>`;
+  o.addEventListener('mousedown', (e) => { if (e.target === o) mClose(); });
+  document.body.appendChild(o); document.body.classList.add('ms-open');
+  requestAnimationFrame(() => o.classList.add('on'));
+  return $('form', o);
+}
+function mClose(now) {
+  const o = $('#msheet'); if (!o) return; document.body.classList.remove('ms-open');
+  if (now === true) return o.remove();
+  o.classList.remove('on'); setTimeout(() => o.remove(), 220);
+}
+A.mClose = () => mClose();
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $('#msheet') && !$('#overlay')) mClose(); });
+const mSaveBtn = (label = 'Save') => `<button class="btn ms-save">${label}</button>`;
+const mField = (label, input) => `<label class="mf"><span>${label}</span>${input}</label>`;
+// a signed quote with a paid deposit: confirmed once (signature dialog) before its first change on this page
+let mUnsign = '';
+async function mSave(kind, d, patch, msg) {
+  await api('PUT', `/api/${kind}s/${d.id}`, { ...patch, ...(mUnsign === d.id ? { removeSignature: true } : {}) });
+  mClose(); toast(msg || 'Saved'); return refresh();
+}
+const onSubmit = (form, fn) => form.addEventListener('submit', async (e) => {
+  e.preventDefault(); const b = $('.ms-save', form); if (b) b.disabled = true;
+  try { await fn(new FormData(form)); } catch (x) { toast(x.message, true); if (b) b.disabled = false; }
+});
+A.mEdit = (x) => {
+  const kind = x.kind; const d = byId(D[kind + 's'], x.id); if (!d) return;
+  const open = () => M_EDIT[x.sec](kind, d, x);
+  if (kind === 'quote' && d.signedAt && d.depositPaidAt && mUnsign !== d.id) return signatureDialog(() => { mUnsign = d.id; open(); });
+  return open();
+};
+// $ / % amount pages: discount and required deposit
+function mAmount(kind, d, { title, label, type, value, name, pct }) {
+  const f = mSheet(title, `<div class="mseg" role="radiogroup">${[['percent', `${pct} (%)`], ['flat', 'Fixed ($)']].map(([k, l]) => `<label><input type="radio" name="${name}Type" value="${k}" ${(type === 'percent') === (k === 'percent') ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div>
+<label class="mf mf-amt"><span>${label}</span><span class="mf-in"><b class="pre">$</b><input name="${name}Value" type="number" inputmode="decimal" step="any" min="0" value="${Number(value) > 0 ? esc(value) : ''}" placeholder="0"><b class="suf">%</b><button type="button" class="mf-clear" aria-label="Clear">${X_ICO}</button></span></label>`, { full: true, foot: mSaveBtn() });
+  const sync = () => f.classList.toggle('pct', f[name + 'Type'].value === 'percent'); sync();
+  f.addEventListener('change', sync); $('.mf-clear', f).addEventListener('click', () => { f[name + 'Value'].value = ''; f[name + 'Value'].focus(); });
+  setTimeout(() => f[name + 'Value'].focus(), 260);
+  onSubmit(f, (fd) => mSave(kind, d, { [name + 'Type']: fd.get(name + 'Type'), [name + 'Value']: Math.max(0, Number(fd.get(name + 'Value')) || 0) }));
+}
+function mText(kind, d, title, name, placeholder, extra = '') {
+  const f = mSheet(title, `${mField(title, `<textarea name="${name}" rows="6" placeholder="${esc(placeholder)}">${esc(d[name] || '')}</textarea>`)}${extra}`, { full: true, foot: mSaveBtn() });
+  const t = f[name]; const grow = () => { t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; };
+  t.addEventListener('input', grow); setTimeout(() => { grow(); t.focus(); t.setSelectionRange(t.value.length, t.value.length); }, 260);
+  return f;
+}
+const M_EDIT = {
+  details(kind, d) {
+    const q = kind === 'quote';
+    const f = mSheet(q ? 'Quote details' : 'Invoice details', `${mField(q ? 'Title' : 'Subject', `<input name="${q ? 'title' : 'subject'}" value="${esc((q ? d.title : d.subject) || '')}" maxlength="120">`)}
+${mField('Client', `<select name="clientId">${clientOptions(d.clientId)}</select>`)}
+${mField(q ? 'Quote #' : 'Invoice #', `<input name="number" value="${esc(d.number || '')}" maxlength="30">`)}
+${q ? mField('Status', `<select name="status">${['draft', 'sent', 'approved', 'declined'].map((s) => `<option value="${s}" ${d.status === s ? 'selected' : ''}>${Q_STATUS[s]}</option>`).join('')}</select>`)
+    : `${mField('Invoice for', `<select name="jobId"><option value="">No job</option>${D.jobs.map((j) => `<option value="${j.id}" ${d.jobId === j.id ? 'selected' : ''}>${esc(j.number + ' · ' + j.title)}</option>`).join('')}</select>`)}
+${mField('Issued', `<input type="date" name="issueDate" value="${esc(d.issueDate || '')}">`)}
+${mField('Payment terms', `<select name="paymentTerms">${TERMS.map(([k, l]) => `<option value="${k}" ${String(d.paymentTerms || 'custom') === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}
+${mField('Due date', `<input type="date" name="dueDate" value="${esc(d.dueDate || '')}">`)}`}`, { full: true, foot: mSaveBtn() });
+    if (!q) f.addEventListener('change', (e) => {
+      const t = f.paymentTerms.value;
+      if ((e.target.name === 'paymentTerms' || e.target.name === 'issueDate') && t !== 'custom') f.dueDate.value = ymd(addDays(parseD(f.issueDate.value || ymd(new Date())), Number(t)));
+      if (e.target.name === 'dueDate') f.paymentTerms.value = 'custom';
+    });
+    onSubmit(f, (fd) => { const b = Object.fromEntries(fd); if (!b.clientId) throw new Error('Choose a client'); return mSave(kind, d, b); });
+  },
+  item(kind, d, x) {
+    const i = x.i === '' || x.i === undefined ? -1 : Number(x.i); const it = i >= 0 ? d.items[i] : { qty: 1 };
+    const f = mSheet(i >= 0 ? 'Edit line item' : 'Add line item', `<div class="item-row m-item">${mField('Name', `<input class="desc" name="desc" list="mSvc" value="${esc(it.desc || '')}" maxlength="200" autocomplete="off">`)}
+<datalist id="mSvc">${D.services.map((s) => `<option value="${esc(s.name)}">`).join('')}</datalist>
+<label class="mf"><span>Description</span><textarea class="details" name="details" rows="4">${esc(it.details || '')}</textarea>${aiOn() ? AI_BTN : ''}</label></div>
+${mField('Unit Price', `<span class="mf-in"><b class="pre">$</b><input name="price" type="number" inputmode="decimal" step="any" min="0" value="${it.price ?? ''}" placeholder="0"></span>`)}
+${mField('Quantity', `<input name="qty" type="number" inputmode="decimal" step="any" min="0" value="${esc(it.qty ?? 1)}">`)}
+<div class="m-total"><span>Total</span><strong class="m-tot"></strong></div>`, { full: true, foot: `${mSaveBtn('Save Line Item')}${i >= 0 ? '<button type="button" class="btn alt ms-more" data-act="mRmItem" aria-label="Delete line item" title="Delete line item">⋯</button>' : ''}` });
+    f._ctx = { kind, d, i };
+    const tot = () => { $('.m-tot', f).textContent = money(round2((Number(f.price.value) || 0) * (Number(f.qty.value) || 0))); }; tot();
+    f.addEventListener('input', tot);
+    f.desc.addEventListener('change', () => { const s = D.services.find((v) => v.name === f.desc.value.trim()); if (!s) return; if (!f.price.value) f.price.value = s.price; if (!f.details.value) f.details.value = s.description || ''; tot(); });
+    onSubmit(f, (fd) => {
+      const desc = String(fd.get('desc')).trim(); if (!desc) throw new Error('Enter the item’s name');
+      const price = Math.max(0, Number(fd.get('price')) || 0); const old = i >= 0 ? it : {};
+      // keep the item's markup when its price changes: work the cost back from the new price
+      const m = Number(old.markup) || 0; const flat = old.markupType === 'flat';
+      const cost = !m ? price : flat ? Math.max(0, price - m) : price / (1 + m / 100);
+      const item = { ...old, desc, details: String(fd.get('details')), qty: Number(fd.get('qty')) || 0, cost, markup: m, markupType: flat ? 'flat' : 'percent', price };
+      const items = [...(d.items || [])]; if (i >= 0) items[i] = item; else items.push(item);
+      return mSave(kind, d, { items }, i >= 0 ? 'Line item saved' : 'Line item added');
+    });
+    if (i < 0) setTimeout(() => f.desc.focus(), 260);
+  },
+  discount: (kind, d) => mAmount(kind, d, { title: d.discount ? 'Edit discount' : 'Add discount', label: 'Discount', type: d.discountType, value: d.discountValue, name: 'discount', pct: 'Percent' }),
+  deposit: (kind, d) => mAmount(kind, d, { title: 'Required deposit', label: 'Deposit', type: d.depositType, value: d.depositValue ?? d.depositFee, name: 'deposit', pct: 'Percent' }),
+  tax(kind, d) {
+    const rate = Number(d.taxRate) || 0;
+    const f = mSheet(rate ? `Tax (${rate}%)` : 'Tax', `<div class="ms-list">${rate ? `<button type="button" data-k="change">${CHEV('M4 7h16M4 12h10M4 17h7')}Change tax rate</button><button type="button" data-k="remove">${X_ICO}Remove tax rate</button>` : `<button type="button" data-k="change">${CHEV('M12 5v14M5 12h14')}Add tax rate</button>`}</div>`);
+    f.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-k]'); if (!b) return;
+      if (b.dataset.k === 'remove') return mSave(kind, d, { taxRate: 0 }, 'Tax removed').catch((x) => toast(x.message, true));
+      const g = mSheet('Tax rate', mField('Tax rate', `<span class="mf-in"><input name="taxRate" type="number" inputmode="decimal" step="any" min="0" value="${rate || company.taxRate || ''}" placeholder="0"><b class="suf on">%</b></span>`), { full: true, foot: mSaveBtn() });
+      setTimeout(() => g.taxRate.focus(), 260);
+      onSubmit(g, (fd) => mSave(kind, d, { taxRate: Math.max(0, Number(fd.get('taxRate')) || 0) }, 'Tax rate saved'));
+    });
+  },
+  payments(kind, d) {
+    const f = mSheet('Client payments', `<div class="ms-sw">${planHas('onlinePayments') ? switchRow('allowCard', 'Accept card payments', d.allowCard !== 'off' && cardReady(), cardReady() ? '' : cardHint(), !cardReady()) : ''}
+${planHas('zelle') ? switchRow('allowZelle', 'Accept Zelle', d.allowZelle !== 'off' && !!company.zelleRecipient, company.zelleRecipient ? '' : zelleHint(), !company.zelleRecipient) : ''}</div>
+<p class="muted ms-note">Changes here only apply to this ${kind}.</p>`, { foot: mSaveBtn() });
+    onSubmit(f, (fd) => mSave(kind, d, Object.fromEntries(fd)));
+  },
+  clientView(kind, d) {
+    const on = (k) => d[k] !== 'off';
+    const f = mSheet('Client view', `<div class="ms-sw">${switchRow('showQty', 'Quantities', on('showQty'))}${switchRow('showUnit', 'Unit prices', on('showUnit'))}${switchRow('showLineTotals', 'Line item totals', on('showLineTotals'))}
+${switchRow('showAccountBalance', 'Account balance', on('showAccountBalance'))}${switchRow('showLateStamp', 'Late stamp (if overdue)', on('showLateStamp'))}</div>`, { foot: mSaveBtn() });
+    onSubmit(f, (fd) => mSave(kind, d, Object.fromEntries(fd)));
+  },
+  message(kind, d) { onSubmit(mText(kind, d, 'Client message', 'notes', `A message to your client, shown on the ${kind}`), (fd) => mSave(kind, d, { notes: fd.get('notes') }, 'Message saved')); },
+  terms(kind, d) {
+    const f = mText(kind, d, 'Contract / disclaimer', 'disclaimer', kind === 'quote' ? 'Terms the client agrees to, e.g. how long the quote is valid' : 'e.g. Payment terms, late fees, warranty',
+      isAdminMe() ? `<label class="m-chk"><input type="checkbox" name="asDefault"> Use for all future ${kind}s</label>` : '');
+    onSubmit(f, async (fd) => {
+      const text = String(fd.get('disclaimer')).trim();
+      if (fd.get('asDefault')) { await api('PUT', '/api/company', { [kind + 'Disclaimer']: text }); company[kind + 'Disclaimer'] = text; }
+      return mSave(kind, d, { disclaimer: text }, 'Contract / disclaimer saved');
+    });
+  },
+  notes(kind, d) { onSubmit(mText(kind, d, 'Internal notes', 'internalNotes', 'Leave a note for yourself or a team member. Clients never see this.'), (fd) => mSave(kind, d, { internalNotes: fd.get('internalNotes') }, 'Notes saved')); },
+};
+A.mRmItem = async (x, el) => {
+  const { kind, d, i } = el.closest('form')._ctx;
+  if ((d.items || []).length < 2) return toast('A ' + kind + ' needs at least one line item', true);
+  if (!confirm(`Delete “${d.items[i].desc}”?`)) return;
+  await mSave(kind, d, { items: d.items.filter((_, j) => j !== i) }, 'Line item deleted');
+};
+// ⋯: the page's other actions, in a sheet
+A.mMore = (x) => {
+  const q = x.kind === 'quote'; const d = byId(D[x.kind + 's'], x.id); const job = q && quoteJob(d);
+  const canJob = q && d.status === 'approved' && !job && (!(d.depositFee > 0) || d.depositPaidAt);
+  const item = (act, label, extra = '') => `<button type="button" data-act="${act}" data-id="${d.id}" ${extra}>${label}</button>`;
+  const f = mSheet('More', `<div class="ms-list">${q ? `<a href="/p/quote/${d.token}" target="_blank">View as client</a>
+${d.status === 'sent' ? item('approveQuote', 'Mark approved') : ''}
+${d.status !== 'declined' && d.depositFee > 0 && !d.depositPaidAt ? item('markDepositPaid', `Record deposit payment${d.zelleSentAt ? ' (Zelle sent)' : ''}`) : ''}
+${canJob ? item('quoteToJob', 'Create job') : ''}${job ? `<a href="/jobs/edit?id=${job.id}" data-link>Go to job ${esc(job.number)}</a>` : ''}`
+    : `<a href="/pay/${d.token}" target="_blank">${d.status === 'paid' ? 'View receipt' : 'View pay page'}</a>${d.status !== 'paid' ? item('collectPayment', 'Collect payment') : ''}`}
+<a href="/${x.kind}s/edit?id=${d.id}" data-link>Edit everything at once</a>
+${item('delDoc', `Delete ${x.kind}`, `data-kind="${x.kind}" class="danger-text"`)}</div>`);
+  f.addEventListener('click', (e) => { if (e.target.closest('a, button[data-act]')) mClose(true); });
+};
+A.mTab = (x, el) => { $$('.md-tabs button').forEach((b) => { const on = b === el; b.classList.toggle('on', on); b.setAttribute('aria-selected', String(on)); }); $$('.md-pane').forEach((p) => { p.hidden = p.dataset.pane !== x.k; }); };
+const mTap = (kind, d, sec, inner, cls = '', extra = '') => `<button type="button" class="md-tap ${cls}" data-act="mEdit" data-kind="${kind}" data-id="${d.id}" data-sec="${sec}" ${extra}>${inner}</button>`;
+const mRow = (l, v, cls = '') => `<div class="md-tr ${cls}"><span>${l}</span><span class="md-v">${v}</span></div>`;
+const mTapRow = (kind, d, sec, l, v) => mTap(kind, d, sec, `<span>${l}</span><span class="md-v">${v}</span>`, 'md-tr');
+const mTextSec = (kind, d, sec, title, text, empty) => mTap(kind, d, sec, `<span class="md-sh">${title}${ARROW}</span>${text ? `<span class="md-text">${esc(text)}</span>` : `<span class="md-text muted">${empty}</span>`}`, 'md-sec');
+function mobileDocPage(kind, d) {
+  if (mUnsign && mUnsign !== d.id) mUnsign = '';
+  const q = kind === 'quote'; const c = byId(D.clients, d.clientId) || {};
+  const job = q ? quoteJob(d) : byId(D.jobs, d.jobId); const st = q ? quoteStatus(d) : d.displayStatus || d.status;
+  const canJob = q && d.status === 'approved' && !job && (!(d.depositFee > 0) || d.depositPaidAt);
+  const second = q ? (job && job.createdAt ? ['Converted', job.createdAt] : d.status === 'approved' && d.respondedAt ? ['Approved', d.respondedAt] : d.sentAt ? ['Sent', d.sentAt] : null) : ['Due', d.dueDate];
+  const btn = (act, label, cls = '') => `<button type="button" class="btn ${cls}" data-act="${act}" data-kind="${kind}" data-id="${d.id}">${label}</button>`;
+  const acts = q ? [canJob ? btn('quoteToJob', 'Create Job') : '', btn('sendDoc', d.sentAt ? 'Resend' : 'Send')]
+    : [d.status !== 'paid' ? btn('collectPayment', 'Collect Payment') : '', d.status !== 'paid' ? btn('sendDoc', d.sentAt ? 'Resend' : 'Send') : `<a class="btn" href="/pay/${d.token}" target="_blank">View Receipt</a>`];
+  const items = (d.items || []).map((it, i) => mTap(kind, d, 'item', `<strong>${esc(it.desc)}</strong>${it.details ? `<span class="md-det">${esc(it.details)}</span>` : ''}<span class="md-qp"><span>${esc(it.qty)} × ${money(it.price)}</span><span>${money(round2(it.qty * it.price))}</span></span>`, 'md-item', `data-i="${i}"`)).join('');
+  const paid = q ? depositPaid(d) : 0; const pays = q ? [] : [...(d.payments || [])].sort((a, b) => a.date.localeCompare(b.date));
+  const totals = mRow('Subtotal', money(d.subtotal || 0), 'b')
+    + mTapRow(kind, d, 'discount', `Discount${d.discount && d.discountType === 'percent' ? ` (${d.discountValue}%)` : ''}`, d.discount ? '−' + money(d.discount) : money(0))
+    + mTapRow(kind, d, 'tax', `Tax${Number(d.taxRate) ? ` (${d.taxRate}%)` : ''}`, money(d.tax || 0))
+    + mRow('Total', money(d.total || 0), 'grand')
+    + (q ? mTapRow(kind, d, 'deposit', 'Required deposit', money(d.depositFee || 0))
+      + (d.depositPaidAt ? mRow(payLink('q-' + d.id, 'Deposit collected', d.depositPaidAt), '−' + money(paid)) + mRow('Outstanding deposit', money(Math.max(0, round2((d.depositFee || 0) - paid)))) : '')
+      : (d.depositApplied ? mRow(payLink('q-' + d.depositQuoteId, 'Deposit collected', d.depositAppliedAt), '−' + money(d.depositApplied)) : '')
+      + pays.map((p) => mRow(payLink(p.id, 'Payment collected', p.date, ` · ${esc(payLabel(p.method))}`), '−' + money(p.amount))).join('')
+      + (!pays.length && d.status === 'paid' && d.paidAt ? mRow(payLink('i-' + d.id, 'Paid', d.paidAt), '') : '')
+      + mRow('Balance due', money(invBalance(d)), 'b'));
+  const yes = (v) => (v ? 'Yes' : 'No');
+  const paySec = planHas('onlinePayments') || planHas('zelle') ? mTap(kind, d, 'payments', `<span class="md-sh">Client payments${ARROW}</span>${planHas('onlinePayments') ? `<span class="md-kv"><small>Accept card payments</small>${yes(d.allowCard !== 'off' && cardReady())}</span>` : ''}${planHas('zelle') ? `<span class="md-kv"><small>Accept Zelle</small>${yes(d.allowZelle !== 'off' && !!company.zelleRecipient)}</span>` : ''}`, 'md-sec') : '';
+  const on = (k) => d[k] !== 'off';
+  const viewSec = q ? '' : mTap(kind, d, 'clientView', `<span class="md-sh">Client view${ARROW}</span><span class="md-text muted">${[['showQty', 'Quantities'], ['showUnit', 'Unit prices'], ['showLineTotals', 'Line totals'], ['showAccountBalance', 'Account balance'], ['showLateStamp', 'Late stamp']].filter(([k]) => on(k)).map(([, l]) => l).join(', ') || 'Totals only'}</span>`, 'md-sec');
+  return `<div class="mdoc"><a href="/${kind}s" data-link class="md-back" aria-label="Back to ${kind}s">${CHEV('M15 18l-6-6 6-6')}</a>
+<div class="md-st">${q ? qBadge(st) : iBadge(st)}${q && d.signedAt ? `<span class="vsign">✓ Signed${d.signedName ? ' by ' + esc(d.signedName) : ''}</span>` : ''}</div>
+${mTap(kind, d, 'details', `<span class="md-h">${q ? 'Quote' : 'Invoice'} #${esc(d.number)} for ${esc(c.name || 'no client')} for ${money(d.total || 0)}</span>${(q ? d.title : d.subject) ? `<span class="md-sub">${esc(q ? d.title : d.subject)}</span>` : ''}
+<span class="md-dates"><span><small>${q ? 'Created' : 'Issued'}</small>${fmtDate(((q ? d.createdAt : d.issueDate) || '').slice(0, 10))}</span>${second && second[1] ? `<span><small>${second[0]}</small>${fmtDate(String(second[1]).slice(0, 10))}</span>` : ''}</span>`, 'md-head')}
+<div class="md-acts">${acts.filter(Boolean).join('')}<button type="button" class="btn alt md-more" data-act="mMore" data-kind="${kind}" data-id="${d.id}" aria-label="More actions">⋯</button></div>
+<div class="md-tabs" role="tablist"><button type="button" role="tab" class="on" aria-selected="true" data-act="mTab" data-k="doc">${q ? 'Quote' : 'Invoice'}</button><button type="button" role="tab" aria-selected="false" data-act="mTab" data-k="notes">Notes</button></div>
+<div class="md-pane" data-pane="doc"><section class="md-block"><h2 class="md-sh">Product / Service</h2><div class="md-lh"><strong>Line items</strong><button type="button" class="md-plus" data-act="mEdit" data-kind="${kind}" data-id="${d.id}" data-sec="item" data-i="" aria-label="Add line item">${CHEV('M12 5v14M5 12h14')}</button></div>${items}</section>
+<section class="md-block md-totals">${totals}</section>${paySec}${viewSec}
+${mTextSec(kind, d, 'message', 'Client message', d.notes, 'Add a message for the client')}
+${mTextSec(kind, d, 'terms', 'Contract / disclaimer', d.disclaimer, 'Add a contract or disclaimer')}</div>
+<div class="md-pane" data-pane="notes" hidden>${mTextSec(kind, d, 'notes', 'Internal notes', d.internalNotes, 'Add a note. Clients never see these.')}</div></div>`;
+}
+phoneMq.addEventListener('change', () => { if ($('.mdoc, .qview')) refresh(); });
 PAGES['/quotes/new'] = docPage('quote', true); PAGES['/quotes/edit'] = docPage('quote', false);
 PAGES['/invoices/new'] = docPage('invoice', true); PAGES['/invoices/edit'] = docPage('invoice', false);
 PAGES['/quotes/view'] = viewPage('quote'); PAGES['/invoices/view'] = viewPage('invoice');
