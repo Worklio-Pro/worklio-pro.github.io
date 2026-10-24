@@ -1699,7 +1699,7 @@ app.post('/p/quote/:token/pay-deposit', (req, res) => {
   if (!q || !q.depositFee) return res.status(400).send('No deposit required');
   if (!onlineMethods('quote', q).length) return res.status(400).send('Online payment is not available for this quote'); // only once card payments are set up
   if (q.depositPaidAt) return res.redirect(`/p/quote/${q.token}`);
-  stripeCheckout({ amount: q.depositFee, name: `Deposit for Quote ${q.number}`, client: findClient(q.clientId), meta: { quoteId: q.id }, successUrl: `${baseUrl()}/p/quote/${q.token}/deposit-success`, cancelUrl: `${baseUrl()}/p/quote/${q.token}`, methods })
+  stripeCheckout({ amount: q.depositFee, name: `Deposit for Quote ${q.number}`, client: findClient(q.clientId), meta: { quoteId: q.id }, successUrl: `${baseUrl()}/p/quote/${q.token}/deposit-success`, cancelUrl: `${baseUrl()}/p/quote/${q.token}`, methods: onlineMethods('quote', q) })
       .then((s) => res.redirect(303, s.url))
       .catch((e) => res.status(502).send(shell('Payment error', `<h1>Payment error</h1><p>${esc(e.message)}</p><p><a href="/p/quote/${esc(q.token)}">Back to the quote</a></p>`)));
 });
