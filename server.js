@@ -156,6 +156,9 @@ function computeTotals(doc) {
   doc.depositFee = Math.min(doc.total, round2(doc.depositType === 'percent' ? doc.total * doc.depositValue / 100 : doc.depositValue));
   return doc;
 }
+// what the client agreed to when they signed: everything they see on the quote and its deposit payment (not internal notes or the payment switches)
+const QUOTE_TERMS = ['title', 'clientId', 'number', 'status', 'notes', 'disclaimer', 'items', 'taxRate', 'discountType', 'discountValue', 'depositType', 'depositValue', 'depositFee', 'total', 'depositPaidAt', 'depositPaidAmount', 'depositMethod', 'depositReference'];
+const quoteTerms = (q) => JSON.stringify(QUOTE_TERMS.map((k) => (typeof q[k] === 'string' ? q[k].replace(/\r\n/g, '\n') : q[k] ?? '')));
 // admin edits to a recorded deposit payment from the quote editor: correct the amount, date, method or reference. A recorded payment can't be removed.
 function applyDepositPaymentEdit(doc, upd, was) {
   delete doc.depositPayment;
@@ -1042,6 +1045,7 @@ app.put('/api/:col/:id', (req, res, next) => {
   if (i < 0) return res.status(404).json({ error: 'Not found' });
   const protectedKeys = ['id', 'number', 'token', 'portalToken', 'createdAt'];
   let upd = { ...req.body }; protectedKeys.forEach((k) => delete upd[k]);
+  const removeSignature = col === 'quotes' && upd.removeSignature === true; if (col === 'quotes') { delete upd.removeSignature; delete upd.signedAt; delete upd.signedName; } // signatures only from the client's quote page
   if (DOC_NUM[col] && String((req.body || {}).number || '').trim() && req.body.number !== db[col][i].number) { // renumber a quote / invoice
     const r = customNumber(col, req.body.number, req.params.id); if (r.error) return res.status(400).json({ error: r.error }); upd.number = r.number;
   }
@@ -1054,6 +1058,13 @@ app.put('/api/:col/:id', (req, res, next) => {
     doc.signedAt = null; doc.signedName = null; if (doc.depositStatus === 'pending') doc.depositStatus = null;
   }
   if (col === 'quotes' || col === 'invoices' || (col === 'jobs' && Array.isArray(doc.items))) computeTotals(doc); // jobs are priced once they have line items
+  // a signed quote with its deposit paid: any change to it removes the client's signature, once the business confirms (the quote editor asks first).
+  // The business then marks it Awaiting response and re-sends it so the client signs again.
+  const was = db[col][i];
+  if (col === 'quotes' && was.signedAt && was.depositPaidAt && doc.signedAt && quoteTerms(doc) !== quoteTerms(computeTotals(structuredClone(was)))) {
+    if (!removeSignature) return res.status(409).json({ error: 'Saving these changes removes the client’s signature. Reload the quote and confirm first.' });
+    doc.signedAt = null; doc.signedName = null;
+  }
   if (col === 'jobs') { if (db.jobs[i].signature) doc.signature = db.jobs[i].signature; else delete doc.signature; } // signatures only via /signature
   if (col === 'invoices') { // payments change only through their own endpoints, never through an invoice edit
     if (db.invoices[i].payments) doc.payments = db.invoices[i].payments; else delete doc.payments;
@@ -1663,7 +1674,7 @@ ${!onlineMethods('quote', q).length && (q.allowZelle === 'off' || !db.company.ze
   }
   res.send(shell(`Quote ${q.number}`, `<h1>Quote ${esc(q.number)} <span class="badge">${esc(q.status)}</span></h1><div class="muted">Prepared for ${esc(c?.name)} · ${esc(q.title)}</div>${itemsTable(q)}${q.notes ? `<p style="white-space:pre-wrap">${esc(q.notes)}</p>` : ''}
 ${q.disclaimer ? `<div style="margin:16px 0;padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px"><strong>Contract / Disclaimer</strong><p class="muted" style="margin:6px 0 0;white-space:pre-wrap">${esc(q.disclaimer)}</p></div>` : ''}
-${(q.status === 'sent' || q.status === 'draft') && q.depositFee > 0 ? `<div style="background:#eff6ff;padding:14px 16px;border-radius:8px;margin-bottom:16px;border:1px solid #bfdbfe"><strong>Deposit required: ${money(q.depositFee)}</strong>${q.depositType === 'percent' ? ` (${q.depositValue}% of the total)` : ''}<div class="muted" style="margin-top:4px">After you approve, you'll sign the quote and pay this deposit online before work begins.</div></div>` : ''}
+${(q.status === 'sent' || q.status === 'draft') && q.depositFee > 0 ? `<div style="background:#eff6ff;padding:14px 16px;border-radius:8px;margin-bottom:16px;border:1px solid #bfdbfe">${q.depositPaidAt ? `<strong>Deposit paid: ${money(q.depositPaidAmount ?? q.depositFee)}</strong><div class="muted" style="margin-top:4px">This quote was updated. After you approve, you'll sign it again.</div>` : `<strong>Deposit required: ${money(q.depositFee)}</strong>${q.depositType === 'percent' ? ` (${q.depositValue}% of the total)` : ''}<div class="muted" style="margin-top:4px">After you approve, you'll sign the quote and pay this deposit online before work begins.</div>`}</div>` : ''}
 ${q.status === 'sent' || q.status === 'draft' ? `<form method="post" action="/p/quote/${esc(q.token)}/respond" style="display:flex;gap:8px"><button class="btn" name="r" value="approved">Approve quote</button><button class="btn alt" name="r" value="declined">Decline</button></form>` : ''}${depositSection}`));
 });
 app.use('/p', express.urlencoded({ extended: false }));
@@ -1716,6 +1727,7 @@ app.post('/api/quotes/:id/set-deposit', (req, res) => {
   const q = db.quotes.find((x) => x.id === req.params.id);
   if (!q) return res.status(404).json({ error: 'Not found' });
   if (q.status !== 'approved') return res.status(400).json({ error: 'Quote must be approved first' });
+  if (q.depositPaidAt) return res.status(400).json({ error: 'The deposit is already paid. Edit the quote to change it.' });
   q.depositType = 'flat'; q.depositValue = Number(req.body.depositFee) || 0; computeTotals(q);
   if (!q.depositStatus) q.depositStatus = q.depositFee > 0 ? 'pending' : null;
   save();

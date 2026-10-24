@@ -975,13 +975,14 @@ ${planHas('zelle') ? switchRow('allowZelle', 'Zelle', d.allowZelle !== 'off' && 
 <div class="qcard"><h3>Notes</h3><textarea name="internalNotes" rows="6" placeholder="Leave an internal note for yourself or a team member. Clients never see this.">${esc(d.internalNotes || '')}</textarea></div></aside></div></form>`;
   const form = $('form', main); wireItems(form);
   form._doc = d; form._kind = 'quote'; form._discSaved = $('[name=disclaimer]', form).value;
+  if (d.id && d.signedAt && d.depositPaidAt) guardSignature(form);
   form.addEventListener('change', (e) => {
     if (e.target.name === 'clientId') $('.qaddr', form).innerHTML = addr(e.target.value) || '<span class="muted">No address on file</span>';
   });
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const body = Object.fromEntries(new FormData(form)); const after = e.submitter && e.submitter.value; delete body.after;
-    body.items = readItems(form).filter((i) => i.desc);
+    body.items = readItems(form).filter((i) => i.desc); if (form._removeSig) body.removeSignature = true;
     if (!body.items.length) return toast('Add at least one line item', true);
     const saved = d.id ? await api('PUT', `/api/quotes/${d.id}`, body) : await api('POST', '/api/quotes', body);
     if ($('#discDefault', form).checked) { await api('PUT', '/api/company', { quoteDisclaimer: body.disclaimer }); company.quoteDisclaimer = body.disclaimer; }
@@ -989,6 +990,25 @@ ${planHas('zelle') ? switchRow('allowZelle', 'Zelle', d.allowZelle !== 'off' && 
     if (d.id) { await refresh(); } else { await navigate('/quotes/edit?id=' + saved.id); }
     if (after === 'send') sendDialog('quote', saved);
   });
+}
+// a signed quote with its deposit paid: the first try at changing it (not the top bar, internal notes or payment switches)
+// asks to confirm that saving removes the client's signature; nothing can change until they do
+function guardSignature(form) {
+  const stop = (e) => {
+    const t = e.target;
+    if (form._removeSig || !t.closest('.qmain') || t.closest('.qtop') || !t.closest('input, select, textarea, button, label')) return;
+    e.preventDefault(); e.stopPropagation(); if (e.type === 'focusin') t.blur();
+    if (!$('#overlay')) signatureDialog(form);
+  };
+  ['pointerdown', 'click', 'focusin', 'keydown'].forEach((ev) => form.addEventListener(ev, stop, true));
+}
+function signatureDialog(form) {
+  const mb = modal('Signature will be removed', `<p style="margin-top:0">Editing a paid quote will remove the client’s signature.</p>
+<p>To request a new signature, mark the quote as Awaiting Response, and re-send.</p>
+<label style="display:flex;align-items:center;gap:8px;font-weight:400"><input type="checkbox" class="sig-ok" style="width:auto;margin:0"> I understand</label>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button type="button" class="btn danger sig-rm" disabled>Remove Signature</button></div>`);
+  $('.sig-ok', mb).addEventListener('change', (e) => { $('.sig-rm', mb).disabled = !e.target.checked; });
+  $('.sig-rm', mb).addEventListener('click', () => { form._removeSig = true; closeModal(); toast('You can edit the quote now. The signature is removed when you save a change.'); });
 }
 PAGES['/quotes/new'] = docPage('quote', true); PAGES['/quotes/edit'] = docPage('quote', false);
 PAGES['/invoices/new'] = docPage('invoice', true); PAGES['/invoices/edit'] = docPage('invoice', false);
