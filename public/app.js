@@ -585,11 +585,11 @@ ${planHas('sms') ? `<label><input type="checkbox" name="ch" value="sms"> Text me
     const channels = $$('[name=ch]:checked', mb).map((x) => x.value);
     if (!channels.length) return toast('Choose email, text, or both', true);
     const r = await api('POST', `/api/${kind}s/${doc.id}/send`, { channels });
-    const rows = r.results.map((x) => `<tr><td>${x.channel === 'email' ? 'Email' : 'Text'}</td><td>${esc(x.to || '—')}</td><td>${badge(x.status)}</td><td class="muted">${esc(x.detail)}</td></tr>`).join('');
+    const rows = r.results.map((x) => `<tr><td>${x.channel === 'email' ? 'Email' : 'Text'}</td><td>${esc(x.to || '—')}</td><td>${badge(x.status)}</td></tr>`).join('');
     const sim = r.results.some((x) => x.status === 'simulated');
-    mb.innerHTML = `<div class="tablewrap"><table><tr><th>Channel</th><th>To</th><th>Status</th><th>Detail</th></tr>${rows}</table></div>
+    mb.innerHTML = `<div class="tablewrap"><table><tr><th>Channel</th><th>To</th><th>Status</th></tr>${rows}</table></div>
 ${sim ? '<div class="notice" style="margin-top:12px">Messages were recorded but not delivered because no email/SMS provider is connected yet. Contact support to get them switched on.</div>' : ''}
-<div class="foot"><a class="btn alt" href="/notifications" data-link data-act="closeModal">View log</a><button class="btn" data-act="closeModal">Done</button></div>`;
+<div class="foot"><button class="btn" data-act="closeModal">Done</button></div>`;
     refresh();
   });
 }
