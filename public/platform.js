@@ -667,10 +667,11 @@ function soPosts() {
 <div class="so-pm"><div class="so-ph"><span class="cstatus ${c}">${l}</span><span class="sm muted">${p.status === 'scheduled' ? 'For ' + soWhen(p.scheduledAt) : soWhen(p.postedAt || p.sentAt || p.createdAt)}</span></div>
 <div class="so-cap">${esc(p.caption || '(no caption)')}</div><div class="sm muted">${p.kind === 'video' ? 'Video' : `${p.media.length} photo${p.media.length === 1 ? '' : 's'}`} · ${p.mode === 'inbox' ? 'To TikTok drafts' : `Direct post · ${esc(PRIVACY[p.privacy] || p.privacy)}`}${p.createdBy ? ` · by ${esc(p.createdBy)}` : ''}</div>
 ${p.error ? `<div class="so-err">${esc(p.error)}</div>` : ''}</div>
-${['posting', 'processing'].includes(p.status) ? '' : `<button type="button" class="btn alt sm" data-act="soRemove" data-id="${p.id}">${p.status === 'scheduled' ? 'Cancel' : 'Remove'}</button>`}</div>`; }).join('');
+${['posting', 'processing'].includes(p.status) ? '' : `<div class="so-acts">${p.status === 'failed' ? `<button type="button" class="btn sm" data-act="soRetry" data-id="${p.id}">Retry</button>` : ''}<button type="button" class="btn alt sm" data-act="soRemove" data-id="${p.id}">${p.status === 'scheduled' ? 'Cancel' : 'Remove'}</button></div>`}</div>`; }).join('');
 }
 A.soConnect = async () => { const r = await api('POST', '/api/platform/social/tiktok/connect', {}); location.href = r.url; };
 A.soDisconnect = async () => { if (!confirm('Disconnect TikTok? Scheduled posts won’t go out until you connect again.')) return; await api('POST', '/api/platform/social/tiktok/disconnect', {}); SO = null; toast('TikTok disconnected'); socialView($('#main')); };
+A.soRetry = async (d, el) => { el.disabled = true; try { await api('POST', `/api/platform/social/posts/${d.id}/retry`, {}); toast('Sending to TikTok again'); } catch (x) { toast(x.message, true); } SO = null; socialView($('#main')); };
 A.soRemove = async (d) => { const p = SO.posts.find((x) => x.id === d.id); if (!confirm(p.status === 'scheduled' ? 'Cancel this scheduled post?' : 'Remove this post from the list? It stays on TikTok.')) return; await api('DELETE', '/api/platform/social/posts/' + d.id); SO = null; socialView($('#main')); };
 // the post form: TikTok's settings for this account are fetched each time, as TikTok asks
 async function soCompose(box) {
