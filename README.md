@@ -27,6 +27,7 @@ Each business can instead send through its own email (Gmail, SendGrid or an SMTP
 | Card payment confirmations | `STRIPE_CONNECT_WEBHOOK_SECRET`, a Connect webhook at `<platform address>/api/site/stripe-connect-webhook` | Payments are still confirmed when the client returns from Stripe |
 | Self-service plans (Settings → Account and Billing) | Uses your billing key above. Add `customer.subscription.updated` and `customer.subscription.deleted` to the plan-payments webhook | Plan changes, cancelling and card updates still work; a cancelled account is paused the day after its paid period ends |
 | Plan payment confirmations | `BILLING_STRIPE_WEBHOOK_SECRET` (see *Taking payment at sign-up*) | Plan payments are still confirmed when the business returns from Stripe |
+| TikTok posting (Alpha → Social) | `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, or paste them in Alpha → Settings → Integrations → TikTok. The domain must be verified in the TikTok app (TikTok downloads posts from `/social-media/…`) | Social can’t connect TikTok |
 | Links in messages | `BASE_URL` (your public address) | Links point at http://localhost:3000 |
 
 ## Before real customers use it

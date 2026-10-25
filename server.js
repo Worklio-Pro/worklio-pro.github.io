@@ -20,6 +20,7 @@ const seo = require('./lib/seo');
 const maintenance = require('./lib/maintenance');
 const stripeLib = require('./lib/stripe');
 const social = require('./lib/social');
+const tiktokLib = require('./lib/tiktok'); tiktokLib.init(); // Alpha → Social: scheduled TikTok posts, checked every 30 seconds
 const rolesLib = require('./lib/roles');
 const iconsLib = require('./lib/icons');
 const { createPdf } = require('./lib/pdf');
@@ -2507,9 +2508,10 @@ const platformApp = require('./lib/platform')({
   setCompanyIndustry: (i) => { Object.assign(db.company, i); save(); },
 });
 // which app answers: the platform's (its own domain, or /alpha… while developing) or an account's
-const PLATFORM_PATHS = /^\/(alpha(\/.*)?|platform(\/.*)?|stripe\/go\/[a-z]+|oauth\/(google|meta)\/callback|home|pricing|signup|supporters|industries(\/[a-z-]+)?|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;
+const PLATFORM_PATHS = /^\/(alpha(\/.*)?|platform(\/.*)?|stripe\/go\/[a-z]+|oauth\/(google|meta|tiktok)\/callback|home|pricing|signup|supporters|industries(\/[a-z-]+)?|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;
 function dispatch(req, res) {
   if (brandLib.serve(req, res)) return; // the application logo (lib/brand.js), on every address
+  if (tiktokLib.serve(req, res)) return; // Alpha → Social photos and videos (lib/tiktok.js): TikTok downloads them from here
   if (maintenance.handle(req, res)) return; // maintenance mode (Alpha → Settings): the maintenance page for everyone but you
   const p = req.url.split('?')[0]; const r = tenancy.resolve(req.headers.host);
   // robots.txt, sitemap.xml, and no search results for account apps, client links or Alpha (lib/seo.js)

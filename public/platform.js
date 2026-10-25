@@ -423,7 +423,7 @@ A.savePlans = async () => {
 window.addEventListener('beforeunload', (e) => { if (D && draftPlans && plansDirty()) e.preventDefault(); });
 
 /* ===== settings ===== */
-const IG_TABS = [['email', 'Email', 'Email'], ['sms', 'Text messages', 'Text messages (Twilio)'], ['stripe', 'Stripe', 'Stripe'], ['google', 'Google', 'Google Business Profile'], ['meta', 'Facebook & Instagram', 'Facebook & Instagram (Meta)'], ['ai', 'AI', 'AI descriptions']];
+const IG_TABS = [['email', 'Email', 'Email'], ['sms', 'Text messages', 'Text messages (Twilio)'], ['stripe', 'Stripe', 'Stripe'], ['google', 'Google', 'Google Business Profile'], ['meta', 'Facebook & Instagram', 'Facebook & Instagram (Meta)'], ['tiktok', 'TikTok', 'TikTok'], ['ai', 'AI', 'AI descriptions']];
 let igTab = 'email';
 // Settings shows one box at a time, picked from a grouped list down the left (a dropdown on phones).
 // The Integrations group is one page (setTab 'integrations') showing one service at a time (igTab).
@@ -627,15 +627,133 @@ function igTabs(box) {
     const dot = $(`[data-ig-dot="${k}"]`); if (dot) { dot.classList.toggle('on', ok); dot.title = ok ? 'Set up' : 'Not set up'; }
   });
 }
-/* ===== social: posting to Worklio Pro's own Facebook, Instagram and TikTok (being built) ===== */
-function socialView(main) {
-  main.innerHTML = `<div class="head"><div><h1>Social</h1><p class="sub" style="margin:4px 0 0">Post to ${esc(D.settings.productName)}’s Facebook, Instagram and TikTok from one place, now or on a schedule.</p></div></div>
-<div class="card" style="max-width:760px"><h2>Coming next</h2><ul style="margin:0;padding-left:20px;line-height:1.7">
-<li><strong>Compose:</strong> write one post, pick the platforms, then post now or schedule it</li>
-<li><strong>Calendar:</strong> what’s scheduled, what posted and what failed</li>
-<li><strong>AI Studio:</strong> captions from Claude, free stock photos and videos, app screenshots, and AI images when nothing else fits</li>
-<li><strong>History:</strong> every post, with likes and comments</li></ul>
-<p class="muted" style="font-size:13px;margin-bottom:0">Facebook and Instagram sign in with the Meta app keys in <a href="#settings" data-act="setTab" data-k="integrations:meta">Settings → Integrations → Facebook & Instagram</a>.</p></div>`;
+/* ===== social: the platform's own TikTok account (lib/tiktok.js). Connect it, then post a video or photos now, at a set time,
+   or to TikTok drafts, and follow each post's status. The post form follows TikTok's posting rules: it shows the account it posts to,
+   asks for a privacy level every time (no default), leaves comments, duets and stitches off until turned on, asks about commercial
+   content, and shows the Music Usage Confirmation. ===== */
+let SO = null; let soDraft = null; let soTimer = 0; // SO: the account and posts; soDraft: the post being written (its media already uploaded)
+const SO_ST = { scheduled: ['Scheduled', 'q-sent'], posting: ['Sending', 'q-converted'], processing: ['TikTok is processing', 'q-converted'], posted: ['Posted', 'q-approved'], sent: ['In TikTok drafts', 'q-approved'], failed: ['Failed', 'q-declined'] };
+const PRIVACY = { PUBLIC_TO_EVERYONE: 'Everyone', MUTUAL_FOLLOW_FRIENDS: 'Friends', FOLLOWER_OF_CREATOR: 'Followers', SELF_ONLY: 'Only me' };
+const MUSIC_URL = 'https://www.tiktok.com/legal/page/global/music-usage-confirmation/en';
+const BC_URL = 'https://www.tiktok.com/legal/page/global/bc-policy/en';
+const soWhen = (s) => (s ? new Date(s).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '');
+async function socialView(main) {
+  const q = new URLSearchParams(location.search); // back from TikTok's sign-in
+  if (q.get('tiktok') || q.get('tiktok_error')) { if (q.get('tiktok')) toast('TikTok connected'); else toast(q.get('tiktok_error'), true); history.replaceState(null, '', location.pathname + '#social'); SO = null; }
+  if (!SO) main.innerHTML = '<div class="head"><h1>Social</h1></div><p class="muted">Loading…</p>'; // fresh each time the page opens
+  try { SO = await api('GET', '/api/platform/social'); } catch (x) { main.innerHTML = `<div class="head"><h1>Social</h1></div><div class="card">${esc(x.message)}</div>`; return; }
+  if (tab !== 'social') return;
+  const a = SO.account;
+  main.innerHTML = `<div class="head"><div><h1>Social</h1><p class="sub" style="margin:4px 0 0">Post to ${esc(D.settings.productName)}’s TikTok, now, at a set time, or to your TikTok drafts.</p></div></div>
+<div class="so-grid"><div><div class="card so-acct">${!SO.ready ? `<h2>TikTok</h2><p class="muted" style="margin:0">Add your TikTok app’s Client key and Client secret in <a href="#settings" data-act="setTab" data-k="integrations:tiktok">Settings → Integrations → TikTok</a>, then connect your account here.</p>`
+    : !a ? `<h2>TikTok</h2><p class="muted">Connect the TikTok account ${esc(D.settings.productName)} posts to. You’ll sign in on TikTok and allow posting.</p><button type="button" class="btn" data-act="soConnect">Connect TikTok</button>`
+      : `<h2>TikTok</h2><div class="so-who">${a.avatar ? `<img src="${esc(a.avatar)}" alt="" width="44" height="44">` : ''}<div><strong>${esc(a.name)}</strong><div class="sm muted">Connected ${fmtDate(a.connectedAt)}</div></div><button type="button" class="btn alt sm" data-act="soDisconnect">Disconnect</button></div>
+<p class="muted sm" style="margin:12px 0 0">Until TikTok approves your app, posts are only visible to you (“Only me”).</p>`}</div>
+${a ? '<div class="card" id="soNew"><h2>New post</h2><p class="muted">Checking what this account can post…</p></div>' : ''}</div>
+<div class="card so-list"><h2>Posts</h2>${soPosts()}</div></div>`;
+  if (a) soCompose($('#soNew', main));
+  clearTimeout(soTimer); // follow posts TikTok is still working on
+  if (SO.posts.some((p) => ['posting', 'processing'].includes(p.status) || (p.status === 'scheduled' && new Date(p.scheduledAt) - Date.now() < 120e3))) soTimer = setTimeout(soRefresh, 10e3);
+}
+async function soRefresh() {
+  if (tab !== 'social') return;
+  try { const r = await api('GET', '/api/platform/social'); SO.posts = r.posts; SO.account = r.account; const box = $('.so-list'); if (box) box.innerHTML = `<h2>Posts</h2>${soPosts()}`; } catch (x) { /* next time */ }
+  if (SO.posts.some((p) => ['posting', 'processing', 'scheduled'].includes(p.status))) soTimer = setTimeout(soRefresh, 10e3);
+}
+function soPosts() {
+  if (!SO.posts.length) return '<p class="muted" style="margin:0">No posts yet.</p>';
+  return SO.posts.map((p) => { const [l, c] = SO_ST[p.status] || [p.status, 'q-draft']; const m = p.media[0];
+    return `<div class="so-post"><div class="so-thumb">${m.type === 'video' ? `<video src="${esc(m.url)}#t=0.5" muted preload="metadata"></video>` : `<img src="${esc(m.url)}" alt="">`}${p.media.length > 1 ? `<span>${p.media.length}</span>` : ''}</div>
+<div class="so-pm"><div class="so-ph"><span class="cstatus ${c}">${l}</span><span class="sm muted">${p.status === 'scheduled' ? 'For ' + soWhen(p.scheduledAt) : soWhen(p.postedAt || p.sentAt || p.createdAt)}</span></div>
+<div class="so-cap">${esc(p.caption || '(no caption)')}</div><div class="sm muted">${p.kind === 'video' ? 'Video' : `${p.media.length} photo${p.media.length === 1 ? '' : 's'}`} · ${p.mode === 'inbox' ? 'To TikTok drafts' : `Direct post · ${esc(PRIVACY[p.privacy] || p.privacy)}`}${p.createdBy ? ` · by ${esc(p.createdBy)}` : ''}</div>
+${p.error ? `<div class="so-err">${esc(p.error)}</div>` : ''}</div>
+${['posting', 'processing'].includes(p.status) ? '' : `<button type="button" class="btn alt sm" data-act="soRemove" data-id="${p.id}">${p.status === 'scheduled' ? 'Cancel' : 'Remove'}</button>`}</div>`; }).join('');
+}
+A.soConnect = async () => { const r = await api('POST', '/api/platform/social/tiktok/connect', {}); location.href = r.url; };
+A.soDisconnect = async () => { if (!confirm('Disconnect TikTok? Scheduled posts won’t go out until you connect again.')) return; await api('POST', '/api/platform/social/tiktok/disconnect', {}); SO = null; toast('TikTok disconnected'); socialView($('#main')); };
+A.soRemove = async (d) => { const p = SO.posts.find((x) => x.id === d.id); if (!confirm(p.status === 'scheduled' ? 'Cancel this scheduled post?' : 'Remove this post from the list? It stays on TikTok.')) return; await api('DELETE', '/api/platform/social/posts/' + d.id); SO = null; socialView($('#main')); };
+// the post form: TikTok's settings for this account are fetched each time, as TikTok asks
+async function soCompose(box) {
+  let C; try { C = await api('GET', '/api/platform/social/tiktok/creator'); } catch (x) { box.innerHTML = `<h2>New post</h2><p class="so-err" style="margin:0">${esc(x.message)}</p>`; return; }
+  soDraft = soDraft || { media: [] };
+  const off = (k) => (C[k] ? ' <small class="muted">(turned off in your TikTok settings)</small>' : '');
+  box.innerHTML = `<h2>New post</h2><form id="soForm" novalidate><div class="so-who sm">${C.avatar ? `<img src="${esc(C.avatar)}" alt="" width="28" height="28">` : ''}<span>Posting to <strong>${esc(C.nickname || SO.account.name)}</strong>${C.username ? ` (@${esc(C.username)})` : ''}</span></div>
+<div class="so-media" id="soMedia"></div>
+<label class="so-pick"><input type="file" id="soFile" accept="video/mp4,video/quicktime,video/webm,image/jpeg,image/png,image/webp" multiple hidden><span class="btn alt">Add a video or photos</span><small class="muted">One video${C.maxSeconds ? ` (up to ${Math.floor(C.maxSeconds / 60) ? Math.floor(C.maxSeconds / 60) + ' min' : C.maxSeconds + ' sec'})` : ''}, or up to 35 photos. MP4, MOV or WebM; JPG, PNG or WebP.</small></label>
+<label>Caption<textarea name="caption" rows="4" maxlength="2200" placeholder="What’s this post about? #hashtags welcome">${esc(soDraft.caption || '')}</textarea><small class="muted so-count"></small></label>
+<fieldset class="so-mode"><legend>Where it goes</legend><label><input type="radio" name="mode" value="direct" ${soDraft.mode !== 'inbox' ? 'checked' : ''}> <span><strong>Post to TikTok</strong><small class="muted">It goes straight to your profile.</small></span></label>
+<label><input type="radio" name="mode" value="inbox" ${soDraft.mode === 'inbox' ? 'checked' : ''}> <span><strong>Send to TikTok drafts</strong><small class="muted">You’ll get a notification in TikTok to edit and post it there.</small></span></label></fieldset>
+<div class="so-direct"><label>Who can see this post<select name="privacy"><option value="" selected disabled>Choose…</option>${C.privacy.map((k) => `<option value="${esc(k)}">${esc(PRIVACY[k] || k)}</option>`).join('')}</select></label>
+<div class="so-allow"><span class="lbl">Allow people to</span><label class="chk"><input type="checkbox" name="allowComment" ${C.commentOff ? 'disabled' : ''}> Comment${off('commentOff')}</label>
+<label class="chk so-vid"><input type="checkbox" name="allowDuet" ${C.duetOff ? 'disabled' : ''}> Duet${off('duetOff')}</label><label class="chk so-vid"><input type="checkbox" name="allowStitch" ${C.stitchOff ? 'disabled' : ''}> Stitch${off('stitchOff')}</label></div>
+<label class="chk"><input type="checkbox" name="disclose"> <span><strong>Disclose post content</strong><small class="muted">Turn on if this post promotes you, a brand, a product or a service.</small></span></label>
+<div class="so-disc" hidden><label class="chk"><input type="checkbox" name="yourBrand"> <span><strong>Your brand</strong><small class="muted">You’re promoting yourself or your own business. TikTok labels it “Promotional content”.</small></span></label>
+<label class="chk"><input type="checkbox" name="branded"> <span><strong>Branded content</strong><small class="muted">You’re promoting another brand or a third party. TikTok labels it “Paid partnership”.</small></span></label></div></div>
+<fieldset class="so-whenf"><legend>When</legend><label><input type="radio" name="when" value="now" checked> Now</label><label><input type="radio" name="when" value="later"> Schedule</label><input type="datetime-local" name="at" hidden></fieldset>
+<p class="so-legal sm muted"></p><div class="acts" style="justify-content:flex-start"><button class="btn" id="soGo" disabled>Post now</button></div></form>`;
+  const f = $('#soForm', box); f._c = C;
+  const sync = () => {
+    const direct = f.mode.value === 'direct'; const later = f.when.value === 'later'; const video = soDraft.media.some((m) => m.type === 'video');
+    $('.so-direct', f).hidden = !direct; f.at.hidden = !later; $$('.so-vid', f).forEach((l) => { l.hidden = !video; });
+    $('.so-disc', f).hidden = !f.disclose.checked;
+    const branded = direct && f.disclose.checked && f.branded.checked;
+    const own = $('option[value=SELF_ONLY]', f.privacy); if (own) { own.disabled = branded; own.textContent = branded ? 'Only me (not for branded content)' : PRIVACY.SELF_ONLY; if (branded && f.privacy.value === 'SELF_ONLY') f.privacy.value = ''; }
+    $('.so-count', f).textContent = `${f.caption.value.length} / 2200`;
+    $('.so-legal', f).innerHTML = direct ? `By posting, you agree to TikTok’s ${branded ? `<a href="${BC_URL}" target="_blank" rel="noopener">Branded Content Policy</a> and ` : ''}<a href="${MUSIC_URL}" target="_blank" rel="noopener">Music Usage Confirmation</a>.${f.disclose.checked && !branded && f.yourBrand.checked ? ' Your post will be labeled “Promotional content”.' : branded ? ' Your post will be labeled “Paid partnership”.' : ''}` : 'TikTok will notify you to finish the post in the TikTok app.';
+    const busy = soDraft.media.some((m) => !m.file);
+    const ok = soDraft.media.length && !busy && (!direct || (f.privacy.value && (!f.disclose.checked || f.yourBrand.checked || f.branded.checked))) && (!later || f.at.value);
+    $('#soGo', f).disabled = !ok; $('#soGo', f).textContent = !direct ? (later ? 'Schedule to drafts' : 'Send to drafts') : later ? 'Schedule post' : 'Post now';
+    soDraft.caption = f.caption.value; soDraft.mode = f.mode.value;
+  };
+  f._sync = sync; soMediaDraw(f); sync();
+  f.addEventListener('input', sync); f.addEventListener('change', sync);
+  $('#soFile', f).addEventListener('change', (e) => { soAdd(f, [...e.target.files]); e.target.value = ''; });
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault(); const go = $('#soGo', f); go.disabled = true;
+    const b = { caption: f.caption.value, media: soDraft.media.map((m) => ({ file: m.file, name: m.name })), mode: f.mode.value, privacy: f.privacy.value, allowComment: f.allowComment.checked, allowDuet: f.allowDuet.checked, allowStitch: f.allowStitch.checked,
+      disclose: f.disclose.checked, yourBrand: f.yourBrand.checked, branded: f.branded.checked, scheduledAt: f.when.value === 'later' && f.at.value ? new Date(f.at.value).toISOString() : null };
+    try {
+      const p = await api('POST', '/api/platform/social/posts', b); soDraft = null;
+      toast(p.status === 'scheduled' ? `Scheduled for ${soWhen(p.scheduledAt)}` : p.mode === 'inbox' ? 'Sent. Open TikTok to finish your post from the notification.' : 'Sent to TikTok. It can take a few minutes to show on your profile.');
+      SO = null; socialView($('#main'));
+    } catch (x) { toast(x.message, true); go.disabled = false; }
+  });
+}
+function soMediaDraw(f) {
+  $('#soMedia', f).innerHTML = soDraft.media.map((m, i) => `<div class="so-tile">${m.type === 'video' ? `<video src="${esc(m.preview)}" muted preload="metadata"></video>` : `<img src="${esc(m.preview)}" alt="">`}
+${m.file ? '' : `<span class="so-prog">${m.pct || 0}%</span>`}<button type="button" class="so-x" data-act="soRmMedia" data-i="${i}" aria-label="Remove">×</button></div>`).join('');
+}
+A.soRmMedia = (d) => { const f = $('#soForm'); soDraft.media.splice(Number(d.i), 1); soMediaDraw(f); f._sync(); };
+// TikTok takes JPG and WebP photos: PNGs (like app screenshots) become JPGs, and very large photos are scaled to 1920 px on the longer side
+async function soPhoto(file) {
+  if (file.type !== 'image/png' && file.size < 15e6) return file;
+  const img = await createImageBitmap(file); const k = Math.min(1, 1920 / Math.max(img.width, img.height));
+  const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+  const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+  return new Promise((r) => c.toBlob((b) => r(new File([b], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' })), 'image/jpeg', 0.9));
+}
+const soDuration = (file) => new Promise((r) => { const v = document.createElement('video'); v.preload = 'metadata'; v.onloadedmetadata = () => r(v.duration || 0); v.onerror = () => r(0); v.src = URL.createObjectURL(file); });
+async function soAdd(f, files) {
+  const C = f._c; const vids = files.filter((x) => x.type.startsWith('video/')); const pics = files.filter((x) => x.type.startsWith('image/'));
+  const hasVideo = soDraft.media.some((m) => m.type === 'video');
+  if (vids.length && (vids.length > 1 || pics.length || soDraft.media.length)) return toast('A TikTok post is one video, or photos (up to 35), not both', true);
+  if (pics.length && hasVideo) return toast('A TikTok post is one video, or photos (up to 35), not both', true);
+  if (soDraft.media.length + pics.length > 35) return toast('Use 35 photos or fewer', true);
+  if (vids.length) { const s = await soDuration(vids[0]); if (C.maxSeconds && s > C.maxSeconds) return toast(`This account can post videos up to ${C.maxSeconds} seconds long. This one is ${Math.round(s)} seconds.`, true); }
+  for (const raw of [...vids, ...pics]) {
+    const file = raw.type.startsWith('image/') ? await soPhoto(raw) : raw;
+    const m = { type: file.type.startsWith('video/') ? 'video' : 'photo', name: raw.name, preview: URL.createObjectURL(file), pct: 0 }; soDraft.media.push(m); soMediaDraw(f); f._sync();
+    try {
+      const r = await new Promise((resolve, reject) => {
+        const x = new XMLHttpRequest(); x.open('POST', '/api/platform/social/media'); x.setRequestHeader('Content-Type', file.type); x.setRequestHeader('X-File-Name', encodeURIComponent(raw.name));
+        x.upload.onprogress = (e) => { if (e.lengthComputable) { m.pct = Math.round((e.loaded / e.total) * 100); const p = $$('#soMedia .so-prog')[soDraft.media.indexOf(m)]; if (p) p.textContent = m.pct + '%'; } };
+        x.onload = () => { let j = {}; try { j = JSON.parse(x.responseText); } catch (e) { /* not JSON */ } if (x.status >= 200 && x.status < 300) resolve(j); else reject(new Error(j.error || `Upload failed (${x.status})`)); };
+        x.onerror = () => reject(new Error('Upload failed. Check your connection and try again.')); x.send(file);
+      });
+      m.file = r.file;
+    } catch (x) { toast(x.message, true); soDraft.media.splice(soDraft.media.indexOf(m), 1); }
+    if ($('#soForm') === f) { soMediaDraw(f); f._sync(); }
+  }
 }
 
 /* ===== promotions: discount codes, the referral program and its activity, and the Founding Supporters list ===== */
@@ -1192,7 +1310,7 @@ ${I.localhost ? '<p class="muted ig-p" style="margin-top:8px">Stripe can’t rea
     try { await api('PUT', '/api/platform/settings', b); await load(); toast('Card payment setup saved'); integrationsCard(box); } catch (x) { toast(x.message, true); }
   });
   $$('.oa-form', box).forEach((f) => f.addEventListener('submit', async (e) => {
-    e.preventDefault(); try { await api('PUT', '/api/platform/oauth-apps/' + f.dataset.p, Object.fromEntries(new FormData(f))); toast('Saved. Businesses can connect now.'); integrationsCard(box); } catch (x) { toast(x.message, true); }
+    e.preventDefault(); try { await api('PUT', '/api/platform/oauth-apps/' + f.dataset.p, Object.fromEntries(new FormData(f))); toast(f.dataset.p === 'tiktok' ? 'Saved. Connect your account in Social.' : 'Saved. Businesses can connect now.'); integrationsCard(box); } catch (x) { toast(x.message, true); }
   }));
   $('#feeForm', box).addEventListener('submit', async (e) => {
     e.preventDefault(); try { await api('PUT', '/api/platform/settings', Object.fromEntries(new FormData(e.target))); await load(); toast('Platform fee saved'); } catch (x) { toast(x.message, true); }
@@ -1206,7 +1324,7 @@ ${I.localhost ? '<p class="muted ig-p" style="margin-top:8px">Stripe can’t rea
 
 // Account Connections (lib/social.js): the Google and Meta apps businesses sign in through
 function socialGroups(I, ig, on, copy) {
-  const G = I.social.google; const M = I.social.meta; const n = (k, c) => `${c} business${c === 1 ? '' : 'es'} connected${k ? ' ' + k : ''}`;
+  const G = I.social.google; const M = I.social.meta; const T = I.social.tiktok; const n = (k, c) => `${c} business${c === 1 ? '' : 'es'} connected${k ? ' ' + k : ''}`;
   const form = (p, x, idLabel, idPh, secLabel) => `<form class="oa-form" data-p="${p}"><div class="row"><label>${idLabel}<input name="id" value="${esc(x.fromEnv ? '' : x.id)}" placeholder="${x.fromEnv ? esc(x.id) + ' (from .env)' : idPh}" autocomplete="off" spellcheck="false"></label>
 <label>${secLabel}<input name="secret" type="password" autocomplete="new-password" placeholder="${x.secret ? 'Saved. Leave blank to keep it' : ''}"></label></div>
 <div class="acts" style="justify-content:flex-start"><button class="btn alt">Save</button>${x.id && !x.fromEnv ? `<button type="button" class="btn danger sm" data-act="rmOauthApp" data-p="${p}">Remove</button>` : ''}</div></form>`;
@@ -1223,7 +1341,14 @@ ${form('google', G, 'Client ID', '….apps.googleusercontent.com', 'Client secre
 ${copy(M.redirectUri, 'Meta redirect URI')}
 <ol class="ig-steps" start="3"><li>Request Advanced Access in App Review for <code>pages_show_list</code>, <code>pages_read_engagement</code>, <code>pages_manage_posts</code>, <code>business_management</code>, <code>instagram_basic</code> and <code>instagram_content_publish</code>. Until Meta approves them, only people with a role on your app can connect.</li>
 <li>App settings → Basic has the App ID and App secret. Paste them here, or set <code>META_APP_ID</code> and <code>META_APP_SECRET</code> in <code>.env</code>.</li></ol>
-${form('meta', M, 'App ID', '1234567890123456', 'App secret')}`);
+${form('meta', M, 'App ID', '1234567890123456', 'App secret')}`)
+  + ig('TikTok', on(T.id && T.secret, T.connected ? 'Connected' : 'Ready', 'Not set up'), `<p class="ig-d">Your own TikTok account, for posting from <a href="#social">Social</a>. Businesses don’t use this.</p>
+<ol class="ig-steps"><li>On <a href="https://developers.tiktok.com/apps/" target="_blank" rel="noopener">TikTok for Developers</a>, create an app with <strong>Login Kit</strong> and the <strong>Content Posting API</strong> (with Direct Post on), and the scopes <code>user.info.basic</code>, <code>video.publish</code> and <code>video.upload</code>.</li>
+<li>In Login Kit, add this <strong>Redirect URI</strong> under Web:</li></ol>
+${copy(T.redirectUri, 'TikTok redirect URI')}
+<ol class="ig-steps" start="3"><li>Under URL properties, verify your domain. TikTok downloads your posts’ videos and photos from it.</li>
+<li>Paste the app’s Client key and Client secret here. While testing, use the Sandbox keys; switch to the Production keys once TikTok approves the app. Or set <code>TIKTOK_CLIENT_KEY</code> and <code>TIKTOK_CLIENT_SECRET</code> in <code>.env</code>.</li></ol>
+${form('tiktok', T, 'Client key', 'e.g. sbaw1234abcd5678', 'Client secret')}${I.localhost ? '<p class="muted ig-p">TikTok only sends people back to a public address: set <code>BASE_URL</code> (or <code>PLATFORM_DOMAIN</code>) first.</p>' : ''}`);
 }
 A.rmOauthApp = async (d) => {
   if (!confirm('Remove these keys? Businesses won’t be able to connect, and connected ones stop working until you add keys again.')) return;
