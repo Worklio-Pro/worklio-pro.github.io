@@ -1101,6 +1101,7 @@ const mField = (label, input) => `<label class="mf"><span>${label}</span>${input
 // a signed quote with a paid deposit: confirmed once (signature dialog) before its first change on this page
 let mUnsign = '';
 async function mSave(kind, d, patch, msg) {
+  if (d._fromQuote) patch = { items: d.items, taxRate: d.taxRate, discountType: d.discountType, discountValue: d.discountValue, ...patch };
   await api('PUT', `/api/${kind}s/${d.id}`, { ...patch, ...(mUnsign === d.id ? { removeSignature: true } : {}) });
   mClose(); toast(msg || 'Saved'); return refresh();
 }
@@ -1109,7 +1110,7 @@ const onSubmit = (form, fn) => form.addEventListener('submit', async (e) => {
   try { await fn(new FormData(form)); } catch (x) { toast(x.message, true); if (b) b.disabled = false; }
 });
 A.mEdit = (x) => {
-  const kind = x.kind; const d = byId(D[kind + 's'], x.id); if (!d) return;
+  const kind = x.kind; const found = byId(D[kind + 's'], x.id); if (!found) return; const d = kind === 'job' ? jobDoc(found) : found;
   const open = () => M_EDIT[x.sec](kind, d, x);
   if (kind === 'quote' && d.signedAt && d.depositPaidAt && mUnsign !== d.id) return signatureDialog(() => { mUnsign = d.id; open(); });
   return open();
@@ -1270,25 +1271,158 @@ ${mTextSec(kind, d, 'message', 'Client message', d.notes, 'Add a message for the
 ${mTextSec(kind, d, 'terms', 'Contract / disclaimer', d.disclaimer, 'Add a contract or disclaimer')}</div>
 <div class="md-pane" data-pane="notes" hidden>${mTextSec(kind, d, 'notes', 'Internal notes', d.internalNotes, 'Add a note. Clients never see these.')}</div></div>`;
 }
-phoneMq.addEventListener('change', () => { if ($('.mdoc, .qview')) refresh(); });
+phoneMq.addEventListener('change', () => { if (/^\/(quotes|invoices|jobs)(\/|$)/.test(curPath())) refresh(); });
 // phones: a new quote or invoice starts with its client and title; it's saved as a draft and opens on the tap-to-edit page, at Add line item
 function mobileNew(kind, main, preset) {
-  const q = kind === 'quote';
+  const q = kind === 'quote'; const job = kind === 'job';
   main.innerHTML = `<div class="mdoc mnew"><a href="/${kind}s" data-link class="md-back" aria-label="Back to ${kind}s">${CHEV('M15 18l-6-6 6-6')}</a>
-<h1 class="md-h">New ${kind}</h1><p class="muted md-lead">Choose who it’s for. You’ll add line items next.</p>
+<h1 class="md-h">New ${kind}</h1><p class="muted md-lead">${job ? 'Choose who it’s for and when. You’ll set the time and team next.' : 'Choose who it’s for. You’ll add line items next.'}</p>
 <form class="mnew-f" novalidate>${mField('Client', `<select name="clientId">${clientOptions(preset.clientId)}</select>`)}
-${mField(q ? 'Title' : 'Subject', `<input name="${q ? 'title' : 'subject'}" maxlength="120" placeholder="${q ? 'e.g. Backyard cleanup' : 'e.g. Camera System Install'}">`)}
+${mField(kind === 'invoice' ? 'Subject' : 'Title', `<input name="${kind === 'invoice' ? 'subject' : 'title'}" maxlength="120" placeholder="${q ? 'e.g. Backyard cleanup' : job ? 'e.g. Streamer Install' : 'e.g. Camera System Install'}">`)}
+${job ? mField('Date', `<input type="date" name="date" value="${esc(preset.date || ymd(new Date()))}">`) : ''}
 <button class="btn ms-save">Create ${kind}</button></form></div>`;
   const f = $('form', main);
   f.addEventListener('submit', async (e) => {
     e.preventDefault(); const b = Object.fromEntries(new FormData(f)); if (!b.clientId) return toast('Choose a client', true);
+    if (job && !b.title.trim()) return toast('Enter the job title', true);
     const btn = $('.ms-save', f); btn.disabled = true;
     try {
+      if (job) {
+        const saved = await api('POST', '/api/jobs', { ...b, startTime: '09:00', endTime: '11:00', status: 'scheduled', staffIds: [], address: (byId(D.clients, b.clientId) || {}).address || '' });
+        return navigate('/jobs/edit?id=' + saved.id);
+      }
       const saved = await api('POST', `/api/${kind}s`, { ...b, items: [], disclaimer: q ? company.quoteDisclaimer ?? DEFAULT_DISCLAIMER : company.invoiceDisclaimer ?? '', ...(q ? {} : { paymentTerms: '0' }) });
       await navigate(`/${kind}s/view?id=${saved.id}`);
       A.mEdit({ kind, id: saved.id, sec: 'item', i: '' });
     } catch (x) { toast(x.message, true); btn.disabled = false; }
   });
+}
+/* ===== phones: Quotes, Jobs and Invoices as a simple list: search, status chips, then a row per record
+   (client · date | amount | title · status). The + button starts a new one. ===== */
+const mAmt = (n) => (n >= 1000 ? moneyShort(n) : '$' + Math.round(n || 0).toLocaleString());
+const mDay = (s) => {
+  if (!s) return ''; const d = String(s).slice(0, 10); const off = (n) => ymd(addDays(new Date(), n));
+  return d === off(0) ? 'Today' : d === off(-1) ? 'Yesterday' : d === off(1) ? 'Tomorrow' : parseD(d).toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
+};
+let mlState = null;
+function mobileList(main, o) {
+  mlState = o; const st = o.status;
+  const chips = [...o.statuses].sort((a, b) => (b[0] === st) - (a[0] === st)); // the chosen one first
+  const rows = [...o.list].sort((a, b) => String(o.date(b) || '').localeCompare(String(o.date(a) || '')));
+  main.innerHTML = `<div class="mlist"><h1 class="ml-h">${o.title}</h1>
+<label class="ml-search">${svgIcon(ICONS.search, 22)}<input type="search" id="mlq" placeholder="Search ${o.plural}" value="${esc(o.q)}" aria-label="Search ${o.plural}"></label>
+<div class="ml-chips" role="group" aria-label="Filter by status">${chips.map(([k, l]) => `<button type="button" class="ml-chip${k === st ? ' on' : ''}" data-act="mlChip" data-k="${k === st ? 'all' : k}" aria-pressed="${k === st}">${esc(l)}${k === st ? `<span class="ml-x" aria-label="Clear filter">${X_ICO}</span>` : ''}</button>`).join('')}</div>
+<h2 class="ml-sub">${st !== 'all' ? `${esc((o.statuses.find(([k]) => k === st) || [, ''])[1])} ${o.plural}` : o.q ? 'Results' : `Recent ${o.plural}`}</h2>
+<div class="ml-rows">${rows.map((x) => { const r = o.row(x); return `<button type="button" class="ml-row" data-act="mlOpen" data-href="${esc(r.href)}"><span class="ml-ic">${svgIcon(NAV_ICONS[o.path], 24)}</span>
+<span class="ml-main"><strong>${esc(r.name)}</strong><span class="ml-meta">${[r.date, r.amount, r.title ? esc(r.title) : ''].filter(Boolean).join('<i>|</i>')}</span></span>
+<span class="ml-st"><span>${esc(r.label)}</span><i class="cstatus ${r.cls}"></i></span></button>`; }).join('') || `<p class="muted ml-empty">${o.list.length || o.q || st !== 'all' ? `No ${o.plural} match` : `No ${o.plural} yet`}</p>`}</div>
+${o.newAct ? `<button type="button" class="ml-fab ${o.newCls || ''}" data-act="${o.newAct}" aria-label="New ${o.one}">${CHEV('M12 5v14M5 12h14')}</button>` : ''}</div>`;
+  let t; $('#mlq').addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(async () => { o.onQ(e.target.value); await refresh(); const i = $('#mlq'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }, 250); });
+}
+A.mlChip = (x) => { mlState.onStatus(x.k); refresh(); };
+A.mlOpen = (x) => navigate(x.href);
+
+/* ===== phones: the job page, tap-to-edit like quotes and invoices. Visit, team, details, instructions,
+   line items and notes each open their own page or sheet; team members without “edit jobs” only view. ===== */
+// a job without its own line items shows (and starts editing from) the quote it came from
+function jobDoc(j) {
+  if (j.items && j.items.length) return j;
+  const q = byId(D.quotes, j.quoteId);
+  return q && (q.items || []).length ? { ...j, items: q.items, taxRate: q.taxRate, discountType: q.discountType, discountValue: q.discountValue, subtotal: q.subtotal, discount: q.discount, tax: q.tax, total: q.total, _fromQuote: true } : j;
+}
+// the checks the job page makes before saving a visit: times, overlapping jobs, time off, working hours
+function jobScheduleOk(id, body) {
+  if (!body.anytime && body.endTime <= body.startTime) { toast('End time must be after start time', true); return false; }
+  const clash = jobConflicts({ id, ...body });
+  if (clash.length && !confirm(`Schedule conflict: ${clash.map((c) => c.number + ' ' + c.title).join(', ')} overlaps for an assigned staff member. Save anyway?`)) return false;
+  const offHours = (body.staffIds || []).map((s) => byId(D.staff, s)).filter((s) => s && !withinHours(s, body.date, body.startTime, body.endTime));
+  const away = (body.staffIds || []).map((s) => [byId(D.staff, s), offOn(s, body.date, body.startTime, body.endTime)]).filter(([s, r]) => s && r);
+  if (away.length && !confirm(`Time off: ${away.map(([s, r]) => `${s.name} (${r.when})`).join(', ')} ${away.length === 1 ? 'has' : 'have'} approved time off then. Save anyway?`)) return false;
+  if (offHours.length && !confirm(`Outside working hours: ${offHours.map((s) => s.name).join(', ')} ${offHours.length === 1 ? "isn't" : "aren't"} scheduled to work then (see Manage team). Save anyway?`)) return false;
+  return true;
+}
+const jobTeam = (j) => D.staff.filter((s) => s.status !== 'deactivated' || (j.staffIds || []).includes(s.id));
+const visitText = (j) => `${j.date ? parseD(j.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : 'No date'}${j.anytime ? ' · Anytime' : j.startTime ? ` · ${fmtTime(j.startTime)} – ${fmtTime(j.endTime)}` : ''}`;
+Object.assign(M_EDIT, {
+  jobDetails(kind, j) {
+    const c = byId(D.clients, j.clientId) || {};
+    const f = mSheet('Job details', `${mField('Title', `<input name="title" value="${esc(j.title || '')}" maxlength="120">`)}
+${mField('Client', `<select name="clientId">${clientOptions(j.clientId)}</select>`)}
+${mField('Property address', `<input name="address" value="${esc(j.address || '')}" placeholder="${esc(c.address || 'Defaults to the client’s address')}">`)}
+${mField('Status', `<select name="status">${[['scheduled', 'Scheduled'], ['completed', 'Completed'], ['cancelled', 'Cancelled']].map(([k, l]) => `<option value="${k}" ${(j.status || 'scheduled') === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}`, { full: true, foot: mSaveBtn() });
+    onSubmit(f, (fd) => {
+      const b = Object.fromEntries(fd); if (!b.clientId) throw new Error('Choose a client'); if (!b.title.trim()) throw new Error('Enter the job title');
+      if (!b.address.trim()) b.address = (byId(D.clients, b.clientId) || {}).address || '';
+      return mSave(kind, j, b, 'Job saved');
+    });
+  },
+  visit(kind, j) {
+    const f = mSheet('Scheduled visit', `${mField('Date', `<input type="date" name="date" value="${esc(j.date || ymd(new Date()))}">`)}
+<div class="m-two">${mField('Start', `<input type="time" name="startTime" value="${esc(j.startTime || '09:00')}">`)}${mField('End', `<input type="time" name="endTime" value="${esc(j.endTime || '11:00')}">`)}</div>
+<label class="m-chk"><input type="checkbox" name="anytime" ${j.anytime ? 'checked' : ''}> Anytime that day (no set time)</label>`, { full: true, foot: mSaveBtn() });
+    onSubmit(f, (fd) => {
+      const b = { date: fd.get('date'), startTime: fd.get('startTime'), endTime: fd.get('endTime'), anytime: !!fd.get('anytime') };
+      if (!b.date) throw new Error('Choose a date');
+      if (!jobScheduleOk(j.id, { ...j, ...b })) { const s = $('.ms-save', f); if (s) s.disabled = false; return; }
+      return mSave(kind, j, b, 'Visit saved');
+    });
+  },
+  team(kind, j) {
+    const team = jobTeam(j);
+    const f = mSheet('Assigned team', `<div class="m-team">${team.map((s) => `<label class="m-chk"><input type="checkbox" name="staff" value="${s.id}" ${(j.staffIds || []).includes(s.id) ? 'checked' : ''}>${avatarHtml(s, 32)}<span>${esc(s.name)}</span></label>`).join('') || '<p class="muted">Add team members on Manage Team first.</p>'}</div>`, { foot: team.length ? mSaveBtn() : '' });
+    onSubmit(f, (fd) => {
+      const staffIds = fd.getAll('staff');
+      if (!jobScheduleOk(j.id, { ...j, staffIds })) { const s = $('.ms-save', f); if (s) s.disabled = false; return; }
+      return mSave(kind, j, { staffIds }, 'Team saved');
+    });
+  },
+  instructions(kind, j) { onSubmit(mText(kind, j, 'Instructions', 'description', 'What the team needs to know for this visit'), (fd) => mSave(kind, j, { description: fd.get('description') }, 'Instructions saved')); },
+});
+// ⋯ on the job page
+A.mJobMore = (x) => {
+  const j = byId(D.jobs, x.id); const edit = canDo('jobs.edit');
+  const f = mSheet('More', `<div class="ms-list">${!j.signature && planHas('signatures') ? `<button type="button" data-act="collectSignature" data-id="${j.id}">Collect signature</button>` : ''}
+${edit ? `<button type="button" data-act="jobRemind" data-id="${j.id}">${planHas('sms') ? 'Text' : 'Email'} reminder to client</button>` : ''}
+${planHas('invoices') ? `<button type="button" class="need-invoices" data-act="jobInvoice" data-id="${j.id}">Create invoice</button>` : ''}
+${planHas('timeOff') && me && me.staffId && (j.staffIds || []).includes(me.staffId) && j.date >= ymd(new Date()) ? `<button type="button" data-act="jobRequestOff" data-id="${j.id}">Request off for this job</button>` : ''}
+<a href="/calendar" data-link>Open calendar</a>${edit ? `<a href="/jobs/edit?id=${j.id}&full=1" data-link>Edit everything at once</a><button type="button" class="danger-text" data-act="delJob" data-id="${j.id}">Delete job</button>` : ''}</div>`);
+  f.addEventListener('click', (e) => { if (e.target.closest('a, button[data-act]')) mClose(true); });
+};
+function mobileJobPage(j) {
+  if (mUnsign) mUnsign = '';
+  const d = jobDoc(j); const edit = canDo('jobs.edit'); const prices = canDo('jobs.prices');
+  const c = byId(D.clients, j.clientId) || {}; const q = byId(D.quotes, j.quoteId); const st = jobStatus(j); const invs = jobInvoices(j);
+  // read-only for team members who can't edit jobs: the same sections, not tappable
+  const tap = (sec, inner, cls = '', extra = '') => (edit ? mTap('job', j, sec, inner, cls, extra) : `<div class="${cls}">${inner.replace(ARROW, '')}</div>`);
+  const tapRow = (sec, l, v) => tap(sec, `<span>${l}</span><span class="md-v">${v}</span>`, 'md-tr');
+  const textSec = (sec, title, text, empty) => tap(sec, `<span class="md-sh">${title}${ARROW}</span>${text ? `<span class="md-text">${esc(text)}</span>` : `<span class="md-text muted">${edit ? empty : 'None'}</span>`}`, 'md-sec');
+  const btn = (act, label, cls = '') => `<button type="button" class="btn ${cls}" data-act="${act}" data-id="${j.id}">${label}</button>`;
+  const acts = edit ? [j.status === 'scheduled' ? btn('completeJob', 'Mark Complete') : btn('reopenJob', 'Reopen', 'alt'), st === 'invoice' && planHas('invoices') ? btn('jobInvoice', 'Create Invoice', 'need-invoices') : ''] : [];
+  const team = (j.staffIds || []).map((id) => byId(D.staff, id)).filter(Boolean);
+  const items = (d.items || []).map((it, i) => tap('item', `<strong>${esc(it.desc)}</strong>${it.details ? `<span class="md-det">${esc(it.details)}</span>` : ''}<span class="md-qp"><span>${esc(it.qty)} × ${money(it.price)}</span><span>${money(round2(it.qty * it.price))}</span></span>`, 'md-item', `data-i="${i}"`)).join('');
+  const paid = q ? depositPaid(q) : 0;
+  const totals = (d.items || []).length ? mRow('Subtotal', money(d.subtotal || 0), 'b')
+    + tapRow('discount', `Discount${d.discount && d.discountType === 'percent' ? ` (${d.discountValue}%)` : ''}`, d.discount ? '−' + money(d.discount) : money(0))
+    + tapRow('tax', `Tax${Number(d.taxRate) ? ` (${d.taxRate}%)` : ''}`, money(d.tax || 0)) + mRow('Total', money(d.total || 0), 'grand')
+    + (q && q.depositFee > 0 ? mRow('Required deposit', money(q.depositFee)) + (q.depositPaidAt ? mRow(payLink('q-' + q.id, 'Deposit collected', q.depositPaidAt), '−' + money(paid)) : '') + mRow('Outstanding deposit', money(Math.max(0, round2(q.depositFee - paid)))) : '') : '';
+  const sig = j.signature;
+  return `<div class="mdoc mjob"><a href="/jobs" data-link class="md-back" aria-label="Back to jobs">${CHEV('M15 18l-6-6 6-6')}</a>
+<div class="md-st"><span class="cstatus ${J_CLASS[st]}">${J_STATUS[st]}</span>${sig ? '<span class="vsign">✓ Signed</span>' : ''}</div>
+${tap('jobDetails', `<span class="md-h">Job #${esc(j.number)} for ${esc(c.name || 'no client')}${prices && jobTotal(j) !== null ? ` for ${money(jobTotal(j))}` : ''}</span>${j.title ? `<span class="md-sub">${esc(j.title)}</span>` : ''}
+<span class="md-addr">${esc(j.address || c.address || '')}</span>`, 'md-head')}
+${c.phone || c.email ? `<div class="md-contact">${c.phone ? `<a href="tel:${esc(c.phone)}">${CHEV('M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z')}Call</a>` : ''}${c.phone ? `<a href="sms:${esc(c.phone)}">${CHEV('M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z')}Text</a>` : ''}${c.email ? `<a href="mailto:${esc(c.email)}">${CHEV('M4 4h16v16H4zM4 6l8 7 8-7')}Email</a>` : ''}${j.address || c.address ? `<a href="https://maps.google.com/?q=${encodeURIComponent(j.address || c.address)}" target="_blank" rel="noopener">${CHEV('M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12zM12 11.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z')}Map</a>` : ''}</div>` : ''}
+<div class="md-acts">${acts.filter(Boolean).join('')}<button type="button" class="btn alt md-more" data-act="mJobMore" data-id="${j.id}" aria-label="More actions">⋯</button></div>
+<div class="md-tabs" role="tablist"><button type="button" role="tab" class="on" aria-selected="true" data-act="mTab" data-k="doc">Job</button><button type="button" role="tab" aria-selected="false" data-act="mTab" data-k="notes">Notes</button></div>
+<div class="md-pane" data-pane="doc">${tap('visit', `<span class="md-sh">Scheduled visit${ARROW}</span><span class="md-text">${esc(visitText(j))}</span>`, 'md-sec')}
+${tap('team', `<span class="md-sh">Assigned team${ARROW}</span>${team.length ? `<span class="md-team">${team.map((s) => `<span>${avatarHtml(s, 28)}${esc(s.name)}</span>`).join('')}</span>` : `<span class="md-text muted">${edit ? 'Assign team members' : 'No one assigned'}</span>`}`, 'md-sec')}
+${textSec('instructions', 'Instructions', j.description, 'Add instructions for the team')}
+${prices ? `<section class="md-block"><h2 class="md-sh">Product / Service</h2><div class="md-lh"><strong>Line items</strong>${edit ? `<button type="button" class="md-plus" data-act="mEdit" data-kind="job" data-id="${j.id}" data-sec="item" data-i="" aria-label="Add line item">${CHEV('M12 5v14M5 12h14')}</button>` : ''}</div>${items || '<p class="muted md-empty">No line items yet.</p>'}</section>
+${totals ? `<section class="md-block md-totals">${totals}</section>` : ''}` : ''}
+${sig ? `<section class="md-block"><h2 class="md-sh">Client signature</h2><img class="sig-img" src="${esc(sig.file)}" alt="Signature of ${esc(sig.name)}"><p class="md-text">Signed by <strong>${esc(sig.name)}</strong> · ${esc(fmtStamp(sig.signedAt))}</p></section>`
+    : planHas('signatures') ? `<button type="button" class="md-tap md-sec" data-act="collectSignature" data-id="${j.id}"><span class="md-sh">Client signature${ARROW}</span><span class="md-text muted">Collect the client’s signature</span></button>` : ''}
+${prices && planHas('invoices') ? `<section class="md-block need-invoices"><div class="md-lh"><h2 class="md-sh" style="margin:0">Billing</h2>${edit ? `<button type="button" class="md-plus" data-act="jobInvoice" data-id="${j.id}" aria-label="Create invoice">${CHEV('M12 5v14M5 12h14')}</button>` : ''}</div>
+${invs.map((i) => `<a class="md-inv" href="/invoices/view?id=${i.id}" data-link><span><strong>Invoice #${esc(i.number)}</strong><small>${esc(I_STATUS[i.displayStatus] || i.displayStatus)} · due ${fmtDate(i.dueDate)}</small></span><span>${money(i.total)}</span></a>`).join('') || '<p class="muted md-empty">No invoices yet. Create one when the work is done.</p>'}</section>` : ''}</div>
+<div class="md-pane" data-pane="notes" hidden>${textSec('notes', 'Internal notes', j.internalNotes, 'Add a note. Clients never see these.')}</div></div>`;
 }
 PAGES['/quotes/new'] = docPage('quote', true); PAGES['/quotes/edit'] = docPage('quote', false);
 PAGES['/invoices/new'] = docPage('invoice', true); PAGES['/invoices/edit'] = docPage('invoice', false);
@@ -1332,6 +1466,9 @@ PAGES['/quotes'] = {
     list.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0) * v.dir);
     [...quoteSel].forEach((id) => { if (!byId(D.quotes, id)) quoteSel.delete(id); });
     const th = (k, label, cls = '') => `<th class="${cls}"><button class="th-btn" data-act="quoteSort" data-k="${k}">${label} <span class="sort ${v.sort === k ? 'on' : ''}">${v.sort === k ? (v.dir > 0 ? '▲' : '▼') : '⇅'}</span></button></th>`;
+    if (phoneMq.matches) return mobileList(main, { path: '/quotes', title: 'Quotes', plural: 'quotes', one: 'quote', list, q: v.q, status: v.status, statuses: order.map((s) => [s, Q_STATUS[s]]), date: (x) => x.createdAt,
+      row: (x) => ({ name: cname(x), date: mDay(x.createdAt), amount: mAmt(x.total), title: x.title, label: Q_STATUS[quoteStatus(x)], cls: 'q-' + quoteStatus(x), href: '/quotes/view?id=' + x.id }),
+      onStatus: (k) => { quoteView = { ...quoteView, status: k }; }, onQ: (t) => { quoteView.q = t; }, newAct: 'newQuote' });
     main.innerHTML = `<div class="head"><h1>Quotes</h1><div class="actions"><button class="btn" data-act="newQuote">New Quote</button>
 <details class="menu"><summary class="btn alt">⋯ More Actions</summary><div class="menu-list"><button data-act="exportQuotes">Export to CSV</button></div></details></div></div>
 <div class="cstats">
@@ -1434,6 +1571,9 @@ PAGES['/invoices'] = {
     const key = { client: (i) => cname(i).toLowerCase(), number: (i) => Number(String(i.number).replace(/\D/g, '')) || 0, due: (i) => i.dueDate || '', issued: (i) => i.issueDate || '', status: (i) => order.indexOf(i.displayStatus), total: (i) => i.total || 0, balance: invBalance }[v.sort];
     list.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0) * v.dir);
     const th = (k, label, cls = '') => `<th class="${cls}"><button class="th-btn" data-act="invSort" data-k="${k}">${label} <span class="sort ${v.sort === k ? 'on' : ''}">${v.sort === k ? (v.dir > 0 ? '▲' : '▼') : '⇅'}</span></button></th>`;
+    if (phoneMq.matches) return mobileList(main, { path: '/invoices', title: 'Invoices', plural: 'invoices', one: 'invoice', list, q: v.q, status: v.status, statuses: order.map((s) => [s, I_STATUS[s]]), date: (x) => x.issueDate,
+      row: (x) => ({ name: cname(x), date: mDay(x.issueDate), amount: mAmt(x.total), title: invSubject(x), label: I_STATUS[x.displayStatus], cls: I_CLASS[x.displayStatus], href: '/invoices/view?id=' + x.id }),
+      onStatus: (k) => { invView = { ...invView, status: k }; }, onQ: (t) => { invView.q = t; }, newAct: 'newInvoice' });
     main.innerHTML = `<div class="head"><h1>Invoices</h1><div class="actions"><button class="btn" data-act="newInvoice">New Invoice</button>
 <details class="menu"><summary class="btn alt">⋯ More Actions</summary><div class="menu-list"><button data-act="exportInvoices">Export to CSV</button></div></details></div></div>
 <div class="cstats">
@@ -1528,13 +1668,7 @@ ${paid ? `<div class="crow-line"><span>Deposit collected <span class="muted">· 
   form.addEventListener('submit', async (e) => {
     e.preventDefault(); const fd = new FormData(form);
     const body = { title: fd.get('title'), clientId: fd.get('clientId'), status: fd.get('status'), address: fd.get('address') || (byId(D.clients, fd.get('clientId')) || {}).address || '', date: fd.get('date'), startTime: fd.get('startTime'), endTime: fd.get('endTime'), anytime: !!fd.get('anytime'), description: fd.get('description'), staffIds: fd.getAll('staff'), internalNotes: fd.get('internalNotes'), taxRate: fd.get('taxRate'), discountType: fd.get('discountType'), discountValue: fd.get('discountValue'), items: readItems(form).filter((i) => i.desc) };
-    if (body.endTime <= body.startTime) return toast('End time must be after start time', true);
-    const clash = jobConflicts({ id: j.id, ...body });
-    if (clash.length && !confirm(`Schedule conflict: ${clash.map((c) => c.number + ' ' + c.title).join(', ')} overlaps for an assigned staff member. Save anyway?`)) return;
-    const offHours = body.staffIds.map((id) => byId(D.staff, id)).filter((s) => s && !withinHours(s, body.date, body.startTime, body.endTime));
-    const away = body.staffIds.map((id) => [byId(D.staff, id), offOn(id, body.date, body.startTime, body.endTime)]).filter(([s, r]) => s && r);
-    if (away.length && !confirm(`Time off: ${away.map(([s, r]) => `${s.name} (${r.when})`).join(', ')} ${away.length === 1 ? 'has' : 'have'} approved time off then. Save anyway?`)) return;
-    if (offHours.length && !confirm(`Outside working hours: ${offHours.map((s) => s.name).join(', ')} ${offHours.length === 1 ? "isn't" : "aren't"} scheduled to work then (see Manage team). Save anyway?`)) return;
+    if (!jobScheduleOk(j.id, body)) return;
     const saved = j.id ? await api('PUT', '/api/jobs/' + j.id, body) : await api('POST', '/api/jobs', body);
     toast('Job saved'); if (j.id) refresh(); else navigate('/jobs/edit?id=' + saved.id);
   });
@@ -1578,12 +1712,13 @@ A.rmSignature = async (d) => {
   if (!confirm('Remove this signature? Unsaved changes on this page will be lost. You can collect a new one afterwards.')) return;
   await api('DELETE', `/api/jobs/${d.id}/signature`); toast('Signature removed'); refresh();
 };
-PAGES['/jobs/new'] = { title: 'New job', render: (main) => { const draft = typeof jobDraft !== 'undefined' && jobDraft; if (draft) jobDraft = null; jobPage(main, draft || null, { clientId: qp('client'), date: qp('date') }); } }; // a draft: Schedules → More Options
+PAGES['/jobs/new'] = { title: 'New job', render: (main) => { const draft = typeof jobDraft !== 'undefined' && jobDraft; if (draft) jobDraft = null; if (!draft && phoneMq.matches) return mobileNew('job', main, { clientId: qp('client'), date: qp('date') }); jobPage(main, draft || null, { clientId: qp('client'), date: qp('date') }); } }; // a draft: Schedules → More Options
 PAGES['/jobs/edit'] = {
   title: 'Job',
   render(main) {
     const j = byId(D.jobs, qp('id'));
     if (!j) { main.innerHTML = '<div class="card"><h1>Job not found</h1><p><a href="/jobs" data-link>Back to Jobs</a></p></div>'; return; }
+    if (phoneMq.matches && qp('full') !== '1') { main.innerHTML = mobileJobPage(j); return; } // phones: tap-to-edit (⋯ → Edit everything at once opens this form)
     jobPage(main, j);
   },
 };
@@ -1632,6 +1767,9 @@ PAGES['/jobs'] = {
     list.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0) * v.dir);
     const th = (k, label, cls = '') => `<th class="${cls}"><button class="th-btn" data-act="jobSort" data-k="${k}">${label} <span class="sort ${v.sort === k ? 'on' : ''}">${v.sort === k ? (v.dir > 0 ? '▲' : '▼') : '⇅'}</span></button></th>`;
     const team = (j) => (j.staffIds || []).map((id) => byId(D.staff, id)).filter(Boolean).map((s) => s.name).join(', ');
+    if (phoneMq.matches) return mobileList(main, { path: '/jobs', title: 'Jobs', plural: 'jobs', one: 'job', list, q: v.q, status: v.status, statuses: order.map((s) => [s, J_STATUS[s]]), date: (x) => (x.date || '') + (x.startTime || ''),
+      row: (x) => ({ name: cname(x), date: mDay(x.date) + (x.anytime || !x.startTime ? '' : ' ' + fmtTime(x.startTime)), amount: canDo('jobs.prices') && jobTotal(x) !== null ? mAmt(jobTotal(x)) : '', title: x.title, label: J_STATUS[jobStatus(x)], cls: J_CLASS[jobStatus(x)], href: '/jobs/edit?id=' + x.id }),
+      onStatus: (k) => { jobView = { ...jobView, status: k }; }, onQ: (t) => { jobView.q = t; }, newAct: 'newJob', newCls: 'need-jobs-edit' });
     main.innerHTML = `<div class="head"><h1>Jobs</h1><div class="actions"><button class="btn need-jobs-edit" data-act="newJob">New Job</button>
 <details class="menu"><summary class="btn alt">⋯ More Actions</summary><div class="menu-list"><button data-act="exportJobs">Export to CSV</button><a href="/calendar" data-link>Open calendar</a></div></details></div></div>
 <div class="cstats">
