@@ -1159,7 +1159,8 @@ ${mField('Due date', `<input type="date" name="dueDate" value="${esc(d.dueDate |
 <datalist id="mSvc">${D.services.map((s) => `<option value="${esc(s.name)}">`).join('')}</datalist>
 <label class="mf"><span>Description</span><textarea class="details" name="details" rows="4">${esc(it.details || '')}</textarea>${aiOn() ? AI_BTN : ''}</label></div>
 ${mField('Unit cost', `<span class="mf-in"><b class="pre">$</b><input name="cost" type="number" inputmode="decimal" step="any" min="0" value="${it.cost ?? it.price ?? ''}" placeholder="0"></span>`)}
-<label class="mf mf-mk${it.markupType === 'flat' ? ' flat' : ''}"><span>Markup</span><span class="mf-in"><b class="pre">$</b><input name="markup" type="number" inputmode="decimal" step="any" value="${it.markup ?? 0}"><select name="markupType" aria-label="Markup type"><option value="percent">%</option><option value="flat" ${it.markupType === 'flat' ? 'selected' : ''}>$</option></select></span></label>
+<div class="mseg mk-seg" role="radiogroup" aria-label="Markup type">${[['percent', 'Percent (%)'], ['flat', 'Fixed ($)']].map(([k, l]) => `<label><input type="radio" name="markupType" value="${k}" ${(it.markupType === 'flat') === (k === 'flat') ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div>
+<label class="mf mf-mk${it.markupType === 'flat' ? ' flat' : ''}"><span>Markup</span><span class="mf-in"><b class="pre">$</b><input name="markup" type="number" inputmode="decimal" step="any" value="${it.markup ?? 0}"><b class="suf">%</b></span></label>
 ${mField('Quantity', `<input name="qty" type="number" inputmode="decimal" step="any" min="0" value="${esc(it.qty ?? 1)}">`)}
 <div class="m-total"><span>Total</span><strong class="m-tot"></strong></div>`, { full: true, foot: `${mSaveBtn('Save Line Item')}${i >= 0 ? '<button type="button" class="btn alt ms-more" data-act="mRmItem" aria-label="Delete line item" title="Delete line item">⋯</button>' : ''}` });
     f._ctx = { kind, d, i };
@@ -1167,7 +1168,7 @@ ${mField('Quantity', `<input name="qty" type="number" inputmode="decimal" step="
     const unit = () => { const c = Math.max(0, Number(f.cost.value) || 0); const m = Number(f.markup.value) || 0; return round2(f.markupType.value === 'flat' ? c + m : c * (1 + m / 100)); };
     const tot = () => { $('.m-tot', f).textContent = money(round2(unit() * (Number(f.qty.value) || 0))); }; tot();
     f.addEventListener('input', tot);
-    f.markupType.addEventListener('change', () => { $('.mf-mk', f).classList.toggle('flat', f.markupType.value === 'flat'); tot(); });
+    $('.mk-seg', f).addEventListener('change', () => { $('.mf-mk', f).classList.toggle('flat', f.markupType.value === 'flat'); tot(); });
     f.desc.addEventListener('change', () => { const s = D.services.find((v) => v.name === f.desc.value.trim()); if (!s) return; if (!f.cost.value) f.cost.value = s.price; if (!f.details.value) f.details.value = s.description || ''; tot(); });
     onSubmit(f, (fd) => {
       const desc = String(fd.get('desc')).trim(); if (!desc) throw new Error('Enter the item’s name');
