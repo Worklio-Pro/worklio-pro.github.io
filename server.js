@@ -308,6 +308,21 @@ async function sendSms(to, body, { server = false } = {}) {
   }
   return { status: 'simulated', detail: server ? 'No SMS provider configured (set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM)' : 'Text messages aren’t set up on this service yet' };
 }
+// branded short links for texts (<platform domain>/s/<code>): carriers filter public shorteners like bit.ly. Kept in platform.json; one code per address
+const SHORT_ALPHABET = 'abcdefghijkmnpqrstuvwxyz23456789'; // 32 letters, so each random byte maps evenly; no 0/o or 1/l
+const shortLinks = () => (tenancy.platform().shortLinks = tenancy.platform().shortLinks || {});
+function shortLink(url) {
+  const L = shortLinks(); let code = Object.keys(L).find((k) => L[k] === url);
+  if (!code) { do code = Array.from(crypto.randomBytes(7), (b) => SHORT_ALPHABET[b % 32]).join(''); while (L[code]); L[code] = url; tenancy.savePlatform(); }
+  return `${tenancy.platformUrl()}/s/${code}`;
+}
+// the one text a client gets right after opting in (A2P 10DLC requires it), whichever way they opted in
+async function optInText(c) {
+  if (!c || !c.smsConsent || !c.phone || !tenancy.has('sms')) return;
+  await notify({ clientId: c.id, channel: 'sms', kind: 'optin', refId: c.id, refNumber: '', subject: '',
+    body: `${db.company.name}: You're signed up for texts about your quotes, invoices and appointments. Msg frequency varies. Msg & data rates may apply. Reply HELP for help, STOP to opt out.` });
+  save();
+}
 async function notify({ clientId, channel, kind, refId, refNumber, subject, body, html = '' }) {
   const c = findClient(clientId);
   if (channel === 'sms' && !tenancy.has('sms')) return { id: uid(), at: new Date().toISOString(), clientId, channel, kind, status: 'failed', detail: 'Text messages aren’t included in your plan' };
@@ -1026,7 +1041,8 @@ app.post('/api/:col', (req, res, next) => {
   }
   if (col === 'expenses') doc.amount = Number(b.amount) || 0;
   if (col === 'services') doc.price = Number(b.price) || 0;
-  db[col].push(doc); save(); res.status(201).json(col === 'invoices' ? withStatus(doc) : col === 'jobs' && isMemberReq(req) ? jobForMember(doc) : doc);
+  db[col].push(doc); save(); if (col === 'clients') optInText(doc).catch(() => {});
+  res.status(201).json(col === 'invoices' ? withStatus(doc) : col === 'jobs' && isMemberReq(req) ? jobForMember(doc) : doc);
 });
 
 // update
@@ -1068,7 +1084,8 @@ app.put('/api/:col/:id', (req, res, next) => {
   if (col === 'staff' && isOwnerStaff(doc) && doc.status === 'deactivated') return res.status(400).json({ error: 'The account owner can’t be deactivated' });
   if (col === 'expenses') doc.amount = Number(doc.amount) || 0;
   if (col === 'services') doc.price = Number(doc.price) || 0;
-  db[col][i] = doc; save(); res.json(col === 'invoices' ? withStatus(doc) : col === 'jobs' && isMemberReq(req) ? jobForMember(doc) : doc);
+  db[col][i] = doc; save(); if (col === 'clients' && doc.smsConsent && !was.smsConsent) optInText(doc).catch(() => {});
+  res.json(col === 'invoices' ? withStatus(doc) : col === 'jobs' && isMemberReq(req) ? jobForMember(doc) : doc);
 });
 
 app.delete('/api/:col/:id', (req, res, next) => {
@@ -1195,7 +1212,7 @@ app.post('/api/quotes/:id/send', async (req, res) => {
   const email = renderEmail('quote', { client_name: findClient(q.clientId)?.name || '', company_name: co, quote_number: q.number, quote_title: q.title || '', total: money(q.total), link });
   for (const ch of channels) {
     results.push(await notify({ clientId: q.clientId, channel: ch, kind: 'quote', refId: q.id, refNumber: q.number,
-      subject: email.subject, html: ch === 'email' ? email.html : '', body: ch === 'email' ? email.body : `${co}: Quote ${q.number} (${money(q.total)}) is ready: ${link} Reply STOP to opt out.` }));
+      subject: email.subject, html: ch === 'email' ? email.html : '', body: ch === 'email' ? email.body : `${co}: Quote ${q.number} (${money(q.total)}) is ready: ${shortLink(link)} Reply STOP to opt out.` }));
   }
   if (q.status === 'draft') q.status = 'sent'; if (!q.sentAt) q.sentAt = iso(new Date());
   save(); res.json({ quote: q, results });
@@ -1234,7 +1251,7 @@ app.post('/api/invoices/:id/send', async (req, res) => {
   const email = renderEmail('invoice', { client_name: findClient(inv.clientId)?.name || '', company_name: co, invoice_number: inv.number, total: money(inv.total), due_date: niceDate(inv.dueDate), link });
   for (const ch of channels) {
     results.push(await notify({ clientId: inv.clientId, channel: ch, kind: 'invoice', refId: inv.id, refNumber: inv.number,
-      subject: email.subject, html: ch === 'email' ? email.html : '', body: ch === 'email' ? email.body : `${co}: Invoice ${inv.number} (${money(inv.total)}) due ${inv.dueDate}. Pay online: ${link} Reply STOP to opt out.` }));
+      subject: email.subject, html: ch === 'email' ? email.html : '', body: ch === 'email' ? email.body : `${co}: Invoice ${inv.number} (${money(inv.total)}) due ${inv.dueDate}. Pay online: ${shortLink(link)} Reply STOP to opt out.` }));
   }
   if (inv.status === 'draft') inv.status = 'sent';
   save(); res.json({ invoice: withStatus(inv), results });
@@ -1745,7 +1762,7 @@ app.get('/api/portal/:token', (req, res) => {
   if (!c) return res.status(404).json({ error: 'Invalid portal link' });
   res.json({
     company: { name: db.company.name, logo: db.company.logo, email: db.company.email, phone: db.company.phone, brandColor: db.company.brandColor, address: db.company.addressPrivate ? '' : db.company.address, website: db.company.website, hours: db.company.showHours ? db.company.hours || null : null },
-    client: { id: c.id, name: c.name, email: c.email, phone: c.phone, address: c.address },
+    client: { id: c.id, name: c.name, email: c.email, phone: c.phone, address: c.address, smsConsent: !!c.smsConsent },
     referralLink: tenancy.has('referrals') ? referralLink(c) : null,
     requests: (db.requests || []).filter((r) => r.clientId === c.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(requestForClient),
     jobs: db.jobs.filter((j) => j.clientId === c.id).sort((a, b) => b.date.localeCompare(a.date)).map(jobForClient),
@@ -1766,6 +1783,8 @@ app.use('/refer', (req, res, next) => (tenancy.has('referrals') ? next() : res.s
 const smsConsentBox = (values) => `<label style="display:flex;gap:10px;align-items:flex-start;margin:0 0 12px;font-size:14px;line-height:1.45;color:#374151"><input type="checkbox" name="smsConsent" value="1"${values.smsConsent ? ' checked' : ''} style="width:auto;margin:3px 0 0;flex:none">
 <span>Text me about my request, quotes, invoices and appointments from ${esc(db.company.name)}. Message frequency varies. Msg &amp; data rates may apply. Reply STOP to opt out, HELP for help. Agreeing isn’t a condition of service. See the <a href="/terms#sms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</span></label>`;
 const smsConsentFrom = (b, phone, source) => (b.smsConsent && phone ? { at: new Date().toISOString(), source } : null);
+// on the thank-you page, so people who ticked the box know what comes next
+const smsSignedUp = (b, phone) => (b.smsConsent && phone ? `<p class="muted">You’re signed up for texts about your request, quotes, invoices and appointments at ${esc(phone)}. You’ll get a text confirming it. Message frequency varies. Msg &amp; data rates may apply. Reply STOP to any text to opt out, HELP for help.</p>` : '');
 function referPage(c, { error, values = {} } = {}) {
   const v = (k) => esc(values[k] || '');
   const first = String(c.name || '').trim().split(/\s+/)[0];
@@ -1792,7 +1811,7 @@ app.post('/refer/:code', async (req, res) => {
   const c = db.clients.find((x) => x.referralCode && x.referralCode === req.params.code);
   if (!c) return res.status(404).send(shell('Link not found', '<h1>Link not found</h1>'));
   const b = req.body || {}; const clip = (k, n) => String(b[k] || '').trim().slice(0, n);
-  const done = shell('Request sent', `<h1>Thanks${clip('name', 100) ? ', ' + esc(clip('name', 100).split(/\s+/)[0]) : ''}!</h1><p class="muted">We got your request and will be in touch soon.</p>`);
+  const done = shell('Request sent', `<h1>Thanks${clip('name', 100) ? ', ' + esc(clip('name', 100).split(/\s+/)[0]) : ''}!</h1><p class="muted">We got your request and will be in touch soon.</p>${smsSignedUp(b, clip('phone', 40))}`);
   if (b.website) return res.send(done); // honeypot: bots fill every field
   const ip = req.socket.remoteAddress; const now = Date.now(); const hits = (referHits.get(ip) || []).filter((t) => now - t < 3600e3);
   if (hits.length >= 5) return res.status(429).send(referPage(c, { error: 'Too many requests from this connection. Please call or email us instead.', values: b }));
@@ -1809,7 +1828,7 @@ app.post('/refer/:code', async (req, res) => {
   const details = emails.details([['Name', name], ['Phone', phone], ['Email', email], ['Address', r.address || 'not given'], ['Referred by', c.name]]);
   const sent = await sendTemplate('referral', db.company.email, { name, referrer: c.name, title, details, request: r.details, business: db.company.name, account_url: baseUrl() });
   db.notifications.unshift({ id: uid(), at: r.createdAt, clientId: lead.id, clientName: name, channel: 'email', kind: 'referral', refId: r.id, refNumber: '', to: db.company.email || '', subject: `Referral: ${title}`, body: sent.text, status: sent.status, detail: sent.detail });
-  save(); res.send(done);
+  save(); res.send(done); optInText(lead).catch(() => {});
 });
 
 // ---------- online booking: <account address>/book, linked from the Google Business Profile ("Book" button) and the business's own website ----------
@@ -1839,7 +1858,7 @@ ${smsConsentBox(values)}
 app.get('/book', (req, res) => res.send(bookPage()));
 app.post('/book', async (req, res) => {
   const b = req.body || {}; const clip = (k, n) => String(b[k] || '').trim().slice(0, n);
-  const done = shell('Booking request sent', `<h1>Thanks${clip('name', 100) ? ', ' + esc(clip('name', 100).split(/\s+/)[0]) : ''}!</h1><p class="muted">We got your request and will be in touch soon to confirm a time.</p>`);
+  const done = shell('Booking request sent', `<h1>Thanks${clip('name', 100) ? ', ' + esc(clip('name', 100).split(/\s+/)[0]) : ''}!</h1><p class="muted">We got your request and will be in touch soon to confirm a time.</p>${smsSignedUp(b, clip('phone', 40))}`);
   if (b.website) return res.send(done); // honeypot: bots fill every field
   const ip = req.socket.remoteAddress; const now = Date.now(); const hits = (bookHits.get(ip) || []).filter((t) => now - t < 3600e3);
   if (hits.length >= 5) return res.status(429).send(bookPage({ error: 'Too many requests from this connection. Please call or email us instead.', values: b }));
@@ -1852,7 +1871,9 @@ app.post('/book', async (req, res) => {
   let c = db.clients.find((x) => (email && normEmail(x.email) === email) || (digits(phone).length === 10 && digits(x.phone) === digits(phone)));
   const isNew = !c;
   if (!c) { c = { id: uid(), name, email, phone, address: clip('address', 300), company: '', tags: ['Online booking'], notes: 'Booked online', portalToken: token(), createdAt: iso(new Date()) }; db.clients.push(c); }
-  if (!c.smsConsent) c.smsConsent = smsConsentFrom(b, phone, 'booking form');
+  // consent covers the number typed on this form: an existing client's texts go to their saved number, so it has to be the same one
+  const optedIn = !c.smsConsent && (!c.phone || digits(c.phone) === digits(phone)) && smsConsentFrom(b, phone, 'booking form');
+  if (optedIn) { c.smsConsent = optedIn; c.phone = c.phone || phone; }
   const preferredDate = /^\d{4}-\d{2}-\d{2}$/.test(b.preferredDate || '') && b.preferredDate >= iso(new Date()) ? b.preferredDate : '';
   const preferredTime = ['morning', 'afternoon', 'evening'].includes(b.preferredTime) ? b.preferredTime : 'any';
   db.requests = db.requests || [];
@@ -1861,7 +1882,7 @@ app.post('/book', async (req, res) => {
   const details = emails.details([['Name', name + (isNew ? ' (new lead)' : '')], ['Phone', phone || c.phone], ['Email', email || c.email], ['Address', r.address || 'not given'], ['Preferred', `${preferredDate || 'any day'}, ${preferredTime === 'any' ? 'any time' : preferredTime}`], ['From', 'Online booking']]);
   const sent = await sendTemplate('workRequest', db.company.email, { client: name, title, details, request: r.details, business: db.company.name, account_url: baseUrl() });
   db.notifications.unshift({ id: uid(), at: r.createdAt, clientId: c.id, clientName: c.name, channel: 'email', kind: 'request', refId: r.id, refNumber: '', to: db.company.email || '', subject: `New request: ${title}`, body: sent.text, status: sent.status, detail: sent.detail });
-  save(); res.send(done);
+  save(); res.send(done); if (optedIn) optInText(c).catch(() => {});
 });
 
 // a client asks for work from their portal: saved as a request and emailed to the business
@@ -1875,12 +1896,15 @@ app.post('/api/portal/:token/requests', async (req, res) => {
   if (db.requests.filter((r) => r.clientId === c.id && r.createdAt > dayAgo).length >= 10) return res.status(429).json({ error: 'You’ve sent several requests today. Please call or email us instead.' });
   const preferredDate = /^\d{4}-\d{2}-\d{2}$/.test(b.preferredDate || '') ? b.preferredDate : '';
   const preferredTime = ['morning', 'afternoon', 'evening'].includes(b.preferredTime) ? b.preferredTime : 'any';
+  const phone = clip(b.phone, 40); const optedIn = !c.smsConsent && smsConsentFrom(b, phone, 'client portal');
+  if (b.smsConsent && !c.smsConsent && String(phone).replace(/\D/g, '').length < 10) return res.status(400).json({ error: 'Enter your mobile number with the area code to get texts' });
+  if (optedIn) { c.smsConsent = optedIn; c.phone = phone; } // the number they just agreed to be texted at
   const r = { id: uid(), clientId: c.id, title, details: clip(b.details, 4000), address: clip(b.address, 300) || c.address || '', preferredDate, preferredTime, status: 'new', createdAt: new Date().toISOString() };
   db.requests.push(r);
   const details = emails.details([['Client', c.name], ['Phone', c.phone], ['Email', c.email], ['Address', r.address || 'not given'], ['Preferred', `${preferredDate || 'any day'}, ${preferredTime === 'any' ? 'any time' : preferredTime}`]]);
   const sent = await sendTemplate('workRequest', db.company.email, { client: c.name, title, details, request: r.details, business: db.company.name, account_url: baseUrl() });
   db.notifications.unshift({ id: uid(), at: r.createdAt, clientId: c.id, clientName: c.name, channel: 'email', kind: 'request', refId: r.id, refNumber: '', to: db.company.email || '', subject: `New request: ${title}`, body: sent.text, status: sent.status, detail: sent.detail });
-  save(); res.status(201).json(requestForClient(r));
+  save(); res.status(201).json({ ...requestForClient(r), smsConsent: !!c.smsConsent, phone: c.phone }); if (optedIn) optInText(c).catch(() => {});
 });
 
 // ---------- reports ----------
@@ -2532,6 +2556,9 @@ function dispatch(req, res) {
   if (!/\.(js|css|png|jpe?g|gif|webp|svg|ico|woff2?)$/i.test(p)) res.setHeader('Cache-Control', 'private, no-store');
   else if (/\.(js|css)$/i.test(p)) res.setHeader('Cache-Control', 'no-cache'); // the app's code: always check for a newer version, so a deploy shows up right away
   if (legal.kindOf(p)) { res.setHeader('Content-Type', 'text/html; charset=utf-8'); return res.end(legal.page(legal.kindOf(p))); } // Terms + Privacy: the same on every address
+  const sl = /^\/s\/([a-z0-9]{7})$/.exec(p); const slTo = sl && shortLinks()[sl[1]]; // a short link from a text
+  if (slTo) { res.writeHead(302, { Location: slTo }); return res.end(); }
+  if (sl) { res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' }); return res.end(notice('Link not found', 'This link isn’t valid. Check the text you were sent, or contact the business that sent it.')); }
   if (tenancy.isHelpHost(req.headers.host)) return helpApp(req, res);
   if (r.kind === 'platform' || p === '/api/site/domain-allowed' || (r.dev && PLATFORM_PATHS.test(p))) return platformApp(req, res);
   app(req, res);

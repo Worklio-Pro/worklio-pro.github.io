@@ -813,6 +813,9 @@ function renderPortal(main, tok, p) {
 <label class="fl"><span>Service address</span><input name="address" maxlength="300" value="${esc(p.client.address || '')}"></label>
 <div class="cp-row"><label class="fl"><span>Preferred date</span><input name="preferredDate" type="date" min="${today}"></label>
 <label class="fl"><span>Preferred time</span><select name="preferredTime">${Object.entries(TIME_LABEL).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select></label></div>
+${p.client.smsConsent ? `<p class="cp-sub" style="margin:4px 0 12px">You get texts from us at ${esc(p.client.phone)}. Reply STOP to any text to stop them.</p>` : `<label class="fl"><span>Mobile phone (for texts)</span><input name="phone" type="tel" maxlength="40" autocomplete="tel" value="${esc(p.client.phone || '')}"></label>
+<label style="display:flex;gap:10px;align-items:flex-start;margin:0 0 14px;font-size:14px;line-height:1.45"><input type="checkbox" name="smsConsent" value="1" style="width:auto;margin:3px 0 0;flex:none">
+<span>Text me about my request, quotes, invoices and appointments from ${esc(co.name)}. Message frequency varies. Msg &amp; data rates may apply. Reply STOP to opt out, HELP for help. Agreeing isn’t a condition of service. See the <a href="/terms#sms" target="_blank" rel="noopener">Terms</a> and <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</span></label>`}
 <div class="cp-actions"><button type="button" class="cp-btn ghost" data-cp="requests">Cancel</button><button class="cp-btn primary">Send request</button></div></form>`,
     estimates: () => (quotes.length ? head('Estimates') + `<div class="cp-list">${quotes.map((q) => row(`${esc(q.title || 'Estimate')} <span class="cp-num">#${esc(q.number)}</span>`, [`Sent ${fmtDate((q.sentAt || q.createdAt).slice(0, 10))}`, `Total ${money(q.total)}`, q.depositFee > 0 ? (q.depositPaidAt ? `Deposit paid ${money(q.depositPaidAmount ?? q.depositFee)}` : `Deposit ${money(q.depositFee)}`) : ''], `${cpBadge(q.status)}<a class="cp-btn ${q.status === 'sent' ? 'primary' : ''}" href="${esc(q.link)}">${q.status === 'sent' ? 'Review' : 'View'}</a>`)).join('')}</div>`
       : cpEmpty('estimates', 'No estimates yet', 'When we send you an estimate, you can review and approve it here.')),
@@ -845,7 +848,7 @@ ${co.hours ? `<h3 class="cp-sec">Business hours</h3><table class="cp-hours">${WE
     const f = $('#cpReq', main);
     if (f) f.addEventListener('submit', async (e) => {
       e.preventDefault(); const btn = $('.primary', f); btn.disabled = true; btn.textContent = 'Sending…';
-      try { const r = await api('POST', `/api/portal/${encodeURIComponent(tok)}/requests`, Object.fromEntries(new FormData(f))); p.requests.unshift(r); toast('Request sent. We’ll be in touch soon.'); show('requests'); }
+      try { const r = await api('POST', `/api/portal/${encodeURIComponent(tok)}/requests`, Object.fromEntries(new FormData(f))); p.requests.unshift(r); p.client.smsConsent = r.smsConsent; p.client.phone = r.phone; toast('Request sent. We’ll be in touch soon.'); show('requests'); }
       catch (err) { toast(err.message, true); btn.disabled = false; btn.textContent = 'Send request'; }
     });
     const on = $('.cp-navs', main); const cur = $('.cp-nav.on', on); if (cur && on.scrollWidth > on.clientWidth) on.scrollLeft = cur.offsetLeft - 12; // phone: keep the selected tab visible
