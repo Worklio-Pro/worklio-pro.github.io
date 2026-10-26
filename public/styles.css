@@ -673,7 +673,7 @@ a.hp-nav{color:var(--text);text-decoration:none;padding:6px 8px;margin:0 -8px 10
 .h-drop{position:absolute;top:calc(100% + 10px);left:50%;transform:translateX(-50%);width:min(640px,calc(100vw - 32px));background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-lg);padding:10px;z-index:20}
 .h-drop-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:2px}
 .h-links .h-drop a{display:flex;align-items:center;gap:10px;font-size:14px;padding:9px 10px}
-.h-drop a span{font-size:17px;width:22px;text-align:center;flex:none}
+.h-drop a span{width:22px;flex:none;display:grid;place-items:center;color:var(--muted)}.h-links .h-drop a:hover span{color:var(--link)}
 .h-links .h-drop .h-drop-all{justify-content:center;margin-top:8px;border-top:1px solid var(--line);border-radius:0 0 8px 8px;padding-top:12px;font-weight:700;color:var(--link)}
 @media (max-width:640px){.h-top .h-wrap{gap:6px}.h-brand,.h-top .btn{white-space:nowrap}.h-links{display:flex}.h-links>a{display:none}.h-top .btn{margin-left:0;padding:9px 12px;font-size:14px}.h-menu-btn{padding:8px 6px;font-size:14px}
   .h-menu{position:static}.h-drop{position:fixed;top:64px;left:16px;right:16px;width:auto;transform:none;max-height:calc(100vh - 80px);overflow:auto}.h-drop-grid{grid-template-columns:1fr 1fr}}
