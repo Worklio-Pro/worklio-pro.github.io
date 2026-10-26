@@ -610,9 +610,9 @@ ${why ? `<div class="notice">${why}</div>` : ''}
     $('.tx-bubble', mb).textContent = `${m}\n\n${label} ${link}\n\nReply STOP to opt out.`; $('.tx-left', mb).textContent = TEXT_MAX - ta.value.length;
   };
   ta.addEventListener('input', show); show();
-  // the short link the text will carry; if it can't be fetched, the full link (it opens the same page)
+  // the short link the text will carry (…/s/CODE); the server adds the same one when it sends
   api('GET', `/api/${kind}s/${doc.id}/short-link`).then((r) => { link = r.url; show(); })
-    .catch(() => { link = location.origin + (kind === 'invoice' ? `/pay/${doc.token}` : `/p/quote/${doc.token}`); show(); });
+    .catch(() => { link = '[short link added when sent]'; show(); });
   return sendSubmit(kind, doc, mb, () => ['sms'], () => {
     if (!ta.value.trim()) throw new Error('Write a message first');
     return { message: ta.value.trim() };
