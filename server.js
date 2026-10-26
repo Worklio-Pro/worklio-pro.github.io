@@ -1156,7 +1156,7 @@ const EMAIL_TEMPLATES = {
   quote: {
     label: 'Quote', description: 'Sent when you send a quote to a client.',
     subject: 'Quote {{quote_number}} from {{company_name}}',
-    body: '# Your quote is ready\n\nHello {{client_name}},\n\nYour quote {{quote_number}} for **{{total}}** is ready. Review the details and approve it online.\n\n[View and approve quote]({{link}})\n\nThank you,\n{{company_name}}',
+    body: '# Your quote is ready\n\nHello {{client_name}},\n\nThank you for asking us to quote on your project {{quote_title}}.\n\nThe quote total is {{total}} as of {{sent_date}}.\n\nIf you have any questions or concerns regarding this quote, please don\x27t hesitate to get in touch with us at {{company_email}}.\n\n[View and approve quote]({{link}})\n\nThank you,\n{{company_name}}',
     vars: { client_name: 'Client name', company_name: 'Your business name', company_email: 'Your business email', quote_number: 'Quote number', sent_date: 'Date the quote is sent', quote_title: 'Quote title', total: 'Quote total', link: 'Link to view and approve' },
   },
   invoice: {
