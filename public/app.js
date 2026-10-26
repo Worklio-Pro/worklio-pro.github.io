@@ -1021,7 +1021,6 @@ function editSection(kind, id, sec, unsign) {
   const sig = $('.sig-card', view); if (sig) parts.items[0].after(sig);
   Object.entries(parts).forEach(([k, els]) => { if (k === sec) return; els[0].before(shown(k)); els.forEach((el) => { el.hidden = true; }); });
   $$('.qside > .qcard', form).forEach((c) => { if (c !== parts.notes[0]) c.hidden = true; }); // client payments / client view aren't on the page
-  $$('.qduo-c', form).forEach((c) => { if (!c.contains($('[name=internalNotes]', form))) c.hidden = true; }); // (quotes keep them in one card with the notes)
   $('.qsave', form).remove();
   const last = parts[sec][parts[sec].length - 1]; const foot = '<div class="foot sec-foot"><button type="button" class="btn alt" data-act="secCancel">Cancel</button><button class="btn">Save</button></div>';
   if (sec === 'top') last.insertAdjacentHTML('afterend', foot); else last.insertAdjacentHTML('beforeend', foot);
@@ -1040,7 +1039,14 @@ const viewTotals = (d) => vt('Subtotal', money(d.subtotal || 0)) + (d.discount ?
 const textCard = (kind, d, sec, title, text, empty) => `<div class="qcard"><div class="qcard-h"><h2>${title}</h2>${editBtn(kind, d, sec)}</div>${text ? `<p class="vtext">${esc(text)}</p>` : `<p class="muted" style="margin:0">${empty}</p>`}</div>`;
 const docCards = (kind, d) => textCard(kind, d, 'message', 'Client Message', d.notes, 'No message for the client')
   + textCard(kind, d, 'terms', 'Contract / Disclaimer', d.disclaimer, 'No contract or disclaimer')
-  + textCard(kind, d, 'notes', 'Internal Notes', d.internalNotes, 'No internal notes. Clients never see these.');
+  + (kind === 'quote' ? quoteNotesCard(d) : textCard(kind, d, 'notes', 'Internal Notes', d.internalNotes, 'No internal notes. Clients never see these.'));
+// quotes: client payment options beside the internal notes, as in the editor; the pencil edits both
+const quoteNotesCard = (d) => {
+  const opts = [planHas('onlinePayments') ? ['Card payments', d.allowCard !== 'off' && cardReady()] : null, planHas('zelle') ? ['Zelle', d.allowZelle !== 'off' && !!company.zelleRecipient] : null].filter(Boolean);
+  const notes = d.internalNotes ? `<p class="vtext">${esc(d.internalNotes)}</p>` : '<p class="muted" style="margin:0">No internal notes. Clients never see these.</p>';
+  return `<div class="qcard qduo"><div class="qduo-c"><h2>Client payments</h2>${opts.map(([l, on]) => `<div class="vopt"><span>${l}</span><span class="${on ? 'pos' : 'muted'}">${on ? 'On' : 'Off'}</span></div>`).join('') || '<p class="muted" style="margin:0">No online payment options on your plan</p>'}</div>
+<div class="qduo-c"><div class="qcard-h"><h2>Internal Notes</h2>${editBtn('quote', d, 'notes')}</div>${notes}</div></div>`;
+};
 function viewPage(kind) {
   return {
     title: kind === 'quote' ? 'Quote' : 'Invoice',
