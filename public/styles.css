@@ -467,16 +467,11 @@ body.row-drag,body.row-drag *{cursor:grabbing!important;user-select:none}
 .qform:not(.jform) .qpage{grid-template-columns:minmax(0,1fr)}
 .qform:not(.jform) .qside{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;align-items:start}
 .qform:not(.jform) .qside .qcard{margin:0;height:100%;box-sizing:border-box}
-/* quote editor: client payments and notes side by side in one card */
-.qform:not(.jform) .qside:has(.qduo){grid-template-columns:minmax(0,1fr)}
-.qduo{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 28px}.qduo-c>h3{margin-top:0}
-.qduo-c+.qduo-c:not([hidden]){border-left:1px solid var(--line);padding-left:28px}.qduo:has(>[hidden]){grid-template-columns:minmax(0,1fr)}.qduo>.sec-foot{grid-column:1/-1}
 .vopt{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:7px 0;font-size:14px}
 .vpill{font-size:12px;font-weight:700;text-transform:uppercase;padding:2px 12px;border-radius:99px;background:var(--surface-2);color:var(--muted)}.vpill.on{background:var(--ok-bg);color:var(--ok-fg)}
-/* invoices (editor and page): client payments, client view and notes in a right column */
-.qform.iform .qpage{grid-template-columns:minmax(0,1fr) 300px}.qform.iform .qside{display:block}.qform.iform .qside .qcard{height:auto;margin:0 0 16px}
-@media (max-width:1000px){.qform.iform .qpage{grid-template-columns:minmax(0,1fr)}}
-@media (max-width:760px){.qduo{grid-template-columns:minmax(0,1fr)}.qduo-c+.qduo-c:not([hidden]){border-left:0;padding-left:0;border-top:1px solid var(--line);padding-top:16px;margin-top:16px}}
+/* quotes and invoices (editor and page): client payments, client view (invoices) and notes in a right column */
+.qform.sform .qpage{grid-template-columns:minmax(0,1fr) 300px}.qform.sform .qside{display:block}.qform.sform .qside .qcard{height:auto;margin:0 0 16px}
+@media (max-width:1000px){.qform.sform .qpage{grid-template-columns:minmax(0,1fr)}}
 /* client signature (job page + signing pad) */
 .sig-show{display:inline-block;background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 16px}
 .sig-img{display:block;max-width:100%;width:360px;height:auto}

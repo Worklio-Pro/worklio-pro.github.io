@@ -798,7 +798,7 @@ function invoiceForm(main, doc, preset) {
   const terms = d.paymentTerms || (TERMS.some(([k]) => k === String(days)) ? String(days) : 'custom');
   const st = d.id ? d.displayStatus : 'draft';
   const on = (k) => d[k] !== 'off';
-  main.innerHTML = `<form class="qform iform"><div class="qpage"><div class="qmain">
+  main.innerHTML = `<form class="qform iform sform"><div class="qpage"><div class="qmain">
 <div class="qtop"><div class="qtop-l"><a href="/invoices" data-link class="back">← Invoices</a>${iBadge(st)}${d.zelleSentAt && d.status !== 'paid' ? '<span class="badge zelle">Zelle sent</span>' : ''}</div></div>
 <input name="subject" class="qtitle" value="${esc(d.subject || '')}" placeholder="Invoice subject (e.g. Camera System Install)" aria-label="Invoice subject">
 <div class="qhead"><div class="qclient"><select name="clientId" required aria-label="Client">${clientOptions(d.clientId || p.clientId)}</select><div class="iclient"></div></div>
@@ -942,7 +942,7 @@ function quoteForm(main, doc, preset) {
   const d = doc || {}; const p = preset || {}; const items = d.items && d.items.length ? d.items : [{}];
   const status = d.id ? quoteStatus(d) : 'draft'; const job = d.id ? quoteJob(d) : null;
   const addr = (id) => esc((byId(D.clients, id) || {}).address || '');
-  main.innerHTML = `<form class="qform"><div class="qpage"><div class="qmain">
+  main.innerHTML = `<form class="qform sform"><div class="qpage"><div class="qmain">
 <div class="qtop"><div class="qtop-l"><a href="/quotes" data-link class="back">← Quotes</a>${qBadge(status)}</div></div>
 <input name="title" class="qtitle" value="${esc(d.title || '')}" placeholder="Quote title (e.g. Backyard cleanup)" aria-label="Quote title">
 <div class="qhead"><div class="qclient"><select name="clientId" required aria-label="Client">${clientOptions(d.clientId || p.clientId)}</select>
@@ -954,10 +954,10 @@ ${itemsCard(items, `${optRow({ label: 'Deposit', name: 'deposit', value: d.depos
 <div class="qcard"><h2>Client message</h2><textarea name="notes" rows="3" placeholder="A message to your client, shown on the quote">${esc(d.notes || '')}</textarea></div>
 ${discCard('quote', d.id ? d.disclaimer || '' : company.quoteDisclaimer ?? DEFAULT_DISCLAIMER)}
 </div>
-<aside class="qside"><div class="qcard qduo"><div class="qduo-c"><h3>Client payments</h3><p class="muted">How the client can pay this quote's deposit.</p>
+<aside class="qside"><div class="qcard pay-c"><h3>Client payments</h3><p class="muted">How the client can pay this quote's deposit.</p>
 ${planHas('onlinePayments') ? switchRow('allowCard', 'Card payments', d.allowCard !== 'off' && cardReady(), cardReady() ? '' : cardHint(), !cardReady()) : ''}
 ${planHas('zelle') ? switchRow('allowZelle', 'Zelle', d.allowZelle !== 'off' && !!company.zelleRecipient, company.zelleRecipient ? '' : zelleHint(), !company.zelleRecipient) : ''}</div>
-<div class="qduo-c"><h3>Notes</h3><textarea name="internalNotes" rows="6" placeholder="Leave an internal note for yourself or a team member. Clients never see this.">${esc(d.internalNotes || '')}</textarea></div></div></aside></div>
+<div class="qcard"><h3>Notes</h3><textarea name="internalNotes" rows="6" placeholder="Leave an internal note for yourself or a team member. Clients never see this.">${esc(d.internalNotes || '')}</textarea></div></aside></div>
 <div class="qsave noprint"><a class="btn alt" href="/quotes${d.id ? '/view?id=' + d.id : ''}" data-link>Cancel</a><button class="btn">Save</button></div></form>`;
   const form = $('form', main); wireItems(form);
   form._doc = d; form._kind = 'quote';
@@ -1017,7 +1017,7 @@ function editSection(kind, id, sec, unsign) {
   const shown = (k) => { const b = $(`.sec-edit[data-sec="${k}"]`, view); return b && b.closest('.qcard, .vhead'); };
   const parts = { top: [$('.qtitle', form), $('.qhead', form)], items: [$('#items', form).closest('.qcard')], message: [$('[name=notes]', form).closest('.qcard')],
     terms: [$('.disc', form)], notes: [$('[name=internalNotes]', form).closest('.qcard')], payments: [$('.pay-c', form)], clientView: [$('.view-c', form)] };
-  Object.keys(parts).forEach((k) => { if (!parts[k][0]) delete parts[k]; }); // quotes: client payments are part of the notes card
+  Object.keys(parts).forEach((k) => { if (!parts[k][0]) delete parts[k]; }); // quotes have no client view card
   $('.qtop', form).replaceWith($('.qtop', view));
   const sig = $('.sig-card', view); if (sig) parts.items[0].after(sig);
   Object.entries(parts).forEach(([k, els]) => { if (k === sec) return; els[0].before(shown(k)); els.forEach((el) => { el.hidden = true; }); });
@@ -1039,24 +1039,17 @@ const viewTotals = (d) => vt('Subtotal', money(d.subtotal || 0)) + (d.discount ?
 const textCard = (kind, d, sec, title, text, empty) => `<div class="qcard"><div class="qcard-h"><h2>${title}</h2>${editBtn(kind, d, sec)}</div>${text ? `<p class="vtext">${esc(text)}</p>` : `<p class="muted" style="margin:0">${empty}</p>`}</div>`;
 const docCards = (kind, d) => textCard(kind, d, 'message', 'Client Message', d.notes, 'No message for the client')
   + textCard(kind, d, 'terms', 'Contract / Disclaimer', d.disclaimer, 'No contract or disclaimer')
-  + (kind === 'quote' ? quoteNotesCard(d) : ''); // invoices: notes are in the right column
+
 const vpill = (on) => `<span class="vpill${on ? ' on' : ''}">${on ? 'On' : 'Off'}</span>`;
 const vopts = (rows, empty) => rows.map(([l, on]) => `<div class="vopt"><span>${l}</span>${vpill(on)}</div>`).join('') || `<p class="muted" style="margin:0">${empty}</p>`;
-// invoices: client payments, client view and internal notes in the right column, each with its pencil
-const invoiceSide = (d) => {
+// the right column: client payments, client view (invoices) and internal notes, each with its pencil
+const docSide = (kind, d) => {
   const on = (k) => d[k] !== 'off';
   const pays = [planHas('onlinePayments') ? ['Card payments', on('allowCard') && cardReady()] : null, planHas('zelle') ? ['Zelle', on('allowZelle') && !!company.zelleRecipient] : null].filter(Boolean);
   const view = [['showQty', 'Quantities'], ['showUnit', 'Unit prices'], ['showLineTotals', 'Line item totals'], ['showAccountBalance', 'Account balance'], ['showLateStamp', 'Late stamp (if overdue)']].map(([k, l]) => [l, on(k)]);
-  return `<aside class="qside"><div class="qcard"><div class="qcard-h"><h2>Client payments</h2>${editBtn('invoice', d, 'payments')}</div>${vopts(pays, 'No online payment options on your plan')}</div>
-<div class="qcard"><div class="qcard-h"><h2>Client view</h2>${editBtn('invoice', d, 'clientView')}</div>${vopts(view)}</div>
-${textCard('invoice', d, 'notes', 'Internal Notes', d.internalNotes, 'No internal notes. Clients never see these.')}</aside>`;
-};
-// quotes: client payment options beside the internal notes, as in the editor; the pencil edits both
-const quoteNotesCard = (d) => {
-  const opts = [planHas('onlinePayments') ? ['Card payments', d.allowCard !== 'off' && cardReady()] : null, planHas('zelle') ? ['Zelle', d.allowZelle !== 'off' && !!company.zelleRecipient] : null].filter(Boolean);
-  const notes = d.internalNotes ? `<p class="vtext">${esc(d.internalNotes)}</p>` : '<p class="muted" style="margin:0">No internal notes. Clients never see these.</p>';
-  return `<div class="qcard qduo"><div class="qduo-c"><h2>Client payments</h2>${vopts(opts, 'No online payment options on your plan')}</div>
-<div class="qduo-c"><div class="qcard-h"><h2>Internal Notes</h2>${editBtn('quote', d, 'notes')}</div>${notes}</div></div>`;
+  return `<aside class="qside"><div class="qcard"><div class="qcard-h"><h2>Client payments</h2>${editBtn(kind, d, 'payments')}</div>${vopts(pays, 'No online payment options on your plan')}</div>
+${kind === 'invoice' ? `<div class="qcard"><div class="qcard-h"><h2>Client view</h2>${editBtn(kind, d, 'clientView')}</div>${vopts(view)}</div>` : ''}
+${textCard(kind, d, 'notes', 'Internal Notes', d.internalNotes, 'No internal notes. Clients never see these.')}</aside>`;
 };
 function viewPage(kind) {
   return {
@@ -1138,7 +1131,7 @@ A.markQuoteSent = async (x) => {
 function quotePage(d) {
   const status = quoteStatus(d); const job = quoteJob(d); const c = byId(D.clients, d.clientId) || {};
   const canJob = d.status === 'approved' && !job && (!(d.depositFee > 0) || d.depositPaidAt); const paid = depositPaid(d);
-  return `<div class="qview"><div class="qtop"><div class="qtop-l"><a href="/quotes" data-link class="back">← Quotes</a>${qBadge(status)}${d.signedAt ? `<span class="vsign">✓ Signed${d.signedName ? ' by ' + esc(d.signedName) : ''} · ${fmtDate(d.signedAt)}</span>` : ''}</div>
+  return `<div class="qview"><div class="qpage"><div class="qmain"><div class="qtop"><div class="qtop-l"><a href="/quotes" data-link class="back">← Quotes</a>${qBadge(status)}${d.signedAt ? `<span class="vsign">✓ Signed${d.signedName ? ' by ' + esc(d.signedName) : ''} · ${fmtDate(d.signedAt)}</span>` : ''}</div>
 <div class="actions">${quoteMore(d, { job, canJob, c })}
 <button type="button" class="btn" data-act="sendDoc" data-kind="quote" data-id="${d.id}">Send…</button></div></div>
 <div class="vhead"><div class="vtitle-row"><h1 class="vtitle">${esc(d.title || 'Untitled quote')}</h1>${editBtn('quote', d, 'top')}</div>
@@ -1151,7 +1144,7 @@ function quotePage(d) {
 ${d.signedAt ? `<div class="qcard sig-card"><div class="qcard-h"><h2>Client signature</h2><span class="cstatus q-approved">Signed</span></div>
 ${d.signature ? `<div class="sig-show"><img class="sig-img" src="${esc(d.signature.file)}" alt="Signature of ${esc(d.signedName || 'the client')}"></div>` : ''}
 <p class="sig-meta">Signed${d.signedName ? ` by <strong>${esc(d.signedName)}</strong>` : ''} on ${esc(fmtStamp(d.signedAt))}${d.signature && d.signature.method === 'typed' ? ' <span class="muted">· typed signature</span>' : ''}</p></div>` : ''}
-${docCards('quote', d)}</div>`;
+${docCards('quote', d)}</div>${docSide('quote', d)}</div></div>`;
 }
 function invoicePage(d) {
   const c = byId(D.clients, d.clientId) || {}; const job = byId(D.jobs, d.jobId); const st = d.displayStatus || d.status;
@@ -1172,7 +1165,7 @@ ${c.phone || c.email ? `<div class="vclient-c">${c.phone ? `<a href="tel:${esc(c
 ${pays.map((p) => vt(payLink(p.id, 'Payment collected', p.date, ` <span class="muted">· ${esc(payLabel(p.method))}</span>`), '−' + money(p.amount))).join('')}
 ${!pays.length && d.status === 'paid' && d.paidAt ? vt(payLink('i-' + d.id, 'Paid', d.paidAt, d.paymentMethod ? ` <span class="muted">· ${esc(payLabel(d.paymentMethod))}</span>` : ''), '') : ''}
 ${vt('Invoice balance', money(invBalance(d)), 'strong')}${vt(`Account balance <span class="muted">(including this ${d.status === 'draft' ? 'draft' : 'invoice'})</span>`, money(others + invBalance(d)))}</div></div>
-${docCards('invoice', d)}</div>${invoiceSide(d)}</div></div>`;
+${docCards('invoice', d)}</div>${docSide('invoice', d)}</div></div>`;
 }
 /* ===== phones: the quote and invoice pages work like an app. Tap a section to change it: a full-screen page
    (details, line items, discount, deposit, messages) or a sheet from the bottom (tax, client payments, more actions).
