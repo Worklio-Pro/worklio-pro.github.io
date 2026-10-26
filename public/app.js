@@ -954,10 +954,10 @@ ${itemsCard(items, `${optRow({ label: 'Deposit', name: 'deposit', value: d.depos
 <div class="qcard"><h2>Client message</h2><textarea name="notes" rows="3" placeholder="A message to your client, shown on the quote">${esc(d.notes || '')}</textarea></div>
 ${discCard('quote', d.id ? d.disclaimer || '' : company.quoteDisclaimer ?? DEFAULT_DISCLAIMER)}
 </div>
-<aside class="qside"><div class="qcard"><h3>Client payments</h3><p class="muted">How the client can pay this quote's deposit.</p>
+<aside class="qside"><div class="qcard qduo"><div class="qduo-c"><h3>Client payments</h3><p class="muted">How the client can pay this quote's deposit.</p>
 ${planHas('onlinePayments') ? switchRow('allowCard', 'Card payments', d.allowCard !== 'off' && cardReady(), cardReady() ? '' : cardHint(), !cardReady()) : ''}
 ${planHas('zelle') ? switchRow('allowZelle', 'Zelle', d.allowZelle !== 'off' && !!company.zelleRecipient, company.zelleRecipient ? '' : zelleHint(), !company.zelleRecipient) : ''}</div>
-<div class="qcard"><h3>Notes</h3><textarea name="internalNotes" rows="6" placeholder="Leave an internal note for yourself or a team member. Clients never see this.">${esc(d.internalNotes || '')}</textarea></div></aside></div>
+<div class="qduo-c"><h3>Notes</h3><textarea name="internalNotes" rows="6" placeholder="Leave an internal note for yourself or a team member. Clients never see this.">${esc(d.internalNotes || '')}</textarea></div></div></aside></div>
 <div class="qsave noprint"><a class="btn alt" href="/quotes${d.id ? '/view?id=' + d.id : ''}" data-link>Cancel</a><button class="btn">Save</button></div></form>`;
   const form = $('form', main); wireItems(form);
   form._doc = d; form._kind = 'quote';
@@ -1021,6 +1021,7 @@ function editSection(kind, id, sec, unsign) {
   const sig = $('.sig-card', view); if (sig) parts.items[0].after(sig);
   Object.entries(parts).forEach(([k, els]) => { if (k === sec) return; els[0].before(shown(k)); els.forEach((el) => { el.hidden = true; }); });
   $$('.qside > .qcard', form).forEach((c) => { if (c !== parts.notes[0]) c.hidden = true; }); // client payments / client view aren't on the page
+  $$('.qduo-c', form).forEach((c) => { if (!c.contains($('[name=internalNotes]', form))) c.hidden = true; }); // (quotes keep them in one card with the notes)
   $('.qsave', form).remove();
   const last = parts[sec][parts[sec].length - 1]; const foot = '<div class="foot sec-foot"><button type="button" class="btn alt" data-act="secCancel">Cancel</button><button class="btn">Save</button></div>';
   if (sec === 'top') last.insertAdjacentHTML('afterend', foot); else last.insertAdjacentHTML('beforeend', foot);
