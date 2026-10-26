@@ -1061,6 +1061,7 @@ const QM = {
   awaiting: QI('<path d="M22 13V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h9"/><path d="M22 7l-10 6L2 7"/><path d="M16 19h6M19 16v6"/>'),
   approved: QI('<path d="M20 6L9 17l-5-5"/>', 'ok'),
   declined: QI('<path d="M18 6L6 18M6 6l12 12"/>'),
+  pay: QI('<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/>', 'ok'),
   deposit: QI('<path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>'),
   eye: QI('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
   sign: QI('<path d="M17 3a2.85 2.85 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5z"/><path d="M15 5l4 4"/>'),
@@ -1080,6 +1081,29 @@ ${d.signedAt ? '' : `<a class="mi" href="/p/quote/${d.token}" target="_blank" ti
 <a class="mi" href="/p/quote/${d.token}?print=1" target="_blank">${QM.pdf}Print or Save PDF</a>
 ${b('delDoc', 'trash', 'Delete')}</div></details>`;
 }
+// the invoice page's More menu, laid out like the quote's
+function invoiceMore(d, c) {
+  const b = (act, icon, label, extra = '') => `<button type="button" class="mi" data-act="${act}" data-kind="invoice" data-id="${d.id}" ${extra}>${QM[icon]}${label}</button>`;
+  const open = d.status !== 'paid';
+  return `<details class="menu more-menu"><summary class="btn alt"><span class="more-dots" aria-hidden="true">•••</span> More</summary><div class="menu-list">
+${open ? b('collectPayment', 'pay', 'Collect Payment') : ''}${b('copyInvoice', 'copy', 'Create Similar Invoice')}
+${open ? `<hr class="mi-sep"><div class="mi-h">Send as…</div>${b('sendDoc', 'email', 'Email', 'data-ch="email"')}${planHas('sms') && c.phone && c.smsConsent ? b('sendDoc', 'text', 'Text Message', 'data-ch="sms"') : ''}` : ''}
+${d.status === 'draft' ? `<hr class="mi-sep"><div class="mi-h">Mark as…</div>${b('markInvoiceSent', 'awaiting', 'Awaiting Payment')}` : ''}
+<hr class="mi-sep"><a class="mi" href="/pay/${d.token}" target="_blank">${QM.eye}${open ? 'Preview as Client' : 'View Receipt'}</a>
+<a class="mi" href="/pay/${d.token}?print=1" target="_blank">${QM.pdf}Print or Save PDF</a>
+${b('delDoc', 'trash', 'Delete')}</div></details>`;
+}
+// Create Similar Invoice: a new draft for the same client with the same subject, line items, terms and client view (not linked to the job, so no deposit credit twice)
+A.copyInvoice = async (x) => {
+  const i = byId(D.invoices, x.id);
+  const keep = ['clientId', 'subject', 'items', 'taxRate', 'discountType', 'discountValue', 'notes', 'disclaimer', 'internalNotes', 'allowCard', 'allowZelle', 'paymentTerms', 'showQty', 'showUnit', 'showLineTotals', 'showAccountBalance', 'showLateStamp'];
+  const body = Object.fromEntries(keep.filter((k) => i[k] !== undefined).map((k) => [k, i[k]]));
+  const today = ymd(new Date()); body.issueDate = today;
+  if (body.paymentTerms && body.paymentTerms !== 'custom') body.dueDate = ymd(addDays(new Date(), Number(body.paymentTerms))); else { body.paymentTerms = '0'; body.dueDate = today; }
+  const saved = await api('POST', '/api/invoices', body);
+  toast(`Invoice ${saved.number} created`); return navigate('/invoices/view?id=' + saved.id);
+};
+A.markInvoiceSent = async (x) => { await api('PUT', '/api/invoices/' + x.id, { status: 'sent' }); toast('Invoice marked as awaiting payment'); return refresh(); };
 // Create Similar Quote: a new draft for the same client with the same title, line items, prices and messages
 A.copyQuote = async (x) => {
   const q = byId(D.quotes, x.id);
@@ -1117,10 +1141,7 @@ function invoicePage(d) {
   const pays = [...(d.payments || [])].sort((a, b) => a.date.localeCompare(b.date));
   const others = D.invoices.filter((i) => i.clientId === d.clientId && i.id !== d.id && i.status !== 'paid' && i.status !== 'draft').reduce((s, i) => s + invBalance(i), 0);
   return `<div class="qview"><div class="qtop"><div class="qtop-l"><a href="/invoices" data-link class="back">← Invoices</a>${iBadge(st)}${d.zelleSentAt && d.status !== 'paid' ? '<span class="badge zelle">Zelle sent</span>' : ''}</div>
-<div class="actions"><details class="menu"><summary class="btn alt">⋯ More</summary><div class="menu-list">
-<a href="/pay/${d.token}" target="_blank">${d.status === 'paid' ? 'View receipt' : 'View pay page'}</a>
-${d.status !== 'paid' ? `<button type="button" data-act="collectPayment" data-id="${d.id}">Collect payment</button>` : ''}
-<button type="button" class="danger-text" data-act="delDoc" data-kind="invoice" data-id="${d.id}">Delete invoice</button></div></details>
+<div class="actions">${invoiceMore(d, c)}
 ${d.status !== 'paid' ? `<button type="button" class="btn" data-act="sendDoc" data-kind="invoice" data-id="${d.id}">Send…</button>` : ''}</div></div>
 <div class="vhead"><div class="vtitle-row"><h1 class="vtitle">${esc(d.subject || `Invoice ${d.number}`)}</h1>${editBtn('invoice', d, 'top')}</div>
 <div class="qhead"><div class="qclient"><div class="vclient">${esc(c.name || 'No client')}</div><div class="muted qlabel">Billing address</div><div class="qaddr">${esc(c.address || '') || '<span class="muted">No address on file</span>'}</div>
