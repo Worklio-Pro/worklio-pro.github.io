@@ -810,9 +810,7 @@ ${planHas('zelle') ? switchRow('allowZelle', 'Zelle', on('allowZelle') && !!comp
 ${switchRow('showQty', 'Quantities', on('showQty'))}${switchRow('showUnit', 'Unit prices', on('showUnit'))}${switchRow('showLineTotals', 'Line item totals', on('showLineTotals'))}
 ${switchRow('showAccountBalance', 'Account balance', on('showAccountBalance'))}${switchRow('showLateStamp', 'Late stamp (if overdue)', on('showLateStamp'))}</div>
 <div class="qcard"><h3>Notes</h3><textarea name="internalNotes" rows="6" placeholder="Leave an internal note for yourself or a team member. Clients never see this.">${esc(d.internalNotes || '')}</textarea></div></aside></div>
-<div class="qsave noprint">${d.id ? `<a class="btn alt" href="/invoices/view?id=${d.id}" data-link>Cancel</a>
-<button class="btn alt" name="after" value="save">Save</button>${d.status !== 'paid' ? '<button class="btn" name="after" value="send" title="Saves your changes, then sends">Send…</button>' : ''}`
-    : '<a class="btn alt" href="/invoices" data-link>Cancel</a><button class="btn alt" name="after" value="save">Save</button><button class="btn" name="after" value="send">Save &amp; send…</button>'}</div></form>`;
+<div class="qsave noprint"><a class="btn alt" href="/invoices${d.id ? '/view?id=' + d.id : ''}" data-link>Cancel</a><button class="btn">Save</button></div></form>`;
   const form = $('form', main);
   const clientBox = () => {
     const c = byId(D.clients, $('[name=clientId]', form).value); const job = byId(D.jobs, $('[name=jobId]', form).value);
@@ -833,7 +831,7 @@ ${d.id && d.status !== 'paid' && balance > 0 ? `<div class="collect-row"><button
 <div class="ibal"><div><strong>Invoice balance</strong><strong>${money(d.status === 'paid' ? 0 : balance)}</strong></div><div><span>Account balance (including this ${d.status === 'paid' ? 'invoice' : d.status === 'draft' || !d.id ? 'draft' : 'invoice'})</span><span>${money(others + (d.status === 'paid' ? 0 : balance))}</span></div></div>`;
   };
   wireItems(form); clientBox();
-  form._doc = d; form._kind = 'invoice'; form._discSaved = $('[name=disclaimer]', form).value;
+  form._doc = d; form._kind = 'invoice';
   const setDue = () => { const t = $('[name=paymentTerms]', form).value; if (t !== 'custom') $('[name=dueDate]', form).value = ymd(addDays(parseD($('[name=issueDate]', form).value || ymd(new Date())), Number(t))); };
   form.addEventListener('change', (e) => {
     if (e.target.name === 'clientId' || e.target.name === 'jobId') { clientBox(); recalc(form); }
@@ -842,13 +840,12 @@ ${d.id && d.status !== 'paid' && balance > 0 ? `<div class="collect-row"><button
   });
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const body = Object.fromEntries(new FormData(form)); const after = e.submitter && e.submitter.value; delete body.after;
+    const body = Object.fromEntries(new FormData(form));
     body.items = readItems(form).filter((i) => i.desc);
     if (!body.items.length) return toast('Add at least one line item', true);
     const saved = d.id ? await api('PUT', `/api/invoices/${d.id}`, body) : await api('POST', '/api/invoices', body);
     if ($('#discDefault', form).checked) { await api('PUT', '/api/company', { invoiceDisclaimer: body.disclaimer }); company.invoiceDisclaimer = body.disclaimer; }
     toast('Invoice saved'); await navigate('/invoices/view?id=' + saved.id);
-    if (after === 'send') sendDialog('invoice', saved);
   });
 }
 const qp = (k) => new URLSearchParams(location.search).get(k);
@@ -871,17 +868,14 @@ function docPage(kind, isNew) {
 // shared by the quote and invoice editors (form._kind = 'quote' | 'invoice'); the default lives in company.quoteDisclaimer / invoiceDisclaimer
 const discCard = (kind, text) => `<div class="qcard disc"><div class="qcard-h"><h2>Contract / Disclaimer</h2><button type="button" class="icon-btn" data-act="discDelete" title="Remove disclaimer" aria-label="Remove disclaimer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg></button></div>
 <label class="fl"><span>Description</span><textarea name="disclaimer" rows="4" placeholder="${kind === 'quote' ? 'Terms the client agrees to, e.g. how long the quote is valid' : 'e.g. Thank you for your business. Payment terms, late fees, warranty'}">${esc(text)}</textarea></label>
-<div class="chk admin-only"><label><input type="checkbox" id="discDefault"> Apply to all future ${kind}s</label></div>
-<div class="foot"><button type="button" class="btn alt" data-act="discCancel">Cancel</button><button type="button" class="btn" data-act="discSave">Save</button></div></div>`;
+<div class="chk admin-only"><label><input type="checkbox" id="discDefault"> Apply to all future ${kind}s</label></div></div>`;
 async function saveDisclaimer(form, text, msg) {
   const doc = form._doc; const kind = form._kind; const asDefault = $('#discDefault', form).checked;
   if (asDefault) { await api('PUT', '/api/company', { [kind + 'Disclaimer']: text }); company[kind + 'Disclaimer'] = text; }
   if (doc.id) { await api('PUT', `/api/${kind}s/${doc.id}`, { disclaimer: text, ...(form._removeSig ? { removeSignature: true } : {}) }); doc.disclaimer = text; }
-  form._discSaved = text; $('#discDefault', form).checked = false;
+  $('#discDefault', form).checked = false;
   toast(doc.id ? msg + (asDefault ? `, and set as the default for new ${kind}s` : '') : asDefault ? `Set as the default for new ${kind}s. It will be saved with this ${kind}.` : `It will be saved with this ${kind}`);
 }
-A.discSave = (d, el) => { const form = el.closest('form'); return saveDisclaimer(form, $('[name=disclaimer]', form).value.trim(), 'Disclaimer saved'); };
-A.discCancel = (d, el) => { const form = el.closest('form'); $('[name=disclaimer]', form).value = form._discSaved; $('#discDefault', form).checked = false; };
 A.discDelete = (d, el) => {
   const form = el.closest('form'); if (!confirm(`Remove the contract / disclaimer from this ${form._kind}?`)) return;
   $('[name=disclaimer]', form).value = ''; return saveDisclaimer(form, '', 'Disclaimer removed');
@@ -956,11 +950,9 @@ ${discCard('quote', d.id ? d.disclaimer || '' : company.quoteDisclaimer ?? DEFAU
 ${planHas('onlinePayments') ? switchRow('allowCard', 'Card payments', d.allowCard !== 'off' && cardReady(), cardReady() ? '' : cardHint(), !cardReady()) : ''}
 ${planHas('zelle') ? switchRow('allowZelle', 'Zelle', d.allowZelle !== 'off' && !!company.zelleRecipient, company.zelleRecipient ? '' : zelleHint(), !company.zelleRecipient) : ''}</div>
 <div class="qcard"><h3>Notes</h3><textarea name="internalNotes" rows="6" placeholder="Leave an internal note for yourself or a team member. Clients never see this.">${esc(d.internalNotes || '')}</textarea></div></aside></div>
-<div class="qsave noprint">${d.id ? `<a class="btn alt" href="/quotes/view?id=${d.id}" data-link>Cancel</a>
-<button class="btn alt" name="after" value="save">Save</button><button class="btn" name="after" value="send" title="Saves your changes, then sends">Send…</button>`
-    : '<a class="btn alt" href="/quotes" data-link>Cancel</a><button class="btn alt" name="after" value="save">Save</button><button class="btn" name="after" value="send">Save &amp; send…</button>'}</div></form>`;
+<div class="qsave noprint"><a class="btn alt" href="/quotes${d.id ? '/view?id=' + d.id : ''}" data-link>Cancel</a><button class="btn">Save</button></div></form>`;
   const form = $('form', main); wireItems(form);
-  form._doc = d; form._kind = 'quote'; form._discSaved = $('[name=disclaimer]', form).value;
+  form._doc = d; form._kind = 'quote';
   if (qp('unsign') === '1') form._removeSig = true; // confirmed on the quote page before opening the editor
   if (d.id && d.signedAt && d.depositPaidAt) guardSignature(form);
   form.addEventListener('change', (e) => {
@@ -968,13 +960,12 @@ ${planHas('zelle') ? switchRow('allowZelle', 'Zelle', d.allowZelle !== 'off' && 
   });
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const body = Object.fromEntries(new FormData(form)); const after = e.submitter && e.submitter.value; delete body.after;
+    const body = Object.fromEntries(new FormData(form));
     body.items = readItems(form).filter((i) => i.desc); if (form._removeSig) body.removeSignature = true;
     if (!body.items.length) return toast('Add at least one line item', true);
     const saved = d.id ? await api('PUT', `/api/quotes/${d.id}`, body) : await api('POST', '/api/quotes', body);
     if ($('#discDefault', form).checked) { await api('PUT', '/api/company', { quoteDisclaimer: body.disclaimer }); company.quoteDisclaimer = body.disclaimer; }
     toast('Quote saved'); await navigate('/quotes/view?id=' + saved.id);
-    if (after === 'send') sendDialog('quote', saved);
   });
 }
 // a signed quote with its deposit paid: the first try at changing it (not the top bar, internal notes or payment switches)
