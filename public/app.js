@@ -988,17 +988,38 @@ function signatureDialog(onConfirm) {
   $('.sig-rm', mb).addEventListener('click', () => { closeModal(); onConfirm(); });
 }
 /* ===== quote and invoice pages at /quotes/view and /invoices/view: read-only. The pencil at the top right of a section
-   opens the editor at that section. Payments show as links to their payment page and can't be edited anywhere. ===== */
+   turns just that section into fields, with Cancel / Save at its bottom right. Payments show as links to their payment page and can't be edited anywhere. ===== */
 const PENCIL = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
 const SECTION_NAMES = { top: 'details', items: 'products and services', message: 'client message', terms: 'contract / disclaimer', notes: 'internal notes' };
 const editBtn = (kind, d, sec) => `<button type="button" class="icon-btn sec-edit" data-act="editDoc" data-kind="${kind}" data-id="${d.id}" data-sec="${sec}" title="Edit ${SECTION_NAMES[sec]}" aria-label="Edit ${SECTION_NAMES[sec]}">${PENCIL}</button>`;
 // a signed quote with its deposit paid: confirm first that editing removes the client's signature
 A.editDoc = (x) => {
-  const go = (extra = '') => navigate(`/${x.kind}s/edit?id=${x.id}${extra}#${x.sec}`);
   const q = x.kind === 'quote' && byId(D.quotes, x.id);
-  if (q && q.signedAt && q.depositPaidAt) return signatureDialog(() => go('&unsign=1'));
-  return go();
+  if (q && q.signedAt && q.depositPaidAt) return signatureDialog(() => editSection(x.kind, x.id, x.sec, true));
+  return editSection(x.kind, x.id, x.sec);
 };
+// one section in edit mode on the quote / invoice page: the full editor is built (so its totals, deposit and client logic all work),
+// then every other section is hidden behind its read-only copy from the page. Save sends the whole form, as the editor does.
+function editSection(kind, id, sec, unsign) {
+  const d = byId(D[kind + 's'], id); if (!d) return;
+  const main = $('#main'); const y = window.scrollY;
+  (kind === 'quote' ? quoteForm : invoiceForm)(main, d);
+  const form = $('form', main); form.classList.add('qview', 'sec-mode'); if (unsign) form._removeSig = true;
+  const view = document.createElement('div'); view.innerHTML = (kind === 'quote' ? quotePage : invoicePage)(d);
+  const shown = (k) => { const b = $(`.sec-edit[data-sec="${k}"]`, view); return b && b.closest('.qcard, .vhead'); };
+  const parts = { top: [$('.qtitle', form), $('.qhead', form)], items: [$('#items', form).closest('.qcard')], message: [$('[name=notes]', form).closest('.qcard')],
+    terms: [$('.disc', form)], notes: [$('[name=internalNotes]', form).closest('.qcard')] };
+  $('.qtop', form).replaceWith($('.qtop', view));
+  const sig = $('.sig-card', view); if (sig) parts.items[0].after(sig);
+  Object.entries(parts).forEach(([k, els]) => { if (k === sec) return; els[0].before(shown(k)); els.forEach((el) => { el.hidden = true; }); });
+  $$('.qside > .qcard', form).forEach((c) => { if (c !== parts.notes[0]) c.hidden = true; }); // client payments / client view aren't on the page
+  $('.qsave', form).remove();
+  const last = parts[sec][parts[sec].length - 1]; const foot = '<div class="foot sec-foot"><button type="button" class="btn alt" data-act="secCancel">Cancel</button><button class="btn">Save</button></div>';
+  if (sec === 'top') last.insertAdjacentHTML('afterend', foot); else last.insertAdjacentHTML('beforeend', foot);
+  window.scrollTo(0, y);
+  const first = $('input:not([type=hidden]), textarea, select', parts[sec][0]); if (first) first.focus({ preventScroll: true });
+}
+A.secCancel = () => refresh();
 A.sendDoc = (x) => { const d = byId(D[x.kind + 's'], x.id); if (!(d.items || []).length) return toast('Add a line item first', true); return sendDialog(x.kind, d); };
 const depositPaid = (q) => (q.depositPaidAt ? round2(Number(q.depositPaidAmount ?? q.depositFee) || 0) : 0);
 const vt = (label, value, cls = '') => `<div class="vt ${cls}"><span>${label}</span><span>${value}</span></div>`;

@@ -217,6 +217,7 @@ table.mini th,table.mini td{padding:9px 8px;font-size:14px;vertical-align:middle
 .qcard-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}.qcard-h h2{margin:0}
 /* quote and invoice pages: read-only; the pencil at the top right of a section opens the editor there */
 .vtitle-row{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.vtitle-row .sec-edit{flex:none;margin-top:4px}.qview .qmeta{grid-template-columns:150px 1fr}
+.sec-mode .qtitle~.sec-foot{margin:0 0 16px}
 .vtitle{font-size:28px;font-weight:800;margin:4px 0 16px;letter-spacing:-.01em;overflow-wrap:anywhere}
 .vclient{font-weight:700;margin-bottom:12px}.vclient-c{display:flex;flex-direction:column;gap:2px;margin-top:10px;font-size:14px}
 .vitems{width:100%;border-collapse:collapse;font-size:14px}.vitems th{text-align:left;font-weight:600;padding:0 0 10px;border-bottom:1px solid var(--line)}
