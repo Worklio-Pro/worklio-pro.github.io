@@ -554,11 +554,14 @@ const itemsCard = (items, extra, t) => `<div class="qcard"><h2>Product / Service
 <div id="items">${(items && items.length ? items : [{}]).map(qItemRow).join('')}</div>
 <button type="button" class="btn alt sm" data-act="addItem">+ Add line item</button>
 <div class="totals qtotals"><div class="calc">${totalsRows(t || {})}</div>${extra}</div></div>`;
-// Subtotal / Discount / Tax / Total rows (layout modeled on Jobber's): the discount is optional and starts as an "Add Discount" link
-const totalsRows = (d) => `<div class="tl"><span>Subtotal</span><span></span><span class="t-sub"></span><span></span></div>
+// Subtotal / Discount / Tax / Total rows (layout modeled on Jobber's): discount and tax are optional; without one, its row is an "Add …" link.
+// The trash button on the tax row clears the rate (no tax); Add Tax fills in the company's default rate.
+const totalsRows = (d) => { const rate = Number(d.taxRate ?? company.taxRate ?? 0); const on = rate > 0; return `<div class="tl"><span>Subtotal</span><span></span><span class="t-sub"></span><span></span></div>
 ${optRow({ label: 'Discount', name: 'discount', value: d.discountValue, type: d.discountType, pctLabel: '%' })}
-<div class="tl"><span>Tax</span><span class="unit tax-in"><input name="taxRate" type="number" step="any" min="0" value="${d.taxRate ?? company.taxRate ?? 0}" aria-label="Tax rate"><span>%</span></span><span class="t-tax"></span><span></span></div>
-<div class="tl grand"><strong>Total</strong><span></span><strong class="t-total"></strong><span></span></div>`;
+<div class="tl opt-row"><span>Tax</span><span class="opt-edit" ${on ? '' : 'hidden'}><span class="unit tax-in"><input name="taxRate" type="number" step="any" min="0" value="${on ? esc(rate) : ''}" placeholder="0" aria-label="Tax rate"><span>%</span></span></span>
+<span class="opt-amt" ${on ? '' : 'hidden'}><span class="t-tax"></span></span><button type="button" class="link-btn opt-add" data-act="addOpt" data-fill="${Number(company.taxRate) > 0 ? esc(company.taxRate) : ''}" ${on ? 'hidden' : ''}>Add Tax</button>
+<span class="t-rm-c"><button type="button" class="t-rm" data-act="rmOpt" aria-label="Remove tax" title="Remove tax" ${on ? '' : 'hidden'}>${TRASH}</button></span></div>
+<div class="tl grand"><strong>Total</strong><span></span><strong class="t-total"></strong><span></span></div>`; };
 // an optional amount row (discount, deposit): "Add …" link until used, then amount + $/% picker + computed value + trash button.
 // Inputs are named ${name}Value / ${name}Type; recalc fills .t-${name}.
 const optRow = ({ label, name, value, type, pctLabel }) => { const on = Number(value) > 0; return `<div class="tl opt-row"><span>${label}</span><span class="opt-edit" ${on ? '' : 'hidden'}><span class="unit"><input name="${name}Value" type="number" step="any" min="0" value="${on ? esc(value) : ''}" placeholder="0" aria-label="${label} amount">
@@ -569,7 +572,11 @@ const TRASH = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" strok
 // invoice: take the quote deposit credit off this invoice (or put it back); saved with the invoice
 const setDepCredit = (el, removed) => { const form = el.closest('form'); $('[name=depositCreditRemoved]', form).value = removed ? 'yes' : ''; recalc(form); };
 A.applyDepCredit = (d, el) => setDepCredit(el, false);
-A.addOpt = (d, el) => { const row = el.closest('.tl'); el.hidden = true; $('.opt-edit', row).hidden = false; $('.opt-amt', row).hidden = false; $('.t-rm', row).hidden = false; $('.opt-edit input', row).focus(); };
+A.addOpt = (d, el) => {
+  const row = el.closest('.tl'); const input = $('.opt-edit input', row); el.hidden = true; $('.opt-edit', row).hidden = false; $('.opt-amt', row).hidden = false; $('.t-rm', row).hidden = false;
+  if (!input.value && d.fill) { input.value = d.fill; recalc(el.closest('form')); } // tax: the company's default rate
+  input.focus();
+};
 A.rmOpt = (d, el) => { const row = el.closest('.tl'); $('.opt-edit input', row).value = ''; $('.opt-edit', row).hidden = true; $('.opt-amt', row).hidden = true; el.hidden = true; $('.opt-add', row).hidden = false; recalc(el.closest('form')); };
 
 /* ===== send dialog ===== */
