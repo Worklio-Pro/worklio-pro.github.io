@@ -1056,7 +1056,7 @@ app.put('/api/:col/:id', (req, res, next) => {
   (PAYMENT_FIELDS[col] || []).forEach((k) => delete upd[k]);
   if (col === 'invoices' && (upd.status === 'paid' || db.invoices[i].status === 'paid')) delete upd.status; // paid only by its payments
   if (col === 'invoices' && upd.depositCreditRemoved && !db.invoices[i].depositCreditRemoved) delete upd.depositCreditRemoved; // a collected deposit stays credited
-  const removeSignature = col === 'quotes' && upd.removeSignature === true; if (col === 'quotes') { delete upd.removeSignature; delete upd.signedAt; delete upd.signedName; } // signatures only from the client's quote page
+  const removeSignature = col === 'quotes' && upd.removeSignature === true; if (col === 'quotes') { delete upd.removeSignature; delete upd.signedAt; delete upd.signedName; delete upd.signature; } // signatures only from the client's quote page
   if (DOC_NUM[col] && String((req.body || {}).number || '').trim() && req.body.number !== db[col][i].number) { // renumber a quote / invoice
     const r = customNumber(col, req.body.number, req.params.id); if (r.error) return res.status(400).json({ error: r.error }); upd.number = r.number;
   }
@@ -1066,7 +1066,7 @@ app.put('/api/:col/:id', (req, res, next) => {
   let doc = { ...db[col][i], ...upd };
   // sent back to the client (Draft or Sent) before any deposit is paid: they approve and sign again, so the old signature goes
   if (col === 'quotes' && ['draft', 'sent'].includes(doc.status) && doc.status !== db.quotes[i].status && !doc.depositPaidAt) {
-    doc.signedAt = null; doc.signedName = null; if (doc.depositStatus === 'pending') doc.depositStatus = null;
+    doc.signedAt = null; doc.signedName = null; delete doc.signature; if (doc.depositStatus === 'pending') doc.depositStatus = null;
   }
   if (col === 'quotes' || col === 'invoices' || (col === 'jobs' && Array.isArray(doc.items))) computeTotals(doc); // jobs are priced once they have line items
   // a signed quote with its deposit paid: any change to it removes the client's signature, once the business confirms (the quote editor asks first).
@@ -1074,7 +1074,7 @@ app.put('/api/:col/:id', (req, res, next) => {
   const was = db[col][i];
   if (col === 'quotes' && was.signedAt && was.depositPaidAt && doc.signedAt && quoteTerms(doc) !== quoteTerms(computeTotals(structuredClone(was)))) {
     if (!removeSignature) return res.status(409).json({ error: 'Saving these changes removes the client’s signature. Reload the quote and confirm first.' });
-    doc.signedAt = null; doc.signedName = null;
+    doc.signedAt = null; doc.signedName = null; delete doc.signature;
   }
   if (col === 'jobs') { if (db.jobs[i].signature) doc.signature = db.jobs[i].signature; else delete doc.signature; } // signatures only via /signature
   if (col === 'invoices') { // payments change only through their own endpoints, never through an invoice edit
@@ -1084,6 +1084,7 @@ app.put('/api/:col/:id', (req, res, next) => {
   if (col === 'staff' && isOwnerStaff(doc) && doc.status === 'deactivated') return res.status(400).json({ error: 'The account owner can’t be deactivated' });
   if (col === 'expenses') doc.amount = Number(doc.amount) || 0;
   if (col === 'services') doc.price = Number(doc.price) || 0;
+  if (col === 'quotes' && was.signature && !doc.signature) removeSignatureFile(was);
   db[col][i] = doc; save(); if (col === 'clients' && doc.smsConsent && !was.smsConsent) optInText(doc).catch(() => {});
   res.json(col === 'invoices' ? withStatus(doc) : col === 'jobs' && isMemberReq(req) ? jobForMember(doc) : doc);
 });
@@ -1657,17 +1658,9 @@ app.get('/p/quote/:token', (req, res) => {
   if (!q) return res.status(404).send(shell('Not found', '<h1>Quote not found</h1>'));
   const c = findClient(q.clientId);
   let depositSection = '';
-  if (q.status === 'approved' && q.depositFee > 0) {
-    if (!q.signedAt) {
-      depositSection = `<div style="background:#f0fdf4;padding:16px;border-radius:8px;margin-top:16px;border:1px solid #86efac">
-<h3 style="margin-top:0">Next step: Review and sign</h3>
-<p>To proceed with this quote, please review the terms and provide your electronic signature below.</p>
-<form method="post" action="/p/quote/${esc(q.token)}/sign" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-<input type="text" name="fullName" placeholder="Full name (signature)" required style="flex:1;min-width:200px">
-<button class="btn">Sign agreement</button>
-</form>
-</div>`;
-    } else if (!q.depositPaidAt) {
+  if (q.status === 'approved' && !q.signedAt) depositSection = quoteSignBox(q); // every approved quote is signed next, deposit or not
+  else if (q.status === 'approved' && q.depositFee > 0) {
+    if (!q.depositPaidAt) {
       depositSection = `<div style="background:#fef3c7;padding:16px;border-radius:8px;margin-top:16px;border:1px solid #fcd34d">
 <h3 style="margin-top:0">Deposit required: ${money(q.depositFee)}</h3>
 <p>Your quote has been signed. A deposit of ${money(q.depositFee)} is required to proceed with the work.</p>
@@ -1684,24 +1677,67 @@ ${!onlineMethods('quote', q).length && (q.allowZelle === 'off' || !db.company.ze
 </div>`;
     }
   }
+  const signed = q.signedAt ? `<div style="margin-top:16px;padding:14px 16px;border:1px solid #e5e7eb;border-radius:8px"><strong>✓ Signed${q.signedName ? ` by ${esc(q.signedName)}` : ''}</strong> <span class="muted">· ${esc(niceDate(q.signedAt.slice(0, 10)))}</span>${q.signature ? `<img src="${esc(q.signature.file)}" alt="Signature" style="display:block;max-width:100%;width:320px;margin-top:8px">` : ''}</div>` : '';
   res.send(shell(`Quote ${q.number}`, `<h1>Quote ${esc(q.number)} <span class="badge">${esc(q.status)}</span></h1><div class="muted">Prepared for ${esc(c?.name)} · ${esc(q.title)}</div>${itemsTable(q)}${q.notes ? `<p style="white-space:pre-wrap">${esc(q.notes)}</p>` : ''}
 ${q.disclaimer ? `<div style="margin:16px 0;padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px"><strong>Contract / Disclaimer</strong><p class="muted" style="margin:6px 0 0;white-space:pre-wrap">${esc(q.disclaimer)}</p></div>` : ''}
 ${(q.status === 'sent' || q.status === 'draft') && q.depositFee > 0 ? `<div style="background:#eff6ff;padding:14px 16px;border-radius:8px;margin-bottom:16px;border:1px solid #bfdbfe">${q.depositPaidAt ? `<strong>Deposit paid: ${money(q.depositPaidAmount ?? q.depositFee)}</strong><div class="muted" style="margin-top:4px">This quote was updated. After you approve, you'll sign it again.</div>` : `<strong>Deposit required: ${money(q.depositFee)}</strong>${q.depositType === 'percent' ? ` (${q.depositValue}% of the total)` : ''}<div class="muted" style="margin-top:4px">After you approve, you'll sign the quote and pay this deposit online before work begins.</div>`}</div>` : ''}
-${q.status === 'sent' || q.status === 'draft' ? `<form method="post" action="/p/quote/${esc(q.token)}/respond" style="display:flex;gap:8px"><button class="btn" name="r" value="approved">Approve quote</button><button class="btn alt" name="r" value="declined">Decline</button></form>` : ''}${depositSection}`));
+${q.status === 'sent' || q.status === 'draft' ? `<form method="post" action="/p/quote/${esc(q.token)}/respond" style="display:flex;gap:8px"><button class="btn" name="r" value="approved">Approve quote</button><button class="btn alt" name="r" value="declined">Decline</button></form>` : ''}${signed}${depositSection}`));
 });
+// the client draws their signature (finger, stylus or mouse) and types their name; posted as a PNG data URL
+function quoteSignBox(q) {
+  return `<div style="background:#f0fdf4;padding:16px;border-radius:8px;margin-top:16px;border:1px solid #86efac">
+<h3 style="margin-top:0">Next step: Review and sign</h3>
+<p>To proceed with this quote, please review the terms and sign below.</p>
+<form method="post" action="/p/quote/${esc(q.token)}/sign" id="sigForm">
+<div style="position:relative;height:200px;background:#fff;border:1px solid #d1d5db;border-radius:8px;margin-bottom:6px;overflow:hidden"><canvas aria-label="Signature pad. Sign with your finger, stylus or mouse" style="position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair"></canvas>
+<span style="position:absolute;left:20px;right:20px;bottom:46px;border-bottom:1.5px solid #cbd5e1;pointer-events:none"></span><span id="sigHint" style="position:absolute;left:20px;bottom:52px;color:#94a3b8;font-size:14px;pointer-events:none">Sign here</span></div>
+<div style="text-align:right;margin-bottom:8px"><button type="button" id="sigClear" style="background:none;border:0;color:#2563eb;cursor:pointer;font-size:14px">Clear</button></div>
+<input type="hidden" name="dataUrl"><input type="text" name="fullName" placeholder="Full name" required maxlength="100" value="${esc(findClient(q.clientId)?.name || '')}">
+<p id="sigErr" style="color:#dc2626;margin:0 0 8px;display:none">Please sign in the box first.</p>
+<button class="btn">Sign agreement</button>
+</form></div>
+<script>(function(){var f=document.getElementById('sigForm'),cv=f.querySelector('canvas'),x=cv.getContext('2d'),hint=document.getElementById('sigHint'),err=document.getElementById('sigErr'),inked=false,last=null,dpr=Math.max(1,Math.min(3,window.devicePixelRatio||1));
+var r0=cv.getBoundingClientRect();cv.width=Math.round(r0.width*dpr);cv.height=Math.round(r0.height*dpr);x.setTransform(dpr,0,0,dpr,0,0);x.lineWidth=2.4;x.lineCap='round';x.lineJoin='round';x.strokeStyle=x.fillStyle='#111827';
+function at(e){var r=cv.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top};}
+cv.addEventListener('pointerdown',function(e){e.preventDefault();cv.setPointerCapture(e.pointerId);last=at(e);x.beginPath();x.arc(last.x,last.y,1.2,0,Math.PI*2);x.fill();inked=true;hint.style.display='none';err.style.display='none';});
+cv.addEventListener('pointermove',function(e){if(!last)return;e.preventDefault();(e.getCoalescedEvents?e.getCoalescedEvents():[e]).forEach(function(ev){var p=at(ev);x.beginPath();x.moveTo(last.x,last.y);x.lineTo(p.x,p.y);x.stroke();last=p;});});
+cv.addEventListener('pointerup',function(){last=null;});cv.addEventListener('pointercancel',function(){last=null;});
+document.getElementById('sigClear').addEventListener('click',function(){x.clearRect(0,0,cv.width,cv.height);inked=false;hint.style.display='';});
+f.addEventListener('submit',function(e){if(!inked){e.preventDefault();err.style.display='';return;}f.dataUrl.value=cv.toDataURL('image/png');});})();</script>`;
+}
+// email the business when a client approves, declines or signs a quote, and log it with the other notifications
+function tellBusinessQuote(q, status) {
+  if (!db.company.email) return;
+  const c = findClient(q.clientId); const what = `quote ${q.number}${q.title ? ` (${q.title})` : ''}`;
+  const next = status === 'declined' ? 'You can follow up with them, or edit the quote and send it again.'
+    : status === 'approved' ? `They’ll sign it next${q.depositFee > 0 ? `, then pay the ${money(q.depositFee)} deposit` : ''}.`
+      : q.depositFee > 0 ? `Next they pay the ${money(q.depositFee)} deposit.` : 'It’s ready to schedule as a job.';
+  sendTemplate('quoteStatus', db.company.email, { client: c ? c.name : 'A client', status, what, total: money(q.total), next, business: db.company.name, account_url: baseUrl() }).then((sent) => {
+    db.notifications.unshift({ id: uid(), at: new Date().toISOString(), clientId: q.clientId, clientName: c ? c.name : '', channel: 'email', kind: 'quote-status', refId: q.id, refNumber: q.number, to: db.company.email, subject: sent.subject, body: sent.text, status: sent.status, detail: sent.detail }); save();
+  }).catch(() => {});
+}
 app.use('/p', express.urlencoded({ extended: false }));
 app.post('/p/quote/:token/respond', (req, res) => {
   const q = db.quotes.find((x) => x.token === req.params.token);
   if (!q) return res.status(404).send('Not found');
-  if (['sent', 'draft'].includes(q.status)) { q.status = req.body.r === 'declined' ? 'declined' : 'approved'; q.respondedAt = iso(new Date()); save(); }
+  if (['sent', 'draft'].includes(q.status)) { q.status = req.body.r === 'declined' ? 'declined' : 'approved'; q.respondedAt = iso(new Date()); save(); tellBusinessQuote(q, q.status); }
   res.redirect(`/p/quote/${q.token}`);
 });
 app.post('/p/quote/:token/sign', (req, res) => {
   const q = db.quotes.find((x) => x.token === req.params.token);
   if (!q || q.status !== 'approved') return res.status(400).send('Quote not available for signing');
-  q.signedAt = iso(new Date()); q.signedName = String(req.body.fullName || '');
-  if (!q.depositStatus) q.depositStatus = 'pending';
-  save();
+  if (q.signedAt) return res.redirect(`/p/quote/${q.token}`); // already signed (a double submit)
+  const back = (msg) => res.status(400).send(shell('Signature needed', `<h1>Signature needed</h1><p>${esc(msg)}</p><p><a href="/p/quote/${esc(q.token)}">Back to the quote</a></p>`));
+  const name = String(req.body.fullName || '').trim().slice(0, 100); if (!name) return back('Please type your full name.');
+  const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(req.body.dataUrl || '');
+  if (!m || m[1].length < 200) return back('Please sign in the box first.');
+  if (m[1].length > 2e6) return back('That signature image is too large.');
+  const file = `sig-${token()}.png`; // unguessable name: uploads are served without login
+  fs.writeFileSync(path.join(uploadDir(), file), Buffer.from(m[1], 'base64'));
+  removeSignatureFile(q);
+  q.signedAt = iso(new Date()); q.signedName = name; q.signature = { file: `/uploads/${file}` };
+  if (q.depositFee > 0 && !q.depositStatus) q.depositStatus = 'pending';
+  save(); tellBusinessQuote(q, 'signed');
   res.redirect(`/p/quote/${q.token}`);
 });
 app.post('/p/quote/:token/zelle-sent', (req, res) => {

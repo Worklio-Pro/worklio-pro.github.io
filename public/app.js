@@ -1048,6 +1048,9 @@ ${canJob ? `<button type="button" data-act="quoteToJob" data-id="${d.id}">Create
 <div class="vtotals">${viewTotals(d)}${d.depositFee > 0 ? vt('Required deposit', money(d.depositFee))
     + (d.depositPaidAt ? vt(payLink('q-' + d.id, 'Deposit collected', d.depositPaidAt), '−' + money(paid)) : '')
     + vt('Outstanding deposit', money(Math.max(0, round2(d.depositFee - paid)))) : ''}</div></div>
+${d.signedAt ? `<div class="qcard sig-card"><div class="qcard-h"><h2>Client signature</h2><span class="cstatus q-approved">Signed</span></div>
+${d.signature ? `<div class="sig-show"><img class="sig-img" src="${esc(d.signature.file)}" alt="Signature of ${esc(d.signedName || 'the client')}"></div>` : ''}
+<p class="sig-meta">Signed${d.signedName ? ` by <strong>${esc(d.signedName)}</strong>` : ''} on ${esc(fmtStamp(d.signedAt))}</p></div>` : ''}
 ${docCards('quote', d)}</div>`;
 }
 function invoicePage(d) {
