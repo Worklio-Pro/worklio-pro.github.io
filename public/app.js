@@ -811,10 +811,10 @@ ${itemsCard(items, `<input type="hidden" name="depositCreditRemoved" value="${d.
 <div class="qcard"><h2>Client message</h2><textarea name="notes" rows="3" placeholder="A message to your client, shown on the invoice">${esc(d.notes || '')}</textarea></div>
 ${discCard('invoice', d.id ? d.disclaimer || '' : company.invoiceDisclaimer ?? '')}
 </div>
-<aside class="qside"><div class="qcard"><h3>Client payments</h3><p class="muted">How the client can pay this invoice.</p>
+<aside class="qside"><div class="qcard pay-c"><h3>Client payments</h3><p class="muted">How the client can pay this invoice.</p>
 ${planHas('onlinePayments') ? switchRow('allowCard', 'Card payments', on('allowCard') && cardReady(), cardReady() ? '' : cardHint(), !cardReady()) : ''}
 ${planHas('zelle') ? switchRow('allowZelle', 'Zelle', on('allowZelle') && !!company.zelleRecipient, company.zelleRecipient ? '' : zelleHint(), !company.zelleRecipient) : ''}</div>
-<div class="qcard"><h3>Client view</h3><p class="muted">What the client sees on their invoice.</p>
+<div class="qcard view-c"><h3>Client view</h3><p class="muted">What the client sees on their invoice.</p>
 ${switchRow('showQty', 'Quantities', on('showQty'))}${switchRow('showUnit', 'Unit prices', on('showUnit'))}${switchRow('showLineTotals', 'Line item totals', on('showLineTotals'))}
 ${switchRow('showAccountBalance', 'Account balance', on('showAccountBalance'))}${switchRow('showLateStamp', 'Late stamp (if overdue)', on('showLateStamp'))}</div>
 <div class="qcard"><h3>Notes</h3><textarea name="internalNotes" rows="6" placeholder="Leave an internal note for yourself or a team member. Clients never see this.">${esc(d.internalNotes || '')}</textarea></div></aside></div>
@@ -872,7 +872,7 @@ function docPage(kind, isNew) {
   };
 }
 
-// Contract / Disclaimer section: saves on its own (just this field), so other unsaved edits on the quote are untouched
+// Contract / Disclaimer section: saved with the rest of the quote or invoice; the trash button removes it right away
 // shared by the quote and invoice editors (form._kind = 'quote' | 'invoice'); the default lives in company.quoteDisclaimer / invoiceDisclaimer
 const discCard = (kind, text) => `<div class="qcard disc"><div class="qcard-h"><h2>Contract / Disclaimer</h2><button type="button" class="icon-btn" data-act="discDelete" title="Remove disclaimer" aria-label="Remove disclaimer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg></button></div>
 <label class="fl"><span>Description</span><textarea name="disclaimer" rows="4" placeholder="${kind === 'quote' ? 'Terms the client agrees to, e.g. how long the quote is valid' : 'e.g. Thank you for your business. Payment terms, late fees, warranty'}">${esc(text)}</textarea></label>
@@ -998,7 +998,7 @@ function signatureDialog(onConfirm) {
 /* ===== quote and invoice pages at /quotes/view and /invoices/view: read-only. The pencil at the top right of a section
    turns just that section into fields, with Cancel / Save at its bottom right. Payments show as links to their payment page and can't be edited anywhere. ===== */
 const PENCIL = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
-const SECTION_NAMES = { top: 'details', items: 'products and services', message: 'client message', terms: 'contract / disclaimer', notes: 'internal notes' };
+const SECTION_NAMES = { top: 'details', items: 'products and services', message: 'client message', terms: 'contract / disclaimer', notes: 'internal notes', payments: 'client payments', clientView: 'client view' };
 const editBtn = (kind, d, sec) => `<button type="button" class="icon-btn sec-edit" data-act="editDoc" data-kind="${kind}" data-id="${d.id}" data-sec="${sec}" title="Edit ${SECTION_NAMES[sec]}" aria-label="Edit ${SECTION_NAMES[sec]}">${PENCIL}</button>`;
 // a signed quote with its deposit paid: confirm first that editing removes the client's signature
 A.editDoc = (x) => {
@@ -1016,11 +1016,11 @@ function editSection(kind, id, sec, unsign) {
   const view = document.createElement('div'); view.innerHTML = (kind === 'quote' ? quotePage : invoicePage)(d);
   const shown = (k) => { const b = $(`.sec-edit[data-sec="${k}"]`, view); return b && b.closest('.qcard, .vhead'); };
   const parts = { top: [$('.qtitle', form), $('.qhead', form)], items: [$('#items', form).closest('.qcard')], message: [$('[name=notes]', form).closest('.qcard')],
-    terms: [$('.disc', form)], notes: [$('[name=internalNotes]', form).closest('.qcard')] };
+    terms: [$('.disc', form)], notes: [$('[name=internalNotes]', form).closest('.qcard')], payments: [$('.pay-c', form)], clientView: [$('.view-c', form)] };
+  Object.keys(parts).forEach((k) => { if (!parts[k][0]) delete parts[k]; }); // quotes: client payments are part of the notes card
   $('.qtop', form).replaceWith($('.qtop', view));
   const sig = $('.sig-card', view); if (sig) parts.items[0].after(sig);
   Object.entries(parts).forEach(([k, els]) => { if (k === sec) return; els[0].before(shown(k)); els.forEach((el) => { el.hidden = true; }); });
-  $$('.qside > .qcard', form).forEach((c) => { if (c !== parts.notes[0]) c.hidden = true; }); // client payments / client view aren't on the page
   $('.qsave', form).remove();
   const last = parts[sec][parts[sec].length - 1]; const foot = '<div class="foot sec-foot"><button type="button" class="btn alt" data-act="secCancel">Cancel</button><button class="btn">Save</button></div>';
   if (sec === 'top') last.insertAdjacentHTML('afterend', foot); else last.insertAdjacentHTML('beforeend', foot);
@@ -1039,12 +1039,23 @@ const viewTotals = (d) => vt('Subtotal', money(d.subtotal || 0)) + (d.discount ?
 const textCard = (kind, d, sec, title, text, empty) => `<div class="qcard"><div class="qcard-h"><h2>${title}</h2>${editBtn(kind, d, sec)}</div>${text ? `<p class="vtext">${esc(text)}</p>` : `<p class="muted" style="margin:0">${empty}</p>`}</div>`;
 const docCards = (kind, d) => textCard(kind, d, 'message', 'Client Message', d.notes, 'No message for the client')
   + textCard(kind, d, 'terms', 'Contract / Disclaimer', d.disclaimer, 'No contract or disclaimer')
-  + (kind === 'quote' ? quoteNotesCard(d) : textCard(kind, d, 'notes', 'Internal Notes', d.internalNotes, 'No internal notes. Clients never see these.'));
+  + (kind === 'quote' ? quoteNotesCard(d) : ''); // invoices: notes are in the right column
+const vpill = (on) => `<span class="vpill${on ? ' on' : ''}">${on ? 'On' : 'Off'}</span>`;
+const vopts = (rows, empty) => rows.map(([l, on]) => `<div class="vopt"><span>${l}</span>${vpill(on)}</div>`).join('') || `<p class="muted" style="margin:0">${empty}</p>`;
+// invoices: client payments, client view and internal notes in the right column, each with its pencil
+const invoiceSide = (d) => {
+  const on = (k) => d[k] !== 'off';
+  const pays = [planHas('onlinePayments') ? ['Card payments', on('allowCard') && cardReady()] : null, planHas('zelle') ? ['Zelle', on('allowZelle') && !!company.zelleRecipient] : null].filter(Boolean);
+  const view = [['showQty', 'Quantities'], ['showUnit', 'Unit prices'], ['showLineTotals', 'Line item totals'], ['showAccountBalance', 'Account balance'], ['showLateStamp', 'Late stamp (if overdue)']].map(([k, l]) => [l, on(k)]);
+  return `<aside class="qside"><div class="qcard"><div class="qcard-h"><h2>Client payments</h2>${editBtn('invoice', d, 'payments')}</div>${vopts(pays, 'No online payment options on your plan')}</div>
+<div class="qcard"><div class="qcard-h"><h2>Client view</h2>${editBtn('invoice', d, 'clientView')}</div>${vopts(view)}</div>
+${textCard('invoice', d, 'notes', 'Internal Notes', d.internalNotes, 'No internal notes. Clients never see these.')}</aside>`;
+};
 // quotes: client payment options beside the internal notes, as in the editor; the pencil edits both
 const quoteNotesCard = (d) => {
   const opts = [planHas('onlinePayments') ? ['Card payments', d.allowCard !== 'off' && cardReady()] : null, planHas('zelle') ? ['Zelle', d.allowZelle !== 'off' && !!company.zelleRecipient] : null].filter(Boolean);
   const notes = d.internalNotes ? `<p class="vtext">${esc(d.internalNotes)}</p>` : '<p class="muted" style="margin:0">No internal notes. Clients never see these.</p>';
-  return `<div class="qcard qduo"><div class="qduo-c"><h2>Client payments</h2>${opts.map(([l, on]) => `<div class="vopt"><span>${l}</span><span class="${on ? 'pos' : 'muted'}">${on ? 'On' : 'Off'}</span></div>`).join('') || '<p class="muted" style="margin:0">No online payment options on your plan</p>'}</div>
+  return `<div class="qcard qduo"><div class="qduo-c"><h2>Client payments</h2>${vopts(opts, 'No online payment options on your plan')}</div>
 <div class="qduo-c"><div class="qcard-h"><h2>Internal Notes</h2>${editBtn('quote', d, 'notes')}</div>${notes}</div></div>`;
 };
 function viewPage(kind) {
@@ -1147,7 +1158,7 @@ function invoicePage(d) {
   const termsLabel = (TERMS.find(([k]) => k === String(d.paymentTerms)) || [, 'Custom date'])[1];
   const pays = [...(d.payments || [])].sort((a, b) => a.date.localeCompare(b.date));
   const others = D.invoices.filter((i) => i.clientId === d.clientId && i.id !== d.id && i.status !== 'paid' && i.status !== 'draft').reduce((s, i) => s + invBalance(i), 0);
-  return `<div class="qview"><div class="qtop"><div class="qtop-l"><a href="/invoices" data-link class="back">← Invoices</a>${iBadge(st)}${d.zelleSentAt && d.status !== 'paid' ? '<span class="badge zelle">Zelle sent</span>' : ''}</div>
+  return `<div class="qview"><div class="qpage"><div class="qmain"><div class="qtop"><div class="qtop-l"><a href="/invoices" data-link class="back">← Invoices</a>${iBadge(st)}${d.zelleSentAt && d.status !== 'paid' ? '<span class="badge zelle">Zelle sent</span>' : ''}</div>
 <div class="actions">${invoiceMore(d, c)}
 ${d.status !== 'paid' ? `<button type="button" class="btn" data-act="sendDoc" data-kind="invoice" data-id="${d.id}">Send…</button>` : ''}</div></div>
 <div class="vhead"><div class="vtitle-row"><h1 class="vtitle">${esc(d.subject || `Invoice ${d.number}`)}</h1>${editBtn('invoice', d, 'top')}</div>
@@ -1161,7 +1172,7 @@ ${c.phone || c.email ? `<div class="vclient-c">${c.phone ? `<a href="tel:${esc(c
 ${pays.map((p) => vt(payLink(p.id, 'Payment collected', p.date, ` <span class="muted">· ${esc(payLabel(p.method))}</span>`), '−' + money(p.amount))).join('')}
 ${!pays.length && d.status === 'paid' && d.paidAt ? vt(payLink('i-' + d.id, 'Paid', d.paidAt, d.paymentMethod ? ` <span class="muted">· ${esc(payLabel(d.paymentMethod))}</span>` : ''), '') : ''}
 ${vt('Invoice balance', money(invBalance(d)), 'strong')}${vt(`Account balance <span class="muted">(including this ${d.status === 'draft' ? 'draft' : 'invoice'})</span>`, money(others + invBalance(d)))}</div></div>
-${docCards('invoice', d)}</div>`;
+${docCards('invoice', d)}</div>${invoiceSide(d)}</div></div>`;
 }
 /* ===== phones: the quote and invoice pages work like an app. Tap a section to change it: a full-screen page
    (details, line items, discount, deposit, messages) or a sheet from the bottom (tax, client payments, more actions).
