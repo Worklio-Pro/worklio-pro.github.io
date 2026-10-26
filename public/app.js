@@ -226,7 +226,7 @@ const FEATURE_WORDS = {
   '/quotes': 'estimates proposals', '/jobs': 'work orders visits', '/invoices': 'billing', '/payments': 'card online stripe', '/services': 'catalog products price list items',
   '/expenses': 'costs receipts spending', '/reports': 'revenue profit charts', '/tax-summary': 'sales tax', '/project-gallery': 'photos pictures', '/reviews': 'google reviews ratings stars reply', '/social-posts': 'facebook instagram social media post marketing', '/notifications': 'emails texts sms sent messages log',
   '/requests': 'time off day off vacation sick leave request approve', '/settings/roles': 'roles permissions access manager technician what team can see do', '/settings/company': 'business details logo address phone social media facebook instagram tiktok tax', '/team': 'staff employees users access roles technicians', '/settings/emails': 'templates text messages sms reminders',
-  '/settings': 'number prefixes branding brand color zelle defaults ai stripe card payments online payments regional time zone date format time format week', '/settings/connections': 'integrations google facebook instagram ai', '/settings/billing': 'subscription plan upgrade payment method', '/settings/support-access': 'grant revoke help troubleshoot permission',
+  '/settings': 'number prefixes branding brand color zelle defaults stripe card payments online payments regional time zone date format time format week', '/settings/connections': 'integrations google facebook instagram ai', '/settings/billing': 'subscription plan upgrade payment method', '/settings/support-access': 'grant revoke help troubleshoot permission',
 };
 const featureList = () => {
   const open = (p) => PAGES[p] && memberCan(p) && !planLocked(p) && !planLocked(p.split('/').slice(0, 2).join('/')) && (p !== '/forum' || !!(company.account && company.account.forum));
@@ -1006,7 +1006,7 @@ function qItemRow(it) {
 // Rewrite in a line's description box (bottom left): a menu of tones (Cheerful, Casual, Professional, Shorter). It drafts from the line's name,
 // or rewrites what's typed there. The revert button beside it puts back what was there before the first rewrite (and Ctrl/⌘ Z still works).
 // Needs the plan's AI feature and AI turned on in App Settings.
-const aiOn = () => company.aiEnabled !== false && planHas('ai');
+const aiOn = () => planHas('ai');
 const aiIco = (d) => `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const AI_SPARK = aiIco('<path d="M12 3l1.8 4.7 4.7 1.8-4.7 1.8L12 16l-1.8-4.7-4.7-1.8 4.7-1.8z"/><path d="M19 15l.7 1.8 1.8.7-1.8.7L19 20l-.7-1.8-1.8-.7 1.8-.7z"/>');
 const AI_TONES = [['cheerful', 'Cheerful', '<circle cx="12" cy="12" r="9"/><path d="M8.5 14a4.5 4.5 0 0 0 7 0M9 9.5h.01M15 9.5h.01"/>'],

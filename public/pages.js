@@ -461,7 +461,7 @@ function serviceForm(s) {
   const mb = modal(s.id ? 'Edit item' : 'New item', `<form><div class="row"><label>Name<input name="name" required value="${esc(s.name)}"></label>
 <label>Type<select name="type">${[['service', 'Service'], ['product', 'Product']].map(([k, l]) => `<option value="${k}" ${(s.type || 'service') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label></div>
 <label>Description<textarea name="description" placeholder="Shown on quote and invoice lines">${esc(s.description)}</textarea></label>
-${company.aiEnabled !== false && planHas('ai') ? '<div class="ai-row"><button type="button" class="btn alt sm" id="aiDesc">✨ Write with AI</button></div>' : ''}
+${planHas('ai') ? '<div class="ai-row"><button type="button" class="btn alt sm" id="aiDesc">✨ Write with AI</button></div>' : ''}
 <div class="row"><label>Standard price ($)<input name="price" type="number" step="0.01" min="0" required value="${s.price ?? ''}"></label><label>Unit<input name="unit" value="${esc(s.unit || '')}" placeholder="job, hour, visit, each"></label></div>
 <div class="foot">${s.id ? `<button type="button" class="btn danger" data-act="delService" data-id="${s.id}">Delete</button>` : ''}<button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save</button></div></form>`);
   if ($('#aiDesc', mb)) $('#aiDesc', mb).addEventListener('click', async (e) => {
@@ -928,11 +928,9 @@ async function companyPage(main, full) {
 <div class="row3 prefix-row">${[['quotePrefix', 'Quotes', 1005], ['jobPrefix', 'Jobs', 2010], ['invoicePrefix', 'Invoices', 3010]].map(([k, l, n]) => `<label>${l}<input form="cf" name="${k}" maxlength="10" value="${esc(docPrefix(k))}" data-sample="${n}"><span class="muted prefix-eg">e.g. ${esc(docPrefix(k))}${n}</span></label>`).join('')}</div></div>` : '' : '';
   const zelleBox = full && planHas('zelle') ? `<div class="card" id="zelle"><h2>Zelle payments</h2><p class="muted" style="margin-top:0">Shown to clients on the invoice pay page and the quote deposit step. Leave blank to hide Zelle. Zelle payments can’t be confirmed automatically: when a client reports one, check your bank, then use Mark paid.</p>
 <div class="row"><label>Zelle email or phone<input form="cf" name="zelleRecipient" value="${esc(c.zelleRecipient || '')}" placeholder="payments@yourbusiness.com or +17135550100"></label><label>Name registered with Zelle<input form="cf" name="zelleName" value="${esc(c.zelleName || '')}" placeholder="e.g. TLB Group LLC"></label></div></div>` : '';
-  const aiBox = full ? planHas('ai') ? `<div class="card"><h2>AI assistance</h2><p class="muted" style="margin-top:0">Shows a “Write with AI” button that drafts product and service descriptions from their name.${integ.ai ? '' : ' AI isn’t available on this service yet.'}</p>
-<div class="ai-toggle"><span class="cstatus ${c.aiEnabled !== false ? 'active' : ''}">${c.aiEnabled !== false ? 'On' : 'Off'}</span><button type="button" class="btn alt sm" data-act="toggleAi">${c.aiEnabled !== false ? 'Turn off AI assistance' : 'Turn on AI assistance'}</button></div></div>` : '' : '';
   main.innerHTML = `<div class="head"><div><h1>${full ? 'App Settings' : 'Company settings'}</h1>${full ? '<p class="sub">Branding and defaults used on every quote and invoice. Business details, social media and tax settings are on <a href="/settings/company" data-link>Company Profile</a>.</p>' : ''}</div></div>
 ${full ? planCard(c.account) : ''}
-${full ? `<div class="as-cols"><div class="as-col">${webAddressCard(c.account)}${iconBox}${brandBox}${regionalBox(c)}</div><div class="as-col">${payCard(integ)}${zelleBox}${aiBox}${prefixBox}</div></div>
+${full ? `<div class="as-cols"><div class="as-col">${webAddressCard(c.account)}${iconBox}${brandBox}${regionalBox(c)}</div><div class="as-col">${payCard(integ)}${zelleBox}${prefixBox}</div></div>
 <form id="cf"><div class="as-save"><button class="btn">Save changes</button></div></form>` : `<form id="cf" class="cs-form">${companySettingsHtml(c, logoBox)}<div class="cs-foot"><button class="btn">Update settings</button></div></form>`}`;
   $$('.prefix-row input').forEach((i) => i.addEventListener('input', () => { i.nextElementSibling.textContent = 'e.g. ' + i.value.trim() + i.dataset.sample; }));
   if (!full) { wireHours(main); phoneMask($('#cf input[name=phone]', main)); }
@@ -943,7 +941,6 @@ ${full ? `<div class="as-cols"><div class="as-col">${webAddressCard(c.account)}$
     if ('industry' in b && !b.industry) delete b.industry; // not chosen yet: leave it unset
     await api('PUT', '/api/company', b); toast('Settings saved'); refresh();
   });
-  A.toggleAi = async () => { const on = c.aiEnabled === false; await api('PUT', '/api/company', { aiEnabled: on }); toast(on ? 'AI assistance turned on' : 'AI assistance turned off'); refresh(); };
   A.removeLogo = async () => {
     if (!confirm('Delete your logo? It will be removed from quotes, invoices and the client portal.')) return;
     try { await api('DELETE', '/api/company/logo'); toast('Logo deleted'); refresh(); } catch (err) { toast(err.message, true); }
@@ -1058,8 +1055,8 @@ async function connectionsPage(main) {
       ...state('facebook', F, F.link ? `<a href="${esc(F.link)}" target="_blank" rel="noopener"><strong>${esc(F.name)}</strong></a>` : `<strong>${esc(F.name)}</strong>`) },
     { id: 'instagram', icon: 'instagram', title: 'Instagram account', desc: `Connect your Instagram account to publish Instagram posts. You’ll need an Instagram professional account: either Business or Creator.${I.connected ? posts : ''}`,
       ...state('instagram', I, `<a href="https://www.instagram.com/${encodeURIComponent(I.username)}" target="_blank" rel="noopener"><strong>@${esc(I.username)}</strong></a>`) },
-    ...(planHas('ai') ? [{ id: 'ai', icon: 'ai', feature: 'ai', title: 'AI descriptions', button: '', body: '', status: integ.ai ? connChip('on', company.aiEnabled !== false ? 'On' : 'Turned off') : connChip('off', 'Not available yet'),
-      desc: `“Write with AI” drafts product and service descriptions from their name. ${integ.ai ? 'Turn it on or off in <a href="/settings" data-link>App Settings</a>.' : ''}` }] : []),
+    ...(planHas('ai') ? [{ id: 'ai', icon: 'ai', feature: 'ai', title: 'AI descriptions', button: '', body: '', status: integ.ai ? connChip('on', 'On') : connChip('off', 'Not available yet'),
+      desc: `“Write with AI” drafts product and service descriptions from their name.` }] : []),
   ];
   // connections for features the platform marks as Beta get a Beta tag and a short notice
   const beta = (r) => !!(r.feature && company.account && (company.account.featureList || []).some((f) => f.key === r.feature && f.beta));

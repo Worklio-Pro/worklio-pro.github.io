@@ -783,7 +783,7 @@ app.put('/api/company', (req, res) => {
   const allowed = ['name', 'email', 'phone', 'website', 'address', 'logo', 'taxRate', 'paymentTermsDays', 'invoiceFooter', 'brandColor', 'zelleRecipient', 'zelleName', 'quoteDisclaimer', 'invoiceDisclaimer', ...Object.keys(PREFIX_DEFAULTS),
     ...ADDRESS_PARTS, 'taxIdName', 'taxIdNumber', 'taxName', 'taxDescription', 'hours', ...Object.keys(REGIONAL)];
   for (const k of allowed) if (k in b) db.company[k] = k === 'taxRate' || k === 'paymentTermsDays' ? Number(b[k]) || 0 : typeof b[k] === 'string' ? b[k].trim().slice(0, 500) : b[k];
-  for (const k of ['aiEnabled', 'addressPrivate', 'showHours']) if (k in b) db.company[k] = b[k] === true || b[k] === 'on' || b[k] === 'true';
+  for (const k of ['addressPrivate', 'showHours']) if (k in b) db.company[k] = b[k] === true || b[k] === 'on' || b[k] === 'true';
   if (ADDRESS_PARTS.some((k) => k in b)) db.company.address = composeAddress(db.company); // the one-line address used everywhere else
   if ('timezone' in b) applyTimezone();
   save(); res.json({ ...db.company, account: accountInfo() });
@@ -953,7 +953,6 @@ app.post('/api/services/describe', async (req, res) => {
   const tone = { cheerful: 'Make it warm, upbeat and friendly.', casual: 'Make it relaxed and conversational, the way you’d explain it to a neighbor.', professional: 'Make it polished, clear and businesslike.',
     shorter: 'Make it as short as you can: one sentence, under 20 words, keeping only the key facts (this overrides the length limits above).' }[req.body.tone] || '';
   if (!name) return res.status(400).json({ error: 'Enter a name first' });
-  if (db.company.aiEnabled === false) return res.status(403).json({ error: 'AI assistance is turned off in App Settings' });
   const client = aiClient();
   if (!client) return res.status(503).json({ error: 'AI descriptions need ANTHROPIC_API_KEY in the .env file' });
   const Anthropic = require('@anthropic-ai/sdk');
