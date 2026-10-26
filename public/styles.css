@@ -879,7 +879,20 @@ a.conn-chip{text-decoration:none}a.conn-chip:hover{text-decoration:underline}
 .menu-list .mi{display:flex;align-items:center;gap:10px;font-weight:500}
 .mi-ic{width:20px;height:20px;flex:none;color:var(--muted)}.mi-ic.pdf{color:#dc2626}.mi-ic.ok{color:var(--ok)}.mi-ic.bad{color:var(--danger)}
 .mi-sep{border:0;border-top:1px solid var(--line);margin:6px 4px}.mi-h{padding:8px 12px 4px;font-size:14px;font-weight:700;color:var(--text)}
-.more-menu .menu-list{min-width:240px}/* Send Text box: message on the left, the text as it arrives on the right */
+.more-menu .menu-list{min-width:240px}/* Email box: To, subject and message on the left, attachments on the right */
+.modal:has(.em-form){max-width:1000px}
+.em-grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:24px;align-items:start}
+.em-main .fl{margin:0 0 12px}.em-main .fl>textarea{min-height:230px;resize:vertical}
+.em-note{font-size:12px;margin:-6px 0 12px}.em-copy{display:flex;align-items:center;gap:8px;font-weight:400;cursor:pointer;margin:0}.em-copy input{width:auto;margin:0}
+.em-side h3{margin:0 0 10px;font-size:15px}
+.em-drop{display:flex;flex-direction:column;align-items:center;gap:8px;padding:18px 12px;border:1.5px dashed var(--border);border-radius:10px;text-align:center;font-size:13px;color:var(--muted)}.em-drop.over{border-color:var(--brand);background:var(--tint)}
+.em-use{font-size:12px;margin:12px 0 6px}.em-bar{height:6px;border-radius:99px;background:var(--surface-2);overflow:hidden}.em-bar i{display:block;height:100%;width:0;background:var(--brand)}
+.em-files{display:flex;flex-direction:column;gap:8px;margin-top:14px}.em-up{display:contents}
+.em-file{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-weight:400;font-size:13px;margin:0;min-width:0}
+.em-file input{width:auto;margin:0}.em-file>span:not(.em-ic){min-width:0}.em-file b{display:block;font-weight:600;overflow-wrap:anywhere}.em-file small{color:var(--muted)}.em-file .em-x{margin-left:auto;flex:none}
+.em-ic{width:34px;height:34px;flex:none;display:grid;place-items:center;border-radius:8px;background:var(--surface-2)}.em-ic .mi-ic{width:18px;height:18px}.em-ic.pdf .mi-ic{color:#dc2626}
+@media (max-width:760px){.em-grid{grid-template-columns:minmax(0,1fr)}}
+/* Send Text box: message on the left, the text as it arrives on the right */
 .tx-to{margin-bottom:16px}.tx-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;align-items:start;margin-top:4px}
 .tx-grid .fl{margin:0}.tx-left{display:block;text-align:right;font-size:13px;font-weight:600;margin-top:6px}
 .tx-bubble{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--surface-2);border-radius:12px 12px 12px 2px;padding:12px 14px;font-size:14px;line-height:1.45}

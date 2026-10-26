@@ -323,13 +323,14 @@ async function optInText(c) {
     body: `${db.company.name}: You're signed up for texts about your quotes, invoices and appointments. Msg frequency varies. Msg & data rates may apply. Reply HELP for help, STOP to opt out.` });
   save();
 }
-async function notify({ clientId, channel, kind, refId, refNumber, subject, body, html = '' }) {
+async function notify({ clientId, channel, kind, refId, refNumber, subject, body, html = '', to = '', attachments = [] }) { // to: an email address other than the client's (texts always go to the client's number)
   const c = findClient(clientId);
   if (channel === 'sms' && !tenancy.has('sms')) return { id: uid(), at: new Date().toISOString(), clientId, channel, kind, status: 'failed', detail: 'Text messages aren’t included in your plan' };
   // texts only go to clients who agreed to them (A2P 10DLC): ticked on their client profile, or on the booking / referral form
   if (channel === 'sms' && !(c && c.smsConsent)) return { id: uid(), at: new Date().toISOString(), clientId, channel, kind, status: 'failed', detail: 'This client hasn’t agreed to receive text messages' };
-  const res = channel === 'email' ? await sendEmail(c && c.email, subject, body, { html }) : await sendSms(c && c.phone, body);
-  const entry = { id: uid(), at: new Date().toISOString(), clientId, clientName: c ? c.name : 'Unknown', channel, kind, refId, refNumber, to: channel === 'email' ? (c && c.email) : (c && c.phone), subject: subject || '', body, status: res.status, detail: res.detail };
+  const email = channel === 'email' ? to || (c && c.email) : '';
+  const res = channel === 'email' ? await sendEmail(email, subject, body, { html, attachments }) : await sendSms(c && c.phone, body);
+  const entry = { id: uid(), at: new Date().toISOString(), clientId, clientName: c ? c.name : 'Unknown', channel, kind, refId, refNumber, to: channel === 'email' ? email : (c && c.phone), subject: subject || '', body, status: res.status, detail: res.detail };
   db.notifications.unshift(entry);
   return entry;
 }
@@ -1217,8 +1218,10 @@ app.post('/api/quotes/:id/send', async (req, res) => {
   const channels = (req.body.channels && req.body.channels.length) ? req.body.channels : ['email'];
   const link = quoteLink(q); const co = db.company.name;
   const results = [];
-  const email = renderEmail('quote', { client_name: findClient(q.clientId)?.name || '', company_name: co, quote_number: q.number, quote_title: q.title || '', total: money(q.total), link });
+  const email = renderEmail('quote', docVars('quote', q));
+  if (channels.includes('email') && req.body.email) { const r = await emailDoc(req, 'quote', q); if (r.error) return res.status(400).json(r); results.push(...r.results); }
   for (const ch of channels) {
+    if (ch === 'email' && req.body.email) continue;
     results.push(await notify({ clientId: q.clientId, channel: ch, kind: 'quote', refId: q.id, refNumber: q.number,
       subject: email.subject, html: ch === 'email' ? email.html : '', body: ch === 'email' ? email.body : req.body.message ? smsWithLink(req.body.message, 'View your quote here', link) : `${co}: Quote ${q.number} (${money(q.total)}) is ready: ${shortLink(link)} Reply STOP to opt out.` }));
   }
@@ -1256,8 +1259,10 @@ app.post('/api/invoices/:id/send', async (req, res) => {
   const channels = (req.body.channels && req.body.channels.length) ? req.body.channels : ['email'];
   const link = invoiceLink(inv); const co = db.company.name;
   const results = [];
-  const email = renderEmail('invoice', { client_name: findClient(inv.clientId)?.name || '', company_name: co, invoice_number: inv.number, total: money(inv.total), due_date: niceDate(inv.dueDate), link });
+  const email = renderEmail('invoice', docVars('invoice', inv));
+  if (channels.includes('email') && req.body.email) { const r = await emailDoc(req, 'invoice', inv); if (r.error) return res.status(400).json(r); results.push(...r.results); }
   for (const ch of channels) {
+    if (ch === 'email' && req.body.email) continue;
     results.push(await notify({ clientId: inv.clientId, channel: ch, kind: 'invoice', refId: inv.id, refNumber: inv.number,
       subject: email.subject, html: ch === 'email' ? email.html : '', body: ch === 'email' ? email.body : req.body.message ? smsWithLink(req.body.message, 'View and pay your invoice here', link) : `${co}: Invoice ${inv.number} (${money(inv.total)}) due ${inv.dueDate}. Pay online: ${shortLink(link)} Reply STOP to opt out.` }));
   }
@@ -1270,6 +1275,106 @@ app.post('/api/invoices/:id/send', async (req, res) => {
   if (!doc) return res.status(404).json({ error: 'Not found' });
   res.json({ url: shortLink(linkFor(doc)) });
 }));
+// the Email box starts from the email template; Print or Save PDF (and the box's PDF attachment) is the quote or invoice as a PDF
+[['quotes', 'quote'], ['invoices', 'invoice']].forEach(([col, kind]) => {
+  app.get(`/api/${col}/:id/email-draft`, (req, res) => {
+    const doc = db[col].find((x) => x.id === req.params.id); if (!doc) return res.status(404).json({ error: 'Not found' });
+    const u = currentUser(req); res.json({ ...emailDraft(kind, doc), me: (u && u.email) || '' });
+  });
+  app.get(`/api/${col}/:id/pdf`, (req, res) => {
+    const doc = db[col].find((x) => x.id === req.params.id); if (!doc) return res.status(404).json({ error: 'Not found' });
+    res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Content-Disposition', `inline; filename="${pdfName(kind, doc)}"`); res.end(docPdf(kind, doc));
+  });
+});
+
+// ---------- the Email box (quote and invoice pages) ----------
+const docVars = (kind, d) => {
+  const base = { client_name: findClient(d.clientId)?.name || '', company_name: db.company.name, total: money(d.total) };
+  return kind === 'quote' ? { ...base, quote_number: d.number, quote_title: d.title || '', link: quoteLink(d) } : { ...base, invoice_number: d.number, due_date: niceDate(d.dueDate), link: invoiceLink(d) };
+};
+const BUTTON_LINE = /^\s*\[([^\]]+)\]\(\{\{\s*link\s*\}\}\)\s*$/m; // the template's button: [View and approve quote]({{link}})
+const fillVars = (str, v) => String(str || '').replace(/\{\{\s*(\w+)\s*\}\}/g, (m, k) => (k in v ? v[k] : m));
+// the box's starting subject and message: the template's, without its heading and button (the email puts the button under the message)
+function emailDraft(kind, d) {
+  const t = emailTemplate(kind); const v = docVars(kind, d);
+  const message = fillVars(t.body.replace(BUTTON_LINE, '').split('\n').filter((l) => !/^#\s/.test(l)).join('\n'), v).replace(/\*\*(.+?)\*\*/g, '$1').replace(/\n{3,}/g, '\n\n').trim();
+  return { to: findClient(d.clientId)?.email || '', subject: fillVars(t.subject, v), message, button: (t.body.match(BUTTON_LINE) || [])[1] || (kind === 'quote' ? 'View and approve quote' : 'View and pay invoice') };
+}
+const EMAIL_FILES_MAX = 10 * 1024 * 1024;
+const pdfName = (kind, d) => `${kind}_${String(d.number).replace(/[^\w-]+/g, '')}.pdf`;
+// sends what the Email box holds: to each address, the message with the button under it, any files (base64 from the browser) and the PDF;
+// "Send me a copy" sends the same email to the person sending it
+async function emailDoc(req, kind, d) {
+  const e = req.body.email; const draft = emailDraft(kind, d);
+  const to = [...new Set(String(e.to ?? draft.to).split(/[\s,;]+/).filter(Boolean))];
+  if (!to.length) return { error: 'Enter an email address to send to' };
+  if (to.length > 5) return { error: 'Send to 5 email addresses at most' };
+  const bad = to.find((a) => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(a)); if (bad) return { error: `“${bad}” isn’t an email address` };
+  const message = String(e.message ?? draft.message).trim().slice(0, 10000); if (!message) return { error: 'Write a message first' };
+  const mail = renderEmail(kind, docVars(kind, d), { subject: String(e.subject || draft.subject).slice(0, 200), body: `${message}\n\n[${draft.button}]({{link}})` });
+  const files = (Array.isArray(e.files) ? e.files : []).slice(0, 10).map((f) => ({ name: String(f.name || 'file').replace(/[\r\n"\\/]/g, '').slice(0, 120) || 'file', type: String(f.type || 'application/octet-stream').slice(0, 100), content: Buffer.from(String(f.data || ''), 'base64') }));
+  if (files.reduce((n, f) => n + f.content.length, 0) > EMAIL_FILES_MAX) return { error: 'The attachments are over the 10 MB limit' };
+  if (e.pdf) files.unshift({ name: pdfName(kind, d), type: 'application/pdf', content: docPdf(kind, d) });
+  const results = [];
+  for (const addr of to) results.push(await notify({ clientId: d.clientId, channel: 'email', kind, refId: d.id, refNumber: d.number, subject: mail.subject, body: mail.body, html: mail.html, to: addr, attachments: files }));
+  const u = currentUser(req);
+  if (e.copy && u && u.email) results.push({ channel: 'email', to: `${u.email} (your copy)`, ...(await sendEmail(u.email, mail.subject, mail.body, { html: mail.html, attachments: files })) });
+  return { results };
+}
+// a quote or invoice as a PDF: the business, the client, the line items (an invoice's Client view switches apply), totals, message and contract
+function docPdf(kind, d) {
+  const q = kind === 'quote'; const co = db.company; const c = findClient(d.clientId) || {}; const x = q ? d : withStatus(d);
+  const on = (k) => q || d[k] !== 'off'; const showQty = on('showQty'); const showUnit = on('showUnit'); const showLine = on('showLineTotals');
+  const pdf = createPdf(); const L = 54; const R = 558; let y = 64;
+  const room = (need) => { if (y + need > 740) { pdf.addPage(); y = 64; } };
+  const gray = '#475569'; const soft = '#64748b';
+  // the business, and the document's number and dates
+  pdf.text(L, y, co.name || '', { size: 18, bold: true }); y += 18;
+  for (const t of [co.address, [co.phone ? fmtUsPhone(co.phone) : '', co.email].filter(Boolean).join('  ·  '), co.website, !q && co.taxIdNumber ? `${co.taxIdName || 'Tax ID'}: ${co.taxIdNumber}` : ''].filter(Boolean)) y = pdf.para(L, y, t, 300, { size: 10, color: gray, lineHeight: 14 });
+  pdf.text(R, 64, q ? 'QUOTE' : 'INVOICE', { size: 18, bold: true, align: 'right' }); let ry = 84;
+  for (const t of q ? [`Quote #${d.number}`, `Created ${niceDate(String(d.createdAt || '').slice(0, 10))}`] : [`Invoice #${d.number}`, `Issued ${niceDate(d.issueDate)}`, `Due ${niceDate(d.dueDate)}`]) { pdf.text(R, ry, t, { size: 10, color: gray, align: 'right' }); ry += 14; }
+  y = Math.max(y, ry) + 14; pdf.line(L, y, R, y); y += 26;
+  // the client
+  pdf.text(L, y, q ? 'PREPARED FOR' : 'BILL TO', { size: 9, bold: true, color: soft }); y += 16;
+  pdf.text(L, y, c.company ? `${c.name} (${c.company})` : c.name || '', { size: 11, bold: true }); y += 15;
+  for (const t of [c.address, c.email, c.phone ? fmtUsPhone(c.phone) : ''].filter(Boolean)) y = pdf.para(L, y, t, 300, { size: 10, color: gray, lineHeight: 14 });
+  const title = q ? d.title : d.subject; if (title) { y += 12; y = pdf.para(L, y, title, R - L, { size: 14, bold: true, lineHeight: 18 }); }
+  // line items
+  const cQty = 392; const cUnit = 474; const descW = (showQty || showUnit ? 300 : 400);
+  const head = () => { pdf.rect(L, y, R - L, 24, { fill: '#f1f5fb' }); pdf.text(L + 8, y + 16, 'Description', { size: 9, bold: true, color: soft }); if (showQty) pdf.text(cQty, y + 16, 'Qty', { size: 9, bold: true, color: soft, align: 'right' }); if (showUnit) pdf.text(cUnit, y + 16, 'Unit price', { size: 9, bold: true, color: soft, align: 'right' }); if (showLine) pdf.text(R - 8, y + 16, 'Total', { size: 9, bold: true, color: soft, align: 'right' }); y += 24; };
+  y += 14; head();
+  for (const i of d.items || []) {
+    const lines = Math.ceil(pdf.width(i.details || '', 9.5) / descW) + String(i.details || '').split('\n').length;
+    if (y + 34 + (i.details ? lines * 13 : 0) > 740) { pdf.addPage(); y = 64; head(); }
+    const top = y + 18; let yy = pdf.para(L + 8, top, i.desc, descW, { size: 10.5, bold: true, lineHeight: 14 });
+    for (const t of String(i.details || '').split('\n').filter((t) => t.trim())) yy = pdf.para(L + 8, yy + 1, t, descW, { size: 9.5, color: gray, lineHeight: 13 });
+    if (showQty) pdf.text(cQty, top, String(i.qty), { size: 10.5, align: 'right' });
+    if (showUnit) pdf.text(cUnit, top, money(i.price), { size: 10.5, align: 'right' });
+    if (showLine) pdf.text(R - 8, top, money(round2(i.qty * i.price)), { size: 10.5, align: 'right' });
+    y = yy + 6; pdf.line(L, y, R, y);
+  }
+  // totals
+  y += 10; const tl = 340;
+  const row = (k, v, bold) => { room(22); pdf.text(tl, y + 14, k, { size: 10.5, bold }); pdf.text(R - 8, y + 14, v, { size: 10.5, bold, align: 'right' }); y += 22; };
+  row('Subtotal', money(d.subtotal || 0));
+  if (d.discount > 0) row(`Discount${d.discountType === 'percent' ? ` (${d.discountValue}%)` : ''}`, '-' + money(d.discount));
+  if (Number(d.taxRate)) row(`${Number(d.taxRate) === Number(co.taxRate) && co.taxName ? co.taxName : 'Tax'} (${d.taxRate}%)`, money(d.tax || 0));
+  row('Total', money(d.total || 0), true);
+  if (q && d.depositFee > 0) row(`Required deposit${d.depositType === 'percent' ? ` (${d.depositValue}%)` : ''}`, money(d.depositFee));
+  if (!q) {
+    const paid = (d.payments || []).reduce((n, pm) => n + (Number(pm.amount) || 0), 0);
+    if (d.depositApplied > 0) row('Deposit collected', '-' + money(d.depositApplied));
+    if (paid > 0) row('Payments', '-' + money(paid));
+    row('Balance due', money(x.balanceDue ?? d.total), true);
+  }
+  // the client message and the contract / disclaimer
+  for (const [h, t] of [['Message', d.notes], [q ? 'Contract / Disclaimer' : 'Terms', d.disclaimer]]) {
+    if (!String(t || '').trim()) continue;
+    y += 18; room(40); pdf.text(L, y, h.toUpperCase(), { size: 9, bold: true, color: soft }); y += 16;
+    for (const para of String(t).split('\n')) { room(14 * Math.max(1, Math.ceil(pdf.width(para, 10) / (R - L)))); y = para.trim() ? pdf.para(L, y, para, R - L, { size: 10, color: '#334155', lineHeight: 14 }) : y + 8; }
+  }
+  return pdf.toBuffer(`${q ? 'Quote' : 'Invoice'} ${d.number}`);
+}
 
 // ---------- payments recorded by staff (owner, admin, manager) ----------
 // An invoice keeps a list of payments (part payments allowed); it becomes "paid" once they cover the balance.
@@ -1329,8 +1434,6 @@ app.post('/api/jobs/:id/remind', async (req, res) => {
 
 // ---------- public payment + quote pages ----------
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-// Print or Save PDF (More menu): a client quote or invoice page opened with ?print=1 prints itself; buttons and forms stay off the paper
-const printIt = (req) => (req.query.print === '1' ? '<style>@media print{body{background:#fff}.card{box-shadow:none;margin:0 auto}form,.btn{display:none!important}}</style><script>addEventListener("load",()=>print())</script>' : '');
 function shell(title, inner) {
   const co = db.company;
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><link rel="icon" href="/favicon.ico">
@@ -1642,7 +1745,7 @@ ${itemsTable(x, { qty: on('showQty'), unit: on('showUnit'), line: on('showLineTo
 ${on('showAccountBalance') && st !== 'paid' && account > 0 ? `<p class="muted" style="text-align:right">Account balance (all open invoices): <strong>${money(account)}</strong></p>` : ''}
 ${inv.notes ? `<p style="white-space:pre-wrap">${esc(inv.notes)}</p>` : ''}
 ${st === 'paid' ? `<p>Paid on ${esc(niceDate(inv.paidAt))}. Thank you!</p>` : card + zelle + (!card && !zelle ? `<p class="muted">Please contact ${esc(db.company.name)} at ${esc(db.company.phone || db.company.email)} to arrange payment.</p>` : '')}
-${inv.disclaimer ? `<div style="margin:16px 0;padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px;white-space:pre-wrap" class="muted">${esc(inv.disclaimer)}</div>` : `<p class="muted">${esc(db.company.invoiceFooter)}</p>`}${printIt(req)}`));
+${inv.disclaimer ? `<div style="margin:16px 0;padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px;white-space:pre-wrap" class="muted">${esc(inv.disclaimer)}</div>` : `<p class="muted">${esc(db.company.invoiceFooter)}</p>`}`));
 });
 app.use('/pay', express.urlencoded({ extended: false }));
 app.post('/pay/:token/zelle-sent', (req, res) => {
@@ -1696,7 +1799,7 @@ ${!onlineMethods('quote', q).length && (q.allowZelle === 'off' || !db.company.ze
   res.send(shell(`Quote ${q.number}`, `<h1>Quote ${esc(q.number)} <span class="badge">${esc(q.status)}</span></h1><div class="muted">Prepared for ${esc(c?.name)} · ${esc(q.title)}</div>${itemsTable(q)}${q.notes ? `<p style="white-space:pre-wrap">${esc(q.notes)}</p>` : ''}
 ${q.disclaimer ? `<div style="margin:16px 0;padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px"><strong>Contract / Disclaimer</strong><p class="muted" style="margin:6px 0 0;white-space:pre-wrap">${esc(q.disclaimer)}</p></div>` : ''}
 ${(q.status === 'sent' || q.status === 'draft') && q.depositFee > 0 ? `<div style="background:#eff6ff;padding:14px 16px;border-radius:8px;margin-bottom:16px;border:1px solid #bfdbfe">${q.depositPaidAt ? `<strong>Deposit paid: ${money(q.depositPaidAmount ?? q.depositFee)}</strong><div class="muted" style="margin-top:4px">This quote was updated. After you approve, you'll sign it again.</div>` : `<strong>Deposit required: ${money(q.depositFee)}</strong>${q.depositType === 'percent' ? ` (${q.depositValue}% of the total)` : ''}<div class="muted" style="margin-top:4px">After you approve, you'll sign the quote and pay this deposit online before work begins.</div>`}</div>` : ''}
-${q.status === 'sent' || q.status === 'draft' ? `<form method="post" action="/p/quote/${esc(q.token)}/respond" style="display:flex;gap:8px"><button class="btn" name="r" value="approved">Approve quote</button><button class="btn alt" name="r" value="declined">Decline</button></form>` : ''}${signed}${depositSection}${printIt(req)}`));
+${q.status === 'sent' || q.status === 'draft' ? `<form method="post" action="/p/quote/${esc(q.token)}/respond" style="display:flex;gap:8px"><button class="btn" name="r" value="approved">Approve quote</button><button class="btn alt" name="r" value="declined">Decline</button></form>` : ''}${signed}${depositSection}`));
 });
 // the client signs by drawing (finger, stylus or mouse) or by typing their name, which is written out in a script font; posted as a PNG data URL
 function quoteSignBox(q) {

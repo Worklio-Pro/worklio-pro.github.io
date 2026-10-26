@@ -584,12 +584,61 @@ A.rmOpt = (d, el) => { const row = el.closest('.tl'); $('.opt-edit input', row).
 function sendDialog(kind, doc, only) { // only: 'email' | 'sms' ticks just that channel; 'text' sends a text message and nothing else
   const c = byId(D.clients, doc.clientId) || {};
   if (only === 'text') return textDialog(kind, doc, c);
+  if (only === 'email') return emailDialog(kind, doc, c);
   const mb = modal(`Send ${kind} ${doc.number}`, `<p>To <strong>${esc(c.name)}</strong></p>
 <form><div class="chk"><label><input type="checkbox" name="ch" value="email" ${only === 'sms' ? '' : 'checked'}> Email ${c.email ? `(${esc(c.email)})` : '<span class="muted">(no email on file)</span>'}</label>
 ${planHas('sms') ? `<label><input type="checkbox" name="ch" value="sms" ${c.phone && c.smsConsent ? (only === 'sms' ? 'checked' : '') : 'disabled'}> Text message ${!c.phone ? '<span class="muted">(no phone on file)</span>' : c.smsConsent ? `(${esc(c.phone)})` : '<span class="muted">(hasn’t agreed to texts)</span>'}</label>` : ''}</div>
 <p class="muted">The client gets a link to ${kind === 'invoice' ? 'view and pay this invoice online' : 'view and approve this quote'}. Every message is recorded in the Notifications Log.</p>
 <div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Send</button></div></form>`);
   return sendSubmit(kind, doc, mb, () => $$('[name=ch]:checked', mb).map((x) => x.value));
+}
+// Email (More → Send as… → Email): To, subject and message start from the email template; a copy to yourself; attachments
+// (files up to 10 MB in all, and the quote / invoice as a PDF). The server puts the template's button under the message (emailDoc in server.js).
+const EMAIL_FILES_MAX = 10 * 1024 * 1024;
+const fileIco = (pdf) => `<span class="em-ic${pdf ? ' pdf' : ''}">${QI(pdf ? '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>' : '<path d="M21.4 11.1l-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/>')}</span>`;
+const fmtSize = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+function emailDialog(kind, doc, c) {
+  const word = kind === 'invoice' ? 'invoice' : 'quote'; let files = []; let typed = false;
+  const mb = modal(`Email ${word} #${doc.number} to ${c.name || 'the client'}`, `<form class="em-form" data-sticky novalidate><div class="em-grid"><div class="em-main">
+<label class="fl"><span>To</span><input name="to" value="${esc(c.email || '')}" placeholder="Email address (separate several with commas)" autocomplete="off"></label>
+<label class="fl"><span>Subject</span><input name="subject" maxlength="200" placeholder="Loading…"></label>
+<label class="fl"><span>Message</span><textarea name="message" rows="11" placeholder="Loading…"></textarea></label>
+<p class="muted em-note">Under your message, your client sees a button to ${kind === 'invoice' ? 'view and pay this invoice online' : 'view and approve this quote online'}.</p>
+<label class="em-copy" hidden><input type="checkbox" name="copy"> Send me a copy <span class="muted em-me"></span></label></div>
+<div class="em-side"><h3>Attachments</h3>
+<div class="em-drop"><button type="button" class="btn alt sm em-pick">Select</button><span>Select or drag files here to upload</span><input type="file" multiple hidden></div>
+<p class="em-use"></p><div class="em-bar"><i></i></div>
+<div class="em-files"><label class="em-file"><input type="checkbox" name="pdf">${fileIco(true)}<span><b>${esc(word)}_${esc(String(doc.number).replace(/[^\w-]+/g, ''))}.pdf</b><small><a href="/api/${kind}s/${doc.id}/pdf" target="_blank">Preview</a></small></span></label><div class="em-up"></div></div></div></div>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Send Email</button></div></form>`, true);
+  const f = $('form', mb); const picker = $('input[type=file]', mb); const drop = $('.em-drop', mb);
+  f.message.addEventListener('input', () => { typed = true; }); f.subject.addEventListener('input', () => { typed = true; });
+  api('GET', `/api/${kind}s/${doc.id}/email-draft`).then((r) => {
+    if (!typed) { f.subject.value = r.subject; f.message.value = r.message; } f.subject.placeholder = ''; f.message.placeholder = '';
+    if (r.me) { $('.em-me', mb).textContent = `(${r.me})`; $('.em-copy', mb).hidden = false; }
+  }).catch((x) => toast(x.message, true));
+  const total = () => files.reduce((n, x) => n + x.size, 0);
+  const draw = () => {
+    $('.em-up', mb).innerHTML = files.map((x, i) => `<div class="em-file">${fileIco(false)}<span><b>${esc(x.name)}</b><small>${fmtSize(x.size)}</small></span><button type="button" class="icon-btn em-x" data-i="${i}" aria-label="Remove ${esc(x.name)}" title="Remove">${X_ICO}</button></div>`).join('');
+    $('.em-use', mb).textContent = `You’ve attached ${(total() / 1048576).toFixed(2)} MB of the 10.00 MB limit.`;
+    $('.em-bar i', mb).style.width = Math.min(100, total() / EMAIL_FILES_MAX * 100) + '%';
+  };
+  const add = (list) => [...list].forEach((file) => {
+    if (total() + file.size > EMAIL_FILES_MAX) return toast(`${file.name} doesn’t fit in the 10 MB limit`, true);
+    const rd = new FileReader();
+    rd.onload = () => { files.push({ name: file.name, type: file.type || 'application/octet-stream', size: file.size, data: String(rd.result).split(',')[1] || '' }); draw(); };
+    rd.onerror = () => toast(`Couldn’t read ${file.name}`, true); rd.readAsDataURL(file);
+  });
+  $('.em-pick', mb).addEventListener('click', () => picker.click());
+  picker.addEventListener('change', () => { add(picker.files); picker.value = ''; });
+  drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+  drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('over'); add(e.dataTransfer.files); });
+  $('.em-up', mb).addEventListener('click', (e) => { const b = e.target.closest('.em-x'); if (b) { files.splice(Number(b.dataset.i), 1); draw(); } });
+  draw();
+  return sendSubmit(kind, doc, mb, () => ['email'], () => {
+    if (!f.message.value.trim()) throw new Error('Write a message first');
+    return { email: { to: f.to.value, subject: f.subject.value, message: f.message.value, copy: f.copy.checked, pdf: f.pdf.checked, files: files.map(({ name, type, data }) => ({ name, type, data })) } };
+  });
 }
 // Send Text (the button beside More): the client's mobile number, a message to edit and a preview of the text as it arrives,
 // with the link and opt-out the server adds (smsWithLink in server.js). Texts only go to a client who agreed to them.
@@ -623,7 +672,9 @@ function sendSubmit(kind, doc, mb, pick, extra = () => ({})) {
     e.preventDefault();
     const channels = pick();
     if (!channels.length) return toast('Choose email, text, or both', true);
-    const r = await api('POST', `/api/${kind}s/${doc.id}/send`, { channels, ...extra() });
+    const btn = e.submitter || $('.foot .btn:not(.alt)', mb); let r;
+    try { if (btn) btn.disabled = true; r = await api('POST', `/api/${kind}s/${doc.id}/send`, { channels, ...extra() }); } // extra() can refuse too (no message yet)
+    catch (x) { if (btn) btn.disabled = false; return toast(x.message, true); }
     const rows = r.results.map((x) => `<tr><td>${x.channel === 'email' ? 'Email' : 'Text'}</td><td>${esc(x.to || '—')}</td><td>${badge(x.status)}</td></tr>`).join('');
     const sim = r.results.some((x) => x.status === 'simulated');
     mb.innerHTML = `<div class="tablewrap"><table><tr><th>Channel</th><th>To</th><th>Status</th></tr>${rows}</table></div>
@@ -1120,7 +1171,7 @@ ${canJob ? b('quoteToJob', 'job', 'Convert to Job') : ''}${job ? `<a class="mi" 
 ${marks ? `<hr class="mi-sep"><div class="mi-h">Mark as…</div>${marks}` : ''}
 <hr class="mi-sep"><a class="mi" href="/p/quote/${d.token}" target="_blank">${QM.eye}Preview as Client</a>
 ${d.signedAt ? '' : `<a class="mi" href="/p/quote/${d.token}" target="_blank" title="Opens the client’s quote page, where they approve and sign">${QM.sign}Collect Signature</a>`}
-<a class="mi" href="/p/quote/${d.token}?print=1" target="_blank">${QM.pdf}Print or Save PDF</a>
+<a class="mi" href="/api/quotes/${d.id}/pdf" target="_blank">${QM.pdf}Print or Save PDF</a>
 ${b('delDoc', 'trash', 'Delete')}</div></details>`;
 }
 const sendBtn = (kind, d) => (planHas('sms')
@@ -1135,7 +1186,7 @@ ${open ? b('collectPayment', 'pay', 'Collect Payment') : ''}${b('copyInvoice', '
 ${open ? `<hr class="mi-sep"><div class="mi-h">Send as…</div>${b('sendDoc', 'email', 'Email', 'data-ch="email"')}${planHas('sms') && c.phone && c.smsConsent ? b('sendDoc', 'text', 'Text Message', 'data-ch="text"') : ''}` : ''}
 ${d.status === 'draft' ? `<hr class="mi-sep"><div class="mi-h">Mark as…</div>${b('markInvoiceSent', 'awaiting', 'Awaiting Payment')}` : ''}
 <hr class="mi-sep"><a class="mi" href="/pay/${d.token}" target="_blank">${QM.eye}${open ? 'Preview as Client' : 'View Receipt'}</a>
-<a class="mi" href="/pay/${d.token}?print=1" target="_blank">${QM.pdf}Print or Save PDF</a>
+<a class="mi" href="/api/invoices/${d.id}/pdf" target="_blank">${QM.pdf}Print or Save PDF</a>
 ${b('delDoc', 'trash', 'Delete')}</div></details>`;
 }
 // Create Similar Invoice: a new draft for the same client with the same subject, line items, terms and client view (not linked to the job, so no deposit credit twice)
