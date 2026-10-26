@@ -583,13 +583,7 @@ A.rmOpt = (d, el) => { const row = el.closest('.tl'); $('.opt-edit input', row).
 /* ===== send dialog ===== */
 function sendDialog(kind, doc, only) { // only: 'email' | 'sms' ticks just that channel; 'text' sends a text message and nothing else
   const c = byId(D.clients, doc.clientId) || {};
-  if (only === 'text') {
-    const why = !c.phone ? 'There’s no mobile number on file for this client. Add one on their client page first.' : !c.smsConsent ? 'This client hasn’t agreed to get texts. Ask them first, then tick “Agreed to receive text messages” on their client page.' : '';
-    const tb = modal(`Text ${kind} ${doc.number}`, `<form><p>To <strong>${esc(c.name)}</strong>${c.phone ? ` (${esc(fmtUsPhone(c.phone))})` : ''}</p>
-${why ? `<div class="notice">${why}</div>` : `<p class="muted">The client gets a text with a link to ${kind === 'invoice' ? 'view and pay this invoice online' : 'view and approve this quote'}. Every message is recorded in the Notifications Log.</p>`}
-<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn" ${why ? 'disabled' : ''}>Send Text</button></div></form>`);
-    return sendSubmit(kind, doc, tb, () => ['sms']);
-  }
+  if (only === 'text') return textDialog(kind, doc, c);
   const mb = modal(`Send ${kind} ${doc.number}`, `<p>To <strong>${esc(c.name)}</strong></p>
 <form><div class="chk"><label><input type="checkbox" name="ch" value="email" ${only === 'sms' ? '' : 'checked'}> Email ${c.email ? `(${esc(c.email)})` : '<span class="muted">(no email on file)</span>'}</label>
 ${planHas('sms') ? `<label><input type="checkbox" name="ch" value="sms" ${c.phone && c.smsConsent ? (only === 'sms' ? 'checked' : '') : 'disabled'}> Text message ${!c.phone ? '<span class="muted">(no phone on file)</span>' : c.smsConsent ? `(${esc(c.phone)})` : '<span class="muted">(hasn’t agreed to texts)</span>'}</label>` : ''}</div>
@@ -597,13 +591,38 @@ ${planHas('sms') ? `<label><input type="checkbox" name="ch" value="sms" ${c.phon
 <div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Send</button></div></form>`);
   return sendSubmit(kind, doc, mb, () => $$('[name=ch]:checked', mb).map((x) => x.value));
 }
-// sends on the chosen channels, then shows how each one went
-function sendSubmit(kind, doc, mb, pick) {
+// Send Text (the button beside More): the client's mobile number, a message to edit and a preview of the text as it arrives,
+// with the link and opt-out the server adds (smsWithLink in server.js). Texts only go to a client who agreed to them.
+const TEXT_MAX = 160;
+function textDialog(kind, doc, c) {
+  const word = kind === 'invoice' ? 'invoice' : 'quote'; const co = company.name || '';
+  const label = kind === 'invoice' ? 'View and pay your invoice here' : 'View your quote here';
+  const why = !c.phone ? 'There’s no mobile number on file for this client. Add one on their client page first.' : !c.smsConsent ? 'This client hasn’t agreed to get texts. Ask them first, then tick “Agreed to receive text messages” on their client page.' : '';
+  const mb = modal(`Send ${word} #${doc.number} to ${c.name || 'the client'} as a text message`, `<form class="tx-form">
+<label class="fl tx-to"><span>To</span><input value="${c.phone ? esc(fmtUsPhone(c.phone)) : ''}" placeholder="No mobile number on file" readonly title="Texts go to the client’s mobile number on file"></label>
+${why ? `<div class="notice">${why}</div>` : ''}
+<div class="tx-grid"><div><label class="fl"><span>Message</span><textarea name="message" rows="5" maxlength="${TEXT_MAX}">${esc(`Hi ${c.name || 'there'}, here's your ${word} from ${co}.`)}</textarea></label><span class="tx-left"></span></div>
+<div><div class="tx-bubble"></div><p class="muted tx-note">The link opens the ${word} so they can ${kind === 'invoice' ? 'view and pay it online' : 'view and approve it'}. Every text is recorded in the Notifications Log.</p></div></div>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn" ${why ? 'disabled' : ''}>Send</button></div></form>`, true);
+  const ta = $('textarea', mb); let link = '…';
+  const show = () => {
+    let m = ta.value.trim(); if (co && !m.toLowerCase().includes(co.toLowerCase())) m = `${co}: ${m}`;
+    $('.tx-bubble', mb).textContent = `${m}\n\n${label} ${link}\n\nReply STOP to opt out.`; $('.tx-left', mb).textContent = TEXT_MAX - ta.value.length;
+  };
+  ta.addEventListener('input', show); show();
+  api('GET', `/api/${kind}s/${doc.id}/short-link`).then((r) => { link = r.url; show(); }).catch(() => {});
+  return sendSubmit(kind, doc, mb, () => ['sms'], () => {
+    if (!ta.value.trim()) throw new Error('Write a message first');
+    return { message: ta.value.trim() };
+  });
+}
+// sends on the chosen channels (plus anything extra, like a text's message), then shows how each one went
+function sendSubmit(kind, doc, mb, pick, extra = () => ({})) {
   $('form', mb).addEventListener('submit', async (e) => {
     e.preventDefault();
     const channels = pick();
     if (!channels.length) return toast('Choose email, text, or both', true);
-    const r = await api('POST', `/api/${kind}s/${doc.id}/send`, { channels });
+    const r = await api('POST', `/api/${kind}s/${doc.id}/send`, { channels, ...extra() });
     const rows = r.results.map((x) => `<tr><td>${x.channel === 'email' ? 'Email' : 'Text'}</td><td>${esc(x.to || '—')}</td><td>${badge(x.status)}</td></tr>`).join('');
     const sim = r.results.some((x) => x.status === 'simulated');
     mb.innerHTML = `<div class="tablewrap"><table><tr><th>Channel</th><th>To</th><th>Status</th></tr>${rows}</table></div>

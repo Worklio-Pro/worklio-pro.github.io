@@ -1142,6 +1142,13 @@ app.post('/api/photos', (req, res) => {
 // ---------- workflow ----------
 const quoteLink = (q) => `${baseUrl()}/p/quote/${q.token}`;
 const invoiceLink = (inv) => `${baseUrl()}/pay/${inv.token}`;
+// a text written in the Send Text box: the business's message (it has to name the business, so the name goes in front if it's missing),
+// then the link and how to opt out. The box previews the same thing.
+function smsWithLink(message, label, link) {
+  const co = db.company.name || ''; let m = String(message || '').trim().slice(0, 320);
+  if (co && !m.toLowerCase().includes(co.toLowerCase())) m = `${co}: ${m}`;
+  return `${m}\n\n${label} ${shortLink(link)}\n\nReply STOP to opt out.`;
+}
 
 // ---------- email templates (edited on Settings → Email Templates, stored in db.emailTemplates) ----------
 const EMAIL_TEMPLATES = {
@@ -1213,7 +1220,7 @@ app.post('/api/quotes/:id/send', async (req, res) => {
   const email = renderEmail('quote', { client_name: findClient(q.clientId)?.name || '', company_name: co, quote_number: q.number, quote_title: q.title || '', total: money(q.total), link });
   for (const ch of channels) {
     results.push(await notify({ clientId: q.clientId, channel: ch, kind: 'quote', refId: q.id, refNumber: q.number,
-      subject: email.subject, html: ch === 'email' ? email.html : '', body: ch === 'email' ? email.body : `${co}: Quote ${q.number} (${money(q.total)}) is ready: ${shortLink(link)} Reply STOP to opt out.` }));
+      subject: email.subject, html: ch === 'email' ? email.html : '', body: ch === 'email' ? email.body : req.body.message ? smsWithLink(req.body.message, 'View your quote here', link) : `${co}: Quote ${q.number} (${money(q.total)}) is ready: ${shortLink(link)} Reply STOP to opt out.` }));
   }
   if (q.status === 'draft') q.status = 'sent'; if (!q.sentAt) q.sentAt = iso(new Date());
   save(); res.json({ quote: q, results });
@@ -1252,11 +1259,17 @@ app.post('/api/invoices/:id/send', async (req, res) => {
   const email = renderEmail('invoice', { client_name: findClient(inv.clientId)?.name || '', company_name: co, invoice_number: inv.number, total: money(inv.total), due_date: niceDate(inv.dueDate), link });
   for (const ch of channels) {
     results.push(await notify({ clientId: inv.clientId, channel: ch, kind: 'invoice', refId: inv.id, refNumber: inv.number,
-      subject: email.subject, html: ch === 'email' ? email.html : '', body: ch === 'email' ? email.body : `${co}: Invoice ${inv.number} (${money(inv.total)}) due ${inv.dueDate}. Pay online: ${shortLink(link)} Reply STOP to opt out.` }));
+      subject: email.subject, html: ch === 'email' ? email.html : '', body: ch === 'email' ? email.body : req.body.message ? smsWithLink(req.body.message, 'View and pay your invoice here', link) : `${co}: Invoice ${inv.number} (${money(inv.total)}) due ${inv.dueDate}. Pay online: ${shortLink(link)} Reply STOP to opt out.` }));
   }
   if (inv.status === 'draft') inv.status = 'sent';
   save(); res.json({ invoice: withStatus(inv), results });
 });
+// the short link a text will carry, for the Send Text box's preview
+[['quotes', quoteLink], ['invoices', invoiceLink]].forEach(([col, linkFor]) => app.get(`/api/${col}/:id/short-link`, (req, res) => {
+  const doc = db[col].find((x) => x.id === req.params.id);
+  if (!doc) return res.status(404).json({ error: 'Not found' });
+  res.json({ url: shortLink(linkFor(doc)) });
+}));
 
 // ---------- payments recorded by staff (owner, admin, manager) ----------
 // An invoice keeps a list of payments (part payments allowed); it becomes "paid" once they cover the balance.
