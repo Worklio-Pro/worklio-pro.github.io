@@ -581,16 +581,27 @@ A.addOpt = (d, el) => {
 A.rmOpt = (d, el) => { const row = el.closest('.tl'); $('.opt-edit input', row).value = ''; $('.opt-edit', row).hidden = true; $('.opt-amt', row).hidden = true; el.hidden = true; $('.opt-add', row).hidden = false; recalc(el.closest('form')); };
 
 /* ===== send dialog ===== */
-function sendDialog(kind, doc, only) { // only: 'email' | 'sms' ticks just that channel
+function sendDialog(kind, doc, only) { // only: 'email' | 'sms' ticks just that channel; 'text' sends a text message and nothing else
   const c = byId(D.clients, doc.clientId) || {};
+  if (only === 'text') {
+    const why = !c.phone ? 'There’s no mobile number on file for this client. Add one on their client page first.' : !c.smsConsent ? 'This client hasn’t agreed to get texts. Ask them first, then tick “Agreed to receive text messages” on their client page.' : '';
+    const tb = modal(`Text ${kind} ${doc.number}`, `<form><p>To <strong>${esc(c.name)}</strong>${c.phone ? ` (${esc(fmtUsPhone(c.phone))})` : ''}</p>
+${why ? `<div class="notice">${why}</div>` : `<p class="muted">The client gets a text with a link to ${kind === 'invoice' ? 'view and pay this invoice online' : 'view and approve this quote'}. Every message is recorded in the Notifications Log.</p>`}
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn" ${why ? 'disabled' : ''}>Send Text</button></div></form>`);
+    return sendSubmit(kind, doc, tb, () => ['sms']);
+  }
   const mb = modal(`Send ${kind} ${doc.number}`, `<p>To <strong>${esc(c.name)}</strong></p>
 <form><div class="chk"><label><input type="checkbox" name="ch" value="email" ${only === 'sms' ? '' : 'checked'}> Email ${c.email ? `(${esc(c.email)})` : '<span class="muted">(no email on file)</span>'}</label>
 ${planHas('sms') ? `<label><input type="checkbox" name="ch" value="sms" ${c.phone && c.smsConsent ? (only === 'sms' ? 'checked' : '') : 'disabled'}> Text message ${!c.phone ? '<span class="muted">(no phone on file)</span>' : c.smsConsent ? `(${esc(c.phone)})` : '<span class="muted">(hasn’t agreed to texts)</span>'}</label>` : ''}</div>
 <p class="muted">The client gets a link to ${kind === 'invoice' ? 'view and pay this invoice online' : 'view and approve this quote'}. Every message is recorded in the Notifications Log.</p>
 <div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Send</button></div></form>`);
+  return sendSubmit(kind, doc, mb, () => $$('[name=ch]:checked', mb).map((x) => x.value));
+}
+// sends on the chosen channels, then shows how each one went
+function sendSubmit(kind, doc, mb, pick) {
   $('form', mb).addEventListener('submit', async (e) => {
     e.preventDefault();
-    const channels = $$('[name=ch]:checked', mb).map((x) => x.value);
+    const channels = pick();
     if (!channels.length) return toast('Choose email, text, or both', true);
     const r = await api('POST', `/api/${kind}s/${doc.id}/send`, { channels });
     const rows = r.results.map((x) => `<tr><td>${x.channel === 'email' ? 'Email' : 'Text'}</td><td>${esc(x.to || '—')}</td><td>${badge(x.status)}</td></tr>`).join('');
@@ -1092,6 +1103,9 @@ ${d.signedAt ? '' : `<a class="mi" href="/p/quote/${d.token}" target="_blank" ti
 <a class="mi" href="/p/quote/${d.token}?print=1" target="_blank">${QM.pdf}Print or Save PDF</a>
 ${b('delDoc', 'trash', 'Delete')}</div></details>`;
 }
+const sendBtn = (kind, d) => (planHas('sms')
+  ? `<button type="button" class="btn send-text" data-act="sendDoc" data-kind="${kind}" data-id="${d.id}" data-ch="text">${QI('<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/>')}Send Text</button>`
+  : `<button type="button" class="btn" data-act="sendDoc" data-kind="${kind}" data-id="${d.id}">Send…</button>`);
 // the invoice page's More menu, laid out like the quote's
 function invoiceMore(d, c) {
   const b = (act, icon, label, extra = '') => `<button type="button" class="mi" data-act="${act}" data-kind="invoice" data-id="${d.id}" ${extra}>${QM[icon]}${label}</button>`;
@@ -1133,7 +1147,7 @@ function quotePage(d) {
   const canJob = d.status === 'approved' && !job && (!(d.depositFee > 0) || d.depositPaidAt); const paid = depositPaid(d);
   return `<div class="qview"><div class="qpage"><div class="qmain"><div class="qtop"><div class="qtop-l"><a href="/quotes" data-link class="back">← Quotes</a>${qBadge(status)}${d.signedAt ? `<span class="vsign">✓ Signed${d.signedName ? ' by ' + esc(d.signedName) : ''} · ${fmtDate(d.signedAt)}</span>` : ''}</div>
 <div class="actions">${quoteMore(d, { job, canJob, c })}
-<button type="button" class="btn" data-act="sendDoc" data-kind="quote" data-id="${d.id}">Send…</button></div></div>
+${sendBtn('quote', d)}</div></div>
 <div class="vhead"><div class="vtitle-row"><h1 class="vtitle">${esc(d.title || 'Untitled quote')}</h1>${editBtn('quote', d, 'top')}</div>
 <div class="qhead"><div class="qclient"><div class="vclient">${esc(c.name || 'No client')}</div><div class="muted qlabel">Property address</div><div class="qaddr">${esc(c.address || '') || '<span class="muted">No address on file</span>'}</div></div>
 <dl class="qmeta"><dt>Quote #</dt><dd>${esc(d.number)}</dd><dt>Created</dt><dd>${fmtDate((d.createdAt || '').slice(0, 10))}</dd>${d.depositFee > 0 ? `<dt>Required deposit</dt><dd>${money(d.depositFee)}</dd>` : ''}</dl></div></div>
@@ -1153,7 +1167,7 @@ function invoicePage(d) {
   const others = D.invoices.filter((i) => i.clientId === d.clientId && i.id !== d.id && i.status !== 'paid' && i.status !== 'draft').reduce((s, i) => s + invBalance(i), 0);
   return `<div class="qview"><div class="qpage"><div class="qmain"><div class="qtop"><div class="qtop-l"><a href="/invoices" data-link class="back">← Invoices</a>${iBadge(st)}${d.zelleSentAt && d.status !== 'paid' ? '<span class="badge zelle">Zelle sent</span>' : ''}</div>
 <div class="actions">${invoiceMore(d, c)}
-${d.status !== 'paid' ? `<button type="button" class="btn" data-act="sendDoc" data-kind="invoice" data-id="${d.id}">Send…</button>` : ''}</div></div>
+${d.status !== 'paid' ? sendBtn('invoice', d) : ''}</div></div>
 <div class="vhead"><div class="vtitle-row"><h1 class="vtitle">${esc(d.subject || `Invoice ${d.number}`)}</h1>${editBtn('invoice', d, 'top')}</div>
 <div class="qhead"><div class="qclient"><div class="vclient">${esc(c.name || 'No client')}</div><div class="muted qlabel">Billing address</div><div class="qaddr">${esc(c.address || '') || '<span class="muted">No address on file</span>'}</div>
 <div class="muted qlabel" style="margin-top:10px">Property address</div><div class="qaddr">${job && job.address && job.address !== c.address ? esc(job.address) : '(Same as billing address)'}</div>
