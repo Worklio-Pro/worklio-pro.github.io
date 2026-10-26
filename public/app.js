@@ -815,22 +815,29 @@ A.exportClients = () => {
   const info = clientInfo();
   downloadCsv('clients.csv', [['Name', 'Company', 'Email', 'Phone', 'Address', 'Tags', 'Status', 'Notes', 'Created'], ...D.clients.map((c) => [c.name, c.company || '', c.email, c.phone, c.address, clientTags(c).join(', '), info[c.id].active ? 'Active' : 'Lead', c.notes || '', (c.createdAt || '').slice(0, 10)])]);
 };
-function clientForm(c) {
-  c = c || {};
-  const mb = modal(c.id ? 'Edit client' : 'New client', `<form><div class="row"><label>Name<input name="name" required value="${esc(c.name)}"></label><label>Company (optional)<input name="company" value="${esc(c.company)}"></label></div>
+// view: read only, with an Edit button (the client card's "View client profile")
+function clientForm(c, view) {
+  c = c || {}; const ro = view || !canDo('clients.edit');
+  const mb = modal(view ? esc(c.name || 'Client') : c.id ? 'Edit client' : 'New client', `<form><div class="row"><label>Name<input name="name" required value="${esc(c.name)}"></label><label>Company (optional)<input name="company" value="${esc(c.company)}"></label></div>
 <div class="row"><label>Email<input name="email" type="email" value="${esc(c.email)}"></label><label>Mobile (for texts)<input name="phone" value="${esc(c.phone)}" placeholder="+17135550100"></label></div>
 <div class="chk"><label><input type="checkbox" name="smsConsent" ${c.smsConsent ? 'checked' : ''}> Agreed to receive text messages</label></div>
 <p class="muted" style="margin:-6px 0 10px;font-size:13px">${c.smsConsent ? `Agreed ${esc(fmtDate(c.smsConsent.at.slice(0, 10)))}${c.smsConsent.source !== 'business' ? ' on the ' + esc(c.smsConsent.source) : ''}. ` : ''}Only tick this if the client said yes after you read them: “Can we text you at the number you just gave us about your quotes, invoices and appointments? Message frequency varies, and msg &amp; data rates may apply. Reply HELP for help or STOP at any time to opt out. Our text terms and privacy policy are at ${esc(location.hostname.split('.').slice(-2).join('.'))}/terms and ${esc(location.hostname.split('.').slice(-2).join('.'))}/privacy. Agreeing isn’t required to do business with us. Do you agree to receive texts?” If they say yes: “Thanks, you’re signed up. You’ll get a text confirming it.” Ticking this sends them that confirmation text.</p>
 <label>Service address<input name="address" value="${esc(c.address)}"></label><div class="cmap" ${String(c.address || '').trim() ? '' : 'hidden'}><iframe title="Map of the service address" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe></div><label>Tags (separate with commas)<input name="tags" value="${esc(clientTags(c).join(', '))}" placeholder="e.g. commercial, monthly"></label><label>Notes<textarea name="notes">${esc(c.notes)}</textarea></label>
 ${c.id && planHas('clientPortal') ? `<label>Client portal link<input readonly value="${esc(location.origin + '/client-portal?c=' + c.portalToken)}" onclick="this.select()"></label>` : ''}
-<div class="foot">${c.id ? `<button type="button" class="btn danger admin-only" data-act="delClient" data-id="${c.id}">Delete</button><button type="button" class="btn alt need-quotes" data-act="newQuoteFor" data-id="${c.id}">New quote</button><button type="button" class="btn alt need-jobs-edit" data-act="newJobFor" data-id="${c.id}">New job</button>` : ''}<button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn need-clients-edit">Save</button></div></form>`);
+<div class="foot">${c.id ? `${view ? '' : `<button type="button" class="btn danger admin-only" data-act="delClient" data-id="${c.id}">Delete</button>`}<button type="button" class="btn alt need-quotes" data-act="newQuoteFor" data-id="${c.id}">New quote</button><button type="button" class="btn alt need-jobs-edit" data-act="newJobFor" data-id="${c.id}">New job</button>` : ''}<button type="button" class="btn alt" data-act="closeModal">${view ? 'Close' : 'Cancel'}</button>${view ? `<button type="button" class="btn need-clients-edit" data-act="editClient" data-id="${c.id}">Edit</button>` : '<button class="btn need-clients-edit">Save</button>'}</div></form>`);
   clientMap(mb);
-  if (!canDo('clients.edit')) $$('input, select, textarea', mb).forEach((el) => { if (el.readOnly !== undefined) el.readOnly = true; if (el.tagName === 'SELECT') el.disabled = true; }); // view only without “Add and edit clients”
+  if (ro) $$('input, select, textarea', mb).forEach((el) => { if (el.readOnly !== undefined) el.readOnly = true; if (el.tagName === 'SELECT' || el.type === 'checkbox') el.disabled = true; }); // view only, or without “Add and edit clients”
   $('form', mb).addEventListener('submit', async (e) => {
     e.preventDefault(); if (!canDo('clients.edit')) return; const body = Object.fromEntries(new FormData(e.target));
     delete body.undefined; body.smsConsent = $('[name=smsConsent]', mb).checked; body.tags = [...new Set(String(body.tags || '').split(',').map((t) => t.trim()).filter(Boolean))];
     c.id ? await api('PUT', '/api/clients/' + c.id, body) : await api('POST', '/api/clients', body);
-    closeModal(); toast('Client saved'); refresh();
+    closeModal(); toast('Client saved');
+    // a quote, invoice or job being edited keeps its unsaved changes: update the client in place instead of redrawing the page
+    const pick = c.id && $('main form select[name=clientId]');
+    if (!pick) return refresh();
+    Object.assign(c, body, { smsConsent: body.smsConsent ? c.smsConsent || { at: new Date().toISOString(), source: 'business' } : null });
+    const o = $(`option[value="${c.id}"]`, pick); if (o) o.textContent = c.name;
+    if (pick.value === c.id) pick.dispatchEvent(new Event('change', { bubbles: true }));
   });
 }
 // a map with a pin on the service address, under the address field; it follows the address as it's typed
@@ -843,7 +850,14 @@ function clientMap(mb) {
   show(); input.addEventListener('input', () => { clearTimeout(t); t = setTimeout(show, 700); });
 }
 A.newClient = () => clientForm();
-A.editClient = (d) => clientForm(byId(D.clients, d.id));
+A.editClient = (d) => clientForm(byId(D.clients, d.id || clientMenuId()));
+A.viewClient = (d) => clientForm(byId(D.clients, d.id || clientMenuId()), true);
+// the client chosen in a quote, invoice or job being edited
+const clientMenuId = () => { const s = $('main form select[name=clientId]'); if (!s || !s.value) throw new Error('Choose a client first'); return s.value; };
+// the ••• on the client card of every quote, invoice and job (page and editor): view the client, or edit their details.
+// Without a client it acts on the one chosen in the editor.
+const clientMenu = (c) => `<details class="menu client-menu noprint"><summary class="icon-btn" title="Client options" aria-label="Client options"><span class="more-dots" aria-hidden="true">•••</span></summary><div class="menu-list">
+<button type="button" class="mi" data-act="viewClient"${c ? ` data-id="${c.id}"` : ''}>${QM.eye}View client profile</button><button type="button" class="mi need-clients-edit" data-act="editClient"${c ? ` data-id="${c.id}"` : ''}>${QM.sign}Edit client details</button></div></details>`;
 A.delClient = async (d) => { if (!confirm('Delete this client? Their quotes, jobs and invoices stay in the system.')) return; await api('DELETE', '/api/clients/' + d.id); closeModal(); refresh(); };
 
 /* ===== quotes + invoices ===== */
@@ -887,7 +901,7 @@ function invoiceForm(main, doc, preset) {
   main.innerHTML = `<form class="qform iform sform"><div class="qpage"><div class="qmain">
 <div class="qtop"><div class="qtop-l"><a href="/invoices" data-link class="back">← Invoices</a>${iBadge(st)}${d.zelleSentAt && d.status !== 'paid' ? '<span class="badge zelle">Zelle sent</span>' : ''}</div></div>
 <input name="subject" class="qtitle" value="${esc(d.subject || '')}" placeholder="Invoice subject (e.g. Camera System Install)" aria-label="Invoice subject">
-<div class="qhead"><div class="qclient"><select name="clientId" required aria-label="Client">${clientOptions(d.clientId || p.clientId)}</select><div class="iclient"></div></div>
+<div class="qhead"><div class="qclient"><div class="qclient-pick"><select name="clientId" required aria-label="Client">${clientOptions(d.clientId || p.clientId)}</select>${clientMenu()}</div><div class="iclient"></div></div>
 <dl class="qmeta"><dt>Invoice #</dt><dd><input name="number" class="num-in" maxlength="30" value="${esc(d.number || '')}" placeholder="Automatic" aria-label="Invoice number" title="Leave blank for the next automatic number"></dd>
 <dt>Invoice for</dt><dd><select name="jobId" aria-label="Linked job"><option value="">No job</option>${D.jobs.map((j) => `<option value="${j.id}" ${(d.jobId || p.jobId) === j.id ? 'selected' : ''}>${esc(j.number + ' · ' + j.title)}</option>`).join('')}</select></dd>
 <dt>Issued</dt><dd><input type="date" name="issueDate" value="${esc(issue)}" aria-label="Issue date"></dd>
@@ -1031,7 +1045,7 @@ function quoteForm(main, doc, preset) {
   main.innerHTML = `<form class="qform sform"><div class="qpage"><div class="qmain">
 <div class="qtop"><div class="qtop-l"><a href="/quotes" data-link class="back">← Quotes</a>${qBadge(status)}</div></div>
 <input name="title" class="qtitle" value="${esc(d.title || '')}" placeholder="Quote title (e.g. Backyard cleanup)" aria-label="Quote title">
-<div class="qhead"><div class="qclient"><select name="clientId" required aria-label="Client">${clientOptions(d.clientId || p.clientId)}</select>
+<div class="qhead"><div class="qclient"><div class="qclient-pick"><select name="clientId" required aria-label="Client">${clientOptions(d.clientId || p.clientId)}</select>${clientMenu()}</div>
 <div class="muted qlabel">Property address</div><div class="qaddr">${addr(d.clientId || p.clientId) || '<span class="muted">Choose a client</span>'}</div></div>
 <dl class="qmeta"><dt>Quote #</dt><dd><input name="number" class="num-in" maxlength="30" value="${esc(d.number || '')}" placeholder="Automatic" aria-label="Quote number" title="Leave blank for the next automatic number"></dd>
 <dt>Created</dt><dd>${fmtDate((d.createdAt || ymd(new Date())).slice(0, 10))}</dd>
@@ -1227,7 +1241,7 @@ function quotePage(d) {
 <div class="actions">${quoteMore(d, { job, canJob, c })}
 ${sendBtn('quote', d)}</div></div>
 <div class="vhead"><div class="vtitle-row"><h1 class="vtitle">${esc(d.title || 'Untitled quote')}</h1>${editBtn('quote', d, 'top')}</div>
-<div class="qhead"><div class="qclient"><div class="vclient">${esc(c.name || 'No client')}</div><div class="muted qlabel">Property address</div><div class="qaddr">${esc(c.address || '') || '<span class="muted">No address on file</span>'}</div></div>
+<div class="qhead"><div class="qclient"><div class="vclient"><span>${esc(c.name || 'No client')}</span>${c.id ? clientMenu(c) : ''}</div><div class="muted qlabel">Property address</div><div class="qaddr">${esc(c.address || '') || '<span class="muted">No address on file</span>'}</div></div>
 <dl class="qmeta"><dt>Quote #</dt><dd>${esc(d.number)}</dd><dt>Created</dt><dd>${fmtDate((d.createdAt || '').slice(0, 10))}</dd>${d.depositFee > 0 ? `<dt>Required deposit</dt><dd>${money(d.depositFee)}</dd>` : ''}</dl></div></div>
 <div class="qcard"><div class="qcard-h"><h2>Product / Service</h2>${editBtn('quote', d, 'items')}</div>${viewItems(d)}
 <div class="vtotals">${viewTotals(d)}${d.depositFee > 0 ? vt('Required deposit', money(d.depositFee))
@@ -1247,7 +1261,7 @@ function invoicePage(d) {
 <div class="actions">${invoiceMore(d, c)}
 ${d.status !== 'paid' ? sendBtn('invoice', d) : ''}</div></div>
 <div class="vhead"><div class="vtitle-row"><h1 class="vtitle">${esc(d.subject || `Invoice ${d.number}`)}</h1>${editBtn('invoice', d, 'top')}</div>
-<div class="qhead"><div class="qclient"><div class="vclient">${esc(c.name || 'No client')}</div><div class="muted qlabel">Billing address</div><div class="qaddr">${esc(c.address || '') || '<span class="muted">No address on file</span>'}</div>
+<div class="qhead"><div class="qclient"><div class="vclient"><span>${esc(c.name || 'No client')}</span>${c.id ? clientMenu(c) : ''}</div><div class="muted qlabel">Billing address</div><div class="qaddr">${esc(c.address || '') || '<span class="muted">No address on file</span>'}</div>
 <div class="muted qlabel" style="margin-top:10px">Property address</div><div class="qaddr">${job && job.address && job.address !== c.address ? esc(job.address) : '(Same as billing address)'}</div>
 ${c.phone || c.email ? `<div class="vclient-c">${c.phone ? `<a href="tel:${esc(c.phone)}">${esc(c.phone)}</a>` : ''}${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ''}</div>` : ''}</div>
 <dl class="qmeta"><dt>Invoice #</dt><dd>${esc(d.number)}</dd>${job ? `<dt>Invoice for</dt><dd><a href="/jobs/edit?id=${job.id}" data-link>${esc(job.number + ' · ' + job.title)}</a></dd>` : ''}
@@ -1823,7 +1837,7 @@ function jobViewPage(j) {
   return `<div class="qview jview"><div class="qpage"><div class="qmain"><div class="qtop"><div class="qtop-l"><a href="/jobs" data-link class="back">← Jobs</a><span class="cstatus ${J_CLASS[st]}">${J_STATUS[st]}</span>${j.signature ? '<span class="vsign">✓ Signed</span>' : ''}</div>
 <div class="actions">${jobMore(j)}${j.status === 'scheduled' ? `<button type="button" class="btn need-jobs-edit" data-act="completeJob" data-id="${j.id}">Mark Complete</button>` : `<button type="button" class="btn alt need-jobs-edit" data-act="reopenJob" data-id="${j.id}">↺ Reopen Job</button>`}</div></div>
 <div class="vhead"><div class="vtitle-row"><h1 class="vtitle">${esc(j.title || 'Untitled job')}</h1>${editBtn('job', j, 'top')}</div>
-<div class="qhead"><div class="qclient"><div class="vclient">${esc(c.name || 'No client')}</div><div class="muted qlabel">Property address</div><div class="qaddr">${esc(j.address || c.address || '') || none('No address on file')}</div>
+<div class="qhead"><div class="qclient"><div class="vclient"><span>${esc(c.name || 'No client')}</span>${c.id ? clientMenu(c) : ''}</div><div class="muted qlabel">Property address</div><div class="qaddr">${esc(j.address || c.address || '') || none('No address on file')}</div>
 ${c.phone || c.email ? `<div class="vclient-c">${c.phone ? `<a href="tel:${esc(c.phone)}">${esc(fmtUsPhone(c.phone))}</a>` : ''}${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ''}</div>` : ''}</div>
 <dl class="qmeta"><dt>Job #</dt><dd>${esc(j.number)}</dd><dt>Created</dt><dd>${fmtDate((j.createdAt || '').slice(0, 10))}</dd><dt>From quote</dt><dd>${q ? `<a href="/quotes/view?id=${q.id}" data-link>${esc(q.number)}</a>` : none('—')}</dd></dl></div></div>
 ${canDo('jobs.prices') ? `<div class="qcard"><div class="qcard-h"><h2>Product / Service</h2>${editBtn('job', j, 'items')}</div>${(d.items || []).length ? viewItems(d) + `<div class="vtotals">${viewTotals(d)}${q && q.depositFee > 0 ? vt('Required deposit', money(q.depositFee))
@@ -1854,7 +1868,7 @@ ${j.signature || !planHas('signatures') ? '' : `<button type="button" data-act="
 ${j.status === 'scheduled' ? `<button type="button" class="btn alt need-jobs-edit" data-act="completeJob" data-id="${j.id}">Mark complete</button>` : `<button type="button" class="btn alt need-jobs-edit" data-act="reopenJob" data-id="${j.id}">↺ Reopen job</button>`}
 ` : ''}</div></div>
 <input name="title" class="qtitle" required value="${esc(j.title || '')}" placeholder="Job title (e.g. Streamer Install)" aria-label="Job title">
-<div class="qhead"><div class="qclient"><select name="clientId" required aria-label="Client">${clientOptions(j.clientId || p.clientId)}</select>
+<div class="qhead"><div class="qclient"><div class="qclient-pick"><select name="clientId" required aria-label="Client">${clientOptions(j.clientId || p.clientId)}</select>${clientMenu()}</div>
 <label class="fl"><span>Property address</span><input name="address" value="${esc(j.address || '')}" placeholder="Defaults to the client's address"></label><div class="jcontact"></div></div>
 <dl class="qmeta"><dt>Job #</dt><dd>${j.number ? esc(j.number) : '<span class="muted">Assigned when saved</span>'}</dd>
 <dt>Status</dt><dd><select name="status" aria-label="Status">${[['scheduled', 'Scheduled'], ['completed', 'Completed'], ['cancelled', 'Cancelled']].map(([k, l]) => `<option value="${k}" ${(j.status || 'scheduled') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></dd>

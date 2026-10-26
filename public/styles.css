@@ -192,6 +192,8 @@ table.mini th,table.mini td{padding:9px 8px;font-size:14px;vertical-align:middle
 .qhead{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;padding-bottom:20px;margin-bottom:20px;border-bottom:1px solid var(--line)}
 .qclient{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
 .qclient select{font-weight:700;margin-bottom:12px}
+.qclient-pick{display:flex;align-items:center;gap:6px;margin-bottom:12px}.qclient-pick select{flex:1;min-width:0;margin-bottom:0}
+.client-menu{flex:none;font-weight:400}.client-menu summary.icon-btn{width:32px;height:32px;margin:-4px -6px -4px 0}.client-menu .more-dots{margin:0}.client-menu .menu-list{min-width:220px}
 .qlabel{font-size:12px;margin-bottom:2px}.qaddr{font-size:14px;white-space:pre-line}
 .qmeta{display:grid;grid-template-columns:110px 1fr;margin:0;align-content:start}
 .qmeta dt,.qmeta dd{margin:0;padding:8px 0;border-bottom:1px solid var(--line);font-size:14px;display:flex;align-items:center;min-height:56px}
@@ -219,7 +221,7 @@ table.mini th,table.mini td{padding:9px 8px;font-size:14px;vertical-align:middle
 .vtitle-row{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.vtitle-row .sec-edit{flex:none;margin-top:4px}.qview .qmeta{grid-template-columns:150px 1fr}
 .sec-mode .qtitle~.sec-foot{margin:0 0 16px}
 .vtitle{font-size:28px;font-weight:800;margin:4px 0 16px;letter-spacing:-.01em;overflow-wrap:anywhere}
-.vclient{font-weight:700;margin-bottom:12px}.vclient-c{display:flex;flex-direction:column;gap:2px;margin-top:10px;font-size:14px}
+.vclient{font-weight:700;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:8px}.vclient-c{display:flex;flex-direction:column;gap:2px;margin-top:10px;font-size:14px}
 .vitems{width:100%;border-collapse:collapse;font-size:14px}.vitems th{text-align:left;font-weight:600;padding:0 0 10px;border-bottom:1px solid var(--line)}
 .vitems td{padding:14px 0;border-bottom:1px solid var(--line);vertical-align:top}.vitems th.r,.vitems td.r{text-align:right;padding-left:16px;white-space:nowrap;font-variant-numeric:tabular-nums}
 .vitems .vd{white-space:pre-wrap;margin-top:10px;line-height:1.5}
