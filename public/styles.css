@@ -468,6 +468,8 @@ body.row-drag,body.row-drag *{cursor:grabbing!important;user-select:none}
 .qform:not(.jform) .qside{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;align-items:start}
 .qform:not(.jform) .qside .qcard{margin:0;height:100%;box-sizing:border-box}
 .vopt{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:7px 0;font-size:14px}
+/* job page: the visit card's team */
+.vteam{display:flex;flex-wrap:wrap;gap:6px 14px}.vteam>span{display:inline-flex;align-items:center;gap:6px}
 .vpill{font-size:12px;font-weight:700;text-transform:uppercase;padding:2px 12px;border-radius:99px;background:var(--surface-2);color:var(--muted)}.vpill.on{background:var(--ok-bg);color:var(--ok-fg)}
 /* quotes and invoices (editor and page): client payments, client view (invoices) and notes in a right column */
 .qform.sform .qpage{grid-template-columns:minmax(0,1fr) 300px}.qform.sform .qside{display:block}.qform.sform .qside .qcard{height:auto;margin:0 0 16px}

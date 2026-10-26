@@ -1080,8 +1080,8 @@ function signatureDialog(onConfirm) {
 /* ===== quote and invoice pages at /quotes/view and /invoices/view: read-only. The pencil at the top right of a section
    turns just that section into fields, with Cancel / Save at its bottom right. Payments show as links to their payment page and can't be edited anywhere. ===== */
 const PENCIL = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
-const SECTION_NAMES = { top: 'details', items: 'products and services', message: 'client message', terms: 'contract / disclaimer', notes: 'internal notes', payments: 'client payments', clientView: 'client view' };
-const editBtn = (kind, d, sec) => `<button type="button" class="icon-btn sec-edit" data-act="editDoc" data-kind="${kind}" data-id="${d.id}" data-sec="${sec}" title="Edit ${SECTION_NAMES[sec]}" aria-label="Edit ${SECTION_NAMES[sec]}">${PENCIL}</button>`;
+const SECTION_NAMES = { visit: 'scheduled visit', top: 'details', items: 'products and services', message: 'client message', terms: 'contract / disclaimer', notes: 'internal notes', payments: 'client payments', clientView: 'client view' };
+const editBtn = (kind, d, sec) => `<button type="button" class="icon-btn sec-edit${kind === 'job' ? ' need-jobs-edit' : ''}" data-act="editDoc" data-kind="${kind}" data-id="${d.id}" data-sec="${sec}" title="Edit ${SECTION_NAMES[sec]}" aria-label="Edit ${SECTION_NAMES[sec]}">${PENCIL}</button>`;
 // a signed quote with its deposit paid: confirm first that editing removes the client's signature
 A.editDoc = (x) => {
   const q = x.kind === 'quote' && byId(D.quotes, x.id);
@@ -1093,15 +1093,16 @@ A.editDoc = (x) => {
 function editSection(kind, id, sec, unsign) {
   const d = byId(D[kind + 's'], id); if (!d) return;
   const main = $('#main'); const y = window.scrollY;
-  (kind === 'quote' ? quoteForm : invoiceForm)(main, d);
+  ({ quote: quoteForm, invoice: invoiceForm, job: jobPage })[kind](main, d);
   const form = $('form', main); form.classList.add('qview', 'sec-mode'); if (unsign) form._removeSig = true;
-  const view = document.createElement('div'); view.innerHTML = (kind === 'quote' ? quotePage : invoicePage)(d);
+  const view = document.createElement('div'); view.innerHTML = ({ quote: quotePage, invoice: invoicePage, job: jobViewPage })[kind](d);
   const shown = (k) => { const b = $(`.sec-edit[data-sec="${k}"]`, view); return b && b.closest('.qcard, .vhead'); };
-  const parts = { top: [$('.qtitle', form), $('.qhead', form)], items: [$('#items', form).closest('.qcard')], message: [$('[name=notes]', form).closest('.qcard')],
-    terms: [$('.disc', form)], notes: [$('[name=internalNotes]', form).closest('.qcard')], payments: [$('.pay-c', form)], clientView: [$('.view-c', form)] };
-  Object.keys(parts).forEach((k) => { if (!parts[k][0]) delete parts[k]; }); // quotes have no client view card
+  const card = (sel) => { const el = $(sel, form); return el && el.closest('.qcard'); };
+  const parts = { top: [$('.qtitle', form), $('.qhead', form)], items: [card('#items')], visit: [card('[name=date]')], message: [card('[name=notes]')],
+    terms: [$('.disc', form)], notes: [card('[name=internalNotes]')], payments: [$('.pay-c', form)], clientView: [$('.view-c', form)] };
+  Object.keys(parts).forEach((k) => { if (!parts[k][0] || !shown(k)) delete parts[k]; }); // only what this kind has (and this person may see)
   $('.qtop', form).replaceWith($('.qtop', view));
-  const sig = $('.sig-card', view); if (sig) parts.items[0].after(sig);
+  const sig = $('.sig-card', view); if (sig && !$('.sig-card', form)) parts.items[0].after(sig); // quotes: the form has no signature card
   Object.entries(parts).forEach(([k, els]) => { if (k === sec) return; els[0].before(shown(k)); els.forEach((el) => { el.hidden = true; }); });
   $('.qsave', form).remove();
   const last = parts[sec][parts[sec].length - 1]; const foot = '<div class="foot sec-foot"><button type="button" class="btn alt" data-act="secCancel">Cancel</button><button class="btn">Save</button></div>';
@@ -1155,6 +1156,8 @@ const QM = {
   approved: QI('<path d="M20 6L9 17l-5-5"/>', 'ok'),
   declined: QI('<path d="M18 6L6 18M6 6l12 12"/>'),
   pay: QI('<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/>', 'ok'),
+  invoice: QI('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>', 'ok'),
+  calendar: QI('<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>'),
   deposit: QI('<path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>'),
   eye: QI('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
   sign: QI('<path d="M17 3a2.85 2.85 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5z"/><path d="M15 5l4 4"/>'),
@@ -1797,6 +1800,41 @@ A.markPaid = A.collectPayment;
 /* ===== jobs ===== */
 function jobConflicts(job) { return D.jobs.filter((j) => j.id !== job.id && j.status !== 'completed' && j.date === job.date && j.staffIds.some((s) => (job.staffIds || []).includes(s)) && j.startTime < job.endTime && job.startTime < j.endTime); }
 /* ===== job page (layout modeled on Jobber's job page) at /jobs/new and /jobs/edit?id=… ===== */
+/* ===== the job page at /jobs/edit (computers): read-only like the quote and invoice pages; a section's pencil edits just that
+   section (editSection builds the job form behind it). New jobs, and /jobs/edit?full=1, use the whole form. ===== */
+function jobMore(j) {
+  const b = (act, icon, label, cls = '') => `<button type="button" class="mi ${cls}" data-act="${act}" data-id="${j.id}">${QM[icon]}${label}</button>`;
+  const sms = planHas('sms') && byId(D.clients, j.clientId)?.smsConsent;
+  const off = planHas('timeOff') && me && me.staffId && (j.staffIds || []).includes(me.staffId) && j.date >= ymd(new Date());
+  return `<details class="menu more-menu"><summary class="btn alt"><span class="more-dots" aria-hidden="true">•••</span> More</summary><div class="menu-list">
+${planHas('invoices') ? b('jobInvoice', 'invoice', 'Create Invoice', 'need-invoices') : ''}${j.signature || !planHas('signatures') ? '' : b('collectSignature', 'sign', 'Collect Signature')}
+<div class="need-jobs-edit"><hr class="mi-sep"><div class="mi-h">Send as…</div>${b('jobRemind', sms ? 'text' : 'email', `${sms ? 'Text' : 'Email'} Reminder`)}</div>
+<hr class="mi-sep">${off ? b('jobRequestOff', 'calendar', 'Request Off for This Job') : ''}<a class="mi" href="/calendar" data-link>${QM.calendar}Open Calendar</a>
+${b('delJob', 'trash', 'Delete', 'need-jobs-edit')}</div></details>`;
+}
+function jobViewPage(j) {
+  const d = jobDoc(j); const c = byId(D.clients, j.clientId) || {}; const q = byId(D.quotes, j.quoteId); const st = jobStatus(j);
+  const team = (j.staffIds || []).map((id) => byId(D.staff, id)).filter(Boolean); const paid = q ? depositPaid(q) : 0;
+  const none = (t) => `<span class="muted">${t}</span>`;
+  return `<div class="qview jview"><div class="qpage"><div class="qmain"><div class="qtop"><div class="qtop-l"><a href="/jobs" data-link class="back">← Jobs</a><span class="cstatus ${J_CLASS[st]}">${J_STATUS[st]}</span>${j.signature ? '<span class="vsign">✓ Signed</span>' : ''}</div>
+<div class="actions">${jobMore(j)}${j.status === 'scheduled' ? `<button type="button" class="btn need-jobs-edit" data-act="completeJob" data-id="${j.id}">Mark Complete</button>` : `<button type="button" class="btn alt need-jobs-edit" data-act="reopenJob" data-id="${j.id}">↺ Reopen Job</button>`}</div></div>
+<div class="vhead"><div class="vtitle-row"><h1 class="vtitle">${esc(j.title || 'Untitled job')}</h1>${editBtn('job', j, 'top')}</div>
+<div class="qhead"><div class="qclient"><div class="vclient">${esc(c.name || 'No client')}</div><div class="muted qlabel">Property address</div><div class="qaddr">${esc(j.address || c.address || '') || none('No address on file')}</div>
+${c.phone || c.email ? `<div class="vclient-c">${c.phone ? `<a href="tel:${esc(c.phone)}">${esc(fmtUsPhone(c.phone))}</a>` : ''}${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ''}</div>` : ''}</div>
+<dl class="qmeta"><dt>Job #</dt><dd>${esc(j.number)}</dd><dt>Created</dt><dd>${fmtDate((j.createdAt || '').slice(0, 10))}</dd><dt>From quote</dt><dd>${q ? `<a href="/quotes/view?id=${q.id}" data-link>${esc(q.number)}</a>` : none('—')}</dd></dl></div></div>
+${canDo('jobs.prices') ? `<div class="qcard"><div class="qcard-h"><h2>Product / Service</h2>${editBtn('job', j, 'items')}</div>${(d.items || []).length ? viewItems(d) + `<div class="vtotals">${viewTotals(d)}${q && q.depositFee > 0 ? vt('Required deposit', money(q.depositFee))
+    + (q.depositPaidAt ? vt(payLink('q-' + q.id, 'Deposit collected', q.depositPaidAt), '−' + money(paid)) : '') + vt('Outstanding deposit', money(Math.max(0, round2(q.depositFee - paid)))) : ''}</div>` : '<p class="muted" style="margin:0">No line items</p>'}</div>` : ''}
+<div class="qcard"><div class="qcard-h"><h2>Scheduled Visit</h2>${editBtn('job', j, 'visit')}</div><dl class="qmeta vvisit"><dt>When</dt><dd>${esc(visitText(j))}</dd>
+<dt>Team</dt><dd>${team.length ? `<span class="vteam">${team.map((t) => `<span>${avatarHtml(t, 24)}${esc(t.name)}</span>`).join('')}</span>` : none('Nobody assigned yet')}</dd>
+<dt>Instructions</dt><dd>${j.description ? `<p class="vtext">${esc(j.description)}</p>` : none('None')}</dd></dl></div>
+${j.signature ? sigCard(j) : ''}${jobBilling(j, jobInvoices(j))}</div>
+<aside class="qside">${textCard('job', j, 'notes', 'Internal Notes', j.internalNotes, 'No internal notes. Clients never see these.')}</aside></div></div>`;
+}
+// the Billing card (job form and job page): the job's invoices, and Create invoice
+const jobBilling = (j, invs) => `<div class="qcard need-jobs-prices"><div class="qcard-h"><h2>Billing</h2>${j.id ? `<button type="button" class="btn alt sm" data-act="jobInvoice" data-id="${j.id}">+ Create invoice</button>` : ''}</div>
+${!j.id ? '<p class="muted">Save the job first, then create invoices from it.</p>' : invs.length ? `<div class="tablewrap"><table class="mini"><tr><th>Invoice</th><th>Due date</th><th>Status</th><th>Subject</th><th class="r">Total</th><th class="r">Balance</th></tr>
+${invs.map((i) => `<tr><td><a href="/invoices/view?id=${i.id}" data-link>${esc(i.number)}</a></td><td>${fmtDate(i.dueDate)}</td><td>${iBadge(i.displayStatus)}</td><td>${esc(invSubject(i))}</td><td class="r">${money(i.total)}</td><td class="r">${money(invBalance(i))}</td></tr>`).join('')}</table></div>`
+    : '<p class="muted">No invoices yet. Create one when the work is done.</p>'}</div>`;
 function jobPage(main, job, preset) {
   const j = job || {}; const p = preset || {};
   const q = byId(D.quotes, j.quoteId); const st = j.id ? jobStatus(j) : 'upcoming';
@@ -1825,10 +1863,7 @@ ${!canDo('jobs.prices') ? '' : itemsCard(items, '<div class="jdeposit"></div>', 
 <div class="muted qlabel">Assigned team</div><div class="team-pick">${team.map((s) => `<label><input type="checkbox" name="staff" value="${s.id}" ${(j.staffIds || []).includes(s.id) ? 'checked' : ''}>${avatarHtml(s, 24)}${esc(s.name)}</label>`).join('') || '<span class="muted">Add team members on Manage Team first</span>'}</div>
 <label>Instructions<textarea name="description" rows="3" placeholder="What the team needs to know for this visit">${esc(j.description || '')}</textarea></label></div>
 ${j.id && j.signature ? sigCard(j) : ''}
-<div class="qcard need-jobs-prices"><div class="qcard-h"><h2>Billing</h2>${j.id ? `<button type="button" class="btn alt sm" data-act="jobInvoice" data-id="${j.id}">+ Create invoice</button>` : ''}</div>
-${!j.id ? '<p class="muted">Save the job first, then create invoices from it.</p>' : invs.length ? `<div class="tablewrap"><table class="mini"><tr><th>Invoice</th><th>Due date</th><th>Status</th><th>Subject</th><th class="r">Total</th><th class="r">Balance</th></tr>
-${invs.map((i) => `<tr><td><a href="/invoices/view?id=${i.id}" data-link>${esc(i.number)}</a></td><td>${fmtDate(i.dueDate)}</td><td>${iBadge(i.displayStatus)}</td><td>${esc(invSubject(i))}</td><td class="r">${money(i.total)}</td><td class="r">${money(invBalance(i))}</td></tr>`).join('')}</table></div>`
-    : '<p class="muted">No invoices yet. Create one when the work is done.</p>'}</div></div>
+${jobBilling(j, invs)}</div>
 <aside class="qside"><div class="qcard"><h3>Notes</h3><textarea name="internalNotes" rows="8" placeholder="Leave an internal note for yourself or a team member. Clients never see this.">${esc(j.internalNotes || '')}</textarea></div></aside></div>
 <div class="qsave noprint${j.id ? ' need-jobs-edit' : ''}">${j.id ? '<button class="btn">Save</button>' : '<a class="btn alt" href="/jobs" data-link>Cancel</a><button class="btn">Save job</button>'}</div></form>`;
   const form = $('form', main);
@@ -1902,7 +1937,8 @@ PAGES['/jobs/edit'] = {
     const j = byId(D.jobs, qp('id'));
     if (!j) { main.innerHTML = '<div class="card"><h1>Job not found</h1><p><a href="/jobs" data-link>Back to Jobs</a></p></div>'; return; }
     if (phoneMq.matches && qp('full') !== '1') { main.innerHTML = mobileJobPage(j); return; } // phones: tap-to-edit (⋯ → Edit everything at once opens this form)
-    jobPage(main, j);
+    if (qp('full') === '1') return jobPage(main, j);
+    main.innerHTML = jobViewPage(j);
   },
 };
 A.newJob = () => { closeModal(); navigate('/jobs/new'); };
