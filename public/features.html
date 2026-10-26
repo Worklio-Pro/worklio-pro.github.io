@@ -8,8 +8,8 @@
   <meta name="color-scheme" content="light dark">
   <link rel="icon" href="/favicon.ico">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-  <link rel="stylesheet" href="/styles.css?v=17">
-  <link rel="stylesheet" href="/home.css?v=5">
+  <link rel="stylesheet" href="/styles.css?v=18">
+  <link rel="stylesheet" href="/home.css?v=6">
 </head>
 <body>
   <header class="h-top h-has-drawer"><div class="h-wrap">
@@ -34,12 +34,6 @@
         <img src="/img/features/overview.webp" alt="The Home dashboard with revenue this month, new clients, jobs, quotes awaiting approval, a monthly revenue chart and team productivity" width="1440" height="900"></figure>
     </div></section>
 
-    <!-- jump bar: one chip per feature; script below marks the one in view -->
-    <nav class="f-jump" aria-label="Features on this page"><div class="h-wrap"><ol>
-      <li><a href="#quotes">Quotes</a></li><li><a href="#approvals">Online approvals</a></li><li><a href="#scheduling">Scheduling</a></li><li><a href="#jobs">Jobs</a></li><li><a href="#mobile">Crew app</a></li>
-      <li><a href="#invoicing">Invoicing</a></li><li><a href="#payments">Online payments</a></li><li><a href="#portal">Client portal</a></li><li><a href="#booking">Online booking</a></li><li><a href="#clients">Client manager</a></li>
-      <li><a href="#photos">Photos</a></li><li><a href="#team">Team</a></li><li><a href="#services">Price list</a></li><li><a href="#expenses">Expenses</a></li><li><a href="#reports">Reports</a></li>
-    </ol></div></nav>
 
     <div class="h-wrap f-list">
       <section class="f-row" id="quotes">
@@ -228,16 +222,6 @@
       if (s.home) { document.querySelectorAll('.h-brand').forEach((a) => { a.href = s.home; }); document.querySelectorAll('[data-home]').forEach((a) => { a.href = s.home + a.dataset.home; }); }
       if (s.brand && s.brand.logo) document.querySelectorAll('.h-brand').forEach((a) => { a.insertAdjacentHTML('afterbegin', brandImg(s.brand)); a.querySelector('.pname').hidden = s.brand.logoHasName; });
     }).catch(() => {});
-    // the jump bar: highlight the feature in view and keep its chip scrolled into sight
-    const chips = new Map([...document.querySelectorAll('.f-jump a')].map((a) => [a.hash.slice(1), a]));
-    const io = new IntersectionObserver((entries) => entries.forEach((e) => {
-      if (!e.isIntersecting) return;
-      chips.forEach((a) => a.removeAttribute('aria-current'));
-      const a = chips.get(e.target.id); if (!a) return;
-      a.setAttribute('aria-current', 'true');
-      const bar = a.closest('ol'); bar.scrollTo({ left: a.offsetLeft - bar.clientWidth / 2 + a.offsetWidth / 2, behavior: 'smooth' });
-    }), { rootMargin: '-45% 0px -50% 0px' });
-    document.querySelectorAll('.f-row').forEach((s) => io.observe(s));
     // click a screenshot to see it full size; click again, × or Esc to close
     const zoom = document.querySelector('.f-zoom'); const zimg = zoom.querySelector('img');
     document.querySelectorAll('.f-shot img').forEach((img) => img.addEventListener('click', () => { zimg.src = img.currentSrc || img.src; zimg.alt = img.alt; zoom.showModal(); }));
