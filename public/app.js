@@ -1158,20 +1158,21 @@ ${mField('Due date', `<input type="date" name="dueDate" value="${esc(d.dueDate |
     const f = mSheet(i >= 0 ? 'Edit line item' : 'Add line item', `<div class="item-row m-item">${mField('Name', `<input class="desc" name="desc" list="mSvc" value="${esc(it.desc || '')}" maxlength="200" autocomplete="off">`)}
 <datalist id="mSvc">${D.services.map((s) => `<option value="${esc(s.name)}">`).join('')}</datalist>
 <label class="mf"><span>Description</span><textarea class="details" name="details" rows="4">${esc(it.details || '')}</textarea>${aiOn() ? AI_BTN : ''}</label></div>
-${mField('Unit Price', `<span class="mf-in"><b class="pre">$</b><input name="price" type="number" inputmode="decimal" step="any" min="0" value="${it.price ?? ''}" placeholder="0"></span>`)}
+${mField('Unit cost', `<span class="mf-in"><b class="pre">$</b><input name="cost" type="number" inputmode="decimal" step="any" min="0" value="${it.cost ?? it.price ?? ''}" placeholder="0"></span>`)}
+<label class="mf mf-mk${it.markupType === 'flat' ? ' flat' : ''}"><span>Markup</span><span class="mf-in"><b class="pre">$</b><input name="markup" type="number" inputmode="decimal" step="any" value="${it.markup ?? 0}"><select name="markupType" aria-label="Markup type"><option value="percent">%</option><option value="flat" ${it.markupType === 'flat' ? 'selected' : ''}>$</option></select></span></label>
 ${mField('Quantity', `<input name="qty" type="number" inputmode="decimal" step="any" min="0" value="${esc(it.qty ?? 1)}">`)}
 <div class="m-total"><span>Total</span><strong class="m-tot"></strong></div>`, { full: true, foot: `${mSaveBtn('Save Line Item')}${i >= 0 ? '<button type="button" class="btn alt ms-more" data-act="mRmItem" aria-label="Delete line item" title="Delete line item">⋯</button>' : ''}` });
     f._ctx = { kind, d, i };
-    const tot = () => { $('.m-tot', f).textContent = money(round2((Number(f.price.value) || 0) * (Number(f.qty.value) || 0))); }; tot();
+    // unit price = cost plus markup (% of cost, or flat $ per unit), as on the desktop editor and the server
+    const unit = () => { const c = Math.max(0, Number(f.cost.value) || 0); const m = Number(f.markup.value) || 0; return round2(f.markupType.value === 'flat' ? c + m : c * (1 + m / 100)); };
+    const tot = () => { $('.m-tot', f).textContent = money(round2(unit() * (Number(f.qty.value) || 0))); }; tot();
     f.addEventListener('input', tot);
-    f.desc.addEventListener('change', () => { const s = D.services.find((v) => v.name === f.desc.value.trim()); if (!s) return; if (!f.price.value) f.price.value = s.price; if (!f.details.value) f.details.value = s.description || ''; tot(); });
+    f.markupType.addEventListener('change', () => { $('.mf-mk', f).classList.toggle('flat', f.markupType.value === 'flat'); tot(); });
+    f.desc.addEventListener('change', () => { const s = D.services.find((v) => v.name === f.desc.value.trim()); if (!s) return; if (!f.cost.value) f.cost.value = s.price; if (!f.details.value) f.details.value = s.description || ''; tot(); });
     onSubmit(f, (fd) => {
       const desc = String(fd.get('desc')).trim(); if (!desc) throw new Error('Enter the item’s name');
-      const price = Math.max(0, Number(fd.get('price')) || 0); const old = i >= 0 ? it : {};
-      // keep the item's markup when its price changes: work the cost back from the new price
-      const m = Number(old.markup) || 0; const flat = old.markupType === 'flat';
-      const cost = !m ? price : flat ? Math.max(0, price - m) : price / (1 + m / 100);
-      const item = { ...old, desc, details: String(fd.get('details')), qty: Number(fd.get('qty')) || 0, cost, markup: m, markupType: flat ? 'flat' : 'percent', price };
+      const cost = Math.max(0, Number(fd.get('cost')) || 0); const markup = Number(fd.get('markup')) || 0; const markupType = fd.get('markupType') === 'flat' ? 'flat' : 'percent';
+      const item = { ...(i >= 0 ? it : {}), desc, details: String(fd.get('details')), qty: Number(fd.get('qty')) || 0, cost, markup, markupType, price: unit() };
       const items = [...(d.items || [])]; if (i >= 0) items[i] = item; else items.push(item);
       return mSave(kind, d, { items }, i >= 0 ? 'Line item saved' : 'Line item added');
     });
