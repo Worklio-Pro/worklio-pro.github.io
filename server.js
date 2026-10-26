@@ -586,7 +586,15 @@ app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'public', 'log
 app.get('/api/auth/state', (req, res) => res.json({ needsSetup: !db.users.length, user: publicUser(currentUser(req)), company: { name: db.company.name, logo: db.company.logo, brandColor: db.company.brandColor }, product: brandLib.brand(), emailReady: !!emailProvider() }));
 // what this login may open: its permissions, the pages they unlock, and which lists it can load
 const accessOf = (u) => { const rk = roleKey(u); const routes = rolesLib.routesFor(teamRoles(), rk); return { staffId: u.staffId || null, perms: rolesLib.permsOf(teamRoles(), rk), pages: rolesLib.isAdminRole(u.role) ? null : rolesLib.pagesFor(teamRoles(), rk), collections: rolesLib.isAdminRole(u.role) ? COLLECTIONS : COLLECTIONS.filter((c) => rolesLib.allows(routes, 'GET', '/api/' + c)) }; };
-app.get('/api/auth/me', (req, res) => (currentUser(req) ? res.json({ ...publicUser(currentUser(req)), ...accessOf(currentUser(req)), ...(req._support ? { support: { adminName: req._support.adminName, expires: req._support.expires } } : {}) }) : res.status(401).json({ error: 'Please log in' })));
+// the app tour (public/tour.js) starts by itself once for logins made since it launched; finishing or skipping it marks it seen
+const TOUR_SINCE = '2026-10-26';
+const tourNew = (u, req) => !req._support && !u.tourAt && String(u.createdAt || '') >= TOUR_SINCE;
+app.post('/api/auth/tour', (req, res) => {
+  const u = currentUser(req); if (!u) return res.status(401).json({ error: 'Please log in' });
+  if (!req._support && !u.tourAt) { u.tourAt = iso(new Date()); save(); }
+  res.json({ ok: true });
+});
+app.get('/api/auth/me', (req, res) => (currentUser(req) ? res.json({ ...publicUser(currentUser(req)), ...accessOf(currentUser(req)), tourNew: tourNew(currentUser(req), req), ...(req._support ? { support: { adminName: req._support.adminName, expires: req._support.expires } } : {}) }) : res.status(401).json({ error: 'Please log in' })));
 app.post('/api/auth/setup', (req, res) => { // first run only: create the owner account
   if (db.users.length) return res.status(403).json({ error: 'An account already exists. Log in instead.' });
   const { name, email, password } = req.body || {};

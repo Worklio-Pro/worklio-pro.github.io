@@ -211,6 +211,7 @@ const ICONS = {
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
   feedback: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M12 7v4M12 14h.01"/>',
   shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
+  compass: '<circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/>',
   forum: '<path d="M17 9a6 6 0 0 0-11.5-2.4A5 5 0 0 0 3 15.3L2 19l3.7-1A6 6 0 0 0 17 9z"/><path d="M14 18.6A6 6 0 0 0 22 13a5 5 0 0 0-2.5-4.3"/>',
 };
 // Refer & Earn shows while the platform's referral program is on
@@ -305,6 +306,7 @@ function helpView(topicId) {
   } else {
     const topics = HELP_TOPICS.filter((t) => t.steps.some(([, p]) => memberCan(p) && !planLocked(p)));
     body = `${a.helpUrl ? `<a class="btn alt hp-wide" href="${esc(a.helpUrl)}" target="_blank" rel="noopener">${svgIcon(ICONS.help, 18)} Visit Help Center</a>` : `<button type="button" class="btn alt hp-wide" data-act="focusSearch">${svgIcon(ICONS.search, 18)} Search features</button>`}
+<button type="button" class="btn alt hp-wide hp-tour" data-act="startTour">${svgIcon(ICONS.compass, 18)} Take a tour of the app</button>
 <div class="hp-grp">Recommendations</div>
 ${topics.map((t) => `<button type="button" class="hp-topic" data-act="helpTopic" data-id="${t.id}"><strong>${esc(t.title)}</strong><span>${esc(t.blurb)}</span></button>`).join('')}`;
   }
@@ -420,6 +422,7 @@ async function render() {
   document.title = `${page.title} · ${company.name || (company.account && company.account.productName) || 'Worklio Pro'}`;
   try { D = portal ? {} : await loadAll(); timeOffBadge(); await page.render(main); if (betaPage(path)) main.insertAdjacentHTML('afterbegin', BETA_BAR); }
   catch (e) { main.innerHTML = `<div class="card"><h2>Something went wrong</h2><p>${esc(e.message)}</p></div>`; }
+  if (!portal && me && me.tourNew && !pausedNow() && typeof startTour === 'function') startTour(); // a new login's first visit (public/tour.js)
 }
 window.addEventListener('popstate', render);
 
