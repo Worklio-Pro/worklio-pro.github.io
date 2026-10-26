@@ -357,6 +357,9 @@ const planFields = (p, i) => `<label>Name<input class="pn" data-i="${i}" data-k=
 // a feature ticked as Beta shows a "Beta" tag to businesses (pricing page, checkout, their plan and menu)
 const betaTag = (f) => `<span class="beta-tag" data-beta-tag="${f.key}" ${draftBeta.includes(f.key) ? '' : 'hidden'}>Beta</span>`;
 const betaBox = (f) => `<input type="checkbox" data-beta="${f.key}" ${draftBeta.includes(f.key) ? 'checked' : ''} title="Show a Beta tag on this feature to businesses" aria-label="${esc(f.label)} is in beta">`;
+// a feature that needs another one (Google reviews and Social posts need Account connections) is hidden from a plan without it
+const offered = (p, f) => !f.needs || p.features.includes(f.needs);
+const tickedCount = (p) => D.features.filter((f) => offered(p, f) && p.features.includes(f.key)).length;
 function plansView(main) {
   const P = draftPlans; const groups = [...new Set(D.features.map((f) => f.group))];
   const used = (id) => D.accounts.filter((a) => a.planId === id).length;
@@ -370,10 +373,10 @@ function plansView(main) {
     const i = planIx; const p = P[i];
     main.innerHTML = `${head}<div class="pl-pick" role="tablist">${P.map((x, j) => `<button type="button" role="tab" aria-selected="${j === i}" class="${j === i ? 'on' : ''}" data-act="pickPlan" data-i="${j}">${esc(x.name || 'Untitled')}${x.hidden ? ' <small>hidden</small>' : ''}</button>`).join('')}</div>
 <div class="card pl-card"><details class="pl-det" ${detailsOpen ? 'open' : ''}><summary><span><strong>Plan details</strong><span class="muted">${esc(saveText(p))}</span></span><span class="muted">${usedText(p)}</span></summary><div class="pl-form">${planFields(p, i)}${rmBtn(p, i)}</div></details>
-<div class="pl-feat"><div class="pl-h"><span>Features</span><span class="muted" data-count="${i}">${p.features.length} of ${D.features.length}</span></div>
+<div class="pl-feat"><div class="pl-h"><span>Features</span><span class="muted" data-count="${i}">${tickedCount(p)} of ${D.features.length}</span></div>
 <p class="pl-always"><strong>Always included:</strong> ${D.alwaysIncluded.map(esc).join(', ')}</p>
 <div class="pl-cols muted"><span>Beta</span><span>Feature</span></div>
-${groups.map((g) => `<div class="pl-grp">${esc(g)}</div>` + D.features.filter((f) => f.group === g).map((f) => `<div class="pl-item"><label class="pl-beta">${betaBox(f)}</label><label class="pl-row"><span><span class="mx-l">${esc(f.label)}${betaTag(f)}</span><span class="mx-d">${esc(f.desc)}</span></span><input type="checkbox" data-i="${i}" data-f="${f.key}" ${p.features.includes(f.key) ? 'checked' : ''}></label></div>`).join('')).join('')}</div>
+${groups.map((g) => `<div class="pl-grp">${esc(g)}</div>` + D.features.filter((f) => f.group === g && offered(p, f)).map((f) => `<div class="pl-item"><label class="pl-beta">${betaBox(f)}</label><label class="pl-row"><span><span class="mx-l">${esc(f.label)}${betaTag(f)}</span><span class="mx-d">${esc(f.desc)}</span></span><input type="checkbox" data-i="${i}" data-f="${f.key}" ${p.features.includes(f.key) ? 'checked' : ''}></label></div>`).join('')).join('')}</div>
 ${savebar}</div>`;
     $('.pl-det', main).addEventListener('toggle', (e) => { detailsOpen = e.target.open; });
   } else {
@@ -381,9 +384,9 @@ ${savebar}</div>`;
 ${P.map((p, i) => `<th>${planFields(p, i)}<div class="muted" style="font-size:12px">${usedText(p)}</div>${rmBtn(p, i)}</th>`).join('')}</tr></thead>
 <tbody><tr class="grp"><td class="bcol"></td><td class="fcol">Always included</td>${P.map(() => '<td></td>').join('')}</tr>
 ${D.alwaysIncluded.map((l) => `<tr><td class="bcol"></td><td class="fcol"><div class="mx-l">${esc(l)}</div></td>${P.map(() => '<td class="always" aria-label="Included">✓</td>').join('')}</tr>`).join('')}
-${groups.map((g) => `<tr class="grp"><td class="bcol"></td><td class="fcol">${esc(g)}</td>${P.map(() => '<td></td>').join('')}</tr>` + D.features.filter((f) => f.group === g).map((f) => `<tr><td class="bcol">${betaBox(f)}</td><td class="fcol"><div class="mx-l">${esc(f.label)}${betaTag(f)}</div><div class="mx-d">${esc(f.desc)}</div></td>
-${P.map((p, i) => `<td><input type="checkbox" data-i="${i}" data-f="${f.key}" ${p.features.includes(f.key) ? 'checked' : ''} aria-label="${esc(f.label)} in ${esc(p.name)}"></td>`).join('')}</tr>`).join('')).join('')}
-<tr class="count"><td class="bcol"></td><td class="fcol">Features ticked</td>${P.map((p, i) => `<td data-count="${i}">${p.features.length} of ${D.features.length}</td>`).join('')}</tr></tbody></table></div>
+${groups.map((g) => `<tr class="grp"><td class="bcol"></td><td class="fcol">${esc(g)}</td>${P.map(() => '<td></td>').join('')}</tr>` + D.features.filter((f) => f.group === g && P.some((p) => offered(p, f))).map((f) => `<tr><td class="bcol">${betaBox(f)}</td><td class="fcol"><div class="mx-l">${esc(f.label)}${betaTag(f)}</div><div class="mx-d">${esc(f.desc)}</div></td>
+${P.map((p, i) => (offered(p, f) ? `<td><input type="checkbox" data-i="${i}" data-f="${f.key}" ${p.features.includes(f.key) ? 'checked' : ''} aria-label="${esc(f.label)} in ${esc(p.name)}"></td>` : `<td class="muted" title="Needs ${esc(D.features.find((x) => x.key === f.needs).label)}">–</td>`)).join('')}</tr>`).join('')).join('')}
+<tr class="count"><td class="bcol"></td><td class="fcol">Features ticked</td>${P.map((p, i) => `<td data-count="${i}">${tickedCount(p)} of ${D.features.length}</td>`).join('')}</tr></tbody></table></div>
 ${savebar}</div>`;
   }
   // hidden plans stay off the pricing page and checkout; you can still put an account on one
@@ -397,7 +400,8 @@ ${savebar}</div>`;
   }));
   $$('input[data-f]', main).forEach((c) => c.addEventListener('change', () => {
     const p = P[c.dataset.i]; p.features = c.checked ? [...new Set([...p.features, c.dataset.f])] : p.features.filter((k) => k !== c.dataset.f);
-    $(`[data-count="${c.dataset.i}"]`, main).textContent = `${p.features.length} of ${D.features.length}`; markDirty(main);
+    $(`[data-count="${c.dataset.i}"]`, main).textContent = `${tickedCount(p)} of ${D.features.length}`; markDirty(main);
+    if (D.features.some((f) => f.needs === c.dataset.f)) plansView(main); // show or hide the features that need it
   }));
   $$('input[data-beta]', main).forEach((c) => c.addEventListener('change', () => {
     const k = c.dataset.beta; const on = new Set(draftBeta); if (c.checked) on.add(k); else on.delete(k);
