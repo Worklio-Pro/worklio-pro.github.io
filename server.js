@@ -1683,27 +1683,38 @@ ${q.disclaimer ? `<div style="margin:16px 0;padding:12px 14px;border:1px solid #
 ${(q.status === 'sent' || q.status === 'draft') && q.depositFee > 0 ? `<div style="background:#eff6ff;padding:14px 16px;border-radius:8px;margin-bottom:16px;border:1px solid #bfdbfe">${q.depositPaidAt ? `<strong>Deposit paid: ${money(q.depositPaidAmount ?? q.depositFee)}</strong><div class="muted" style="margin-top:4px">This quote was updated. After you approve, you'll sign it again.</div>` : `<strong>Deposit required: ${money(q.depositFee)}</strong>${q.depositType === 'percent' ? ` (${q.depositValue}% of the total)` : ''}<div class="muted" style="margin-top:4px">After you approve, you'll sign the quote and pay this deposit online before work begins.</div>`}</div>` : ''}
 ${q.status === 'sent' || q.status === 'draft' ? `<form method="post" action="/p/quote/${esc(q.token)}/respond" style="display:flex;gap:8px"><button class="btn" name="r" value="approved">Approve quote</button><button class="btn alt" name="r" value="declined">Decline</button></form>` : ''}${signed}${depositSection}`));
 });
-// the client draws their signature (finger, stylus or mouse) and types their name; posted as a PNG data URL
+// the client signs by drawing (finger, stylus or mouse) or by typing their name, which is written out in a script font; posted as a PNG data URL
 function quoteSignBox(q) {
+  const tab = 'flex:1;padding:8px;border:0;font-size:15px;cursor:pointer;background:transparent;color:#374151';
   return `<div style="background:#f0fdf4;padding:16px;border-radius:8px;margin-top:16px;border:1px solid #86efac">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600&display=swap">
 <h3 style="margin-top:0">Next step: Review and sign</h3>
 <p>To proceed with this quote, please review the terms and sign below.</p>
 <form method="post" action="/p/quote/${esc(q.token)}/sign" id="sigForm">
-<div style="position:relative;height:200px;background:#fff;border:1px solid #d1d5db;border-radius:8px;margin-bottom:6px;overflow:hidden"><canvas aria-label="Signature pad. Sign with your finger, stylus or mouse" style="position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair"></canvas>
-<span style="position:absolute;left:20px;right:20px;bottom:46px;border-bottom:1.5px solid #cbd5e1;pointer-events:none"></span><span id="sigHint" style="position:absolute;left:20px;bottom:52px;color:#94a3b8;font-size:14px;pointer-events:none">Sign here</span></div>
-<div style="text-align:right;margin-bottom:8px"><button type="button" id="sigClear" style="background:none;border:0;color:#2563eb;cursor:pointer;font-size:14px">Clear</button></div>
-<input type="hidden" name="dataUrl"><input type="text" name="fullName" placeholder="Full name" required maxlength="100" value="${esc(findClient(q.clientId)?.name || '')}">
-<p id="sigErr" style="color:#dc2626;margin:0 0 8px;display:none">Please sign in the box first.</p>
+<div role="tablist" style="display:flex;gap:4px;padding:4px;background:#e5e7eb;border-radius:8px;margin-bottom:8px"><button type="button" role="tab" data-mode="drawn" style="${tab}">Draw</button><button type="button" role="tab" data-mode="typed" style="${tab}">Type</button></div>
+<div style="position:relative;height:200px;background:#fff;border:1px solid #d1d5db;border-radius:8px;margin-bottom:6px;overflow:hidden"><canvas aria-label="Signature pad" style="position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair"></canvas>
+<span style="position:absolute;left:20px;right:20px;bottom:46px;border-bottom:1.5px solid #cbd5e1;pointer-events:none"></span><span id="sigHint" style="position:absolute;left:20px;bottom:52px;color:#94a3b8;font-size:14px;pointer-events:none">Sign here with your finger or mouse</span></div>
+<div style="text-align:right;margin-bottom:8px;min-height:20px"><button type="button" id="sigClear" style="background:none;border:0;color:#2563eb;cursor:pointer;font-size:14px">Clear</button></div>
+<input type="hidden" name="dataUrl"><input type="hidden" name="sigMode" value="drawn"><label class="muted" for="sigName">Full name</label><input type="text" id="sigName" name="fullName" placeholder="Full name" required maxlength="100" autocomplete="name" value="${esc(findClient(q.clientId)?.name || '')}">
+<p id="sigErr" style="color:#dc2626;margin:0 0 8px;display:none"></p>
 <button class="btn">Sign agreement</button>
 </form></div>
-<script>(function(){var f=document.getElementById('sigForm'),cv=f.querySelector('canvas'),x=cv.getContext('2d'),hint=document.getElementById('sigHint'),err=document.getElementById('sigErr'),inked=false,last=null,dpr=Math.max(1,Math.min(3,window.devicePixelRatio||1));
-var r0=cv.getBoundingClientRect();cv.width=Math.round(r0.width*dpr);cv.height=Math.round(r0.height*dpr);x.setTransform(dpr,0,0,dpr,0,0);x.lineWidth=2.4;x.lineCap='round';x.lineJoin='round';x.strokeStyle=x.fillStyle='#111827';
+<script>(function(){var f=document.getElementById('sigForm'),cv=f.querySelector('canvas'),x=cv.getContext('2d'),hint=document.getElementById('sigHint'),err=document.getElementById('sigErr'),clr=document.getElementById('sigClear'),nm=f.fullName,tabs=f.querySelectorAll('[data-mode]'),mode='drawn',inked=false,last=null,dpr=Math.max(1,Math.min(3,window.devicePixelRatio||1)),W,H;
+var r0=cv.getBoundingClientRect();W=r0.width;H=r0.height;cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);x.setTransform(dpr,0,0,dpr,0,0);x.lineWidth=2.4;x.lineCap='round';x.lineJoin='round';x.strokeStyle=x.fillStyle='#111827';
+function wipe(){x.clearRect(0,0,W,H);inked=false;}
+function typed(){wipe();var t=nm.value.trim();hint.style.display=t?'none':'';if(!t)return;var s=64;do{x.font='600 '+s+'px "Dancing Script",cursive';s-=2;}while(s>20&&x.measureText(t).width>W-40);x.textBaseline='alphabetic';x.fillText(t,20,H-56);inked=true;}
+function setMode(m){mode=m;f.sigMode.value=m;err.style.display='none';tabs.forEach(function(b){var on=b.getAttribute('data-mode')===m;b.setAttribute('aria-selected',on);b.style.background=on?'#fff':'transparent';b.style.fontWeight=on?'600':'400';b.style.boxShadow=on?'0 1px 2px rgba(0,0,0,.1)':'none';});
+cv.style.cursor=m==='drawn'?'crosshair':'default';clr.style.visibility=m==='drawn'?'visible':'hidden';hint.textContent=m==='drawn'?'Sign here with your finger or mouse':'Type your name below';
+if(m==='typed'){typed();if(document.fonts)document.fonts.load('600 48px "Dancing Script"').then(function(){if(mode==='typed')typed();});}else{wipe();hint.style.display='';}}
+tabs.forEach(function(b){b.addEventListener('click',function(){setMode(b.getAttribute('data-mode'));});});
+nm.addEventListener('input',function(){if(mode==='typed')typed();});
 function at(e){var r=cv.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top};}
-cv.addEventListener('pointerdown',function(e){e.preventDefault();cv.setPointerCapture(e.pointerId);last=at(e);x.beginPath();x.arc(last.x,last.y,1.2,0,Math.PI*2);x.fill();inked=true;hint.style.display='none';err.style.display='none';});
+cv.addEventListener('pointerdown',function(e){if(mode!=='drawn')return;e.preventDefault();cv.setPointerCapture(e.pointerId);last=at(e);x.beginPath();x.arc(last.x,last.y,1.2,0,Math.PI*2);x.fill();inked=true;hint.style.display='none';err.style.display='none';});
 cv.addEventListener('pointermove',function(e){if(!last)return;e.preventDefault();(e.getCoalescedEvents?e.getCoalescedEvents():[e]).forEach(function(ev){var p=at(ev);x.beginPath();x.moveTo(last.x,last.y);x.lineTo(p.x,p.y);x.stroke();last=p;});});
 cv.addEventListener('pointerup',function(){last=null;});cv.addEventListener('pointercancel',function(){last=null;});
-document.getElementById('sigClear').addEventListener('click',function(){x.clearRect(0,0,cv.width,cv.height);inked=false;hint.style.display='';});
-f.addEventListener('submit',function(e){if(!inked){e.preventDefault();err.style.display='';return;}f.dataUrl.value=cv.toDataURL('image/png');});})();</script>`;
+clr.addEventListener('click',function(){wipe();hint.style.display='';});
+f.addEventListener('submit',function(e){if(mode==='typed')typed();if(!inked){e.preventDefault();err.textContent=mode==='typed'?'Please type your full name.':'Please sign in the box first, or choose Type.';err.style.display='';return;}f.dataUrl.value=cv.toDataURL('image/png');});
+setMode('drawn');})();</script>`;
 }
 // email the business when a client approves, declines or signs a quote, and log it with the other notifications
 function tellBusinessQuote(q, status) {
@@ -1735,7 +1746,7 @@ app.post('/p/quote/:token/sign', (req, res) => {
   const file = `sig-${token()}.png`; // unguessable name: uploads are served without login
   fs.writeFileSync(path.join(uploadDir(), file), Buffer.from(m[1], 'base64'));
   removeSignatureFile(q);
-  q.signedAt = iso(new Date()); q.signedName = name; q.signature = { file: `/uploads/${file}` };
+  q.signedAt = iso(new Date()); q.signedName = name; q.signature = { file: `/uploads/${file}`, method: req.body.sigMode === 'typed' ? 'typed' : 'drawn' };
   if (q.depositFee > 0 && !q.depositStatus) q.depositStatus = 'pending';
   save(); tellBusinessQuote(q, 'signed');
   res.redirect(`/p/quote/${q.token}`);
