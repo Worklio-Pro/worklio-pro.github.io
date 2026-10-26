@@ -1654,6 +1654,7 @@ app.get('/pay/:token/success', async (req, res) => {
 });
 
 app.get('/p/quote/:token', (req, res) => {
+  const printIt = req.query.print === '1' ? '<style>@media print{body{background:#fff}.card{box-shadow:none;margin:0 auto}form,.btn{display:none!important}}</style><script>addEventListener("load",()=>print())</script>' : '';
   const q = db.quotes.find((x) => x.token === req.params.token);
   if (!q) return res.status(404).send(shell('Not found', '<h1>Quote not found</h1>'));
   const c = findClient(q.clientId);
@@ -1681,7 +1682,7 @@ ${!onlineMethods('quote', q).length && (q.allowZelle === 'off' || !db.company.ze
   res.send(shell(`Quote ${q.number}`, `<h1>Quote ${esc(q.number)} <span class="badge">${esc(q.status)}</span></h1><div class="muted">Prepared for ${esc(c?.name)} · ${esc(q.title)}</div>${itemsTable(q)}${q.notes ? `<p style="white-space:pre-wrap">${esc(q.notes)}</p>` : ''}
 ${q.disclaimer ? `<div style="margin:16px 0;padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px"><strong>Contract / Disclaimer</strong><p class="muted" style="margin:6px 0 0;white-space:pre-wrap">${esc(q.disclaimer)}</p></div>` : ''}
 ${(q.status === 'sent' || q.status === 'draft') && q.depositFee > 0 ? `<div style="background:#eff6ff;padding:14px 16px;border-radius:8px;margin-bottom:16px;border:1px solid #bfdbfe">${q.depositPaidAt ? `<strong>Deposit paid: ${money(q.depositPaidAmount ?? q.depositFee)}</strong><div class="muted" style="margin-top:4px">This quote was updated. After you approve, you'll sign it again.</div>` : `<strong>Deposit required: ${money(q.depositFee)}</strong>${q.depositType === 'percent' ? ` (${q.depositValue}% of the total)` : ''}<div class="muted" style="margin-top:4px">After you approve, you'll sign the quote and pay this deposit online before work begins.</div>`}</div>` : ''}
-${q.status === 'sent' || q.status === 'draft' ? `<form method="post" action="/p/quote/${esc(q.token)}/respond" style="display:flex;gap:8px"><button class="btn" name="r" value="approved">Approve quote</button><button class="btn alt" name="r" value="declined">Decline</button></form>` : ''}${signed}${depositSection}`));
+${q.status === 'sent' || q.status === 'draft' ? `<form method="post" action="/p/quote/${esc(q.token)}/respond" style="display:flex;gap:8px"><button class="btn" name="r" value="approved">Approve quote</button><button class="btn alt" name="r" value="declined">Decline</button></form>` : ''}${signed}${depositSection}${printIt}`));
 });
 // the client signs by drawing (finger, stylus or mouse) or by typing their name, which is written out in a script font; posted as a PNG data URL
 function quoteSignBox(q) {

@@ -429,6 +429,7 @@ document.addEventListener('click', (e) => {
   const el = e.target.closest('[data-act]');
   if (!el) return;
   e.preventDefault();
+  if (el.closest('details.menu .menu-list')) el.closest('details.menu').open = false; // a menu item closes its menu
   const fn = A[el.dataset.act];
   if (fn) Promise.resolve(fn(el.dataset, el)).catch((err) => toast(err.message, true));
 });
@@ -580,11 +581,11 @@ A.addOpt = (d, el) => {
 A.rmOpt = (d, el) => { const row = el.closest('.tl'); $('.opt-edit input', row).value = ''; $('.opt-edit', row).hidden = true; $('.opt-amt', row).hidden = true; el.hidden = true; $('.opt-add', row).hidden = false; recalc(el.closest('form')); };
 
 /* ===== send dialog ===== */
-function sendDialog(kind, doc) {
+function sendDialog(kind, doc, only) { // only: 'email' | 'sms' ticks just that channel
   const c = byId(D.clients, doc.clientId) || {};
   const mb = modal(`Send ${kind} ${doc.number}`, `<p>To <strong>${esc(c.name)}</strong></p>
-<form><div class="chk"><label><input type="checkbox" name="ch" value="email" checked> Email ${c.email ? `(${esc(c.email)})` : '<span class="muted">(no email on file)</span>'}</label>
-${planHas('sms') ? `<label><input type="checkbox" name="ch" value="sms" ${c.phone && c.smsConsent ? '' : 'disabled'}> Text message ${!c.phone ? '<span class="muted">(no phone on file)</span>' : c.smsConsent ? `(${esc(c.phone)})` : '<span class="muted">(hasn’t agreed to texts)</span>'}</label>` : ''}</div>
+<form><div class="chk"><label><input type="checkbox" name="ch" value="email" ${only === 'sms' ? '' : 'checked'}> Email ${c.email ? `(${esc(c.email)})` : '<span class="muted">(no email on file)</span>'}</label>
+${planHas('sms') ? `<label><input type="checkbox" name="ch" value="sms" ${c.phone && c.smsConsent ? (only === 'sms' ? 'checked' : '') : 'disabled'}> Text message ${!c.phone ? '<span class="muted">(no phone on file)</span>' : c.smsConsent ? `(${esc(c.phone)})` : '<span class="muted">(hasn’t agreed to texts)</span>'}</label>` : ''}</div>
 <p class="muted">The client gets a link to ${kind === 'invoice' ? 'view and pay this invoice online' : 'view and approve this quote'}. Every message is recorded in the Notifications Log.</p>
 <div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Send</button></div></form>`);
   $('form', mb).addEventListener('submit', async (e) => {
@@ -1027,7 +1028,7 @@ function editSection(kind, id, sec, unsign) {
   const first = $('input:not([type=hidden]), textarea, select', parts[sec][0]); if (first) first.focus({ preventScroll: true });
 }
 A.secCancel = () => refresh();
-A.sendDoc = (x) => { const d = byId(D[x.kind + 's'], x.id); if (!(d.items || []).length) return toast('Add a line item first', true); return sendDialog(x.kind, d); };
+A.sendDoc = (x) => { const d = byId(D[x.kind + 's'], x.id); if (!(d.items || []).length) return toast('Add a line item first', true); return sendDialog(x.kind, d, x.ch); };
 const depositPaid = (q) => (q.depositPaidAt ? round2(Number(q.depositPaidAmount ?? q.depositFee) || 0) : 0);
 const vt = (label, value, cls = '') => `<div class="vt ${cls}"><span>${label}</span><span>${value}</span></div>`;
 const payLink = (rowId, label, date, extra = '') => `<a href="/payments/view?id=${encodeURIComponent(rowId)}" data-link class="pay-link">${label}</a> • ${fmtDate(String(date).slice(0, 10))}${extra}`;
@@ -1049,16 +1050,54 @@ function viewPage(kind) {
     },
   };
 }
+// the quote page's More menu (modeled on Jobber's): job and copy, Send as…, Mark as…, then preview, signature, PDF and delete
+const QI = (d, cls = '') => `<svg class="mi-ic${cls ? ' ' + cls : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const QM = {
+  job: QI('<path d="M15 12l-8.5 8.5a2.12 2.12 0 0 1-3-3L12 9"/><path d="M17.64 15L22 10.64"/><path d="M20.91 11.7l-1.25-1.25a3.2 3.2 0 0 1-.93-2.25v-.86L16 4.6a5.56 5.56 0 0 0-3.94-1.64H9l.92.82A6.18 6.18 0 0 1 12 8.4v1.56l2 2h2.47l2.26 1.91"/>', 'ok'),
+  goJob: QI('<path d="M5 12h14M13 6l6 6-6 6"/>'),
+  copy: QI('<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>'),
+  email: QI('<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 6L2 7"/>'),
+  text: QI('<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>'),
+  awaiting: QI('<path d="M22 13V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h9"/><path d="M22 7l-10 6L2 7"/><path d="M16 19h6M19 16v6"/>'),
+  approved: QI('<path d="M20 6L9 17l-5-5"/>', 'ok'),
+  declined: QI('<path d="M18 6L6 18M6 6l12 12"/>'),
+  deposit: QI('<path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>'),
+  eye: QI('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
+  sign: QI('<path d="M17 3a2.85 2.85 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5z"/><path d="M15 5l4 4"/>'),
+  pdf: QI('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9.5 17.5c1.5-1 3-4 3.2-6.5.1-1.2-1.3-1.4-1.5-.3-.4 2.2 2.6 5.5 4.6 5.3 1.1-.1.9-1.5-.4-1.4-2.1.2-4.5 1.7-5.9 2.9z"/>', 'pdf'),
+  trash: QI('<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/>', 'bad'),
+};
+function quoteMore(d, { job, canJob, c }) {
+  const b = (act, icon, label, extra = '') => `<button type="button" class="mi" data-act="${act}" data-kind="quote" data-id="${d.id}" ${extra}>${QM[icon]}${label}</button>`;
+  const marks = [d.status !== 'sent' ? b('markQuoteSent', 'awaiting', 'Awaiting Response') : '', d.status !== 'approved' ? b('approveQuote', 'approved', 'Approved') : '',
+    d.status !== 'declined' && d.depositFee > 0 && !d.depositPaidAt ? b('markDepositPaid', 'deposit', `Deposit Paid${d.zelleSentAt ? ' (Zelle sent)' : ''}`) : ''].join('');
+  return `<details class="menu more-menu"><summary class="btn alt"><span class="more-dots" aria-hidden="true">•••</span> More</summary><div class="menu-list">
+${canJob ? b('quoteToJob', 'job', 'Convert to Job') : ''}${job ? `<a class="mi" href="/jobs/edit?id=${job.id}" data-link>${QM.goJob}Go to Job ${esc(job.number)}</a>` : ''}${b('copyQuote', 'copy', 'Create Similar Quote')}
+<hr class="mi-sep"><div class="mi-h">Send as…</div>${b('sendDoc', 'email', 'Email', 'data-ch="email"')}${planHas('sms') && c.phone && c.smsConsent ? b('sendDoc', 'text', 'Text Message', 'data-ch="sms"') : ''}
+${marks ? `<hr class="mi-sep"><div class="mi-h">Mark as…</div>${marks}` : ''}
+<hr class="mi-sep"><a class="mi" href="/p/quote/${d.token}" target="_blank">${QM.eye}Preview as Client</a>
+${d.signedAt ? '' : `<a class="mi" href="/p/quote/${d.token}" target="_blank" title="Opens the client’s quote page, where they approve and sign">${QM.sign}Collect Signature</a>`}
+<a class="mi" href="/p/quote/${d.token}?print=1" target="_blank">${QM.pdf}Print or Save PDF</a>
+${b('delDoc', 'trash', 'Delete')}</div></details>`;
+}
+// Create Similar Quote: a new draft for the same client with the same title, line items, prices and messages
+A.copyQuote = async (x) => {
+  const q = byId(D.quotes, x.id);
+  const keep = ['clientId', 'title', 'items', 'taxRate', 'discountType', 'discountValue', 'depositType', 'depositValue', 'notes', 'disclaimer', 'internalNotes', 'allowCard', 'allowZelle'];
+  const saved = await api('POST', '/api/quotes', Object.fromEntries(keep.filter((k) => q[k] !== undefined).map((k) => [k, q[k]])));
+  toast(`Quote ${saved.number} created`); return navigate('/quotes/view?id=' + saved.id);
+};
+// Mark as Awaiting Response: back to Sent; if the client signed (and hasn't paid the deposit), they approve and sign again
+A.markQuoteSent = async (x) => {
+  const q = byId(D.quotes, x.id);
+  if (q.signedAt && !confirm('Mark this quote as awaiting response? The client’s signature is removed and they approve and sign it again.')) return;
+  await api('PUT', '/api/quotes/' + x.id, { status: 'sent' }); toast('Quote marked as awaiting response'); return refresh();
+};
 function quotePage(d) {
   const status = quoteStatus(d); const job = quoteJob(d); const c = byId(D.clients, d.clientId) || {};
   const canJob = d.status === 'approved' && !job && (!(d.depositFee > 0) || d.depositPaidAt); const paid = depositPaid(d);
   return `<div class="qview"><div class="qtop"><div class="qtop-l"><a href="/quotes" data-link class="back">← Quotes</a>${qBadge(status)}${d.signedAt ? `<span class="vsign">✓ Signed${d.signedName ? ' by ' + esc(d.signedName) : ''} · ${fmtDate(d.signedAt)}</span>` : ''}</div>
-<div class="actions"><details class="menu"><summary class="btn alt">⋯ More</summary><div class="menu-list">
-<a href="/p/quote/${d.token}" target="_blank">View as client</a>
-${d.status === 'sent' ? `<button type="button" data-act="approveQuote" data-id="${d.id}">Mark approved</button>` : ''}
-${d.status !== 'declined' && d.depositFee > 0 && !d.depositPaidAt ? `<button type="button" data-act="markDepositPaid" data-id="${d.id}">Record deposit payment${d.zelleSentAt ? ' (Zelle sent)' : ''}</button>` : ''}
-${canJob ? `<button type="button" data-act="quoteToJob" data-id="${d.id}">Create job</button>` : ''}${job ? `<a href="/jobs/edit?id=${job.id}" data-link>Go to job ${esc(job.number)}</a>` : ''}
-<button type="button" class="danger-text" data-act="delDoc" data-kind="quote" data-id="${d.id}">Delete quote</button></div></details>
+<div class="actions">${quoteMore(d, { job, canJob, c })}
 <button type="button" class="btn" data-act="sendDoc" data-kind="quote" data-id="${d.id}">Send…</button></div></div>
 <div class="vhead"><div class="vtitle-row"><h1 class="vtitle">${esc(d.title || 'Untitled quote')}</h1>${editBtn('quote', d, 'top')}</div>
 <div class="qhead"><div class="qclient"><div class="vclient">${esc(c.name || 'No client')}</div><div class="muted qlabel">Property address</div><div class="qaddr">${esc(c.address || '') || '<span class="muted">No address on file</span>'}</div></div>

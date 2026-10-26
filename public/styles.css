@@ -872,7 +872,9 @@ a.conn-chip{text-decoration:none}a.conn-chip:hover{text-decoration:underline}
 @media (max-width:900px){.pd{grid-template-columns:1fr}.pd-main{border-right:0;padding-right:0}.pd-side{padding:20px 0 0;border-top:1px solid var(--line)}.pd-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:480px){.pd-grid{grid-template-columns:1fr 1fr;gap:14px 12px}.pd-amt{font-size:28px}}
 .menu-list .mi{display:flex;align-items:center;gap:10px;font-weight:500}
-.mi-ic{width:20px;height:20px;flex:none;color:var(--muted)}.mi-ic.pdf{color:#dc2626}
+.mi-ic{width:20px;height:20px;flex:none;color:var(--muted)}.mi-ic.pdf{color:#dc2626}.mi-ic.ok{color:var(--ok)}.mi-ic.bad{color:var(--danger)}
+.mi-sep{border:0;border-top:1px solid var(--line);margin:6px 4px}.mi-h{padding:8px 12px 4px;font-size:14px;font-weight:700;color:var(--text)}
+.more-menu .menu-list{min-width:240px}.more-dots{color:var(--ok);letter-spacing:-1px;font-size:12px;margin-right:2px}
 .pd-ref{color:var(--danger)}
 .money-in{display:flex;align-items:center;border:1px solid var(--border);border-radius:8px;background:var(--card);overflow:hidden;margin-top:4px}
 .money-in span{padding:0 10px;color:var(--muted)}.money-in input{border:0;margin:0!important;border-radius:0;min-width:0}
