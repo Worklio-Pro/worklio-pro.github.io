@@ -1762,9 +1762,9 @@ const referralLink = (c) => `${baseUrl()}/refer/${referralCode(c)}`;
 const referHits = new Map(); // ip -> [timestamps]: at most 5 referral requests per hour per address
 app.use('/refer', express.urlencoded({ extended: false }));
 app.use('/refer', (req, res, next) => (tenancy.has('referrals') ? next() : res.status(404).send(shell('Link not found', '<h1>Link not found</h1><p class="muted">This referral link is no longer valid.</p>'))));
-// the text-message opt-in on the public forms: unticked to start, as carriers require
+// the text-message opt-in on the public forms: unticked to start, as carriers require (shown word for word on /sms-consent, lib/legal.js)
 const smsConsentBox = (values) => `<label style="display:flex;gap:10px;align-items:flex-start;margin:0 0 12px;font-size:14px;line-height:1.45;color:#374151"><input type="checkbox" name="smsConsent" value="1"${values.smsConsent ? ' checked' : ''} style="width:auto;margin:3px 0 0;flex:none">
-<span>Text me about my request, quotes, invoices and appointments from ${esc(db.company.name)}. Message frequency varies. Message and data rates may apply. Reply STOP to opt out, HELP for help. Agreeing isn’t a condition of service. See the <a href="/terms#sms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</span></label>`;
+<span>Text me about my request, quotes, invoices and appointments from ${esc(db.company.name)}. Message frequency varies. Msg &amp; data rates may apply. Reply STOP to opt out, HELP for help. Agreeing isn’t a condition of service. See the <a href="/terms#sms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</span></label>`;
 const smsConsentFrom = (b, phone, source) => (b.smsConsent && phone ? { at: new Date().toISOString(), source } : null);
 function referPage(c, { error, values = {} } = {}) {
   const v = (k) => esc(values[k] || '');
