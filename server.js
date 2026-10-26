@@ -745,7 +745,7 @@ function accountInfo() {
     expiry: (() => { const x = expiryOf(t); return x && { ...x, when: whenText(x) }; })(),
     paused: pausedInfo(t),
     industries: industries.CHOICES, // the Industry choices in Company Profile
-    featureList: tenancy.FEATURES.map(({ key, label, desc }) => ({ key, label, desc, beta: tenancy.isBeta(key), included: plan.features.includes(key) })), alwaysIncluded: tenancy.ALWAYS_INCLUDED,
+    featureList: tenancy.FEATURES.map(({ key, label, desc }) => ({ key, label, desc, beta: tenancy.isBeta(key), included: tenancy.featuresOf(t).has(key) })), alwaysIncluded: tenancy.ALWAYS_INCLUDED,
   };
 }
 app.get('/api/company', (req, res) => res.json({ ...db.company, account: accountInfo() }));
