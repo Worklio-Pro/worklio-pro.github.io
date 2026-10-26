@@ -311,6 +311,8 @@ async function sendSms(to, body, { server = false } = {}) {
 async function notify({ clientId, channel, kind, refId, refNumber, subject, body, html = '' }) {
   const c = findClient(clientId);
   if (channel === 'sms' && !tenancy.has('sms')) return { id: uid(), at: new Date().toISOString(), clientId, channel, kind, status: 'failed', detail: 'Text messages aren’t included in your plan' };
+  // texts only go to clients who agreed to them (A2P 10DLC): ticked on their client profile, or on the booking / referral form
+  if (channel === 'sms' && !(c && c.smsConsent)) return { id: uid(), at: new Date().toISOString(), clientId, channel, kind, status: 'failed', detail: 'This client hasn’t agreed to receive text messages' };
   const res = channel === 'email' ? await sendEmail(c && c.email, subject, body, { html }) : await sendSms(c && c.phone, body);
   const entry = { id: uid(), at: new Date().toISOString(), clientId, clientName: c ? c.name : 'Unknown', channel, kind, refId, refNumber, to: channel === 'email' ? (c && c.email) : (c && c.phone), subject: subject || '', body, status: res.status, detail: res.detail };
   db.notifications.unshift(entry);
@@ -1005,7 +1007,7 @@ app.post('/api/:col', (req, res, next) => {
   if (PAYMENT_FIELDS[col]) { b = { ...b }; PAYMENT_FIELDS[col].forEach((k) => delete b[k]); } // payments only through their own endpoints
   let doc = { ...b, id: uid(), createdAt: iso(new Date()) };
   if (DOC_NUM[col] && String(b.number || '').trim()) { const r = customNumber(col, b.number); if (r.error) return res.status(400).json({ error: r.error }); doc.number = r.number; }
-  if (col === 'clients') { doc.portalToken = token(); }
+  if (col === 'clients') { doc.portalToken = token(); doc.smsConsent = b.smsConsent ? { at: new Date().toISOString(), source: 'business' } : null; }
   if (col === 'quotes') {
     doc.number = doc.number || nextNumber('quotes'); doc.status = b.status || 'draft'; doc.token = token();
     if (b.taxRate === undefined) doc.taxRate = db.company.taxRate; computeTotals(doc);
@@ -1044,6 +1046,7 @@ app.put('/api/:col/:id', (req, res, next) => {
   }
   if (col === 'jobs' && isMemberReq(req)) upd = Object.fromEntries(Object.entries(upd).filter(([k]) => MEMBER_JOB_FIELDS.includes(k)));
   if (col === 'tasks' || col === 'events') { const bad = calItemProblem({ ...db[col][i], ...upd }); if (bad) return res.status(400).json({ error: bad }); }
+  if (col === 'clients' && 'smsConsent' in upd) upd.smsConsent = upd.smsConsent ? db.clients[i].smsConsent || { at: new Date().toISOString(), source: 'business' } : null; // keeps when and where they first agreed
   let doc = { ...db[col][i], ...upd };
   // sent back to the client (Draft or Sent) before any deposit is paid: they approve and sign again, so the old signature goes
   if (col === 'quotes' && ['draft', 'sent'].includes(doc.status) && doc.status !== db.quotes[i].status && !doc.depositPaidAt) {
@@ -1192,7 +1195,7 @@ app.post('/api/quotes/:id/send', async (req, res) => {
   const email = renderEmail('quote', { client_name: findClient(q.clientId)?.name || '', company_name: co, quote_number: q.number, quote_title: q.title || '', total: money(q.total), link });
   for (const ch of channels) {
     results.push(await notify({ clientId: q.clientId, channel: ch, kind: 'quote', refId: q.id, refNumber: q.number,
-      subject: email.subject, html: ch === 'email' ? email.html : '', body: ch === 'email' ? email.body : `${co}: Quote ${q.number} (${money(q.total)}) is ready: ${link}` }));
+      subject: email.subject, html: ch === 'email' ? email.html : '', body: ch === 'email' ? email.body : `${co}: Quote ${q.number} (${money(q.total)}) is ready: ${link} Reply STOP to opt out.` }));
   }
   if (q.status === 'draft') q.status = 'sent'; if (!q.sentAt) q.sentAt = iso(new Date());
   save(); res.json({ quote: q, results });
@@ -1231,7 +1234,7 @@ app.post('/api/invoices/:id/send', async (req, res) => {
   const email = renderEmail('invoice', { client_name: findClient(inv.clientId)?.name || '', company_name: co, invoice_number: inv.number, total: money(inv.total), due_date: niceDate(inv.dueDate), link });
   for (const ch of channels) {
     results.push(await notify({ clientId: inv.clientId, channel: ch, kind: 'invoice', refId: inv.id, refNumber: inv.number,
-      subject: email.subject, html: ch === 'email' ? email.html : '', body: ch === 'email' ? email.body : `${co}: Invoice ${inv.number} (${money(inv.total)}) due ${inv.dueDate}. Pay online: ${link}` }));
+      subject: email.subject, html: ch === 'email' ? email.html : '', body: ch === 'email' ? email.body : `${co}: Invoice ${inv.number} (${money(inv.total)}) due ${inv.dueDate}. Pay online: ${link} Reply STOP to opt out.` }));
   }
   if (inv.status === 'draft') inv.status = 'sent';
   save(); res.json({ invoice: withStatus(inv), results });
@@ -1283,12 +1286,12 @@ app.post('/api/jobs/:id/remind', async (req, res) => {
   const j = db.jobs.find((x) => x.id === req.params.id);
   if (!j) return res.status(404).json({ error: 'Not found' });
   const co = db.company.name;
-  const channels = (req.body.channels && req.body.channels.length) ? req.body.channels : [tenancy.has('sms') ? 'sms' : 'email'];
+  const channels = (req.body.channels && req.body.channels.length) ? req.body.channels : [tenancy.has('sms') && findClient(j.clientId)?.smsConsent ? 'sms' : 'email'];
   const email = renderEmail('reminder', { client_name: findClient(j.clientId)?.name || '', company_name: co, job_number: j.number, job_title: j.title, date: niceDate(j.date), time: j.startTime, address: j.address || '' });
   const results = [];
   for (const ch of channels) {
     results.push(await notify({ clientId: j.clientId, channel: ch, kind: 'job', refId: j.id, refNumber: j.number,
-      subject: email.subject, html: ch === 'email' ? email.html : '', body: ch === 'email' ? email.body : `${co}: reminder for "${j.title}" on ${j.date} at ${j.startTime}.` }));
+      subject: email.subject, html: ch === 'email' ? email.html : '', body: ch === 'email' ? email.body : `${co}: reminder for "${j.title}" on ${j.date} at ${j.startTime}. Reply STOP to opt out.` }));
   }
   res.json({ results }); save();
 });
@@ -1759,6 +1762,10 @@ const referralLink = (c) => `${baseUrl()}/refer/${referralCode(c)}`;
 const referHits = new Map(); // ip -> [timestamps]: at most 5 referral requests per hour per address
 app.use('/refer', express.urlencoded({ extended: false }));
 app.use('/refer', (req, res, next) => (tenancy.has('referrals') ? next() : res.status(404).send(shell('Link not found', '<h1>Link not found</h1><p class="muted">This referral link is no longer valid.</p>'))));
+// the text-message opt-in on the public forms: unticked to start, as carriers require
+const smsConsentBox = (values) => `<label style="display:flex;gap:10px;align-items:flex-start;margin:0 0 12px;font-size:14px;line-height:1.45;color:#374151"><input type="checkbox" name="smsConsent" value="1"${values.smsConsent ? ' checked' : ''} style="width:auto;margin:3px 0 0;flex:none">
+<span>Text me about my request, quotes, invoices and appointments from ${esc(db.company.name)}. Message frequency varies. Message and data rates may apply. Reply STOP to opt out, HELP for help. Agreeing isn’t a condition of service. See the <a href="/terms#sms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</span></label>`;
+const smsConsentFrom = (b, phone, source) => (b.smsConsent && phone ? { at: new Date().toISOString(), source } : null);
 function referPage(c, { error, values = {} } = {}) {
   const v = (k) => esc(values[k] || '');
   const first = String(c.name || '').trim().split(/\s+/)[0];
@@ -1769,6 +1776,7 @@ ${error ? `<p style="color:#b91c1c;font-weight:600">${esc(error)}</p>` : ''}
 <label>Your name*<input name="name" required maxlength="100" value="${v('name')}" autocomplete="name"></label>
 <label>Email<input name="email" type="email" maxlength="120" value="${v('email')}" autocomplete="email"></label>
 <label>Phone<input name="phone" maxlength="40" value="${v('phone')}" autocomplete="tel"></label>
+${smsConsentBox(values)}
 <label>Service address<input name="address" maxlength="300" value="${v('address')}" autocomplete="street-address"></label>
 <label>What do you need done?*<input name="title" required maxlength="120" value="${v('title')}"></label>
 <label>Details<textarea name="details" rows="4" maxlength="4000" style="padding:10px;border:1px solid #d1d5db;border-radius:8px;width:100%;box-sizing:border-box;margin:4px 0 10px;font:inherit">${v('details')}</textarea></label>
@@ -1793,7 +1801,7 @@ app.post('/refer/:code', async (req, res) => {
   if (!email && !phone) return res.status(400).send(referPage(c, { error: 'Please give us an email or phone number so we can reach you.', values: b }));
   hits.push(now); referHits.set(ip, hits);
   const created = iso(new Date());
-  const lead = { id: uid(), name, email, phone, address: clip('address', 300), company: '', tags: ['Referral'], notes: `Referred by ${c.name}`, referredBy: c.id, portalToken: token(), createdAt: created };
+  const lead = { id: uid(), name, email, phone, address: clip('address', 300), company: '', tags: ['Referral'], notes: `Referred by ${c.name}`, referredBy: c.id, smsConsent: smsConsentFrom(b, phone, 'referral form'), portalToken: token(), createdAt: created };
   db.clients.push(lead);
   db.requests = db.requests || [];
   const r = { id: uid(), clientId: lead.id, title, details: clip('details', 4000), address: lead.address, preferredDate: '', preferredTime: 'any', status: 'new', referredBy: c.id, createdAt: new Date().toISOString() };
@@ -1819,6 +1827,7 @@ ${error ? `<p style="color:#b91c1c;font-weight:600">${esc(error)}</p>` : ''}
 <label>Your name*<input name="name" required maxlength="100" value="${v('name')}" autocomplete="name"></label>
 <label>Email<input name="email" type="email" maxlength="120" value="${v('email')}" autocomplete="email"></label>
 <label>Phone<input name="phone" type="tel" maxlength="40" value="${v('phone')}" autocomplete="tel"></label>
+${smsConsentBox(values)}
 <label>Service address<input name="address" maxlength="300" value="${v('address')}" autocomplete="street-address"></label>
 <label>What do you need done?*<input name="title" required maxlength="120" value="${v('title')}"></label>
 <label>Details<textarea name="details" rows="4" maxlength="4000" style="${field}">${v('details')}</textarea></label>
@@ -1843,6 +1852,7 @@ app.post('/book', async (req, res) => {
   let c = db.clients.find((x) => (email && normEmail(x.email) === email) || (digits(phone).length === 10 && digits(x.phone) === digits(phone)));
   const isNew = !c;
   if (!c) { c = { id: uid(), name, email, phone, address: clip('address', 300), company: '', tags: ['Online booking'], notes: 'Booked online', portalToken: token(), createdAt: iso(new Date()) }; db.clients.push(c); }
+  if (!c.smsConsent) c.smsConsent = smsConsentFrom(b, phone, 'booking form');
   const preferredDate = /^\d{4}-\d{2}-\d{2}$/.test(b.preferredDate || '') && b.preferredDate >= iso(new Date()) ? b.preferredDate : '';
   const preferredTime = ['morning', 'afternoon', 'evening'].includes(b.preferredTime) ? b.preferredTime : 'any';
   db.requests = db.requests || [];

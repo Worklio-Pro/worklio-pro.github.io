@@ -577,7 +577,7 @@ function sendDialog(kind, doc) {
   const c = byId(D.clients, doc.clientId) || {};
   const mb = modal(`Send ${kind} ${doc.number}`, `<p>To <strong>${esc(c.name)}</strong></p>
 <form><div class="chk"><label><input type="checkbox" name="ch" value="email" checked> Email ${c.email ? `(${esc(c.email)})` : '<span class="muted">(no email on file)</span>'}</label>
-${planHas('sms') ? `<label><input type="checkbox" name="ch" value="sms"> Text message ${c.phone ? `(${esc(c.phone)})` : '<span class="muted">(no phone on file)</span>'}</label>` : ''}</div>
+${planHas('sms') ? `<label><input type="checkbox" name="ch" value="sms" ${c.phone && c.smsConsent ? '' : 'disabled'}> Text message ${!c.phone ? '<span class="muted">(no phone on file)</span>' : c.smsConsent ? `(${esc(c.phone)})` : '<span class="muted">(hasn’t agreed to texts)</span>'}</label>` : ''}</div>
 <p class="muted">The client gets a link to ${kind === 'invoice' ? 'view and pay this invoice online' : 'view and approve this quote'}. Every message is recorded in the Notifications Log.</p>
 <div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Send</button></div></form>`);
   $('form', mb).addEventListener('submit', async (e) => {
@@ -725,6 +725,8 @@ function clientForm(c) {
   c = c || {};
   const mb = modal(c.id ? 'Edit client' : 'New client', `<form><div class="row"><label>Name<input name="name" required value="${esc(c.name)}"></label><label>Company (optional)<input name="company" value="${esc(c.company)}"></label></div>
 <div class="row"><label>Email<input name="email" type="email" value="${esc(c.email)}"></label><label>Mobile (for texts)<input name="phone" value="${esc(c.phone)}" placeholder="+17135550100"></label></div>
+<div class="chk"><label><input type="checkbox" name="smsConsent" ${c.smsConsent ? 'checked' : ''}> Agreed to receive text messages</label></div>
+<p class="muted" style="margin:-6px 0 10px;font-size:13px">${c.smsConsent ? `Agreed ${esc(fmtDate(c.smsConsent.at.slice(0, 10)))}${c.smsConsent.source !== 'business' ? ' on the ' + esc(c.smsConsent.source) : ''}. ` : ''}Only tick this if the client said yes to texts about their quotes, invoices and appointments. They can reply STOP at any time.</p>
 <label>Service address<input name="address" value="${esc(c.address)}"></label><div class="cmap" ${String(c.address || '').trim() ? '' : 'hidden'}><iframe title="Map of the service address" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe></div><label>Tags (separate with commas)<input name="tags" value="${esc(clientTags(c).join(', '))}" placeholder="e.g. commercial, monthly"></label><label>Notes<textarea name="notes">${esc(c.notes)}</textarea></label>
 ${c.id && planHas('clientPortal') ? `<label>Client portal link<input readonly value="${esc(location.origin + '/client-portal?c=' + c.portalToken)}" onclick="this.select()"></label>` : ''}
 <div class="foot">${c.id ? `<button type="button" class="btn danger admin-only" data-act="delClient" data-id="${c.id}">Delete</button><button type="button" class="btn alt need-quotes" data-act="newQuoteFor" data-id="${c.id}">New quote</button><button type="button" class="btn alt need-jobs-edit" data-act="newJobFor" data-id="${c.id}">New job</button>` : ''}<button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn need-clients-edit">Save</button></div></form>`);
@@ -732,7 +734,7 @@ ${c.id && planHas('clientPortal') ? `<label>Client portal link<input readonly va
   if (!canDo('clients.edit')) $$('input, select, textarea', mb).forEach((el) => { if (el.readOnly !== undefined) el.readOnly = true; if (el.tagName === 'SELECT') el.disabled = true; }); // view only without “Add and edit clients”
   $('form', mb).addEventListener('submit', async (e) => {
     e.preventDefault(); if (!canDo('clients.edit')) return; const body = Object.fromEntries(new FormData(e.target));
-    delete body.undefined; body.tags = [...new Set(String(body.tags || '').split(',').map((t) => t.trim()).filter(Boolean))];
+    delete body.undefined; body.smsConsent = $('[name=smsConsent]', mb).checked; body.tags = [...new Set(String(body.tags || '').split(',').map((t) => t.trim()).filter(Boolean))];
     c.id ? await api('PUT', '/api/clients/' + c.id, body) : await api('POST', '/api/clients', body);
     closeModal(); toast('Client saved'); refresh();
   });
@@ -1729,7 +1731,7 @@ A.editJob = (d) => { closeModal(); navigate('/jobs/edit?id=' + d.id); };
 A.delJob = async (d) => { if (!confirm('Delete this job?')) return; await api('DELETE', '/api/jobs/' + d.id); closeModal(); toast('Job deleted'); curPath() === '/jobs/edit' ? navigate('/jobs') : refresh(); };
 A.reopenJob = async (d) => { await api('PUT', '/api/jobs/' + d.id, { status: 'scheduled' }); toast('Job reopened'); refresh(); };
 A.jobInvoice = async (d) => { const inv = await api('POST', `/api/jobs/${d.id}/create-invoice`, {}); closeModal(); toast('Draft invoice created'); navigate('/invoices/view?id=' + inv.id); };
-A.jobRemind = async (d) => { const r = await api('POST', `/api/jobs/${d.id}/remind`, { channels: [planHas('sms') ? 'sms' : 'email'] }); toast(r.results[0].status === 'simulated' ? 'Reminder logged (no message provider connected)' : 'Reminder ' + r.results[0].status, r.results[0].status === 'failed'); };
+A.jobRemind = async (d) => { const r = await api('POST', `/api/jobs/${d.id}/remind`, {}); const x = r.results[0]; toast(x.status === 'simulated' ? 'Reminder logged (no message provider connected)' : x.status === 'failed' ? x.detail || 'Reminder failed' : `Reminder sent by ${x.channel === 'sms' ? 'text' : 'email'}`, x.status === 'failed'); }; // the server texts clients who agreed to texts, and emails the rest
 // Job status as shown on the Jobs page, derived from the stored status (scheduled/completed/cancelled), the date and invoices
 const J_STATUS = { late: 'Late', today: 'Today', upcoming: 'Upcoming', invoice: 'Requires invoicing', archived: 'Archived', cancelled: 'Cancelled' };
 const J_CLASS = { late: 'q-declined', today: 'q-converted', upcoming: 'q-approved', invoice: 'q-sent', archived: 'q-draft', cancelled: 'q-draft' };
