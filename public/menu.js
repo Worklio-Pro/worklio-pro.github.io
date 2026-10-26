@@ -1,8 +1,9 @@
-// The "Industries" menu in the header of the public pages (home, pricing, industries; markup from lib/industries.js)
+// The "Features" and "Industries" menus in the header of the public pages (home, features, pricing, industries; markup from lib/features.js and lib/industries.js)
 document.querySelectorAll('.h-menu').forEach((m) => {
   const b = m.querySelector('.h-menu-btn'); const d = m.querySelector('.h-drop');
   const set = (open) => { b.setAttribute('aria-expanded', String(open)); d.hidden = !open; };
   b.addEventListener('click', () => set(d.hidden));
+  d.addEventListener('click', (e) => { if (e.target.closest('a')) set(false); }); // a link was picked (on /features it only scrolls the page)
   document.addEventListener('click', (e) => { if (!m.contains(e.target)) set(false); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !d.hidden) { set(false); b.focus(); } });
 });

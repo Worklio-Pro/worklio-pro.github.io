@@ -668,7 +668,7 @@ a.hp-nav{color:var(--text);text-decoration:none;padding:6px 8px;margin:0 -8px 10
 /* the Industries menu (lib/industries.js, public/menu.js); on phones it's the only header link */
 .h-menu{position:relative}
 .h-menu-btn{display:flex;align-items:center;gap:4px;background:none;border:0;color:var(--text);font:inherit;font-size:15px;font-weight:500;padding:8px 12px;border-radius:8px;cursor:pointer}
-.h-menu-btn:hover,.h-menu-btn[aria-expanded=true]{background:var(--tint)}
+.h-menu-btn:hover,.h-menu-btn[aria-expanded=true]{background:var(--tint)}.h-menu-btn[aria-current]{color:var(--link);font-weight:700}
 .h-menu-btn svg{transition:transform .15s}.h-menu-btn[aria-expanded=true] svg{transform:rotate(180deg)}
 .h-drop{position:absolute;top:calc(100% + 10px);left:50%;transform:translateX(-50%);width:min(640px,calc(100vw - 32px));background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-lg);padding:10px;z-index:20}
 .h-drop-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:2px}
