@@ -1384,7 +1384,7 @@ ${mField('Status', `<select name="status">${[['scheduled', 'Scheduled'], ['compl
 A.mJobMore = (x) => {
   const j = byId(D.jobs, x.id); const edit = canDo('jobs.edit');
   const f = mSheet('More', `<div class="ms-list">${!j.signature && planHas('signatures') ? `<button type="button" data-act="collectSignature" data-id="${j.id}">Collect signature</button>` : ''}
-${edit ? `<button type="button" data-act="jobRemind" data-id="${j.id}">${planHas('sms') ? 'Text' : 'Email'} reminder to client</button>` : ''}
+${edit ? `<button type="button" data-act="jobRemind" data-id="${j.id}">${planHas('sms') && byId(D.clients, j.clientId)?.smsConsent ? 'Text' : 'Email'} reminder to client</button>` : ''}
 ${planHas('invoices') ? `<button type="button" class="need-invoices" data-act="jobInvoice" data-id="${j.id}">Create invoice</button>` : ''}
 ${planHas('timeOff') && me && me.staffId && (j.staffIds || []).includes(me.staffId) && j.date >= ymd(new Date()) ? `<button type="button" data-act="jobRequestOff" data-id="${j.id}">Request off for this job</button>` : ''}
 <a href="/calendar" data-link>Open calendar</a>${edit ? `<a href="/jobs/edit?id=${j.id}&full=1" data-link>Edit everything at once</a><button type="button" class="danger-text" data-act="delJob" data-id="${j.id}">Delete job</button>` : ''}</div>`);
@@ -1627,7 +1627,7 @@ function jobPage(main, job, preset) {
 <div class="qtop"><div class="qtop-l"><a href="/jobs" data-link class="back">← Jobs</a><span class="cstatus ${J_CLASS[st]}">${J_STATUS[st]}</span></div>
 <div class="actions">${j.id ? `<details class="menu"><summary class="btn alt">⋯ More</summary><div class="menu-list">
 ${j.signature || !planHas('signatures') ? '' : `<button type="button" data-act="collectSignature" data-id="${j.id}">Collect signature</button>`}${planHas('timeOff') && me && me.staffId && (j.staffIds || []).includes(me.staffId) && j.date >= ymd(new Date()) ? `<button type="button" data-act="jobRequestOff" data-id="${j.id}">Request off for this job</button>` : ''}
-<button type="button" class="need-jobs-edit" data-act="jobRemind" data-id="${j.id}">${planHas('sms') ? 'Text' : 'Email'} reminder to client</button>${planHas('invoices') ? `<button type="button" class="need-invoices" data-act="jobInvoice" data-id="${j.id}">Create invoice</button>` : ''}
+<button type="button" class="need-jobs-edit" data-act="jobRemind" data-id="${j.id}">${planHas('sms') && byId(D.clients, j.clientId)?.smsConsent ? 'Text' : 'Email'} reminder to client</button>${planHas('invoices') ? `<button type="button" class="need-invoices" data-act="jobInvoice" data-id="${j.id}">Create invoice</button>` : ''}
 <a href="/calendar" data-link>Open calendar</a><button type="button" class="danger-text need-jobs-edit" data-act="delJob" data-id="${j.id}">Delete job</button></div></details>
 ${j.status === 'scheduled' ? `<button type="button" class="btn alt need-jobs-edit" data-act="completeJob" data-id="${j.id}">Mark complete</button>` : `<button type="button" class="btn alt need-jobs-edit" data-act="reopenJob" data-id="${j.id}">↺ Reopen job</button>`}
 <button class="btn need-jobs-edit">Save</button>` : '<a class="btn alt" href="/jobs" data-link>Cancel</a><button class="btn">Save job</button>'}</div></div>
