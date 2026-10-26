@@ -1125,7 +1125,7 @@ ${b('delDoc', 'trash', 'Delete')}</div></details>`;
 }
 const sendBtn = (kind, d) => (planHas('sms')
   ? `<button type="button" class="btn send-text" data-act="sendDoc" data-kind="${kind}" data-id="${d.id}" data-ch="text">${QI('<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/>')}Send Text</button>`
-  : `<button type="button" class="btn" data-act="sendDoc" data-kind="${kind}" data-id="${d.id}">Send…</button>`);
+  : ''); // no texting on the plan: no button (email is under More → Send as…)
 // the invoice page's More menu, laid out like the quote's
 function invoiceMore(d, c) {
   const b = (act, icon, label, extra = '') => `<button type="button" class="mi" data-act="${act}" data-kind="invoice" data-id="${d.id}" ${extra}>${QM[icon]}${label}</button>`;
