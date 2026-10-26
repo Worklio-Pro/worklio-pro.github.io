@@ -791,10 +791,7 @@ function invoiceForm(main, doc, preset) {
   const st = d.id ? d.displayStatus : 'draft';
   const on = (k) => d[k] !== 'off';
   main.innerHTML = `<form class="qform iform"><div class="qpage"><div class="qmain">
-<div class="qtop"><div class="qtop-l"><a href="/invoices" data-link class="back">← Invoices</a>${iBadge(st)}${d.zelleSentAt && d.status !== 'paid' ? '<span class="badge zelle">Zelle sent</span>' : ''}</div>
-<div class="actions">${d.id ? `<a class="btn alt" href="/invoices/view?id=${d.id}" data-link>Cancel</a>
-<button class="btn alt" name="after" value="save">Save</button>${d.status !== 'paid' ? '<button class="btn" name="after" value="send" title="Saves your changes, then sends">Send…</button>' : ''}`
-    : '<a class="btn alt" href="/invoices" data-link>Cancel</a><button class="btn alt" name="after" value="save">Save</button><button class="btn" name="after" value="send">Save &amp; send…</button>'}</div></div>
+<div class="qtop"><div class="qtop-l"><a href="/invoices" data-link class="back">← Invoices</a>${iBadge(st)}${d.zelleSentAt && d.status !== 'paid' ? '<span class="badge zelle">Zelle sent</span>' : ''}</div></div>
 <input name="subject" class="qtitle" value="${esc(d.subject || '')}" placeholder="Invoice subject (e.g. Camera System Install)" aria-label="Invoice subject">
 <div class="qhead"><div class="qclient"><select name="clientId" required aria-label="Client">${clientOptions(d.clientId || p.clientId)}</select><div class="iclient"></div></div>
 <dl class="qmeta"><dt>Invoice #</dt><dd><input name="number" class="num-in" maxlength="30" value="${esc(d.number || '')}" placeholder="Automatic" aria-label="Invoice number" title="Leave blank for the next automatic number"></dd>
@@ -812,7 +809,10 @@ ${planHas('zelle') ? switchRow('allowZelle', 'Zelle', on('allowZelle') && !!comp
 <div class="qcard"><h3>Client view</h3><p class="muted">What the client sees on their invoice.</p>
 ${switchRow('showQty', 'Quantities', on('showQty'))}${switchRow('showUnit', 'Unit prices', on('showUnit'))}${switchRow('showLineTotals', 'Line item totals', on('showLineTotals'))}
 ${switchRow('showAccountBalance', 'Account balance', on('showAccountBalance'))}${switchRow('showLateStamp', 'Late stamp (if overdue)', on('showLateStamp'))}</div>
-<div class="qcard"><h3>Notes</h3><textarea name="internalNotes" rows="6" placeholder="Leave an internal note for yourself or a team member. Clients never see this.">${esc(d.internalNotes || '')}</textarea></div></aside></div></form>`;
+<div class="qcard"><h3>Notes</h3><textarea name="internalNotes" rows="6" placeholder="Leave an internal note for yourself or a team member. Clients never see this.">${esc(d.internalNotes || '')}</textarea></div></aside></div>
+<div class="qsave noprint">${d.id ? `<a class="btn alt" href="/invoices/view?id=${d.id}" data-link>Cancel</a>
+<button class="btn alt" name="after" value="save">Save</button>${d.status !== 'paid' ? '<button class="btn" name="after" value="send" title="Saves your changes, then sends">Send…</button>' : ''}`
+    : '<a class="btn alt" href="/invoices" data-link>Cancel</a><button class="btn alt" name="after" value="save">Save</button><button class="btn" name="after" value="send">Save &amp; send…</button>'}</div></form>`;
   const form = $('form', main);
   const clientBox = () => {
     const c = byId(D.clients, $('[name=clientId]', form).value); const job = byId(D.jobs, $('[name=jobId]', form).value);
@@ -941,10 +941,7 @@ function quoteForm(main, doc, preset) {
   const status = d.id ? quoteStatus(d) : 'draft'; const job = d.id ? quoteJob(d) : null;
   const addr = (id) => esc((byId(D.clients, id) || {}).address || '');
   main.innerHTML = `<form class="qform"><div class="qpage"><div class="qmain">
-<div class="qtop"><div class="qtop-l"><a href="/quotes" data-link class="back">← Quotes</a>${qBadge(status)}</div>
-<div class="actions">${d.id ? `<a class="btn alt" href="/quotes/view?id=${d.id}" data-link>Cancel</a>
-<button class="btn alt" name="after" value="save">Save</button><button class="btn" name="after" value="send" title="Saves your changes, then sends">Send…</button>`
-    : '<a class="btn alt" href="/quotes" data-link>Cancel</a><button class="btn alt" name="after" value="save">Save</button><button class="btn" name="after" value="send">Save &amp; send…</button>'}</div></div>
+<div class="qtop"><div class="qtop-l"><a href="/quotes" data-link class="back">← Quotes</a>${qBadge(status)}</div></div>
 <input name="title" class="qtitle" value="${esc(d.title || '')}" placeholder="Quote title (e.g. Backyard cleanup)" aria-label="Quote title">
 <div class="qhead"><div class="qclient"><select name="clientId" required aria-label="Client">${clientOptions(d.clientId || p.clientId)}</select>
 <div class="muted qlabel">Property address</div><div class="qaddr">${addr(d.clientId || p.clientId) || '<span class="muted">Choose a client</span>'}</div></div>
@@ -958,7 +955,10 @@ ${discCard('quote', d.id ? d.disclaimer || '' : company.quoteDisclaimer ?? DEFAU
 <aside class="qside"><div class="qcard"><h3>Client payments</h3><p class="muted">How the client can pay this quote's deposit.</p>
 ${planHas('onlinePayments') ? switchRow('allowCard', 'Card payments', d.allowCard !== 'off' && cardReady(), cardReady() ? '' : cardHint(), !cardReady()) : ''}
 ${planHas('zelle') ? switchRow('allowZelle', 'Zelle', d.allowZelle !== 'off' && !!company.zelleRecipient, company.zelleRecipient ? '' : zelleHint(), !company.zelleRecipient) : ''}</div>
-<div class="qcard"><h3>Notes</h3><textarea name="internalNotes" rows="6" placeholder="Leave an internal note for yourself or a team member. Clients never see this.">${esc(d.internalNotes || '')}</textarea></div></aside></div></form>`;
+<div class="qcard"><h3>Notes</h3><textarea name="internalNotes" rows="6" placeholder="Leave an internal note for yourself or a team member. Clients never see this.">${esc(d.internalNotes || '')}</textarea></div></aside></div>
+<div class="qsave noprint">${d.id ? `<a class="btn alt" href="/quotes/view?id=${d.id}" data-link>Cancel</a>
+<button class="btn alt" name="after" value="save">Save</button><button class="btn" name="after" value="send" title="Saves your changes, then sends">Send…</button>`
+    : '<a class="btn alt" href="/quotes" data-link>Cancel</a><button class="btn alt" name="after" value="save">Save</button><button class="btn" name="after" value="send">Save &amp; send…</button>'}</div></form>`;
   const form = $('form', main); wireItems(form);
   form._doc = d; form._kind = 'quote'; form._discSaved = $('[name=disclaimer]', form).value;
   if (qp('unsign') === '1') form._removeSig = true; // confirmed on the quote page before opening the editor
@@ -1635,7 +1635,7 @@ ${j.signature || !planHas('signatures') ? '' : `<button type="button" data-act="
 <button type="button" class="need-jobs-edit" data-act="jobRemind" data-id="${j.id}">${planHas('sms') && byId(D.clients, j.clientId)?.smsConsent ? 'Text' : 'Email'} reminder to client</button>${planHas('invoices') ? `<button type="button" class="need-invoices" data-act="jobInvoice" data-id="${j.id}">Create invoice</button>` : ''}
 <a href="/calendar" data-link>Open calendar</a><button type="button" class="danger-text need-jobs-edit" data-act="delJob" data-id="${j.id}">Delete job</button></div></details>
 ${j.status === 'scheduled' ? `<button type="button" class="btn alt need-jobs-edit" data-act="completeJob" data-id="${j.id}">Mark complete</button>` : `<button type="button" class="btn alt need-jobs-edit" data-act="reopenJob" data-id="${j.id}">↺ Reopen job</button>`}
-<button class="btn need-jobs-edit">Save</button>` : '<a class="btn alt" href="/jobs" data-link>Cancel</a><button class="btn">Save job</button>'}</div></div>
+` : ''}</div></div>
 <input name="title" class="qtitle" required value="${esc(j.title || '')}" placeholder="Job title (e.g. Streamer Install)" aria-label="Job title">
 <div class="qhead"><div class="qclient"><select name="clientId" required aria-label="Client">${clientOptions(j.clientId || p.clientId)}</select>
 <label class="fl"><span>Property address</span><input name="address" value="${esc(j.address || '')}" placeholder="Defaults to the client's address"></label><div class="jcontact"></div></div>
@@ -1654,7 +1654,8 @@ ${j.id && j.signature ? sigCard(j) : ''}
 ${!j.id ? '<p class="muted">Save the job first, then create invoices from it.</p>' : invs.length ? `<div class="tablewrap"><table class="mini"><tr><th>Invoice</th><th>Due date</th><th>Status</th><th>Subject</th><th class="r">Total</th><th class="r">Balance</th></tr>
 ${invs.map((i) => `<tr><td><a href="/invoices/view?id=${i.id}" data-link>${esc(i.number)}</a></td><td>${fmtDate(i.dueDate)}</td><td>${iBadge(i.displayStatus)}</td><td>${esc(invSubject(i))}</td><td class="r">${money(i.total)}</td><td class="r">${money(invBalance(i))}</td></tr>`).join('')}</table></div>`
     : '<p class="muted">No invoices yet. Create one when the work is done.</p>'}</div></div>
-<aside class="qside"><div class="qcard"><h3>Notes</h3><textarea name="internalNotes" rows="8" placeholder="Leave an internal note for yourself or a team member. Clients never see this.">${esc(j.internalNotes || '')}</textarea></div></aside></div></form>`;
+<aside class="qside"><div class="qcard"><h3>Notes</h3><textarea name="internalNotes" rows="8" placeholder="Leave an internal note for yourself or a team member. Clients never see this.">${esc(j.internalNotes || '')}</textarea></div></aside></div>
+<div class="qsave noprint${j.id ? ' need-jobs-edit' : ''}">${j.id ? '<button class="btn">Save</button>' : '<a class="btn alt" href="/jobs" data-link>Cancel</a><button class="btn">Save job</button>'}</div></form>`;
   const form = $('form', main);
   const contact = () => {
     const c = byId(D.clients, $('[name=clientId]', form).value) || {};
