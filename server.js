@@ -1157,25 +1157,25 @@ const EMAIL_TEMPLATES = {
     label: 'Quote', description: 'Sent when you send a quote to a client.',
     subject: 'Quote {{quote_number}} from {{company_name}}',
     body: '# Your quote is ready\n\nHello {{client_name}},\n\nYour quote {{quote_number}} for **{{total}}** is ready. Review the details and approve it online.\n\n[View and approve quote]({{link}})\n\nThank you,\n{{company_name}}',
-    vars: { client_name: 'Client name', company_name: 'Your business name', quote_number: 'Quote number', quote_title: 'Quote title', total: 'Quote total', link: 'Link to view and approve' },
+    vars: { client_name: 'Client name', company_name: 'Your business name', company_email: 'Your business email', quote_number: 'Quote number', sent_date: 'Date the quote is sent', quote_title: 'Quote title', total: 'Quote total', link: 'Link to view and approve' },
   },
   invoice: {
     label: 'Invoice', description: 'Sent when you send an invoice to a client.',
     subject: 'Invoice {{invoice_number}} from {{company_name}}',
     body: '# Invoice {{invoice_number}}\n\nHello {{client_name}},\n\nInvoice {{invoice_number}} for **{{total}}** is due {{due_date}}. You can view it and pay securely online.\n\n[View and pay invoice]({{link}})\n\nThank you for your business,\n{{company_name}}',
-    vars: { client_name: 'Client name', company_name: 'Your business name', invoice_number: 'Invoice number', total: 'Invoice total', due_date: 'Due date', link: 'Link to view and pay' },
+    vars: { client_name: 'Client name', company_name: 'Your business name', company_email: 'Your business email', invoice_number: 'Invoice number', sent_date: 'Date the invoice is sent', total: 'Invoice total', due_date: 'Due date', link: 'Link to view and pay' },
   },
   reminder: {
     label: 'Appointment reminder', description: 'Sent when you send a job reminder by email.',
     subject: 'Appointment reminder from {{company_name}}',
     body: '# Appointment reminder\n\nHello {{client_name}},\n\nThis is a reminder of your appointment with us:\n\n> **{{job_title}}**\n> {{date}} at {{time}}\n> {{address}}\n\nNeed to change it? Just reply to this email.\n\n{{company_name}}',
-    vars: { client_name: 'Client name', company_name: 'Your business name', job_number: 'Job number', job_title: 'Job title', date: 'Appointment date', time: 'Start time', address: 'Job address' },
+    vars: { client_name: 'Client name', company_name: 'Your business name', company_email: 'Your business email', job_number: 'Job number', job_title: 'Job title', date: 'Appointment date', time: 'Start time', address: 'Job address' },
   },
   receipt: {
     label: 'Payment receipt', description: 'Sent when a client pays online, if you turned on email receipts in App Settings.',
     subject: 'Receipt from {{company_name}}',
     body: '# Thank you for your payment\n\nHello {{client_name}},\n\nWe received your payment of **{{amount}}** for {{paid_for}}.\n\n> Paid on {{date}}\n> Payment reference: {{reference}}\n\nThank you,\n{{company_name}}',
-    vars: { client_name: 'Client name', company_name: 'Your business name', amount: 'Amount paid', paid_for: 'What was paid, e.g. Invoice INV-3010', date: 'Payment date', reference: 'Payment reference' },
+    vars: { client_name: 'Client name', company_name: 'Your business name', company_email: 'Your business email', amount: 'Amount paid', paid_for: 'What was paid, e.g. Invoice INV-3010', date: 'Payment date', reference: 'Payment reference' },
   },
 };
 const emailTemplate = (key) => ({ subject: EMAIL_TEMPLATES[key].subject, body: EMAIL_TEMPLATES[key].body, ...((db.emailTemplates || {})[key] || {}) });
@@ -1189,7 +1189,7 @@ const niceDate = (s) => {
 const fmtUsPhone = (s) => { const t = String(s || '').trim(); let d = t.replace(/\D/g, ''); if (d.length === 11 && d[0] === '1') d = d.slice(1); else if (/^\+/.test(t)) return t; return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : t; };
 const companyBrand = (origin = baseUrl()) => ({ name: db.company.name || 'Your business', logoUrl: db.company.logo ? origin.replace(/\/+$/, '') + db.company.logo : '', color: db.company.brandColor,
   contact: [fmtUsPhone(db.company.phone), db.company.email, db.company.website] });
-function renderEmail(key, vars, t = emailTemplate(key), origin) { const m = emails.renderBusiness(t, vars, companyBrand(origin)); return { ...m, body: m.text }; }
+function renderEmail(key, vars, t = emailTemplate(key), origin) { const m = emails.renderBusiness(t, { company_email: db.company.email || '', ...vars }, companyBrand(origin)); return { ...m, body: m.text }; }
 
 app.get('/api/email-templates', (req, res) => res.json(Object.entries(EMAIL_TEMPLATES).map(([key, d]) => {
   const t = emailTemplate(key);
@@ -1289,7 +1289,7 @@ app.post('/api/invoices/:id/send', async (req, res) => {
 
 // ---------- the Email box (quote and invoice pages) ----------
 const docVars = (kind, d) => {
-  const base = { client_name: findClient(d.clientId)?.name || '', company_name: db.company.name, total: money(d.total) };
+  const base = { client_name: findClient(d.clientId)?.name || '', company_name: db.company.name, company_email: db.company.email || '', total: money(d.total), sent_date: niceDate(iso(new Date())) };
   return kind === 'quote' ? { ...base, quote_number: d.number, quote_title: d.title || '', link: quoteLink(d) } : { ...base, invoice_number: d.number, due_date: niceDate(d.dueDate), link: invoiceLink(d) };
 };
 const BUTTON_LINE = /^\s*\[([^\]]+)\]\(\{\{\s*link\s*\}\}\)\s*$/m; // the template's button: [View and approve quote]({{link}})

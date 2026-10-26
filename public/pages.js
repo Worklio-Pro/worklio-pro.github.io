@@ -1312,7 +1312,7 @@ ${TPL.list.map((t) => `<tr class="crow" data-act="editTpl" data-key="${t.key}"><
   },
 };
 const TPL = { list: [] };
-const tplSample = () => ({ client_name: 'Jane Smith', company_name: company.name || 'Your Business', quote_number: docPrefix('quotePrefix') + '1005', quote_title: 'Backyard cleanup', invoice_number: docPrefix('invoicePrefix') + '3010', total: '$1,250.00', due_date: fmtDate(ymd(addDays(new Date(), 14))), job_number: docPrefix('jobPrefix') + '2010', job_title: 'Gutter cleaning', date: fmtDate(ymd(addDays(new Date(), 2))), time: '09:00', address: '100 Main St, Houston, TX 77002', amount: '$1,250.00', paid_for: 'Invoice ' + docPrefix('invoicePrefix') + '3010', reference: 'pi_3Q8x2L4eZvKYlo2C' });
+const tplSample = () => ({ client_name: 'Jane Smith', company_name: company.name || 'Your Business', company_email: company.email || 'hello@yourbusiness.com', sent_date: fmtDate(ymd(new Date())), quote_number: docPrefix('quotePrefix') + '1005', quote_title: 'Backyard cleanup', invoice_number: docPrefix('invoicePrefix') + '3010', total: '$1,250.00', due_date: fmtDate(ymd(addDays(new Date(), 14))), job_number: docPrefix('jobPrefix') + '2010', job_title: 'Gutter cleaning', date: fmtDate(ymd(addDays(new Date(), 2))), time: '09:00', address: '100 Main St, Houston, TX 77002', amount: '$1,250.00', paid_for: 'Invoice ' + docPrefix('invoicePrefix') + '3010', reference: 'pi_3Q8x2L4eZvKYlo2C' });
 const tplLinks = () => ({ quote: location.origin + '/p/quote/abc123', invoice: location.origin + '/pay/abc123' });
 A.editTpl = (d) => {
   const t = TPL.list.find((x) => x.key === d.key); if (!t) return; const vars = { ...tplSample(), link: tplLinks()[t.key] || '' };
