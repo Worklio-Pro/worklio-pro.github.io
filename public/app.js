@@ -611,8 +611,7 @@ ${why ? `<div class="notice">${why}</div>` : ''}
   };
   ta.addEventListener('input', show); show();
   // the short link the text will carry (…/s/CODE); the server adds the same one when it sends
-  api('GET', `/api/${kind}s/${doc.id}/short-link`).then((r) => { link = r.url; show(); })
-    .catch(() => { link = '[short link added when sent]'; show(); });
+  api('GET', `/api/${kind}s/${doc.id}/short-link`).then((r) => { link = r.url; show(); }).catch((x) => toast(x.message, true));
   return sendSubmit(kind, doc, mb, () => ['sms'], () => {
     if (!ta.value.trim()) throw new Error('Write a message first');
     return { message: ta.value.trim() };
