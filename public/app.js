@@ -1115,7 +1115,7 @@ function quoteMore(d, { job, canJob, c }) {
     d.status !== 'declined' && d.depositFee > 0 && !d.depositPaidAt ? b('markDepositPaid', 'deposit', `Deposit Paid${d.zelleSentAt ? ' (Zelle sent)' : ''}`) : ''].join('');
   return `<details class="menu more-menu"><summary class="btn alt"><span class="more-dots" aria-hidden="true">•••</span> More</summary><div class="menu-list">
 ${canJob ? b('quoteToJob', 'job', 'Convert to Job') : ''}${job ? `<a class="mi" href="/jobs/edit?id=${job.id}" data-link>${QM.goJob}Go to Job ${esc(job.number)}</a>` : ''}${b('copyQuote', 'copy', 'Create Similar Quote')}
-<hr class="mi-sep"><div class="mi-h">Send as…</div>${b('sendDoc', 'email', 'Email', 'data-ch="email"')}${planHas('sms') && c.phone && c.smsConsent ? b('sendDoc', 'text', 'Text Message', 'data-ch="sms"') : ''}
+<hr class="mi-sep"><div class="mi-h">Send as…</div>${b('sendDoc', 'email', 'Email', 'data-ch="email"')}${planHas('sms') && c.phone && c.smsConsent ? b('sendDoc', 'text', 'Text Message', 'data-ch="text"') : ''}
 ${marks ? `<hr class="mi-sep"><div class="mi-h">Mark as…</div>${marks}` : ''}
 <hr class="mi-sep"><a class="mi" href="/p/quote/${d.token}" target="_blank">${QM.eye}Preview as Client</a>
 ${d.signedAt ? '' : `<a class="mi" href="/p/quote/${d.token}" target="_blank" title="Opens the client’s quote page, where they approve and sign">${QM.sign}Collect Signature</a>`}
@@ -1131,7 +1131,7 @@ function invoiceMore(d, c) {
   const open = d.status !== 'paid';
   return `<details class="menu more-menu"><summary class="btn alt"><span class="more-dots" aria-hidden="true">•••</span> More</summary><div class="menu-list">
 ${open ? b('collectPayment', 'pay', 'Collect Payment') : ''}${b('copyInvoice', 'copy', 'Create Similar Invoice')}
-${open ? `<hr class="mi-sep"><div class="mi-h">Send as…</div>${b('sendDoc', 'email', 'Email', 'data-ch="email"')}${planHas('sms') && c.phone && c.smsConsent ? b('sendDoc', 'text', 'Text Message', 'data-ch="sms"') : ''}` : ''}
+${open ? `<hr class="mi-sep"><div class="mi-h">Send as…</div>${b('sendDoc', 'email', 'Email', 'data-ch="email"')}${planHas('sms') && c.phone && c.smsConsent ? b('sendDoc', 'text', 'Text Message', 'data-ch="text"') : ''}` : ''}
 ${d.status === 'draft' ? `<hr class="mi-sep"><div class="mi-h">Mark as…</div>${b('markInvoiceSent', 'awaiting', 'Awaiting Payment')}` : ''}
 <hr class="mi-sep"><a class="mi" href="/pay/${d.token}" target="_blank">${QM.eye}${open ? 'Preview as Client' : 'View Receipt'}</a>
 <a class="mi" href="/pay/${d.token}?print=1" target="_blank">${QM.pdf}Print or Save PDF</a>
