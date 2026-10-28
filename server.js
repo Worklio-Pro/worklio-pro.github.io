@@ -1571,6 +1571,22 @@ app.put('/api/payments/settings', (req, res) => {
 // a new payment, a refund or an account update from Stripe clears it
 const payCache = new Map(); // account id -> { at, data }
 const clearPayCache = () => { try { payCache.delete(tenancy.current().id); } catch (e) { /* no account in this context */ } };
+// the day Stripe next pays out money that's already available, from the account's payout schedule (null for manual payouts or no schedule):
+// daily is the next weekday after today (today's run has already paid out what was available then); weekly and monthly are the next
+// payout day from today on (a monthly day past the end of a short month is that month's last day)
+function nextPayoutDay(sch, now = new Date()) {
+  if (!sch || !['daily', 'weekly', 'monthly'].includes(sch.interval)) return null;
+  const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const weekly = sch.weekly_payout_days || [sch.weekly_anchor || 'monday'];
+  const monthly = (sch.monthly_payout_days || [sch.monthly_anchor || 1]).map(Number);
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + (sch.interval === 'daily' ? 1 : 0), 12);
+  for (let i = 0; i < 62; i++, d.setDate(d.getDate() + 1)) {
+    const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    const hit = sch.interval === 'daily' ? d.getDay() % 6 !== 0 : sch.interval === 'weekly' ? weekly.includes(DAYS[d.getDay()]) : monthly.some((m) => Math.min(m, last) === d.getDate());
+    if (hit) return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+  return null;
+}
 // Stripe's side of the Payments page (also used for the payouts CSV)
 async function stripePayments(fresh) {
   if (!tenancy.has('onlinePayments') || !stripeKey()) return { connected: false };
@@ -1578,7 +1594,8 @@ async function stripePayments(fresh) {
   if (hit && Date.now() - hit.at < 60e3 && !fresh) return { ...hit.data, cachedAt: new Date(hit.at).toISOString() };
   let failed = 0; const get = (ep) => stripeApi('GET', ep).catch((e) => { failed++; console.error('Stripe:', e.message); return null; });
   // charges without their fee details (the heavy part); payout dates come from the balance list fetched alongside
-  const [bal, charges, payouts, disputes, txns] = await Promise.all([get('balance'), get('charges?limit=100'), get('payouts?limit=100&expand[]=data.destination'), get('disputes?limit=100'), get('balance_transactions?limit=100')]);
+  const [bal, charges, payouts, disputes, txns, account] = await Promise.all([get('balance'), get('charges?limit=100'), get('payouts?limit=100&expand[]=data.destination'), get('disputes?limit=100'), get('balance_transactions?limit=100'),
+    stripeApi('GET', 'account').catch(() => null)]); // only for the payout schedule: without it the money that's ready just shows "Next payout"
   const day = (t) => (t ? iso(new Date(t * 1000)) : null); const usd = (l) => round2((l || []).filter((x) => x.currency === 'usd').reduce((s, x) => s + x.amount, 0) / 100);
   const acct = (d) => (d && typeof d === 'object' ? { name: d.bank_name || d.brand || 'Bank account', last4: d.last4 || '' } : null);
   const charge = {}; const availOn = {}; for (const t of (txns && txns.data) || []) if (t.source) availOn[t.source] = t.available_on;
@@ -1593,8 +1610,9 @@ async function stripePayments(fresh) {
   // (it's paid out on the account's payout schedule from then), then money that's available now and waiting for the next payout
   const due = {}; for (const t of (txns && txns.data) || []) if (t.status === 'pending' && t.currency === 'usd') { const d = day(t.available_on); due[d] = (due[d] || 0) + t.net; }
   const upcoming = [...pl.filter((p) => ['pending', 'in_transit'].includes(p.status)).map((p) => ({ date: day(p.arrival_date), amount: round2(p.amount / 100), inTransit: true, bank: acct(p.destination) })),
-    ...Object.entries(due).filter(([, c]) => c > 0).map(([date, c]) => ({ date, amount: round2(c / 100) }))].sort((a, b) => (a.date < b.date ? -1 : 1));
-  const ready = bal ? usd(bal.available) : 0; if (ready > 0) upcoming.unshift({ date: null, amount: ready, next: true });
+    ...Object.entries(due).filter(([, c]) => c > 0).map(([date, c]) => ({ date, amount: round2(c / 100) }))];
+  const ready = bal ? usd(bal.available) : 0; if (ready > 0) upcoming.push({ date: nextPayoutDay(account && account.settings && account.settings.payouts && account.settings.payouts.schedule), amount: ready, next: true });
+  upcoming.sort((a, b) => (!a.date ? -1 : !b.date ? 1 : a.date < b.date ? -1 : a.date > b.date ? 1 : a.next ? -1 : 0)); // undated first; on the same day, what's ready now first
   const out = { connected: true, mode: stripeMode(), feePercent: connectedAccount() ? Number(tenancy.platform().settings.platformFeePercent) || 0 : 0, balance: bal ? { available: usd(bal.available), pending: usd(bal.pending) } : null, charges: charge, upcoming,
     payouts: pl.map((p) => ({ id: p.id, amount: round2(p.amount / 100), arrival: day(p.arrival_date), created: day(p.created), status: p.status, method: p.method === 'instant' ? 'instant' : 'standard', bank: acct(p.destination) })),
     bank: (pl.map((p) => acct(p.destination)).find(Boolean)) || null,
