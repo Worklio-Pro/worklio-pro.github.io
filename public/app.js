@@ -216,7 +216,9 @@ const ICONS = {
 };
 // Refer & Earn shows while the platform's referral program is on
 const referralsOn = () => !!(company.account && company.account.referrals);
-const settingsFor = () => SETTINGS_NAV.filter(([p]) => memberCan(p) && !planLocked(p) && (p !== '/rewards' || referralsOn()));
+// App Marketplace shows unless Alpha turned it off
+const marketplaceOn = () => !(company.account && company.account.marketplace === false);
+const settingsFor = () => SETTINGS_NAV.filter(([p]) => memberCan(p) && !planLocked(p) && (p !== '/rewards' || referralsOn()) && (p !== '/marketplace' || marketplaceOn()));
 // pages the search finds besides the menu items, and extra words each page answers to
 const FEATURE_EXTRAS = [['/quotes/new', 'New quote', 'Quotes', 'create estimate'], ['/jobs/new', 'New job', 'Jobs', 'create schedule visit'], ['/invoices/new', 'New invoice', 'Invoices', 'create bill'],
   ['/clients/import', 'Import clients', 'Clients', 'csv upload spreadsheet'], ['/team/new', 'Add team member', 'Settings', 'invite staff employee user'],

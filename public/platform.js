@@ -467,6 +467,10 @@ function settingsView(main) {
 <label style="max-width:320px">“Most popular” badge on the pricing page<select name="popularPlan"><option value="" ${!s.popularPlan ? 'selected' : ''}>Automatic (the middle plan)</option>${D.plans.filter((p) => !p.hidden).map((p) => `<option value="${esc(p.id)}" ${p.id === s.popularPlan ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}<option value="none" ${s.popularPlan === 'none' ? 'selected' : ''}>None</option></select></label>
 <p class="muted" style="font-size:13px">Pricing page: <a href="${esc(site)}" target="_blank" rel="noopener">${esc(site)}</a>. Businesses that choose a paid plan pay for it at checkout before their account opens (see <a href="#settings" data-act="setTab" data-k="integrations:stripe">Integrations → Stripe</a>).</p>
 <div class="card-save"><span class="as-status">Changes save automatically</span></div></div>
+<div class="card" data-set="product"><h2>App Marketplace</h2>
+<label class="switchline"><input type="checkbox" name="marketplace" ${s.marketplace !== false ? 'checked' : ''}> Show the App Marketplace in every account (Settings → App Marketplace)</label>
+<p class="muted" style="font-size:13px">Owners and admins browse apps, connect the ones that work today and vote for the rest (see Messages → App requests). Turned off, the page is hidden and Home Depot search stops in the product and service form. Google, Facebook, Instagram, Stripe and AI keep working: they’re set up on their own pages.</p>
+<div class="card-save"><span class="as-status">Changes save automatically</span></div></div>
 </form></div></div>
 <div class="card" id="teamCard" data-set="team"></div><div class="card" id="iconsCard" data-set="icons"></div>
 <form id="sf2" class="set-form"><div class="card" data-set="expiry"><h2>Accounts with a last day of access</h2>
@@ -478,6 +482,7 @@ function settingsView(main) {
   $$('[data-set]', main).forEach((c) => { c.hidden = c.dataset.set !== setTab; });
   $$('#sf, #sf2, #sf3', main).forEach((f) => autosave(f, async (b) => {
     if (f.elements.allowSignups) b.allowSignups = !!b.allowSignups; // only the form with the switch sends it
+    if (f.elements.marketplace) b.marketplace = !!b.marketplace;
     const name = D.settings.productName; D.settings = await api('PUT', '/api/platform/settings', b);
     if (D.settings.productName !== name) { $('.pf-brand').innerHTML = brandHtml(); logoCard($('#logoCard', main)); iconCard($('#iconCard', main)); } // a new name: the header and previews show it
   }));

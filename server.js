@@ -739,6 +739,7 @@ function accountInfo() {
     url: tenancy.tenantUrl(t), subdomainUrl: tenancy.subdomainUrl(t), rootDomain: tenancy.ROOT_DOMAIN, serverIp: process.env.SERVER_IP || '',
     domains: (t.domains || []).map(({ host, verified, primary, addedAt, verifiedAt }) => ({ host, verified: !!verified, primary: !!primary, addedAt, verifiedAt: verifiedAt || null })),
     forum: forum.isOn(), // Alpha → Help Center → Forum → Forum settings can close the forum
+    marketplace: marketplace.isOn(tenancy.platform()), // Alpha → Settings → App Marketplace
     navIcons: iconsLib.navIcons(), navOrder: iconsLib.order(), // the menu's icons, order and sections (Alpha → Settings → Menu)
     productName: tenancy.platform().settings.productName, product: brandLib.brand(), contactEmail: tenancy.platform().settings.contactEmail, helpUrl: tenancy.helpUrl(), managed: !tenancy.isDefault(),
     referrals: referrals.openTo(t), cardReady: !!stripeKey(), // card payments set up (App Settings → Card payments)
@@ -2278,11 +2279,11 @@ const marketplaceView = () => {
   return { categories: marketplace.CATEGORIES, apps: marketplace.catalog().map((a) => ({ ...a, ...(a.live ? liveAppState(a) : { requested: mine.includes(a.id) }) })) };
 };
 const marketplaceWho = (req) => { const u = currentUser(req); const t = tenancy.current(); return { t: t.id, company: db.company.name || t.slug, account: tenancy.tenantUrl(t), name: u.name, email: u.email }; };
-const marketplaceAdmin = (req, res) => { if (isAdmin(currentUser(req))) return true; res.status(403).json({ error: 'Only the account owner or an admin can manage apps' }); return false; };
+const marketplaceAdmin = (req, res) => { if (!marketplace.isOn(tenancy.platform())) { res.status(404).json({ error: 'The App Marketplace isn’t available' }); return false; } if (isAdmin(currentUser(req))) return true; res.status(403).json({ error: 'Only the account owner or an admin can manage apps' }); return false; };
 app.get('/api/marketplace', (req, res) => { if (marketplaceAdmin(req, res)) res.json(marketplaceView()); });
 // Home Depot (lib/homedepot.js): turned on in the marketplace, with the ZIP code for local prices and the markup added to the price picked
 const hdSettings = () => db.homeDepot || {};
-const hdView = () => { const h = hdSettings(); return { available: homeDepot.ready(), on: !!h.on && tenancy.has('services'), zip: h.zip || '', markup: Number(h.markup) || 0 }; };
+const hdView = () => { const h = hdSettings(); return { available: homeDepot.ready(), on: !!h.on && tenancy.has('services') && marketplace.isOn(tenancy.platform()), zip: h.zip || '', markup: Number(h.markup) || 0 }; };
 app.get('/api/home-depot', (req, res) => res.json(hdView()));
 app.put('/api/home-depot', (req, res) => {
   if (!marketplaceAdmin(req, res)) return; const b = req.body || {};

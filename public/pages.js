@@ -1261,6 +1261,7 @@ const mktShow = () => { const box = $('#mktList'); if (box) box.innerHTML = mktL
 PAGES['/marketplace'] = {
   title: 'App Marketplace',
   async render(main) {
+    if (!marketplaceOn()) { main.innerHTML = '<div class="head"><div><h1>App Marketplace</h1></div></div><div class="card empty">The App Marketplace isn’t available right now.</div>'; return; }
     MKT = await api('GET', '/api/marketplace');
     const tabs = [['', 'All apps'], ...(MKT.apps.some((a) => a.live && a.connected && a.planOk) ? [['connected', 'Connected']] : []), ...MKT.categories.map((k) => [k, k])];
     main.innerHTML = `<div class="head"><div><h1>App Marketplace</h1><p class="sub">Connect the apps your business already uses. Apps marked <strong>Coming soon</strong> are on the way: tap <strong>I want this</strong> and the most-wanted ones are built first.</p></div>
