@@ -685,7 +685,9 @@ async function soCompose(box) {
   box.innerHTML = `<h2>New post</h2><form id="soForm" novalidate><div class="so-who sm">${C.avatar ? `<img src="${esc(C.avatar)}" alt="" width="28" height="28">` : ''}<span>Posting to <strong>${esc(C.nickname || SO.account.name)}</strong>${C.username ? ` (@${esc(C.username)})` : ''}</span></div>
 <div class="so-media" id="soMedia"></div>
 <label class="so-pick"><input type="file" id="soFile" accept="video/mp4,video/quicktime,video/webm,image/jpeg,image/png,image/webp" multiple hidden><span class="btn alt">Add a video or photos</span><small class="muted">One video${C.maxSeconds ? ` (up to ${Math.floor(C.maxSeconds / 60) ? Math.floor(C.maxSeconds / 60) + ' min' : C.maxSeconds + ' sec'})` : ''}, or up to 35 photos. MP4, MOV or WebM; JPG, PNG or WebP.</small></label>
-<label>Caption<textarea name="caption" rows="4" maxlength="2200" placeholder="What’s this post about? #hashtags welcome">${esc(soDraft.caption || '')}</textarea><small class="muted so-count"></small></label>
+<div class="so-cap-f"><label for="soCaption">Caption</label><textarea id="soCaption" name="caption" rows="4" maxlength="2200" placeholder="What’s this post about? #hashtags welcome">${esc(soDraft.caption || '')}</textarea>
+<div class="so-cap-bar">${SO.ai ? `<details class="menu so-ai"><summary class="btn alt sm" title="Write a caption from the video or photos">✨ <span>Write with AI</span></summary><div class="menu-list"><div class="so-ai-h">Write it…</div>${SO_TONES.map(([k, l]) => `<button type="button" data-act="soAi" data-tone="${k}">${l}</button>`).join('')}</div></details>
+<button type="button" class="btn alt sm so-undo" data-act="soAiUndo" hidden>Undo</button>` : ''}<small class="muted so-count"></small></div></div>
 <fieldset class="so-mode"><legend>Where it goes</legend><label><input type="radio" name="mode" value="direct" ${soDraft.mode !== 'inbox' ? 'checked' : ''}> <span><strong>Post to TikTok</strong><small class="muted">It goes straight to your profile.</small></span></label>
 <label><input type="radio" name="mode" value="inbox" ${soDraft.mode === 'inbox' ? 'checked' : ''}> <span><strong>Send to TikTok drafts</strong><small class="muted">You’ll get a notification in TikTok to edit and post it there.</small></span></label></fieldset>
 <div class="so-direct"><label>Who can see this post<small class="muted so-hint">Until TikTok approves your app, choose “Only me”, and keep your TikTok account set to private. Otherwise TikTok refuses the post.</small><select name="privacy"><option value="" selected disabled>Choose…</option>${C.privacy.map((k) => `<option value="${esc(k)}">${esc(PRIVACY[k] || k)}</option>`).join('')}</select></label>
@@ -698,14 +700,15 @@ async function soCompose(box) {
 <p class="so-legal sm muted"></p><div class="acts" style="justify-content:flex-start"><button class="btn" id="soGo" disabled>Post now</button></div></form>`;
   const f = $('#soForm', box); f._c = C;
   const sync = () => {
+    const busy = soDraft.media.some((m) => !m.file);
     const direct = f.mode.value === 'direct'; const later = f.when.value === 'later'; const video = soDraft.media.some((m) => m.type === 'video');
     $('.so-direct', f).hidden = !direct; f.at.hidden = !later; $$('.so-vid', f).forEach((l) => { l.hidden = !video; });
     $('.so-disc', f).hidden = !f.disclose.checked;
     const branded = direct && f.disclose.checked && f.branded.checked;
     const own = $('option[value=SELF_ONLY]', f.privacy); if (own) { own.disabled = branded; own.textContent = branded ? 'Only me (not for branded content)' : PRIVACY.SELF_ONLY; if (branded && f.privacy.value === 'SELF_ONLY') f.privacy.value = ''; }
     $('.so-count', f).textContent = `${f.caption.value.length} / 2200`;
+    const ai = $('.so-ai', f); if (ai) { ai.classList.toggle('off', !soDraft.media.length || busy); $('summary', ai).title = !soDraft.media.length ? 'Add a video or photos first' : busy ? 'Waiting for the upload to finish' : 'Write a caption from the video or photos'; }
     $('.so-legal', f).innerHTML = direct ? `By posting, you agree to TikTok’s ${branded ? `<a href="${BC_URL}" target="_blank" rel="noopener">Branded Content Policy</a> and ` : ''}<a href="${MUSIC_URL}" target="_blank" rel="noopener">Music Usage Confirmation</a>.${f.disclose.checked && !branded && f.yourBrand.checked ? ' Your post will be labeled “Promotional content”.' : branded ? ' Your post will be labeled “Paid partnership”.' : ''}` : 'TikTok will notify you to finish the post in the TikTok app.';
-    const busy = soDraft.media.some((m) => !m.file);
     const ok = soDraft.media.length && !busy && (!direct || (f.privacy.value && (!f.disclose.checked || f.yourBrand.checked || f.branded.checked))) && (!later || f.at.value);
     $('#soGo', f).disabled = !ok; $('#soGo', f).textContent = !direct ? (later ? 'Schedule to drafts' : 'Send to drafts') : later ? 'Schedule post' : 'Post now';
     soDraft.caption = f.caption.value; soDraft.mode = f.mode.value;
@@ -724,6 +727,36 @@ async function soCompose(box) {
     } catch (x) { toast(x.message, true); go.disabled = false; }
   });
 }
+// Write with AI: Claude looks at up to 4 photos, or 4 frames taken from the video here in the browser, and writes the caption;
+// what's already typed is sent along as notes. Undo puts back the text from before.
+const SO_TONES = [['catchy', 'Catchy'], ['friendly', 'Friendly'], ['professional', 'Professional'], ['funny', 'Funny'], ['shorter', 'Short']];
+const soJpeg = (src, w, h) => { const k = Math.min(1, 768 / Math.max(w, h)); const c = document.createElement('canvas'); c.width = Math.round(w * k); c.height = Math.round(h * k);
+  const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(src, 0, 0, c.width, c.height); return c.toDataURL('image/jpeg', 0.8); };
+async function soFrames() {
+  const m = soDraft.media;
+  if (m[0].type !== 'video') return Promise.all(m.slice(0, 4).map((p) => new Promise((r) => { const i = new Image(); i.onload = () => r(soJpeg(i, i.naturalWidth, i.naturalHeight)); i.onerror = () => r(null); i.src = p.preview; }))).then((l) => l.filter(Boolean));
+  const v = document.createElement('video'); v.muted = true; v.playsInline = true; v.preload = 'auto'; v.src = m[0].preview;
+  await new Promise((r, x) => { v.onloadeddata = r; v.onerror = () => x(new Error('Couldn’t read the video here. Write the caption yourself.')); });
+  const out = [];
+  for (const at of [0.1, 0.35, 0.6, 0.85]) {
+    await new Promise((r) => { v.onseeked = r; v.currentTime = Math.min(v.duration - 0.05, v.duration * at) || 0; });
+    out.push(soJpeg(v, v.videoWidth, v.videoHeight));
+  }
+  return out;
+}
+A.soAi = async (d, el) => {
+  const f = $('#soForm'); const menu = el.closest('details'); menu.open = false;
+  if (!soDraft.media.length) return toast('Add a video or photos first', true);
+  if (soDraft.media.some((m) => !m.file)) return toast('Wait for the upload to finish', true);
+  const sum = $('summary span', menu); menu.classList.add('busy'); sum.textContent = 'Writing…';
+  try {
+    const before = f.caption.value;
+    const r = await api('POST', '/api/platform/social/caption', { images: await soFrames(), notes: before, tone: d.tone, kind: soDraft.media[0].type });
+    f._aiBefore = before; f.caption.value = r.caption; $('.so-undo', f).hidden = false; f._sync(); f.caption.focus();
+  } catch (x) { toast(x.message, true); } finally { menu.classList.remove('busy'); sum.textContent = 'Write with AI'; }
+};
+document.addEventListener('click', (e) => { $$('details.so-ai[open]').forEach((m) => { if (!m.contains(e.target)) m.open = false; }); });
+A.soAiUndo = (d, el) => { const f = $('#soForm'); if (f._aiBefore === undefined) return; f.caption.value = f._aiBefore; delete f._aiBefore; el.hidden = true; f._sync(); };
 function soMediaDraw(f) {
   $('#soMedia', f).innerHTML = soDraft.media.map((m, i) => `<div class="so-tile">${m.type === 'video' ? `<video src="${esc(m.preview)}" muted preload="metadata"></video>` : `<img src="${esc(m.preview)}" alt="">`}
 ${m.file ? '' : `<span class="so-prog">${m.pct || 0}%</span>`}<button type="button" class="so-x" data-act="soRmMedia" data-i="${i}" aria-label="Remove">×</button></div>`).join('');
@@ -1282,7 +1315,7 @@ ${I.mailServer ? `<p class="ig-env">Using your mail server below (${esc(I.mailSe
 ${ig('Text messages (Twilio)', on(I.sms), `<p class="ig-d">Every business’s texts to clients (on plans with text messages), sent from your Twilio number and starting with the business’s name.</p>
 ${env('<code>TWILIO_ACCOUNT_SID</code>, <code>TWILIO_AUTH_TOKEN</code> and <code>TWILIO_FROM</code> (your Twilio number, or a Messaging Service SID starting with MG).')}
 <h4>Send a test</h4>${I.sms ? '<form id="tSms" class="inline-form"><label>Test text to<input name="to" required placeholder="+17135550100"></label><button class="btn alt">Send test text</button></form>' : '<p class="muted ig-p">Set up Twilio first. Until then, texts are recorded in each account’s Notifications Log but not delivered.</p>'}`)}
-${ig('AI descriptions', on(I.ai), `<p class="ig-d">Claude drafts product and service descriptions, for plans with AI descriptions.</p>${env('<code>ANTHROPIC_API_KEY</code>.')}`)}
+${ig('AI descriptions', on(I.ai), `<p class="ig-d">Claude drafts product and service descriptions, for plans with AI descriptions, and writes captions for your posts in Social (Write with AI).</p>${env('<code>ANTHROPIC_API_KEY</code>.')}`)}
 </div><div class="ig-col">${socialGroups(I, ig, on, copy)}</div></div>
 <div class="ig-wide">${ig('Stripe', S.key ? `${on(true)} <span class="cstatus ${S.mode === 'live' ? 'active' : 'q-sent'}">${S.mode === 'live' ? 'Live' : 'Test mode'}</span>` : on(false), `<div class="ig-2"><div><p class="ig-d">Your Stripe account: plan payments when businesses sign up, and “Connect with Stripe” for businesses’ card payments from their clients.</p>
 ${S.keyVar ? `<p class="ig-env">Using <code>${S.keyVar}</code> from <code>.env</code>.</p>` : env('<code>BILLING_STRIPE_SECRET_KEY</code> (or <code>STRIPE_SECRET_KEY</code>).')}
