@@ -528,6 +528,24 @@ table.domains td{vertical-align:middle}.dom-acts{display:flex;gap:6px;justify-co
 .conn-chip.on i{background:var(--ok)}
 .conn-chip.wait i{background:var(--warn)}
 @media (max-width:640px){.conn-list{padding:0 16px}.conn{grid-template-columns:36px minmax(0,1fr);column-gap:12px}.conn-ic svg{width:32px;height:32px}.conn-act{grid-column:2;margin-top:10px}.conn-body{grid-column:1/-1}}
+/* App Marketplace */
+.mkt-tabs{margin-top:14px}
+.mkt-h{font-size:16px;margin:22px 0 10px}
+.mkt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
+.mkt-card{position:relative;display:flex;flex-direction:column;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;box-shadow:var(--shadow-sm);transition:border-color .15s}
+.mkt-card:hover,.mkt-card:focus-within{border-color:var(--brand)}
+.mkt-open{position:absolute;inset:0;border:0;background:none;border-radius:12px;cursor:pointer}
+.mkt-open:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.mkt-card .mkt-logo{position:absolute;top:16px;left:16px}
+.mkt-txt{padding-left:56px;min-height:44px}.mkt-txt h3{margin:2px 0 2px;font-size:15px}
+.mkt-cat{font-size:12px;color:var(--muted)}
+.mkt-card p{margin:0;color:var(--muted);font-size:14px;line-height:1.45;flex:1}
+.mkt-foot{position:relative;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.mkt-logo{display:flex;align-items:center;justify-content:center;width:44px;height:44px;flex:none;border-radius:10px;overflow:hidden}
+.mkt-logo svg{width:44px;height:44px;display:block}
+.mkt-logo.mono{font-weight:800;font-size:17px;letter-spacing:-.02em}
+.mkt-det{display:flex;align-items:center;gap:14px;margin-bottom:12px}
+.mkt-does{margin:0 0 14px;padding-left:20px;line-height:1.6}
 /* Payments */
 .ptabs{display:flex;gap:24px;border-bottom:1px solid var(--line);margin:0 0 18px}
 .ptabs button{background:none;border:0;border-bottom:3px solid transparent;padding:8px 2px 10px;font:inherit;font-size:16px;font-weight:600;color:var(--muted);cursor:pointer;margin-bottom:-1px}

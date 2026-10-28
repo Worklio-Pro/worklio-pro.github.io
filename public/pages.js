@@ -1191,6 +1191,77 @@ PAGES['/settings/card-payments'] = {
 PAGES['/settings/company'] = { title: 'Company Profile', render: (m) => companyPage(m, false) };
 PAGES['/settings'] = { title: 'App Settings', render: (m) => companyPage(m, true) };
 PAGES['/settings/connections'] = { title: 'Account Connections', render: connectionsPage };
+/* ===== /marketplace: App Marketplace (lib/marketplace.js) ===== */
+// apps that connect today open the page they're set up on; the rest take "I want this", which Alpha counts
+CONN_ICONS.claude = '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#D97757"/><path stroke="#fff" stroke-width="3.4" stroke-linecap="round" d="M24 12v24M12 24h24M15.5 15.5l17 17M32.5 15.5l-17 17"/></svg>';
+let MKT = null; const mktView = { cat: '', q: '' };
+const mktLogo = (a) => (a.icon && CONN_ICONS[a.icon] ? `<span class="mkt-logo">${CONN_ICONS[a.icon]}</span>` : `<span class="mkt-logo mono" style="background:${esc(a.bg)};color:${esc(a.fg)}${a.mono.length > 2 ? ';font-size:13px' : ''}">${esc(a.mono)}</span>`);
+function mktState(a) {
+  if (!a.live) return a.requested ? { chip: connChip('wait', 'Requested'), btn: `<button type="button" class="btn alt sm" data-act="mktWant" data-id="${a.id}" data-on="" aria-pressed="true">✓ Requested</button>` }
+    : { chip: connChip('off', 'Coming soon'), btn: `<button type="button" class="btn sm" data-act="mktWant" data-id="${a.id}" data-on="1">I want this</button>` };
+  if (!a.planOk) return { chip: connChip('off', 'Not in your plan'), btn: role() === 'owner' ? '<a class="btn alt sm" href="/settings/billing" data-link>See plans</a>' : '' };
+  if (a.connected) return { chip: connChip('on', a.id === 'claude' ? 'On' : 'Connected'), btn: `<a class="btn alt sm" href="${esc(a.go)}" data-link>Manage</a>` };
+  if (!a.available) return { chip: connChip('off', 'Not available yet'), btn: '' };
+  return { chip: connChip('off', 'Not connected'), btn: `<a class="btn sm" href="${esc(a.go)}" data-link>Connect</a>` };
+}
+const mktCard = (a) => { const s = mktState(a);
+  return `<article class="mkt-card"><button type="button" class="mkt-open" data-act="mktApp" data-id="${a.id}" aria-label="About ${esc(a.name)}"></button>${mktLogo(a)}
+<div class="mkt-txt"><h3>${esc(a.name)}</h3><span class="mkt-cat">${esc(a.category)}</span></div><p>${esc(a.tagline)}</p><div class="mkt-foot">${s.chip}${s.btn}</div></article>`; };
+function mktList() {
+  const q = mktView.q.trim().toLowerCase(); const c = mktView.cat;
+  const hit = (a) => !q || `${a.name} ${a.category} ${a.tagline} ${a.about}`.toLowerCase().includes(q);
+  const pick = MKT.apps.filter((a) => hit(a) && (!c || (c === 'connected' ? a.live && a.connected && a.planOk : a.category === c)));
+  if (!pick.length) return `<div class="empty">No apps match${q ? ` “${esc(mktView.q.trim())}”` : ''}. <button type="button" class="link-btn" data-act="mktSuggest">Suggest an app</button></div>`;
+  const grid = (list) => `<div class="mkt-grid">${list.map(mktCard).join('')}</div>`;
+  if (q || c) return grid(pick);
+  // everything: the featured apps, then each category
+  return `<h2 class="mkt-h">Featured</h2>${grid(pick.filter((a) => a.featured))}` + MKT.categories.map((k) => { const L = pick.filter((a) => a.category === k); return L.length ? `<h2 class="mkt-h">${esc(k)}</h2>${grid(L)}` : ''; }).join('');
+}
+const mktShow = () => { const box = $('#mktList'); if (box) box.innerHTML = mktList(); $$('.mkt-tabs button').forEach((b) => { const on = b.dataset.cat === mktView.cat; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); }); };
+PAGES['/marketplace'] = {
+  title: 'App Marketplace',
+  async render(main) {
+    MKT = await api('GET', '/api/marketplace');
+    const tabs = [['', 'All apps'], ...(MKT.apps.some((a) => a.live && a.connected && a.planOk) ? [['connected', 'Connected']] : []), ...MKT.categories.map((k) => [k, k])];
+    main.innerHTML = `<div class="head"><div><h1>App Marketplace</h1><p class="sub">Connect the apps your business already uses. Apps marked <strong>Coming soon</strong> are on the way: tap <strong>I want this</strong> and the most-wanted ones are built first.</p></div>
+<button type="button" class="btn alt" data-act="mktSuggest">Suggest an app</button></div>
+<div class="cfilters"><div class="search-x"><input id="mq" type="search" placeholder="Search apps" value="${esc(mktView.q)}" aria-label="Search apps"><button type="button" class="icon-btn" data-act="mktClear" aria-label="Clear search" ${mktView.q ? '' : 'hidden'}>✕</button></div></div>
+<div class="tabs mkt-tabs" role="group" aria-label="Categories">${tabs.map(([k, l]) => `<button type="button" data-act="mktCat" data-cat="${esc(k)}">${esc(l)}</button>`).join('')}</div>
+<div id="mktList"></div>`;
+    if (!tabs.some(([k]) => k === mktView.cat)) mktView.cat = '';
+    mktShow();
+    $('#mq').addEventListener('input', (e) => { mktView.q = e.target.value; $('[data-act="mktClear"]').hidden = !mktView.q; mktShow(); });
+  },
+};
+A.mktCat = (d) => { mktView.cat = d.cat; mktShow(); };
+A.mktClear = () => { mktView.q = ''; const q = $('#mq'); q.value = ''; $('[data-act="mktClear"]').hidden = true; mktShow(); q.focus(); };
+// an app's details: what it is, what connecting it does, and its button
+A.mktApp = (d) => {
+  const a = MKT.apps.find((x) => x.id === d.id); if (!a) return; const s = mktState(a);
+  modal(a.name, `<div class="mkt-det">${mktLogo(a)}<div><span class="mkt-cat">${esc(a.category)}</span><div style="margin-top:6px">${s.chip}</div></div></div>
+<p>${esc(a.about)}</p><p style="margin-bottom:6px"><strong>${a.live ? 'What you can do' : 'When it’s ready, you’ll be able to'}</strong></p><ul class="mkt-does">${a.does.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
+${a.live ? '' : '<p class="muted" style="font-size:13px">This connection isn’t built yet. Tap <strong>I want this</strong> to vote for it.</p>'}
+<div class="foot"><a class="btn alt" href="${esc(a.site)}" target="_blank" rel="noopener">Visit website ↗</a>${s.btn.replace(' sm"', '"')}</div>`);
+};
+A.mktWant = async (d, el) => {
+  const on = !!d.on; el.disabled = true;
+  try {
+    MKT = await api('POST', `/api/marketplace/${encodeURIComponent(d.id)}/request`, { on }); const a = MKT.apps.find((x) => x.id === d.id);
+    toast(on ? `Thanks! We’ve noted that you want ${a.name}. The most-wanted apps are built first.` : `Request for ${a.name} removed`);
+    if ($('#overlay')) A.mktApp(d); mktShow();
+  } catch (e) { el.disabled = false; toast(e.message, true); }
+};
+A.mktSuggest = () => {
+  const mb = modal('Suggest an app', `<form id="mktSugForm"><p class="muted" style="margin-top:0">Don’t see an app you use? Tell us, and what you’d like it to do here.</p>
+<label>App name<input name="app" required maxlength="80" placeholder="e.g. Jobsite supplier, CRM or accounting app"></label>
+<label>What would you use it for? <span class="muted">(optional)</span><textarea name="note" rows="4" maxlength="1000"></textarea></label>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Send suggestion</button></div></form>`);
+  const f = $('#mktSugForm', mb); $('input', f).focus();
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault(); const btn = $('button.btn:not(.alt)', f); btn.disabled = true;
+    try { await api('POST', '/api/marketplace/suggest', Object.fromEntries(new FormData(f))); closeModal(); toast('Thanks! Your suggestion was sent.'); } catch (err) { btn.disabled = false; toast(err.message, true); }
+  });
+};
 /* ===== /clients/import ===== */
 // CSV parser: quoted fields, embedded commas/newlines, "" escapes, BOM; detects comma, semicolon or tab
 function parseCsv(text) {

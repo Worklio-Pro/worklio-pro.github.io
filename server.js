@@ -27,6 +27,7 @@ const { createPdf } = require('./lib/pdf');
 const chat = require('./lib/chat');
 const forum = require('./lib/forum');
 const industries = require('./lib/industries');
+const marketplace = require('./lib/marketplace');
 const { db, uploadDir } = tenancy;
 const baseUrl = () => tenancy.tenantUrl(tenancy.current()); // this account's web address, for links in messages
 
@@ -2260,6 +2261,32 @@ app.put('/api/connections/:kind', async (req, res) => {
     }
     setConnection(kind, c); res.json(connectionsView());
   } catch (e) { connFail(res, e); }
+});
+
+// ---------- App Marketplace (lib/marketplace.js): apps that connect today, and "I want this" for the ones on the way ----------
+function liveAppState(a) {
+  const planOk = !a.feature || tenancy.has(a.feature);
+  if (SOCIAL_KINDS.includes(a.id)) return { planOk, available: social.ready(a.id), connected: !!connOf(a.id) };
+  if (a.id === 'stripe') { const s = secrets(); const on = !!stripeKey() && (!!s.stripeChargesEnabled || !!s.stripeSecretKey || (tenancy.isDefault() && !!process.env.STRIPE_SECRET_KEY)); return { planOk, available: on || !!stripeLib.platformKey(), connected: on }; }
+  if (a.id === 'claude') { const on = !!process.env.ANTHROPIC_API_KEY; return { planOk, available: on, connected: on }; }
+  return { planOk, available: false, connected: false };
+}
+const marketplaceView = () => {
+  const P = tenancy.platform(); const mine = marketplace.requestedBy(P, tenancy.current().id);
+  return { categories: marketplace.CATEGORIES, apps: marketplace.catalog().map((a) => ({ ...a, ...(a.live ? liveAppState(a) : { requested: mine.includes(a.id) }) })) };
+};
+const marketplaceWho = (req) => { const u = currentUser(req); const t = tenancy.current(); return { t: t.id, company: db.company.name || t.slug, account: tenancy.tenantUrl(t), name: u.name, email: u.email }; };
+const marketplaceAdmin = (req, res) => { if (isAdmin(currentUser(req))) return true; res.status(403).json({ error: 'Only the account owner or an admin can manage apps' }); return false; };
+app.get('/api/marketplace', (req, res) => { if (marketplaceAdmin(req, res)) res.json(marketplaceView()); });
+// "I want this" (on: true) or take it back (on: false)
+app.post('/api/marketplace/:id/request', (req, res) => {
+  if (!marketplaceAdmin(req, res)) return;
+  try { marketplace.request(tenancy.platform(), req.params.id, marketplaceWho(req), !!(req.body && req.body.on)); tenancy.savePlatform(); res.json(marketplaceView()); } catch (e) { res.status(e.status || 400).json({ error: e.message }); }
+});
+// an app that isn't listed
+app.post('/api/marketplace/suggest', (req, res) => {
+  if (!marketplaceAdmin(req, res)) return;
+  try { marketplace.suggest(tenancy.platform(), marketplaceWho(req), req.body || {}); tenancy.savePlatform(); res.json({ ok: true }); } catch (e) { res.status(e.status || 400).json({ error: e.message }); }
 });
 
 // Google reviews (the Reviews page): read straight from the Business Profile; replies show publicly on Google

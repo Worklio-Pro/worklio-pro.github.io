@@ -1011,11 +1011,11 @@ A.discDelete = async (d, el) => {
 /* ===== messages: contact requests, user feedback and the platform's email templates ===== */
 let msgTab = 'chat';
 function messagesView(main) {
-  const subs = [['chat', 'Live chat', D.chatWaiting || 0], ['inquiries', 'Contact requests', (D.inquiries || []).length], ['feedback', 'User feedback', (D.feedback || []).length], ['emails', 'Email templates'], ...(isSupport() ? [] : [['automations', 'Automations']])];
+  const subs = [['chat', 'Live chat', D.chatWaiting || 0], ['inquiries', 'Contact requests', (D.inquiries || []).length], ['feedback', 'User feedback', (D.feedback || []).length], ['apps', 'App requests'], ['emails', 'Email templates'], ...(isSupport() ? [] : [['automations', 'Automations']])];
   main.innerHTML = `<div class="head"><div><h1>Messages</h1><p class="sub" style="margin:4px 0 0">What people send you, and the emails ${esc(D.settings.productName)} sends.</p></div></div>
 <div class="hc-seg msg-seg" role="tablist">${subs.map(([k, l, n]) => `<button type="button" role="tab" aria-selected="${msgTab === k}" class="${msgTab === k ? 'on' : ''}" data-act="msgTab" data-k="${k}">${l}${n || k === 'chat' ? ` <span class="msg-n"${n ? '' : ' hidden'}>${n}</span>` : ''}</button>`).join('')}</div>
 ${msgTab === 'automations' ? '<div id="automations"></div>' : `<div class="card" style="max-width:${msgTab === 'chat' ? 'none' : '860px'}" id="${msgTab}"></div>`}`;
-  ({ chat: chatCard, inquiries: inquiriesCard, feedback: feedbackCard, emails: emailsCard, automations: automationsView })[msgTab]($('#' + msgTab, main));
+  ({ chat: chatCard, inquiries: inquiriesCard, feedback: feedbackCard, apps: appRequestsCard, emails: emailsCard, automations: automationsView })[msgTab]($('#' + msgTab, main));
 }
 A.msgTab = (d) => { msgTab = d.k; messagesView($('#main')); };
 /* ===== Messages → Live chat (lib/chat.js): chats from the chat button; the open chat refreshes every few seconds ===== */
@@ -1161,6 +1161,18 @@ ${L.length ? `<div class="inq-list">${L.slice(0, 100).map((m) => `<div class="in
 <div class="sm">${esc(m.role)} · ${m.contactOk ? `<a href="mailto:${esc(m.email)}">${esc(m.email)}</a>` : 'Prefers not to be contacted'} · ${esc(new Date(m.at).toLocaleString())}${D.settings.contactEmail && m.emailed === false ? ' · <span style="color:var(--danger)">email not delivered</span>' : ''}</div></div>
 <button type="button" class="btn alt sm" data-act="rmFeedback" data-id="${esc(m.id)}">Delete</button></div>${m.message ? `<p class="inq-m">${esc(m.message)}</p>` : ''}${m.page ? `<div class="sm">Sent from <a href="${esc(m.page)}" target="_blank" rel="noopener">${esc(m.page)}</a></div>` : ''}</div>`).join('')}</div>` : '<p class="muted">No feedback yet.</p>'}`;
 }
+// businesses' "I want this" on App Marketplace apps (lib/marketplace.js), most wanted first, and apps they suggested
+function appRequestsCard(box) {
+  const R = D.appRequests || { apps: [], suggestions: [] }; const acct = (m) => (m.account ? `<a href="${esc(m.account)}" target="_blank" rel="noopener">${esc(m.company)}</a>` : esc(m.company));
+  box.innerHTML = `<h2>App requests</h2><p class="muted" style="font-size:13px;margin-top:0">Apps businesses asked for with “I want this” in Settings → App Marketplace, most wanted first.</p>
+${R.apps.length ? `<div class="inq-list">${R.apps.map((a) => `<div class="inq"><div class="inq-h"><div><strong>${esc(a.name)}</strong> <span class="pf-chip">${esc(a.category)}</span>
+<div class="sm">${a.accounts.length} business${a.accounts.length === 1 ? '' : 'es'}</div></div></div><p class="inq-m">${a.accounts.map((m) => `${acct(m)} <span class="muted">(${esc(m.name)}, ${esc(new Date(m.at).toLocaleDateString())})</span>`).join('<br>')}</p></div>`).join('')}</div>` : '<p class="muted">No requests yet.</p>'}
+<h2 style="margin-top:24px">Suggested apps</h2><p class="muted" style="font-size:13px;margin-top:0">Apps that aren’t in the marketplace, sent with “Suggest an app”.</p>
+${R.suggestions.length ? `<div class="inq-list">${R.suggestions.slice(0, 100).map((m) => `<div class="inq"><div class="inq-h"><div><strong>${esc(m.app)}</strong> · ${acct(m)}
+<div class="sm">${esc(m.name)} · <a href="mailto:${esc(m.email)}">${esc(m.email)}</a> · ${esc(new Date(m.at).toLocaleString())}</div></div>
+<button type="button" class="btn alt sm" data-act="rmAppSuggestion" data-id="${esc(m.id)}">Delete</button></div>${m.note ? `<p class="inq-m">${esc(m.note)}</p>` : ''}</div>`).join('')}</div>` : '<p class="muted">No suggestions yet.</p>'}`;
+}
+A.rmAppSuggestion = async (d) => { if (!confirm('Delete this suggestion?')) return; D.appRequests = await api('DELETE', `/api/platform/app-suggestions/${encodeURIComponent(d.id)}`); messagesView($('#main')); toast('Suggestion deleted'); };
 A.rmFeedback = async (d) => { if (!confirm('Delete this feedback?')) return; D.feedback = await api('DELETE', `/api/platform/feedback/${encodeURIComponent(d.id)}`); messagesView($('#main')); toast('Feedback deleted'); };
 // the platform's own emails (lib/emails.js): sign-up, invites, password resets, notices to businesses and to you
 let EM = null;

@@ -115,7 +115,7 @@ const NAV = [
   ['Records', [['/project-gallery', 'Project Gallery'], ['/notifications', 'Notifications Log']]],
 ];
 // the Settings pages live in the top bar's gear menu, not the sidebar
-const SETTINGS_NAV = [['/settings/company', 'Company Profile'], ['/team', 'Manage Team'], ['/settings/roles', 'Roles & Permissions'], ['/settings/emails', 'Email Templates'], ['/settings', 'App Settings'], ['/settings/connections', 'Account Connections'], ['/settings/billing', 'Account and Billing'], ['/rewards', 'Refer & Earn'], ['/settings/support-access', 'Support Access']];
+const SETTINGS_NAV = [['/settings/company', 'Company Profile'], ['/team', 'Manage Team'], ['/settings/roles', 'Roles & Permissions'], ['/settings/emails', 'Email Templates'], ['/settings', 'App Settings'], ['/settings/connections', 'Account Connections'], ['/marketplace', 'App Marketplace'], ['/settings/billing', 'Account and Billing'], ['/rewards', 'Refer & Earn'], ['/settings/support-access', 'Support Access']];
 const navPaths = [...NAV.flatMap(([, items]) => items.map(([p]) => p)), ...SETTINGS_NAV.map(([p]) => p)];
 const curPath = () => location.pathname.replace(/\/+$/, '') || '/';
 function navigate(url) { history.pushState({}, '', url); window.scrollTo(0, 0); return render(); }
@@ -226,7 +226,7 @@ const FEATURE_WORDS = {
   '/quotes': 'estimates proposals', '/jobs': 'work orders visits', '/invoices': 'billing', '/payments': 'card online stripe', '/services': 'catalog products price list items',
   '/expenses': 'costs receipts spending', '/reports': 'revenue profit charts', '/tax-summary': 'sales tax', '/project-gallery': 'photos pictures', '/reviews': 'google reviews ratings stars reply', '/social-posts': 'facebook instagram social media post marketing', '/notifications': 'emails texts sms sent messages log',
   '/requests': 'time off day off vacation sick leave request approve', '/settings/roles': 'roles permissions access manager technician what team can see do', '/settings/company': 'business details logo address phone social media facebook instagram tiktok tax', '/team': 'staff employees users access roles technicians', '/settings/emails': 'templates text messages sms reminders',
-  '/settings': 'number prefixes branding brand color zelle defaults stripe card payments online payments regional time zone date format time format week', '/settings/connections': 'integrations google facebook instagram ai', '/settings/billing': 'subscription plan upgrade payment method', '/settings/support-access': 'grant revoke help troubleshoot permission',
+  '/settings': 'number prefixes branding brand color zelle defaults stripe card payments online payments regional time zone date format time format week', '/settings/connections': 'integrations google facebook instagram ai', '/marketplace': 'apps integrations connect quickbooks xero accounting home depot lowes supplies materials zapier chatgpt claude ai automation calendar slack gusto payroll', '/settings/billing': 'subscription plan upgrade payment method', '/settings/support-access': 'grant revoke help troubleshoot permission',
 };
 const featureList = () => {
   const open = (p) => PAGES[p] && memberCan(p) && !planLocked(p) && !planLocked(p.split('/').slice(0, 2).join('/')) && (p !== '/forum' || !!(company.account && company.account.forum));
