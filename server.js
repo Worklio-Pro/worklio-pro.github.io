@@ -28,6 +28,7 @@ const chat = require('./lib/chat');
 const forum = require('./lib/forum');
 const industries = require('./lib/industries');
 const marketplace = require('./lib/marketplace');
+const homeDepot = require('./lib/homedepot');
 const { db, uploadDir } = tenancy;
 const baseUrl = () => tenancy.tenantUrl(tenancy.current()); // this account's web address, for links in messages
 
@@ -1049,7 +1050,7 @@ app.post('/api/:col', (req, res, next) => {
     if (Array.isArray(b.items)) { if (b.taxRate === undefined) doc.taxRate = db.company.taxRate; computeTotals(doc); }
   }
   if (col === 'expenses') doc.amount = Number(b.amount) || 0;
-  if (col === 'services') doc.price = Number(b.price) || 0;
+  if (col === 'services') { doc.price = Number(b.price) || 0; homeDepot.clean(doc); }
   db[col].push(doc); save(); if (col === 'clients') optInText(doc).catch(() => {});
   res.status(201).json(col === 'invoices' ? withStatus(doc) : col === 'jobs' && isMemberReq(req) ? jobForMember(doc) : doc);
 });
@@ -1092,7 +1093,7 @@ app.put('/api/:col/:id', (req, res, next) => {
   }
   if (col === 'staff' && isOwnerStaff(doc) && doc.status === 'deactivated') return res.status(400).json({ error: 'The account owner can’t be deactivated' });
   if (col === 'expenses') doc.amount = Number(doc.amount) || 0;
-  if (col === 'services') doc.price = Number(doc.price) || 0;
+  if (col === 'services') { doc.price = Number(doc.price) || 0; homeDepot.clean(doc); }
   if (col === 'quotes' && was.signature && !doc.signature) removeSignatureFile(was);
   db[col][i] = doc; save(); if (col === 'clients' && doc.smsConsent && !was.smsConsent) optInText(doc).catch(() => {});
   res.json(col === 'invoices' ? withStatus(doc) : col === 'jobs' && isMemberReq(req) ? jobForMember(doc) : doc);
@@ -2268,6 +2269,7 @@ function liveAppState(a) {
   const planOk = !a.feature || tenancy.has(a.feature);
   if (SOCIAL_KINDS.includes(a.id)) return { planOk, available: social.ready(a.id), connected: !!connOf(a.id) };
   if (a.id === 'stripe') { const s = secrets(); const on = !!stripeKey() && (!!s.stripeChargesEnabled || !!s.stripeSecretKey || (tenancy.isDefault() && !!process.env.STRIPE_SECRET_KEY)); return { planOk, available: on || !!stripeLib.platformKey(), connected: on }; }
+  if (a.id === 'homedepot') return { planOk, available: homeDepot.ready(), connected: !!hdSettings().on };
   if (a.id === 'claude') { const on = !!process.env.ANTHROPIC_API_KEY; return { planOk, available: on, connected: on }; }
   return { planOk, available: false, connected: false };
 }
@@ -2278,6 +2280,22 @@ const marketplaceView = () => {
 const marketplaceWho = (req) => { const u = currentUser(req); const t = tenancy.current(); return { t: t.id, company: db.company.name || t.slug, account: tenancy.tenantUrl(t), name: u.name, email: u.email }; };
 const marketplaceAdmin = (req, res) => { if (isAdmin(currentUser(req))) return true; res.status(403).json({ error: 'Only the account owner or an admin can manage apps' }); return false; };
 app.get('/api/marketplace', (req, res) => { if (marketplaceAdmin(req, res)) res.json(marketplaceView()); });
+// Home Depot (lib/homedepot.js): turned on in the marketplace, with the ZIP code for local prices and the markup added to the price picked
+const hdSettings = () => db.homeDepot || {};
+const hdView = () => { const h = hdSettings(); return { available: homeDepot.ready(), on: !!h.on && tenancy.has('services'), zip: h.zip || '', markup: Number(h.markup) || 0 }; };
+app.get('/api/home-depot', (req, res) => res.json(hdView()));
+app.put('/api/home-depot', (req, res) => {
+  if (!marketplaceAdmin(req, res)) return; const b = req.body || {};
+  if (!tenancy.has('services')) return res.status(403).json({ error: 'Products & services aren’t included in your plan' });
+  if (b.on && !homeDepot.ready()) return res.status(503).json({ error: 'Home Depot search isn’t available yet' });
+  const zip = String(b.zip || '').trim(); if (zip && !/^\d{5}$/.test(zip)) return res.status(400).json({ error: 'Enter a 5-digit ZIP code, or leave it empty' });
+  const markup = Number(b.markup) || 0; if (markup < 0 || markup > 500) return res.status(400).json({ error: 'Markup must be between 0% and 500%' });
+  db.homeDepot = { on: !!b.on, zip, markup: Math.round(markup * 10) / 10 }; save(); res.json(hdView());
+});
+app.get('/api/home-depot/search', async (req, res) => {
+  if (!hdView().on) return res.status(400).json({ error: 'Turn on Home Depot in Settings → App Marketplace first' });
+  try { res.json({ products: await homeDepot.search(req.query.q, { zip: hdSettings().zip, account: tenancy.current().id }) }); } catch (e) { res.status(e.status || 502).json({ error: e.message }); }
+});
 // "I want this" (on: true) or take it back (on: false)
 app.post('/api/marketplace/:id/request', (req, res) => {
   if (!marketplaceAdmin(req, res)) return;

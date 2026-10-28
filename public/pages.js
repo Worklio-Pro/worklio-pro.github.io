@@ -460,6 +460,7 @@ function serviceForm(s) {
   s = s || {};
   const mb = modal(s.id ? 'Edit item' : 'New item', `<form><div class="row"><label>Name<input name="name" required value="${esc(s.name)}"></label>
 <label>Type<select name="type">${[['service', 'Service'], ['product', 'Product']].map(([k, l]) => `<option value="${k}" ${(s.type || 'service') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label></div>
+<div id="hdSlot">${['hdId', 'hdModel', 'hdCost', 'hdLink', 'hdAt'].map((k) => `<input type="hidden" name="${k}" value="${esc(s[k] ?? '')}">`).join('')}<p class="hd-note" id="hdNote"${s.hdCost ? '' : ' hidden'}>${s.hdCost ? hdNote(s) : ''}</p></div>
 <label>Description<textarea name="description" placeholder="Shown on quote and invoice lines">${esc(s.description)}</textarea></label>
 ${planHas('ai') ? '<div class="ai-row"><button type="button" class="btn alt sm" id="aiDesc">✨ Write with AI</button></div>' : ''}
 <div class="row"><label>Standard price ($)<input name="price" type="number" step="0.01" min="0" required value="${s.price ?? ''}"></label><label>Unit<input name="unit" value="${esc(s.unit || '')}" placeholder="job, hour, visit, each"></label></div>
@@ -473,7 +474,44 @@ ${planHas('ai') ? '<div class="ai-row"><button type="button" class="btn alt sm" 
     catch (err) { toast(err.message, true); }
     finally { btn.disabled = false; btn.textContent = '✨ Write with AI'; }
   });
+  hdPicker(mb);
   $('form', mb).addEventListener('submit', async (e) => { e.preventDefault(); const b = Object.fromEntries(new FormData(e.target)); s.id ? await api('PUT', '/api/services/' + s.id, b) : await api('POST', '/api/services', b); closeModal(); toast(`${b.type === 'product' ? 'Product' : 'Service'} saved`); refresh(); });
+}
+/* Products & services → Search Home Depot (lib/homedepot.js), when it's on in App Marketplace */
+const hdNote = (h) => `From Home Depot: <strong>${money(h.hdCost)}</strong>${h.hdModel ? ` · Model ${esc(h.hdModel)}` : ''} · checked ${esc(new Date(h.hdAt).toLocaleDateString())} · <a href="${esc(h.hdLink)}" target="_blank" rel="noopener">View ↗</a>`;
+let HD = null; // this account's Home Depot settings, loaded once
+async function hdPicker(mb) {
+  if (!HD) HD = await api('GET', '/api/home-depot').catch(() => ({}));
+  const slot = $('#hdSlot', mb); if (!HD.on || !slot) return;
+  slot.insertAdjacentHTML('afterbegin', `<div class="ai-row"><button type="button" class="btn alt sm" id="hdOpen" aria-expanded="false">Search Home Depot</button></div>
+<div class="hd-pick" id="hdPick" hidden><div class="hd-q"><input id="hdQ" type="search" placeholder="Search Home Depot products" aria-label="Search Home Depot products"><button type="button" class="btn sm" id="hdGo">Search</button></div>
+<div id="hdRes" class="hd-res" aria-live="polite"></div></div>`);
+  const f = $('form', mb); const q = $('#hdQ', mb); const box = $('#hdRes', mb); let list = [];
+  $('#hdOpen', mb).addEventListener('click', (e) => { const p = $('#hdPick', mb); p.hidden = !p.hidden; e.currentTarget.setAttribute('aria-expanded', String(!p.hidden)); if (!p.hidden) { if (!q.value) q.value = $('[name=name]', f).value; q.focus(); if (q.value.trim().length > 1) go(); } });
+  const go = async () => {
+    const term = q.value.trim(); if (term.length < 2) return toast('Type at least 2 letters to search', true);
+    box.innerHTML = '<p class="muted">Searching Home Depot…</p>';
+    try {
+      list = (await api('GET', `/api/home-depot/search?q=${encodeURIComponent(term)}`)).products;
+      box.innerHTML = list.length ? list.map((x, i) => `<button type="button" class="hd-item" data-i="${i}">${x.thumb ? `<img src="${esc(x.thumb)}" alt="" loading="lazy">` : '<span class="hd-noimg"></span>'}
+<span class="hd-t"><strong>${esc(x.title)}</strong><small>${esc([x.brand, x.model && 'Model ' + x.model].filter(Boolean).join(' · '))}</small></span>
+<span class="hd-p">${money(x.price)}${x.was ? `<s>${money(x.was)}</s>` : ''}</span></button>`).join('') + `<p class="muted hd-src">Prices from homedepot.com${HD.zip ? ` for ${esc(HD.zip)}` : ''}${HD.markup ? `. Your ${HD.markup}% markup is added when you pick one.` : '.'}</p>`
+        : `<p class="muted">No Home Depot products match “${esc(term)}”.</p>`;
+    } catch (err) { box.innerHTML = `<p class="muted">${esc(err.message)}</p>`; }
+  };
+  $('#hdGo', mb).addEventListener('click', go);
+  q.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); go(); } }); // not the item form's Save
+  box.addEventListener('click', (e) => {
+    const b = e.target.closest('.hd-item'); if (!b) return; const x = list[+b.dataset.i];
+    const name = $('[name=name]', f); if (!name.value.trim() || name.value.trim() === x.title || confirm(`Change the name to “${x.title}”?`)) name.value = x.title.slice(0, 200);
+    $('[name=type]', f).value = 'product'; const unit = $('[name=unit]', f); if (!unit.value.trim()) unit.value = 'each';
+    $('[name=price]', f).value = (Math.round(x.price * (1 + (HD.markup || 0) / 100) * 100) / 100).toFixed(2);
+    const h = { hdId: x.id, hdModel: x.model, hdCost: x.price, hdLink: x.link, hdAt: new Date().toISOString() };
+    for (const [k, v] of Object.entries(h)) $(`[name=${k}]`, f).value = v;
+    const note = $('#hdNote', mb); note.innerHTML = hdNote(h); note.hidden = false;
+    $('#hdPick', mb).hidden = true; $('#hdOpen', mb).setAttribute('aria-expanded', 'false');
+    toast(HD.markup ? `Price filled in: ${money(x.price)} plus your ${HD.markup}% markup` : `Price filled in from Home Depot`);
+  });
 }
 A.newService = () => serviceForm(); A.editService = (d) => serviceForm(byId(D.services, d.id));
 A.delService = async (d) => { if (!confirm('Delete this item? Quotes and invoices that already use it keep their lines.')) return; await api('DELETE', '/api/services/' + d.id); closeModal(); refresh(); };
@@ -1199,10 +1237,12 @@ const mktLogo = (a) => (a.icon && CONN_ICONS[a.icon] ? `<span class="mkt-logo">$
 function mktState(a) {
   if (!a.live) return a.requested ? { chip: connChip('wait', 'Requested'), btn: `<button type="button" class="btn alt sm" data-act="mktWant" data-id="${a.id}" data-on="" aria-pressed="true">✓ Requested</button>` }
     : { chip: connChip('off', 'Coming soon'), btn: `<button type="button" class="btn sm" data-act="mktWant" data-id="${a.id}" data-on="1">I want this</button>` };
+  // Home Depot is set up in a popup here; the others on their own page
+  const go = (label, cls) => (a.id === 'homedepot' ? `<button type="button" class="btn ${cls} sm" data-act="hdManage">${label}</button>` : `<a class="btn ${cls} sm" href="${esc(a.go)}" data-link>${label}</a>`);
   if (!a.planOk) return { chip: connChip('off', 'Not in your plan'), btn: role() === 'owner' ? '<a class="btn alt sm" href="/settings/billing" data-link>See plans</a>' : '' };
-  if (a.connected) return { chip: connChip('on', a.id === 'claude' ? 'On' : 'Connected'), btn: `<a class="btn alt sm" href="${esc(a.go)}" data-link>Manage</a>` };
+  if (a.connected) return { chip: connChip('on', a.id === 'claude' ? 'On' : 'Connected'), btn: go('Manage', 'alt') };
   if (!a.available) return { chip: connChip('off', 'Not available yet'), btn: '' };
-  return { chip: connChip('off', 'Not connected'), btn: `<a class="btn sm" href="${esc(a.go)}" data-link>Connect</a>` };
+  return { chip: connChip('off', 'Not connected'), btn: go('Connect', '') };
 }
 const mktCard = (a) => { const s = mktState(a);
   return `<article class="mkt-card"><button type="button" class="mkt-open" data-act="mktApp" data-id="${a.id}" aria-label="About ${esc(a.name)}"></button>${mktLogo(a)}
@@ -1250,6 +1290,22 @@ A.mktWant = async (d, el) => {
     toast(on ? `Thanks! We’ve noted that you want ${a.name}. The most-wanted apps are built first.` : `Request for ${a.name} removed`);
     if ($('#overlay')) A.mktApp(d); mktShow();
   } catch (e) { el.disabled = false; toast(e.message, true); }
+};
+// Home Depot: on or off, the ZIP code for local prices, and the markup added to a price picked in the product form
+A.hdManage = async () => {
+  const H = await api('GET', '/api/home-depot');
+  const mb = modal('The Home Depot', `<form id="hdForm"><p class="muted" style="margin-top:0">Search Home Depot from the product and service form, and fill in an item’s price from it.</p>
+<label class="sw-row"><span>Search Home Depot when adding products and services<small class="muted">Adds a Search Home Depot button to the form.</small></span><input type="checkbox" class="sw" name="on" ${H.on ? 'checked' : ''}><i></i></label>
+<div class="row"><label>ZIP code <span class="muted">(optional)</span><input name="zip" inputmode="numeric" maxlength="5" pattern="\\d{5}" value="${esc(H.zip)}" placeholder="For local prices"></label>
+<label>Markup (%)<input name="markup" type="number" min="0" max="500" step="0.1" value="${H.markup}"></label></div>
+<p class="muted" style="font-size:13px">The markup is added to the Home Depot price when you pick a product. With 20%, a $10.00 item is priced at $12.00. Prices are the ones shown on homedepot.com, not your Pro Xtra pricing, and can change.</p>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save</button></div></form>`);
+  const f = $('#hdForm', mb);
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault(); const b = Object.fromEntries(new FormData(f)); const btn = $('button.btn:not(.alt)', f); btn.disabled = true;
+    try { const r = await api('PUT', '/api/home-depot', { on: !!b.on, zip: b.zip, markup: b.markup }); closeModal(); toast(r.on ? 'Home Depot is on. Search it from the product and service form.' : 'Home Depot is off');
+      if ($('#mktList')) { MKT = await api('GET', '/api/marketplace'); mktShow(); } } catch (err) { btn.disabled = false; toast(err.message, true); }
+  });
 };
 A.mktSuggest = () => {
   const mb = modal('Suggest an app', `<form id="mktSugForm"><p class="muted" style="margin-top:0">Don’t see an app you use? Tell us, and what you’d like it to do here.</p>
