@@ -142,6 +142,8 @@
     .set-nav button{display:flex;align-items:center;gap:6px;width:100%;text-align:left;border:0;background:none;font:inherit;font-size:14px;padding:7px 10px;border-radius:8px;color:var(--text);cursor:pointer}
     .set-nav button:hover{background:var(--surface-2)}.set-nav button.on{background:var(--card);box-shadow:var(--shadow-sm);font-weight:600}.set-nav .ig-dot{margin-right:2px;flex:none}.set-nav .msg-n{margin-left:auto}
     .set-pick{display:none}
+    /* Pricing → Plans & features: a narrower list beside the wide plans table, so four plans fit on a laptop screen */
+    .set-layout:has(.matrix){grid-template-columns:160px minmax(0,1fr);gap:16px}.set-layout .matrix .fcol{min-width:180px}
     @media (max-width:760px){.set-layout{display:block}.set-nav{display:none}.set-pick{display:block;margin:0 0 16px}}
     .card-save{display:flex;justify-content:flex-end;margin-top:6px}
     .as-status{font-size:13px;color:var(--muted);min-height:20px}.as-status.ok{color:#15803d}.as-status.err{color:var(--danger)}

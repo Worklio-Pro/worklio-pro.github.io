@@ -389,6 +389,7 @@ ${P.map((p, i) => (offered(p, f) ? `<td><input type="checkbox" data-i="${i}" dat
 <tr class="count"><td class="bcol"></td><td class="fcol">Features ticked</td>${P.map((p, i) => `<td data-count="${i}">${tickedCount(p)} of ${D.features.length}</td>`).join('')}</tr></tbody></table></div>
 ${savebar}</div>`;
   }
+  sideLayout(main);
   // hidden plans stay off the pricing page and checkout; you can still put an account on one
   $$('input[data-hide]', main).forEach((c) => c.addEventListener('change', () => { const p = P[c.dataset.hide]; if (c.checked) p.hidden = true; else delete p.hidden; markDirty(main); }));
   $$('input[data-k]', main).forEach((i) => i.addEventListener('input', () => {
@@ -806,6 +807,7 @@ function promoView(main) {
   const due = RF ? RF.rewards.filter((w) => w.status === 'to send').length : 0;
   main.innerHTML = `<div class="head"><div><h1>Pricing</h1><p class="sub" style="margin:4px 0 0">Discount codes for sign-ups, a referral program for the businesses on ${esc(D.settings.productName)}, and the Founding Supporters page.</p></div></div>
 ${pricingSeg(due)}<div id="promoBody"></div>`;
+  sideLayout(main);
   const box = $('#promoBody', main);
   if (promoTab === 'codes') return discountsView(box);
   if (promoTab === 'supporters') { if (SP) return supportersView(box); box.innerHTML = '<p class="muted">Loading…</p>'; api('GET', '/api/platform/supporters').then((r) => { SP = r; if (tab === 'discounts' && promoTab === 'supporters') promoView($('#main')); }).catch((x) => toast(x.message, true)); return; }
@@ -813,10 +815,8 @@ ${pricingSeg(due)}<div id="promoBody"></div>`;
   (promoTab === 'program' ? referralProgramView : referralActivityView)(box);
 }
 // Pricing's tabs: Plans & features is its own page (#plans); the rest are Promotions (#discounts)
-const pricingSeg = (due = 0) => `<div class="hc-seg msg-seg" role="tablist">${[['plans', 'Plans & features'], ['codes', 'Discount codes'], ['program', 'Referral program'], ['activity', 'Referral activity'], ['supporters', 'Founding Supporters']].map(([k, l]) => {
-  const on = tab === 'plans' ? k === 'plans' : promoTab === k;
-  return `<button type="button" role="tab" aria-selected="${on}" class="${on ? 'on' : ''}" data-act="pricingTab" data-k="${k}">${l}${k === 'activity' && due ? ` <span class="msg-n">${due}</span>` : ''}</button>`;
-}).join('')}</div>`;
+const pricingSeg = (due = 0) => sideNav('Pricing', 'pricingTab', [['plans', 'Plans & features'], ['codes', 'Discount codes'], ['program', 'Referral program'], ['activity', 'Referral activity'], ['supporters', 'Founding Supporters']]
+  .map(([k, l]) => [k, l, k === 'activity' && due ? due : undefined, tab === 'plans' ? k === 'plans' : promoTab === k, 'Rewards to send']));
 A.pricingTab = (d) => {
   if (d.k === 'plans') { location.hash = 'plans'; return; }
   promoTab = d.k; if (tab === 'discounts') promoView($('#main')); else location.hash = 'discounts';
@@ -1013,7 +1013,7 @@ A.discDelete = async (d, el) => {
   if (!confirm(`Delete ${x.code}?${x.uses.length ? ' Businesses that already used it keep their discount in Stripe.' : ''} People can no longer use it.`)) return;
   D.discounts = await api('DELETE', `/api/platform/discounts/${id}`); closeModal(); toast(`${x.code} deleted`); render();
 };
-/* ===== Messages and Help Center: their sections down the left like Settings (a dropdown on phones) ===== */
+/* ===== Pricing, Messages and Help Center: their sections down the left like Settings (a dropdown on phones) ===== */
 // items: [key, label, count, on, count's title]; a count of 0 stays in the page, hidden, so it can update live
 const sideNav = (label, act, items) => `<label class="set-pick"><span class="sr">${label} section</span><select data-side-act="${act}">${items.map(([k, l, n, on]) => `<option value="${k}" ${on ? 'selected' : ''}>${esc(l)}${n ? ` (${n})` : ''}</option>`).join('')}</select></label>
 <nav class="set-nav side-src" aria-label="${label}">${items.map(([k, l, n, on, title]) => `<button type="button" class="${on ? 'on' : ''}" ${on ? 'aria-current="page"' : ''} data-act="${act}" data-k="${k}">${l}${n === undefined ? '' : ` <span class="msg-n"${title ? ` title="${title}"` : ''}${n ? '' : ' hidden'}>${n}</span>`}</button>`).join('')}</nav>`;
