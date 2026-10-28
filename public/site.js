@@ -80,6 +80,7 @@ ${both ? `<label>Billing<select name="interval"><option value="month" ${period =
         if (sel.value !== j.planId) { sel.value = j.planId; syncPlan(); }
         $('.go', f).textContent = 'Create account'; $('#payNote').textContent = `No card needed. ${j.months} months of ${j.plan} are prepaid, until ${new Date(j.endsAt + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}.`; return;
       }
+      if (r.ok && j.planId && sel.value !== j.planId) { sel.value = j.planId; syncPlan(); } // a code for one plan picks it (TRIAL26: Expert)
       const c2 = chosen(); $('.go', f).textContent = r.ok && j.trial ? 'Start free trial' : goLabel();
       if (r.ok && j.trial) { $('#payNote').textContent = `No card needed. Your free trial of ${c2.p.name} runs until ${new Date(j.endsAt + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}.`; return; }
       $('#payNote').textContent = r.ok && c2 && c2.v ? `Next you’ll pay ${amount(j.first / 100)} for ${c2.p.name} with your discount.` : $('#payNote').textContent;
