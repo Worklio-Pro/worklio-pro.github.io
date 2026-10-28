@@ -1013,13 +1013,25 @@ A.discDelete = async (d, el) => {
   if (!confirm(`Delete ${x.code}?${x.uses.length ? ' Businesses that already used it keep their discount in Stripe.' : ''} People can no longer use it.`)) return;
   D.discounts = await api('DELETE', `/api/platform/discounts/${id}`); closeModal(); toast(`${x.code} deleted`); render();
 };
+/* ===== Messages and Help Center: their sections down the left like Settings (a dropdown on phones) ===== */
+// items: [key, label, count, on, count's title]; a count of 0 stays in the page, hidden, so it can update live
+const sideNav = (label, act, items) => `<label class="set-pick"><span class="sr">${label} section</span><select data-side-act="${act}">${items.map(([k, l, n, on]) => `<option value="${k}" ${on ? 'selected' : ''}>${esc(l)}${n ? ` (${n})` : ''}</option>`).join('')}</select></label>
+<nav class="set-nav side-src" aria-label="${label}">${items.map(([k, l, n, on, title]) => `<button type="button" class="${on ? 'on' : ''}" ${on ? 'aria-current="page"' : ''} data-act="${act}" data-k="${k}">${l}${n === undefined ? '' : ` <span class="msg-n"${title ? ` title="${title}"` : ''}${n ? '' : ' hidden'}>${n}</span>`}</button>`).join('')}</nav>`;
+// after rendering: the list goes in the left column and everything after it in the column beside it
+function sideLayout(main) {
+  const nav = $('.side-src', main); if (!nav) return;
+  const wrap = document.createElement('div'); wrap.className = 'set-layout'; const col = document.createElement('div'); col.className = 'set-one';
+  nav.after(wrap); while (wrap.nextSibling) col.appendChild(wrap.nextSibling); wrap.append(nav, col);
+  const pick = $('.set-pick select', main); pick.addEventListener('change', (e) => A[pick.dataset.sideAct]({ k: e.target.value }));
+}
 /* ===== messages: contact requests, user feedback and the platform's email templates ===== */
 let msgTab = 'chat';
 function messagesView(main) {
   const subs = [['chat', 'Live chat', D.chatWaiting || 0], ['inquiries', 'Contact requests', (D.inquiries || []).length], ['feedback', 'User feedback', (D.feedback || []).length], ['apps', 'App requests'], ['emails', 'Email templates'], ...(isSupport() ? [] : [['automations', 'Automations']])];
   main.innerHTML = `<div class="head"><div><h1>Messages</h1><p class="sub" style="margin:4px 0 0">What people send you, and the emails ${esc(D.settings.productName)} sends.</p></div></div>
-<div class="hc-seg msg-seg" role="tablist">${subs.map(([k, l, n]) => `<button type="button" role="tab" aria-selected="${msgTab === k}" class="${msgTab === k ? 'on' : ''}" data-act="msgTab" data-k="${k}">${l}${n || k === 'chat' ? ` <span class="msg-n"${n ? '' : ' hidden'}>${n}</span>` : ''}</button>`).join('')}</div>
+${sideNav('Messages', 'msgTab', subs.map(([k, l, n]) => [k, l, k === 'chat' ? n : n || undefined, msgTab === k]))}
 ${msgTab === 'automations' ? '<div id="automations"></div>' : `<div class="card" style="max-width:${msgTab === 'chat' ? 'none' : '860px'}" id="${msgTab}"></div>`}`;
+  sideLayout(main);
   ({ chat: chatCard, inquiries: inquiriesCard, feedback: feedbackCard, apps: appRequestsCard, emails: emailsCard, automations: automationsView })[msgTab]($('#' + msgTab, main));
 }
 A.msgTab = (d) => { msgTab = d.k; messagesView($('#main')); };
@@ -1042,7 +1054,7 @@ async function lcLoad() {
   try { LC = await api('GET', '/api/platform/chats'); } catch (x) { return; }
   lcAlert(LC.chats); const L = $('#lcList'); if (!L) return;
   const waiting = LC.chats.filter((c) => c.status === 'waiting' || (c.status === 'live' && c.unread)).length;
-  if (D.chatWaiting !== waiting) { D.chatWaiting = waiting; const n = $('.msg-seg [data-k=chat] .msg-n'); if (n) { n.textContent = waiting; n.hidden = !waiting; } }
+  if (D.chatWaiting !== waiting) { D.chatWaiting = waiting; const n = $('.side-src [data-k=chat] .msg-n'); if (n) { n.textContent = waiting; n.hidden = !waiting; } }
   L.innerHTML = LC.chats.length ? LC.chats.map((c) => `<button type="button" class="lc-row ${c.id === lcSel ? 'on' : ''} ${c.unread ? 'new' : ''}" data-act="lcOpen" data-id="${c.id}">
 <span class="lc-r1"><strong>${esc(c.name || 'Visitor')}</strong><span class="sm">${lcAgo(c.updatedAt)}</span></span>
 <span class="lc-r2 sm">${c.business ? esc(c.business) : LC_WHERE[c.where]}${c.visitorOnline && c.status !== 'closed' ? ' · <span class="lc-on">online</span>' : ''}</span>
@@ -1524,10 +1536,8 @@ const hcSlugify = (s) => String(s || '').toLowerCase().replace(/\{product\}/g, '
 // one part at a time: Articles (with what readers were looking for), Topics, Home page
 let hcTab = 'articles';
 // Help Center's tabs: the articles' three parts (#help) and the Forum (#forum)
-const helpSeg = () => `<div class="hc-seg msg-seg set-tabs" role="tablist">${[['articles', 'Articles', HC ? HC.comments.length : 0, 'What people were looking for'], ['topics', 'Topics'], ['home', 'Home page'], ['forum', 'Forum', D.forumNew, 'New posts']].map(([k, l, n, title]) => {
-  const on = tab === 'forum' ? k === 'forum' : hcTab === k;
-  return `<button type="button" role="tab" aria-selected="${on}" class="${on ? 'on' : ''}" data-act="hcTab" data-k="${k}">${l}${n ? ` <span class="msg-n" title="${title}">${n}</span>` : ''}</button>`;
-}).join('')}</div>`;
+const helpSeg = () => sideNav('Help Center', 'hcTab', [['articles', 'Articles', HC ? HC.comments.length : 0, 'What people were looking for'], ['topics', 'Topics'], ['home', 'Home page'], ['forum', 'Forum', D.forumNew, 'New posts']]
+  .map(([k, l, n, title]) => [k, l, n || undefined, tab === 'forum' ? k === 'forum' : hcTab === k, title]));
 A.hcTab = (d) => {
   if (d.k === 'forum') { if (tab === 'forum') A.frBack(); else location.hash = 'forum'; return; }
   hcTab = d.k; if (tab === 'help') helpView($('#main')); else location.hash = 'help';
@@ -1567,6 +1577,7 @@ ${HC.comments.length ? `<div class="inq-list">${HC.comments.slice(0, 50).map((c)
 <div class="card" data-hc="home"><h2>Home page</h2><form id="hcHome"><h3 class="hc-h3">Popular articles</h3>${[0, 1, 2].map((i) => `<label class="sr" for="pop${i}">Popular article ${i + 1}</label><select id="pop${i}" name="popular" style="margin-bottom:8px"><option value="">None</option>${HC.articles.map((a) => `<option value="${esc(a.slug)}" ${HC.popular[i] === a.slug ? 'selected' : ''}>${esc(hcFill(a.title))}</option>`).join('')}</select>`).join('')}
 <h3 class="hc-h3">Suggested searches</h3><p class="muted" style="font-size:13px;margin:0 0 8px">Shown under the search box, such as “How do I invite my team?”</p>${[0, 1, 2, 3, 4].map((i) => `<input name="suggested" maxlength="100" value="${esc(HC.suggested[i] || '')}" aria-label="Suggested search ${i + 1}" style="margin-bottom:8px">`).join('')}
 <div class="foot"><button class="btn">Save home page</button></div></form></div></div>`;
+  sideLayout(main);
   $$('[data-hc]', main).forEach((c) => { c.hidden = c.dataset.hc !== hcTab; });
   $('#hcTopic', main).addEventListener('change', (e) => { hcTopic = e.target.value; hcPage = 1; helpView(main); });
   let t; $('#hcQ', main).addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(() => { hcQ = e.target.value; hcPage = 1; helpView(main); $('#hcQ').focus(); $('#hcQ').setSelectionRange(hcQ.length, hcQ.length); }, 200); });
@@ -1714,7 +1725,7 @@ const frWho = (a) => (!a ? '' : a.team ? `<span class="fr-team">${esc(D.settings
   : `<strong>${esc(a.name)}</strong> · ${a.account ? `<a href="${esc(a.account)}" target="_blank" rel="noopener">${esc(a.company)}</a>` : esc(a.company)} · <span class="muted">${esc(a.role)} · <a href="mailto:${esc(a.email)}">${esc(a.email)}</a></span>`);
 const frChip = (cls, l) => `<span class="fr-chip ${cls}">${esc(l)}</span>`;
 async function forumView(main) {
-  if (!FR) { main.innerHTML = `<div class="head"><h1>Help Center</h1></div>${helpSeg()}<p class="muted">Loading…</p>`; try { FR = await api('GET', '/api/platform/forum'); } catch (e) { main.innerHTML = `<div class="head"><h1>Help Center</h1></div>${helpSeg()}<p class="muted">${esc(e.message)}</p>`; return; } }
+  if (!FR) { main.innerHTML = `<div class="head"><h1>Help Center</h1></div>${helpSeg()}<p class="muted">Loading…</p>`; sideLayout(main); try { FR = await api('GET', '/api/platform/forum'); } catch (e) { main.innerHTML = `<div class="head"><h1>Help Center</h1></div>${helpSeg()}<p class="muted">${esc(e.message)}</p>`; sideLayout(main); return; } }
   D.forumNew = FR.posts.filter((p) => p.status === 'open').length;
   const p = frSel && FR.posts.find((x) => x.id === frSel); if (!p) frSel = '';
   return p ? frPost(main, p) : frList(main);
@@ -1740,6 +1751,7 @@ ${s.on ? '' : '<div class="mt-bar" role="status" style="margin:0 0 14px;border-r
 ${list.map((p) => `<tr data-act="frOpen" data-id="${esc(p.id)}"><td class="r"><strong>${p.likes}</strong></td><td><div class="fr-tl">${p.pinned ? '📌 ' : ''}${p.locked ? '🔒 ' : ''}<strong>${esc(p.title)}</strong></div>
 <div class="sm">${frChip('k-' + p.kind, K[p.kind])} ${esc(p.author.name)} · ${esc(p.author.company)} · ${frAgo(p.at)}</div></td><td>${frChip('s-' + p.status, S[p.status])}</td><td class="r">${p.comments.filter((c) => !c.deleted).length}</td><td class="sm">${frAgo(p.lastAt)}</td></tr>`).join('')}</tbody></table>`
   : `<p class="muted" style="margin:0">${FR.posts.length ? 'No posts match.' : 'No posts yet. Owners and admins open the forum from the Forum button in their app’s top bar.'}</p>`}</div>`;
+  sideLayout(main);
   $$('[data-frv]', main).forEach((el) => el.addEventListener('change', () => { frView[el.dataset.frv] = el.value; frList(main); }));
   let t; $('#frQ').addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(() => { frView.q = e.target.value; frList(main); const i = $('#frQ'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }, 250); });
 }
