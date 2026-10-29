@@ -1184,18 +1184,18 @@ body.ms-open{overflow:hidden}
 /* client profile (/clients/view): details, properties, contacts, work, billing and schedule; Overview, Tags, Last communication and Notes beside them */
 .cv{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:20px;align-items:start}
 .cv-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.cv-tacts{margin-left:auto;display:flex;gap:8px;align-items:center}
-.cv-sq{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;padding:0}.cv-sq .mi-ic{color:var(--ok)}
+.cv-sq{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;padding:0}.cv-sq .mi-ic{color:var(--link)}
 .cv-name{display:flex;align-items:center;gap:8px;margin-top:14px}.cv-name h1{flex:1;font-size:28px;margin:0}.cv-co{margin-top:2px}
 .cv-ib:hover{background:var(--surface-2);color:var(--text)}.cv-ib .mi-ic{width:18px;height:18px}
 .cv-info{display:grid;grid-template-columns:1fr 1fr;gap:0 32px;margin:16px 0 20px}
 .cv-f{display:grid;grid-template-columns:130px minmax(0,1fr);gap:10px;padding:10px 0;border-bottom:1px solid var(--line);font-size:14px}.cv-f span{color:var(--muted)}.cv-f div{overflow-wrap:anywhere}
 .cv-tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:16px}
 .cv-tabs button{background:none;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;padding:10px 12px;font:inherit;font-size:14px;font-weight:600;color:var(--muted);cursor:pointer}
-.cv-tabs button.on{color:var(--text);border-bottom-color:var(--ok)}.cv-tabs button:hover{color:var(--text)}
+.cv-tabs button.on{color:var(--text);border-bottom-color:var(--link)}.cv-tabs button:hover{color:var(--text)}
 .cv-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
 .cv-ch{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}.cv-ch h2{margin:0;font-size:17px}
 .cv-acts{display:flex;align-items:center;gap:8px}.cv-search{height:34px;width:200px}
-.cv-plus{display:inline-flex;align-items:center;justify-content:center;flex:none;width:34px;height:34px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--ok);cursor:pointer;list-style:none}
+.cv-plus{display:inline-flex;align-items:center;justify-content:center;flex:none;width:34px;height:34px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--link);cursor:pointer;list-style:none}
 .cv-plus::-webkit-details-marker{display:none}.cv-plus:hover{background:var(--surface-2)}.cv-plus .mi-ic{color:currentColor;width:18px;height:18px}
 .cv-create .menu-list{right:0;left:auto}
 .cv-t th,.cv-t td{padding:11px 8px;font-size:14px;vertical-align:middle}.cv-t th{font-size:12px}.cv-t td .muted{margin-top:2px}
@@ -1215,7 +1215,7 @@ body.ms-open{overflow:hidden}
 .cv-last{display:block;width:100%;text-align:left;background:none;border:0;padding:0;font:inherit;font-size:14px;color:var(--text);cursor:pointer}.cv-last .cv-ch{margin-bottom:6px}
 .cv-last .muted{margin-bottom:4px}
 .cv-empty-note{display:flex;flex-direction:column;align-items:center;gap:10px;width:100%;padding:28px 16px;border:1px dashed var(--border);border-radius:10px;background:none;color:var(--muted);font:inherit;font-size:13px;text-align:center;cursor:pointer}
-.cv-empty-note:hover{border-color:var(--ok);color:var(--text)}.cv-empty-note .mi-ic{width:28px;height:28px}
+.cv-empty-note:hover{border-color:var(--link);color:var(--text)}.cv-empty-note .mi-ic{width:28px;height:28px}
 .cv-note{white-space:pre-wrap;font-size:14px;margin-bottom:8px;overflow-wrap:anywhere}.cv-side .link-btn{margin:0;font-size:13px}
 .cv-notef textarea{height:auto;padding:10px 12px}
 @media (max-width:1100px){.cv{grid-template-columns:1fr}.cv-side{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:0 16px}}
@@ -1242,7 +1242,7 @@ body.ms-open{overflow:hidden}
 .pp-sched{margin-top:12px}.cv-cbar .cv-create summary{list-style:none}.cv-cbar .cv-create summary::-webkit-details-marker{display:none}
 .pp-pick{display:grid;gap:8px;max-height:50vh;overflow:auto}
 .pp-opt{display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--text);font:inherit;text-align:left;cursor:pointer}
-.pp-opt:hover,.pp-opt.on{border-color:var(--ok);background:var(--surface-2)}.pp-opt>span{display:flex;flex-direction:column;gap:2px;min-width:0}.pp-opt .mi-ic{flex:none}
+.pp-opt:hover,.pp-opt.on{border-color:var(--link);background:var(--surface-2)}.pp-opt>span{display:flex;flex-direction:column;gap:2px;min-width:0}.pp-opt .mi-ic{flex:none}
 .pf-addr{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}.pf-addr .pf-w{grid-column:1/-1}
 .pf-contacts{border:1px solid var(--line);border-radius:10px;margin:6px 0 4px}.pf-contacts summary{padding:12px 14px;font-weight:600;font-size:14px;cursor:pointer}
 .pf-cbody{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 14px 14px;font-size:13px}
@@ -1272,19 +1272,19 @@ body.ms-open{overflow:hidden}
 .mn-x{display:grid;place-items:center;width:48px;height:48px;border-radius:50%;background:var(--surface-2);color:var(--text)}
 .mnew-f .mn-sh{margin:6px 0 -4px;font-size:17px;font-weight:600;color:var(--muted)}
 .mn-who{display:flex;flex-direction:column;gap:12px}
-.mn-select{display:flex;align-items:center;justify-content:center;gap:10px;height:54px;border:1px solid var(--border);border-radius:12px;background:none;color:var(--ok);font:inherit;font-size:17px;font-weight:600;cursor:pointer}
-.mn-select svg{color:var(--ok)}
+.mn-select{display:flex;align-items:center;justify-content:center;gap:10px;height:54px;border:1px solid var(--border);border-radius:12px;background:none;color:var(--link);font:inherit;font-size:17px;font-weight:600;cursor:pointer}
+.mn-select svg{color:var(--link)}
 .mn-row{display:grid;grid-template-columns:36px minmax(0,1fr) auto;align-items:center;gap:12px;width:100%;font:inherit;color:var(--text);text-align:left}
 .mn-row>.mi-ic{width:26px;height:26px;color:var(--muted);justify-self:start}
 .mn-row>input,.mn-stack input{height:54px;border-radius:12px;font-size:17px;padding:0 16px}.mn-row>input,.mn-row>.mn-add{grid-column:2/4}
 .mn-stack{display:flex;flex-direction:column;gap:10px;grid-column:2/4}
-.mn-add{justify-self:start;padding:14px 0;border:0;background:none;color:var(--ok);font:inherit;font-size:17px;font-weight:600;cursor:pointer}
+.mn-add{justify-self:start;padding:14px 0;border:0;background:none;color:var(--link);font:inherit;font-size:17px;font-weight:600;cursor:pointer}
 .mn-card{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;padding:4px 14px}.mn-card .mn-row{padding:12px 0}.mn-card .mn-row+.mn-row{border-top:1px solid var(--line)}
 .mn-c{display:flex;flex-direction:column;gap:2px;min-width:0;overflow-wrap:anywhere;font-size:16px}.mn-c strong{font-size:17px}
-.mn-tap{border:0;background:none;cursor:pointer}.mn-tap[disabled]{cursor:default;opacity:1}.mn-tap>svg:last-child{color:var(--muted)}.mn-link{color:var(--ok);font-weight:600}
+.mn-tap{border:0;background:none;cursor:pointer}.mn-tap[disabled]{cursor:default;opacity:1}.mn-tap>svg:last-child{color:var(--muted)}.mn-link{color:var(--link);font-weight:600}
 .mn-list{display:flex;flex-direction:column;gap:8px;margin-top:12px}
 .mn-opt{display:grid;grid-template-columns:28px minmax(0,1fr) auto;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--text);font:inherit;text-align:left;cursor:pointer}
-.mn-opt.on{border-color:var(--ok)}.mn-opt>span{display:flex;flex-direction:column;gap:2px;min-width:0;overflow-wrap:anywhere}.mn-opt .mi-ic{color:var(--muted)}
+.mn-opt.on{border-color:var(--link)}.mn-opt>span{display:flex;flex-direction:column;gap:2px;min-width:0;overflow-wrap:anywhere}.mn-opt .mi-ic{color:var(--muted)}
 .mn-next{text-align:center;margin:-6px 0 0}
 /* phones: Add client chooser (new quote / job / invoice, and the client field in phone edit sheets) */
 .mcs{position:fixed;inset:0;z-index:1200;display:flex;flex-direction:column;background:var(--bg);padding-top:calc(10px + env(safe-area-inset-top));font-size:16px}
