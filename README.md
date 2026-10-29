@@ -4,6 +4,8 @@ Run it (Node 18+, no `npm install` needed):
 
     node server.js          # http://workliopro.com
 
+**Phone app:** open the site on a phone and choose Add to Home Screen (Safari: Share → Add to Home Screen; Chrome: ⋮ → Install app). It opens full screen with the business's name, brand color and app icon, and uses the same server and data as the website. Android offers Install only over https.
+
 Data is stored in `data/db.json` (created with demo data on first start). Uploaded logos, app icons and photos go in `data/uploads/`. Set the app's browser-tab icon under **App Settings → App icon**.
 
 ## Pages

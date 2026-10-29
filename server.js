@@ -411,7 +411,7 @@ const PUBLIC_API = (req) => req.path === '/api/stripe/webhook' || req.path.start
 app.use((req, res, next) => {
   const p = req.path;
   if (p.startsWith('/api/')) return PUBLIC_API(req) || currentUser(req) ? next() : res.status(401).json({ error: 'Please log in' });
-  if (p === '/login' || p === '/support-login' || p === '/client-portal' || p.startsWith('/p/') || p.startsWith('/pay/') || p.startsWith('/refer/') || p === '/book' || p.startsWith('/uploads/') || /\.(js|css|png|jpe?g|gif|webp|svg|ico)$/i.test(p)) return next();
+  if (p === '/login' || p === '/manifest.webmanifest' || p === '/support-login' || p === '/client-portal' || p.startsWith('/p/') || p.startsWith('/pay/') || p.startsWith('/refer/') || p === '/book' || p.startsWith('/uploads/') || /\.(js|css|png|jpe?g|gif|webp|svg|ico)$/i.test(p)) return next();
   if (currentUser(req)) return next();
   res.redirect('/login' + (p !== '/' ? '?next=' + encodeURIComponent(req.url) : ''));
 });
@@ -821,6 +821,23 @@ app.get('/favicon.ico', (req, res) => {
   if (!m) { if (brandLib.serveIcon(req, res)) return; res.statusCode = 404; return res.end(); } // no icon of its own: the platform's app icon
   res.setHeader('Cache-Control', 'no-cache'); // browsers recheck, so a new icon shows on the next page load
   res.sendFile(path.join(uploadDir(), m[1]));
+});
+
+// Install on a phone (Add to Home Screen): the app opens full screen with the business's name, color and icon, on the same server and data as the website
+const ownIcon = () => /^\/uploads\/(icon-[\w-]+\.(png|jpg))$/.exec(db.company.icon || ''); // home screens need a PNG or JPG
+app.get('/apple-touch-icon.png', (req, res) => {
+  const m = ownIcon();
+  if (m) { res.setHeader('Cache-Control', 'no-cache'); return res.sendFile(path.join(uploadDir(), m[1])); }
+  if (brandLib.serveIcon(req, res)) return; // the platform's app icon
+  res.sendFile(path.join(__dirname, 'public', 'img', 'app', 'icon-180.png'));
+});
+app.get('/manifest.webmanifest', (req, res) => {
+  const name = db.company.name || brandLib.brand().name || 'Worklio Pro'; const m = ownIcon();
+  const icons = m ? [{ src: db.company.icon, sizes: 'any', type: m[2] === 'png' ? 'image/png' : 'image/jpeg' }]
+    : [192, 512].map((n) => ({ src: `/img/app/icon-${n}.png`, sizes: `${n}x${n}`, type: 'image/png', purpose: 'any maskable' }));
+  res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
+  res.end(JSON.stringify({ id: '/', name, short_name: name.length > 12 ? name.split(/\s+/)[0].slice(0, 12) : name, start_url: '/', scope: '/', display: 'standalone',
+    background_color: '#f1f5fb', theme_color: db.company.brandColor || '#2563eb', icons }));
 });
 
 app.get('/api/notifications', (req, res) => res.json(db.notifications));
