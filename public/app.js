@@ -1976,26 +1976,76 @@ ${mTextSec(kind, d, 'terms', 'Contract / disclaimer', d.disclaimer, 'Add a contr
 <div class="md-pane" data-pane="notes" hidden>${mTextSec(kind, d, 'notes', 'Internal notes', d.internalNotes, 'Add a note. Clients never see these.')}</div></div>`;
 }
 phoneMq.addEventListener('change', () => { if (/^\/(quotes|invoices|jobs)(\/|$)/.test(curPath())) refresh(); });
-// phones: a new quote or invoice starts with its client and title; it's saved as a draft and opens on the tap-to-edit page, at Add line item
+// phones: a new quote, job or invoice starts with who it's for (Service for): Select Existing Client, or a new client typed in
+// right here (first and last name, property address, phone and email), saved together with it
 function mobileNew(kind, main, preset) {
-  const q = kind === 'quote'; const job = kind === 'job';
-  main.innerHTML = `<div class="mdoc mnew"><a href="/${kind}s" data-link class="md-back" aria-label="Back to ${kind}s">${CHEV('M15 18l-6-6 6-6')}</a>
-<h1 class="md-h">New ${kind}</h1><p class="muted md-lead">${job ? 'Choose who it’s for and when. You’ll set the time and team next.' : 'Choose who it’s for. You’ll add line items next.'}</p>
-<form class="mnew-f" novalidate>${mField('Client', `<select name="clientId">${clientOptions(preset.clientId)}</select>`)}
+  const q = kind === 'quote'; const job = kind === 'job'; const newOk = canDo('clients.edit');
+  const ic = { contact: cvIcons().contact, pin: PI.pin, mail: cvIcons().mail, search: svgIcon(ICONS.search, 22),
+    phone: QI('<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/>') };
+  let client = byId(D.clients, preset.clientId) || null; let prop = null;
+  const onlyProp = () => { const ps = clientProps(client); prop = ps.find((p) => p.id === qp('property')) || (ps.length === 1 ? ps[0] : null); };
+  if (client) onlyProp();
+  main.innerHTML = `<div class="mdoc mnew"><div class="mn-top"><a href="/${kind}s" data-link class="mn-x" aria-label="Close">${X_ICO}</a><h1>New ${kind}</h1><span></span></div>
+<form class="mnew-f" novalidate><h2 class="mn-sh">Service for</h2><div class="mn-who"></div><h2 class="mn-sh">Overview</h2>
 ${mField(kind === 'invoice' ? 'Subject' : 'Title', `<input name="${kind === 'invoice' ? 'subject' : 'title'}" maxlength="120" placeholder="${q ? 'e.g. Backyard cleanup' : job ? 'e.g. Streamer Install' : 'e.g. Camera System Install'}">`)}
 ${job ? mField('Date', `<input type="date" name="date" value="${esc(preset.date || ymd(new Date()))}">`) : ''}
-<button class="btn ms-save">Create ${kind}</button></form></div>`;
-  const f = $('form', main);
+<button class="btn ms-save">Save</button><p class="muted mn-next">${job ? 'You’ll set the time and team next.' : 'You’ll add line items next.'}</p></form></div>`;
+  const f = $('form', main); const who = $('.mn-who', f);
+  const draw = () => {
+    if (client) {
+      const ps = clientProps(client);
+      who.innerHTML = `<div class="mn-card"><div class="mn-row">${ic.contact}<div class="mn-c"><strong>${esc(client.name)}</strong>${client.company && client.company !== client.name ? `<span>${esc(client.company)}</span>` : ''}</div><button type="button" class="mf-clear" data-mn="clear" aria-label="Choose a different client">${X_ICO}</button></div>
+<button type="button" class="mn-row mn-tap" data-mn="prop" ${ps.length > 1 ? '' : 'disabled'}>${ic.pin}<div class="mn-c">${prop ? `${prop.name ? `<strong>${esc(prop.name)}</strong>` : ''}<span>${esc(propAddr(prop))}</span>` : ps.length ? '<span class="mn-link">Select a property</span>' : '<span class="muted">No property address on file</span>'}</div>${ps.length > 1 ? CHEV('M9 6l6 6-6 6') : ''}</button>
+${client.phone ? `<div class="mn-row">${ic.phone}<div class="mn-c"><span>${esc(client.phone)}</span></div></div>` : ''}${client.email ? `<div class="mn-row">${ic.mail}<div class="mn-c"><span>${esc(client.email)}</span></div></div>` : ''}</div>`;
+    } else {
+      who.innerHTML = `<button type="button" class="mn-select" data-mn="pick">${ic.search}Select Existing Client</button>
+${newOk ? `<div class="mn-row">${ic.contact}<div class="mn-stack"><input name="firstName" placeholder="First name" autocomplete="off" aria-label="First name"><input name="lastName" placeholder="Last name" autocomplete="off" aria-label="Last name"></div></div>
+<div class="mn-row">${ic.pin}<input name="address" placeholder="Property address" autocomplete="off" aria-label="Property address"></div>
+<div class="mn-row">${ic.phone}<button type="button" class="mn-add" data-mn="phone">Add Phone Number</button></div>
+<div class="mn-row">${ic.mail}<button type="button" class="mn-add" data-mn="email">Add Email</button></div>` : ''}`;
+    }
+  };
+  const propSheet = () => {
+    const ps = clientProps(client); const s = mSheet('Select a property', `<div class="mn-list">${ps.map((p) => `<button type="button" class="mn-opt${prop && prop.id === p.id ? ' on' : ''}" data-id="${esc(p.id)}">${ic.pin}<span><strong>${esc(p.name || p.street1)}</strong><span class="muted">${esc(propAddr(p))}</span></span></button>`).join('')}</div>`, { full: true });
+    $$('.mn-opt', s).forEach((b) => b.addEventListener('click', () => { prop = ps.find((p) => p.id === b.dataset.id); mClose(); draw(); }));
+  };
+  const pickSheet = () => {
+    const s = mSheet('Select client', `<label class="ml-search">${ic.search}<input type="search" placeholder="Search clients" aria-label="Search clients"></label><div class="mn-list"></div>`, { full: true });
+    const list = $('.mn-list', s); const input = $('input', s); const info = clientInfo();
+    const show = () => { const t = input.value.trim().toLowerCase();
+      const hits = D.clients.filter((c) => !c.archived && (!t || [c.name, c.company, c.email, c.phone, c.address].some((v) => String(v || '').toLowerCase().includes(t)))).sort((a, b) => a.name.localeCompare(b.name));
+      list.innerHTML = hits.map((c) => `<button type="button" class="mn-opt" data-id="${c.id}">${ic.contact}<span><strong>${esc(c.name)}</strong><span class="muted">${esc(c.address || c.email || c.phone || '')}</span></span><span class="cstatus ${info[c.id] && info[c.id].active ? 'active' : 'lead'}">${info[c.id] && info[c.id].active ? 'Active' : 'Lead'}</span></button>`).join('') || `<p class="muted ml-empty">${D.clients.length ? 'No clients match' : 'No clients yet'}</p>`; };
+    show(); input.addEventListener('input', show); setTimeout(() => input.focus(), 260);
+    list.addEventListener('click', (e) => { const b = e.target.closest('.mn-opt'); if (!b) return; client = byId(D.clients, b.dataset.id); onlyProp(); mClose(); draw(); if (!prop && clientProps(client).length > 1) setTimeout(propSheet, 300); });
+  };
+  who.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-mn]'); if (!b) return; const k = b.dataset.mn;
+    if (k === 'pick') return pickSheet();
+    if (k === 'prop') return propSheet();
+    if (k === 'clear') { client = null; prop = null; return draw(); }
+    const i = document.createElement('input'); i.name = k; i.type = k === 'phone' ? 'tel' : 'email'; i.placeholder = k === 'phone' ? 'Phone number' : 'Email'; i.setAttribute('aria-label', i.placeholder); b.replaceWith(i); i.focus(); // Add Phone Number / Add Email
+  });
+  draw();
   f.addEventListener('submit', async (e) => {
-    e.preventDefault(); const b = Object.fromEntries(new FormData(f)); if (!b.clientId) return toast('Choose a client', true);
-    if (job && !b.title.trim()) return toast('Enter the job title', true);
+    e.preventDefault(); const v = (n) => (f[n] ? f[n].value.trim() : '');
+    if (job && !v('title')) return toast('Enter the job title', true);
+    if (!client && !(v('firstName') || v('lastName'))) return toast('Select an existing client, or enter the new client’s name', true);
+    if (client && !prop && clientProps(client).length > 1) { toast('Choose the property this is for', true); return propSheet(); }
+    if (v('email') && !f.email.checkValidity()) return toast('Check the email address', true);
     const btn = $('.ms-save', f); btn.disabled = true;
     try {
+      if (!client) { // the new client, with the address as their property
+        const a = v('address'); const p = a ? propFromAddr(a, rid()) : null;
+        client = await api('POST', '/api/clients', { firstName: v('firstName'), lastName: v('lastName'), name: [v('firstName'), v('lastName')].filter(Boolean).join(' '), phone: v('phone'), email: v('email'), address: a, properties: p ? [p] : [] });
+        D.clients.push(client); prop = p; draw(); // a retry after a failed save below uses this client
+      }
+      const where = { address: prop ? propAddr(prop) : client.address || '', propertyId: prop ? prop.id : '', ...(prop && prop.taxRate != null && prop.taxRate !== '' ? { taxRate: Number(prop.taxRate) } : {}) };
+      const b = { clientId: client.id, [kind === 'invoice' ? 'subject' : 'title']: v(kind === 'invoice' ? 'subject' : 'title') };
       if (job) {
-        const saved = await api('POST', '/api/jobs', { ...b, startTime: '09:00', endTime: '11:00', status: 'scheduled', staffIds: [], address: (byId(D.clients, b.clientId) || {}).address || '' });
+        const saved = await api('POST', '/api/jobs', { ...b, date: v('date'), startTime: '09:00', endTime: '11:00', status: 'scheduled', staffIds: [], ...where });
         return navigate('/jobs/edit?id=' + saved.id);
       }
-      const saved = await api('POST', `/api/${kind}s`, { ...b, items: [], disclaimer: q ? company.quoteDisclaimer ?? DEFAULT_DISCLAIMER : company.invoiceDisclaimer ?? '', ...(q ? {} : { paymentTerms: '0' }) });
+      const saved = await api('POST', `/api/${kind}s`, { ...b, ...where, items: [], disclaimer: q ? company.quoteDisclaimer ?? DEFAULT_DISCLAIMER : company.invoiceDisclaimer ?? '', ...(q ? {} : { paymentTerms: '0' }) });
       await navigate(`/${kind}s/view?id=${saved.id}`);
       A.mEdit({ kind, id: saved.id, sec: 'item', i: '' });
     } catch (x) { toast(x.message, true); btn.disabled = false; }

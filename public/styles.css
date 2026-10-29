@@ -1267,3 +1267,22 @@ body.ms-open{overflow:hidden}
 .ce-foot{position:sticky;bottom:0;z-index:20;display:flex;align-items:center;gap:8px;margin:8px -28px -24px;padding:12px 28px;background:var(--card);border-top:1px solid var(--line);box-shadow:0 -2px 10px rgba(15,23,42,.06)}
 .ce-foot span{flex:1}.btn.alt.ce-del{color:var(--danger)}
 @media (max-width:760px){.ce-sec{grid-template-columns:1fr;gap:8px}.ce-name{grid-template-columns:1fr 1fr}.ce-name label:first-child{grid-column:1/-1}.ce-foot{bottom:calc(66px + env(safe-area-inset-bottom));margin-bottom:0}}
+/* phones: New quote / job / invoice. Service for: Select Existing Client, or a new client typed in; the chosen client as a card */
+.mn-top{display:grid;grid-template-columns:48px 1fr 48px;align-items:center;padding:0 14px 6px}.mn-top h1{margin:0;text-align:center;font-size:22px}
+.mn-x{display:grid;place-items:center;width:48px;height:48px;border-radius:50%;background:var(--surface-2);color:var(--text)}
+.mnew-f .mn-sh{margin:6px 0 -4px;font-size:17px;font-weight:600;color:var(--muted)}
+.mn-who{display:flex;flex-direction:column;gap:12px}
+.mn-select{display:flex;align-items:center;justify-content:center;gap:10px;height:54px;border:1px solid var(--border);border-radius:12px;background:none;color:var(--ok);font:inherit;font-size:17px;font-weight:600;cursor:pointer}
+.mn-select svg{color:var(--ok)}
+.mn-row{display:grid;grid-template-columns:36px minmax(0,1fr) auto;align-items:center;gap:12px;width:100%;font:inherit;color:var(--text);text-align:left}
+.mn-row>.mi-ic{width:26px;height:26px;color:var(--muted);justify-self:start}
+.mn-row>input,.mn-stack input{height:54px;border-radius:12px;font-size:17px;padding:0 16px}.mn-row>input,.mn-row>.mn-add{grid-column:2/4}
+.mn-stack{display:flex;flex-direction:column;gap:10px;grid-column:2/4}
+.mn-add{justify-self:start;padding:14px 0;border:0;background:none;color:var(--ok);font:inherit;font-size:17px;font-weight:600;cursor:pointer}
+.mn-card{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;padding:4px 14px}.mn-card .mn-row{padding:12px 0}.mn-card .mn-row+.mn-row{border-top:1px solid var(--line)}
+.mn-c{display:flex;flex-direction:column;gap:2px;min-width:0;overflow-wrap:anywhere;font-size:16px}.mn-c strong{font-size:17px}
+.mn-tap{border:0;background:none;cursor:pointer}.mn-tap[disabled]{cursor:default;opacity:1}.mn-tap>svg:last-child{color:var(--muted)}.mn-link{color:var(--ok);font-weight:600}
+.mn-list{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.mn-opt{display:grid;grid-template-columns:28px minmax(0,1fr) auto;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--text);font:inherit;text-align:left;cursor:pointer}
+.mn-opt.on{border-color:var(--ok)}.mn-opt>span{display:flex;flex-direction:column;gap:2px;min-width:0;overflow-wrap:anywhere}.mn-opt .mi-ic{color:var(--muted)}
+.mn-next{text-align:center;margin:-6px 0 0}
