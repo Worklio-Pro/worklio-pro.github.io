@@ -2158,6 +2158,8 @@ app.post('/api/clients/import', (req, res) => {
   }
   save(); res.json({ added });
 });
+// a client's work requests (online booking and the client portal), newest first, for their profile page
+app.get('/api/clients/:id/requests', (req, res) => res.json((db.requests || []).filter((r) => r.clientId === req.params.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(requestForClient)));
 // merge duplicate clients into one profile: move their records over, fill empty details, combine tags and notes
 app.post('/api/clients/merge', (req, res) => {
   const keep = findClient(req.body && req.body.keepId);

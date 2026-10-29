@@ -1637,7 +1637,7 @@ A.pdRefund = () => {
   });
 };
 A.pdCopy = async (d) => { try { await navigator.clipboard.writeText(d.v); toast('Transaction number copied'); } catch (e) { toast(d.v); } };
-A.pdClient = (d) => clientForm(byId(D.clients, d.id));
+A.pdClient = (d) => navigate('/clients/view?id=' + d.id);
 A.pdReceipt = async (d, el) => {
   el.disabled = true; el.textContent = 'Sending…';
   try { const r = await api('POST', `/api/payment-detail/${encodeURIComponent(d.id)}/receipt`, {}); toast(`Receipt sent to ${r.to}`); refresh(); } catch (e) { toast(e.message, true); el.disabled = false; el.textContent = 'Send receipt'; }
