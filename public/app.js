@@ -817,8 +817,8 @@ A.exportClients = () => {
   const info = clientInfo();
   downloadCsv('clients.csv', [['Name', 'Company', 'Email', 'Phone', 'Address', 'Tags', 'Status', 'Notes', 'Created'], ...D.clients.map((c) => [c.name, c.company || '', c.email, c.phone, c.address, clientTags(c).join(', '), info[c.id].active ? 'Active' : 'Lead', c.notes || '', (c.createdAt || '').slice(0, 10)])]);
 };
-// view: read only, with an Edit button (the client card's "View client profile")
-function clientForm(c, view) {
+// view: read only, with an Edit button (the client card's "View client profile"); onSaved(client): a new client was saved (the client picker's "Create new client")
+function clientForm(c, view, onSaved) {
   c = c || {}; const ro = view || !canDo('clients.edit');
   const mb = modal(view ? esc(c.name || 'Client') : c.id ? 'Edit client' : 'New client', `<form><div class="row"><label>Name<input name="name" required value="${esc(c.name)}"></label><label>Company (optional)<input name="company" value="${esc(c.company)}"></label></div>
 <div class="row"><label>Email<input name="email" type="email" value="${esc(c.email)}"></label><label>Mobile (for texts)<input name="phone" value="${esc(c.phone)}" placeholder="+17135550100"></label></div>
@@ -832,8 +832,9 @@ ${c.id && planHas('clientPortal') ? `<label>Client portal link<input readonly va
   $('form', mb).addEventListener('submit', async (e) => {
     e.preventDefault(); if (!canDo('clients.edit')) return; const body = Object.fromEntries(new FormData(e.target));
     delete body.undefined; body.smsConsent = $('[name=smsConsent]', mb).checked; body.tags = [...new Set(String(body.tags || '').split(',').map((t) => t.trim()).filter(Boolean))];
-    c.id ? await api('PUT', '/api/clients/' + c.id, body) : await api('POST', '/api/clients', body);
+    const saved = c.id ? await api('PUT', '/api/clients/' + c.id, body) : await api('POST', '/api/clients', body);
     closeModal(); toast('Client saved');
+    if (!c.id && onSaved) { D.clients.push(saved); return onSaved(saved); }
     // a quote, invoice or job being edited keeps its unsaved changes: update the client in place instead of redrawing the page
     const pick = c.id && $('main form select[name=clientId]');
     if (!pick) return refresh();
@@ -860,6 +861,52 @@ const clientMenuId = () => { const s = $('main form select[name=clientId]'); if 
 // Without a client it acts on the one chosen in the editor.
 const clientMenu = (c) => `<details class="menu client-menu noprint"><summary class="icon-btn" title="Client options" aria-label="Client options"><span class="more-dots" aria-hidden="true">•••</span></summary><div class="menu-list">
 <button type="button" class="mi" data-act="viewClient"${c ? ` data-id="${c.id}"` : ''}>${QM.eye}View client profile</button><button type="button" class="mi need-clients-edit" data-act="editClient"${c ? ` data-id="${c.id}"` : ''}>${QM.sign}Edit client details</button></div></details>`;
+// the client picker on quotes, invoices and jobs: a searchable list (name, address, email and phone, Active / Lead) with
+// "Create new client" at the bottom. It drives the form's own <select name=clientId>, which stays hidden, so saving and the
+// forms' change listeners work as before. Added to every such select as it appears (pages, editors and phone sheets).
+function clientPick(sel) {
+  sel.dataset.cpick = '1'; sel.classList.add('cpick-native'); sel.tabIndex = -1;
+  const box = document.createElement('div'); box.className = 'cpick';
+  box.innerHTML = `<input class="cpick-in" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-label="Client" placeholder="Select a client" autocomplete="off">
+<div class="cpick-pop" hidden><div class="cpick-list" role="listbox"></div>${canDo('clients.edit') ? `<button type="button" class="cpick-new"><span aria-hidden="true">+</span> Create new client</button>` : ''}</div><div class="cpick-err" hidden>Choose a client</div>`;
+  sel.after(box);
+  const input = $('.cpick-in', box); const pop = $('.cpick-pop', box); const list = $('.cpick-list', box); const err = $('.cpick-err', box);
+  let hits = []; let at = -1;
+  const label = () => { input.value = sel.value ? clientName(sel.value) : ''; };
+  const draw = () => {
+    const q = input.value.trim().toLowerCase(); const cur = byId(D.clients, sel.value); const info = clientInfo();
+    hits = D.clients.filter((c) => !q || (cur && q === cur.name.toLowerCase()) || [c.name, c.company, c.email, c.phone, c.address].some((v) => String(v || '').toLowerCase().includes(q)))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    at = Math.max(0, hits.findIndex((c) => c.id === sel.value));
+    list.innerHTML = hits.length ? hits.map((c, i) => { const contact = [c.email, c.phone].filter(Boolean).map(esc).join(' · '); const active = info[c.id] && info[c.id].active;
+      return `<div class="cpick-opt${i === at ? ' on' : ''}" role="option" id="cpo-${c.id}" data-id="${c.id}" aria-selected="${c.id === sel.value}"><div class="cpick-txt"><strong>${esc(c.name)}</strong>${c.address || c.company ? `<span>${esc(c.address || c.company)}</span>` : ''}${contact ? `<span>${contact}</span>` : ''}</div><span class="cstatus ${active ? 'active' : 'lead'}">${active ? 'Active' : 'Lead'}</span></div>`; }).join('')
+      : `<div class="cpick-none">${D.clients.length ? 'No clients match' : 'No clients yet'}</div>`;
+  };
+  const mark = () => { $$('.cpick-opt', list).forEach((o, i) => o.classList.toggle('on', i === at)); const o = $$('.cpick-opt', list)[at]; if (o) { o.scrollIntoView({ block: 'nearest' }); input.setAttribute('aria-activedescendant', o.id); } };
+  const open = () => { if (!pop.hidden) return; draw(); pop.hidden = false; input.setAttribute('aria-expanded', 'true'); input.select(); mark(); };
+  const close = () => { pop.hidden = true; input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); label(); };
+  const choose = (id) => {
+    if (!$(`option[value="${id}"]`, sel)) sel.insertAdjacentHTML('beforeend', `<option value="${id}">${esc(clientName(id))}</option>`); // a client just created
+    sel.value = id; err.hidden = true; box.classList.remove('bad'); close(); sel.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  input.addEventListener('focus', open); input.addEventListener('click', open);
+  input.addEventListener('input', () => { if (pop.hidden) open(); draw(); });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); if (pop.hidden) return open(); at = Math.max(0, Math.min(hits.length - 1, at + (e.key === 'ArrowDown' ? 1 : -1))); mark(); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (!pop.hidden && hits[at]) choose(hits[at].id); }
+    else if (e.key === 'Escape' && !pop.hidden) { e.stopPropagation(); close(); }
+    else if (e.key === 'Tab') close();
+  });
+  list.addEventListener('mousedown', (e) => e.preventDefault()); // keep focus in the box while choosing
+  list.addEventListener('click', (e) => { const o = e.target.closest('.cpick-opt'); if (o) choose(o.dataset.id); });
+  const add = $('.cpick-new', box);
+  if (add) { add.addEventListener('mousedown', (e) => e.preventDefault()); add.addEventListener('click', () => { const typed = input.value.trim(); close(); clientForm({ name: hits.length ? '' : typed }, false, (c) => choose(c.id)); }); }
+  document.addEventListener('mousedown', (e) => { if (!pop.hidden && !box.contains(e.target)) close(); });
+  sel.addEventListener('change', () => { if (pop.hidden) label(); });
+  sel.addEventListener('invalid', (e) => { e.preventDefault(); err.hidden = false; box.classList.add('bad'); input.focus(); }); // the hidden select can't show the browser's own message
+  label();
+}
+new MutationObserver(() => $$('select[name=clientId]:not([data-cpick])').forEach(clientPick)).observe(document.body, { childList: true, subtree: true });
 A.delClient = async (d) => { if (!confirm('Delete this client? Their quotes, jobs and invoices stay in the system.')) return; await api('DELETE', '/api/clients/' + d.id); closeModal(); refresh(); };
 
 /* ===== quotes + invoices ===== */

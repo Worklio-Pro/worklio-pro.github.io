@@ -1160,3 +1160,20 @@ body.ms-open{overflow:hidden}
 .hp-tour{margin-top:8px}
 @media (prefers-reduced-motion:reduce){.tour-spot{transition:none}}
 @media print{.tour{display:none!important}}
+/* client picker on quotes, invoices and jobs (app.js clientPick): the real select stays in the form, hidden */
+.cpick-native{position:absolute!important;width:1px!important;height:1px!important;opacity:0;pointer-events:none;overflow:hidden}
+.cpick{position:relative;flex:1;min-width:0}
+.cpick-in{padding-right:32px;cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' fill='none' stroke='%2364748b' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 11px center}
+.cpick-in:focus{cursor:text}.cpick.bad .cpick-in{border-color:var(--danger)}
+.cpick-err{color:var(--danger);font-size:13px;margin-top:4px}
+.cpick-pop{position:absolute;left:0;width:max(100%,min(520px,calc(100vw - 32px)));top:calc(100% + 4px);z-index:40;background:var(--card);border:1px solid var(--border);border-radius:10px;box-shadow:0 10px 30px rgba(15,23,42,.18);overflow:hidden;display:flex;flex-direction:column}
+.cpick-pop[hidden]{display:none}
+.cpick-list{max-height:290px;overflow-y:auto;overscroll-behavior:contain}
+.cpick-opt{display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--line)}.cpick-opt:last-child{border-bottom:0}
+.cpick-opt.on{background:var(--tint)}
+.cpick-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;font-size:14px}.cpick-txt span{color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cpick-opt .cstatus{flex:none}
+.cpick-none{padding:14px;color:var(--muted);font-size:14px}
+.cpick-new{display:flex;align-items:center;gap:8px;width:100%;padding:12px 14px;border:0;border-top:1px solid var(--line);background:var(--surface-2);color:var(--ok-fg);font:inherit;font-size:14px;font-weight:600;cursor:pointer;text-align:left}
+.cpick-new span{font-size:18px;line-height:1}.cpick-new:hover{background:var(--tint)}
+.ms-open .overlay{z-index:80} /* "Create new client" from a phone sheet opens above it */
