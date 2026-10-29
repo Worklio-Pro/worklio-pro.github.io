@@ -1187,6 +1187,12 @@ const EMAIL_TEMPLATES = {
     body: '# Thank you for your payment\n\nHello {{client_name}},\n\nWe received your payment of **{{amount}}** for {{paid_for}}.\n\n> Paid on {{date}}\n> Payment reference: {{reference}}\n\nThank you,\n{{company_name}}',
     vars: { client_name: 'Client name', company_name: 'Your business name', company_email: 'Your business email', amount: 'Amount paid', paid_for: 'What was paid, e.g. Invoice INV-3010', date: 'Payment date', reference: 'Payment reference' },
   },
+  portal: {
+    label: 'Client portal login', description: 'Sent when you choose Send Login Email on a client’s profile.',
+    subject: 'Your client portal for {{company_name}}',
+    body: '# Your client portal\n\nHello {{client_name}},\n\nIn your client portal you can see your upcoming visits, quotes and invoices, pay online and ask us for more work.\n\n[Open my client portal]({{link}})\n\nKeep this email: the link is yours alone and works any time. Questions? Reach us at {{company_email}}.\n\nThank you,\n{{company_name}}',
+    vars: { client_name: 'Client name', company_name: 'Your business name', company_email: 'Your business email', link: 'Link to their client portal' },
+  },
 };
 const emailTemplate = (key) => ({ subject: EMAIL_TEMPLATES[key].subject, body: EMAIL_TEMPLATES[key].body, ...((db.emailTemplates || {})[key] || {}) });
 const niceDate = (s) => {
@@ -2160,6 +2166,14 @@ app.post('/api/clients/import', (req, res) => {
 });
 // a client's work requests (online booking and the client portal), newest first, for their profile page
 app.get('/api/clients/:id/requests', (req, res) => res.json((db.requests || []).filter((r) => r.clientId === req.params.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(requestForClient)));
+// Send Login Email on a client's profile: their client portal link, by email
+app.post('/api/clients/:id/portal-email', async (req, res) => {
+  const c = findClient(req.params.id); if (!c) return res.status(404).json({ error: 'Not found' });
+  if (!c.email) return res.status(400).json({ error: 'Add the client’s email address first' });
+  const email = renderEmail('portal', { client_name: c.name, company_name: db.company.name || '', link: `${baseUrl()}/client-portal?c=${c.portalToken}` });
+  const r = await notify({ clientId: c.id, channel: 'email', kind: 'portal', refId: c.id, refNumber: '', subject: email.subject, html: email.html, body: email.body });
+  save(); if (r.status === 'failed') return res.status(502).json({ error: r.detail || 'The email couldn’t be sent' }); res.json(r);
+});
 // merge duplicate clients into one profile: move their records over, fill empty details, combine tags and notes
 app.post('/api/clients/merge', (req, res) => {
   const keep = findClient(req.body && req.body.keepId);

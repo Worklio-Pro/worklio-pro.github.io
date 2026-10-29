@@ -1222,3 +1222,9 @@ body.ms-open{overflow:hidden}
 @media (max-width:760px){.cv-info{grid-template-columns:1fr}.cv-f{grid-template-columns:110px minmax(0,1fr)}.cv-search{width:140px}.cv-tacts{margin-left:0}}
 /* New client and Edit client pages */
 .cedit{max-width:760px}.cedit h1{margin:8px 0 16px}
+/* client profile: Customize view hides cards (data-hide on .cv lists them) */
+.cv[data-hide~=properties] .cvs-properties,.cv[data-hide~=contacts] .cvs-contacts,.cv[data-hide~=work] .cvs-work,.cv[data-hide~=billing] .cvs-billing,.cv[data-hide~=schedule] .cvs-schedule,
+.cv[data-hide~=overview] .cvs-overview,.cv[data-hide~=tags] .cvs-tags,.cv[data-hide~=last] .cvs-last,.cv[data-hide~=notes] .cvs-notes{display:none}
+.cv-more .menu-list{min-width:230px}.cv-more .menu-list .mi[disabled]{opacity:.5;cursor:not-allowed}
+.cv-cust{display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;margin-bottom:6px}.cv-cust label{display:flex;align-items:center;gap:4px;margin:0;padding:8px 0;font-size:14px;color:var(--text)}
+.cv-more .mi-ic:not(.bad){color:var(--text)}

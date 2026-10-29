@@ -740,6 +740,7 @@ PAGES['/clients'] = {
     const change = (now, prev) => (prev ? `<span class="chg ${now >= prev ? 'up' : 'down'}">${now >= prev ? '↑' : '↓'} ${Math.abs(Math.round(((now - prev) / prev) * 100))}%</span>` : '');
     const dup = duplicateIds(); const tags = [...new Set(D.clients.flatMap(clientTags))].sort();
     let list = D.clients.filter((c) => {
+      if ((v.status === 'archived') !== !!c.archived) return false; // archived clients show only under Status: Archived
       if (v.status === 'lead' && info[c.id].active) return false;
       if (v.status === 'active' && !info[c.id].active) return false;
       if (v.tag && !clientTags(c).includes(v.tag)) return false;
@@ -764,7 +765,7 @@ PAGES['/clients'] = {
 <div class="cstat merge admin-only"><div>Merge duplicate clients into a single profile to keep information accurate.</div><div class="muted">${dup.count ? `${dup.count} possible duplicate${dup.count === 1 ? '' : 's'} found` : 'No duplicates found'}</div><button class="btn alt sm" data-act="clientDupes" ${dup.count ? '' : 'disabled'}>Merge Clients</button></div></div>
 <h2 class="ftitle">Filtered clients <span class="muted">(${list.length} result${list.length === 1 ? '' : 's'})</span></h2>
 <div class="cfilters"><label class="pill m-hide">Tag<select data-cv="tag"><option value="">All tags</option>${tags.map((t) => `<option ${v.tag === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
-<label class="pill m-hide">Status<select data-cv="status">${[['all', 'Leads and Active'], ['lead', 'Leads'], ['active', 'Active']].map(([k, l]) => `<option value="${k}" ${v.status === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+<label class="pill m-hide">Status<select data-cv="status">${[['all', 'Leads and Active'], ['lead', 'Leads'], ['active', 'Active'], ['archived', 'Archived']].map(([k, l]) => `<option value="${k}" ${v.status === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
 ${v.since ? `<button class="pill on" data-act="clientClear" data-k="since">Created ${sinceLabel} ×</button>` : ''}${v.dupes ? '<button class="pill on" data-act="clientClear" data-k="dupes">Possible duplicates ×</button>' : ''}
 <input id="cq" class="csearch" type="search" placeholder="Search clients…" value="${esc(v.q)}"></div>
 ${v.dupes ? '<div class="notice">Showing clients that share an email, phone number or name. Tick the profiles that are the same client, then click Merge.</div>' : ''}
@@ -774,7 +775,7 @@ ${clientSel.size ? `<div class="bulk admin-only"><strong>${clientSel.size} selec
 ${shown.map((c) => `<tr class="crow" data-id="${c.id}"><td class="admin-only"><input type="checkbox" class="sel" value="${c.id}" ${clientSel.has(c.id) ? 'checked' : ''} aria-label="Select ${esc(c.name)}"></td>
 <td><strong>${esc(c.company || c.name)}</strong>${c.company && c.name && c.name !== c.company ? `<div>${esc(c.name)}</div>` : ''}</td><td class="m-hide">${esc(c.address)}</td>
 <td class="m-hide">${clientTags(c).map((t) => `<span class="tag">${esc(t)}</span>`).join('')}</td>
-<td class="m-hide">${info[c.id].active ? '<span class="cstatus active">Active</span>' : '<span class="cstatus lead">Lead</span>'}</td><td class="m-hide">${activityLabel(info[c.id].last)}</td></tr>`).join('') || `<tr><td colspan="6" class="empty">${D.clients.length ? 'No clients match these filters' : 'No clients yet'}</td></tr>`}</table></div>
+<td class="m-hide">${c.archived ? '<span class="cstatus q-draft">Archived</span>' : info[c.id].active ? '<span class="cstatus active">Active</span>' : '<span class="cstatus lead">Lead</span>'}</td><td class="m-hide">${activityLabel(info[c.id].last)}</td></tr>`).join('') || `<tr><td colspan="6" class="empty">${D.clients.length ? 'No clients match these filters' : 'No clients yet'}</td></tr>`}</table></div>
 ${list.length > per ? `<div class="tfoot"><span>Showing ${v.page * per + 1}–${Math.min(list.length, (v.page + 1) * per)} of ${list.length}</span>
 <span class="pager"><button class="btn alt sm" data-act="clientPage" data-d="-1" ${v.page ? '' : 'disabled'} aria-label="Previous page">‹</button><button class="btn alt sm" data-act="clientPage" data-d="1" ${v.page < pages - 1 ? '' : 'disabled'} aria-label="Next page">›</button></span></div>` : ''}</div>`;
     $$('[data-cv]').forEach((s) => s.addEventListener('change', (e) => { clientView[e.target.dataset.cv] = e.target.value; clientView.page = 0; refresh(); }));
@@ -886,6 +887,8 @@ function splitAddr(a) {
 const cvIcons = () => ({ // profile icons (QI is defined further down the file)
   mail: QI('<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 6L2 7"/>'), pin: QI('<path d="M12 22s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/>'),
   edit: QI('<path d="M17 3a2.85 2.85 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5z"/>'), plus: QI('<path d="M12 5v14M5 12h14"/>'), contact: QI('<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="11" r="2.5"/><path d="M5.5 17a3.5 3.5 0 0 1 7 0M15 9h3M15 13h3"/>'),
+  user: QI('<circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3"/><path d="M6.2 18.4a7 7 0 0 1 11.6 0"/>'), archive: QI('<rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M10 12h4"/>'),
+  merge: QI('<path d="M3 7h5l8 10h5M3 17h5l2.5-3.1M13.5 10.1L16 7h5M18 4l3 3-3 3M18 14l3 3-3 3"/>'), gear: QI('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1.08 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>'),
   chev: QI('<path d="M9 6l6 6-6 6"/>'), note: QI('<path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/>'), x: QI('<path d="M18 6L6 18M6 6l12 12"/>'),
 });
 const R_STATUS = { new: ['New', 'q-sent'], converted: ['Converted', 'q-converted'], closed: ['Closed', 'q-draft'], archived: ['Archived', 'q-draft'] };
@@ -937,26 +940,29 @@ PAGES['/clients/view'] = {
     const info = `${card('Properties', `<div class="tablewrap"><table class="cv-t"><tr><th>Address</th><th>City</th><th>State</th><th>ZIP code</th><th></th></tr>
 ${propList.map((p) => { const s = splitAddr(p.a); return `<tr><td><strong>${esc(s.street)}</strong>${p.billing ? '<div class="muted">Billing address</div>' : ''}</td><td>${esc(s.city)}</td><td>${esc(s.state)}</td><td>${esc(s.zip)}</td>
 <td class="actions"><a class="icon-btn cv-ib" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.a)}" target="_blank" rel="noopener" title="Open in Google Maps" aria-label="Open in Google Maps">${CI.pin}</a>${p.billing ? `<a class="icon-btn cv-ib need-clients-edit" href="/clients/edit?id=${c.id}" data-link title="Edit address" aria-label="Edit address">${CI.edit}</a>` : ''}</td></tr>`; }).join('') || `<tr><td colspan="5" class="empty">${props.length ? 'No properties match your search' : 'No properties yet'}</td></tr>`}</table></div>`,
-    `<div class="cv-acts">${props.length > 1 ? `<input type="search" class="cv-search" id="cvPropQ" placeholder="Search properties" value="${esc(v.propQ)}">` : ''}</div>`)}
-<section class="cv-card cv-contacts"><div class="cv-cbar">${CI.contact}<span><strong>Contacts</strong> – Add contacts to keep track of everyone you communicate with</span>${edit ? '<button type="button" class="link-btn" data-act="cvContactAdd">Add Contact</button>' : ''}</div>
+    `<div class="cv-acts">${props.length > 1 ? `<input type="search" class="cv-search" id="cvPropQ" placeholder="Search properties" value="${esc(v.propQ)}">` : ''}</div>`, 'cvs-properties')}
+<section class="cv-card cv-contacts cvs-contacts"><div class="cv-cbar">${CI.contact}<span><strong>Contacts</strong> – Add contacts to keep track of everyone you communicate with</span>${edit ? '<button type="button" class="link-btn" data-act="cvContactAdd">Add Contact</button>' : ''}</div>
 ${contacts.length ? `<div class="tablewrap"><table class="cv-t"><tr><th>Name</th><th>Role</th><th>Phone</th><th>Email</th><th></th></tr>${contacts.map((p) => `<tr><td><strong>${esc(p.name)}</strong></td><td>${esc(p.role)}</td><td>${p.phone ? `<a href="tel:${esc(p.phone)}">${esc(p.phone)}</a>` : ''}</td><td>${p.email ? `<a href="mailto:${esc(p.email)}">${esc(p.email)}</a>` : ''}</td><td class="actions">${edit ? `<button type="button" class="icon-btn cv-ib" data-act="cvContactDel" data-cid="${esc(p.id)}" aria-label="Remove ${esc(p.name)}" title="Remove">${CI.x}</button>` : ''}</td></tr>`).join('')}</table></div>` : ''}
 ${v.edit === 'contact' ? `<form class="cv-cform"><div class="row"><label>Name<input name="name" required></label><label>Role<input name="role" placeholder="e.g. Property manager"></label></div><div class="row"><label>Phone<input name="phone"></label><label>Email<input name="email" type="email"></label></div><div class="foot"><button type="button" class="btn alt sm" data-act="cvEdit" data-k="">Cancel</button><button class="btn sm">Add contact</button></div></form>` : ''}</section>
 ${card('Work overview', `<div class="cv-filters"><label class="pill">Property${sel('prop', [['', 'All'], ...props.map((p) => [p.a, esc(splitAddr(p.a).street)])])}</label><label class="pill">Status${sel('status', [['all', 'All'], ['open', 'Open'], ['closed', 'Closed']])}</label>
 ${[['requests', 'Requests', ''], ['quotes', 'Quotes', 'need-quotes'], ['jobs', 'Jobs', ''], ['invoices', 'Invoices', 'need-invoices']].map(([k, l, cls]) => `<button type="button" class="pill cv-chip ${cls} ${v.types.includes(k) ? 'on' : ''}" data-act="cvType" data-k="${k}" aria-pressed="${v.types.includes(k)}">${l}</button>`).join('')}</div>
 <div class="tablewrap"><table class="cv-t"><tr><th>Item</th><th>Property</th><th>Date</th><th>Status</th><th class="r">Amount</th></tr>
 ${work.map((w) => `<tr${w.href ? ` class="crow" data-href="${w.href}"` : ''}><td><strong>${esc(w.item)}</strong>${w.title ? `<div class="muted">${esc(w.title)}</div>` : ''}</td><td>${esc(splitAddr(w.addr).street)}</td><td>${w.date ? fmtDate(String(w.date).slice(0, 10)) : ''}</td><td><span class="cstatus ${w.cls}">${esc(w.label)}</span></td><td class="r">${w.amount == null ? '' : money(w.amount)}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">No results match your search</td></tr>'}</table></div>`,
-  createMenu(`<summary class="cv-plus" aria-label="Create" title="Create">${CI.plus}</summary>`))}
+  createMenu(`<summary class="cv-plus" aria-label="Create" title="Create">${CI.plus}</summary>`), 'cvs-work')}
 ${planHas('invoices') ? card('Billing', `<div class="tablewrap"><table class="cv-t"><tr><th>Item</th><th>Applied to</th><th>Date</th><th class="r">Amount</th></tr>${bill.map((b) => `<tr>${b.html}</tr>`).join('') || '<tr><td colspan="4" class="empty">No invoices or payments yet</td></tr>'}
-<tr class="cv-bal"><td colspan="3"><strong>Current balance</strong></td><td class="r"><strong>${money(balance)}</strong></td></tr></table></div>`, plus('cvNewInvoice', 'New invoice', ` data-id="${c.id}"`), 'need-invoices') : ''}
+<tr class="cv-bal"><td colspan="3"><strong>Current balance</strong></td><td class="r"><strong>${money(balance)}</strong></td></tr></table></div>`, plus('cvNewInvoice', 'New invoice', ` data-id="${c.id}"`), 'need-invoices cvs-billing') : ''}
 ${card('Client schedule', `<div class="cv-filters"><label class="pill">Type${sel('sType', [['all', 'All'], ['job', 'Visits'], ['task', 'Tasks']])}</label><label class="pill">Status${sel('sStatus', [['all', 'All'], ['open', 'Not done'], ['done', 'Completed']])}</label></div>
 <div class="tablewrap"><table class="cv-t"><tr><th>Schedule</th><th>Title</th><th>Assigned</th></tr>${sched.map((s) => `<tr${s.href ? ` class="crow" data-href="${s.href}"` : ''}><td><strong>${fmtDate(s.date)}${s.time ? ', ' + s.time : ''}</strong><div class="muted">${schedState(s)}</div></td><td><strong>${esc(s.title)}</strong>${s.sub ? `<div class="muted cv-clip">${esc(s.sub)}</div>` : ''}</td><td>${staffDots(s.staff)}</td></tr>`).join('') || '<tr><td colspan="3" class="empty">Nothing scheduled</td></tr>'}</table></div>`,
-  `<a class="cv-plus need-jobs-edit" href="/jobs/new?client=${c.id}" data-link aria-label="Schedule a job" title="Schedule a job">${CI.plus}</a>`)}`;
+  `<a class="cv-plus need-jobs-edit" href="/jobs/new?client=${c.id}" data-link aria-label="Schedule a job" title="Schedule a job">${CI.plus}</a>`, 'cvs-schedule')}`;
     const comms = card('Communication', msgs ? `<div class="tablewrap"><table class="cv-t"><tr><th>Sent</th><th>Message</th><th>Channel</th><th>Status</th></tr>${msgs.map((n) => `<tr class="crow" data-act="viewNotif" data-id="${n.id}"><td>${esc(fmtStamp(n.at))}</td><td><strong>${esc(n.subject || n.kind)}</strong><div class="muted">${esc(n.to || '')}</div></td><td>${n.channel === 'sms' ? 'Text' : 'Email'}</td><td>${badge(n.status)}</td></tr>`).join('') || '<tr><td colspan="4" class="empty">No emails or texts yet</td></tr>'}</table></div>`
       : '<p class="muted" style="margin:0">Your access level doesn’t include the notifications log.</p>');
-    main.innerHTML = `<div class="cv"><div class="cv-main">
-<div class="cv-top"><a class="back" href="/clients" data-link>← Clients</a><span class="cstatus ${active ? 'active' : 'lead'}">${active ? 'Active' : 'Lead'}</span>
+    main.innerHTML = `<div class="cv" data-hide="${cvHidden().join(' ')}"><div class="cv-main">
+<div class="cv-top"><a class="back" href="/clients" data-link>← Clients</a>${c.archived ? '<span class="cstatus q-draft">Archived</span>' : `<span class="cstatus ${active ? 'active' : 'lead'}">${active ? 'Active' : 'Lead'}</span>`}
 <div class="cv-tacts">${c.email ? `<a class="btn alt cv-sq" href="mailto:${esc(c.email)}" title="Email ${esc(c.name)}" aria-label="Email ${esc(c.name)}">${CI.mail}</a>` : ''}
-<details class="menu"><summary class="btn alt cv-sq" title="More actions" aria-label="More actions"><span class="more-dots" aria-hidden="true">•••</span></summary><div class="menu-list">${edit ? `<a class="mi" href="/clients/edit?id=${c.id}" data-link>${QM.sign}Edit client details</a>` : ''}${portal ? `<button type="button" class="mi" data-act="cvPortal">${QM.copy}Copy client portal link</button>` : ''}<button type="button" class="mi" data-act="cvTab" data-t="comms">${QM.email}Communication</button><button type="button" class="mi danger-text admin-only" data-act="delClient" data-id="${c.id}">${QM.trash}Delete client</button></div></details>
+<details class="menu cv-more"><summary class="btn alt cv-sq" title="More actions" aria-label="More actions"><span class="more-dots" aria-hidden="true">•••</span></summary><div class="menu-list">
+${portal ? `${c.email ? `<button type="button" class="mi need-clients-edit" data-act="cvLoginEmail">${CI.mail}Send Login Email</button>` : ''}<a class="mi" href="${esc(portal)}" target="_blank" rel="noopener">${CI.user}Log in as Client</a><hr class="mi-sep">` : ''}
+<button type="button" class="mi need-clients-edit" data-act="cvArchive">${CI.archive}${c.archived ? 'Unarchive' : 'Archive'}</button><button type="button" class="mi admin-only" data-act="cvMerge" ${D.clients.length > 1 ? '' : 'disabled'}>${CI.merge}Merge Client</button><button type="button" class="mi admin-only" data-act="delClient" data-id="${c.id}">${QM.trash}Delete Client</button>
+<hr class="mi-sep"><button type="button" class="mi" data-act="cvCustomize">${CI.gear}Customize view</button></div></details>
 ${createMenu('<summary class="btn">+ Create</summary>')}</div></div>
 <div class="cv-name"><h1>${esc(c.name)}</h1>${edit ? `<a class="icon-btn cv-ib" href="/clients/edit?id=${c.id}" data-link title="Edit client" aria-label="Edit client">${CI.edit}</a>` : ''}</div>${c.company && c.company !== c.name ? `<div class="muted cv-co">${esc(c.company)}</div>` : ''}
 <div class="cv-info"><div>${field('Main phone', c.phone ? `<a href="tel:${esc(c.phone)}">${esc(c.phone)}</a>` : '')}${field('Email', c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '')}${field('Text messages', c.smsConsent ? `Agreed ${esc(fmtDate(c.smsConsent.at.slice(0, 10)))}` : 'Not agreed')}</div>
@@ -964,13 +970,13 @@ ${createMenu('<summary class="btn">+ Create</summary>')}</div></div>
 <div class="cv-tabs" role="tablist"><button type="button" role="tab" class="${v.tab === 'info' ? 'on' : ''}" aria-selected="${v.tab === 'info'}" data-act="cvTab" data-t="info">Client information</button><button type="button" role="tab" class="${v.tab === 'comms' ? 'on' : ''}" aria-selected="${v.tab === 'comms'}" data-act="cvTab" data-t="comms">Communication</button></div>
 ${v.tab === 'comms' ? comms : info}</div>
 <aside class="cv-side">
-${card('Overview', `<div class="cv-ov"><strong class="money">${money(lifetime)}</strong><span class="muted">Lifetime value</span></div><div class="cv-ov"><strong class="money">${money(balance)}</strong><span class="muted">Current balance</span></div>`, '', 'need-invoices')}
+${card('Overview', `<div class="cv-ov"><strong class="money">${money(lifetime)}</strong><span class="muted">Lifetime value</span></div><div class="cv-ov"><strong class="money">${money(balance)}</strong><span class="muted">Current balance</span></div>`, '', 'need-invoices cvs-overview')}
 ${card('Tags', `${tags.length ? `<div class="cv-tags">${tags.map((t) => `<span class="tag">${esc(t)}${edit ? `<button type="button" data-act="cvTagDel" data-t="${esc(t)}" aria-label="Remove tag ${esc(t)}">×</button>` : ''}</span>`).join('')}</div>` : '<p class="muted" style="margin:0">This client has no tags</p>'}
-${v.edit === 'tag' ? '<form class="cv-tagf"><input name="tag" placeholder="New tag" required autocomplete="off"><button class="btn sm">Add</button></form>' : ''}`, edit ? plus('cvEdit', 'Add a tag', ' data-k="tag"') : '')}
-<section class="cv-card"><button type="button" class="cv-last" data-act="cvTab" data-t="comms"><div class="cv-ch"><h2>Last communication</h2>${CI.chev}</div>${last ? `<div class="muted">${esc(fmtStamp(last.at))}</div><div class="cv-clip">${esc(last.subject || last.kind)}</div>` : `<p class="muted" style="margin:0">${msgs ? 'No emails or texts yet' : 'See the Communication tab'}</p>`}</button></section>
+${v.edit === 'tag' ? '<form class="cv-tagf"><input name="tag" placeholder="New tag" required autocomplete="off"><button class="btn sm">Add</button></form>' : ''}`, edit ? plus('cvEdit', 'Add a tag', ' data-k="tag"') : '', 'cvs-tags')}
+<section class="cv-card cvs-last"><button type="button" class="cv-last" data-act="cvTab" data-t="comms"><div class="cv-ch"><h2>Last communication</h2>${CI.chev}</div>${last ? `<div class="muted">${esc(fmtStamp(last.at))}</div><div class="cv-clip">${esc(last.subject || last.kind)}</div>` : `<p class="muted" style="margin:0">${msgs ? 'No emails or texts yet' : 'See the Communication tab'}</p>`}</button></section>
 ${card('Notes', v.edit === 'notes' ? `<form class="cv-notef"><textarea name="notes" rows="6" placeholder="Leave an internal note for yourself or a team member">${esc(c.notes)}</textarea><div class="foot"><button type="button" class="btn alt sm" data-act="cvEdit" data-k="">Cancel</button><button class="btn sm">Save</button></div></form>`
       : c.notes ? `<div class="cv-note">${esc(c.notes)}</div>${edit ? '<button type="button" class="link-btn" data-act="cvEdit" data-k="notes">Edit note</button>' : ''}`
-        : edit ? `<button type="button" class="cv-empty-note" data-act="cvEdit" data-k="notes">${CI.note}<span>Leave an internal note for yourself or a team member</span></button>` : '<p class="muted" style="margin:0">No notes</p>')}
+        : edit ? `<button type="button" class="cv-empty-note" data-act="cvEdit" data-k="notes">${CI.note}<span>Leave an internal note for yourself or a team member</span></button>` : '<p class="muted" style="margin:0">No notes</p>', '', 'cvs-notes')}
 </aside></div>`;
     $$('[data-cvf]', main).forEach((s) => s.addEventListener('change', (e) => { cvState[e.target.dataset.cvf] = e.target.value; cvDraw(); }));
     const pq = $('#cvPropQ', main); let t;
@@ -991,7 +997,35 @@ A.cvType = (d) => { const s = new Set(cvState.types); s.has(d.k) ? s.delete(d.k)
 A.cvContactAdd = () => { cvState.edit = 'contact'; cvDraw(); };
 A.cvContactDel = async (d) => { const c = cvClient(); if (!confirm('Remove this contact?')) return; await api('PUT', '/api/clients/' + c.id, { contacts: (c.contacts || []).filter((p) => p.id !== d.cid) }); toast('Contact removed'); refresh(); };
 A.cvTagDel = async (d) => { const c = cvClient(); await api('PUT', '/api/clients/' + c.id, { tags: clientTags(c).filter((t) => t !== d.t) }); toast('Tag removed'); refresh(); };
-A.cvPortal = async () => { const c = cvClient(); await navigator.clipboard.writeText(location.origin + '/client-portal?c=' + c.portalToken); toast('Client portal link copied'); };
+A.cvLoginEmail = async () => { const c = cvClient(); const r = await api('POST', `/api/clients/${c.id}/portal-email`, {}); toast(r.status === 'simulated' ? 'Login email logged (email isn’t set up yet)' : `Login email sent to ${c.email}`); refresh(); };
+// archived clients leave the Clients list (Status: Archived shows them) and the client picker; their records stay
+A.cvArchive = async () => { const c = cvClient(); await api('PUT', '/api/clients/' + c.id, { archived: !c.archived }); toast(c.archived ? 'Client unarchived' : 'Client archived'); refresh(); };
+// merge another profile into this one (the Clients list's Merge does the same for ticked clients)
+A.cvMerge = () => {
+  const c = cvClient(); const dup = duplicateIds().ids; const same = (o) => dup.has(c.id) && dup.has(o.id) && (o.name.trim().toLowerCase() === c.name.trim().toLowerCase() || (o.email && o.email.toLowerCase() === String(c.email).toLowerCase()) || (o.phone && o.phone.replace(/\D/g, '').slice(-10) === String(c.phone || '').replace(/\D/g, '').slice(-10)));
+  const others = D.clients.filter((o) => o.id !== c.id).sort((a, b) => same(b) - same(a) || a.name.localeCompare(b.name));
+  const mb = modal('Merge client', `<form><p>Choose the profile to merge into <strong>${esc(c.name)}</strong>. It’s deleted once its details are moved over.</p>
+<label>Client to merge<select name="other" required><option value="">Select a client…</option>${others.map((o) => `<option value="${o.id}">${esc(o.name)}${o.email || o.phone ? ' · ' + esc(o.email || o.phone) : ''}${same(o) ? ' (possible duplicate)' : ''}</option>`).join('')}</select></label>
+<p class="muted">All their quotes, jobs, invoices and messages move to ${esc(c.name)}. Empty details here (email, phone, address, company) are filled in from theirs, tags are combined, and notes are added together.</p>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Merge clients</button></div></form>`);
+  $('form', mb).addEventListener('submit', async (e) => {
+    e.preventDefault(); await api('POST', '/api/clients/merge', { keepId: c.id, mergeIds: [e.target.other.value] }); closeModal(); toast('Clients merged'); refresh();
+  });
+};
+// Customize view: which cards the profile shows, remembered in this browser
+const CV_SECTIONS = [['properties', 'Properties'], ['contacts', 'Contacts'], ['work', 'Work overview'], ['billing', 'Billing'], ['schedule', 'Client schedule'], ['overview', 'Overview'], ['tags', 'Tags'], ['last', 'Last communication'], ['notes', 'Notes']];
+const cvHidden = () => { try { return JSON.parse(localStorage.getItem('clientViewHidden')) || []; } catch (e) { return []; } };
+A.cvCustomize = () => {
+  const hidden = cvHidden();
+  const mb = modal('Customize view', `<form><p class="muted" style="margin-top:0">Choose the cards to show on client profiles. This is saved in this browser.</p>
+<div class="cv-cust">${CV_SECTIONS.map(([k, l]) => `<label><input type="checkbox" name="${k}" ${hidden.includes(k) ? '' : 'checked'}> ${l}</label>`).join('')}</div>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save</button></div></form>`);
+  $('form', mb).addEventListener('submit', (e) => {
+    e.preventDefault(); const off = CV_SECTIONS.map(([k]) => k).filter((k) => !e.target[k].checked);
+    try { localStorage.setItem('clientViewHidden', JSON.stringify(off)); } catch (err) { /* private mode: applies until the page reloads */ }
+    closeModal(); const root = $('.cv'); if (root) root.dataset.hide = off.join(' ');
+  });
+};
 A.cvNewInvoice = (d) => navigate('/invoices/new?client=' + d.id);
 A.newClient = () => navigate('/clients/new');
 // from a quote, invoice or job page: open the client's profile, or edit them, in the page. In an editor (no id, or the popup's
@@ -1042,7 +1076,7 @@ function clientPick(sel) {
   };
   const draw = () => {
     const q = input.value.trim().toLowerCase(); const cur = byId(D.clients, sel.value); const info = clientInfo();
-    hits = D.clients.filter((c) => !q || (cur && q === cur.name.toLowerCase()) || [c.name, c.company, c.email, c.phone, c.address].some((v) => String(v || '').toLowerCase().includes(q)))
+    hits = D.clients.filter((c) => (!c.archived || c.id === sel.value) && (!q || (cur && q === cur.name.toLowerCase()) || [c.name, c.company, c.email, c.phone, c.address].some((v) => String(v || '').toLowerCase().includes(q))))
       .sort((a, b) => a.name.localeCompare(b.name));
     at = Math.max(0, hits.findIndex((c) => c.id === sel.value));
     list.innerHTML = hits.length ? hits.map((c, i) => { const contact = [c.email, c.phone].filter(Boolean).map(esc).join(' · '); const active = info[c.id] && info[c.id].active;
