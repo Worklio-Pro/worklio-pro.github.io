@@ -818,41 +818,6 @@ A.exportClients = () => {
   const info = clientInfo();
   downloadCsv('clients.csv', [['Name', 'Company', 'Email', 'Phone', 'Address', 'Tags', 'Status', 'Notes', 'Created'], ...D.clients.map((c) => [c.name, c.company || '', c.email, c.phone, c.address, clientTags(c).join(', '), info[c.id].active ? 'Active' : 'Lead', c.notes || '', (c.createdAt || '').slice(0, 10)])]);
 };
-// the client details form: on a page of its own (/clients/new, /clients/edit), or in a popup from the client picker and the
-// quote, invoice and job editors, which keeps their unsaved changes
-function clientFields(c) {
-  return `<div class="row"><label>Name<input name="name" required value="${esc(c.name)}"></label><label>Company (optional)<input name="company" value="${esc(c.company)}"></label></div>
-<div class="row"><label>Email<input name="email" type="email" value="${esc(c.email)}"></label><label>Mobile (for texts)<input name="phone" value="${esc(c.phone)}" placeholder="+17135550100"></label></div>
-<div class="chk"><label><input type="checkbox" name="smsConsent" ${c.smsConsent ? 'checked' : ''}> Agreed to receive text messages</label></div>
-<p class="muted" style="margin:-6px 0 10px;font-size:13px">${c.smsConsent ? `Agreed ${esc(fmtDate(c.smsConsent.at.slice(0, 10)))}${c.smsConsent.source !== 'business' ? ' on the ' + esc(c.smsConsent.source) : ''}. ` : ''}Only tick this if the client said yes after you read them: “Can we text you at the number you just gave us about your quotes, invoices and appointments? Message frequency varies, and msg &amp; data rates may apply. Reply HELP for help or STOP at any time to opt out. Our text terms and privacy policy are at ${esc(location.hostname.split('.').slice(-2).join('.'))}/terms and ${esc(location.hostname.split('.').slice(-2).join('.'))}/privacy. Agreeing isn’t required to do business with us. Do you agree to receive texts?” If they say yes: “Thanks, you’re signed up. You’ll get a text confirming it.” Ticking this sends them that confirmation text.</p>
-<label>${clientProps(c).length > 1 ? "Billing address" : "Service address"}<input name="address" value="${esc(c.address)}"></label><div class="cmap" ${String(c.address || '').trim() ? '' : 'hidden'}><iframe title="Map of the service address" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe></div><label>Tags (separate with commas)<input name="tags" value="${esc(clientTags(c).join(', '))}" placeholder="e.g. commercial, monthly"></label><label>Notes<textarea name="notes">${esc(c.notes)}</textarea></label>
-${c.id && planHas('clientPortal') ? `<label>Client portal link<input readonly value="${esc(location.origin + '/client-portal?c=' + c.portalToken)}" onclick="this.select()"></label>` : ''}`;
-}
-async function saveClient(c, form) {
-  const body = Object.fromEntries(new FormData(form));
-  delete body.undefined; body.smsConsent = form.smsConsent.checked; body.tags = [...new Set(String(body.tags || '').split(',').map((t) => t.trim()).filter(Boolean))];
-  const saved = c.id ? await api('PUT', '/api/clients/' + c.id, body) : await api('POST', '/api/clients', body);
-  toast('Client saved'); return { body, saved };
-}
-// the popup. view: read only, with an Edit button (the editors' “View client profile”); onSaved(client): a new client was saved (the client picker's "Create new client")
-function clientForm(c, view, onSaved) {
-  c = c || {}; const ro = view || !canDo('clients.edit');
-  const mb = modal(view ? esc(c.name || 'Client') : c.id ? 'Edit client' : 'New client', `<form>${clientFields(c)}
-<div class="foot"><button type="button" class="btn alt" data-act="closeModal">${view ? 'Close' : 'Cancel'}</button>${view ? `<button type="button" class="btn need-clients-edit" data-act="editClient" data-pop="1" data-id="${c.id}">Edit</button>` : '<button class="btn need-clients-edit">Save</button>'}</div></form>`);
-  clientMap(mb);
-  if (ro) $$('input, select, textarea', mb).forEach((el) => { if (el.readOnly !== undefined) el.readOnly = true; if (el.tagName === 'SELECT' || el.type === 'checkbox') el.disabled = true; }); // view only, or without “Add and edit clients”
-  $('form', mb).addEventListener('submit', async (e) => {
-    e.preventDefault(); if (!canDo('clients.edit')) return; const { body, saved } = await saveClient(c, e.target);
-    closeModal();
-    if (!c.id && onSaved) { D.clients.push(saved); return onSaved(saved); }
-    // a quote, invoice or job being edited keeps its unsaved changes: update the client in place instead of redrawing the page
-    const pick = c.id && $('main form select[name=clientId]');
-    if (!pick) return refresh();
-    Object.assign(c, body, { smsConsent: body.smsConsent ? c.smsConsent || { at: new Date().toISOString(), source: 'business' } : null });
-    const o = $(`option[value="${c.id}"]`, pick); if (o) o.textContent = c.name;
-    if (pick.value === c.id) pick.dispatchEvent(new Event('change', { bubbles: true }));
-  });
-}
 // a map with a pin on the service address, under the address field; it follows the address as it's typed
 function clientMap(mb) {
   const box = $('.cmap', mb); const input = $('[name=address]', mb); let t; let shown = '';
@@ -862,20 +827,110 @@ function clientMap(mb) {
   };
   show(); input.addEventListener('input', () => { clearTimeout(t); t = setTimeout(show, 700); });
 }
-// New client and Edit client open in the page, not a popup
-function clientEditPage(main, c) {
-  const back = c.id ? '/clients/view?id=' + c.id : '/clients';
-  main.innerHTML = `<div class="cedit"><a class="back" href="${back}" data-link>← ${c.id ? esc(c.name) : 'Clients'}</a><h1>${c.id ? 'Edit client' : 'New client'}</h1>
-<form class="card">${clientFields(c)}<div class="foot">${c.id ? `<button type="button" class="btn danger admin-only" data-act="delClient" data-id="${c.id}" style="margin-right:auto">Delete client</button>` : ''}<a class="btn alt" href="${back}" data-link>Cancel</a><button class="btn">Save</button></div></form></div>`;
-  clientMap(main);
-  $('form', main).addEventListener('submit', async (e) => { e.preventDefault(); const btn = $('button:not([type])', e.target); btn.disabled = true; try { const { saved } = await saveClient(c, e.target); navigate('/clients/view?id=' + saved.id); } catch (err) { btn.disabled = false; toast(err.message, true); } });
-  $('[name=name]', main).focus();
+// New client / Edit client: a page of its own (/clients/new, /clients/edit), or shown in place of the quote, job or invoice
+// being edited (clientOverEditor), which comes back unchanged afterwards
+const LEAD_SOURCES = ['Google', 'Facebook', 'Instagram', 'Nextdoor', 'Yelp', 'Referral', 'Repeat client', 'Website', 'Online booking', 'Yard sign', 'Vehicle', 'Other'];
+const TITLES = ['Mr.', 'Mrs.', 'Ms.', 'Miss', 'Dr.'];
+// older clients have just a name: the first word is the first name; a company client's name is the company
+const nameParts = (c) => {
+  if (c.firstName != null || c.lastName != null) return { first: c.firstName || '', last: c.lastName || '', commercial: !!c.commercial };
+  if (c.company && c.name === c.company) return { first: '', last: '', commercial: true };
+  const w = String(c.name || '').trim().split(/\s+/).filter(Boolean); return { first: w[0] || '', last: w.slice(1).join(' '), commercial: false };
+};
+const blankProp = () => ({ id: '', name: '', street1: '', street2: '', city: '', state: '', zip: '', country: 'United States', contacts: [], taxRate: null });
+// opts.cancel / opts.saved(client): shown over an editor; otherwise Cancel and Save go to the client's profile
+function clientEditPage(main, c, opts = {}) {
+  const isNew = !c.id; const n = nameParts(c); const back = isNew ? '/clients' : '/clients/view?id=' + c.id;
+  let props = structuredClone(clientProps(c)); if (!props.length) props = [blankProp()];
+  const contacts = structuredClone(c.contacts || []);
+  let billing = props.findIndex((p) => sameAddr(propAddr(p), c.address)); if (billing < 0 && !String(c.address || '').trim()) billing = 0; // -1: a billing address of its own
+  const rate = Number(company.taxRate) || 0; const dom = location.hostname.split('.').slice(-2).join('.');
+  main.innerHTML = `<form class="ce" novalidate>${opts.cancel ? '' : `<a class="back" href="${back}" data-link>← ${isNew ? 'Clients' : esc(c.name)}</a>`}<h1>${isNew ? 'New Client' : 'Edit Client'}</h1>
+<section class="ce-sec"><div class="ce-l"><h2>Primary contact details</h2><p class="muted">Provide the main point of contact to ensure smooth communication and reliable client records.</p></div><div class="ce-r">
+<div class="ce-name"><label>Title<select name="title"><option value="">No title</option>${TITLES.map((t) => `<option ${c.title === t ? 'selected' : ''}>${t}</option>`).join('')}</select></label><label>First name<input name="firstName" value="${esc(n.first)}" autocomplete="off"></label><label>Last name<input name="lastName" value="${esc(n.last)}" autocomplete="off"></label></div>
+<label>Company name<input name="company" value="${esc(c.company)}" autocomplete="off"></label>
+<div class="chk"><label><input type="checkbox" name="commercial" ${n.commercial ? 'checked' : ''}> Commercial client: Use company name as client name</label></div>
+<h4>Communication</h4><label>Phone number<input name="phone" type="tel" value="${esc(c.phone)}" placeholder="+17135550100"></label><label>Email<input name="email" type="email" value="${esc(c.email)}"></label>
+<details class="ce-comm"${c.smsConsent ? ' open' : ''}><summary>Communication settings</summary><div class="chk"><label><input type="checkbox" name="smsConsent" ${c.smsConsent ? 'checked' : ''}> Agreed to receive text messages</label></div>
+<p class="muted">${c.smsConsent ? `Agreed ${esc(fmtDate(c.smsConsent.at.slice(0, 10)))}${c.smsConsent.source !== 'business' ? ' on the ' + esc(c.smsConsent.source) : ''}. ` : ''}Only tick this if the client said yes after you read them: “Can we text you at the number you just gave us about your quotes, invoices and appointments? Message frequency varies, and msg &amp; data rates may apply. Reply HELP for help or STOP at any time to opt out. Our text terms and privacy policy are at ${esc(dom)}/terms and ${esc(dom)}/privacy. Agreeing isn’t required to do business with us. Do you agree to receive texts?” If they say yes: “Thanks, you’re signed up. You’ll get a text confirming it.” Ticking this sends them that confirmation text.</p></details>
+<h4>Lead information</h4><label>Lead source<input name="leadSource" list="ceLeads" value="${esc(c.leadSource || ((c.tags || []).includes('Online booking') ? 'Online booking' : ''))}" autocomplete="off"></label><datalist id="ceLeads">${LEAD_SOURCES.map((s) => `<option value="${s}">`).join('')}</datalist>
+<details class="ce-acc"${contacts.length ? ' open' : ''}><summary>Additional contacts</summary><div class="ce-list" data-ce-contacts></div></details>
+</div></section>
+<section class="ce-sec"><div class="ce-l"><h2>Property address</h2><p class="muted">Enter the primary service address, billing address, or any additional locations where services may take place.</p><button type="button" class="btn alt" data-ce-add>Add Another Address</button></div><div class="ce-r" data-ce-props></div></section>
+<div class="ce-foot">${isNew || opts.cancel ? '' : `<button type="button" class="btn alt ce-del admin-only" data-act="delClient" data-id="${c.id}">Delete</button>`}<span></span><button type="button" class="btn alt" data-ce-cancel>Cancel</button><button class="btn">${isNew ? 'Save Client' : 'Update Client'}</button></div></form>`;
+  const f = $('form', main);
+  const contactRows = (list, at) => `${list.map((x, i) => `<div class="ce-ct"><span><strong>${esc(x.name)}</strong>${[x.role, x.billing ? 'Billing contact' : '', x.phone, x.email].filter(Boolean).map((t) => ` <span class="muted">· ${esc(t)}</span>`).join('')}</span><button type="button" class="icon-btn cv-ib" data-ce-ctrm="${at}:${i}" aria-label="Remove ${esc(x.name)}">${cvIcons().x}</button></div>`).join('')}
+<div class="ce-ctadd"><span class="muted">${at === 'c' ? 'Other people at this client you communicate with.' : 'For contacts with access limited to this property, e.g., tenants.'}</span><button type="button" class="btn alt sm" data-ce-ctadd="${at}">Add Contact</button></div>`;
+  const drawContacts = () => { $('[data-ce-contacts]', f).innerHTML = contactRows(contacts, 'c'); };
+  // property blocks: values are read back into props before anything redraws them
+  const sync = () => $$('.ce-prop', f).forEach((el) => { const p = props[el.dataset.i]; $$('[data-k]', el).forEach((i) => { p[i.dataset.k] = i.value.trim(); });
+    const m = $('[data-tax]', el).value; p.taxRate = m === 'default' ? null : m === 'none' ? 0 : Math.max(0, Number($('[data-taxrate]', el).value) || 0); });
+  const drawProps = () => {
+    $('[data-ce-props]', f).innerHTML = props.map((p, i) => { const m = p.taxRate == null || p.taxRate === '' ? 'default' : Number(p.taxRate) === 0 ? 'none' : 'custom';
+      return `<div class="ce-prop" data-i="${i}">${props.length > 1 ? `<div class="ce-ph"><strong>${i === 0 ? 'Primary property' : `Property ${i + 1}`}</strong><button type="button" class="link-btn danger" data-ce-rm="${i}">Remove</button></div>` : ''}
+<label>Property name<input data-k="name" value="${esc(p.name)}" placeholder="Optional, e.g. Rental home"></label>
+<div class="pf-addr"><label class="pf-w">Street 1<input data-k="street1" value="${esc(p.street1)}" autocomplete="off"></label><label class="pf-w">Street 2<input data-k="street2" value="${esc(p.street2)}" autocomplete="off"></label>
+<label>City<input data-k="city" value="${esc(p.city)}"></label><label>State<input data-k="state" value="${esc(p.state)}"></label><label>ZIP code<input data-k="zip" value="${esc(p.zip)}"></label>
+<label>Country<select data-k="country">${['United States', 'Canada', 'Mexico', 'Other'].map((x) => `<option ${(p.country || 'United States') === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label></div>
+<div class="ce-tax"><label>Tax rate<select data-tax><option value="default" ${m === 'default' ? 'selected' : ''}>Company default (${rate}%)</option><option value="none" ${m === 'none' ? 'selected' : ''}>No tax (0%)</option><option value="custom" ${m === 'custom' ? 'selected' : ''}>Custom rate</option></select></label>
+<label ${m === 'custom' ? '' : 'hidden'}>Rate (%)<input data-taxrate type="number" step="any" min="0" value="${m === 'custom' ? esc(p.taxRate) : ''}"></label></div>
+<div class="chk"><label><input type="checkbox" data-ce-bill="${i}" ${billing === i ? 'checked' : ''}> Billing address is the same as property address</label></div>
+<details class="ce-acc"${(p.contacts || []).length ? ' open' : ''}><summary>Property contacts</summary><div class="ce-list">${contactRows(p.contacts || [], i)}</div></details></div>`; }).join('')
+      + (billing < 0 ? `<label class="ce-billing">Billing address<input name="billingAddress" value="${esc(c.address)}" placeholder="Street, city, state, ZIP"></label>` : '');
+  };
+  drawContacts(); drawProps();
+  const redraw = () => { const b = f.billingAddress && f.billingAddress.value; sync(); drawProps(); if (b != null && f.billingAddress) f.billingAddress.value = b; };
+  f.addEventListener('change', (e) => {
+    if (e.target.matches('[data-tax]')) { const r = e.target.closest('.ce-tax').lastElementChild; r.hidden = e.target.value !== 'custom'; if (!r.hidden) $('input', r).focus(); }
+    if (e.target.matches('[data-ce-bill]')) { billing = e.target.checked ? Number(e.target.dataset.ceBill) : -1; redraw(); }
+  });
+  f.addEventListener('click', (e) => {
+    const t = e.target.closest('[data-ce-add], [data-ce-rm], [data-ce-ctadd], [data-ce-ctrm], [data-ce-cancel]'); if (!t) return;
+    if (t.matches('[data-ce-cancel]')) return opts.cancel ? opts.cancel() : navigate(back);
+    if (t.matches('[data-ce-add]')) { sync(); props.push(blankProp()); drawProps(); $$('.ce-prop', f).pop().querySelector('[data-k=street1]').focus(); return; }
+    if (t.matches('[data-ce-rm]')) { const i = Number(t.dataset.ceRm); sync(); props.splice(i, 1); billing = billing === i ? -1 : billing > i ? billing - 1 : billing; drawProps(); return; }
+    if (t.matches('[data-ce-ctadd]')) { const at = t.dataset.ceCtadd; sync(); contactModal((x) => { if (at === 'c') { contacts.splice(0, contacts.length, ...withContact(contacts, x)); drawContacts(); } else { props[at].contacts = withContact(props[at].contacts || [], x); drawProps(); } }); return; }
+    const [at, i] = t.dataset.ceCtrm.split(':'); sync(); if (at === 'c') { contacts.splice(Number(i), 1); drawContacts(); } else { props[at].contacts.splice(Number(i), 1); drawProps(); }
+  });
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault(); sync(); const v = (k) => f[k].value.trim();
+    const name = (f.commercial.checked && v('company')) || [v('firstName'), v('lastName')].filter(Boolean).join(' ') || v('company');
+    if (!name) { toast('Enter the client’s first name or company name', true); return f.firstName.focus(); }
+    if (f.commercial.checked && !v('company')) { toast('Enter the company name, or untick Commercial client', true); return f.company.focus(); }
+    if (v('email') && !f.email.checkValidity()) { toast('Check the email address', true); return f.email.focus(); }
+    const kept = props.map((p, i) => ({ p, i })).filter(({ p }) => p.street1);
+    const properties = kept.map(({ p }) => ({ ...p, id: p.id || rid() })); const bi = kept.findIndex(({ i }) => i === billing);
+    const body = { title: v('title'), firstName: v('firstName'), lastName: v('lastName'), company: v('company'), commercial: f.commercial.checked, name, phone: v('phone'), email: v('email'),
+      smsConsent: f.smsConsent.checked, leadSource: v('leadSource'), contacts, properties,
+      address: bi >= 0 ? propAddr(properties[bi]) : f.billingAddress ? v('billingAddress') : properties[0] ? propAddr(properties[0]) : '' };
+    const btn = $('.ce-foot button:not([type])', f); btn.disabled = true;
+    try {
+      const saved = isNew ? await api('POST', '/api/clients', body) : await api('PUT', '/api/clients/' + c.id, body);
+      toast(isNew ? 'Client saved' : 'Client updated'); if (opts.saved) opts.saved(saved); else navigate('/clients/view?id=' + saved.id);
+    } catch (err) { btn.disabled = false; toast(err.message, true); }
+  });
+  (n.commercial ? f.company : f.firstName).focus();
 }
 PAGES['/clients/new'] = { title: 'New client', render: (main) => clientEditPage(main, {}) };
 PAGES['/clients/edit'] = {
   title: 'Edit client',
   render(main) { const c = byId(D.clients, qp('id')); if (!c) { main.innerHTML = '<div class="card"><h1>Client not found</h1><p><a href="/clients" data-link>Back to Clients</a></p></div>'; return; } clientEditPage(main, c); },
 };
+// Edit client details / Create new client from a quote, job or invoice: the client page shows in its place and, on Save or Cancel,
+// the quote, job or invoice comes back exactly as it was (unsaved changes and all). done(client) gets the saved client.
+function clientOverEditor(c, done) {
+  const main = $('#main'); const held = [...main.childNodes]; const y = window.scrollY; const title = document.title;
+  const restore = () => { main.replaceChildren(...held); document.title = title; window.scrollTo(0, y); };
+  main.replaceChildren(); window.scrollTo(0, 0); document.title = `${c.id ? 'Edit' : 'New'} client · ${company.name || ''}`;
+  clientEditPage(main, c, { cancel: restore, saved: (saved) => { restore(); done(saved); } });
+}
+// a client saved from an editor: the editor's own copy and its client picker show the change
+function clientSavedInEditor(saved) {
+  const c = byId(D.clients, saved.id); if (c) Object.assign(c, saved); else D.clients.push(saved);
+  const pick = $('main form select[name=clientId]'); if (!pick) return;
+  const o = $(`option[value="${saved.id}"]`, pick); if (o) o.textContent = saved.name;
+  if (pick.value === saved.id) { pick._refreshing = true; pick.dispatchEvent(new Event('change', { bubbles: true })); pick._refreshing = false; } // same client, new details: not a change of client
+}
 
 /* ===== a client's profile (/clients/view?id=) ===== */
 // "702 Old Oyster Trail, Sugar Land, TX 77479" → street, city, state and ZIP; anything else stays whole in the street column
@@ -951,8 +1006,9 @@ async function saveContacts(c, propId, list) {
   if (!propId) { Object.assign(c, await api('PUT', '/api/clients/' + c.id, { contacts: list })); return; }
   await saveProps(c, clientProps(c).map((p) => (p.id === propId ? { ...p, contacts: list } : p)));
 }
-A.contactAdd = (d) => {
-  const c = byId(D.clients, d.client); const sw = (n, l, on) => switchRow(n, l, on);
+// Add contact popup; onAdd(contact) keeps it (on a saved client or property, or in the Edit client form until it's saved)
+function contactModal(onAdd) {
+  const sw = (n, l, on) => switchRow(n, l, on);
   const mb = modal('Add contact', `<form class="ctf"><h4>Details</h4><div class="ct-name"><label>Title<select name="title">${['No title', 'Mr.', 'Mrs.', 'Ms.', 'Miss', 'Dr.'].map((t, i) => `<option value="${i ? t : ''}">${t}</option>`).join('')}</select></label><label>First name<input name="firstName" required autocomplete="off"></label><label>Last name<input name="lastName" autocomplete="off"></label></div>
 <label>Role<input name="role" placeholder="e.g. Property manager, tenant"></label><div class="chk"><label><input type="checkbox" name="billing"> Set as billing contact</label></div>
 <h4>Communication</h4><label>Phone number<input name="phone" type="tel"></label><label>Email<input name="email" type="email"></label>
@@ -964,10 +1020,11 @@ A.contactAdd = (d) => {
     e.preventDefault(); const on = (n) => $(`input.sw[name=${n}]`, f).checked; const v = (n) => f[n].value.trim();
     const x = { id: rid(), title: v('title'), firstName: v('firstName'), lastName: v('lastName'), name: [v('title'), v('firstName'), v('lastName')].filter(Boolean).join(' '), role: v('role'), billing: f.billing.checked, phone: v('phone'), email: v('email'),
       notify: { quoteFollowups: on('quoteFollowups'), invoiceFollowups: on('invoiceFollowups'), visitReminders: on('visitReminders'), jobFollowups: on('jobFollowups') } };
-    const list = contactsOf(c, d.prop).map((o) => (x.billing ? { ...o, billing: false } : o)); // one billing contact
-    await saveContacts(c, d.prop, [...list, x]); closeModal(); toast('Contact added'); refresh();
+    await onAdd(x); closeModal();
   });
-};
+}
+const withContact = (list, x) => [...list.map((o) => (x.billing ? { ...o, billing: false } : o)), x]; // one billing contact
+A.contactAdd = (d) => { const c = byId(D.clients, d.client); contactModal(async (x) => { await saveContacts(c, d.prop, withContact(contactsOf(c, d.prop), x)); toast('Contact added'); refresh(); }); };
 A.contactDel = async (d) => { const c = byId(D.clients, d.client); if (!confirm('Remove this contact?')) return; await saveContacts(c, d.prop, contactsOf(c, d.prop).filter((x) => x.id !== d.cid)); toast('Contact removed'); refresh(); };
 // New property / Edit property. after(property): instead of redrawing the page (the quote, job and invoice editors keep their unsaved changes)
 function propertyForm(c, p, after) {
@@ -1096,7 +1153,7 @@ function propertyField(sel) {
   const many = () => clientProps(byId(D.clients, sel.value)).length > 1;
   const need = () => changed && many() && !pid.value && !addr.value.trim();
   addr.addEventListener('input', (e) => { if (e.isTrusted) pid.value = ''; }); // typed in: an address of its own, not a saved property
-  sel.addEventListener('change', () => { pid.value = ''; changed = true; if (many()) setTimeout(() => propertyPick(form, byId(D.clients, sel.value)), 0); });
+  sel.addEventListener('change', () => { if (sel._refreshing) return; pid.value = ''; changed = true; if (many()) setTimeout(() => propertyPick(form, byId(D.clients, sel.value)), 0); });
   form.addEventListener('submit', (e) => { if (!need()) return; e.preventDefault(); e.stopImmediatePropagation(); toast('Choose the property this is for', true); propertyPick(form, byId(D.clients, sel.value)); }, true);
   const c = byId(D.clients, sel.value); const pre = c && clientProps(c).find((p) => p.id === qp('property'));
   if (pre && !addr.value.trim()) setTimeout(() => setProp(form, pre), 0); // Create new from a property's page
@@ -1155,7 +1212,7 @@ ${portal ? `${c.email ? `<button type="button" class="mi need-clients-edit" data
 ${createMenu('<summary class="btn">+ Create</summary>')}</div></div>
 <div class="cv-name"><h1>${esc(c.name)}</h1>${edit ? `<a class="icon-btn cv-ib" href="/clients/edit?id=${c.id}" data-link title="Edit client" aria-label="Edit client">${CI.edit}</a>` : ''}</div>${c.company && c.company !== c.name ? `<div class="muted cv-co">${esc(c.company)}</div>` : ''}
 <div class="cv-info"><div>${field('Main phone', c.phone ? `<a href="tel:${esc(c.phone)}">${esc(c.phone)}</a>` : '')}${field('Email', c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '')}${field('Text messages', c.smsConsent ? `Agreed ${esc(fmtDate(c.smsConsent.at.slice(0, 10)))}` : 'Not agreed')}</div>
-<div>${field('Company', esc(c.company))}${field('Lead source', esc((c.tags || []).includes('Online booking') ? 'Online booking' : ''))}${field('Client since', c.createdAt ? fmtDate(c.createdAt.slice(0, 10)) : '')}</div></div>
+<div>${field('Company', esc(c.company))}${field('Lead source', esc(c.leadSource || ((c.tags || []).includes('Online booking') ? 'Online booking' : '')))}${field('Client since', c.createdAt ? fmtDate(c.createdAt.slice(0, 10)) : '')}</div></div>
 <div class="cv-tabs" role="tablist"><button type="button" role="tab" class="${v.tab === 'info' ? 'on' : ''}" aria-selected="${v.tab === 'info'}" data-act="cvTab" data-t="info">Client information</button><button type="button" role="tab" class="${v.tab === 'comms' ? 'on' : ''}" aria-selected="${v.tab === 'comms'}" data-act="cvTab" data-t="comms">Communication</button></div>
 ${v.tab === 'comms' ? comms : info}</div>
 <aside class="cv-side">
@@ -1214,10 +1271,11 @@ A.cvCustomize = () => {
 };
 A.cvNewInvoice = (d) => navigate('/invoices/new?client=' + d.id);
 A.newClient = () => navigate('/clients/new');
-// from a quote, invoice or job page: open the client's profile, or edit them, in the page. In an editor (no id, or the popup's
-// own Edit button) they open in a popup instead, so the unsaved quote, invoice or job isn't lost.
-A.editClient = (d) => (d.id && !d.pop && !$('main form select[name=clientId]') ? navigate('/clients/edit?id=' + d.id) : clientForm(byId(D.clients, d.id || clientMenuId())));
-A.viewClient = (d) => (d.id && !$('main form select[name=clientId]') ? navigate('/clients/view?id=' + d.id) : clientForm(byId(D.clients, d.id || clientMenuId()), true));
+// from a quote, invoice or job page: open the client's profile, or edit them, in the page. In an editor, Edit client shows the
+// client page in the editor's place (the unsaved quote, invoice or job comes back afterwards) and the profile opens in a new tab.
+const inEditor = () => !!$('main form select[name=clientId]');
+A.editClient = (d) => (inEditor() ? clientOverEditor(byId(D.clients, d.id || clientMenuId()), clientSavedInEditor) : navigate('/clients/edit?id=' + d.id));
+A.viewClient = (d) => { const id = d.id || clientMenuId(); if (inEditor()) window.open('/clients/view?id=' + id, '_blank', 'noopener'); else navigate('/clients/view?id=' + id); };
 // the client chosen in a quote, invoice or job being edited
 const clientMenuId = () => { const s = $('main form select[name=clientId]'); if (!s || !s.value) throw new Error('Choose a client first'); return s.value; };
 // the ••• on the client card of every quote, invoice and job (page and editor): view the client, or edit their details.
@@ -1289,7 +1347,7 @@ function clientPick(sel) {
   list.addEventListener('mousedown', (e) => e.preventDefault()); // keep focus in the box while choosing
   list.addEventListener('click', (e) => { const o = e.target.closest('.cpick-opt'); if (o) choose(o.dataset.id); });
   const add = $('.cpick-new', box);
-  if (add) { add.addEventListener('mousedown', (e) => e.preventDefault()); add.addEventListener('click', () => { const typed = input.value.trim(); close(); clientForm({ name: hits.length ? '' : typed }, false, (c) => choose(c.id)); }); }
+  if (add) { add.addEventListener('mousedown', (e) => e.preventDefault()); add.addEventListener('click', () => { const typed = input.value.trim(); close(); clientOverEditor(hits.length || !typed ? {} : { firstName: typed.split(' ')[0], lastName: typed.split(' ').slice(1).join(' ') }, (c) => { clientSavedInEditor(c); choose(c.id); }); }); }
   document.addEventListener('mousedown', (e) => { if (!pop.hidden && !box.contains(e.target)) close(); });
   sel.addEventListener('change', () => { if (pop.hidden) label(); });
   sel.addEventListener('invalid', (e) => { e.preventDefault(); err.hidden = false; box.classList.add('bad'); input.focus(); }); // the hidden select can't show the browser's own message

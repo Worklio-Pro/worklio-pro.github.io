@@ -1251,3 +1251,19 @@ body.ms-open{overflow:hidden}
 .ct-notify{border:1px solid var(--line);border-radius:10px;padding:10px 14px}.ct-notify strong{display:block;font-size:14px;margin:6px 0 2px}
 @media (max-width:760px){.pp-head{grid-template-columns:1fr}.pp-edit{grid-column:1;justify-self:start}.pp-info{grid-template-columns:1fr}.ct-name{grid-template-columns:1fr 1fr}.ct-name label:first-child{grid-column:1/-1}}
 .pf-cbody .btn{flex:none;white-space:nowrap}
+/* New / Edit client page: a label column beside each section's fields; Delete, Cancel and Update Client stay at the bottom of the screen */
+.ce>:not(.ce-foot){max-width:1000px}.ce h1{margin:8px 0 8px;font-size:28px}
+.ce-sec{display:grid;grid-template-columns:240px minmax(0,1fr);gap:24px;padding:24px 0;border-bottom:1px solid var(--line)}.ce-sec:last-of-type{border-bottom:0}
+.ce-l h2{margin:0 0 6px}.ce-l p{margin:0 0 14px;line-height:1.45}.ce-r h4{margin:16px 0 8px;font-size:14px}
+.ce-name{display:grid;grid-template-columns:130px 1fr 1fr;gap:0 10px}
+.ce-comm{margin:-2px 0 6px}.ce-comm summary{display:inline-block;color:var(--link);font-weight:600;font-size:14px;text-decoration:underline;cursor:pointer;list-style:none;margin-bottom:8px}
+.ce-comm summary::-webkit-details-marker{display:none}.ce-comm p{font-size:13px;margin:0 0 6px}
+.ce-acc{border:1px solid var(--line);border-radius:10px;background:var(--surface-2);margin:12px 0 0}.ce-acc summary{padding:13px 16px;font-weight:600;font-size:14px;cursor:pointer}
+.ce-list{padding:0 16px 14px}.ce-ct{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--line);font-size:14px}
+.ce-ctadd{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:10px;font-size:13px}.ce-ctadd .btn{flex:none}
+.ce-prop+.ce-prop{margin-top:22px;padding-top:18px;border-top:1px dashed var(--line)}.ce-ph{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}.ce-ph .link-btn{margin:0}
+.ce-tax{display:grid;grid-template-columns:1fr 160px;gap:0 12px}.ce-tax label:only-child,.ce-tax label:first-child:has(+[hidden]){grid-column:1/-1}
+.ce-billing{margin-top:14px}
+.ce-foot{position:sticky;bottom:0;z-index:20;display:flex;align-items:center;gap:8px;margin:8px -28px -24px;padding:12px 28px;background:var(--card);border-top:1px solid var(--line);box-shadow:0 -2px 10px rgba(15,23,42,.06)}
+.ce-foot span{flex:1}.btn.alt.ce-del{color:var(--danger)}
+@media (max-width:760px){.ce-sec{grid-template-columns:1fr;gap:8px}.ce-name{grid-template-columns:1fr 1fr}.ce-name label:first-child{grid-column:1/-1}.ce-foot{bottom:calc(66px + env(safe-area-inset-bottom));margin-bottom:0}}
