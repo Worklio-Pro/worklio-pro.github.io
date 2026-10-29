@@ -456,7 +456,7 @@ const isMemberReq = (req) => { const u = currentUser(req); return !!u && !can(u,
 // what a team member may see/change on a job: no prices, totals or line items
 const MONEY_KEYS = ['items', 'subtotal', 'discount', 'discountType', 'discountValue', 'tax', 'total', 'taxRate', 'depositType', 'depositValue', 'depositFee'];
 const jobForMember = (j) => Object.fromEntries(Object.entries(j).filter(([k]) => !MONEY_KEYS.includes(k)));
-const MEMBER_JOB_FIELDS = ['title', 'clientId', 'address', 'date', 'startTime', 'endTime', 'anytime', 'staffIds', 'status', 'description', 'internalNotes'];
+const MEMBER_JOB_FIELDS = ['title', 'clientId', 'address', 'propertyId', 'date', 'startTime', 'endTime', 'anytime', 'staffIds', 'status', 'description', 'internalNotes'];
 
 // ---------- team logins (owner/admin only; the /api guard above blocks members) ----------
 const INVITE_DAYS = 7;
@@ -1954,7 +1954,7 @@ function forClient(doc) {
 // a client's visits: schedule details only (no internal notes, prices or line items)
 const PORTAL_JOB_FIELDS = ['id', 'number', 'title', 'description', 'date', 'startTime', 'endTime', 'address', 'status'];
 const jobForClient = (j) => Object.fromEntries(PORTAL_JOB_FIELDS.map((k) => [k, j[k]]));
-const REQ_FIELDS = ['id', 'title', 'details', 'address', 'preferredDate', 'preferredTime', 'status', 'createdAt'];
+const REQ_FIELDS = ['id', 'title', 'details', 'address', 'propertyId', 'preferredDate', 'preferredTime', 'status', 'createdAt'];
 const requestForClient = (r) => Object.fromEntries(REQ_FIELDS.map((k) => [k, r[k]]));
 app.get('/api/portal/:token', (req, res) => {
   const c = db.clients.find((x) => x.portalToken === req.params.token);
@@ -2166,6 +2166,17 @@ app.post('/api/clients/import', (req, res) => {
 });
 // a client's work requests (online booking and the client portal), newest first, for their profile page
 app.get('/api/clients/:id/requests', (req, res) => res.json((db.requests || []).filter((r) => r.clientId === req.params.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(requestForClient)));
+// a request the business takes down itself (a call, a text): from the client's profile or one of their properties
+app.post('/api/clients/:id/requests', (req, res) => {
+  const c = findClient(req.params.id); if (!c) return res.status(404).json({ error: 'Not found' });
+  const b = req.body || {}; const clip = (v, n) => String(v || '').trim().slice(0, n);
+  const title = clip(b.title, 120); if (!title) return res.status(400).json({ error: 'Say what the client needs done' });
+  db.requests = db.requests || [];
+  const r = { id: uid(), clientId: c.id, title, details: clip(b.details, 4000), address: clip(b.address, 300) || c.address || '', propertyId: clip(b.propertyId, 40),
+    preferredDate: /^\d{4}-\d{2}-\d{2}$/.test(b.preferredDate || '') ? b.preferredDate : '', preferredTime: ['morning', 'afternoon', 'evening'].includes(b.preferredTime) ? b.preferredTime : 'any',
+    status: 'new', source: 'business', createdAt: new Date().toISOString() };
+  db.requests.push(r); save(); res.status(201).json(requestForClient(r));
+});
 // Send Login Email on a client's profile: their client portal link, by email
 app.post('/api/clients/:id/portal-email', async (req, res) => {
   const c = findClient(req.params.id); if (!c) return res.status(404).json({ error: 'Not found' });
@@ -2180,8 +2191,14 @@ app.post('/api/clients/merge', (req, res) => {
   const others = [...new Set((req.body && req.body.mergeIds) || [])].filter((id) => id !== (keep && keep.id)).map(findClient).filter(Boolean);
   if (!keep || !others.length) return res.status(400).json({ error: 'Choose a client to keep and at least one to merge into it' });
   const ids = new Set(others.map((c) => c.id));
-  for (const col of ['quotes', 'jobs', 'invoices', 'notifications']) (db[col] || []).forEach((x) => { if (ids.has(x.clientId)) { x.clientId = keep.id; if (col === 'notifications') x.clientName = keep.name; } });
+  for (const col of ['quotes', 'jobs', 'invoices', 'notifications', 'requests', 'tasks']) (db[col] || []).forEach((x) => { if (ids.has(x.clientId)) { x.clientId = keep.id; if (col === 'notifications') x.clientName = keep.name; } });
   const tags = (c) => (Array.isArray(c.tags) ? c.tags : String(c.tags || '').split(',')).map((t) => t.trim()).filter(Boolean);
+  // properties (older profiles have only an address) and contacts are combined; a property already on the kept profile isn't added twice
+  const props = (c) => (Array.isArray(c.properties) ? c.properties : String(c.address || '').trim() ? [{ id: c.id === keep.id ? 'p0' : uid(), name: '', street1: c.address.trim(), street2: '', city: '', state: '', zip: '', country: '', contacts: [] }] : []);
+  const addrOf = (p) => [p.street1, p.street2, p.city, [p.state, p.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ').toLowerCase();
+  keep.properties = props(keep);
+  for (const o of others) for (const p of props(o)) if (!keep.properties.some((k) => addrOf(k) === addrOf(p))) keep.properties.push({ ...p, id: keep.properties.some((k) => k.id === p.id) ? uid() : p.id });
+  keep.contacts = [...(keep.contacts || []), ...others.flatMap((o) => o.contacts || [])];
   for (const o of others) {
     for (const k of ['email', 'phone', 'address', 'company']) if (!keep[k] && o[k]) keep[k] = o[k];
     keep.tags = [...new Set([...tags(keep), ...tags(o)])];

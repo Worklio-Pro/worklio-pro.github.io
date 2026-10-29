@@ -825,7 +825,7 @@ function clientFields(c) {
 <div class="row"><label>Email<input name="email" type="email" value="${esc(c.email)}"></label><label>Mobile (for texts)<input name="phone" value="${esc(c.phone)}" placeholder="+17135550100"></label></div>
 <div class="chk"><label><input type="checkbox" name="smsConsent" ${c.smsConsent ? 'checked' : ''}> Agreed to receive text messages</label></div>
 <p class="muted" style="margin:-6px 0 10px;font-size:13px">${c.smsConsent ? `Agreed ${esc(fmtDate(c.smsConsent.at.slice(0, 10)))}${c.smsConsent.source !== 'business' ? ' on the ' + esc(c.smsConsent.source) : ''}. ` : ''}Only tick this if the client said yes after you read them: “Can we text you at the number you just gave us about your quotes, invoices and appointments? Message frequency varies, and msg &amp; data rates may apply. Reply HELP for help or STOP at any time to opt out. Our text terms and privacy policy are at ${esc(location.hostname.split('.').slice(-2).join('.'))}/terms and ${esc(location.hostname.split('.').slice(-2).join('.'))}/privacy. Agreeing isn’t required to do business with us. Do you agree to receive texts?” If they say yes: “Thanks, you’re signed up. You’ll get a text confirming it.” Ticking this sends them that confirmation text.</p>
-<label>Service address<input name="address" value="${esc(c.address)}"></label><div class="cmap" ${String(c.address || '').trim() ? '' : 'hidden'}><iframe title="Map of the service address" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe></div><label>Tags (separate with commas)<input name="tags" value="${esc(clientTags(c).join(', '))}" placeholder="e.g. commercial, monthly"></label><label>Notes<textarea name="notes">${esc(c.notes)}</textarea></label>
+<label>${clientProps(c).length > 1 ? "Billing address" : "Service address"}<input name="address" value="${esc(c.address)}"></label><div class="cmap" ${String(c.address || '').trim() ? '' : 'hidden'}><iframe title="Map of the service address" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe></div><label>Tags (separate with commas)<input name="tags" value="${esc(clientTags(c).join(', '))}" placeholder="e.g. commercial, monthly"></label><label>Notes<textarea name="notes">${esc(c.notes)}</textarea></label>
 ${c.id && planHas('clientPortal') ? `<label>Client portal link<input readonly value="${esc(location.origin + '/client-portal?c=' + c.portalToken)}" onclick="this.select()"></label>` : ''}`;
 }
 async function saveClient(c, form) {
@@ -891,7 +891,217 @@ const cvIcons = () => ({ // profile icons (QI is defined further down the file)
   merge: QI('<path d="M3 7h5l8 10h5M3 17h5l2.5-3.1M13.5 10.1L16 7h5M18 4l3 3-3 3M18 14l3 3-3 3"/>'), gear: QI('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1.08 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>'),
   chev: QI('<path d="M9 6l6 6-6 6"/>'), note: QI('<path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/>'), x: QI('<path d="M18 6L6 18M6 6l12 12"/>'),
 });
+/* ===== properties: a client can have several; each quote, job, invoice, request and task is for one of them ===== */
+const propAddr = (p) => [p.street1, p.street2, p.city, [p.state, p.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+const propFromAddr = (a, id = 'p0') => { const s = splitAddr(a); return { id, name: '', street1: s.street, street2: '', city: s.city, state: s.state, zip: s.zip, country: 'United States', contacts: [] }; };
+// saved properties, or (clients from before properties) one made from their address
+const clientProps = (c) => (!c ? [] : Array.isArray(c.properties) ? c.properties : String(c.address || '').trim() ? [propFromAddr(c.address)] : []);
+const sameAddr = (a, b) => !!String(a || '').trim() && String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+// the property something is for: by its propertyId, else by its address (a blank address means the client's billing address)
+const docProp = (c, x) => { const ps = clientProps(c); return ps.find((p) => x.propertyId && p.id === x.propertyId) || ps.find((p) => sameAddr(propAddr(p), x.address || c.address)); };
+const rid = () => Math.random().toString(36).slice(2, 10);
+const PI = { // icons for what can be made for a client or property (QI is defined further down the file, so they're made when used)
+  get request() { return QI('<path d="M4 14v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5"/><path d="M4 14h4l1.5 2h5l1.5-2h4M12 3v9M8.5 8.5L12 12l3.5-3.5"/>', 'pi-req'); },
+  get quote() { return QI('<circle cx="10" cy="10" r="6"/><path d="M14.5 14.5L20 20M8 10h4"/>', 'pi-quote'); },
+  get job() { return QI('<path d="M15 12l-8.5 8.5a2.12 2.12 0 0 1-3-3L12 9"/><path d="M17.64 15L22 10.64M20.91 11.7l-1.25-1.25a3.2 3.2 0 0 1-.93-2.25v-.86L16 4.6a5.56 5.56 0 0 0-3.94-1.64H9l.92.82A6.18 6.18 0 0 1 12 8.4v1.56l2 2h2.47l2.26 1.91"/>', 'ok'); },
+  get task() { return QI('<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 13l2 2 4-4"/>'); },
+  get home() { return QI('<path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/>'); },
+  get pin() { return QI('<path d="M12 22s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/>'); },
+  get cal() { return QI('<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>'); },
+  get trash() { return QI('<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/>', 'bad'); },
+};
 const R_STATUS = { new: ['New', 'q-sent'], converted: ['Converted', 'q-converted'], closed: ['Closed', 'q-draft'], archived: ['Archived', 'q-draft'] };
+// a client's work (requests, quotes, jobs and invoices), newest first, with the property each is for. Open = still needs something done
+function clientWork(c, reqs) {
+  const mine = (k) => D[k].filter((x) => x.clientId === c.id); const pid = (x) => (docProp(c, x) || {}).id || '';
+  return [
+    ...reqs.map((r) => { const [l, cls] = R_STATUS[r.status] || [r.status, 'q-draft']; return { type: 'requests', item: 'Request', title: r.title, addr: r.address, pid: pid(r), date: r.createdAt, label: l, cls, open: r.status === 'new', amount: null }; }),
+    ...mine('quotes').map((q) => { const st = quoteStatus(q); return { type: 'quotes', item: `Quote #${q.number}`, title: q.title, addr: q.address || c.address, pid: pid(q), date: q.createdAt, label: Q_STATUS[st] || st, cls: 'q-' + st, open: !['converted', 'declined'].includes(st), amount: q.total, href: '/quotes/view?id=' + q.id }; }),
+    ...mine('jobs').map((j) => { const st = jobStatus(j); return { type: 'jobs', item: `Job #${j.number}`, title: j.title, addr: j.address, pid: pid(j), date: j.date, label: J_STATUS[st], cls: J_CLASS[st], open: !['archived', 'cancelled'].includes(st), amount: canDo('jobs.prices') ? jobTotal(j) : null, href: '/jobs/edit?id=' + j.id }; }),
+    ...mine('invoices').map((i) => ({ type: 'invoices', item: `Invoice #${i.number}`, title: i.subject, addr: i.address || c.address, pid: pid(i), date: i.issueDate, label: I_STATUS[i.displayStatus] || i.displayStatus, cls: I_CLASS[i.displayStatus], open: i.displayStatus !== 'paid', amount: i.total, href: '/invoices/view?id=' + i.id })),
+  ].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+}
+const workFilter = (work, v) => work.filter((w) => (!v.types.length || v.types.includes(w.type)) && (v.status === 'all' || (v.status === 'open') === w.open));
+const workChips = (v, sel, act = 'cvType') => `<label class="pill">Status${sel('status', [['all', 'All'], ['open', 'Open'], ['closed', 'Closed']])}</label>
+${[['requests', 'Requests', '', PI.request], ['quotes', 'Quotes', 'need-quotes', PI.quote], ['jobs', 'Jobs', '', PI.job], ['invoices', 'Invoices', 'need-invoices', QM.invoice]].map(([k, l, cls, ic]) => `<button type="button" class="pill cv-chip ${cls} ${v.types.includes(k) ? 'on' : ''}" data-act="${act}" data-k="${k}" aria-pressed="${v.types.includes(k)}">${ic}${l}</button>`).join('')}`;
+const workTable = (work, showProp) => `<div class="tablewrap"><table class="cv-t"><tr><th>Item</th>${showProp ? '<th>Property</th>' : ''}<th>Date</th><th>Status</th><th class="r">Amount</th></tr>
+${work.map((w) => `<tr${w.href ? ` class="crow" data-href="${w.href}"` : ''}><td><strong>${esc(w.item)}</strong>${w.title ? `<div class="muted">${esc(w.title)}</div>` : ''}</td>${showProp ? `<td>${esc(splitAddr(w.addr).street)}</td>` : ''}<td>${w.date ? fmtDate(String(w.date).slice(0, 10)) : ''}</td><td><span class="cstatus ${w.cls}">${esc(w.label)}</span></td><td class="r">${w.amount == null ? '' : money(w.amount)}</td></tr>`).join('') || `<tr><td colspan="${showProp ? 5 : 4}" class="empty">No results match your search</td></tr>`}</table></div>`;
+// a client's visits (jobs) and tasks, newest first
+function clientSched(c) {
+  const pid = (x) => (docProp(c, x) || {}).id || '';
+  return [...D.jobs.filter((j) => j.clientId === c.id).map((j) => ({ kind: 'job', pid: pid(j), date: j.date, time: j.anytime || !j.startTime ? '' : fmtTime(j.startTime), title: `Visit for Job #${j.number} - ${j.title}`, sub: j.description, staff: j.staffIds, done: j.status === 'completed', off: j.status === 'cancelled', href: '/jobs/edit?id=' + j.id })),
+    ...(D.tasks || []).filter((t) => t.clientId === c.id).map((t) => ({ kind: 'task', pid: pid(t), date: t.date, time: t.anytime || !t.startTime ? '' : fmtTime(t.startTime), title: t.title, sub: t.description || t.notes || '', staff: t.staffIds, done: !!t.done, off: false }))]
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+}
+const schedTable = (sched) => { const today = ymd(new Date()); const state = (s) => (s.off ? 'Cancelled' : s.done ? 'Completed' : s.date < today ? 'Overdue' : s.date === today ? 'Today' : 'Upcoming');
+  return `<div class="tablewrap"><table class="cv-t"><tr><th>Schedule</th><th>Title</th><th>Assigned</th></tr>${sched.map((s) => `<tr${s.href ? ` class="crow" data-href="${s.href}"` : ''}><td><strong>${fmtDate(s.date)}${s.time ? ', ' + s.time : ''}</strong><div class="muted">${state(s)}</div></td><td><strong>${esc(s.title)}</strong>${s.sub ? `<div class="muted cv-clip">${esc(s.sub)}</div>` : ''}</td><td>${staffDots(s.staff)}</td></tr>`).join('') || '<tr><td colspan="3" class="empty">Nothing scheduled</td></tr>'}</table></div>`; };
+// Request, Quote and Job for a client, or for one of their properties
+const workMenuItems = (c, p) => { const q = `client=${c.id}${p ? '&property=' + encodeURIComponent(p.id) : ''}`;
+  return `<button type="button" class="mi need-clients-edit" data-act="propRequest" data-client="${c.id}"${p ? ` data-id="${esc(p.id)}"` : ''}>${PI.request}Request</button><a class="mi need-quotes" href="/quotes/new?${q}" data-link>${PI.quote}Quote</a><a class="mi need-jobs-edit" href="/jobs/new?${q}" data-link>${PI.job}Job</a>`; };
+// contacts: everyone at the client, or the people at one property (e.g. tenants)
+function contactsCard(c, p, edit) {
+  const list = (p ? p.contacts : c.contacts) || []; const at = `data-client="${c.id}"${p ? ` data-prop="${esc(p.id)}"` : ''}`;
+  return `<section class="cv-card cv-contacts cvs-contacts"><div class="cv-cbar">${cvIcons().contact}<span><strong>Contacts</strong> – ${p ? 'People at this property, e.g. tenants' : 'Add contacts to keep track of everyone you communicate with'}</span>${edit ? `<button type="button" class="link-btn" data-act="contactAdd" ${at}>Add Contact</button>` : ''}</div>
+${list.length ? `<div class="tablewrap"><table class="cv-t"><tr><th>Name</th><th>Role</th><th>Phone</th><th>Email</th><th></th></tr>${list.map((x) => `<tr><td><strong>${esc(x.name)}</strong>${x.billing ? '<div class="muted">Billing contact</div>' : ''}</td><td>${esc(x.role)}</td><td>${x.phone ? `<a href="tel:${esc(x.phone)}">${esc(x.phone)}</a>` : ''}</td><td>${x.email ? `<a href="mailto:${esc(x.email)}">${esc(x.email)}</a>` : ''}</td><td class="actions">${edit ? `<button type="button" class="icon-btn cv-ib" data-act="contactDel" ${at} data-cid="${esc(x.id)}" aria-label="Remove ${esc(x.name)}" title="Remove">${cvIcons().x}</button>` : ''}</td></tr>`).join('')}</table></div>` : ''}</section>`;
+}
+// save a client's properties (and, with extra, other details) and keep the loaded copy in step
+async function saveProps(c, props, extra = {}) { const saved = await api('PUT', '/api/clients/' + c.id, { properties: props, ...extra }); Object.assign(c, saved); return saved; }
+const contactsOf = (c, propId) => (propId ? (clientProps(c).find((p) => p.id === propId) || {}).contacts || [] : c.contacts || []);
+async function saveContacts(c, propId, list) {
+  if (!propId) { Object.assign(c, await api('PUT', '/api/clients/' + c.id, { contacts: list })); return; }
+  await saveProps(c, clientProps(c).map((p) => (p.id === propId ? { ...p, contacts: list } : p)));
+}
+A.contactAdd = (d) => {
+  const c = byId(D.clients, d.client); const sw = (n, l, on) => switchRow(n, l, on);
+  const mb = modal('Add contact', `<form class="ctf"><h4>Details</h4><div class="ct-name"><label>Title<select name="title">${['No title', 'Mr.', 'Mrs.', 'Ms.', 'Miss', 'Dr.'].map((t, i) => `<option value="${i ? t : ''}">${t}</option>`).join('')}</select></label><label>First name<input name="firstName" required autocomplete="off"></label><label>Last name<input name="lastName" autocomplete="off"></label></div>
+<label>Role<input name="role" placeholder="e.g. Property manager, tenant"></label><div class="chk"><label><input type="checkbox" name="billing"> Set as billing contact</label></div>
+<h4>Communication</h4><label>Phone number<input name="phone" type="tel"></label><label>Email<input name="email" type="email"></label>
+<h4>Communication settings</h4><div class="ct-notify"><strong>Quotes and invoices</strong>${sw('quoteFollowups', 'Outstanding quote follow-ups', false)}${sw('invoiceFollowups', 'Overdue invoice follow-ups', false)}
+<strong>Jobs and visits</strong>${sw('visitReminders', 'Upcoming assessment or visit reminders', true)}${sw('jobFollowups', 'Job closure follow-ups', false)}</div>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Add Contact</button></div></form>`);
+  const f = $('form', mb); f.firstName.focus();
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault(); const on = (n) => $(`input.sw[name=${n}]`, f).checked; const v = (n) => f[n].value.trim();
+    const x = { id: rid(), title: v('title'), firstName: v('firstName'), lastName: v('lastName'), name: [v('title'), v('firstName'), v('lastName')].filter(Boolean).join(' '), role: v('role'), billing: f.billing.checked, phone: v('phone'), email: v('email'),
+      notify: { quoteFollowups: on('quoteFollowups'), invoiceFollowups: on('invoiceFollowups'), visitReminders: on('visitReminders'), jobFollowups: on('jobFollowups') } };
+    const list = contactsOf(c, d.prop).map((o) => (x.billing ? { ...o, billing: false } : o)); // one billing contact
+    await saveContacts(c, d.prop, [...list, x]); closeModal(); toast('Contact added'); refresh();
+  });
+};
+A.contactDel = async (d) => { const c = byId(D.clients, d.client); if (!confirm('Remove this contact?')) return; await saveContacts(c, d.prop, contactsOf(c, d.prop).filter((x) => x.id !== d.cid)); toast('Contact removed'); refresh(); };
+// New property / Edit property. after(property): instead of redrawing the page (the quote, job and invoice editors keep their unsaved changes)
+function propertyForm(c, p, after) {
+  const isNew = !p; p = p || { id: '', name: '', street1: '', street2: '', city: '', state: '', zip: '', country: 'United States', contacts: [] };
+  const wasBilling = !isNew && sameAddr(propAddr(p), c.address); const rate = Number(company.taxRate) || 0;
+  const mode = p.taxRate == null || p.taxRate === '' ? 'default' : Number(p.taxRate) === 0 ? 'none' : 'custom';
+  const countries = ['United States', 'Canada', 'Mexico', 'Other'];
+  const mb = modal(isNew ? 'New property' : 'Edit ' + propAddr(p), `<form class="pf"><label>Property name<input name="name" value="${esc(p.name)}" placeholder="Optional, e.g. Rental home"></label>
+<div class="pf-addr"><label class="pf-w">Street 1<input name="street1" required value="${esc(p.street1)}"></label><label class="pf-w">Street 2<input name="street2" value="${esc(p.street2)}"></label>
+<label>City<input name="city" value="${esc(p.city)}"></label><label>State<input name="state" value="${esc(p.state)}"></label><label>ZIP code<input name="zip" value="${esc(p.zip)}"></label>
+<label>Country<select name="country">${countries.map((x) => `<option ${(p.country || 'United States') === x || (x === 'Other' && p.country && !countries.includes(p.country)) ? 'selected' : ''}>${x}</option>`).join('')}</select></label></div>
+<label>Tax rate<select name="taxMode"><option value="default" ${mode === 'default' ? 'selected' : ''}>Company default (${rate}%)</option><option value="none" ${mode === 'none' ? 'selected' : ''}>No tax (0%)</option><option value="custom" ${mode === 'custom' ? 'selected' : ''}>Custom rate</option></select></label>
+<label class="pf-rate" ${mode === 'custom' ? '' : 'hidden'}>Tax rate for this property (%)<input name="taxRate" type="number" step="any" min="0" value="${mode === 'custom' ? esc(p.taxRate) : ''}"></label>
+<div class="chk"><label><input type="checkbox" name="billing" ${wasBilling || (isNew && !String(c.address || '').trim()) ? 'checked' : ''} ${wasBilling ? 'disabled title="Make another property the billing address to change this"' : ''}> Billing address is the same as property address</label></div>
+<details class="pf-contacts"><summary>Property contacts${(p.contacts || []).length ? ` (${p.contacts.length})` : ''}</summary><div class="pf-cbody"><span class="muted">For contacts with access limited to this property, e.g., tenants.${(p.contacts || []).length ? ' ' + p.contacts.map((x) => esc(x.name)).join(', ') : ''}</span><button type="button" class="btn alt sm" data-pf-contact>Add Contact</button></div></details>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save</button></div></form>`);
+  const f = $('form', mb); f.street1.focus();
+  f.taxMode.addEventListener('change', () => { $('.pf-rate', f).hidden = f.taxMode.value !== 'custom'; if (f.taxMode.value === 'custom') f.taxRate.focus(); });
+  const save = async () => {
+    const v = (n) => f[n].value.trim();
+    const np = { ...p, id: p.id || rid(), name: v('name'), street1: v('street1'), street2: v('street2'), city: v('city'), state: v('state'), zip: v('zip'), country: v('country'), contacts: p.contacts || [],
+      taxRate: f.taxMode.value === 'default' ? null : f.taxMode.value === 'none' ? 0 : Math.max(0, Number(f.taxRate.value) || 0) };
+    const props = clientProps(c).slice(); const i = props.findIndex((x) => x.id === np.id); if (i >= 0) props[i] = np; else props.push(np);
+    await saveProps(c, props, wasBilling || f.billing.checked ? { address: propAddr(np) } : {}); // the billing address follows its property
+    return np;
+  };
+  f.addEventListener('submit', async (e) => { e.preventDefault(); if (!f.reportValidity()) return; const np = await save(); closeModal(); toast(isNew ? 'Property added' : 'Property saved'); if (after) after(np); else refresh(); });
+  $('[data-pf-contact]', f).addEventListener('click', async () => { if (!f.reportValidity()) return; const np = await save(); refresh(); A.contactAdd({ client: c.id, prop: np.id }); }); // saves the property first
+}
+A.propEdit = (d) => { const c = byId(D.clients, d.client); propertyForm(c, d.id ? clientProps(c).find((p) => p.id === d.id) : null); };
+// a request taken down by the business (a call, a text, a visit)
+A.propRequest = (d) => {
+  const c = byId(D.clients, d.client); const props = clientProps(c); const p = props.find((x) => x.id === d.id);
+  const mb = modal('New request', `<form><p class="muted" style="margin-top:0">For ${esc(c.name)}${p ? ` at ${esc(propAddr(p))}` : ''}</p><label>What do they need?<input name="title" required placeholder="e.g. Gutter repair"></label>
+${!p && props.length > 1 ? `<label>Property<select name="propertyId">${props.map((x) => `<option value="${esc(x.id)}">${esc(propAddr(x))}</option>`).join('')}</select></label>` : ''}
+<label>Details<textarea name="details" rows="4"></textarea></label><div class="row"><label>Preferred day<input type="date" name="preferredDate"></label><label>Preferred time<select name="preferredTime"><option value="any">Any time</option><option value="morning">Morning</option><option value="afternoon">Afternoon</option><option value="evening">Evening</option></select></label></div>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save request</button></div></form>`);
+  const f = $('form', mb); f.title.focus();
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault(); const body = Object.fromEntries(new FormData(f)); const pp = p || props.find((x) => x.id === body.propertyId) || props[0];
+    if (pp) { body.propertyId = pp.id; body.address = propAddr(pp); }
+    await api('POST', `/api/clients/${c.id}/requests`, body); closeModal(); toast('Request saved'); refresh();
+  });
+};
+// a task for a client or one of their properties (on the calendar like other tasks)
+A.propTask = (d) => {
+  const c = byId(D.clients, d.client); const p = clientProps(c).find((x) => x.id === d.id); const team = D.staff.filter((s) => s.status !== 'deactivated');
+  const mb = modal('New task', `<form><p class="muted" style="margin-top:0">For ${esc(c.name)}${p ? ` at ${esc(propAddr(p))}` : ''}</p><label>Title<input name="title" required></label>
+<div class="row3"><label>Date<input type="date" name="date" required value="${ymd(new Date())}"></label><label>Start<input type="time" name="startTime" value="09:00"></label><label>End<input type="time" name="endTime" value="10:00"></label></div>
+<div class="chk"><label><input type="checkbox" name="anytime"> Anytime that day (no set time)</label></div>
+<div class="muted qlabel">Assigned team</div><div class="team-pick">${team.map((s) => `<label><input type="checkbox" name="staff" value="${s.id}">${avatarHtml(s, 24)}${esc(s.name)}</label>`).join('') || '<span class="muted">Add team members on Manage Team first</span>'}</div>
+<label>Notes<textarea name="description" rows="3"></textarea></label><div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save task</button></div></form>`);
+  const f = $('form', mb); f.title.focus();
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault(); const fd = new FormData(f); const any = !!fd.get('anytime');
+    await api('POST', '/api/tasks', { title: fd.get('title'), date: fd.get('date'), startTime: any ? '' : fd.get('startTime'), endTime: any ? '' : fd.get('endTime'), anytime: any, clientId: c.id, address: p ? propAddr(p) : '', propertyId: p ? p.id : '', description: fd.get('description'), staffIds: fd.getAll('staff') });
+    closeModal(); toast('Task saved'); refresh();
+  });
+};
+A.propDelete = async (d) => {
+  const c = byId(D.clients, d.client); const props = clientProps(c); const p = props.find((x) => x.id === d.id);
+  if (props.length < 2) return toast('A client needs at least one property. Edit this one instead.', true);
+  if (!confirm(`Delete the property at ${propAddr(p)}? Quotes, jobs and invoices for it keep its address.`)) return;
+  const rest = props.filter((x) => x.id !== p.id);
+  await saveProps(c, rest, sameAddr(propAddr(p), c.address) ? { address: propAddr(rest[0]) } : {}); toast('Property deleted'); navigate('/clients/view?id=' + c.id);
+};
+// a property's page (/clients/property?client=&id=): its client, tax rate, work, schedule and contacts
+let ppState = { key: '', types: [], status: 'all' };
+PAGES['/clients/property'] = {
+  title: 'Property',
+  async render(main) {
+    const c = byId(D.clients, qp('client')); const p = clientProps(c).find((x) => x.id === qp('id'));
+    if (!p) { main.innerHTML = `<div class="card"><h1>Property not found</h1><p><a href="${c ? '/clients/view?id=' + c.id : '/clients'}" data-link>Back</a></p></div>`; return; }
+    if (ppState.key !== c.id + p.id) ppState = { key: c.id + p.id, types: [], status: 'all' };
+    const v = ppState; const edit = canDo('clients.edit'); const CI = cvIcons(); const active = (clientInfo()[c.id] || {}).active;
+    const reqs = await api('GET', `/api/clients/${c.id}/requests`).catch(() => []);
+    const work = workFilter(clientWork(c, reqs).filter((w) => w.pid === p.id), v); const sched = clientSched(c).filter((s) => s.pid === p.id);
+    const sel = (k, opts) => `<select data-ppf="${k}" aria-label="${k}">${opts.map(([val, l]) => `<option value="${val}" ${v[k] === val ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
+    const rate = p.taxRate == null || p.taxRate === '' ? `Company default (${Number(company.taxRate) || 0}%)` : Number(p.taxRate) === 0 ? 'No tax (0%)' : `${p.taxRate}%`;
+    const at = `data-client="${c.id}" data-id="${esc(p.id)}"`;
+    main.innerHTML = `<div class="pp"><a class="back pp-back" href="/clients/view?id=${c.id}" data-link>← Back to ${esc(c.name)}</a>
+<div class="pp-head"><div class="pp-title">${PI.home}<h1>${esc(propAddr(p))}</h1>${p.name ? `<div class="muted">${esc(p.name)}</div>` : ''}</div>
+<div class="pp-acts"><details class="menu cv-more"><summary class="btn alt"><span class="more-dots" aria-hidden="true">•••</span> More</summary><div class="menu-list"><div class="mi-h">Create new</div>${workMenuItems(c, p)}<button type="button" class="mi need-jobs-edit" data-act="propTask" ${at}>${PI.task}Task</button>
+${edit ? `<hr class="mi-sep"><button type="button" class="mi admin-only" data-act="propDelete" ${at}>${PI.trash}Delete property</button>` : ''}</div></details>
+<a class="btn" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(propAddr(p))}" target="_blank" rel="noopener">${PI.pin}Show on Map</a></div>
+${edit ? `<button type="button" class="icon-btn cv-ib pp-edit" data-act="propEdit" ${at} title="Edit Property" aria-label="Edit Property">${CI.edit}</button>` : ''}</div>
+<div class="pp-info"><a class="pp-client" href="/clients/view?id=${c.id}" data-link><strong>${esc(c.name)} <span class="cdot ${active ? 'active' : 'lead'}"></span></strong>${c.phone ? `<span>${esc(c.phone)}</span>` : ''}${c.email ? `<span class="pp-mail">${esc(c.email)}</span>` : ''}</a>
+<div class="cv-f"><span>Tax rate</span><div>${esc(rate)}</div></div></div>
+<section class="cv-card"><div class="cv-ch"><h2>Work overview</h2><details class="menu cv-create"><summary class="cv-plus" aria-label="Create" title="Create">${CI.plus}</summary><div class="menu-list">${workMenuItems(c, p)}</div></details></div>
+<div class="cv-filters">${workChips(v, sel, 'ppType')}</div>${workTable(work, false)}</section>
+<section class="cv-card cv-contacts"><div class="cv-cbar">${PI.cal}<span><strong>Property schedule</strong> – ${sched.length ? 'Visits and tasks at this property' : 'Scheduled items will appear here'}</span>
+<details class="menu cv-create"><summary class="link-btn">Add</summary><div class="menu-list"><button type="button" class="mi need-jobs-edit" data-act="propTask" ${at}>${PI.task}Task</button><button type="button" class="mi need-clients-edit" data-act="propRequest" ${at}>${PI.request}Request</button></div></details></div>
+${sched.length ? `<div class="pp-sched">${schedTable(sched)}</div>` : ''}</section>
+${contactsCard(c, p, edit)}</div>`;
+    $$('[data-ppf]', main).forEach((s) => s.addEventListener('change', (e) => { ppState[e.target.dataset.ppf] = e.target.value; PAGES['/clients/property'].render(main); }));
+    $$('tr[data-href]', main).forEach((r) => r.addEventListener('click', (e) => { if (!e.target.closest('a, button')) navigate(r.dataset.href); }));
+  },
+};
+A.ppType = (d) => { const s = new Set(ppState.types); s.has(d.k) ? s.delete(d.k) : s.add(d.k); ppState.types = [...s]; PAGES['/clients/property'].render($('#main')); };
+// the quote, job or invoice being edited is for this property: its address, and its tax rate when it has its own
+function setProp(form, p) {
+  const a = $('[name=address]', form); a.value = propAddr(p); const id = $('[name=propertyId]', form); if (id) id.value = p.id;
+  a.dispatchEvent(new Event('input', { bubbles: true })); a.dispatchEvent(new Event('change', { bubbles: true }));
+  const t = $('[name=taxRate]', form);
+  if (t && p.taxRate != null && p.taxRate !== '') {
+    t.value = Number(p.taxRate) ? p.taxRate : ''; const row = t.closest('.tl');
+    if (row && Number(p.taxRate)) { [$('.opt-edit', row), $('.opt-amt', row), $('.t-rm', row)].forEach((el) => { if (el) el.hidden = false; }); const add = $('.opt-add', row); if (add) add.hidden = true; }
+    recalc(form);
+  }
+}
+// Select a property: when the client has several, a new quote, job or invoice has to be for one of them
+function propertyPick(form, c) {
+  const cur = $('[name=propertyId]', form); const props = clientProps(c);
+  const mb = modal('Select a property', `<p class="muted" style="margin-top:0">${esc(c.name)} has ${props.length} properties. Which one is this for?</p>
+<div class="pp-pick">${props.map((p) => `<button type="button" class="pp-opt${cur && cur.value === p.id ? ' on' : ''}" data-id="${esc(p.id)}">${PI.home}<span><strong>${esc(p.name || p.street1)}</strong><span class="muted">${esc(propAddr(p))}${sameAddr(propAddr(p), c.address) ? ' · Billing address' : ''}</span></span></button>`).join('')}</div>
+<div class="foot">${canDo('clients.edit') ? '<button type="button" class="btn alt" data-pp-new>+ New property</button>' : ''}<button type="button" class="btn alt" data-pp-other>Enter a different address</button></div>`);
+  $$('.pp-opt', mb).forEach((b) => b.addEventListener('click', () => { closeModal(); setProp(form, props.find((p) => p.id === b.dataset.id)); }));
+  const nw = $('[data-pp-new]', mb); if (nw) nw.addEventListener('click', () => propertyForm(c, null, (np) => setProp(form, np)));
+  $('[data-pp-other]', mb).addEventListener('click', () => { const id = $('[name=propertyId]', form); if (id) id.value = ''; changePropertyAddr(); });
+}
+// on every quote, job and invoice form: a hidden propertyId beside the address; a property is asked for when the client has several
+function propertyField(sel) {
+  const form = sel.form; const addr = form && $('[name=address]', form); if (!addr || $('[name=propertyId]', form)) return;
+  const pid = document.createElement('input'); pid.type = 'hidden'; pid.name = 'propertyId'; pid.value = (form._doc && form._doc.propertyId) || ''; addr.after(pid);
+  let changed = !(form._doc && form._doc.id) && !/\/jobs\/edit$/.test(curPath()); // a new one; an existing one with no property keeps the client's address
+  const many = () => clientProps(byId(D.clients, sel.value)).length > 1;
+  const need = () => changed && many() && !pid.value && !addr.value.trim();
+  addr.addEventListener('input', (e) => { if (e.isTrusted) pid.value = ''; }); // typed in: an address of its own, not a saved property
+  sel.addEventListener('change', () => { pid.value = ''; changed = true; if (many()) setTimeout(() => propertyPick(form, byId(D.clients, sel.value)), 0); });
+  form.addEventListener('submit', (e) => { if (!need()) return; e.preventDefault(); e.stopImmediatePropagation(); toast('Choose the property this is for', true); propertyPick(form, byId(D.clients, sel.value)); }, true);
+  const c = byId(D.clients, sel.value); const pre = c && clientProps(c).find((p) => p.id === qp('property'));
+  if (pre && !addr.value.trim()) setTimeout(() => setProp(form, pre), 0); // Create new from a property's page
+  else if (need()) setTimeout(() => propertyPick(form, c), 0);
+}
 let cvState = { id: '', tab: 'info', types: [], status: 'all', prop: '', propQ: '', sType: 'all', sStatus: 'all', edit: '' };
 PAGES['/clients/view'] = {
   title: 'Client',
@@ -902,21 +1112,11 @@ PAGES['/clients/view'] = {
     const v = cvState; const CI = cvIcons(); const edit = canDo('clients.edit'); const today = ymd(new Date());
     const [reqs, notifs] = await Promise.all([api('GET', `/api/clients/${c.id}/requests`).catch(() => []), canDo('notifications') ? api('GET', '/api/notifications').catch(() => null) : null]);
     const msgs = notifs && notifs.filter((n) => n.clientId === c.id); window.__notifs = notifs || [];
-    const mine = (k) => D[k].filter((x) => x.clientId === c.id);
-    const quotes = mine('quotes'); const jobs = mine('jobs'); const invoices = mine('invoices'); const tasks = (D.tasks || []).filter((t) => t.clientId === c.id);
+    const invoices = D.invoices.filter((x) => x.clientId === c.id);
     const active = (clientInfo()[c.id] || {}).active;
-    // properties: the client's own address first (their billing address), then any other address their work went to
-    const props = []; const addProp = (a, billing) => { a = String(a || '').trim(); if (a && !props.some((p) => p.a.toLowerCase() === a.toLowerCase())) props.push({ a, billing }); };
-    addProp(c.address, true); [...jobs, ...quotes, ...invoices, ...reqs].forEach((x) => addProp(x.address));
-    const propList = props.filter((p) => !v.propQ || p.a.toLowerCase().includes(v.propQ.toLowerCase()));
-    // work: requests, quotes, jobs and invoices. Open = still needs something done
-    const work = [
-      ...reqs.map((r) => { const [l, cls] = R_STATUS[r.status] || [r.status, 'q-draft']; return { type: 'requests', item: 'Request', title: r.title, addr: r.address, date: r.createdAt, label: l, cls, open: r.status === 'new', amount: null }; }),
-      ...quotes.map((q) => { const st = quoteStatus(q); return { type: 'quotes', item: `Quote #${q.number}`, title: q.title, addr: q.address || c.address, date: q.createdAt, label: Q_STATUS[st] || st, cls: 'q-' + st, open: !['converted', 'declined'].includes(st), amount: q.total, href: '/quotes/view?id=' + q.id }; }),
-      ...jobs.map((j) => { const st = jobStatus(j); return { type: 'jobs', item: `Job #${j.number}`, title: j.title, addr: j.address, date: j.date, label: J_STATUS[st], cls: J_CLASS[st], open: !['archived', 'cancelled'].includes(st), amount: canDo('jobs.prices') ? jobTotal(j) : null, href: '/jobs/edit?id=' + j.id }; }),
-      ...invoices.map((i) => ({ type: 'invoices', item: `Invoice #${i.number}`, title: i.subject, addr: i.address || c.address, date: i.issueDate, label: I_STATUS[i.displayStatus] || i.displayStatus, cls: I_CLASS[i.displayStatus], open: i.displayStatus !== 'paid', amount: i.total, href: '/invoices/view?id=' + i.id })),
-    ].filter((w) => (!v.types.length || v.types.includes(w.type)) && (v.status === 'all' || (v.status === 'open') === w.open) && (!v.prop || String(w.addr || '').toLowerCase() === v.prop.toLowerCase()))
-      .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    const props = clientProps(c);
+    const propList = props.filter((p) => !v.propQ || [p.name, propAddr(p)].join(' ').toLowerCase().includes(v.propQ.toLowerCase()));
+    const work = workFilter(clientWork(c, reqs), v).filter((w) => !v.prop || w.pid === v.prop);
     // billing: sent invoices and the payments against them (deposits too); balance = what's still owed on sent invoices
     const sent = invoices.filter((i) => i.status !== 'draft');
     const pays = paymentRows().filter((p) => p.clientId === c.id).map((p) => ({ ...p, net: round2(p.amount - (p.refunded || 0)) }));
@@ -924,36 +1124,25 @@ PAGES['/clients/view'] = {
     const bill = [...sent.map((i) => ({ date: i.issueDate, html: `<td><a href="/invoices/view?id=${i.id}" data-link class="cv-it">${QM.invoice}Invoice #${esc(i.number)}</a></td><td>—</td><td>${fmtDate(i.issueDate)}</td><td class="r">${money(i.total)}</td>` })),
       ...pays.map((p) => ({ date: p.date, html: `<td><a href="/payments/view?id=${encodeURIComponent(p.id)}" data-link class="cv-it">${QM.pay}${p.doc[0] === 'quote' ? 'Deposit' : 'Payment'}</a></td><td>${p.doc[0] === 'quote' ? 'Quote' : 'Invoice'} #${esc(p.doc[1].number)}</td><td>${fmtDate(p.date)}</td><td class="r">−${money(p.net)}</td>` }))]
       .sort((a, b) => String(b.date).localeCompare(String(a.date)));
-    // schedule: the client's jobs and tasks
-    const sched = [...jobs.map((j) => ({ kind: 'job', date: j.date, time: j.anytime || !j.startTime ? '' : fmtTime(j.startTime), title: `Visit for Job #${j.number} - ${j.title}`, sub: j.description, staff: j.staffIds, done: j.status === 'completed', off: j.status === 'cancelled', href: '/jobs/edit?id=' + j.id })),
-      ...tasks.map((t) => ({ kind: 'task', date: t.date, time: t.anytime || !t.startTime ? '' : fmtTime(t.startTime), title: t.title, sub: t.description || t.notes || '', staff: t.staffIds, done: !!t.done, off: false }))]
-      .filter((s) => (v.sType === 'all' || s.kind === v.sType) && (v.sStatus === 'all' || (v.sStatus === 'done' ? s.done : !s.done && !s.off)))
-      .sort((a, b) => String(b.date).localeCompare(String(a.date)));
-    const schedState = (s) => (s.off ? 'Cancelled' : s.done ? 'Completed' : s.date < today ? 'Overdue' : s.date === today ? 'Today' : 'Upcoming');
+    const sched = clientSched(c).filter((s) => (v.sType === 'all' || s.kind === v.sType) && (v.sStatus === 'all' || (v.sStatus === 'done' ? s.done : !s.done && !s.off)));
     const contacts = c.contacts || []; const tags = clientTags(c); const last = msgs && msgs[0];
     const portal = c.portalToken && planHas('clientPortal') ? location.origin + '/client-portal?c=' + c.portalToken : '';
     const sel = (k, opts) => `<select data-cvf="${k}" aria-label="${k}">${opts.map(([val, l]) => `<option value="${val}" ${v[k] === val ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
     const field = (l, val) => `<div class="cv-f"><span>${l}</span><div>${val || '<span class="muted">—</span>'}</div></div>`;
     const card = (title, body, act = '', cls = '') => `<section class="cv-card ${cls}"><div class="cv-ch"><h2>${title}</h2>${act}</div>${body}</section>`;
     const plus = (a, label, extra = '') => `<button type="button" class="cv-plus" data-act="${a}" aria-label="${label}" title="${label}"${extra}>${CI.plus}</button>`;
-    const createMenu = (summary) => `<details class="menu cv-create">${summary}<div class="menu-list"><button type="button" class="mi need-quotes" data-act="newQuoteFor" data-id="${c.id}">${QM.awaiting}Quote</button><button type="button" class="mi need-jobs-edit" data-act="newJobFor" data-id="${c.id}">${QM.job}Job</button><button type="button" class="mi need-invoices" data-act="cvNewInvoice" data-id="${c.id}">${QM.invoice}Invoice</button></div></details>`;
+    const createMenu = (summary) => `<details class="menu cv-create">${summary}<div class="menu-list">${workMenuItems(c)}<button type="button" class="mi need-invoices" data-act="cvNewInvoice" data-id="${c.id}">${QM.invoice}Invoice</button></div></details>`;
     const info = `${card('Properties', `<div class="tablewrap"><table class="cv-t"><tr><th>Address</th><th>City</th><th>State</th><th>ZIP code</th><th></th></tr>
-${propList.map((p) => { const s = splitAddr(p.a); return `<tr><td><strong>${esc(s.street)}</strong>${p.billing ? '<div class="muted">Billing address</div>' : ''}</td><td>${esc(s.city)}</td><td>${esc(s.state)}</td><td>${esc(s.zip)}</td>
-<td class="actions"><a class="icon-btn cv-ib" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.a)}" target="_blank" rel="noopener" title="Open in Google Maps" aria-label="Open in Google Maps">${CI.pin}</a>${p.billing ? `<a class="icon-btn cv-ib need-clients-edit" href="/clients/edit?id=${c.id}" data-link title="Edit address" aria-label="Edit address">${CI.edit}</a>` : ''}</td></tr>`; }).join('') || `<tr><td colspan="5" class="empty">${props.length ? 'No properties match your search' : 'No properties yet'}</td></tr>`}</table></div>`,
-    `<div class="cv-acts">${props.length > 1 ? `<input type="search" class="cv-search" id="cvPropQ" placeholder="Search properties" value="${esc(v.propQ)}">` : ''}</div>`, 'cvs-properties')}
-<section class="cv-card cv-contacts cvs-contacts"><div class="cv-cbar">${CI.contact}<span><strong>Contacts</strong> – Add contacts to keep track of everyone you communicate with</span>${edit ? '<button type="button" class="link-btn" data-act="cvContactAdd">Add Contact</button>' : ''}</div>
-${contacts.length ? `<div class="tablewrap"><table class="cv-t"><tr><th>Name</th><th>Role</th><th>Phone</th><th>Email</th><th></th></tr>${contacts.map((p) => `<tr><td><strong>${esc(p.name)}</strong></td><td>${esc(p.role)}</td><td>${p.phone ? `<a href="tel:${esc(p.phone)}">${esc(p.phone)}</a>` : ''}</td><td>${p.email ? `<a href="mailto:${esc(p.email)}">${esc(p.email)}</a>` : ''}</td><td class="actions">${edit ? `<button type="button" class="icon-btn cv-ib" data-act="cvContactDel" data-cid="${esc(p.id)}" aria-label="Remove ${esc(p.name)}" title="Remove">${CI.x}</button>` : ''}</td></tr>`).join('')}</table></div>` : ''}
-${v.edit === 'contact' ? `<form class="cv-cform"><div class="row"><label>Name<input name="name" required></label><label>Role<input name="role" placeholder="e.g. Property manager"></label></div><div class="row"><label>Phone<input name="phone"></label><label>Email<input name="email" type="email"></label></div><div class="foot"><button type="button" class="btn alt sm" data-act="cvEdit" data-k="">Cancel</button><button class="btn sm">Add contact</button></div></form>` : ''}</section>
-${card('Work overview', `<div class="cv-filters"><label class="pill">Property${sel('prop', [['', 'All'], ...props.map((p) => [p.a, esc(splitAddr(p.a).street)])])}</label><label class="pill">Status${sel('status', [['all', 'All'], ['open', 'Open'], ['closed', 'Closed']])}</label>
-${[['requests', 'Requests', ''], ['quotes', 'Quotes', 'need-quotes'], ['jobs', 'Jobs', ''], ['invoices', 'Invoices', 'need-invoices']].map(([k, l, cls]) => `<button type="button" class="pill cv-chip ${cls} ${v.types.includes(k) ? 'on' : ''}" data-act="cvType" data-k="${k}" aria-pressed="${v.types.includes(k)}">${l}</button>`).join('')}</div>
-<div class="tablewrap"><table class="cv-t"><tr><th>Item</th><th>Property</th><th>Date</th><th>Status</th><th class="r">Amount</th></tr>
-${work.map((w) => `<tr${w.href ? ` class="crow" data-href="${w.href}"` : ''}><td><strong>${esc(w.item)}</strong>${w.title ? `<div class="muted">${esc(w.title)}</div>` : ''}</td><td>${esc(splitAddr(w.addr).street)}</td><td>${w.date ? fmtDate(String(w.date).slice(0, 10)) : ''}</td><td><span class="cstatus ${w.cls}">${esc(w.label)}</span></td><td class="r">${w.amount == null ? '' : money(w.amount)}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">No results match your search</td></tr>'}</table></div>`,
+${propList.map((p) => `<tr class="crow" data-href="/clients/property?client=${c.id}&id=${encodeURIComponent(p.id)}"><td><strong>${esc([p.street1, p.street2].filter(Boolean).join(', '))}</strong>${p.name || sameAddr(propAddr(p), c.address) ? `<div class="muted">${esc([p.name, sameAddr(propAddr(p), c.address) ? 'Billing address' : ''].filter(Boolean).join(' · '))}</div>` : ''}</td><td>${esc(p.city)}</td><td>${esc(p.state)}</td><td>${esc(p.zip)}</td>
+<td class="actions"><a class="icon-btn cv-ib" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(propAddr(p))}" target="_blank" rel="noopener" title="Show on map" aria-label="Show on map">${CI.pin}</a>${edit ? `<button type="button" class="icon-btn cv-ib" data-act="propEdit" data-client="${c.id}" data-id="${esc(p.id)}" title="Edit property" aria-label="Edit property">${CI.edit}</button>` : ''}</td></tr>`).join('') || `<tr><td colspan="5" class="empty">${props.length ? 'No properties match your search' : 'No properties yet'}</td></tr>`}</table></div>`,
+    `<div class="cv-acts">${props.length > 1 ? `<input type="search" class="cv-search" id="cvPropQ" placeholder="Search properties" value="${esc(v.propQ)}">` : ''}${edit ? plus('propEdit', 'New property', ` data-client="${c.id}"`) : ''}</div>`, 'cvs-properties')}
+${contactsCard(c, null, edit)}
+${card('Work overview', `<div class="cv-filters">${props.length > 1 ? `<label class="pill">Property${sel('prop', [['', 'All'], ...props.map((p) => [p.id, esc(p.name || p.street1)])])}</label>` : ''}${workChips(v, sel)}</div>${workTable(work, props.length > 1)}`,
   createMenu(`<summary class="cv-plus" aria-label="Create" title="Create">${CI.plus}</summary>`), 'cvs-work')}
 ${planHas('invoices') ? card('Billing', `<div class="tablewrap"><table class="cv-t"><tr><th>Item</th><th>Applied to</th><th>Date</th><th class="r">Amount</th></tr>${bill.map((b) => `<tr>${b.html}</tr>`).join('') || '<tr><td colspan="4" class="empty">No invoices or payments yet</td></tr>'}
 <tr class="cv-bal"><td colspan="3"><strong>Current balance</strong></td><td class="r"><strong>${money(balance)}</strong></td></tr></table></div>`, plus('cvNewInvoice', 'New invoice', ` data-id="${c.id}"`), 'need-invoices cvs-billing') : ''}
-${card('Client schedule', `<div class="cv-filters"><label class="pill">Type${sel('sType', [['all', 'All'], ['job', 'Visits'], ['task', 'Tasks']])}</label><label class="pill">Status${sel('sStatus', [['all', 'All'], ['open', 'Not done'], ['done', 'Completed']])}</label></div>
-<div class="tablewrap"><table class="cv-t"><tr><th>Schedule</th><th>Title</th><th>Assigned</th></tr>${sched.map((s) => `<tr${s.href ? ` class="crow" data-href="${s.href}"` : ''}><td><strong>${fmtDate(s.date)}${s.time ? ', ' + s.time : ''}</strong><div class="muted">${schedState(s)}</div></td><td><strong>${esc(s.title)}</strong>${s.sub ? `<div class="muted cv-clip">${esc(s.sub)}</div>` : ''}</td><td>${staffDots(s.staff)}</td></tr>`).join('') || '<tr><td colspan="3" class="empty">Nothing scheduled</td></tr>'}</table></div>`,
-  `<a class="cv-plus need-jobs-edit" href="/jobs/new?client=${c.id}" data-link aria-label="Schedule a job" title="Schedule a job">${CI.plus}</a>`, 'cvs-schedule')}`;
+${card('Client schedule', `<div class="cv-filters"><label class="pill">Type${sel('sType', [['all', 'All'], ['job', 'Visits'], ['task', 'Tasks']])}</label><label class="pill">Status${sel('sStatus', [['all', 'All'], ['open', 'Not done'], ['done', 'Completed']])}</label></div>${schedTable(sched)}`,
+  `<details class="menu cv-create need-jobs-edit"><summary class="cv-plus" aria-label="Schedule" title="Schedule">${CI.plus}</summary><div class="menu-list"><button type="button" class="mi" data-act="newJobFor" data-id="${c.id}">${QM.job}Job</button><button type="button" class="mi" data-act="propTask" data-client="${c.id}">${PI.task}Task</button></div></details>`, 'cvs-schedule')}`;
     const comms = card('Communication', msgs ? `<div class="tablewrap"><table class="cv-t"><tr><th>Sent</th><th>Message</th><th>Channel</th><th>Status</th></tr>${msgs.map((n) => `<tr class="crow" data-act="viewNotif" data-id="${n.id}"><td>${esc(fmtStamp(n.at))}</td><td><strong>${esc(n.subject || n.kind)}</strong><div class="muted">${esc(n.to || '')}</div></td><td>${n.channel === 'sms' ? 'Text' : 'Email'}</td><td>${badge(n.status)}</td></tr>`).join('') || '<tr><td colspan="4" class="empty">No emails or texts yet</td></tr>'}</table></div>`
       : '<p class="muted" style="margin:0">Your access level doesn’t include the notifications log.</p>');
     main.innerHTML = `<div class="cv" data-hide="${cvHidden().join(' ')}"><div class="cv-main">
@@ -983,7 +1172,6 @@ ${card('Notes', v.edit === 'notes' ? `<form class="cv-notef"><textarea name="not
     if (pq) pq.addEventListener('input', () => { clearTimeout(t); t = setTimeout(async () => { cvState.propQ = pq.value; await cvDraw(); const q = $('#cvPropQ'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 250); });
     $$('tr[data-href]', main).forEach((r) => r.addEventListener('click', (e) => { if (!e.target.closest('a, button')) navigate(r.dataset.href); }));
     const save = async (body, msg) => { await api('PUT', '/api/clients/' + c.id, body); cvState.edit = ''; toast(msg); refresh(); };
-    const cf = $('.cv-cform', main); if (cf) { cf.name.focus(); cf.addEventListener('submit', (e) => { e.preventDefault(); const p = Object.fromEntries(new FormData(cf)); save({ contacts: [...contacts, { id: Math.random().toString(36).slice(2, 10), ...p }] }, 'Contact added').catch((err) => toast(err.message, true)); }); }
     const tf = $('.cv-tagf', main); if (tf) { tf.tag.focus(); tf.addEventListener('submit', (e) => { e.preventDefault(); save({ tags: [...new Set([...tags, ...tf.tag.value.split(',').map((x) => x.trim()).filter(Boolean)])] }, 'Tag added').catch((err) => toast(err.message, true)); }); }
     const nf = $('.cv-notef', main); if (nf) { nf.notes.focus(); nf.addEventListener('submit', (e) => { e.preventDefault(); save({ notes: nf.notes.value }, 'Note saved').catch((err) => toast(err.message, true)); }); }
   },
@@ -994,8 +1182,6 @@ const cvClient = () => byId(D.clients, cvState.id);
 A.cvTab = (d) => { cvState.tab = d.t; cvDraw(); };
 A.cvEdit = (d) => { cvState.edit = d.k; cvDraw(); };
 A.cvType = (d) => { const s = new Set(cvState.types); s.has(d.k) ? s.delete(d.k) : s.add(d.k); cvState.types = [...s]; cvDraw(); };
-A.cvContactAdd = () => { cvState.edit = 'contact'; cvDraw(); };
-A.cvContactDel = async (d) => { const c = cvClient(); if (!confirm('Remove this contact?')) return; await api('PUT', '/api/clients/' + c.id, { contacts: (c.contacts || []).filter((p) => p.id !== d.cid) }); toast('Contact removed'); refresh(); };
 A.cvTagDel = async (d) => { const c = cvClient(); await api('PUT', '/api/clients/' + c.id, { tags: clientTags(c).filter((t) => t !== d.t) }); toast('Tag removed'); refresh(); };
 A.cvLoginEmail = async () => { const c = cvClient(); const r = await api('POST', `/api/clients/${c.id}/portal-email`, {}); toast(r.status === 'simulated' ? 'Login email logged (email isn’t set up yet)' : `Login email sent to ${c.email}`); refresh(); };
 // archived clients leave the Clients list (Status: Archived shows them) and the client picker; their records stay
@@ -1041,7 +1227,9 @@ const clientMenu = (c) => `<details class="menu client-menu noprint"><summary cl
 ${c ? '' : `<button type="button" class="mi" data-act="changeProperty">${QI('<path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/>')}Change property</button><button type="button" class="mi danger-text" data-act="changeClient">${QM.declined}Change client</button>`}</div></details>`;
 // the property (service) address of the quote, invoice or job being edited: its own address field, else the client's address
 const propInput = () => $('main form [name=address]');
-A.changeProperty = () => {
+// the client card's Change property: one of the client's properties, or any address for this one only
+A.changeProperty = () => { const c = byId(D.clients, clientMenuId()); const f = propInput() && propInput().form; if (f && clientProps(c).length) propertyPick(f, c); else changePropertyAddr(); };
+function changePropertyAddr() {
   const c = byId(D.clients, clientMenuId()); const inp = propInput(); if (!inp) return;
   const mb = modal('Change property', `<form><label>Property address<input name="address" value="${esc(inp.value || c.address || '')}" placeholder="Street, city, state, ZIP" autocomplete="off"></label>
 <div class="cmap" hidden><iframe title="Map of the property address" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe></div>
@@ -1052,7 +1240,7 @@ A.changeProperty = () => {
   const set = (v) => { inp.value = inp.type === 'hidden' && v === c.address ? '' : v; inp.dispatchEvent(new Event('input', { bubbles: true })); inp.dispatchEvent(new Event('change', { bubbles: true })); closeModal(); };
   f.addEventListener('submit', (e) => { e.preventDefault(); set(f.address.value.trim()); });
   const same = $('[data-use-client]', mb); if (same) same.addEventListener('click', () => set(c.address));
-};
+}
 A.changeClient = () => { const s = $('main form select[name=clientId]'); if (s && s._changeClient) s._changeClient(); };
 // the client picker on quotes, invoices and jobs: a searchable list (name, address, email and phone, Active / Lead) with
 // "Create new client" at the bottom. It drives the form's own <select name=clientId>, which stays hidden, so saving and the
@@ -1106,7 +1294,7 @@ function clientPick(sel) {
   sel.addEventListener('change', () => { if (pop.hidden) label(); });
   sel.addEventListener('invalid', (e) => { e.preventDefault(); err.hidden = false; box.classList.add('bad'); input.focus(); }); // the hidden select can't show the browser's own message
   sel._changeClient = () => { const m = card && $('details', card); if (m) m.open = false; changing = true; label(); input.focus(); };
-  label();
+  label(); propertyField(sel);
 }
 new MutationObserver(() => $$('select[name=clientId]:not([data-cpick])').forEach(clientPick)).observe(document.body, { childList: true, subtree: true });
 A.delClient = async (d) => { if (!confirm('Delete this client? Their quotes, jobs and invoices stay in the system.')) return; await api('DELETE', '/api/clients/' + d.id); closeModal(); toast('Client deleted'); curPath().startsWith('/clients/') ? navigate('/clients') : refresh(); };
@@ -2158,7 +2346,7 @@ ${paid ? `<div class="crow-line"><span>Deposit collected <span class="muted">· 
   form.addEventListener('change', (e) => { if (e.target.name === 'clientId') contact(); });
   form.addEventListener('submit', async (e) => {
     e.preventDefault(); const fd = new FormData(form);
-    const body = { title: fd.get('title'), clientId: fd.get('clientId'), status: fd.get('status'), address: fd.get('address') || (byId(D.clients, fd.get('clientId')) || {}).address || '', date: fd.get('date'), startTime: fd.get('startTime'), endTime: fd.get('endTime'), anytime: !!fd.get('anytime'), description: fd.get('description'), staffIds: fd.getAll('staff'), internalNotes: fd.get('internalNotes'), taxRate: fd.get('taxRate'), discountType: fd.get('discountType'), discountValue: fd.get('discountValue'), items: readItems(form).filter((i) => i.desc) };
+    const body = { title: fd.get('title'), clientId: fd.get('clientId'), status: fd.get('status'), address: fd.get('address') || (byId(D.clients, fd.get('clientId')) || {}).address || '', propertyId: fd.get('propertyId') || '', date: fd.get('date'), startTime: fd.get('startTime'), endTime: fd.get('endTime'), anytime: !!fd.get('anytime'), description: fd.get('description'), staffIds: fd.getAll('staff'), internalNotes: fd.get('internalNotes'), taxRate: fd.get('taxRate'), discountType: fd.get('discountType'), discountValue: fd.get('discountValue'), items: readItems(form).filter((i) => i.desc) };
     if (!jobScheduleOk(j.id, body)) return;
     const saved = j.id ? await api('PUT', '/api/jobs/' + j.id, body) : await api('POST', '/api/jobs', body);
     toast('Job saved'); if (j.id) refresh(); else navigate('/jobs/edit?id=' + saved.id);
