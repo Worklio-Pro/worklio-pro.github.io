@@ -399,8 +399,11 @@ function startSession(res, user, { expires = Date.now() + SESSION_DAYS * 864e5, 
   const token = crypto.randomBytes(32).toString('hex');
   const now = Date.now(); for (const [k, s] of Object.entries(db.sessions)) if (s.expires < now) delete db.sessions[k]; // prune old ones
   db.sessions[sha(token)] = { userId: user.id, expires, ...(sup ? { support: sup } : {}) }; save();
-  res.setHeader('Set-Cookie', `sid=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.round((expires - now) / 1000)}${BASE_URL.startsWith('https') ? '; Secure' : ''}`);
+  res.setHeader('Set-Cookie', `sid=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.round((expires - now) / 1000)}${BASE_URL.startsWith('https') && !plainLocal(res.req) ? '; Secure' : ''}`);
 }
+// plain http to this Mac or the home network (e.g. a phone testing at http://192.168.x.x:3000): browsers drop Secure cookies there, so login would bounce back to the login page
+const plainLocal = (req) => !!req && !req.socket.encrypted && req.headers['x-forwarded-proto'] !== 'https'
+  && /^(localhost|[^.]+\.localhost|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)$/.test(tenancy.hostOnly(req.headers.host || ''));
 // simple brute-force guard: 10 failed logins per email+IP in 15 minutes
 const failures = new Map();
 const tooMany = (key) => { const f = failures.get(key); return f && f.n >= 10 && Date.now() - f.t < 15 * 60e3; };
