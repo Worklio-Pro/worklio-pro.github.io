@@ -1177,3 +1177,7 @@ body.ms-open{overflow:hidden}
 .cpick-new{display:flex;align-items:center;gap:8px;width:100%;padding:12px 14px;border:0;border-top:1px solid var(--line);background:var(--surface-2);color:var(--ok-fg);font:inherit;font-size:14px;font-weight:600;cursor:pointer;text-align:left}
 .cpick-new span{font-size:18px;line-height:1}.cpick-new:hover{background:var(--tint)}
 .ms-open .overlay{z-index:80} /* "Create new client" from a phone sheet opens above it */
+/* editor client card: the chosen client's name and ••• menu replace the picker (Change client brings it back) */
+.qclient-pick:not(.picked) .client-menu,.qclient-pick:not(.picked) .cpick-chosen,.qclient-pick.picked .cpick{display:none}
+.cpick-chosen{flex:1;min-width:0;display:flex;align-items:center;gap:8px;min-height:40px;font-size:17px}.cpick-chosen strong{overflow-wrap:anywhere;line-height:1.3}
+.cdot{flex:none;width:8px;height:8px;border-radius:50%}.cdot.active{background:var(--ok)}.cdot.lead{background:var(--info-fg)}

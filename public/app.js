@@ -858,21 +858,45 @@ A.viewClient = (d) => clientForm(byId(D.clients, d.id || clientMenuId()), true);
 // the client chosen in a quote, invoice or job being edited
 const clientMenuId = () => { const s = $('main form select[name=clientId]'); if (!s || !s.value) throw new Error('Choose a client first'); return s.value; };
 // the ••• on the client card of every quote, invoice and job (page and editor): view the client, or edit their details.
-// Without a client it acts on the one chosen in the editor.
+// Without a client it acts on the one chosen in the editor, which also offers Change property and Change client (it shows once a client is chosen).
 const clientMenu = (c) => `<details class="menu client-menu noprint"><summary class="icon-btn" title="Client options" aria-label="Client options"><span class="more-dots" aria-hidden="true">•••</span></summary><div class="menu-list">
-<button type="button" class="mi" data-act="viewClient"${c ? ` data-id="${c.id}"` : ''}>${QM.eye}View client profile</button><button type="button" class="mi need-clients-edit" data-act="editClient"${c ? ` data-id="${c.id}"` : ''}>${QM.sign}Edit client details</button></div></details>`;
+<button type="button" class="mi" data-act="viewClient"${c ? ` data-id="${c.id}"` : ''}>${QM.eye}View client profile</button><button type="button" class="mi need-clients-edit" data-act="editClient"${c ? ` data-id="${c.id}"` : ''}>${QM.sign}Edit client details</button>
+${c ? '' : `<button type="button" class="mi" data-act="changeProperty">${QI('<path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/>')}Change property</button><button type="button" class="mi danger-text" data-act="changeClient">${QM.declined}Change client</button>`}</div></details>`;
+// the property (service) address of the quote, invoice or job being edited: its own address field, else the client's address
+const propInput = () => $('main form [name=address]');
+A.changeProperty = () => {
+  const c = byId(D.clients, clientMenuId()); const inp = propInput(); if (!inp) return;
+  const mb = modal('Change property', `<form><label>Property address<input name="address" value="${esc(inp.value || c.address || '')}" placeholder="Street, city, state, ZIP" autocomplete="off"></label>
+<div class="cmap" hidden><iframe title="Map of the property address" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe></div>
+<p class="muted" style="font-size:13px">For this ${inp.form._kind || 'job'} only. ${c.address ? `The client’s address is ${esc(c.address)}.` : 'The client has no address on file.'}</p>
+<div class="foot">${c.address ? '<button type="button" class="btn alt" data-use-client>Use client’s address</button>' : ''}<button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save</button></div></form>`);
+  clientMap(mb); const f = $('form', mb);
+  // quotes and invoices: blank follows the client's address
+  const set = (v) => { inp.value = inp.type === 'hidden' && v === c.address ? '' : v; inp.dispatchEvent(new Event('input', { bubbles: true })); inp.dispatchEvent(new Event('change', { bubbles: true })); closeModal(); };
+  f.addEventListener('submit', (e) => { e.preventDefault(); set(f.address.value.trim()); });
+  const same = $('[data-use-client]', mb); if (same) same.addEventListener('click', () => set(c.address));
+};
+A.changeClient = () => { const s = $('main form select[name=clientId]'); if (s && s._changeClient) s._changeClient(); };
 // the client picker on quotes, invoices and jobs: a searchable list (name, address, email and phone, Active / Lead) with
 // "Create new client" at the bottom. It drives the form's own <select name=clientId>, which stays hidden, so saving and the
 // forms' change listeners work as before. Added to every such select as it appears (pages, editors and phone sheets).
+// On a quote, invoice or job editor's client card, a chosen client shows as their name (the ••• menu's Change client brings the list back).
 function clientPick(sel) {
   sel.dataset.cpick = '1'; sel.classList.add('cpick-native'); sel.tabIndex = -1;
   const box = document.createElement('div'); box.className = 'cpick';
   box.innerHTML = `<input class="cpick-in" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-label="Client" placeholder="Select a client" autocomplete="off">
 <div class="cpick-pop" hidden><div class="cpick-list" role="listbox"></div>${canDo('clients.edit') ? `<button type="button" class="cpick-new"><span aria-hidden="true">+</span> Create new client</button>` : ''}</div><div class="cpick-err" hidden>Choose a client</div>`;
   sel.after(box);
+  const card = sel.closest('.qclient-pick'); let changing = false; let chosen = null;
+  if (card) { chosen = document.createElement('div'); chosen.className = 'cpick-chosen'; chosen.innerHTML = '<strong></strong><span class="cdot"></span>'; box.before(chosen); }
   const input = $('.cpick-in', box); const pop = $('.cpick-pop', box); const list = $('.cpick-list', box); const err = $('.cpick-err', box);
   let hits = []; let at = -1;
-  const label = () => { input.value = sel.value ? clientName(sel.value) : ''; };
+  const label = () => {
+    input.value = sel.value ? clientName(sel.value) : ''; if (!card) return;
+    const c = byId(D.clients, sel.value); card.classList.toggle('picked', !!c && !changing); if (!c) return;
+    const active = (clientInfo()[c.id] || {}).active; $('strong', chosen).textContent = c.name;
+    const dot = $('.cdot', chosen); dot.className = 'cdot ' + (active ? 'active' : 'lead'); dot.title = active ? 'Active client' : 'Lead';
+  };
   const draw = () => {
     const q = input.value.trim().toLowerCase(); const cur = byId(D.clients, sel.value); const info = clientInfo();
     hits = D.clients.filter((c) => !q || (cur && q === cur.name.toLowerCase()) || [c.name, c.company, c.email, c.phone, c.address].some((v) => String(v || '').toLowerCase().includes(q)))
@@ -884,7 +908,7 @@ function clientPick(sel) {
   };
   const mark = () => { $$('.cpick-opt', list).forEach((o, i) => o.classList.toggle('on', i === at)); const o = $$('.cpick-opt', list)[at]; if (o) { o.scrollIntoView({ block: 'nearest' }); input.setAttribute('aria-activedescendant', o.id); } };
   const open = () => { if (!pop.hidden) return; draw(); pop.hidden = false; input.setAttribute('aria-expanded', 'true'); input.select(); mark(); };
-  const close = () => { pop.hidden = true; input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); label(); };
+  const close = () => { changing = false; pop.hidden = true; input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); label(); };
   const choose = (id) => {
     if (!$(`option[value="${id}"]`, sel)) sel.insertAdjacentHTML('beforeend', `<option value="${id}">${esc(clientName(id))}</option>`); // a client just created
     sel.value = id; err.hidden = true; box.classList.remove('bad'); close(); sel.dispatchEvent(new Event('change', { bubbles: true }));
@@ -904,6 +928,7 @@ function clientPick(sel) {
   document.addEventListener('mousedown', (e) => { if (!pop.hidden && !box.contains(e.target)) close(); });
   sel.addEventListener('change', () => { if (pop.hidden) label(); });
   sel.addEventListener('invalid', (e) => { e.preventDefault(); err.hidden = false; box.classList.add('bad'); input.focus(); }); // the hidden select can't show the browser's own message
+  sel._changeClient = () => { const m = card && $('details', card); if (m) m.open = false; changing = true; label(); input.focus(); };
   label();
 }
 new MutationObserver(() => $$('select[name=clientId]:not([data-cpick])').forEach(clientPick)).observe(document.body, { childList: true, subtree: true });
@@ -950,7 +975,7 @@ function invoiceForm(main, doc, preset) {
   main.innerHTML = `<form class="qform iform sform"><div class="qpage"><div class="qmain">
 <div class="qtop"><div class="qtop-l"><a href="/invoices" data-link class="back">← Invoices</a>${iBadge(st)}${d.zelleSentAt && d.status !== 'paid' ? '<span class="badge zelle">Zelle sent</span>' : ''}</div></div>
 <input name="subject" class="qtitle" value="${esc(d.subject || '')}" placeholder="Invoice subject (e.g. Camera System Install)" aria-label="Invoice subject">
-<div class="qhead"><div class="qclient"><div class="qclient-pick"><select name="clientId" required aria-label="Client">${clientOptions(d.clientId || p.clientId)}</select>${clientMenu()}</div><div class="iclient"></div></div>
+<div class="qhead"><div class="qclient"><div class="qclient-pick"><select name="clientId" required aria-label="Client">${clientOptions(d.clientId || p.clientId)}</select>${clientMenu()}</div><div class="iclient"></div><input type="hidden" name="address" value="${esc(d.address || '')}"></div>
 <dl class="qmeta"><dt>Invoice #</dt><dd><input name="number" class="num-in" maxlength="30" value="${esc(d.number || '')}" placeholder="Automatic" aria-label="Invoice number" title="Leave blank for the next automatic number"></dd>
 <dt>Invoice for</dt><dd><select name="jobId" aria-label="Linked job"><option value="">No job</option>${D.jobs.map((j) => `<option value="${j.id}" ${(d.jobId || p.jobId) === j.id ? 'selected' : ''}>${esc(j.number + ' · ' + j.title)}</option>`).join('')}</select></dd>
 <dt>Issued</dt><dd><input type="date" name="issueDate" value="${esc(issue)}" aria-label="Issue date"></dd>
@@ -972,7 +997,7 @@ ${switchRow('showAccountBalance', 'Account balance', on('showAccountBalance'))}$
   const clientBox = () => {
     const c = byId(D.clients, $('[name=clientId]', form).value); const job = byId(D.jobs, $('[name=jobId]', form).value);
     $('.iclient', form).innerHTML = !c ? '<div class="muted">Choose a client</div>' : `<div class="muted qlabel">Billing address</div><div class="qaddr">${esc(c.address) || '<span class="muted">No address on file</span>'}</div>
-<div class="muted qlabel" style="margin-top:10px">Property address</div><div class="qaddr">${job && job.address && job.address !== c.address ? esc(job.address) : '(Same as billing address)'}</div>
+<div class="muted qlabel" style="margin-top:10px">Property address</div><div class="qaddr">${invProperty(form.address.value, job, c) ? esc(invProperty(form.address.value, job, c)) : '(Same as billing address)'}</div>
 ${c.phone ? `<a class="qphone" href="tel:${esc(c.phone)}">${esc(c.phone)}</a>` : ''}${c.email ? `<a class="qphone" href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ''}`;
   };
   // deposit credit, invoice balance and the client's account balance, refreshed with the totals
@@ -991,7 +1016,8 @@ ${d.id && d.status !== 'paid' && balance > 0 ? `<div class="collect-row"><button
   form._doc = d; form._kind = 'invoice';
   const setDue = () => { const t = $('[name=paymentTerms]', form).value; if (t !== 'custom') $('[name=dueDate]', form).value = ymd(addDays(parseD($('[name=issueDate]', form).value || ymd(new Date())), Number(t))); };
   form.addEventListener('change', (e) => {
-    if (e.target.name === 'clientId' || e.target.name === 'jobId') { clientBox(); recalc(form); }
+    if (e.target.name === 'clientId') form.address.value = ''; // a new client: their address (or the job's)
+    if (e.target.name === 'clientId' || e.target.name === 'jobId' || e.target.name === 'address') { clientBox(); recalc(form); }
     if (e.target.name === 'paymentTerms' || e.target.name === 'issueDate') setDue();
     if (e.target.name === 'dueDate') $('[name=paymentTerms]', form).value = 'custom';
   });
@@ -1095,7 +1121,7 @@ function quoteForm(main, doc, preset) {
 <div class="qtop"><div class="qtop-l"><a href="/quotes" data-link class="back">← Quotes</a>${qBadge(status)}</div></div>
 <input name="title" class="qtitle" value="${esc(d.title || '')}" placeholder="Quote title (e.g. Backyard cleanup)" aria-label="Quote title">
 <div class="qhead"><div class="qclient"><div class="qclient-pick"><select name="clientId" required aria-label="Client">${clientOptions(d.clientId || p.clientId)}</select>${clientMenu()}</div>
-<div class="muted qlabel">Property address</div><div class="qaddr">${addr(d.clientId || p.clientId) || '<span class="muted">Choose a client</span>'}</div></div>
+<div class="muted qlabel">Property address</div><div class="qaddr">${esc(d.address || '') || addr(d.clientId || p.clientId) || '<span class="muted">Choose a client</span>'}</div><input type="hidden" name="address" value="${esc(d.address || '')}"></div>
 <dl class="qmeta"><dt>Quote #</dt><dd><input name="number" class="num-in" maxlength="30" value="${esc(d.number || '')}" placeholder="Automatic" aria-label="Quote number" title="Leave blank for the next automatic number"></dd>
 <dt>Created</dt><dd>${fmtDate((d.createdAt || ymd(new Date())).slice(0, 10))}</dd>
 <dt>Status</dt><dd><select name="status" aria-label="Status">${['draft', 'sent', 'approved', 'declined'].map((s) => `<option value="${s}" ${(d.status || 'draft') === s ? 'selected' : ''}>${Q_STATUS[s]}</option>`).join('')}</select></dd></dl></div>
@@ -1113,7 +1139,8 @@ ${planHas('zelle') ? switchRow('allowZelle', 'Zelle', d.allowZelle !== 'off' && 
   if (qp('unsign') === '1') form._removeSig = true; // confirmed on the quote page before opening the editor
   if (d.id && d.signedAt && d.depositPaidAt) guardSignature(form);
   form.addEventListener('change', (e) => {
-    if (e.target.name === 'clientId') $('.qaddr', form).innerHTML = addr(e.target.value) || '<span class="muted">No address on file</span>';
+    if (e.target.name === 'clientId') form.address.value = ''; // a new client: their address
+    if (e.target.name === 'clientId' || e.target.name === 'address') $('.qaddr', form).innerHTML = esc(form.address.value) || addr(form.clientId.value) || '<span class="muted">No address on file</span>';
   });
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -1290,7 +1317,7 @@ function quotePage(d) {
 <div class="actions">${quoteMore(d, { job, canJob, c })}
 ${sendBtn('quote', d)}</div></div>
 <div class="vhead"><div class="vtitle-row"><h1 class="vtitle">${esc(d.title || 'Untitled quote')}</h1>${editBtn('quote', d, 'top')}</div>
-<div class="qhead"><div class="qclient"><div class="vclient"><span>${esc(c.name || 'No client')}</span>${c.id ? clientMenu(c) : ''}</div><div class="muted qlabel">Property address</div><div class="qaddr">${esc(c.address || '') || '<span class="muted">No address on file</span>'}</div></div>
+<div class="qhead"><div class="qclient"><div class="vclient"><span>${esc(c.name || 'No client')}</span>${c.id ? clientMenu(c) : ''}</div><div class="muted qlabel">Property address</div><div class="qaddr">${esc(d.address || c.address || '') || '<span class="muted">No address on file</span>'}</div></div>
 <dl class="qmeta"><dt>Quote #</dt><dd>${esc(d.number)}</dd><dt>Created</dt><dd>${fmtDate((d.createdAt || '').slice(0, 10))}</dd>${d.depositFee > 0 ? `<dt>Required deposit</dt><dd>${money(d.depositFee)}</dd>` : ''}</dl></div></div>
 <div class="qcard"><div class="qcard-h"><h2>Product / Service</h2>${editBtn('quote', d, 'items')}</div>${viewItems(d)}
 <div class="vtotals">${viewTotals(d)}${d.depositFee > 0 ? vt('Required deposit', money(d.depositFee))
@@ -1301,6 +1328,8 @@ ${d.signature ? `<div class="sig-show"><img class="sig-img" src="${esc(d.signatu
 <p class="sig-meta">Signed${d.signedName ? ` by <strong>${esc(d.signedName)}</strong>` : ''} on ${esc(fmtStamp(d.signedAt))}${d.signature && d.signature.method === 'typed' ? ' <span class="muted">· typed signature</span>' : ''}</p></div>` : ''}
 ${docCards('quote', d)}</div>${docSide('quote', d)}</div></div>`;
 }
+// an invoice's property address when it differs from the billing address: its own, else its job's
+const invProperty = (own, job, c) => { const a = own || (job && job.address) || ''; return a && a !== (c || {}).address ? a : ''; };
 function invoicePage(d) {
   const c = byId(D.clients, d.clientId) || {}; const job = byId(D.jobs, d.jobId); const st = d.displayStatus || d.status;
   const termsLabel = (TERMS.find(([k]) => k === String(d.paymentTerms)) || [, 'Custom date'])[1];
@@ -1311,7 +1340,7 @@ function invoicePage(d) {
 ${d.status !== 'paid' ? sendBtn('invoice', d) : ''}</div></div>
 <div class="vhead"><div class="vtitle-row"><h1 class="vtitle">${esc(d.subject || `Invoice ${d.number}`)}</h1>${editBtn('invoice', d, 'top')}</div>
 <div class="qhead"><div class="qclient"><div class="vclient"><span>${esc(c.name || 'No client')}</span>${c.id ? clientMenu(c) : ''}</div><div class="muted qlabel">Billing address</div><div class="qaddr">${esc(c.address || '') || '<span class="muted">No address on file</span>'}</div>
-<div class="muted qlabel" style="margin-top:10px">Property address</div><div class="qaddr">${job && job.address && job.address !== c.address ? esc(job.address) : '(Same as billing address)'}</div>
+<div class="muted qlabel" style="margin-top:10px">Property address</div><div class="qaddr">${invProperty(d.address, job, c) ? esc(invProperty(d.address, job, c)) : '(Same as billing address)'}</div>
 ${c.phone || c.email ? `<div class="vclient-c">${c.phone ? `<a href="tel:${esc(c.phone)}">${esc(c.phone)}</a>` : ''}${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ''}</div>` : ''}</div>
 <dl class="qmeta"><dt>Invoice #</dt><dd>${esc(d.number)}</dd>${job ? `<dt>Invoice for</dt><dd><a href="/jobs/edit?id=${job.id}" data-link>${esc(job.number + ' · ' + job.title)}</a></dd>` : ''}
 <dt>Issued</dt><dd>${fmtDate(d.issueDate)}</dd><dt>Payment terms</dt><dd>${esc(termsLabel)}</dd><dt>Due date</dt><dd>${fmtDate(d.dueDate)}</dd></dl></div></div>

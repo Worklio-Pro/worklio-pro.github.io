@@ -1249,7 +1249,7 @@ app.post('/api/quotes/:id/convert-to-job', (req, res) => {
   const q = db.quotes.find((x) => x.id === req.params.id);
   if (!q) return res.status(404).json({ error: 'Not found' });
   const c = findClient(q.clientId);
-  const job = { id: uid(), number: nextNumber('jobs'), clientId: q.clientId, title: q.title || 'Job from ' + q.number, description: q.items.map((i) => `${i.qty} x ${i.desc}`).join(', '), date: req.body.date || daysFromNow(1), startTime: req.body.startTime || '09:00', endTime: req.body.endTime || '11:00', staffIds: req.body.staffIds || [], status: 'scheduled', quoteId: q.id, address: c ? c.address : '', createdAt: iso(new Date()), items: q.items.map((i) => ({ ...i })), taxRate: q.taxRate, discountType: q.discountType, discountValue: q.discountValue };
+  const job = { id: uid(), number: nextNumber('jobs'), clientId: q.clientId, title: q.title || 'Job from ' + q.number, description: q.items.map((i) => `${i.qty} x ${i.desc}`).join(', '), date: req.body.date || daysFromNow(1), startTime: req.body.startTime || '09:00', endTime: req.body.endTime || '11:00', staffIds: req.body.staffIds || [], status: 'scheduled', quoteId: q.id, address: q.address || (c ? c.address : ''), createdAt: iso(new Date()), items: q.items.map((i) => ({ ...i })), taxRate: q.taxRate, discountType: q.discountType, discountValue: q.discountValue };
   computeTotals(job);
   db.jobs.push(job); if (q.status !== 'approved') q.status = 'approved'; save(); res.status(201).json(job);
 });
