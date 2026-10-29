@@ -845,14 +845,26 @@ function clientEditPage(main, c, opts = {}) {
   const contacts = structuredClone(c.contacts || []);
   let billing = props.findIndex((p) => sameAddr(propAddr(p), c.address)); if (billing < 0 && !String(c.address || '').trim()) billing = 0; // -1: a billing address of its own
   const rate = Number(company.taxRate) || 0; const dom = location.hostname.split('.').slice(-2).join('.');
+  // phone numbers (Main first: texts and calls use it) and email addresses (the starred one gets quotes, invoices and messages)
+  const phones = c.phones && c.phones.length ? c.phones : [{ number: c.phone || '', type: 'Main' }];
+  const emails = c.emails && c.emails.length ? c.emails : [{ address: c.email || '', type: 'Personal', primary: true }];
+  if (!emails.some((m) => m.primary)) emails[0].primary = true;
+  const typeSel = (attr, types, cur) => `<select ${attr} aria-label="Type">${types.map((t) => `<option ${cur === t ? 'selected' : ''}>${t}</option>`).join('')}</select>`;
+  const lineBtn = (i, what) => (i === 0 ? `<button type="button" class="ce-lbtn" data-ce-more="${what}" aria-label="Add another ${what}" title="Add another ${what}">${cvIcons().plus}</button>`
+    : `<button type="button" class="ce-lbtn bad" data-ce-less aria-label="Remove this ${what}" title="Remove">${PI.trash}</button>`);
+  const phoneLine = (p, i) => `<div class="ce-line" data-ph><label>Phone number<input type="tel" data-num value="${esc(p.number)}" placeholder="+17135550100"></label>${typeSel('data-type', ['Main', 'Mobile', 'Work', 'Home', 'Fax', 'Other'], p.type)}${lineBtn(i, 'phone number')}</div>
+${i === 0 ? `<label class="sw-row ce-sms"><span>Receives messages <small class="muted">Texts go to this number once the client agrees (Communication settings)</small></span><input type="checkbox" class="sw" name="smsConsent" ${c.smsConsent ? 'checked' : ''}><i></i></label>` : ''}`;
+  const emailLine = (m, i) => `<div class="ce-line ce-email" data-em><button type="button" class="ce-star${m.primary ? ' on' : ''}" data-ce-star aria-pressed="${!!m.primary}" title="Primary email: gets quotes, invoices and messages" aria-label="Make this the primary email">★</button><label>Email<input type="email" data-addr value="${esc(m.address)}"></label>${typeSel('data-type', ['Personal', 'Work', 'Other'], m.type)}${lineBtn(i, 'email')}</div>`;
   main.innerHTML = `<form class="ce" novalidate>${opts.cancel ? '' : `<a class="back" href="${back}" data-link>← ${isNew ? 'Clients' : esc(c.name)}</a>`}<h1>${isNew ? 'New Client' : 'Edit Client'}</h1>
 <section class="ce-sec"><div class="ce-l"><h2>Primary contact details</h2><p class="muted">Provide the main point of contact to ensure smooth communication and reliable client records.</p></div><div class="ce-r">
 <div class="ce-name"><label>Title<select name="title"><option value="">No title</option>${TITLES.map((t) => `<option ${c.title === t ? 'selected' : ''}>${t}</option>`).join('')}</select></label><label>First name<input name="firstName" value="${esc(n.first)}" autocomplete="off"></label><label>Last name<input name="lastName" value="${esc(n.last)}" autocomplete="off"></label></div>
-<label>Company name<input name="company" value="${esc(c.company)}" autocomplete="off"></label>
-<div class="chk"><label><input type="checkbox" name="commercial" ${n.commercial ? 'checked' : ''}> Commercial client: Use company name as client name</label></div>
-<h4>Communication</h4><label>Phone number<input name="phone" type="tel" value="${esc(c.phone)}" placeholder="+17135550100"></label><label>Email<input name="email" type="email" value="${esc(c.email)}"></label>
-<details class="ce-comm"${c.smsConsent ? ' open' : ''}><summary>Communication settings</summary><div class="chk"><label><input type="checkbox" name="smsConsent" ${c.smsConsent ? 'checked' : ''}> Agreed to receive text messages</label></div>
-<p class="muted">${c.smsConsent ? `Agreed ${esc(fmtDate(c.smsConsent.at.slice(0, 10)))}${c.smsConsent.source !== 'business' ? ' on the ' + esc(c.smsConsent.source) : ''}. ` : ''}Only tick this if the client said yes after you read them: “Can we text you at the number you just gave us about your quotes, invoices and appointments? Message frequency varies, and msg &amp; data rates may apply. Reply HELP for help or STOP at any time to opt out. Our text terms and privacy policy are at ${esc(dom)}/terms and ${esc(dom)}/privacy. Agreeing isn’t required to do business with us. Do you agree to receive texts?” If they say yes: “Thanks, you’re signed up. You’ll get a text confirming it.” Ticking this sends them that confirmation text.</p></details>
+<label>Company name<input name="company" value="${esc(c.company)}" autocomplete="off"></label><label>Role<input name="role" value="${esc(c.role)}" placeholder="e.g. Owner, property manager" autocomplete="off"></label>
+<div class="chk ce-chks"><label><input type="checkbox" name="billingContact" ${c.billingContact !== false ? 'checked' : ''}> Set as billing contact</label><label><input type="checkbox" name="commercial" ${n.commercial ? 'checked' : ''}> Commercial client: Use company name as client name</label></div>
+<h4>Communication</h4><div class="ce-lines" data-ce-phones>${phones.map((p, i) => phoneLine(p, i)).join('')}</div>
+<div class="ce-lines" data-ce-emails>${emails.map((m, i) => emailLine(m, i)).join('')}</div>
+<details class="ce-comm"${c.smsConsent ? ' open' : ''}><summary>Communication settings</summary>
+<p class="muted">${c.smsConsent ? `Agreed ${esc(fmtDate(c.smsConsent.at.slice(0, 10)))}${c.smsConsent.source !== 'business' ? ' on the ' + esc(c.smsConsent.source) : ''}. ` : ''}Only turn on Receives messages if the client said yes after you read them: “Can we text you at the number you just gave us about your quotes, invoices and appointments? Message frequency varies, and msg &amp; data rates may apply. Reply HELP for help or STOP at any time to opt out. Our text terms and privacy policy are at ${esc(dom)}/terms and ${esc(dom)}/privacy. Agreeing isn’t required to do business with us. Do you agree to receive texts?” If they say yes: “Thanks, you’re signed up. You’ll get a text confirming it.” Turning it on sends them that confirmation text.</p></details>
+<h4>Payment terms</h4><label>Payment terms<select name="paymentTerms"><option value="">Company default (Due upon receipt)</option>${TERMS.filter(([k]) => k !== 'custom').map(([k, l]) => `<option value="${k}" ${c.paymentTerms === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label><p class="muted ce-note">Sets the due date on this client's new invoices.</p>
 <h4>Lead information</h4><label>Lead source<input name="leadSource" list="ceLeads" value="${esc(c.leadSource || ((c.tags || []).includes('Online booking') ? 'Online booking' : ''))}" autocomplete="off"></label><datalist id="ceLeads">${LEAD_SOURCES.map((s) => `<option value="${s}">`).join('')}</datalist>
 <details class="ce-acc"${contacts.length ? ' open' : ''}><summary>Additional contacts</summary><div class="ce-list" data-ce-contacts></div></details>
 </div></section>
@@ -885,7 +897,10 @@ function clientEditPage(main, c, opts = {}) {
     if (e.target.matches('[data-ce-bill]')) { billing = e.target.checked ? Number(e.target.dataset.ceBill) : -1; redraw(); }
   });
   f.addEventListener('click', (e) => {
-    const t = e.target.closest('[data-ce-add], [data-ce-rm], [data-ce-ctadd], [data-ce-ctrm], [data-ce-cancel]'); if (!t) return;
+    const t = e.target.closest('[data-ce-add], [data-ce-rm], [data-ce-ctadd], [data-ce-ctrm], [data-ce-cancel], [data-ce-more], [data-ce-less], [data-ce-star]'); if (!t) return;
+    if (t.matches('[data-ce-more]')) { const ph = t.dataset.ceMore === 'phone number'; const box = $(ph ? '[data-ce-phones]' : '[data-ce-emails]', f); box.insertAdjacentHTML('beforeend', ph ? phoneLine({ number: '', type: 'Mobile' }, 1) : emailLine({ address: '', type: 'Work' }, 1)); $('input', box.lastElementChild).focus(); return; }
+    if (t.matches('[data-ce-less]')) { const line = t.closest('.ce-line'); const star = $('.ce-star.on', line); line.remove(); if (star) { const first = $('[data-em] .ce-star', f); first.classList.add('on'); first.setAttribute('aria-pressed', 'true'); } return; }
+    if (t.matches('[data-ce-star]')) { $$('.ce-star', f).forEach((b) => { b.classList.toggle('on', b === t); b.setAttribute('aria-pressed', String(b === t)); }); return; }
     if (t.matches('[data-ce-cancel]')) return opts.cancel ? opts.cancel() : navigate(back);
     if (t.matches('[data-ce-add]')) { sync(); props.push(blankProp()); drawProps(); $$('.ce-prop', f).pop().querySelector('[data-k=street1]').focus(); return; }
     if (t.matches('[data-ce-rm]')) { const i = Number(t.dataset.ceRm); sync(); props.splice(i, 1); billing = billing === i ? -1 : billing > i ? billing - 1 : billing; drawProps(); return; }
@@ -897,11 +912,16 @@ function clientEditPage(main, c, opts = {}) {
     const name = (f.commercial.checked && v('company')) || [v('firstName'), v('lastName')].filter(Boolean).join(' ') || v('company');
     if (!name) { toast('Enter the client’s first name or company name', true); return f.firstName.focus(); }
     if (f.commercial.checked && !v('company')) { toast('Enter the company name, or untick Commercial client', true); return f.company.focus(); }
-    if (v('email') && !f.email.checkValidity()) { toast('Check the email address', true); return f.email.focus(); }
+    const phoneList = $$('[data-ph]', f).map((l) => ({ number: $('[data-num]', l).value.trim(), type: $('[data-type]', l).value })).filter((p) => p.number);
+    const emailEls = $$('[data-em]', f); const badEmail = emailEls.map((l) => $('[data-addr]', l)).find((i) => i.value.trim() && !i.checkValidity());
+    if (badEmail) { toast('Check the email address', true); return badEmail.focus(); }
+    const emailList = emailEls.map((l) => ({ address: $('[data-addr]', l).value.trim(), type: $('[data-type]', l).value, primary: $('.ce-star', l).classList.contains('on') })).filter((m) => m.address);
+    if (emailList.length && !emailList.some((m) => m.primary)) emailList[0].primary = true;
     const kept = props.map((p, i) => ({ p, i })).filter(({ p }) => p.street1);
     const properties = kept.map(({ p }) => ({ ...p, id: p.id || rid() })); const bi = kept.findIndex(({ i }) => i === billing);
-    const body = { title: v('title'), firstName: v('firstName'), lastName: v('lastName'), company: v('company'), commercial: f.commercial.checked, name, phone: v('phone'), email: v('email'),
-      smsConsent: f.smsConsent.checked, leadSource: v('leadSource'), contacts, properties,
+    const body = { title: v('title'), firstName: v('firstName'), lastName: v('lastName'), company: v('company'), commercial: f.commercial.checked, name, role: v('role'), billingContact: f.billingContact.checked,
+      phones: phoneList, phone: phoneList[0] ? phoneList[0].number : '', emails: emailList, email: (emailList.find((m) => m.primary) || {}).address || '',
+      smsConsent: f.smsConsent.checked, paymentTerms: f.paymentTerms.value, leadSource: v('leadSource'), contacts, properties,
       address: bi >= 0 ? propAddr(properties[bi]) : f.billingAddress ? v('billingAddress') : properties[0] ? propAddr(properties[0]) : '' };
     const btn = $('.ce-foot button:not([type])', f); btn.disabled = true;
     try {
@@ -1212,8 +1232,8 @@ ${portal ? `${c.email ? `<button type="button" class="mi need-clients-edit" data
 <hr class="mi-sep"><button type="button" class="mi" data-act="cvCustomize">${CI.gear}Customize view</button></div></details>
 ${createMenu('<summary class="btn">+ Create</summary>')}</div></div>
 <div class="cv-name"><h1>${esc(c.name)}</h1>${edit ? `<a class="icon-btn cv-ib" href="/clients/edit?id=${c.id}" data-link title="Edit client" aria-label="Edit client">${CI.edit}</a>` : ''}</div>${c.company && c.company !== c.name ? `<div class="muted cv-co">${esc(c.company)}</div>` : ''}
-<div class="cv-info"><div>${field('Main phone', c.phone ? `<a href="tel:${esc(c.phone)}">${esc(c.phone)}</a>` : '')}${field('Email', c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '')}${field('Text messages', c.smsConsent ? `Agreed ${esc(fmtDate(c.smsConsent.at.slice(0, 10)))}` : 'Not agreed')}</div>
-<div>${field('Company', esc(c.company))}${field('Lead source', esc(c.leadSource || ((c.tags || []).includes('Online booking') ? 'Online booking' : '')))}${field('Client since', c.createdAt ? fmtDate(c.createdAt.slice(0, 10)) : '')}</div></div>
+<div class="cv-info"><div>${(c.phones && c.phones.length ? c.phones : [{ number: c.phone, type: 'Main' }]).map((p) => field(`${esc(p.type || 'Main')} phone`, p.number ? `<a href="tel:${esc(p.number)}">${esc(p.number)}</a>` : '')).join('')}${(c.emails && c.emails.length ? c.emails : [{ address: c.email, type: '' }]).map((m) => field(m.type ? `${esc(m.type)} email` : 'Email', m.address ? `<a href="mailto:${esc(m.address)}">${esc(m.address)}</a>${c.emails && c.emails.length > 1 && m.primary ? ' <span class="muted">· primary</span>' : ''}` : '')).join('')}${field('Text messages', c.smsConsent ? `Agreed ${esc(fmtDate(c.smsConsent.at.slice(0, 10)))}` : 'Not agreed')}</div>
+<div>${field('Payment terms', esc((TERMS.find(([k]) => k === c.paymentTerms) || [, 'Company default (Due upon receipt)'])[1]))}${field('Lead source', esc(c.leadSource || ((c.tags || []).includes('Online booking') ? 'Online booking' : '')))}${c.company && c.company !== c.name ? field('Company', esc(c.company)) : ''}${c.role ? field('Role', esc(c.role)) : ''}${field('Client since', c.createdAt ? fmtDate(c.createdAt.slice(0, 10)) : '')}</div></div>
 <div class="cv-tabs" role="tablist"><button type="button" role="tab" class="${v.tab === 'info' ? 'on' : ''}" aria-selected="${v.tab === 'info'}" data-act="cvTab" data-t="info">Client information</button><button type="button" role="tab" class="${v.tab === 'comms' ? 'on' : ''}" aria-selected="${v.tab === 'comms'}" data-act="cvTab" data-t="comms">Communication</button></div>
 ${v.tab === 'comms' ? comms : info}</div>
 <aside class="cv-side">
@@ -1440,13 +1460,17 @@ ${d.id && d.status !== 'paid' && balance > 0 ? `<div class="collect-row"><button
   };
   wireItems(form); clientBox();
   form._doc = d; form._kind = 'invoice';
+  // a new invoice takes its client's payment terms (Edit client → Payment terms)
+  const clientTerms = () => { const t = !d.id && (byId(D.clients, form.clientId.value) || {}).paymentTerms; if (t) { form.paymentTerms.value = t; setDue(); } };
   const setDue = () => { const t = $('[name=paymentTerms]', form).value; if (t !== 'custom') $('[name=dueDate]', form).value = ymd(addDays(parseD($('[name=issueDate]', form).value || ymd(new Date())), Number(t))); };
   form.addEventListener('change', (e) => {
     if (e.target.name === 'clientId') form.address.value = ''; // a new client: their address (or the job's)
+    if (e.target.name === 'clientId') clientTerms();
     if (e.target.name === 'clientId' || e.target.name === 'jobId' || e.target.name === 'address') { clientBox(); recalc(form); }
     if (e.target.name === 'paymentTerms' || e.target.name === 'issueDate') setDue();
     if (e.target.name === 'dueDate') $('[name=paymentTerms]', form).value = 'custom';
   });
+  clientTerms();
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const body = Object.fromEntries(new FormData(form));
@@ -2072,7 +2096,7 @@ ${newOk ? `<div class="mn-row">${ic.contact}<div class="mn-stack"><input name="f
         const saved = await api('POST', '/api/jobs', { ...b, date: v('date'), startTime: '09:00', endTime: '11:00', status: 'scheduled', staffIds: [], ...where });
         return navigate('/jobs/edit?id=' + saved.id);
       }
-      const saved = await api('POST', `/api/${kind}s`, { ...b, ...where, items: [], disclaimer: q ? company.quoteDisclaimer ?? DEFAULT_DISCLAIMER : company.invoiceDisclaimer ?? '', ...(q ? {} : { paymentTerms: '0' }) });
+      const saved = await api('POST', `/api/${kind}s`, { ...b, ...where, items: [], disclaimer: q ? company.quoteDisclaimer ?? DEFAULT_DISCLAIMER : company.invoiceDisclaimer ?? '', ...(q ? {} : { paymentTerms: client.paymentTerms || '0', dueDate: ymd(addDays(new Date(), Number(client.paymentTerms) || 0)) }) });
       await navigate(`/${kind}s/view?id=${saved.id}`);
       A.mEdit({ kind, id: saved.id, sec: 'item', i: '' });
     } catch (x) { toast(x.message, true); btn.disabled = false; }
