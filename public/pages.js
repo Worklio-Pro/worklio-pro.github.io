@@ -226,7 +226,7 @@ PAGES['/requests'] = {
     const past = T.approver ? T.requests.filter((r) => !r.mine && r.status !== 'pending' && !(r.status === 'approved' && r.to >= today)).slice(0, 20) : [];
     const who = (r) => `<span class="to-dot" style="background:${esc(r.color || '#64748b')}"></span><strong>${esc(r.person)}</strong>`;
     const badge = (r) => `<span class="cstatus ${TO_STATUS[r.status][1]}">${TO_STATUS[r.status][0]}</span>`;
-    main.innerHTML = `<div class="head"><div><h1>Requests</h1><p class="sub">${T.approver ? 'Requests from your team, and who’s off.' : 'Ask for time off and see who’s off.'} Approved time off shows on Schedules.</p></div>
+    main.innerHTML = `<div class="head"><div><h1>Requests</h1><p class="sub">${T.approver ? 'Requests from your team, and who’s off.' : 'Ask for time off and see who’s off.'} Approved time off shows on the Calendar.</p></div>
 ${T.canRequest ? '<button class="btn" data-act="requestOff">Request time off</button>' : ''}</div>
 ${T.approver ? `<div class="card"><h2>Waiting for you${review.length ? ` <span class="msg-n">${review.length}</span>` : ''}</h2>${review.length ? `<div class="to-list">${review.map((r) => `<div class="to-row"><div class="to-main"><div>${who(r)} · ${esc(r.when)}</div><p class="to-reason">${esc(r.reason)}</p>${toJobs(r)}<div class="muted to-meta">Asked ${fmtDate((r.createdAt || '').slice(0, 10))}</div></div>
 <div class="to-acts"><button type="button" class="btn alt to-big" data-act="toDecide" data-id="${r.id}" data-ok="">Decline</button><button type="button" class="btn to-big" data-act="toDecide" data-id="${r.id}" data-ok="1">Approve</button></div></div>`).join('')}</div>` : '<p class="muted" style="margin:0">No requests waiting.</p>'}</div>` : ''}
