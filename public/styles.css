@@ -1286,3 +1286,18 @@ body.ms-open{overflow:hidden}
 .mn-opt{display:grid;grid-template-columns:28px minmax(0,1fr) auto;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--text);font:inherit;text-align:left;cursor:pointer}
 .mn-opt.on{border-color:var(--ok)}.mn-opt>span{display:flex;flex-direction:column;gap:2px;min-width:0;overflow-wrap:anywhere}.mn-opt .mi-ic{color:var(--muted)}
 .mn-next{text-align:center;margin:-6px 0 0}
+/* phones: Add client chooser (new quote / job / invoice, and the client field in phone edit sheets) */
+.mcs{position:fixed;inset:0;z-index:1200;display:flex;flex-direction:column;background:var(--bg);padding-top:calc(10px + env(safe-area-inset-top));font-size:16px}
+.mcs .mn-top{padding:0 14px 14px}
+.mcs-search{padding:0 14px 16px;border-bottom:1px solid var(--line)}
+.mcs-q{display:flex;align-items:center;gap:10px;margin:0;height:56px;padding:0 16px;border:1px solid var(--border);border-radius:12px;color:var(--muted)}
+.mcs-q input{border:0;background:none;height:auto;padding:0;font-size:17px;color:var(--text);outline:0;box-shadow:none}
+.mcs-body{flex:1;overflow:auto;padding:16px 0 calc(20px + env(safe-area-inset-bottom))}
+.mcs-new{width:calc(100% - 28px);margin:0 14px}
+.mcs-h{margin:22px 14px 6px;font-size:17px;font-weight:600;color:var(--muted)}
+.mcs-row{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:14px;align-items:start;width:100%;padding:14px 14px;border:0;border-bottom:1px solid var(--line);background:none;color:var(--text);font:inherit;text-align:left;cursor:pointer}
+.mcs-row.on{background:var(--surface-2)}.mcs-row .mi-ic{width:26px;height:26px;color:var(--text);margin-top:2px}
+.mcs-main{display:flex;flex-direction:column;gap:4px;min-width:0}.mcs-main strong{font-size:18px;font-weight:600;overflow-wrap:anywhere}
+.mcs-meta{color:var(--muted);font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mcs-meta i{font-style:normal;margin:0 8px;opacity:.7}
+.mcs-lead{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:15px;margin-top:3px}.mcs-lead i{width:14px;height:14px;border-radius:3px;background:var(--info-fg)}
+button.mn-x{border:0;padding:0;cursor:pointer}

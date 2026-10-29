@@ -920,7 +920,8 @@ PAGES['/clients/edit'] = {
 // the quote, job or invoice comes back exactly as it was (unsaved changes and all). done(client) gets the saved client.
 function clientOverEditor(c, done) {
   const main = $('#main'); const held = [...main.childNodes]; const y = window.scrollY; const title = document.title;
-  const restore = () => { main.replaceChildren(...held); document.title = title; window.scrollTo(0, y); };
+  const sheet = $('#msheet'); if (sheet) sheet.hidden = true; // a phone edit sheet waits underneath
+  const restore = () => { main.replaceChildren(...held); document.title = title; window.scrollTo(0, y); if (sheet) sheet.hidden = false; };
   main.replaceChildren(); window.scrollTo(0, 0); document.title = `${c.id ? 'Edit' : 'New'} client · ${company.name || ''}`;
   clientEditPage(main, c, { cancel: restore, saved: (saved) => { restore(); done(saved); } });
 }
@@ -1330,7 +1331,9 @@ function clientPick(sel) {
       : `<div class="cpick-none">${D.clients.length ? 'No clients match' : 'No clients yet'}</div>`;
   };
   const mark = () => { $$('.cpick-opt', list).forEach((o, i) => o.classList.toggle('on', i === at)); const o = $$('.cpick-opt', list)[at]; if (o) { o.scrollIntoView({ block: 'nearest' }); input.setAttribute('aria-activedescendant', o.id); } };
-  const open = () => { if (!pop.hidden) return; draw(); pop.hidden = false; input.setAttribute('aria-expanded', 'true'); input.select(); mark(); };
+  // phones: the full-screen Add client chooser instead of the drop-down
+  const phoneOpen = () => { input.blur(); clientSheet({ current: sel.value, onPick: (c) => choose(c.id), onNew: (typed) => { const w = typed.split(/\s+/).filter(Boolean); clientOverEditor(w.length ? { firstName: w[0], lastName: w.slice(1).join(' ') } : {}, (c) => { clientSavedInEditor(c); choose(c.id); }); } }); };
+  const open = () => { if (phoneMq.matches) return phoneOpen(); if (!pop.hidden) return; draw(); pop.hidden = false; input.setAttribute('aria-expanded', 'true'); input.select(); mark(); };
   const close = () => { changing = false; pop.hidden = true; input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); label(); };
   const choose = (id) => {
     if (!$(`option[value="${id}"]`, sel)) sel.insertAdjacentHTML('beforeend', `<option value="${id}">${esc(clientName(id))}</option>`); // a client just created
@@ -1976,6 +1979,35 @@ ${mTextSec(kind, d, 'terms', 'Contract / disclaimer', d.disclaimer, 'Add a contr
 <div class="md-pane" data-pane="notes" hidden>${mTextSec(kind, d, 'notes', 'Internal notes', d.internalNotes, 'Add a note. Clients never see these.')}</div></div>`;
 }
 phoneMq.addEventListener('change', () => { if (/^\/(quotes|invoices|jobs)(\/|$)/.test(curPath())) refresh(); });
+// phones: Add client, a full-screen chooser: search, Create New Client, then clients by most recent activity (person or building
+// icon, last activity and street, Lead marked). Its own layer, so it can open over a phone edit sheet without closing it.
+function clientSheet({ onPick, onNew, current = '' }) {
+  const ico = { person: QI('<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>'), company: QI('<path d="M4 21V4a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v17M15 9h4a1 1 0 0 1 1 1v11M2 21h20M8 7h3M8 11h3M8 15h3"/>') };
+  const o = document.createElement('div'); o.className = 'mcs'; o.setAttribute('role', 'dialog'); o.setAttribute('aria-modal', 'true'); o.setAttribute('aria-label', 'Add client');
+  o.innerHTML = `<div class="mn-top"><button type="button" class="mn-x" data-mcs="close" aria-label="Close">${X_ICO}</button><h1>Add client</h1><span></span></div>
+<div class="mcs-search"><label class="mcs-q">${svgIcon(ICONS.search, 22)}<input type="search" placeholder="Search clients" aria-label="Search clients" autocomplete="off"></label></div>
+<div class="mcs-body">${onNew && canDo('clients.edit') ? '<button type="button" class="mn-select mcs-new" data-mcs="new">Create New Client</button>' : ''}<h2 class="mcs-h"></h2><div class="mcs-list"></div></div>`;
+  document.body.appendChild(o); document.body.classList.add('ms-open');
+  const close = () => { o.remove(); if (!$('#msheet')) document.body.classList.remove('ms-open'); };
+  const input = $('input', o); const list = $('.mcs-list', o); const info = clientInfo();
+  const company = (c) => !!(c.commercial || (c.company && c.name === c.company));
+  const street = (c) => { const p = clientProps(c)[0]; return p ? [p.street1, p.street2].filter(Boolean).join(' ') : splitAddr(c.address).street; };
+  const draw = () => {
+    const t = input.value.trim().toLowerCase();
+    const hits = D.clients.filter((c) => (!c.archived || c.id === current) && (!t || [c.name, c.company, c.email, c.phone, c.address, ...clientProps(c).map(propAddr)].some((v) => String(v || '').toLowerCase().includes(t))))
+      .sort((a, b) => String((info[b.id] || {}).last || '').localeCompare(String((info[a.id] || {}).last || '')) || a.name.localeCompare(b.name));
+    $('.mcs-h', o).textContent = t ? 'Results' : 'Recent clients';
+    list.innerHTML = hits.map((c) => { const last = (info[c.id] || {}).last; const lead = !(info[c.id] || {}).active;
+      return `<button type="button" class="mcs-row${c.id === current ? ' on' : ''}" data-id="${c.id}">${company(c) ? ico.company : ico.person}<span class="mcs-main"><strong>${esc(c.name)}</strong><span class="mcs-meta">${[last ? esc(parseD(last).toLocaleDateString('en-US', { month: 'short', day: '2-digit' })) : '', esc(street(c))].filter(Boolean).join('<i>|</i>')}</span></span>${lead ? '<span class="mcs-lead">Lead<i></i></span>' : ''}</button>`; }).join('')
+      || `<p class="muted ml-empty">${D.clients.length ? 'No clients match' : 'No clients yet'}</p>`;
+  };
+  draw(); input.addEventListener('input', draw); setTimeout(() => input.focus(), 50);
+  o.addEventListener('click', (e) => {
+    const r = e.target.closest('.mcs-row'); if (r) { close(); return onPick(byId(D.clients, r.dataset.id)); }
+    const b = e.target.closest('[data-mcs]'); if (!b) return; close(); if (b.dataset.mcs === 'new') onNew(input.value.trim());
+  });
+  o.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+}
 // phones: a new quote, job or invoice starts with who it's for (Service for): Select Existing Client, or a new client typed in
 // right here (first and last name, property address, phone and email), saved together with it
 function mobileNew(kind, main, preset) {
@@ -2009,15 +2041,10 @@ ${newOk ? `<div class="mn-row">${ic.contact}<div class="mn-stack"><input name="f
     const ps = clientProps(client); const s = mSheet('Select a property', `<div class="mn-list">${ps.map((p) => `<button type="button" class="mn-opt${prop && prop.id === p.id ? ' on' : ''}" data-id="${esc(p.id)}">${ic.pin}<span><strong>${esc(p.name || p.street1)}</strong><span class="muted">${esc(propAddr(p))}</span></span></button>`).join('')}</div>`, { full: true });
     $$('.mn-opt', s).forEach((b) => b.addEventListener('click', () => { prop = ps.find((p) => p.id === b.dataset.id); mClose(); draw(); }));
   };
-  const pickSheet = () => {
-    const s = mSheet('Select client', `<label class="ml-search">${ic.search}<input type="search" placeholder="Search clients" aria-label="Search clients"></label><div class="mn-list"></div>`, { full: true });
-    const list = $('.mn-list', s); const input = $('input', s); const info = clientInfo();
-    const show = () => { const t = input.value.trim().toLowerCase();
-      const hits = D.clients.filter((c) => !c.archived && (!t || [c.name, c.company, c.email, c.phone, c.address].some((v) => String(v || '').toLowerCase().includes(t)))).sort((a, b) => a.name.localeCompare(b.name));
-      list.innerHTML = hits.map((c) => `<button type="button" class="mn-opt" data-id="${c.id}">${ic.contact}<span><strong>${esc(c.name)}</strong><span class="muted">${esc(c.address || c.email || c.phone || '')}</span></span><span class="cstatus ${info[c.id] && info[c.id].active ? 'active' : 'lead'}">${info[c.id] && info[c.id].active ? 'Active' : 'Lead'}</span></button>`).join('') || `<p class="muted ml-empty">${D.clients.length ? 'No clients match' : 'No clients yet'}</p>`; };
-    show(); input.addEventListener('input', show); setTimeout(() => input.focus(), 260);
-    list.addEventListener('click', (e) => { const b = e.target.closest('.mn-opt'); if (!b) return; client = byId(D.clients, b.dataset.id); onlyProp(); mClose(); draw(); if (!prop && clientProps(client).length > 1) setTimeout(propSheet, 300); });
-  };
+  const pickSheet = () => clientSheet({
+    onPick: (c) => { client = c; onlyProp(); draw(); if (!prop && clientProps(client).length > 1) setTimeout(propSheet, 200); },
+    onNew: (typed) => { client = null; prop = null; draw(); const w = typed.split(/\s+/).filter(Boolean); if (f.firstName) { f.firstName.value = w[0] || ''; f.lastName.value = w.slice(1).join(' '); (w.length ? f.address : f.firstName).focus(); } }, // the name fields here are the new client
+  });
   who.addEventListener('click', (e) => {
     const b = e.target.closest('[data-mn]'); if (!b) return; const k = b.dataset.mn;
     if (k === 'pick') return pickSheet();
