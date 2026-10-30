@@ -329,8 +329,8 @@ function withinHours(s, date, start, end) {
   const h = staffHours(s)[WEEK[parseD(date).getDay()][0]];
   return h.on && start >= h.start && end <= h.end;
 }
-// shared working-hours editor (team member page + My profile): a read view and an edit table toggled by Edit/Done
-const hoursHtml = (hours, closed = 'Not working') => `<div class="hours-wrap"><table class="hours view">${WEEK.map(([k, l]) => `<tr><td>${l}</td><td>${hours[k].on ? `${fmtTime(hours[k].start)} – ${fmtTime(hours[k].end)}` : `<span class="muted">${closed}</span>`}</td></tr>`).join('')}</table>
+// shared working-hours editor (team member page + My profile + Company Profile): a read view and an edit table toggled by Edit/Done; on phones a row opens a sheet from the bottom instead
+const hoursHtml = (hours, closed = 'Not working') => `<div class="hours-wrap" data-closed="${esc(closed)}"><table class="hours view">${WEEK.map(([k, l]) => `<tr data-act="editHoursRow" data-day="${k}"><td>${l}</td><td>${hours[k].on ? `${fmtTime(hours[k].start)} – ${fmtTime(hours[k].end)}` : `<span class="muted">${closed}</span>`}</td></tr>`).join('')}</table>
 <table class="hours edit" hidden>${WEEK.map(([k, l]) => `<tr data-day="${k}"><td><label class="hours-on"><input type="checkbox" ${hours[k].on ? 'checked' : ''}> ${l}</label></td><td><input type="time" class="h-start" value="${hours[k].start}" aria-label="${l} start"></td><td>–</td><td><input type="time" class="h-end" value="${hours[k].end}" aria-label="${l} end"></td></tr>`).join('')}</table>
 <button type="button" class="link-btn" data-act="tmHoursEdit">Edit</button></div>`;
 const readHoursFrom = (root) => Object.fromEntries($$('.hours.edit tr', root).map((r) => [r.dataset.day, { on: $('input[type=checkbox]', r).checked, start: $('.h-start', r).value || '09:00', end: $('.h-end', r).value || '17:00' }]));
@@ -413,6 +413,23 @@ A.tmRevoke = async (d) => {
   await api('DELETE', '/api/users/' + u.id); toast('Login access removed'); renderLoginCard(s);
 };
 A.copyInput = async (d, el) => { const i = el.parentElement.querySelector('input'); try { await navigator.clipboard.writeText(i.value); } catch (e) { i.select(); document.execCommand('copy'); } el.textContent = 'Copied'; };
+// phones: tap a day to change it. The sheet fills in the page's form, which keeps the change when the page is saved.
+A.editHoursRow = (d, el) => {
+  if (!phoneMq.matches) return;
+  const w = el.closest('.hours-wrap'); const edit = (k) => $(`.hours.edit tr[data-day="${k}"]`, w);
+  const f = mSheet('Edit hours', `${mField('Day', `<select name="day">${WEEK.map(([k, l]) => `<option value="${k}" ${k === d.day ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}
+<label class="m-chk"><input type="checkbox" name="on"> Open this day</label>${mField('Open time', '<input type="time" name="start">')}${mField('Close time', '<input type="time" name="end">')}
+${mSaveBtn('Done')}<p class="muted ms-note">Tap Save on the page to keep your changes.</p>`);
+  const sync = () => { f.start.disabled = f.end.disabled = !f.on.checked; };
+  const load = () => { const r = edit(f.day.value); f.on.checked = $('input[type=checkbox]', r).checked; f.start.value = $('.h-start', r).value; f.end.value = $('.h-end', r).value; sync(); };
+  f.day.addEventListener('change', load); f.on.addEventListener('change', sync); load();
+  f.addEventListener('submit', (e) => {
+    e.preventDefault(); if (f.on.checked && (!f.start.value || !f.end.value || f.end.value <= f.start.value)) return toast('The close time must be after the open time', true);
+    const r = edit(f.day.value); const c = $('input[type=checkbox]', r); c.checked = f.on.checked; $('.h-start', r).value = f.start.value; $('.h-end', r).value = f.end.value; c.dispatchEvent(new Event('change'));
+    $(`.hours.view tr[data-day="${f.day.value}"] td:last-child`, w).innerHTML = f.on.checked ? `${fmtTime(f.start.value)} – ${fmtTime(f.end.value)}` : `<span class="muted">${esc(w.dataset.closed)}</span>`;
+    mClose();
+  });
+};
 A.tmHoursEdit = (d, el) => { const w = el.closest('.hours-wrap'); const editing = $('.hours.edit', w).hidden; $('.hours.edit', w).hidden = !editing; $('.hours.view', w).hidden = editing; el.textContent = editing ? 'Done' : 'Edit'; };
 A.tmPhotoRemove = (d, el) => el.closest('form')._clearPhoto();
 PAGES['/team/new'] = { title: 'Add team member', render: (main) => teamMemberPage(main) };
@@ -959,8 +976,8 @@ ${switchRow('showHours', 'Show business hours', c.showHours, 'Display your busin
 async function companyPage(main, full) {
   const c = company; const integ = full ? await api('GET', '/api/integrations') : null;
   // App Settings boxes; on App Settings they sit in two columns outside the form, so their fields say form="cf"
-  const logoBox = planHas('branding') ? `<div class="card${full ? '' : ' cs'}"><h2>Logo</h2><div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap"><div id="logoPrev" style="width:120px;height:70px;border:1px dashed var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden">${c.logo ? `<img src="${esc(c.logo)}" style="max-width:100%;max-height:100%">` : '<span class="muted">No logo</span>'}</div><div><div class="logo-acts"><input type="file" id="logoFile" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" style="width:auto">${c.logo ? '<button type="button" class="btn danger sm" data-act="removeLogo">Delete logo</button>' : ''}</div><div class="muted">Appears on quotes, invoices and the client portal.</div></div></div></div>` : '';
-  const iconBox = full && planHas('branding') ? `<div class="card"><h2>App icon</h2><div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap"><div id="iconPrev" style="width:64px;height:64px;border:1px dashed var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden">${c.icon ? `<img src="${esc(c.icon)}" style="width:100%;height:100%;object-fit:contain">` : '<span class="muted">No icon</span>'}</div><div><input type="file" id="iconFile" accept="image/png,image/jpeg,image/webp,image/svg+xml" style="width:auto"><div class="muted">Shown in the browser tab. A square image works best.</div></div></div></div>` : '';
+  const logoBox = planHas('branding') ? `<div class="card${full ? '' : ' cs'}"><h2>Logo</h2><div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap"><div id="logoPrev" style="width:120px;height:70px;border:1px dashed var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden">${c.logo ? `<img src="${esc(c.logo)}" style="max-width:100%;max-height:100%">` : '<span class="muted">No logo</span>'}</div><div class="logo-side"><div class="logo-acts"><input type="file" id="logoFile" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" style="width:auto">${c.logo ? '<button type="button" class="btn danger sm" data-act="removeLogo">Delete logo</button>' : ''}</div><div class="muted">Appears on quotes, invoices and the client portal.</div></div></div></div>` : '';
+  const iconBox = full && planHas('branding') ? `<div class="card"><h2>App icon</h2><div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap"><div id="iconPrev" style="width:64px;height:64px;border:1px dashed var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden">${c.icon ? `<img src="${esc(c.icon)}" style="width:100%;height:100%;object-fit:contain">` : '<span class="muted">No icon</span>'}</div><div class="logo-side"><input type="file" id="iconFile" accept="image/png,image/jpeg,image/webp,image/svg+xml" style="width:auto"><div class="muted">Shown in the browser tab. A square image works best.</div></div></div></div>` : '';
   const brandBox = full ? `<div class="card"><h2>${planHas('branding') ? 'Branding and defaults' : 'Defaults'}</h2>${planHas('branding') ? `<div class="row"><label>Brand color<input form="cf" name="brandColor" type="color" value="${esc(c.brandColor || '#2563eb')}"><span class="muted">Used on quotes, invoices and emails to clients.</span></label><label>Accent color<input form="cf" name="accentColor" type="color" value="${esc(c.accentColor || c.defaultAccent)}"><span class="muted">Used on your client portal.${c.accentColor ? ' <button type="button" class="linkbtn" data-act="resetAccent">Reset</button>' : ''}</span></label></div>` : ''}<label>Invoice footer message<input form="cf" name="invoiceFooter" value="${esc(c.invoiceFooter)}"></label></div>` : '';
   const prefixBox = full ? planHas('numberPrefixes') ? `<div class="card"><h2>Number prefixes</h2><p class="muted" style="margin-top:0">The label in front of each quote, job and invoice number. Changes apply to new ones only; existing numbers stay as they are.</p>
 <div class="row3 prefix-row">${[['quotePrefix', 'Quotes', 1005], ['jobPrefix', 'Jobs', 2010], ['invoicePrefix', 'Invoices', 3010]].map(([k, l, n]) => `<label>${l}<input form="cf" name="${k}" maxlength="10" value="${esc(docPrefix(k))}" data-sample="${n}"><span class="muted prefix-eg">e.g. ${esc(docPrefix(k))}${n}</span></label>`).join('')}</div></div>` : '' : '';

@@ -83,7 +83,8 @@ textarea{height:auto;min-height:80px;padding:10px 12px;resize:vertical}
 .ai-row{display:flex;justify-content:flex-end;margin:-6px 0 12px}
 .prefix-eg{display:block;margin-top:4px;font-size:12px}
 input[type=checkbox],input[type=radio]{display:inline-block;width:auto;height:auto;padding:0;margin:0 6px 0 0}
-input[type=file]{height:auto;padding:7px 12px}
+input[type=file]{height:auto;padding:7px 12px;max-width:100%;min-width:0}
+.logo-side{flex:1 1 200px;min-width:0}
 input[type=color]{padding:4px 6px}
 /* Safari draws date/time text at the top of the box; give it a full-height line so it sits in the middle */
 input[type=date],input[type=time]{line-height:38px}
@@ -152,6 +153,7 @@ button.pill{padding:0 14px;font:inherit;font-size:14px}.pill.on{background:var(-
 .hours tr:last-child td{border-bottom:0}.hours.view td:first-child{width:120px;font-weight:500}
 .hours td{vertical-align:middle}.hours.edit td{padding:5px 10px 5px 0}.hours.edit input[type=time]{width:130px}.hours-on{display:flex;align-items:center;gap:8px;margin:0;color:var(--text);font-size:14px;min-width:120px}
 .hours[hidden]{display:none}
+@media (max-width:760px){.hours-wrap{display:block}.hours-wrap .link-btn{display:none}.hours.view{width:100%;min-width:0}.hours.view td{padding:13px 0}.hours.view tr{cursor:pointer;-webkit-tap-highlight-color:transparent}.hours.view tr:active{background:var(--surface-2)}.hours.view td:last-child::after{content:'›';float:right;margin-left:10px;color:var(--muted);font-size:20px;line-height:1}}
 .link-btn{background:none;border:0;padding:0;color:var(--link);font:inherit;font-size:14px;font-weight:600;text-decoration:underline;cursor:pointer;margin-left:auto}
 .sched td.off{background:repeating-linear-gradient(45deg,var(--surface-2),var(--surface-2) 6px,var(--surface-2) 6px,var(--surface-2) 12px)}.off-l{font-size:12px;color:var(--muted)}
 img.avatar{display:inline-block}
@@ -1075,7 +1077,7 @@ a.conn-chip{text-decoration:none}a.conn-chip:hover{text-decoration:underline}
 .md-head{padding:8px 14px 4px}.md-h{display:block;font-size:26px;font-weight:800;line-height:1.2;letter-spacing:-.01em;overflow-wrap:anywhere}
 .md-sub{display:block;font-size:20px;font-weight:700;color:var(--muted);margin-top:6px}
 .md-dates{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:18px}.md-dates small{display:block;font-size:16px;font-weight:700;color:var(--text)}
-.md-acts{display:flex;gap:10px;padding:18px 14px 6px}.md-acts .btn{flex:1 1 auto;height:50px;padding:0 14px;font-size:16px;border-radius:12px;justify-content:center;white-space:nowrap}.md-acts .md-more{flex:none;width:56px;font-size:20px;padding:0}
+.md-acts{display:flex;gap:10px;padding:18px 14px 6px}.md-acts .btn{display:inline-flex;align-items:center;flex:1 1 auto;height:50px;padding:0 14px;font-size:16px;border-radius:12px;justify-content:center;white-space:nowrap}.md-acts .md-more{flex:none;width:56px;font-size:20px;padding:0}
 .md-tabs{display:flex;gap:4px;padding:10px 14px 0;border-bottom:1px solid var(--line)}
 .md-tabs button{flex:0 0 auto;min-width:110px;background:none;border:0;border-bottom:3px solid transparent;font:inherit;font-size:17px;font-weight:700;color:var(--muted);padding:12px 16px;cursor:pointer}
 .md-tabs button.on{color:var(--text);border-bottom-color:var(--brand)}
