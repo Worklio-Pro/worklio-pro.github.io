@@ -588,7 +588,7 @@ app.post('/api/auth/accept-invite', (req, res) => {
   startSession(res, u); res.json(publicUser(u));
 });
 app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
-app.get('/api/auth/state', (req, res) => res.json({ needsSetup: !db.users.length, user: publicUser(currentUser(req)), company: { name: db.company.name, logo: db.company.logo, brandColor: db.company.brandColor }, product: brandLib.brand(), emailReady: !!emailProvider() }));
+app.get('/api/auth/state', (req, res) => res.json({ needsSetup: !db.users.length, user: publicUser(currentUser(req)), company: { name: db.company.name, logo: db.company.logo, accentColor: accentColor() }, product: brandLib.brand(), emailReady: !!emailProvider() }));
 // what this login may open: its permissions, the pages they unlock, and which lists it can load
 const accessOf = (u) => { const rk = roleKey(u); const routes = rolesLib.routesFor(teamRoles(), rk); return { staffId: u.staffId || null, perms: rolesLib.permsOf(teamRoles(), rk), pages: rolesLib.isAdminRole(u.role) ? null : rolesLib.pagesFor(teamRoles(), rk), collections: rolesLib.isAdminRole(u.role) ? COLLECTIONS : COLLECTIONS.filter((c) => rolesLib.allows(routes, 'GET', '/api/' + c)) }; };
 // the app tour (public/tour.js) starts by itself once for logins made since it launched; finishing or skipping it marks it seen
@@ -778,7 +778,10 @@ function accountInfo() {
     featureList: tenancy.FEATURES.map(({ key, label, desc }) => ({ key, label, desc, beta: tenancy.isBeta(key), included: tenancy.featuresOf(t).has(key) })), alwaysIncluded: tenancy.ALWAYS_INCLUDED,
   };
 }
-app.get('/api/company', (req, res) => res.json({ ...db.company, account: accountInfo() }));
+// the color of the business's client portal and login page: the option it chose from Alpha's list, or '' for the product's own color (no choice, a deleted option or a plan without branding)
+const accentOptions = () => tenancy.platform().settings.accentColors || [];
+const accentColor = () => { const o = tenancy.has('branding') && accentOptions().find((a) => a.id === db.company.accentId); return o ? o.color : ''; };
+app.get('/api/company', (req, res) => res.json({ ...db.company, accentOptions: accentOptions(), account: accountInfo() }));
 // social media pages a business can list; a handle becomes the page's link on networks that use handles
 const SOCIAL = { facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok', x: 'X', youtube: 'YouTube', linkedin: 'LinkedIn', google: 'Google Business Profile', yelp: 'Yelp', nextdoor: 'Nextdoor' };
 const SOCIAL_HANDLE = { facebook: (h) => `https://www.facebook.com/${h}`, instagram: (h) => `https://www.instagram.com/${h}`, tiktok: (h) => `https://www.tiktok.com/@${h}`, x: (h) => `https://x.com/${h}`, youtube: (h) => `https://www.youtube.com/@${h}` };
@@ -788,7 +791,8 @@ function socialUrl(k, v) {
   try { const p = new URL(u); return ['http:', 'https:'].includes(p.protocol) && p.hostname.includes('.') ? p.href : ''; } catch (e) { return ''; }
 }
 app.put('/api/company', (req, res) => {
-  if (!tenancy.has('branding')) delete req.body.brandColor; // custom branding is a plan feature
+  if (!tenancy.has('branding')) { delete req.body.brandColor; delete req.body.accentId; } // custom branding is a plan feature
+  if (req.body.accentId && !accentOptions().some((a) => a.id === req.body.accentId)) return res.status(400).json({ error: 'Choose one of the accent colors' });
   if (!tenancy.has('numberPrefixes')) for (const k of Object.keys(PREFIX_DEFAULTS)) delete req.body[k]; // so are custom number prefixes (saved ones keep working)
   for (const k of Object.keys(PREFIX_DEFAULTS)) if (k in req.body) {
     const v = String(req.body[k] ?? '').trim();
@@ -810,7 +814,7 @@ app.put('/api/company', (req, res) => {
     }
     db.company.social = social;
   }
-  const allowed = ['name', 'email', 'phone', 'website', 'address', 'logo', 'taxRate', 'paymentTermsDays', 'invoiceFooter', 'brandColor', 'zelleRecipient', 'zelleName', 'quoteDisclaimer', 'invoiceDisclaimer', ...Object.keys(PREFIX_DEFAULTS),
+  const allowed = ['name', 'email', 'phone', 'website', 'address', 'logo', 'taxRate', 'paymentTermsDays', 'invoiceFooter', 'brandColor', 'accentId', 'zelleRecipient', 'zelleName', 'quoteDisclaimer', 'invoiceDisclaimer', ...Object.keys(PREFIX_DEFAULTS),
     ...ADDRESS_PARTS, 'taxIdName', 'taxIdNumber', 'taxName', 'taxDescription', 'hours', ...Object.keys(REGIONAL)];
   for (const k of allowed) if (k in b) db.company[k] = k === 'taxRate' || k === 'paymentTermsDays' ? Number(b[k]) || 0 : typeof b[k] === 'string' ? b[k].trim().slice(0, 500) : b[k];
   for (const k of ['addressPrivate', 'showHours']) if (k in b) db.company[k] = b[k] === true || b[k] === 'on' || b[k] === 'true';
@@ -864,7 +868,7 @@ app.get('/manifest.webmanifest', (req, res) => {
     : [192, 512].map((n) => ({ src: `/img/app/icon-${n}.png`, sizes: `${n}x${n}`, type: 'image/png', purpose: 'any maskable' }));
   res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
   res.end(JSON.stringify({ id: '/', name, short_name: name.length > 12 ? name.split(/\s+/)[0].slice(0, 12) : name, start_url: '/', scope: '/', display: 'standalone',
-    background_color: '#f1f5fb', theme_color: db.company.brandColor || '#2563eb', icons }));
+    background_color: '#f1f5fb', theme_color: '#2563eb', icons }));
 });
 
 app.get('/api/notifications', (req, res) => res.json(db.notifications));
@@ -2004,7 +2008,7 @@ app.get('/api/portal/:token', (req, res) => {
   const c = db.clients.find((x) => x.portalToken === req.params.token);
   if (!c) return res.status(404).json({ error: 'Invalid portal link' });
   res.json({
-    company: { name: db.company.name, logo: db.company.logo, email: db.company.email, phone: db.company.phone, brandColor: db.company.brandColor, address: db.company.addressPrivate ? '' : db.company.address, website: db.company.website, hours: db.company.showHours ? db.company.hours || null : null },
+    company: { name: db.company.name, logo: db.company.logo, email: db.company.email, phone: db.company.phone, accentColor: accentColor(), address: db.company.addressPrivate ? '' : db.company.address, website: db.company.website, hours: db.company.showHours ? db.company.hours || null : null },
     client: { id: c.id, name: c.name, email: c.email, phone: c.phone, address: c.address, smsConsent: !!c.smsConsent },
     referralLink: tenancy.has('referrals') ? referralLink(c) : null,
     requests: (db.requests || []).filter((r) => r.clientId === c.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(requestForClient),

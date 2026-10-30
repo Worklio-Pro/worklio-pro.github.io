@@ -794,6 +794,8 @@ a.hp-nav{color:var(--text);text-decoration:none;padding:6px 8px;margin:0 -8px 10
 #main:not(.portal) .card:not(.sa-card)>h2:first-child{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:16px}
 #main:not(.portal) .card>.tpl-head:first-child h2,#main:not(.portal) .card>.plan-head:first-child h2{font-size:16px}
 /* App Settings: two columns of boxes, each stacked at its own height (one column on narrow screens) */
+.accent-pick{margin:4px 0 14px}.accent-t{font-size:13px;font-weight:600;margin-bottom:8px}.accent-opts{display:flex;flex-wrap:wrap;gap:8px}.accent-pick p{font-size:13px;margin:8px 0 0}
+.accent-opt{display:inline-flex;flex-direction:row;align-items:center;gap:7px;margin:0;padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:400;cursor:pointer}.accent-opt input{position:absolute;opacity:0;width:0;height:0;margin:0}.accent-opt i{width:18px;height:18px;border-radius:50%;flex:none}.accent-opt:has(input:checked){border-color:var(--brand);box-shadow:0 0 0 1px var(--brand)}.accent-opt:has(input:focus-visible){outline:2px solid var(--brand);outline-offset:2px}
 .as-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:start}.as-col>.card{margin:0 0 18px}.pay-card{margin-top:0}
 @media (max-width:900px){.as-cols{grid-template-columns:minmax(0,1fr)}}
 /* Email Templates: the list, and the editor popup (message on the left, preview on the right) */

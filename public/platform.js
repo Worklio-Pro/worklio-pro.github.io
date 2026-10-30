@@ -469,6 +469,7 @@ function settingsView(main) {
 <p class="muted" style="font-size:13px">Pricing page: <a href="${esc(site)}" target="_blank" rel="noopener">${esc(site)}</a>. Businesses that choose a paid plan pay for it at checkout before their account opens (see <a href="#settings" data-act="setTab" data-k="integrations:stripe">Integrations → Stripe</a>).</p>
 <div class="card-save"><span class="as-status">Changes save automatically</span></div></div>
 </form></div></div>
+<div class="card" id="accentCard" data-set="product"></div>
 <div class="card" id="teamCard" data-set="team"></div><div class="card" id="iconsCard" data-set="icons"></div>
 <form id="sf2" class="set-form"><div class="card" data-set="expiry"><h2>Accounts with a last day of access</h2>
 <div class="row"><label>Show a banner in their app (days before)<input name="expiryBannerDays" type="number" min="0" max="60" value="${esc(s.expiryBannerDays ?? 7)}"></label><label>Email the owner a reminder (days before)<input name="expiryReminderDays" type="number" min="0" max="60" value="${esc(s.expiryReminderDays ?? 3)}"></label></div>
@@ -482,7 +483,7 @@ function settingsView(main) {
     const name = D.settings.productName; D.settings = await api('PUT', '/api/platform/settings', b);
     if (D.settings.productName !== name) { $('.pf-brand').innerHTML = brandHtml(); logoCard($('#logoCard', main)); iconCard($('#iconCard', main)); } // a new name: the header and previews show it
   }));
-  maintenanceCard($('#mtCard', main)); logoCard($('#logoCard', main)); iconCard($('#iconCard', main)); reservedCard($('#reserved', main)); teamCard($('#teamCard', main)); if (setTab === 'icons') iconsCard($('#iconsCard', main)); if (setTab === 'seo') seoCard($('#seoCard', main));
+  maintenanceCard($('#mtCard', main)); logoCard($('#logoCard', main)); iconCard($('#iconCard', main)); accentCard($('#accentCard', main)); reservedCard($('#reserved', main)); teamCard($('#teamCard', main)); if (setTab === 'icons') iconsCard($('#iconsCard', main)); if (setTab === 'seo') seoCard($('#seoCard', main));
   integrationsCard($('#integ', main)); // always, so the list shows which services are set up
 }
 // Settings → SEO: each public page's title and description (with a search-result preview), indexing, verification, the share image and social profiles (lib/seo.js)
@@ -1269,6 +1270,21 @@ function iconCard(box) {
     }; r.readAsDataURL(f);
   });
 }
+// the accent colors businesses choose from in App Settings; they color only a business's client portal and login page
+function accentCard(box) {
+  if (!box) return;
+  box.innerHTML = `<h2>Accent colors</h2><p class="muted" style="font-size:13px;margin-top:0">The options businesses choose from in App Settings → Branding and defaults. A business’s accent appears only on its client portal and login page; the app and the website keep the ${esc(D.settings.productName)} colors. Buttons have white text, so choose colors dark enough to read it on.</p>
+<div class="ac-list">${(D.settings.accentColors || []).map((c) => `<div class="ac-row" data-id="${esc(c.id)}"><input type="color" value="${esc(c.color)}" aria-label="Color"><input type="text" value="${esc(c.name)}" maxlength="40" required aria-label="Name"><button type="button" class="btn alt sm" data-act="accentRemove" data-id="${esc(c.id)}">Remove</button></div>`).join('') || '<p class="muted">No options: every business uses the default color.</p>'}</div>
+<div class="lg-acts"><button type="button" class="btn alt sm" data-act="accentAdd">Add color</button></div>`;
+  box.onchange = () => saveAccents(readAccents(box));
+}
+const readAccents = (box) => $$('.ac-row', box).map((r) => ({ id: r.dataset.id, color: $('input[type=color]', r).value, name: $('input[type=text]', r).value }));
+const saveAccents = async (list) => {
+  try { D.settings = await api('PUT', '/api/platform/settings', { accentColors: list }); toast('Accent colors saved'); } catch (x) { toast(x.message, true); }
+  accentCard($('#accentCard'));
+};
+A.accentAdd = () => saveAccents([...readAccents($('#accentCard')), { name: 'New color', color: '#475569' }]);
+A.accentRemove = (d) => { if (confirm('Remove this color? Businesses using it go back to the default color.')) saveAccents(readAccents($('#accentCard')).filter((c) => c.id !== d.id)); };
 // a settings form saves itself: text a moment after typing stops (or on leaving the field), switches and menus right away.
 // Each card shows how it went where its Save button used to be. save(fields) sends them and throws on a problem.
 function autosave(form, save) {

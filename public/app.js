@@ -432,7 +432,6 @@ async function render() {
   const portal = path === '/client-portal' && new URLSearchParams(location.search).get('c');
   try { company = await api('GET', '/api/company'); } catch (e) { /* ignore */ }
   updateAppIcon();
-  document.documentElement.style.setProperty('--brand', company.brandColor || '#2563eb');
   $('#side').style.display = portal ? 'none' : ''; $('#menuBtn').style.display = portal ? 'none' : ''; $('#bnav').style.display = portal ? 'none' : ''; $('#topbar').style.display = portal ? 'none' : '';
   closeHelp();
   main.className = portal ? 'portal' : '';

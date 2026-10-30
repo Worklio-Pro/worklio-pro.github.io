@@ -97,7 +97,7 @@ document.addEventListener('click', (e) => {
   }
   try { state = await (await fetch('/api/auth/state')).json(); } catch (e) { state = { company: {} }; }
   const co = state.company || {};
-  if (co.brandColor) document.documentElement.style.setProperty('--brand', co.brandColor);
+  if (co.accentColor) document.documentElement.style.setProperty('--brand', co.accentColor); // the business's accent color; otherwise the product's own
   document.title = `Log in · ${co.name || 'Worklio Pro'}`;
   // the business's own logo, else the application logo from the platform console
   $('#brand').innerHTML = `${co.logo ? `<img src="${esc(co.logo)}" alt="">` : brandImg(state.product)}<span>${esc(co.name || 'Worklio Pro')}</span>`;
