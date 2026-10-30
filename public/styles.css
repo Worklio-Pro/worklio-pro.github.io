@@ -1144,6 +1144,22 @@ body.ms-open{overflow:hidden}
 .ml-st{flex:none;display:flex;align-items:flex-start;gap:8px;max-width:38%;text-align:right;font-size:14px;color:var(--muted)}
 .ml-st i.cstatus{flex:none;width:14px;height:14px;padding:0;border-radius:3px;background:currentColor;margin-top:2px}.ml-st i.cstatus::before{display:none}
 .ml-empty{margin:18px 14px}
+/* phones: an invoice and its receipts, full screen */
+.mprev{position:fixed;inset:0;z-index:60;overflow-y:auto;background:var(--card);color:var(--text);font-size:16px}
+.mp-top{display:grid;grid-template-columns:48px 1fr 48px;align-items:center;gap:8px;padding:calc(10px + env(safe-area-inset-top)) 16px 14px;background:var(--side);color:#fff}
+.mp-top h1{margin:0;font-size:22px;font-weight:700;text-align:center;color:#fff}
+.mp-back{display:grid;place-items:center;width:44px;height:44px;border:1px solid rgba(255,255,255,.18);border-radius:50%;color:#fff}.mp-back svg{width:24px;height:24px}
+.mp-logo{display:flex;align-items:center;justify-content:flex-end;min-height:60px;padding:10px 16px;background:#fff;color:#111827;box-shadow:0 4px 12px rgba(15,23,42,.08)}.mp-logo img{display:block;max-height:44px;max-width:50%;object-fit:contain}.mp-logo strong{font-size:16px}
+.mp-body{display:flex;flex-direction:column;gap:24px;padding:24px 16px calc(32px + env(safe-area-inset-bottom))}
+.mp-acc{border:1px solid var(--line);border-radius:12px;background:var(--card);overflow:hidden}
+.mp-acc summary{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:52px;padding:0 16px;font-size:17px;font-weight:600;cursor:pointer;list-style:none;-webkit-tap-highlight-color:transparent}.mp-acc summary::-webkit-details-marker{display:none}
+.mp-acc summary svg{flex:none;color:var(--brand);transition:transform .15s}.mp-acc[open] summary svg{transform:rotate(180deg)}.mp-acc[open] summary{border-bottom:1px solid var(--line)}
+.mp-rcpt{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px}.mp-rcpt+.mp-rcpt{border-top:1px solid var(--line)}.mp-rcpt .btn{flex:none;min-width:60px;justify-content:center}
+.mp-inv{padding:16px}.mp-title{display:flex;align-items:center;justify-content:space-between;gap:10px}.mp-title h2{margin:0;font-size:19px}.mp-meta{margin:8px 0 12px;color:var(--muted);font-size:14px;line-height:1.5}
+.mp-item{display:flex;justify-content:space-between;gap:14px;padding:12px 0;border-top:1px solid var(--line)}.mp-item small{display:block;margin-top:3px;color:var(--muted);font-size:14px;white-space:pre-wrap}.mp-item>span{flex:none}
+.mp-totals{padding-top:8px;border-top:1px solid var(--line)}.mp-row{display:flex;justify-content:space-between;gap:16px;padding:6px 0}.mp-row>span:first-child{color:var(--muted)}.mp-row>span:last-child{text-align:right;overflow-wrap:anywhere}.mp-row.b{font-weight:700}.mp-row.b>span:first-child{color:inherit}
+.mp-note{margin:14px 0 0;white-space:pre-wrap;font-size:14px;line-height:1.5}
+.mp-receipt{display:flex;flex-direction:column;padding:18px 16px}.mp-receipt>small{color:var(--muted);font-size:14px}.mp-amt{font-size:32px;margin:2px 0 12px}.mp-pdf{text-align:center;margin-top:14px}
 /* phones: job page */
 .md-addr{display:block;margin-top:10px;color:var(--muted);line-height:1.4}
 .md-contact{display:flex;gap:8px;padding:12px 14px 0;flex-wrap:wrap}.md-contact a{display:inline-flex;align-items:center;gap:6px;height:38px;padding:0 14px;border-radius:99px;background:var(--surface-2);color:var(--text);text-decoration:none;font-size:15px;font-weight:600}.md-contact svg{width:17px;height:17px}

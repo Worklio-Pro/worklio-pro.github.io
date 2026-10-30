@@ -423,6 +423,7 @@ function updateAppIcon() {
 }
 async function render() {
   const path = curPath();
+  const mpT = document.getElementById('mpTheme'); if (mpT) mpT.remove();
   const isPortal = path === '/client-portal' && new URLSearchParams(location.search).get('c');
   if (!isPortal && !me) { try { me = await api('GET', '/api/auth/me'); } catch (e) { /* api() sends you to the login page */ } } // needed before picking the start page
   if (path === '/time-off') { history.replaceState({}, '', '/requests'); return render(); } // the page's old address (links in earlier emails)
@@ -1719,6 +1720,7 @@ function viewPage(kind) {
     async render(main) {
       const d = byId(D[kind + 's'], qp('id'));
       if (!d) { main.innerHTML = `<div class="card"><h1>${kind === 'quote' ? 'Quote' : 'Invoice'} not found</h1><p><a href="/${kind}s" data-link>Back to the list</a></p></div>`; return; }
+      if (kind === 'invoice' && phoneMq.matches && qp('preview')) { main.innerHTML = qp('receipt') ? mobileReceipt(d, qp('receipt')) : mobileInvoicePreview(d); mpStatusBar(); return; }
       main.innerHTML = phoneMq.matches ? mobileDocPage(kind, d) : (kind === 'quote' ? quotePage : invoicePage)(d);
     },
   };
@@ -1990,7 +1992,7 @@ A.mMore = (x) => {
 ${d.status === 'sent' ? item('approveQuote', 'Mark approved') : ''}
 ${d.status !== 'declined' && d.depositFee > 0 && !d.depositPaidAt ? item('markDepositPaid', `Record deposit payment${d.zelleSentAt ? ' (Zelle sent)' : ''}`) : ''}
 ${canJob ? item('quoteToJob', 'Create job') : ''}${job ? `<a href="/jobs/edit?id=${job.id}" data-link>Go to job ${esc(job.number)}</a>` : ''}`
-    : `<a href="/pay/${d.token}" target="_blank">${d.status === 'paid' ? 'View receipt' : 'View pay page'}</a>${d.status !== 'paid' ? item('collectPayment', 'Collect payment') : ''}`}
+    : `<a href="/invoices/view?id=${d.id}&preview=1" data-link>${d.status === 'paid' ? 'View receipt' : 'View invoice'}</a>${d.status !== 'paid' ? item('collectPayment', 'Collect payment') : ''}`}
 <a href="/${x.kind}s/edit?id=${d.id}" data-link>Edit everything at once</a>
 ${item('delDoc', `Delete ${x.kind}`, `data-kind="${x.kind}" class="danger-text"`)}</div>`);
   f.addEventListener('click', (e) => { if (e.target.closest('a, button[data-act]')) mClose(true); });
@@ -2000,6 +2002,38 @@ const mTap = (kind, d, sec, inner, cls = '', extra = '') => `<button type="butto
 const mRow = (l, v, cls = '') => `<div class="md-tr ${cls}"><span>${l}</span><span class="md-v">${v}</span></div>`;
 const mTapRow = (kind, d, sec, l, v) => mTap(kind, d, sec, `<span>${l}</span><span class="md-v">${v}</span>`, 'md-tr');
 const mTextSec = (kind, d, sec, title, text, empty) => mTap(kind, d, sec, `<span class="md-sh">${title}${ARROW}</span>${text ? `<span class="md-text">${esc(text)}</span>` : `<span class="md-text muted">${empty}</span>`}`, 'md-sec');
+/* ===== phones: an invoice and its receipts, full screen inside the app (/invoices/view?id=…&preview=1, plus &receipt=<payment> for one receipt) ===== */
+// the phone's status bar matches the dark header while it's open (render() puts it back)
+const mpStatusBar = () => { const m = document.createElement('meta'); m.name = 'theme-color'; m.id = 'mpTheme'; m.content = getComputedStyle(document.documentElement).getPropertyValue('--side').trim(); document.head.append(m); };
+const mpShell = (title, back, body) => `<div class="mprev"><header class="mp-top"><a href="${back}" data-link class="mp-back" aria-label="Back">${CHEV('M15 18l-6-6 6-6')}</a><h1>${title}</h1><span></span></header>
+<div class="mp-logo">${company.logo ? `<img src="${esc(company.logo)}" alt="${esc(company.name || '')}">` : `<strong>${esc(company.name || '')}</strong>`}</div><div class="mp-body">${body}</div></div>`;
+// the same ids as the Payments list and the receipt PDF
+const invReceipts = (d) => {
+  const list = (d.payments || []).map((p) => ({ id: p.id, amount: Number(p.amount) || 0, date: p.date, method: p.method, reference: p.reference, refunded: (p.refunds || []).reduce((s, r) => s + (r.status === 'failed' ? 0 : Number(r.amount) || 0), 0) }));
+  if (d.depositApplied) list.push({ id: 'q-' + d.depositQuoteId, amount: d.depositApplied, date: d.depositAppliedAt, method: '', label: 'Deposit' });
+  if (!list.length && d.status === 'paid' && d.paidAt) list.push({ id: 'i-' + d.id, amount: Number(d.paidAmount || d.total) || 0, date: d.paidAt, method: d.paymentMethod });
+  return list.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+};
+function mobileInvoicePreview(d) {
+  const c = byId(D.clients, d.clientId) || {}; const receipts = invReceipts(d); const on = (k) => d[k] !== 'off';
+  const items = (d.items || []).map((it) => `<div class="mp-item"><div><strong>${esc(it.desc)}</strong>${it.details ? `<small>${esc(it.details)}</small>` : ''}${on('showQty') || on('showUnit') ? `<small>${[on('showQty') ? `Qty ${esc(it.qty)}` : '', on('showUnit') ? money(it.price) : ''].filter(Boolean).join(' × ')}</small>` : ''}</div>${on('showLineTotals') ? `<span>${money(round2(it.qty * it.price))}</span>` : ''}</div>`).join('');
+  const row = (l, v, cls = '') => `<div class="mp-row ${cls}"><span>${l}</span><span>${v}</span></div>`;
+  const invoice = `<div class="mp-inv"><div class="mp-title"><h2>Invoice #${esc(d.number)}</h2>${iBadge(d.displayStatus || d.status)}</div>
+<p class="mp-meta">Billed to ${esc(c.name || 'no client')}${d.subject ? ` · ${esc(d.subject)}` : ''}<br>Issued ${fmtDate((d.issueDate || '').slice(0, 10))} · Due ${d.dueDate && d.dueDate > d.issueDate ? fmtDate(d.dueDate) : 'upon receipt'}</p>
+${items}<div class="mp-totals">${row('Subtotal', money(d.subtotal || 0))}${d.discount ? row('Discount', '−' + money(d.discount)) : ''}${d.tax ? row(`Tax${Number(d.taxRate) ? ` (${d.taxRate}%)` : ''}`, money(d.tax)) : ''}${row('Total', money(d.total || 0), 'b')}${d.status === 'paid' ? '' : row('Balance due', money(invBalance(d)), 'b')}</div>
+${d.notes ? `<p class="mp-note">${esc(d.notes)}</p>` : ''}${d.disclaimer ? `<p class="mp-note muted">${esc(d.disclaimer)}</p>` : ''}</div>`;
+  const acc = (title, body, open) => `<details class="mp-acc"${open ? ' open' : ''}><summary>${title}${CHEV('M6 9l6 6 6-6')}</summary>${body}</details>`;
+  const rcpt = receipts.map((r) => `<div class="mp-rcpt"><span>${money(r.amount)} on ${fmtDate(String(r.date).slice(0, 10))}</span><a class="btn alt" href="/invoices/view?id=${d.id}&preview=1&receipt=${encodeURIComponent(r.id)}" data-link>View</a></div>`).join('');
+  return mpShell('Preview', `/invoices/view?id=${d.id}`, acc('View Invoice', invoice, !receipts.length) + (receipts.length ? acc('Receipts', rcpt, true) : ''));
+}
+function mobileReceipt(d, id) {
+  const r = invReceipts(d).find((x) => x.id === id); const back = `/invoices/view?id=${d.id}&preview=1`;
+  if (!r) return mpShell('Receipt', back, '<p class="muted">This receipt isn’t available.</p>');
+  const c = byId(D.clients, d.clientId) || {}; const row = (l, v) => (v ? `<div class="mp-row"><span>${l}</span><span>${esc(v)}</span></div>` : '');
+  return mpShell('Receipt', back, `<div class="mp-acc mp-receipt"><small>Amount paid</small><strong class="mp-amt">${money(r.amount)}</strong>
+${row('Date', fmtDate(String(r.date).slice(0, 10)))}${row('Paid by', c.name)}${row('Method', r.label || payLabel(r.method))}${row('Reference', r.reference)}${row('For', `Invoice #${d.number}`)}${r.refunded ? row('Refunded', money(r.refunded)) : ''}
+<a class="btn alt mp-pdf" href="/api/payment-detail/${encodeURIComponent(r.id)}/pdf" download>Download PDF</a></div>`);
+}
 function mobileDocPage(kind, d) {
   if (mUnsign && mUnsign !== d.id) mUnsign = '';
   const q = kind === 'quote'; const c = byId(D.clients, d.clientId) || {};
@@ -2008,7 +2042,7 @@ function mobileDocPage(kind, d) {
   const second = q ? (job && job.createdAt ? ['Converted', job.createdAt] : d.status === 'approved' && d.respondedAt ? ['Approved', d.respondedAt] : d.sentAt ? ['Sent', d.sentAt] : null) : ['Due', d.dueDate];
   const btn = (act, label, cls = '') => `<button type="button" class="btn ${cls}" data-act="${act}" data-kind="${kind}" data-id="${d.id}">${label}</button>`;
   const acts = q ? [canJob ? btn('quoteToJob', 'Create Job') : '', btn('sendDoc', d.sentAt ? 'Resend' : 'Send')]
-    : [d.status !== 'paid' ? btn('collectPayment', 'Collect Payment') : '', d.status !== 'paid' ? btn('sendDoc', d.sentAt ? 'Resend' : 'Send') : `<a class="btn" href="/pay/${d.token}" target="_blank">View Receipt</a>`];
+    : [d.status !== 'paid' ? btn('collectPayment', 'Collect Payment') : '', d.status !== 'paid' ? btn('sendDoc', d.sentAt ? 'Resend' : 'Send') : `<a class="btn" href="/invoices/view?id=${d.id}&preview=1" data-link>View Receipt</a>`];
   const items = (d.items || []).map((it, i) => mTap(kind, d, 'item', `<strong>${esc(it.desc)}</strong>${it.details ? `<span class="md-det">${esc(it.details)}</span>` : ''}<span class="md-qp"><span>${esc(it.qty)} × ${money(it.price)}</span><span>${money(round2(it.qty * it.price))}</span></span>`, 'md-item', `data-i="${i}"`)).join('');
   const paid = q ? depositPaid(d) : 0; const pays = q ? [] : [...(d.payments || [])].sort((a, b) => a.date.localeCompare(b.date));
   const totals = mRow('Subtotal', money(d.subtotal || 0), 'b')
