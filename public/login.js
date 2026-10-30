@@ -98,9 +98,9 @@ document.addEventListener('click', (e) => {
   try { state = await (await fetch('/api/auth/state')).json(); } catch (e) { state = { company: {} }; }
   const co = state.company || {};
   document.title = `Log in · ${co.name || 'Worklio Pro'}`;
-  // the business's own logo, else the application logo from the platform console
-  $('#brand').innerHTML = `${co.logo ? `<img src="${esc(co.logo)}" alt="">` : brandImg(state.product)}<span>${esc(co.name || 'Worklio Pro')}</span>`;
-  $('#promoCo').textContent = co.name || 'Your business';
+  $('#brand').innerHTML = `${co.logo ? `<img src="${esc(co.logo)}" alt="">` : ''}<span>${esc(co.name || 'Worklio Pro')}</span>`;
+  const product = state.product || {}; // the Worklio Pro logo from the platform console, on the panel beside the form
+  $('#promoCo').innerHTML = `${brandImg(product, 'dark')}${product.logoHasName ? '' : `<span>${esc(product.name || 'Worklio Pro')}</span>`}`;
   if (params.get('invite')) {
     const r = await fetch('/api/auth/invite?token=' + encodeURIComponent(params.get('invite'))); const j = await r.json().catch(() => ({}));
     if (r.ok) state.invite = j; else state.inviteError = j.error;
