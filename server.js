@@ -1049,6 +1049,30 @@ const aiClient = () => {
   if (!anthropic) { const Anthropic = require('@anthropic-ai/sdk'); anthropic = new Anthropic(); }
   return anthropic;
 };
+// asks Claude for a short text and answers with { [key]: text }, or the error to show
+async function aiWrite(res, what, input, key, request) {
+  const Anthropic = require('@anthropic-ai/sdk');
+  try {
+    const r = await aiClient().beta.messages.create({
+      model: 'claude-opus-5-5',
+      max_tokens: 16000,
+      betas: ['server-side-fallback-2026-07-01'],
+      fallbacks: 'default', // if the request is declined, the API retries it on a suitable fallback model
+      output_config: { effort: 'low' },
+      ...request,
+    });
+    if (r.stop_reason === 'refusal') return res.status(422).json({ error: `The AI couldn\u2019t write ${what === 'text' ? 'anything' : `a ${what}`} for ${input}. Try rewording it.` });
+    const out = r.content.filter((b) => b.type === 'text').map((b) => b.text).join('').trim();
+    if (!out) return res.status(502).json({ error: `The AI returned an empty ${what}. Try again.` });
+    res.json({ [key]: out });
+  } catch (err) {
+    console.error(`AI ${what} failed:`, err.message);
+    if (err instanceof Anthropic.AuthenticationError) return res.status(502).json({ error: 'Your ANTHROPIC_API_KEY was rejected. Check it in the .env file.' });
+    if (err instanceof Anthropic.RateLimitError) return res.status(503).json({ error: 'The AI is busy right now. Try again in a minute.' });
+    if (err instanceof Anthropic.APIError && err.status) return res.status(502).json({ error: `The AI service returned an error (${err.status}). Try again.` });
+    res.status(502).json({ error: 'Couldn\u2019t reach the AI service. Check your internet connection.' });
+  }
+}
 app.post('/api/services/describe', async (req, res) => {
   const name = String(req.body.name || '').trim().slice(0, 200);
   const kind = req.body.type === 'product' ? 'product' : 'service';
@@ -1059,31 +1083,27 @@ app.post('/api/services/describe', async (req, res) => {
   if (!name) return res.status(400).json({ error: 'Enter a name first' });
   const client = aiClient();
   if (!client) return res.status(503).json({ error: 'AI descriptions need ANTHROPIC_API_KEY in the .env file' });
-  const Anthropic = require('@anthropic-ai/sdk');
-  try {
-    const r = await client.beta.messages.create({
-      model: 'claude-opus-5-5',
-      max_tokens: 16000,
-      betas: ['server-side-fallback-2026-07-01'],
-      fallbacks: 'default', // if the request is declined, the API retries it on a suitable fallback model
-      output_config: { effort: 'low' },
-      system: `You write line-item descriptions for the quotes and invoices of ${db.company.name || 'a field service business'}, a field service business. The customer reads them.
+  await aiWrite(res, 'description', 'that name', 'description', {
+    system: `You write line-item descriptions for the quotes and invoices of ${db.company.name || 'a field service business'}, a field service business. The customer reads them.
 Given the name of a ${kind}, write one or two plain sentences (under 40 words) saying what it includes or what the customer gets.
 If the business gave notes, turn them into that description: keep every fact in them (it may run longer, up to about 80 words, to fit them) and fix spelling and grammar.
 Plain text only: no markdown, no quotes, no price, no heading. Don't invent specifics such as brands, warranties, durations or quantities that the name or notes don't state.${tone ? `\n${tone}` : ''}`,
-      messages: [{ role: 'user', content: `${kind === 'product' ? 'Product' : 'Service'} name: ${name}${notes ? `\n\nNotes from the business:\n${notes}` : ''}` }],
-    });
-    if (r.stop_reason === 'refusal') return res.status(422).json({ error: 'The AI couldn\u2019t write a description for that name. Try rewording it.' });
-    const description = r.content.filter((b) => b.type === 'text').map((b) => b.text).join('').trim();
-    if (!description) return res.status(502).json({ error: 'The AI returned an empty description. Try again.' });
-    res.json({ description });
-  } catch (err) {
-    console.error('AI description failed:', err.message);
-    if (err instanceof Anthropic.AuthenticationError) return res.status(502).json({ error: 'Your ANTHROPIC_API_KEY was rejected. Check it in the .env file.' });
-    if (err instanceof Anthropic.RateLimitError) return res.status(503).json({ error: 'The AI is busy right now. Try again in a minute.' });
-    if (err instanceof Anthropic.APIError && err.status) return res.status(502).json({ error: `The AI service returned an error (${err.status}). Try again.` });
-    res.status(502).json({ error: 'Couldn\u2019t reach the AI service. Check your internet connection.' });
-  }
+    messages: [{ role: 'user', content: `${kind === 'product' ? 'Product' : 'Service'} name: ${name}${notes ? `\n\nNotes from the business:\n${notes}` : ''}` }],
+  });
+});
+// Rewrite in a quote's or invoice's Client message and Contract / Disclaimer boxes: polishes what's typed, in the tone picked from its menu
+app.post('/api/ai/rewrite', async (req, res) => {
+  const b = req.body || {}; const text = String(b.text || '').trim().slice(0, 8000); const doc = b.doc === 'invoice' ? 'invoice' : 'quote'; const terms = b.field === 'disclaimer';
+  if (!text) return res.status(400).json({ error: 'Type something first, then rewrite it' });
+  if (!aiClient()) return res.status(503).json({ error: 'AI rewriting needs ANTHROPIC_API_KEY in the .env file' });
+  const tone = { cheerful: 'Make it warm, upbeat and friendly.', casual: 'Make it relaxed and conversational.', professional: 'Make it polished, clear and businesslike.',
+    shorter: terms ? 'Make it as short as you can without dropping any term.' : 'Make it as short as you can, keeping only the key facts.' }[b.tone] || '';
+  await aiWrite(res, 'text', 'that text', 'text', {
+    system: `You rewrite the ${terms ? 'contract / disclaimer terms' : 'message to the client'} on a${doc === 'invoice' ? 'n invoice' : ' quote'} from ${db.company.name || 'a field service business'}, a field service business. The client reads it.
+Rewrite the text you're given and fix spelling and grammar. Keep every fact in it, and don't invent specifics such as prices, dates, brands, warranties or promises it doesn't state.${terms ? '\nThese are terms the client may be held to: keep every obligation, condition, number, date and time period with the same meaning. Don’t add, remove, soften or strengthen any term.' : ''}
+Plain text only: no markdown, no quotes around it, no heading and no comments about the rewrite. Keep separate paragraphs or lines where the text has them.${tone ? `\n${tone}` : ''}`,
+    messages: [{ role: 'user', content: `Text to rewrite:\n${text}` }],
+  });
 });
 
 // generic list / get

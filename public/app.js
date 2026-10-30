@@ -1456,7 +1456,7 @@ function invoiceForm(main, doc, preset) {
 <dt>Payment terms</dt><dd><select name="paymentTerms" aria-label="Payment terms">${TERMS.map(([k, l]) => `<option value="${k}" ${terms === k ? 'selected' : ''}>${l}</option>`).join('')}</select></dd>
 <dt>Due date</dt><dd><input type="date" name="dueDate" value="${esc(due)}" aria-label="Due date"></dd></dl></div>
 ${itemsCard(items, `<input type="hidden" name="depositCreditRemoved" value="${d.depositCreditRemoved ? 'yes' : ''}"><div class="icredit"></div>`, d)}
-<div class="qcard"><h2>Client message</h2><textarea name="notes" rows="3" placeholder="A message to your client, shown on the invoice">${esc(d.notes || '')}</textarea></div>
+<div class="qcard"><h2>Client message</h2><div class="ai-box"><textarea name="notes" rows="3" placeholder="A message to your client, shown on the invoice">${esc(d.notes || '')}</textarea>${aiTextBar('invoice', 'notes')}</div></div>
 ${discCard('invoice', d.id ? d.disclaimer || '' : company.invoiceDisclaimer ?? '')}
 </div>
 <aside class="qside"><div class="qcard pay-c"><h3>Client payments</h3><p class="muted">How the client can pay this invoice.</p>
@@ -1528,7 +1528,7 @@ function docPage(kind, isNew) {
 // Contract / Disclaimer section: saved with the rest of the quote or invoice; the trash button removes it right away
 // shared by the quote and invoice editors (form._kind = 'quote' | 'invoice'); the default lives in company.quoteDisclaimer / invoiceDisclaimer
 const discCard = (kind, text) => `<div class="qcard disc"><div class="qcard-h"><h2>Contract / Disclaimer</h2><button type="button" class="icon-btn" data-act="discDelete" title="Remove disclaimer" aria-label="Remove disclaimer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg></button></div>
-<label class="fl"><span>Description</span><textarea name="disclaimer" rows="4" placeholder="${kind === 'quote' ? 'Terms the client agrees to, e.g. how long the quote is valid' : 'e.g. Thank you for your business. Payment terms, late fees, warranty'}">${esc(text)}</textarea></label>
+<label class="fl ai-box"><span>Description</span><textarea name="disclaimer" rows="4" placeholder="${kind === 'quote' ? 'Terms the client agrees to, e.g. how long the quote is valid' : 'e.g. Thank you for your business. Payment terms, late fees, warranty'}">${esc(text)}</textarea>${aiTextBar(kind, 'disclaimer')}</label>
 <div class="chk admin-only"><label><input type="checkbox" id="discDefault"> Apply to all future ${kind}s</label></div></div>`;
 async function saveDisclaimer(form, text, msg) {
   const doc = form._doc; const kind = form._kind; const asDefault = $('#discDefault', form).checked;
@@ -1566,9 +1566,12 @@ const AI_TONES = [['cheerful', 'Cheerful', '<circle cx="12" cy="12" r="9"/><path
   ['casual', 'Casual', '<path d="M3 15h16.5a2 2 0 0 1 0 4H5a2 2 0 0 1-2-2zM3 15V9l4 1 3 3h4l5.5 2"/>'],
   ['professional', 'Professional', '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 13h18"/>'],
   ['shorter', 'Shorter', '<path d="M4 9h6M14 9h6M4 15h16"/>']];
-const AI_BTN = `<div class="ai-bar"><details class="menu ai-menu"><summary class="ai-desc" title="Rewrite the description with AI">${AI_SPARK}<span>Rewrite</span></summary><div class="menu-list"><div class="ai-h">Make this more</div>
-${AI_TONES.map(([k, l, d]) => `<button type="button" class="mi" data-act="aiItemDesc" data-tone="${k}">${aiIco(d)}${l}</button>`).join('')}</div></details>
-<button type="button" class="ai-undo" data-act="aiUndo" disabled aria-label="Put back the original description" title="Put back the original description">${aiIco('<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>')}</button></div>`;
+const aiBar = (act, undo, what, data = '') => `<div class="ai-bar"><details class="menu ai-menu"><summary class="ai-desc" title="Rewrite the ${what} with AI">${AI_SPARK}<span>Rewrite</span></summary><div class="menu-list"><div class="ai-h">Make this more</div>
+${AI_TONES.map(([k, l, d]) => `<button type="button" class="mi" data-act="${act}" data-tone="${k}"${data}>${aiIco(d)}${l}</button>`).join('')}</div></details>
+<button type="button" class="ai-undo" data-act="${undo}" disabled aria-label="Put back the original ${what}" title="Put back the original ${what}">${aiIco('<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>')}</button></div>`;
+const AI_BTN = aiBar('aiItemDesc', 'aiUndo', 'description');
+// the same Rewrite in a quote's or invoice's Client message and Contract / Disclaimer boxes (box name: notes or disclaimer)
+const aiTextBar = (kind, name) => (aiOn() ? aiBar('aiText', 'aiTextUndo', name === 'notes' ? 'message' : 'terms', ` data-doc="${kind}"`) : '');
 const setBox = (box, text) => { box.focus(); box.select(); if (!document.execCommand('insertText', false, text)) box.value = text; box.dispatchEvent(new Event('input', { bubbles: true })); }; // insertText keeps undo working
 A.aiItemDesc = async (d, el) => {
   const row = el.closest('.item-row'); const name = $('.desc', row); const box = $('.details', row); const menu = $('.ai-menu', row); const sum = $('summary', menu);
@@ -1582,6 +1585,18 @@ A.aiItemDesc = async (d, el) => {
     setBox(box, description); $('.ai-undo', row).disabled = false;
   } finally { menu.classList.remove('busy'); $('span', sum).textContent = 'Rewrite'; }
 };
+A.aiText = async (d, el) => {
+  const wrap = el.closest('.ai-box'); const box = $('textarea', wrap); const menu = $('.ai-menu', wrap); const sum = $('summary', menu);
+  menu.open = false;
+  if (!box.value.trim()) { toast('Type something first, then rewrite it', true); return box.focus(); }
+  menu.classList.add('busy'); $('span', sum).textContent = 'Writing…';
+  try {
+    const { text } = await api('POST', '/api/ai/rewrite', { field: box.name, doc: d.doc, text: box.value, tone: d.tone });
+    if (box._aiOrig === undefined) box._aiOrig = box.value; // the text from before the first rewrite, for revert
+    setBox(box, text); $('.ai-undo', wrap).disabled = false;
+  } finally { menu.classList.remove('busy'); $('span', sum).textContent = 'Rewrite'; }
+};
+A.aiTextUndo = (d, el) => { const box = $('textarea', el.closest('.ai-box')); if (box._aiOrig === undefined) return; setBox(box, box._aiOrig); delete box._aiOrig; el.disabled = true; };
 A.aiUndo = (d, el) => { const row = el.closest('.item-row'); if (row._aiOrig === undefined) return; setBox($('.details', row), row._aiOrig); delete row._aiOrig; el.disabled = true; };
 // hidden "off" + checkbox "on" with the same name: FormData keeps the last one, so unchecked saves "off".
 // A disabled switch submits nothing, leaving the saved value alone.
@@ -1604,7 +1619,7 @@ function quoteForm(main, doc, preset) {
 <dt>Created</dt><dd>${fmtDate((d.createdAt || ymd(new Date())).slice(0, 10))}</dd>
 <dt>Status</dt><dd><select name="status" aria-label="Status">${['draft', 'sent', 'approved', 'declined'].map((s) => `<option value="${s}" ${(d.status || 'draft') === s ? 'selected' : ''}>${Q_STATUS[s]}</option>`).join('')}</select></dd></dl></div>
 ${itemsCard(items, `${optRow({ label: 'Deposit', name: 'deposit', value: d.depositValue ?? d.depositFee, type: d.depositType, pctLabel: '% of total' })}<div class="dep-out muted"></div>${d.depositPaidAt ? `<div class="crow-line dep-credit"><span>Deposit collected <span class="muted">· ${fmtDate(d.depositPaidAt)}</span></span><span>−${money(depositPaid(d))}</span></div>` : ''}`, d)}
-<div class="qcard"><h2>Client message</h2><textarea name="notes" rows="3" placeholder="A message to your client, shown on the quote">${esc(d.notes || '')}</textarea></div>
+<div class="qcard"><h2>Client message</h2><div class="ai-box"><textarea name="notes" rows="3" placeholder="A message to your client, shown on the quote">${esc(d.notes || '')}</textarea>${aiTextBar('quote', 'notes')}</div></div>
 ${discCard('quote', d.id ? d.disclaimer || '' : company.quoteDisclaimer ?? DEFAULT_DISCLAIMER)}
 </div>
 <aside class="qside"><div class="qcard pay-c"><h3>Client payments</h3><p class="muted">How the client can pay this quote's deposit.</p>
@@ -1884,7 +1899,8 @@ function mAmount(kind, d, { title, label, type, value, name, pct }) {
 }
 function mText(kind, d, title, name, placeholder, extra = '') {
   const f = mSheet(title, `${mField(title, `<textarea name="${name}" rows="6" placeholder="${esc(placeholder)}">${esc(d[name] || '')}</textarea>`)}${extra}`, { full: true, foot: mSaveBtn() });
-  const t = f[name]; const grow = () => { t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; };
+  const t = f[name]; if (name === 'notes' || name === 'disclaimer') { t.parentElement.classList.add('ai-box'); t.insertAdjacentHTML('afterend', aiTextBar(kind, name)); }
+  const grow = () => { t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; };
   t.addEventListener('input', grow); setTimeout(() => { grow(); t.focus(); t.setSelectionRange(t.value.length, t.value.length); }, 260);
   return f;
 }
