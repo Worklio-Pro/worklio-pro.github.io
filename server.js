@@ -840,6 +840,7 @@ function accountInfo() {
     domains: (t.domains || []).map(({ host, verified, primary, addedAt, verifiedAt }) => ({ host, verified: !!verified, primary: !!primary, addedAt, verifiedAt: verifiedAt || null })),
     forum: forum.isOn(), // Alpha → Help Center → Forum → Forum settings can close the forum
     marketplace: marketplace.isOn(tenancy.platform()), // Alpha → Settings → App Marketplace
+    aiDescriptions: tenancy.aiOn('aiDescriptions'), aiRewrite: tenancy.aiOn('aiRewrite'), // Alpha → Settings → Integrations → AI
     navIcons: iconsLib.navIcons(), navOrder: iconsLib.order(), // the menu's icons, order and sections (Alpha → Settings → Menu)
     productName: tenancy.platform().settings.productName, product: brandLib.brand(), contactEmail: tenancy.platform().settings.contactEmail, helpUrl: tenancy.helpUrl(), managed: !tenancy.isDefault(),
     referrals: referrals.openTo(t), cardReady: !!stripeKey(), // card payments set up (App Settings → Card payments)
@@ -848,7 +849,7 @@ function accountInfo() {
     expiry: (() => { const x = expiryOf(t); return x && { ...x, when: whenText(x) }; })(),
     paused: pausedInfo(t),
     industries: industries.CHOICES, // the Industry choices in Company Profile
-    featureList: tenancy.FEATURES.filter((f) => f.key !== 'ai' || tenancy.aiDescriptionsOn()).map(({ key, label, desc }) => ({ key, label, desc, beta: tenancy.isBeta(key), included: tenancy.featuresOf(t).has(key) })), alwaysIncluded: tenancy.ALWAYS_INCLUDED,
+    featureList: tenancy.FEATURES.filter((f) => f.key !== 'ai' || tenancy.aiForBusinesses()).map(({ key, label, desc }) => ({ key, label, desc, beta: tenancy.isBeta(key), included: tenancy.featuresOf(t).has(key) })), alwaysIncluded: tenancy.ALWAYS_INCLUDED,
   };
 }
 // the color of the business's client portal, or '' for the product's own color (none chosen or a plan without branding)
@@ -1080,6 +1081,7 @@ app.post('/api/services/describe', async (req, res) => {
   // Rewrite on a quote/invoice/job line: the tone picked from its menu
   const tone = { cheerful: 'Make it warm, upbeat and friendly.', casual: 'Make it relaxed and conversational, the way you’d explain it to a neighbor.', professional: 'Make it polished, clear and businesslike.',
     shorter: 'Make it as short as you can: one sentence, under 20 words, keeping only the key facts (this overrides the length limits above).' }[req.body.tone] || '';
+  if (!tenancy.aiOn('aiDescriptions')) return res.status(403).json({ error: 'AI descriptions are turned off' });
   if (!name) return res.status(400).json({ error: 'Enter a name first' });
   const client = aiClient();
   if (!client) return res.status(503).json({ error: 'AI descriptions need ANTHROPIC_API_KEY in the .env file' });
@@ -1094,6 +1096,7 @@ Plain text only: no markdown, no quotes, no price, no heading. Don't invent spec
 // Rewrite in a quote's or invoice's Client message and Contract / Disclaimer boxes: polishes what's typed, in the tone picked from its menu
 app.post('/api/ai/rewrite', async (req, res) => {
   const b = req.body || {}; const text = String(b.text || '').trim().slice(0, 8000); const doc = b.doc === 'invoice' ? 'invoice' : 'quote'; const terms = b.field === 'disclaimer';
+  if (!tenancy.aiOn('aiRewrite')) return res.status(403).json({ error: 'AI rewriting is turned off' });
   if (!text) return res.status(400).json({ error: 'Type something first, then rewrite it' });
   if (!aiClient()) return res.status(503).json({ error: 'AI rewriting needs ANTHROPIC_API_KEY in the .env file' });
   const tone = { cheerful: 'Make it warm, upbeat and friendly.', casual: 'Make it relaxed and conversational.', professional: 'Make it polished, clear and businesslike.',
@@ -2436,7 +2439,7 @@ function liveAppState(a) {
 }
 const marketplaceView = () => {
   const P = tenancy.platform(); const mine = marketplace.requestedBy(P, tenancy.current().id);
-  return { categories: marketplace.CATEGORIES, apps: marketplace.catalog().filter((a) => a.feature !== 'ai' || tenancy.aiDescriptionsOn()).map((a) => ({ ...a, ...(a.live ? liveAppState(a) : { requested: mine.includes(a.id) }) })) };
+  return { categories: marketplace.CATEGORIES, apps: marketplace.catalog().filter((a) => a.feature !== 'ai' || tenancy.aiOn('aiDescriptions')).map((a) => ({ ...a, ...(a.live ? liveAppState(a) : { requested: mine.includes(a.id) }) })) };
 };
 const marketplaceWho = (req) => { const u = currentUser(req); const t = tenancy.current(); return { t: t.id, company: db.company.name || t.slug, account: tenancy.tenantUrl(t), name: u.name, email: u.email }; };
 const marketplaceAdmin = (req, res) => { if (!marketplace.isOn(tenancy.platform())) { res.status(404).json({ error: 'The App Marketplace isn’t available' }); return false; } if (isAdmin(currentUser(req))) return true; res.status(403).json({ error: 'Only the account owner or an admin can manage apps' }); return false; };

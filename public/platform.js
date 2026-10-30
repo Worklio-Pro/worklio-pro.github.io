@@ -428,7 +428,7 @@ A.savePlans = async () => {
 window.addEventListener('beforeunload', (e) => { if (D && draftPlans && plansDirty()) e.preventDefault(); });
 
 /* ===== settings ===== */
-const IG_TABS = [['email', 'Email', 'Email'], ['sms', 'Text messages', 'Text messages (Twilio)'], ['stripe', 'Stripe', 'Stripe'], ['google', 'Google', 'Google Business Profile'], ['meta', 'Facebook & Instagram', 'Facebook & Instagram (Meta)'], ['tiktok', 'TikTok', 'TikTok'], ['ai', 'AI', 'AI descriptions'], ['marketplace', 'App Marketplace', 'App Marketplace']];
+const IG_TABS = [['email', 'Email', 'Email'], ['sms', 'Text messages', 'Text messages (Twilio)'], ['stripe', 'Stripe', 'Stripe'], ['google', 'Google', 'Google Business Profile'], ['meta', 'Facebook & Instagram', 'Facebook & Instagram (Meta)'], ['tiktok', 'TikTok', 'TikTok'], ['ai', 'AI', 'AI'], ['marketplace', 'App Marketplace', 'App Marketplace']];
 let igTab = 'email';
 // Settings shows one box at a time, picked from a grouped list down the left (a dropdown on phones).
 // The Integrations group is one page (setTab 'integrations') showing one service at a time (igTab).
@@ -1363,8 +1363,12 @@ ${I.mailServer ? `<p class="ig-env">Using your mail server below (${esc(I.mailSe
 ${ig('Text messages (Twilio)', on(I.sms), `<p class="ig-d">Every business’s texts to clients (on plans with text messages), sent from your Twilio number and starting with the business’s name.</p>
 ${env('<code>TWILIO_ACCOUNT_SID</code>, <code>TWILIO_AUTH_TOKEN</code> and <code>TWILIO_FROM</code> (your Twilio number, or a Messaging Service SID starting with MG).')}
 <h4>Send a test</h4>${I.sms ? '<form id="tSms" class="inline-form"><label>Test text to<input name="to" required placeholder="+17135550100"></label><button class="btn alt">Send test text</button></form>' : '<p class="muted ig-p">Set up Twilio first. Until then, texts are recorded in each account’s Notifications Log but not delivered.</p>'}`)}
-${ig('AI descriptions', D.settings.aiDescriptions === false ? on(false, '', 'Off') : on(I.ai), `<p class="ig-d">Claude drafts product and service descriptions and rewrites client messages and contracts, for plans with AI descriptions, and writes captions for your posts in Social (Write with AI).</p>
-<label class="sw-row"><span>AI descriptions in every account<small class="muted">Off hides Write with AI and Rewrite from every business, and from your plan lists. Your Social captions and the help chat keep working.</small></span><input type="checkbox" class="sw" id="aiOn" ${D.settings.aiDescriptions !== false ? 'checked' : ''}><i></i></label>
+${ig('AI', on(I.ai), `<p class="ig-d">Everything that uses Claude. Turning a switch off takes effect right away, and nothing else changes.</p>
+${[['aiDescriptions', 'Descriptions', 'Write with AI on products and services, and Rewrite on quote, invoice and job lines. Every business, on plans with AI descriptions.', D.settings.aiDescriptions !== false],
+  ['aiRewrite', 'Client messages and contracts', 'Rewrite in the Client message and Contract / Disclaimer boxes on quotes and invoices. Every business, on plans with AI descriptions.', D.settings.aiRewrite !== false],
+  ['aiCaptions', 'Social captions', 'Write with AI on your posts in Social.', D.settings.aiCaptions !== false],
+  ['aiChat', 'Help chat', 'The chat bot answers from your help center. Off, it uses only your saved answers and matching articles. Same setting as in Messages.', I.aiChat]].map(([k, l, n, v]) => `<label class="sw-row"><span>${l}<small class="muted">${n}</small></span><input type="checkbox" class="sw" data-ai="${k}" ${v ? 'checked' : ''}><i></i></label>`).join('')}
+<p class="muted ig-p">With Descriptions and Client messages and contracts both off, AI descriptions also leaves your pricing page and plan lists.</p>
 ${env('<code>ANTHROPIC_API_KEY</code>.')}`)}
 ${ig('App Marketplace', on(D.settings.marketplace !== false, 'On', 'Off'), `<p class="ig-d">Settings → App Marketplace in every account: owners and admins browse apps, connect the ones that work today and vote for the rest (see Messages → App requests).</p>
 <label class="switchline"><input type="checkbox" id="mkOn" ${D.settings.marketplace !== false ? 'checked' : ''}> Show the App Marketplace in every account</label>
@@ -1394,11 +1398,14 @@ ${copy(S.billingWebhookUrl, 'Billing webhook URL')}
 ${I.localhost ? '<p class="muted ig-p" style="margin-top:8px">Stripe can’t reach localhost: set <code>BASE_URL</code> (or <code>PLATFORM_DOMAIN</code>) to your public address first.</p>' : ''}</div></div>`)}
 </div>`;
   igTabs(box);
-  $('#aiOn', box).addEventListener('change', async (e) => {
-    const want = e.target.checked; e.target.disabled = true;
-    try { D.settings = await api('PUT', '/api/platform/settings', { aiDescriptions: want }); toast(want ? 'AI descriptions are on' : 'AI descriptions are off in every account'); integrationsCard(box); }
-    catch (x) { e.target.checked = !want; e.target.disabled = false; toast(x.message, true); }
-  });
+  $$('[data-ai]', box).forEach((c) => c.addEventListener('change', async () => {
+    const k = c.dataset.ai; c.disabled = true;
+    try {
+      if (k === 'aiChat') await api('PUT', '/api/platform/chat-settings', { ai: c.checked }); else D.settings = await api('PUT', '/api/platform/settings', { [k]: c.checked });
+      toast('Saved');
+    } catch (x) { c.checked = !c.checked; toast(x.message, true); }
+    c.disabled = false;
+  }));
   $('#mkOn', box).addEventListener('change', async (e) => {
     const want = e.target.checked; e.target.disabled = true;
     try { D.settings = await api('PUT', '/api/platform/settings', { marketplace: want }); toast(want ? 'App Marketplace is on' : 'App Marketplace is off in every account'); integrationsCard(box); }

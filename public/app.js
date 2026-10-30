@@ -1559,7 +1559,7 @@ function qItemRow(it) {
 // Rewrite in a line's description box (bottom left): a menu of tones (Cheerful, Casual, Professional, Shorter). It drafts from the line's name,
 // or rewrites what's typed there. The revert button beside it puts back what was there before the first rewrite (and Ctrl/⌘ Z still works).
 // Needs the plan's AI feature and AI turned on in App Settings.
-const aiOn = () => planHas('ai');
+const aiOn = () => planHas('ai') && company.account.aiDescriptions !== false;
 const aiIco = (d) => `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const AI_SPARK = aiIco('<path d="M12 3l1.8 4.7 4.7 1.8-4.7 1.8L12 16l-1.8-4.7-4.7-1.8 4.7-1.8z"/><path d="M19 15l.7 1.8 1.8.7-1.8.7L19 20l-.7-1.8-1.8-.7 1.8-.7z"/>');
 const AI_TONES = [['cheerful', 'Cheerful', '<circle cx="12" cy="12" r="9"/><path d="M8.5 14a4.5 4.5 0 0 0 7 0M9 9.5h.01M15 9.5h.01"/>'],
@@ -1571,7 +1571,7 @@ ${AI_TONES.map(([k, l, d]) => `<button type="button" class="mi" data-act="${act}
 <button type="button" class="ai-undo" data-act="${undo}" disabled aria-label="Put back the original ${what}" title="Put back the original ${what}">${aiIco('<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>')}</button></div>`;
 const AI_BTN = aiBar('aiItemDesc', 'aiUndo', 'description');
 // the same Rewrite in a quote's or invoice's Client message and Contract / Disclaimer boxes (box name: notes or disclaimer)
-const aiTextBar = (kind, name) => (aiOn() ? aiBar('aiText', 'aiTextUndo', name === 'notes' ? 'message' : 'terms', ` data-doc="${kind}"`) : '');
+const aiTextBar = (kind, name) => (planHas('ai') && company.account.aiRewrite !== false ? aiBar('aiText', 'aiTextUndo', name === 'notes' ? 'message' : 'terms', ` data-doc="${kind}"`) : '');
 const setBox = (box, text) => { box.focus(); box.select(); if (!document.execCommand('insertText', false, text)) box.value = text; box.dispatchEvent(new Event('input', { bubbles: true })); }; // insertText keeps undo working
 A.aiItemDesc = async (d, el) => {
   const row = el.closest('.item-row'); const name = $('.desc', row); const box = $('.details', row); const menu = $('.ai-menu', row); const sum = $('summary', menu);
