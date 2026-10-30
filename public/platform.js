@@ -433,7 +433,7 @@ let igTab = 'email';
 // Settings shows one box at a time, picked from a grouped list down the left (a dropdown on phones).
 // The Integrations group is one page (setTab 'integrations') showing one service at a time (igTab).
 const SET_GROUPS = [
-  ['Product', [['product', 'Your product'], ['icons', 'Menu'], ['seo', 'SEO'], ['terms', 'Terms and privacy']]],
+  ['Product', [['product', 'Your product'], ['colors', 'Website colors'], ['icons', 'Menu'], ['seo', 'SEO'], ['terms', 'Terms and privacy']]],
   ['Team & access', [['team', 'Alpha team'], ['expiry', 'Access end dates'], ['reserved', 'Reserved addresses']]],
   ['Integrations', IG_TABS.map(([k, l]) => ['integrations:' + k, l])],
   ['System', [['maintenance', 'Maintenance mode']]],
@@ -469,7 +469,7 @@ function settingsView(main) {
 <p class="muted" style="font-size:13px">Pricing page: <a href="${esc(site)}" target="_blank" rel="noopener">${esc(site)}</a>. Businesses that choose a paid plan pay for it at checkout before their account opens (see <a href="#settings" data-act="setTab" data-k="integrations:stripe">Integrations → Stripe</a>).</p>
 <div class="card-save"><span class="as-status">Changes save automatically</span></div></div>
 </form></div></div>
-<div class="card" id="accentCard" data-set="product"></div>
+<div class="card" id="colorsCard" data-set="colors"></div>
 <div class="card" id="teamCard" data-set="team"></div><div class="card" id="iconsCard" data-set="icons"></div>
 <form id="sf2" class="set-form"><div class="card" data-set="expiry"><h2>Accounts with a last day of access</h2>
 <div class="row"><label>Show a banner in their app (days before)<input name="expiryBannerDays" type="number" min="0" max="60" value="${esc(s.expiryBannerDays ?? 7)}"></label><label>Email the owner a reminder (days before)<input name="expiryReminderDays" type="number" min="0" max="60" value="${esc(s.expiryReminderDays ?? 3)}"></label></div>
@@ -483,7 +483,7 @@ function settingsView(main) {
     const name = D.settings.productName; D.settings = await api('PUT', '/api/platform/settings', b);
     if (D.settings.productName !== name) { $('.pf-brand').innerHTML = brandHtml(); logoCard($('#logoCard', main)); iconCard($('#iconCard', main)); } // a new name: the header and previews show it
   }));
-  maintenanceCard($('#mtCard', main)); logoCard($('#logoCard', main)); iconCard($('#iconCard', main)); accentCard($('#accentCard', main)); reservedCard($('#reserved', main)); teamCard($('#teamCard', main)); if (setTab === 'icons') iconsCard($('#iconsCard', main)); if (setTab === 'seo') seoCard($('#seoCard', main));
+  maintenanceCard($('#mtCard', main)); logoCard($('#logoCard', main)); iconCard($('#iconCard', main)); colorsCard($('#colorsCard', main)); reservedCard($('#reserved', main)); teamCard($('#teamCard', main)); if (setTab === 'icons') iconsCard($('#iconsCard', main)); if (setTab === 'seo') seoCard($('#seoCard', main));
   integrationsCard($('#integ', main)); // always, so the list shows which services are set up
 }
 // Settings → SEO: each public page's title and description (with a search-result preview), indexing, verification, the share image and social profiles (lib/seo.js)
@@ -1270,21 +1270,29 @@ function iconCard(box) {
     }; r.readAsDataURL(f);
   });
 }
-// the accent colors businesses choose from in App Settings; they color only a business's client portal and login page
-function accentCard(box) {
+// Settings → Website colors (lib/brand.js): every color of the public site, Help Center, Alpha and the businesses' apps. Only changes from the defaults are saved.
+let SC = null; let scOpen = false;
+const reloadTheme = () => { const l = $('link[href^="/theme.css"]'); if (l) l.href = '/theme.css?v=' + Date.now(); $$('link[rel=stylesheet][href^="/styles.css"]').forEach((c) => { c.href = c.href.split('&')[0] + '&t=' + Date.now(); }); };
+async function colorsCard(box) {
   if (!box) return;
-  box.innerHTML = `<h2>Accent colors</h2><p class="muted" style="font-size:13px;margin-top:0">The options businesses choose from in App Settings → Branding and defaults. A business’s accent appears only on its client portal and login page; the app and the website keep the ${esc(D.settings.productName)} colors. Buttons have white text, so choose colors dark enough to read it on.</p>
-<div class="ac-list">${(D.settings.accentColors || []).map((c) => `<div class="ac-row" data-id="${esc(c.id)}"><input type="color" value="${esc(c.color)}" aria-label="Color"><input type="text" value="${esc(c.name)}" maxlength="40" required aria-label="Name"><button type="button" class="btn alt sm" data-act="accentRemove" data-id="${esc(c.id)}">Remove</button></div>`).join('') || '<p class="muted">No options: every business uses the default color.</p>'}</div>
-<div class="lg-acts"><button type="button" class="btn alt sm" data-act="accentAdd">Add color</button></div>`;
-  box.onchange = () => saveAccents(readAccents(box));
+  if (!SC) { try { SC = await api('GET', '/api/platform/site-colors'); } catch (x) { box.innerHTML = `<h2>Website colors</h2><p class="muted">${esc(x.message)}</p>`; return; } }
+  const cur = D.settings.siteColors || {};
+  const swatch = (k, def, label) => `<input type="color" data-k="${esc(k)}" data-def="${esc(def)}" value="${esc(cur[k] || def)}" aria-label="${esc(label)}" title="${esc(label)}">`;
+  const reset = (k) => (cur[k] || cur[k + ':dark'] ? `<button type="button" class="btn alt sm" data-act="colorReset" data-k="${esc(k)}">Reset</button>` : '');
+  const row = (r) => `<div class="sc-row"><span class="sc-sw">${swatch(r.key, r.light, r.dark ? r.label + ', light mode' : r.label)}${r.dark ? swatch(r.key + ':dark', r.dark, r.label + ', dark mode') : ''}</span><div class="sc-l"><strong>${esc(r.label)}</strong>${r.note ? `<small class="muted">${esc(r.note)}</small>` : ''}</div>${reset(r.key)}</div>`;
+  box.innerHTML = `<h2>Website colors</h2><p class="muted" style="font-size:13px;margin-top:0">Every color on your public website, the Help Center, Alpha and every business’s app. Where there are two swatches, the first is light mode and the second is dark mode; one swatch is used in both. A business’s accent color (App Settings) changes only its client portal and login page. Changes show the next time a page loads.</p>
+${SC.groups.map((g) => `<h3 class="sc-g">${esc(g.name)}</h3>${g.rows.map(row).join('')}`).join('')}
+<details class="sc-other" ${scOpen ? 'open' : ''}><summary>All other colors (${SC.others.length})</summary><p class="muted" style="font-size:13px">Every remaining color in the site’s styles, most used first, shown with where it’s first used. Changing one changes it everywhere it appears.</p>${SC.others.map((o) => `<div class="sc-row"><span class="sc-sw">${swatch(o.color, o.color, o.color)}</span><div class="sc-l"><strong>${esc(o.color)}</strong><small class="muted">Used ${o.n} time${o.n === 1 ? '' : 's'}, first in <code>${esc(o.where)}</code></small></div>${reset(o.color)}</div>`).join('')}</details>
+${Object.keys(cur).length ? '<div class="lg-acts"><button type="button" class="btn alt sm" data-act="colorResetAll">Reset all colors</button></div>' : ''}`;
+  $('.sc-other', box).addEventListener('toggle', (e) => { scOpen = e.target.open; });
+  box.onchange = () => saveColors(Object.fromEntries($$('input[type=color]', box).filter((i) => i.value !== i.dataset.def).map((i) => [i.dataset.k, i.value])));
 }
-const readAccents = (box) => $$('.ac-row', box).map((r) => ({ id: r.dataset.id, color: $('input[type=color]', r).value, name: $('input[type=text]', r).value }));
-const saveAccents = async (list) => {
-  try { D.settings = await api('PUT', '/api/platform/settings', { accentColors: list }); toast('Accent colors saved'); } catch (x) { toast(x.message, true); }
-  accentCard($('#accentCard'));
+const saveColors = async (siteColors) => {
+  try { D.settings = await api('PUT', '/api/platform/settings', { siteColors }); reloadTheme(); toast('Website colors saved'); } catch (x) { toast(x.message, true); }
+  colorsCard($('#colorsCard'));
 };
-A.accentAdd = () => saveAccents([...readAccents($('#accentCard')), { name: 'New color', color: '#475569' }]);
-A.accentRemove = (d) => { if (confirm('Remove this color? Businesses using it go back to the default color.')) saveAccents(readAccents($('#accentCard')).filter((c) => c.id !== d.id)); };
+A.colorReset = (d) => { const c = { ...(D.settings.siteColors || {}) }; delete c[d.k]; delete c[d.k + ':dark']; saveColors(c); };
+A.colorResetAll = () => { if (confirm('Put every website color back to its default?')) saveColors({}); };
 // a settings form saves itself: text a moment after typing stops (or on leaving the field), switches and menus right away.
 // Each card shows how it went where its Save button used to be. save(fields) sends them and throws on a problem.
 function autosave(form, save) {

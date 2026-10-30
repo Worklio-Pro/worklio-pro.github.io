@@ -778,10 +778,10 @@ function accountInfo() {
     featureList: tenancy.FEATURES.map(({ key, label, desc }) => ({ key, label, desc, beta: tenancy.isBeta(key), included: tenancy.featuresOf(t).has(key) })), alwaysIncluded: tenancy.ALWAYS_INCLUDED,
   };
 }
-// the color of the business's client portal and login page: the option it chose from Alpha's list, or '' for the product's own color (no choice, a deleted option or a plan without branding)
-const accentOptions = () => tenancy.platform().settings.accentColors || [];
-const accentColor = () => { const o = tenancy.has('branding') && accentOptions().find((a) => a.id === db.company.accentId); return o ? o.color : ''; };
-app.get('/api/company', (req, res) => res.json({ ...db.company, accentOptions: accentOptions(), account: accountInfo() }));
+// the color of the business's client portal and login page, or '' for the product's own color (none chosen or a plan without branding)
+const accentColor = () => (tenancy.has('branding') && db.company.accentColor) || '';
+const DEFAULT_BUTTON = '#2563eb';
+app.get('/api/company', (req, res) => res.json({ ...db.company, defaultAccent: brandLib.siteColor('--brand') || DEFAULT_BUTTON, account: accountInfo() }));
 // social media pages a business can list; a handle becomes the page's link on networks that use handles
 const SOCIAL = { facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok', x: 'X', youtube: 'YouTube', linkedin: 'LinkedIn', google: 'Google Business Profile', yelp: 'Yelp', nextdoor: 'Nextdoor' };
 const SOCIAL_HANDLE = { facebook: (h) => `https://www.facebook.com/${h}`, instagram: (h) => `https://www.instagram.com/${h}`, tiktok: (h) => `https://www.tiktok.com/@${h}`, x: (h) => `https://x.com/${h}`, youtube: (h) => `https://www.youtube.com/@${h}` };
@@ -791,8 +791,8 @@ function socialUrl(k, v) {
   try { const p = new URL(u); return ['http:', 'https:'].includes(p.protocol) && p.hostname.includes('.') ? p.href : ''; } catch (e) { return ''; }
 }
 app.put('/api/company', (req, res) => {
-  if (!tenancy.has('branding')) { delete req.body.brandColor; delete req.body.accentId; } // custom branding is a plan feature
-  if (req.body.accentId && !accentOptions().some((a) => a.id === req.body.accentId)) return res.status(400).json({ error: 'Choose one of the accent colors' });
+  if (!tenancy.has('branding')) { delete req.body.brandColor; delete req.body.accentColor; } // custom branding is a plan feature
+  if (req.body.accentColor && !/^#[0-9a-f]{6}$/i.test(req.body.accentColor)) return res.status(400).json({ error: 'Choose a valid accent color' });
   if (!tenancy.has('numberPrefixes')) for (const k of Object.keys(PREFIX_DEFAULTS)) delete req.body[k]; // so are custom number prefixes (saved ones keep working)
   for (const k of Object.keys(PREFIX_DEFAULTS)) if (k in req.body) {
     const v = String(req.body[k] ?? '').trim();
@@ -814,7 +814,7 @@ app.put('/api/company', (req, res) => {
     }
     db.company.social = social;
   }
-  const allowed = ['name', 'email', 'phone', 'website', 'address', 'logo', 'taxRate', 'paymentTermsDays', 'invoiceFooter', 'brandColor', 'accentId', 'zelleRecipient', 'zelleName', 'quoteDisclaimer', 'invoiceDisclaimer', ...Object.keys(PREFIX_DEFAULTS),
+  const allowed = ['name', 'email', 'phone', 'website', 'address', 'logo', 'taxRate', 'paymentTermsDays', 'invoiceFooter', 'brandColor', 'accentColor', 'zelleRecipient', 'zelleName', 'quoteDisclaimer', 'invoiceDisclaimer', ...Object.keys(PREFIX_DEFAULTS),
     ...ADDRESS_PARTS, 'taxIdName', 'taxIdNumber', 'taxName', 'taxDescription', 'hours', ...Object.keys(REGIONAL)];
   for (const k of allowed) if (k in b) db.company[k] = k === 'taxRate' || k === 'paymentTermsDays' ? Number(b[k]) || 0 : typeof b[k] === 'string' ? b[k].trim().slice(0, 500) : b[k];
   for (const k of ['addressPrivate', 'showHours']) if (k in b) db.company[k] = b[k] === true || b[k] === 'on' || b[k] === 'true';
@@ -868,7 +868,7 @@ app.get('/manifest.webmanifest', (req, res) => {
     : [192, 512].map((n) => ({ src: `/img/app/icon-${n}.png`, sizes: `${n}x${n}`, type: 'image/png', purpose: 'any maskable' }));
   res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
   res.end(JSON.stringify({ id: '/', name, short_name: name.length > 12 ? name.split(/\s+/)[0].slice(0, 12) : name, start_url: '/', scope: '/', display: 'standalone',
-    background_color: '#f1f5fb', theme_color: '#2563eb', icons }));
+    background_color: '#f1f5fb', theme_color: brandLib.siteColor('--brand') || DEFAULT_BUTTON, icons }));
 });
 
 app.get('/api/notifications', (req, res) => res.json(db.notifications));
@@ -2863,7 +2863,7 @@ const PLATFORM_PATHS = /^\/(alpha(\/.*)?|platform(\/.*)?|stripe\/go\/[a-z]+|oaut
 function dispatch(req, res) {
   // www. → the bare domain, so search engines see one copy of each page (the canonical links name the bare domain). Page loads only: a form or webhook posted to www. still works
   if (!tenancy.devMode && /^(GET|HEAD)$/.test(req.method) && tenancy.hostOnly(req.headers.host) === 'www.' + tenancy.PLATFORM_DOMAIN) { res.writeHead(301, { Location: tenancy.platformUrl() + req.url }); return res.end(); }
-  if (brandLib.serve(req, res)) return; // the application logo (lib/brand.js), on every address
+  if (brandLib.serve(req, res) || brandLib.serveTheme(req, res)) return; // the application logo and website colors (lib/brand.js), on every address
   if (tiktokLib.serve(req, res)) return; // Alpha → Social photos and videos (lib/tiktok.js): TikTok downloads them from here
   if (maintenance.handle(req, res)) return; // maintenance mode (Alpha → Settings): the maintenance page for everyone but you
   const p = req.url.split('?')[0]; const r = tenancy.resolve(req.headers.host);

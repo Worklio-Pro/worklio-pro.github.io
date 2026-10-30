@@ -8,7 +8,8 @@
   <link rel="icon" href="/favicon.ico">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <script>try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
-  <link rel="stylesheet" href="/styles.css?v=4">
+  <link rel="stylesheet" href="/styles.css?v=52">
+  <link rel="stylesheet" href="/theme.css">
   <style>
     body{background:var(--bg)}
     .pf-top{background:var(--side);color:#fff;position:sticky;top:0;z-index:5}
@@ -16,7 +17,7 @@
     .pf-brand{font-weight:800;font-size:17px;letter-spacing:.01em;display:flex;align-items:center;gap:8px;--logo-h:30px;--logo-w:160px}
     .pf-brand small{font-weight:600;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#7b8db0}
     .pf-tabs{display:flex;gap:2px;flex:1;overflow-x:auto}
-    .pf-tabs a{color:#cbd5e1;text-decoration:none;padding:8px 12px;border-radius:8px;font-size:14px;white-space:nowrap}
+    .pf-tabs a{color:var(--nav-text,#cbd5e1);text-decoration:none;padding:8px 12px;border-radius:8px;font-size:14px;white-space:nowrap}
     .pf-tabs a:hover{background:rgba(255,255,255,.08);color:#fff}.pf-tabs a.on{background:rgba(255,255,255,.14);color:#fff}
     .pf-user{font-size:13px;color:#94a3b8;display:flex;gap:10px;align-items:center}
     .pf-menu{position:relative}.pf-menu summary{list-style:none;cursor:pointer;color:#cbd5e1;padding:6px 10px;border-radius:8px;white-space:nowrap}.pf-menu summary::-webkit-details-marker{display:none}
@@ -85,7 +86,7 @@
     .am-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 28px;align-items:start}.am-col>h3:first-child{margin-top:0!important}
     @media (max-width:760px){.am-grid{grid-template-columns:minmax(0,1fr)}.am-col+.am-col>h3:first-child{margin-top:18px!important}}
     /* settings → logo */
-    .ac-list{display:grid;gap:8px;margin-bottom:10px}.ac-row{display:flex;align-items:center;gap:8px}.ac-row input{margin:0}.ac-row input[type=color]{width:44px;height:36px;padding:3px;flex:none;cursor:pointer}.ac-row input[type=text]{flex:1;min-width:0}
+    .sc-g{font-size:13px;margin:18px 0 8px}.sc-row{display:flex;align-items:center;gap:12px;padding:6px 0}.sc-sw{display:flex;gap:4px;width:92px;flex:none}.sc-row input[type=color]{width:44px;height:36px;padding:3px;margin:0;flex:none;cursor:pointer}.sc-l{flex:1;min-width:0;display:flex;flex-direction:column;font-size:14px}.sc-l strong{font-weight:500}.sc-l small{font-size:12px;overflow-wrap:anywhere}.sc-other{margin-top:18px}.sc-other summary{cursor:pointer;font-weight:600;font-size:14px}
     .lg-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
     .lg-tile{border:1px solid var(--line);border-radius:10px;padding:12px}.lg-h{display:flex;justify-content:space-between;gap:8px;font-size:14px;margin-bottom:8px}.lg-h .muted{font-size:12px}
     .lg-prev{height:88px;border-radius:8px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;padding:10px}.lg-prev img{max-height:100%;max-width:100%;object-fit:contain}.lg-prev .muted{font-size:13px}
@@ -351,6 +352,6 @@
   <div id="toast"></div>
   <script src="/hc-editor.js?v=2"></script>
   <script src="/brand.js?v=1"></script>
-  <script src="/platform.js?v=74"></script>
+  <script src="/platform.js?v=76"></script>
 </body>
 </html>
