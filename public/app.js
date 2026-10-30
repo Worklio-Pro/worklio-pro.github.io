@@ -2139,7 +2139,7 @@ ${newOk ? `<div class="mn-row">${ic.contact}<div class="mn-stack"><input name="f
   });
 }
 /* ===== phones: Quotes, Jobs and Invoices as a simple list: search, status chips, then a row per record
-   (client · date | amount | title · status). The + button starts a new one. ===== */
+   (client · date | amount | title · status). "+ New …" next to the title starts a new one. ===== */
 const mAmt = (n) => (n >= 1000 ? moneyShort(n) : '$' + Math.round(n || 0).toLocaleString());
 const mDay = (s) => {
   if (!s) return ''; const d = String(s).slice(0, 10); const off = (n) => ymd(addDays(new Date(), n));
@@ -2150,14 +2150,13 @@ function mobileList(main, o) {
   mlState = o; const st = o.status;
   const chips = [...o.statuses].sort((a, b) => (b[0] === st) - (a[0] === st)); // the chosen one first
   const rows = [...o.list].sort((a, b) => String(o.date(b) || '').localeCompare(String(o.date(a) || '')));
-  main.innerHTML = `<div class="mlist"><h1 class="ml-h">${o.title}</h1>
+  main.innerHTML = `<div class="mlist"><div class="ml-top"><h1 class="ml-h">${o.title}</h1>${o.newAct ? `<button type="button" class="ml-new ${o.newCls || ''}" data-act="${o.newAct}">${CHEV('M12 5v14M5 12h14')}New ${o.one}</button>` : ''}</div>
 <label class="ml-search">${svgIcon(ICONS.search, 22)}<input type="search" id="mlq" placeholder="Search ${o.plural}" value="${esc(o.q)}" aria-label="Search ${o.plural}"></label>
 <div class="ml-chips" role="group" aria-label="Filter by status">${chips.map(([k, l]) => `<button type="button" class="ml-chip${k === st ? ' on' : ''}" data-act="mlChip" data-k="${k === st ? 'all' : k}" aria-pressed="${k === st}">${esc(l)}${k === st ? `<span class="ml-x" aria-label="Clear filter">${X_ICO}</span>` : ''}</button>`).join('')}</div>
 <h2 class="ml-sub">${st !== 'all' ? `${esc((o.statuses.find(([k]) => k === st) || [, ''])[1])} ${o.plural}` : o.q ? 'Results' : `Recent ${o.plural}`}</h2>
 <div class="ml-rows">${rows.map((x) => { const r = o.row(x); return `<button type="button" class="ml-row" data-act="mlOpen" data-href="${esc(r.href)}"><span class="ml-ic">${svgIcon(NAV_ICONS[o.path], 24)}</span>
 <span class="ml-main"><strong>${esc(r.name)}</strong><span class="ml-meta">${[r.date, r.amount, r.title ? esc(r.title) : ''].filter(Boolean).join('<i>|</i>')}</span></span>
-<span class="ml-st"><span>${esc(r.label)}</span><i class="cstatus ${r.cls}"></i></span></button>`; }).join('') || `<p class="muted ml-empty">${o.list.length || o.q || st !== 'all' ? `No ${o.plural} match` : `No ${o.plural} yet`}</p>`}</div>
-${o.newAct ? `<button type="button" class="ml-fab ${o.newCls || ''}" data-act="${o.newAct}" aria-label="New ${o.one}">${CHEV('M12 5v14M5 12h14')}</button>` : ''}</div>`;
+<span class="ml-st"><span>${esc(r.label)}</span><i class="cstatus ${r.cls}"></i></span></button>`; }).join('') || `<p class="muted ml-empty">${o.list.length || o.q || st !== 'all' ? `No ${o.plural} match` : `No ${o.plural} yet`}</p>`}</div></div>`;
   let t; $('#mlq').addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(async () => { o.onQ(e.target.value); await refresh(); const i = $('#mlq'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }, 250); });
 }
 A.mlChip = (x) => { mlState.onStatus(x.k); refresh(); };

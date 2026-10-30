@@ -1128,7 +1128,8 @@ body.ms-open{overflow:hidden}
 .mnew-f{display:flex;flex-direction:column;gap:16px;padding:22px 14px}.mnew-f .ms-save{height:54px;font-size:17px;border-radius:12px;justify-content:center;margin-top:8px}
 .md-empty{margin:6px 0 0;font-size:15px}
 /* phones: Quotes, Jobs and Invoices lists */
-.mlist{margin:-4px -14px 0}.ml-h{font-size:26px;margin:4px 14px 14px}
+.mlist{margin:-4px -14px 0}.ml-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:4px 14px 14px}.ml-h{font-size:26px;margin:0}
+.ml-new{display:inline-flex;align-items:center;gap:6px;flex:none;min-height:44px;padding:0 2px;border:0;background:none;color:var(--link);font:inherit;font-size:17px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}.ml-new svg{width:20px;height:20px}.ml-new:active{opacity:.6}
 .ml-search{display:flex;align-items:center;gap:10px;margin:0 14px;padding:0 14px;height:54px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--muted);font-weight:400}
 .ml-search:focus-within{border-color:var(--brand)}.ml-search input{flex:1;min-width:0;border:0;padding:0;margin:0;height:100%;background:none;box-shadow:none;font-size:17px;color:var(--text);outline:0}
 .ml-chips{display:flex;gap:10px;overflow-x:auto;padding:14px;scrollbar-width:none;border-bottom:1px solid var(--line)}.ml-chips::-webkit-scrollbar{display:none}
@@ -1142,8 +1143,6 @@ body.ms-open{overflow:hidden}
 .ml-st{flex:none;display:flex;align-items:flex-start;gap:8px;max-width:38%;text-align:right;font-size:14px;color:var(--muted)}
 .ml-st i.cstatus{flex:none;width:14px;height:14px;padding:0;border-radius:3px;background:currentColor;margin-top:2px}.ml-st i.cstatus::before{display:none}
 .ml-empty{margin:18px 14px}
-.ml-fab{position:fixed;right:16px;bottom:calc(156px + env(safe-area-inset-bottom));z-index:40;display:grid;place-items:center;width:58px;height:58px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--text);box-shadow:0 8px 24px rgba(15,23,42,.25);cursor:pointer}
-.ml-fab svg{width:26px;height:26px}
 /* phones: job page */
 .md-addr{display:block;margin-top:10px;color:var(--muted);line-height:1.4}
 .md-contact{display:flex;gap:8px;padding:12px 14px 0;flex-wrap:wrap}.md-contact a{display:inline-flex;align-items:center;gap:6px;height:38px;padding:0 14px;border-radius:99px;background:var(--surface-2);color:var(--text);text-decoration:none;font-size:15px;font-weight:600}.md-contact svg{width:17px;height:17px}
