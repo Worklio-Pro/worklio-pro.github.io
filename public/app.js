@@ -75,6 +75,29 @@ document.addEventListener('click', (e) => {
   e.preventDefault(); e.stopImmediatePropagation();
   toast('Your account is paused. Choose a plan to make changes again.', true); toPlans();
 }, true);
+// Add to Home Screen: shown once per phone, after logging in, until it's installed or dismissed. Android's browser can install from the page (beforeinstallprompt);
+// on an iPhone only Safari's Share menu can, so it shows the steps. Never inside the installed app, and never on a client's portal.
+let installEvt = null;
+const INSTALL_KEY = 'installPrompt'; let installDone = false;
+const installSeen = () => { if (installDone) return true; try { return !!localStorage.getItem(INSTALL_KEY); } catch (e) { return false; } };
+const installHide = () => { installDone = true; try { localStorage.setItem(INSTALL_KEY, new Date().toISOString()); } catch (e) { /* remembered for this visit only */ } $('#installBar').hidden = true; };
+const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const isIos = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isPhone = () => matchMedia('(max-width:900px) and (pointer:coarse)').matches;
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; if (me && !$('#installBar').hidden) showInstallBar(false); });
+window.addEventListener('appinstalled', installHide);
+const IOS_SHARE = '<svg class="ib-share" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Share"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/></svg>';
+function showInstallBar(portal) {
+  const bar = $('#installBar');
+  bar.hidden = portal || !me || isStandalone() || !isPhone() || installSeen();
+  if (bar.hidden) return;
+  const name = esc(company.name || (company.account && company.account.productName) || 'Worklio Pro');
+  const how = installEvt ? 'Open it like an app, full screen, right from your Home Screen.'
+    : isIos() ? `Tap ${IOS_SHARE} <strong>Share</strong> in Safari, then <strong>Add to Home Screen</strong>.`
+    : 'Open your browser’s menu (⋮), then tap <strong>Add to Home screen</strong> or <strong>Install app</strong>.';
+  bar.innerHTML = `<img class="ib-icon" src="/apple-touch-icon.png" alt="" width="40" height="40"><span><strong>Add ${name} to your Home Screen</strong><br>${how}</span>
+${installEvt ? '<button type="button" class="btn sm" data-act="installApp">Install</button>' : ''}<button type="button" class="ib-x" data-act="installLater" aria-label="Not now">×</button>`;
+}
 function toast(msg, err) {
   const t = document.createElement('div'); t.className = 'toast' + (err ? ' err' : ''); t.textContent = msg;
   $('#toast').appendChild(t); setTimeout(() => t.remove(), err ? 6000 : 3200);
@@ -416,6 +439,7 @@ async function render() {
     xb.innerHTML = `<span><strong>${m.title}.</strong> ${m.text} Until then you can look around, but you can’t create, change or delete anything.</span>${m.btn && path !== '/settings/billing' ? `<a class="btn sm" href="/settings/billing" data-link>${m.btn}</a>` : ''}`; }
   else if (!xb.hidden) { const owner = role() === 'owner'; const ce = company.account.contactEmail;
     xb.innerHTML = `<span><strong>${xp.daysLeft < 0 ? 'Your access has ended.' : xp.prepaid ? `Your prepaid months end ${esc(xp.when)}${xp.daysLeft > 1 ? ` (${xp.daysLeft} days left)` : ''}.` : xp.trial ? `Your free trial ends ${esc(xp.when)}${xp.daysLeft > 1 ? ` (${xp.daysLeft} days left)` : ''}.` : `Your access to ${esc(company.account.productName)} ends ${esc(xp.when)}${xp.daysLeft > 1 ? ` (${xp.daysLeft} days left)` : ''}.`}</strong> ${owner ? (xp.trial ? 'Add a card to keep your account.' : 'Choose a plan to keep your account.') : 'Ask your account owner to choose a plan.'}${ce ? ` Questions? <a href="mailto:${esc(ce)}">${esc(ce)}</a>` : ''}</span>${owner && path !== '/settings/billing' ? `<a class="btn sm" href="/settings/billing" data-link>${xp.trial ? 'Add a card' : 'Choose a plan'}</a>` : ''}`; }
+  showInstallBar(portal);
   if (pausedNow() && !portal && !isAdminMe()) { document.title = 'Account paused'; main.innerHTML = `<div class="card paused-card">${svgIcon(ICONS.shield, 28)}<h1>Your company’s account is paused</h1><p class="muted">You can’t use ${esc(company.name || 'your company')}’s account right now. Contact your company owner or admin to get it running again.</p></div>`; return; }
   if (pausedNow() && !portal && isAdminMe() && /\/(new|edit|import)$/.test(path)) { toast('Your account is paused. Choose a plan to make changes again.', true); history.replaceState({}, '', '/settings/billing'); return render(); }
   if (page && !memberCan(path)) { document.title = 'No access'; main.innerHTML = `<div class="card"><h1>You don't have access to this page</h1><p class="muted">Your access level doesn't include this page. Ask the account owner if you need more access.</p><p><a href="/calendar" data-link>Go to the job calendar</a></p></div>`; return; }
@@ -441,6 +465,8 @@ document.addEventListener('click', (e) => {
 });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
 $('#menuBtn').addEventListener('click', () => $('#side').classList.toggle('open'));
+A.installLater = installHide;
+A.installApp = async () => { const e = installEvt; installEvt = null; if (!e) return; e.prompt(); const r = await e.userChoice.catch(() => null); installHide(); if (r && r.outcome === 'accepted') toast('Installed. Open it from your Home Screen.'); };
 A.toggleSide = (d, el) => { const open = $('#side').classList.toggle('open'); el.setAttribute('aria-expanded', open); };
 // tapping outside the open menu drawer closes it
 document.addEventListener('click', (e) => { const side = $('#side'); if (side.classList.contains('open') && !e.target.closest('#side, #menuBtn, [data-act="toggleSide"]')) { side.classList.remove('open'); const b = $('#bnav [data-act="toggleSide"]'); if (b) b.setAttribute('aria-expanded', 'false'); } });
