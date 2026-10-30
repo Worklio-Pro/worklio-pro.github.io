@@ -87,13 +87,23 @@ const isPhone = () => matchMedia('(max-width:900px) and (pointer:coarse)').match
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; if (me && !$('#installBar').hidden) showInstallBar(false); });
 window.addEventListener('appinstalled', installHide);
 const IOS_SHARE = '<svg class="ib-share" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Share"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/></svg>';
+// every iPhone browser adds to the Home Screen from its Share menu, which each one keeps in a different place; apps' built-in browsers can't, so they're sent to Safari
+function iosSteps() {
+  const ua = navigator.userAgent; const add = 'then <strong>Add to Home Screen</strong>.';
+  if (/CriOS/.test(ua)) return `Tap ${IOS_SHARE} <strong>Share</strong> in Chrome’s address bar (or in the ⋯ menu), ${add}`;
+  if (/EdgiOS/.test(ua)) return `Tap the ⋯ menu, then ${IOS_SHARE} <strong>Share</strong>, ${add}`;
+  if (/FxiOS/.test(ua)) return `Tap the ☰ menu, then ${IOS_SHARE} <strong>Share</strong>, ${add}`;
+  if (/FBAN|FBAV|Instagram|LinkedInApp|GSA\//.test(ua)) return 'Open this page in Safari, then tap <strong>Share</strong> and <strong>Add to Home Screen</strong>.';
+  if (/Safari\//.test(ua)) return `Tap ${IOS_SHARE} <strong>Share</strong> in Safari, ${add}`;
+  return `Tap your browser’s ${IOS_SHARE} <strong>Share</strong> button, ${add}`;
+}
 function showInstallBar(portal) {
   const bar = $('#installBar');
   bar.hidden = portal || !me || isStandalone() || !isPhone() || installSeen();
   if (bar.hidden) return;
   const name = esc(company.name || (company.account && company.account.productName) || 'Worklio Pro');
   const how = installEvt ? 'Open it like an app, full screen, right from your Home Screen.'
-    : isIos() ? `Tap ${IOS_SHARE} <strong>Share</strong> in Safari, then <strong>Add to Home Screen</strong>.`
+    : isIos() ? iosSteps()
     : 'Open your browser’s menu (⋮), then tap <strong>Add to Home screen</strong> or <strong>Install app</strong>.';
   bar.innerHTML = `<img class="ib-icon" src="/apple-touch-icon.png" alt="" width="40" height="40"><span><strong>Add ${name} to your Home Screen</strong><br>${how}</span>
 ${installEvt ? '<button type="button" class="btn sm" data-act="installApp">Install</button>' : ''}<button type="button" class="ib-x" data-act="installLater" aria-label="Not now">×</button>`;
