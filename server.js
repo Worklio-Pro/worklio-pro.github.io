@@ -588,7 +588,7 @@ app.post('/api/auth/accept-invite', (req, res) => {
   startSession(res, u); res.json(publicUser(u));
 });
 app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
-app.get('/api/auth/state', (req, res) => res.json({ needsSetup: !db.users.length, user: publicUser(currentUser(req)), company: { name: db.company.name, logo: db.company.logo, accentColor: accentColor() }, product: brandLib.brand(), emailReady: !!emailProvider() }));
+app.get('/api/auth/state', (req, res) => res.json({ needsSetup: !db.users.length, user: publicUser(currentUser(req)), company: { name: db.company.name, logo: db.company.logo }, product: brandLib.brand(), emailReady: !!emailProvider() }));
 // what this login may open: its permissions, the pages they unlock, and which lists it can load
 const accessOf = (u) => { const rk = roleKey(u); const routes = rolesLib.routesFor(teamRoles(), rk); return { staffId: u.staffId || null, perms: rolesLib.permsOf(teamRoles(), rk), pages: rolesLib.isAdminRole(u.role) ? null : rolesLib.pagesFor(teamRoles(), rk), collections: rolesLib.isAdminRole(u.role) ? COLLECTIONS : COLLECTIONS.filter((c) => rolesLib.allows(routes, 'GET', '/api/' + c)) }; };
 // the app tour (public/tour.js) starts by itself once for logins made since it launched; finishing or skipping it marks it seen
@@ -778,7 +778,7 @@ function accountInfo() {
     featureList: tenancy.FEATURES.map(({ key, label, desc }) => ({ key, label, desc, beta: tenancy.isBeta(key), included: tenancy.featuresOf(t).has(key) })), alwaysIncluded: tenancy.ALWAYS_INCLUDED,
   };
 }
-// the color of the business's client portal and login page, or '' for the product's own color (none chosen or a plan without branding)
+// the color of the business's client portal, or '' for the product's own color (none chosen or a plan without branding)
 const accentColor = () => (tenancy.has('branding') && db.company.accentColor) || '';
 const DEFAULT_BUTTON = '#2563eb';
 app.get('/api/company', (req, res) => res.json({ ...db.company, defaultAccent: brandLib.siteColor('--brand') || DEFAULT_BUTTON, account: accountInfo() }));
