@@ -1097,7 +1097,7 @@ function propertyForm(c, p, after) {
 <label class="pf-rate" ${mode === 'custom' ? '' : 'hidden'}>Tax rate for this property (%)<input name="taxRate" type="number" step="any" min="0" value="${mode === 'custom' ? esc(p.taxRate) : ''}"></label>
 <div class="chk"><label><input type="checkbox" name="billing" ${wasBilling || (isNew && !String(c.address || '').trim()) ? 'checked' : ''} ${wasBilling ? 'disabled title="Make another property the billing address to change this"' : ''}> Billing address is the same as property address</label></div>
 <details class="pf-contacts"><summary>Property contacts${(p.contacts || []).length ? ` (${p.contacts.length})` : ''}</summary><div class="pf-cbody"><span class="muted">For contacts with access limited to this property, e.g., tenants.${(p.contacts || []).length ? ' ' + p.contacts.map((x) => esc(x.name)).join(', ') : ''}</span><button type="button" class="btn alt sm" data-pf-contact>Add Contact</button></div></details>
-<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save</button></div></form>`);
+<div class="foot">${isNew ? '' : `<button type="button" class="btn danger admin-only" style="margin-right:auto" data-act="propDelete" data-client="${c.id}" data-id="${esc(p.id)}">Delete</button>`}<button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save</button></div></form>`);
   const f = $('form', mb); f.street1.focus();
   f.taxMode.addEventListener('change', () => { $('.pf-rate', f).hidden = f.taxMode.value !== 'custom'; if (f.taxMode.value === 'custom') f.taxRate.focus(); });
   const save = async () => {
@@ -1146,7 +1146,7 @@ A.propDelete = async (d) => {
   if (props.length < 2) return toast('A client needs at least one property. Edit this one instead.', true);
   if (!confirm(`Delete the property at ${propAddr(p)}? Quotes, jobs and invoices for it keep its address.`)) return;
   const rest = props.filter((x) => x.id !== p.id);
-  await saveProps(c, rest, sameAddr(propAddr(p), c.address) ? { address: propAddr(rest[0]) } : {}); toast('Property deleted'); navigate('/clients/view?id=' + c.id);
+  await saveProps(c, rest, sameAddr(propAddr(p), c.address) ? { address: propAddr(rest[0]) } : {}); closeModal(); toast('Property deleted'); navigate('/clients/view?id=' + c.id);
 };
 // a property's page (/clients/property?client=&id=): its client, tax rate, work, schedule and contacts
 let ppState = { key: '', types: [], status: 'all' };
