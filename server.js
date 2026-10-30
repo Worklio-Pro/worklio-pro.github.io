@@ -848,7 +848,7 @@ function accountInfo() {
     expiry: (() => { const x = expiryOf(t); return x && { ...x, when: whenText(x) }; })(),
     paused: pausedInfo(t),
     industries: industries.CHOICES, // the Industry choices in Company Profile
-    featureList: tenancy.FEATURES.map(({ key, label, desc }) => ({ key, label, desc, beta: tenancy.isBeta(key), included: tenancy.featuresOf(t).has(key) })), alwaysIncluded: tenancy.ALWAYS_INCLUDED,
+    featureList: tenancy.FEATURES.filter((f) => f.key !== 'ai' || tenancy.aiDescriptionsOn()).map(({ key, label, desc }) => ({ key, label, desc, beta: tenancy.isBeta(key), included: tenancy.featuresOf(t).has(key) })), alwaysIncluded: tenancy.ALWAYS_INCLUDED,
   };
 }
 // the color of the business's client portal, or '' for the product's own color (none chosen or a plan without branding)
@@ -2436,7 +2436,7 @@ function liveAppState(a) {
 }
 const marketplaceView = () => {
   const P = tenancy.platform(); const mine = marketplace.requestedBy(P, tenancy.current().id);
-  return { categories: marketplace.CATEGORIES, apps: marketplace.catalog().map((a) => ({ ...a, ...(a.live ? liveAppState(a) : { requested: mine.includes(a.id) }) })) };
+  return { categories: marketplace.CATEGORIES, apps: marketplace.catalog().filter((a) => a.feature !== 'ai' || tenancy.aiDescriptionsOn()).map((a) => ({ ...a, ...(a.live ? liveAppState(a) : { requested: mine.includes(a.id) }) })) };
 };
 const marketplaceWho = (req) => { const u = currentUser(req); const t = tenancy.current(); return { t: t.id, company: db.company.name || t.slug, account: tenancy.tenantUrl(t), name: u.name, email: u.email }; };
 const marketplaceAdmin = (req, res) => { if (!marketplace.isOn(tenancy.platform())) { res.status(404).json({ error: 'The App Marketplace isn’t available' }); return false; } if (isAdmin(currentUser(req))) return true; res.status(403).json({ error: 'Only the account owner or an admin can manage apps' }); return false; };

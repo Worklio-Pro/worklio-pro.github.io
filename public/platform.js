@@ -1363,7 +1363,9 @@ ${I.mailServer ? `<p class="ig-env">Using your mail server below (${esc(I.mailSe
 ${ig('Text messages (Twilio)', on(I.sms), `<p class="ig-d">Every business’s texts to clients (on plans with text messages), sent from your Twilio number and starting with the business’s name.</p>
 ${env('<code>TWILIO_ACCOUNT_SID</code>, <code>TWILIO_AUTH_TOKEN</code> and <code>TWILIO_FROM</code> (your Twilio number, or a Messaging Service SID starting with MG).')}
 <h4>Send a test</h4>${I.sms ? '<form id="tSms" class="inline-form"><label>Test text to<input name="to" required placeholder="+17135550100"></label><button class="btn alt">Send test text</button></form>' : '<p class="muted ig-p">Set up Twilio first. Until then, texts are recorded in each account’s Notifications Log but not delivered.</p>'}`)}
-${ig('AI descriptions', on(I.ai), `<p class="ig-d">Claude drafts product and service descriptions, for plans with AI descriptions, and writes captions for your posts in Social (Write with AI).</p>${env('<code>ANTHROPIC_API_KEY</code>.')}`)}
+${ig('AI descriptions', D.settings.aiDescriptions === false ? on(false, '', 'Off') : on(I.ai), `<p class="ig-d">Claude drafts product and service descriptions and rewrites client messages and contracts, for plans with AI descriptions, and writes captions for your posts in Social (Write with AI).</p>
+<label class="sw-row"><span>AI descriptions in every account<small class="muted">Off hides Write with AI and Rewrite from every business, and from your plan lists. Your Social captions and the help chat keep working.</small></span><input type="checkbox" class="sw" id="aiOn" ${D.settings.aiDescriptions !== false ? 'checked' : ''}><i></i></label>
+${env('<code>ANTHROPIC_API_KEY</code>.')}`)}
 ${ig('App Marketplace', on(D.settings.marketplace !== false, 'On', 'Off'), `<p class="ig-d">Settings → App Marketplace in every account: owners and admins browse apps, connect the ones that work today and vote for the rest (see Messages → App requests).</p>
 <label class="switchline"><input type="checkbox" id="mkOn" ${D.settings.marketplace !== false ? 'checked' : ''}> Show the App Marketplace in every account</label>
 <p class="muted ig-p">Turned off, the page is hidden and Home Depot search stops in the product and service form. Google, Facebook, Instagram, Stripe and AI keep working: they’re set up on their own pages.</p>
@@ -1392,6 +1394,11 @@ ${copy(S.billingWebhookUrl, 'Billing webhook URL')}
 ${I.localhost ? '<p class="muted ig-p" style="margin-top:8px">Stripe can’t reach localhost: set <code>BASE_URL</code> (or <code>PLATFORM_DOMAIN</code>) to your public address first.</p>' : ''}</div></div>`)}
 </div>`;
   igTabs(box);
+  $('#aiOn', box).addEventListener('change', async (e) => {
+    const want = e.target.checked; e.target.disabled = true;
+    try { D.settings = await api('PUT', '/api/platform/settings', { aiDescriptions: want }); toast(want ? 'AI descriptions are on' : 'AI descriptions are off in every account'); integrationsCard(box); }
+    catch (x) { e.target.checked = !want; e.target.disabled = false; toast(x.message, true); }
+  });
   $('#mkOn', box).addEventListener('change', async (e) => {
     const want = e.target.checked; e.target.disabled = true;
     try { D.settings = await api('PUT', '/api/platform/settings', { marketplace: want }); toast(want ? 'App Marketplace is on' : 'App Marketplace is off in every account'); integrationsCard(box); }
