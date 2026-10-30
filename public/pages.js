@@ -1434,6 +1434,55 @@ A.runImport = async (d, el) => {
 };
 A.importTemplate = () => downloadCsv('client-import-sample.csv', [['Name', 'Email', 'Phone', 'Address', 'Notes'], ['Jane Smith', 'jane@example.com', '(713) 555-0100', '100 Main St, Houston, TX 77002', 'Gate code 1234'], ['Carlos Rivera', 'carlos@example.com', '281-555-0142', '22 Oak Ln, Katy, TX 77494', '']]);
 
+/* ===== /settings/preferences: this login's appearance (saved per browser) and push notifications ===== */
+const pushCapable = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const pushSubHere = async () => { if (!pushCapable()) return null; const r = await navigator.serviceWorker.getRegistration('/'); return r ? r.pushManager.getSubscription() : null; };
+// stop notifications on this device (also when logging out, so a shared phone doesn't keep getting them)
+async function pushOffHere() {
+  const s = await pushSubHere(); if (!s) return;
+  await api('POST', '/api/auth/push/unsubscribe', { endpoint: s.endpoint }).catch(() => {}); await s.unsubscribe();
+}
+const apCard = (t, label, cur) => `<button type="button" class="ap-card ${cur === t ? 'on' : ''}" data-act="setTheme" data-t="${t}" aria-pressed="${cur === t}"><span class="ap-pic ap-${t}" aria-hidden="true">${t === 'system' ? '<i class="ap-half"></i>' : ''}<b></b><b></b><u></u><u></u></span><span class="ap-name">${label}</span></button>`;
+PAGES['/settings/preferences'] = {
+  title: 'Preferences',
+  async render(main) {
+    const P = await api('GET', '/api/auth/push'); const capable = pushCapable(); let here = !!(await pushSubHere().catch(() => null));
+    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const quotes = canDo('quotes') && planHas('quotes');
+    const kinds = [['overview', 'Today’s work overview', 'Each morning, if there are jobs today', true], ['schedule', 'Today’s schedule changed', 'A job today is added, moved, reassigned or cancelled', true],
+      ['request', 'New request', 'A client asks for work from their portal or a referral', canDo('clients.view')], ['booking', 'New online booking', 'Someone books on your booking page', canDo('clients.view') && planHas('onlineBooking')],
+      ['quoteViewed', 'Client viewed quote', 'The first time a client opens a sent quote', quotes], ['quoteApproved', 'Client approved quote', 'A client approves a quote', quotes]].filter((k) => k[3]);
+    const why = !capable ? (ios ? 'On iPhone and iPad, add this app to your Home Screen first (Share → Add to Home Screen), then open it from there and come back to this page. Needs iOS 16.4 or later.' : 'This browser can’t receive push notifications. Try Chrome, Edge, Firefox or Safari.')
+      : Notification.permission === 'denied' ? 'Notifications are blocked for this app. Allow them in your browser or device settings, then come back to this page.' : '';
+    const t = getTheme();
+    main.innerHTML = `<h1 class="tm-title">Preferences</h1>
+<div class="qcard pref-card"><h2>Appearance</h2><p class="muted">Saved on this browser or phone. Your clients always see their pages in light mode.</p><div class="ap-cards">${apCard('system', 'System', t)}${apCard('light', 'Light', t)}${apCard('dark', 'Dark', t)}</div></div>
+<div class="qcard pref-card"><h2>Push notifications</h2><p class="muted">Receive push notifications on your phone, tablet or computer. Turn them on for each device you use.</p>
+${why ? `<div class="notice">${why}</div>` : ''}
+<label class="sw-row"><span>Notifications on this device</span><input type="checkbox" class="sw" id="pushHere" ${here ? 'checked' : ''} ${why ? 'disabled' : ''}><i></i></label>
+${kinds.map(([k, label, note]) => `<label class="sw-row"><span>${label}<small class="muted">${note}</small></span><input type="checkbox" class="sw" data-push="${k}" ${P.prefs[k] ? 'checked' : ''}><i></i></label>`).join('')}</div>`;
+    const kindBoxes = $$('[data-push]', main); const dim = () => kindBoxes.forEach((c) => { c.disabled = !here; }); dim();
+    const box = $('#pushHere', main);
+    box.addEventListener('change', async () => {
+      box.disabled = true;
+      try {
+        if (box.checked) {
+          if (await Notification.requestPermission() !== 'granted') throw new Error(Notification.permission === 'denied' ? 'Notifications are blocked. Allow them in your browser or device settings.' : 'Notifications weren’t turned on.');
+          await navigator.serviceWorker.register('/sw.js'); const reg = await navigator.serviceWorker.ready;
+          const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: Uint8Array.from(atob(P.publicKey.replace(/-/g, '+').replace(/_/g, '/')), (x) => x.charCodeAt(0)) });
+          await api('POST', '/api/auth/push/subscribe', { subscription: sub.toJSON() }).catch(async (err) => { await sub.unsubscribe(); throw err; });
+          toast('Notifications are on for this device');
+        } else { await pushOffHere(); toast('Notifications are off for this device'); }
+        here = box.checked;
+      } catch (err) { box.checked = here; toast(err.message, true); }
+      box.disabled = false; dim();
+    });
+    kindBoxes.forEach((c) => c.addEventListener('change', async () => {
+      try { await api('POST', '/api/auth/push/prefs', { [c.dataset.push]: c.checked }); toast('Saved'); } catch (err) { c.checked = !c.checked; toast(err.message, true); }
+    }));
+  },
+};
+
 /* ===== /settings/emails ===== */
 PAGES['/settings/emails'] = {
   title: 'Email Templates',

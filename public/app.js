@@ -49,7 +49,7 @@ async function api(method, url, body) {
 // a paused account (company.account.paused) is read-only: owners and admins who try to create, change or delete something
 // go to Account and billing to choose a plan; everyone else sees a note to contact their owner or admin instead of the page
 const pausedNow = () => !!(company.account && company.account.paused);
-const PAUSED_FREE = ['/settings/billing', '/profile', '/forum', '/settings/support-access']; // pages that still work as normal
+const PAUSED_FREE = ['/settings/billing', '/profile', '/settings/preferences', '/forum', '/settings/support-access']; // pages that still work as normal
 const PAUSED_ACTS = /^(new|edit|add|del|delete|rm|remove|save|create|mark|approve|collect|complete|reopen|merge|import|runImport|upload|send|setDeposit|undoDeposit|quoteToJob|jobInvoice|jobRemind|jobRequestOff|requestOff|manageStaff|tm(Invite|Revoke|HoursEdit)|role(Add|Rm|Save|Tick)|disc(Save|Delete)|rev(Edit|Delete)|sp(Drop|Move|Remove)|social(Connect|Disconnect|Choose)|connectStripe|pay(Bank|Disable|StripeRetry)|pdRefund|toDecide|toCancel|bookingSave|primaryDomain|checkDomain|resetTpl|importTemplate|clientDupes)/;
 // what a paused account is told, by why it's paused: most reasons the business fixes itself (choose a plan, or update the card);
 // only an account paused by the platform is told to get in touch. btn: the button's label (Explore plans / Update billing), or '' for none
@@ -148,7 +148,7 @@ const NAV = [
   ['Records', [['/project-gallery', 'Project Gallery'], ['/notifications', 'Notifications Log']]],
 ];
 // the Settings pages live in the top bar's gear menu, not the sidebar
-const SETTINGS_NAV = [['/settings/company', 'Company Profile'], ['/team', 'Manage Team'], ['/settings/roles', 'Roles & Permissions'], ['/settings/emails', 'Email Templates'], ['/settings', 'App Settings'], ['/settings/connections', 'Account Connections'], ['/marketplace', 'App Marketplace'], ['/settings/billing', 'Account and Billing'], ['/rewards', 'Refer & Earn'], ['/settings/support-access', 'Support Access']];
+const SETTINGS_NAV = [['/settings/company', 'Company Profile'], ['/team', 'Manage Team'], ['/settings/roles', 'Roles & Permissions'], ['/settings/emails', 'Email Templates'], ['/settings', 'App Settings'], ['/settings/preferences', 'Preferences'], ['/settings/connections', 'Account Connections'], ['/marketplace', 'App Marketplace'], ['/settings/billing', 'Account and Billing'], ['/rewards', 'Refer & Earn'], ['/settings/support-access', 'Support Access']];
 const navPaths = [...NAV.flatMap(([, items]) => items.map(([p]) => p)), ...SETTINGS_NAV.map(([p]) => p)];
 const curPath = () => location.pathname.replace(/\/+$/, '') || '/';
 function navigate(url) { history.pushState({}, '', url); window.scrollTo(0, 0); return render(); }
@@ -164,7 +164,6 @@ function applyTheme(t) {
   showTheme(t);
   try { localStorage.setItem('theme', t); } catch (e) { /* private mode: still applies for this visit */ }
 }
-const themeSwitch = () => { const t = getTheme(); return `<div class="theme-sw" role="group" aria-label="Color theme">${[['light', '☀', 'Light'], ['dark', '☾', 'Dark'], ['system', '◐', 'Auto']].map(([k, i, l]) => `<button type="button" data-act="setTheme" data-t="${k}" class="${t === k ? 'on' : ''}" aria-pressed="${t === k}" title="${k === 'system' ? 'Match your device setting' : l + ' mode'}">${i} ${l}</button>`).join('')}</div>`; };
 let me = null; // the logged-in staff account
 // access levels (the server enforces the same rules): owner/admin see everything;
 // a manager runs jobs, quotes, invoices and the Money section; a technician only views jobs (no prices), clients and the schedule
@@ -194,7 +193,7 @@ const BETA_BAR = '<div class="beta-bar" role="status"><span class="beta-pill">Be
 function timeOffBadge() { const a = $('#side a[href="/requests"]'); if (a && D.timeOffWaiting) a.insertAdjacentHTML('beforeend', ` <span class="nav-n" title="Requests waiting for you">${D.timeOffWaiting}</span>`); }
 function renderSide(path) {
   $('#side').innerHTML = `<div class="side-nav"><div class="brand">${company.logo ? `<a href="/" data-link class="brand-logo" title="Home"><img src="${esc(company.logo)}" alt="Home"></a>` : brandImg(company.account && company.account.product, 'dark')}<span>${esc(company.name || (company.account && company.account.productName) || 'Worklio Pro')}</span></div>` +
-    navFor().map(([g, items]) => `<div class="grp">${g}</div>` + items.map(([p, l]) => `<a href="${p}" data-link class="nav-link ${p === path || (!navPaths.includes(path) && path.startsWith(p + '/')) ? 'on' : ''}">${navIcon(p)}<span class="nav-l">${l}</span></a>`).join('')).join('') + `</div>${themeSwitch()}${me ? `<div class="side-user"><a href="/profile" data-link class="side-user-name${path === '/profile' ? ' on' : ''}" title="My profile (${esc(me.email)})">${avatarHtml(me, 26)}<span>${esc(me.name)}</span></a><button type="button" data-act="logout">Log out</button></div>` : ''}`;
+    navFor().map(([g, items]) => `<div class="grp">${g}</div>` + items.map(([p, l]) => `<a href="${p}" data-link class="nav-link ${p === path || (!navPaths.includes(path) && path.startsWith(p + '/')) ? 'on' : ''}">${navIcon(p)}<span class="nav-l">${l}</span></a>`).join('')).join('') + `</div>${me ? `<div class="side-user"><a href="/profile" data-link class="side-user-name${path === '/profile' ? ' on' : ''}" title="My profile (${esc(me.email)})">${avatarHtml(me, 26)}<span>${esc(me.name)}</span></a><button type="button" data-act="logout">Log out</button></div>` : ''}`;
   $('#side').classList.remove('open');
   renderBottomNav(path);
 }
@@ -261,7 +260,7 @@ const FEATURE_WORDS = {
   '/quotes': 'estimates proposals', '/jobs': 'work orders visits', '/invoices': 'billing', '/payments': 'card online stripe', '/services': 'catalog products price list items',
   '/expenses': 'costs receipts spending', '/reports': 'revenue profit charts', '/tax-summary': 'sales tax', '/project-gallery': 'photos pictures', '/reviews': 'google reviews ratings stars reply', '/social-posts': 'facebook instagram social media post marketing', '/notifications': 'emails texts sms sent messages log',
   '/requests': 'time off day off vacation sick leave request approve', '/settings/roles': 'roles permissions access manager technician what team can see do', '/settings/company': 'business details logo address phone social media facebook instagram tiktok tax', '/team': 'staff employees users access roles technicians', '/settings/emails': 'templates text messages sms reminders',
-  '/settings': 'number prefixes branding brand color zelle defaults stripe card payments online payments regional time zone date format time format week', '/settings/connections': 'integrations google facebook instagram ai', '/marketplace': 'apps integrations connect quickbooks xero accounting home depot lowes supplies materials zapier chatgpt claude ai automation calendar slack gusto payroll', '/settings/billing': 'subscription plan upgrade payment method', '/settings/support-access': 'grant revoke help troubleshoot permission',
+  '/settings/preferences': 'appearance theme dark mode light system push notifications alerts phone', '/settings': 'number prefixes branding brand color zelle defaults stripe card payments online payments regional time zone date format time format week', '/settings/connections': 'integrations google facebook instagram ai', '/marketplace': 'apps integrations connect quickbooks xero accounting home depot lowes supplies materials zapier chatgpt claude ai automation calendar slack gusto payroll', '/settings/billing': 'subscription plan upgrade payment method', '/settings/support-access': 'grant revoke help troubleshoot permission',
 };
 const featureList = () => {
   const open = (p) => PAGES[p] && memberCan(p) && !planLocked(p) && !planLocked(p.split('/').slice(0, 2).join('/')) && (p !== '/forum' || !!(company.account && company.account.forum));
@@ -478,14 +477,14 @@ window.addEventListener('unhandledrejection', (e) => { if (e.reason && e.reason.
 A.closeModal = closeModal;
 // ⋯ menus close when you click anywhere else
 document.addEventListener('click', (e) => $$('details.menu[open]').forEach((m) => { if (!m.contains(e.target)) m.open = false; }));
-A.logout = async () => { await api('POST', '/api/auth/logout', {}); location.href = '/login'; };
+A.logout = async () => { await pushOffHere().catch(() => {}); await api('POST', '/api/auth/logout', {}); location.href = '/login'; };
 A.openHelp = () => openHelp();
 A.feedbackForm = () => feedbackForm();
 A.closeHelp = closeHelp;
 A.helpTopic = (d) => openHelp(d.id);
 A.supportForm = (d) => supportForm({ title: d.title, topic: d.topic });
 A.focusSearch = () => { closeHelp(); $('#featSearch').focus(); };
-A.setTheme = (d) => { applyTheme(d.t); $$('.theme-sw button').forEach((b) => { b.classList.toggle('on', b.dataset.t === d.t); b.setAttribute('aria-pressed', b.dataset.t === d.t); }); };
+A.setTheme = (d) => { applyTheme(d.t); $$('.ap-card').forEach((b) => { b.classList.toggle('on', b.dataset.t === d.t); b.setAttribute('aria-pressed', b.dataset.t === d.t); }); };
 
 /* ===== line items editor (quotes + invoices) ===== */
 const round2 = (n) => Math.round(n * 100) / 100;

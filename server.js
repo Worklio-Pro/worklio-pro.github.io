@@ -29,6 +29,7 @@ const forum = require('./lib/forum');
 const industries = require('./lib/industries');
 const marketplace = require('./lib/marketplace');
 const homeDepot = require('./lib/homedepot');
+const push = require('./lib/push');
 const { db, uploadDir } = tenancy;
 const baseUrl = () => tenancy.tenantUrl(tenancy.current()); // this account's web address, for links in messages
 
@@ -429,7 +430,7 @@ const roleValid = (r) => (r === 'admin' ? customRolesOn() : teamRoles().some((x)
 const defaultRole = () => (teamRoles().find((r) => r.id === 'technician') || teamRoles()[0] || { id: 'admin' }).id;
 const can = (u, key) => !!u && rolesLib.can(teamRoles(), roleKey(u), key);
 // a support session works like the owner, but can't change the owner's own login, the subscription, or support access itself
-const SUPPORT_BLOCKED = /^\/api\/(auth\/(password|profile|hours)|account\/(billing|support-access)(\/.*)?)$/;
+const SUPPORT_BLOCKED = /^\/api\/(auth\/(password|profile|hours|push(\/.*)?)|account\/(billing|support-access)(\/.*)?)$/;
 app.use('/api', (req, res, next) => {
   if (req.method !== 'GET' && currentUser(req) && req._support && SUPPORT_BLOCKED.test(req.path)) return res.status(403).json({ error: 'Support sessions can’t change this. Ask the account owner.' });
   next();
@@ -708,6 +709,78 @@ app.post('/api/auth/hours', (req, res) => {
     hours[d] = { on: !!x.on, start: x.start, end: x.end };
   }
   st.hours = hours; save(); res.json(profileOf(u));
+});
+// ---- push notifications (Gear → Preferences): each login picks what it gets; each browser or phone it turns them on for is saved on the login ----
+const PUSH_KINDS = ['overview', 'schedule', 'request', 'booking', 'quoteViewed', 'quoteApproved'];
+const pushPrefs = (u) => Object.fromEntries(PUSH_KINDS.map((k) => [k, !u.pushPrefs || u.pushPrefs[k] !== false]));
+const isOwnerOrAdmin = (u) => u.role === 'owner' || u.role === 'admin';
+// never throws: a notification must not get in the way of the work that caused it. A subscription the browser has dropped is forgotten.
+const pushOne = (u, sub, message) => push.send(sub, message).then((gone) => { if (gone) { u.pushSubs = u.pushSubs.filter((x) => x.endpoint !== sub.endpoint); save(); } }).catch((e) => console.error('push:', e.message));
+// send to these logins, skipping anyone who turned this kind off
+function pushTo(users, kind, message) {
+  for (const u of new Set(users)) {
+    if (!(u.pushSubs || []).length || !pushPrefs(u)[kind] || !u.passwordHash || staffBlocked(u)) continue;
+    for (const sub of u.pushSubs) pushOne(u, sub, { tag: kind, ...message });
+  }
+}
+// the date and hour now where the business is (the server's clock can be on another time zone's day)
+function localNow() {
+  const at = (tz) => Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23' }).formatToParts(new Date()).map((x) => [x.type, x.value]));
+  let p; try { p = at(db.company.timezone || SERVER_TZ || undefined); } catch (e) { p = at(undefined); }
+  return { date: `${p.year}-${p.month}-${p.day}`, hour: Number(p.hour) };
+}
+const pushTime = (t) => { if (db.company.timeFormat === '24') return t; const [h, m] = String(t).split(':').map(Number); return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`; };
+const usersWhoCan = (perm) => db.users.filter((u) => can(u, perm));
+const jobCrew = (j) => db.users.filter((u) => u.staffId && (j.staffIds || []).includes(u.staffId));
+// a change to today's jobs goes to the people on the job and the owner and admins, not to whoever made it
+function pushScheduleChange(was, job, actor) {
+  const today = localNow().date; const onToday = (j) => !!j && j.date === today && !['cancelled', 'completed'].includes(j.status);
+  if (!onToday(was) && !onToday(job)) return;
+  if (job && job.status === 'completed') return; // finishing a job isn't a schedule change
+  const sameTime = was && job && ['date', 'startTime', 'endTime', 'anytime'].every((k) => (was[k] || '') === (job[k] || ''));
+  const sameCrew = was && job && [...(was.staffIds || [])].sort().join() === [...(job.staffIds || [])].sort().join();
+  if (onToday(was) && onToday(job) && sameTime && sameCrew) return;
+  const at = job && !job.anytime && job.startTime ? pushTime(job.startTime) : '';
+  const what = !onToday(was) ? `added to today${at ? ` at ${at}` : ''}` : !job || job.status === 'cancelled' ? 'cancelled' : job.date !== today ? 'moved off today' : sameTime ? 'has a change to its team' : `moved to ${at || 'anytime today'}`;
+  const j = job || was;
+  pushTo([...db.users.filter(isOwnerOrAdmin), ...jobCrew(was || {}), ...jobCrew(job || {})].filter((u) => !actor || u.id !== actor.id), 'schedule',
+    { title: 'Today’s schedule changed', body: `${j.title || j.number} ${what}`, url: '/calendar' });
+}
+const pushNewRequest = (kind, c, r) => pushTo(usersWhoCan('clients.view'), kind, { title: kind === 'booking' ? 'New online booking' : 'New request', body: `${c.name}: ${r.title}`, url: `/clients/view?id=${c.id}` });
+// once a day, around 7 in the morning where the business is: each login's own jobs today; the owner and admins get the whole team's
+function pushOverviews() {
+  for (const t of tenancy.platform().tenants) {
+    if (t.status !== 'active') continue;
+    tenancy.run(t, () => {
+      if (!db.users.some((u) => (u.pushSubs || []).length)) return;
+      const { date, hour } = localNow(); if (hour < 7 || hour > 9 || db.pushOverviewOn === date) return;
+      db.pushOverviewOn = date; save();
+      const today = db.jobs.filter((j) => j.date === date && !['cancelled', 'completed'].includes(j.status)).sort((a, b) => String(a.startTime).localeCompare(String(b.startTime)));
+      for (const u of db.users) {
+        const list = isOwnerOrAdmin(u) ? today : today.filter((j) => (j.staffIds || []).includes(u.staffId)); if (!list.length) continue;
+        const first = list.find((j) => !j.anytime && j.startTime);
+        pushTo([u], 'overview', { title: 'Today’s work overview', body: `${list.length} job${list.length === 1 ? '' : 's'} today${first ? `, starting at ${pushTime(first.startTime)}` : ''}`, url: '/calendar' });
+      }
+    });
+  }
+}
+app.get('/api/auth/push', (req, res) => { const u = currentUser(req); if (!u) return res.status(401).json({ error: 'Please log in' }); res.json({ publicKey: push.publicKey(), prefs: pushPrefs(u) }); });
+app.post('/api/auth/push/subscribe', (req, res) => {
+  const u = currentUser(req); if (!u) return res.status(401).json({ error: 'Please log in' });
+  const sub = push.cleanSub(req.body && req.body.subscription); if (!sub) return res.status(400).json({ error: 'This browser’s push service isn’t supported' });
+  for (const x of db.users) if (x.pushSubs) x.pushSubs = x.pushSubs.filter((s) => s.endpoint !== sub.endpoint); // a shared device notifies only whoever turned it on last
+  u.pushSubs = [...(u.pushSubs || []), sub].slice(-10); save();
+  pushOne(u, sub, { title: 'Notifications are on', body: 'You’ll get your notifications on this device.', tag: 'welcome', url: '/settings/preferences' });
+  res.json({ ok: true });
+});
+app.post('/api/auth/push/unsubscribe', (req, res) => {
+  const u = currentUser(req); if (!u) return res.status(401).json({ error: 'Please log in' });
+  u.pushSubs = (u.pushSubs || []).filter((s) => s.endpoint !== String((req.body && req.body.endpoint) || '')); save(); res.json({ ok: true });
+});
+app.post('/api/auth/push/prefs', (req, res) => {
+  const u = currentUser(req); if (!u) return res.status(401).json({ error: 'Please log in' });
+  const P = pushPrefs(u); for (const k of PUSH_KINDS) if (req.body && k in req.body) P[k] = !!req.body[k];
+  u.pushPrefs = P; save(); res.json(P);
 });
 app.post('/api/auth/password', (req, res) => {
   const u = currentUser(req); if (!u) return res.status(401).json({ error: 'Please log in' });
@@ -1080,7 +1153,7 @@ app.post('/api/:col', (req, res, next) => {
   }
   if (col === 'expenses') doc.amount = Number(b.amount) || 0;
   if (col === 'services') { doc.price = Number(b.price) || 0; homeDepot.clean(doc); }
-  db[col].push(doc); save(); if (col === 'clients') optInText(doc).catch(() => {});
+  db[col].push(doc); save(); if (col === 'clients') optInText(doc).catch(() => {}); if (col === 'jobs') pushScheduleChange(null, doc, currentUser(req));
   res.status(201).json(col === 'invoices' ? withStatus(doc) : col === 'jobs' && isMemberReq(req) ? jobForMember(doc) : doc);
 });
 
@@ -1124,7 +1197,7 @@ app.put('/api/:col/:id', (req, res, next) => {
   if (col === 'expenses') doc.amount = Number(doc.amount) || 0;
   if (col === 'services') { doc.price = Number(doc.price) || 0; homeDepot.clean(doc); }
   if (col === 'quotes' && was.signature && !doc.signature) removeSignatureFile(was);
-  db[col][i] = doc; save(); if (col === 'clients' && doc.smsConsent && !was.smsConsent) optInText(doc).catch(() => {});
+  db[col][i] = doc; save(); if (col === 'clients' && doc.smsConsent && !was.smsConsent) optInText(doc).catch(() => {}); if (col === 'jobs') pushScheduleChange(was, doc, currentUser(req));
   res.json(col === 'invoices' ? withStatus(doc) : col === 'jobs' && isMemberReq(req) ? jobForMember(doc) : doc);
 });
 
@@ -1134,7 +1207,7 @@ app.delete('/api/:col/:id', (req, res, next) => {
   const i = db[col].findIndex((x) => x.id === req.params.id);
   if (i < 0) return res.status(404).json({ error: 'Not found' });
   if (col === 'staff' && isOwnerStaff(db.staff[i])) return res.status(400).json({ error: 'The account owner can’t be removed from the team' });
-  const [removed] = db[col].splice(i, 1);
+  const [removed] = db[col].splice(i, 1); if (col === 'jobs') pushScheduleChange(removed, null, currentUser(req));
   if (col === 'staff') db.users.filter((u) => u.staffId === removed.id && u.role !== 'owner').forEach(removeUser);
   if (col === 'staff') (db.timeOff || []).filter((r) => r.staffId === removed.id && (r.status === 'pending' || (r.status === 'approved' && r.to >= iso(new Date())))).forEach((r) => { r.status = 'canceled'; r.canceledBy = 'Removed from the team'; }); // nothing left waiting for someone who's gone
   if (col === 'photos' && removed.file) fs.rmSync(path.join(uploadDir(), path.basename(removed.file)), { force: true });
@@ -1285,7 +1358,7 @@ app.post('/api/quotes/:id/convert-to-job', (req, res) => {
   const c = findClient(q.clientId);
   const job = { id: uid(), number: nextNumber('jobs'), clientId: q.clientId, title: q.title || 'Job from ' + q.number, description: q.items.map((i) => `${i.qty} x ${i.desc}`).join(', '), date: req.body.date || daysFromNow(1), startTime: req.body.startTime || '09:00', endTime: req.body.endTime || '11:00', staffIds: req.body.staffIds || [], status: 'scheduled', quoteId: q.id, address: q.address || (c ? c.address : ''), createdAt: iso(new Date()), items: q.items.map((i) => ({ ...i })), taxRate: q.taxRate, discountType: q.discountType, discountValue: q.discountValue };
   computeTotals(job);
-  db.jobs.push(job); if (q.status !== 'approved') q.status = 'approved'; save(); res.status(201).json(job);
+  db.jobs.push(job); if (q.status !== 'approved') q.status = 'approved'; save(); pushScheduleChange(null, job, currentUser(req)); res.status(201).json(job);
 });
 
 app.post('/api/jobs/:id/create-invoice', (req, res) => {
@@ -1837,6 +1910,10 @@ app.get('/p/quote/:token', (req, res) => {
   const q = db.quotes.find((x) => x.token === req.params.token);
   if (!q) return res.status(404).send(shell('Not found', '<h1>Quote not found</h1>'));
   const c = findClient(q.clientId);
+  if (q.status === 'sent' && !q.viewPushedAt && !currentUser(req)) { // the client's first look, not the team's own preview
+    q.viewPushedAt = new Date().toISOString(); save();
+    pushTo(usersWhoCan('quotes'), 'quoteViewed', { title: 'Client viewed quote', body: `${c ? c.name : 'A client'} viewed quote ${q.number}${q.title ? ` (${q.title})` : ''}`, url: `/quotes/edit?id=${q.id}` });
+  }
   let depositSection = '';
   if (q.status === 'approved' && !q.signedAt) depositSection = quoteSignBox(q); // every approved quote is signed next, deposit or not
   else if (q.status === 'approved' && q.depositFee > 0) {
@@ -1898,8 +1975,10 @@ setMode('drawn');})();</script>`;
 }
 // email the business when a client approves, declines or signs a quote, and log it with the other notifications
 function tellBusinessQuote(q, status) {
+  const c = findClient(q.clientId);
+  if (status === 'approved') pushTo(usersWhoCan('quotes'), 'quoteApproved', { title: 'Client approved quote', body: `${c ? c.name : 'A client'} approved quote ${q.number}${q.title ? ` (${q.title})` : ''}`, url: `/quotes/edit?id=${q.id}` });
   if (!db.company.email) return;
-  const c = findClient(q.clientId); const what = `quote ${q.number}${q.title ? ` (${q.title})` : ''}`;
+  const what = `quote ${q.number}${q.title ? ` (${q.title})` : ''}`;
   const next = status === 'declined' ? 'You can follow up with them, or edit the quote and send it again.'
     : status === 'approved' ? `They’ll sign it next${q.depositFee > 0 ? `, then pay the ${money(q.depositFee)} deposit` : ''}.`
       : q.depositFee > 0 ? `Next they pay the ${money(q.depositFee)} deposit.` : 'It’s ready to schedule as a job.';
@@ -2055,7 +2134,7 @@ app.post('/refer/:code', async (req, res) => {
   const details = emails.details([['Name', name], ['Phone', phone], ['Email', email], ['Address', r.address || 'not given'], ['Referred by', c.name]]);
   const sent = await sendTemplate('referral', db.company.email, { name, referrer: c.name, title, details, request: r.details, business: db.company.name, account_url: baseUrl() });
   db.notifications.unshift({ id: uid(), at: r.createdAt, clientId: lead.id, clientName: name, channel: 'email', kind: 'referral', refId: r.id, refNumber: '', to: db.company.email || '', subject: `Referral: ${title}`, body: sent.text, status: sent.status, detail: sent.detail });
-  save(); res.send(done); optInText(lead).catch(() => {});
+  save(); pushNewRequest('request', lead, r); res.send(done); optInText(lead).catch(() => {});
 });
 
 // ---------- online booking: <account address>/book, linked from the Google Business Profile ("Book" button) and the business's own website ----------
@@ -2109,7 +2188,7 @@ app.post('/book', async (req, res) => {
   const details = emails.details([['Name', name + (isNew ? ' (new lead)' : '')], ['Phone', phone || c.phone], ['Email', email || c.email], ['Address', r.address || 'not given'], ['Preferred', `${preferredDate || 'any day'}, ${preferredTime === 'any' ? 'any time' : preferredTime}`], ['From', 'Online booking']]);
   const sent = await sendTemplate('workRequest', db.company.email, { client: name, title, details, request: r.details, business: db.company.name, account_url: baseUrl() });
   db.notifications.unshift({ id: uid(), at: r.createdAt, clientId: c.id, clientName: c.name, channel: 'email', kind: 'request', refId: r.id, refNumber: '', to: db.company.email || '', subject: `New request: ${title}`, body: sent.text, status: sent.status, detail: sent.detail });
-  save(); res.send(done); if (optedIn) optInText(c).catch(() => {});
+  save(); pushNewRequest('booking', c, r); res.send(done); if (optedIn) optInText(c).catch(() => {});
 });
 
 // a client asks for work from their portal: saved as a request and emailed to the business
@@ -2131,7 +2210,7 @@ app.post('/api/portal/:token/requests', async (req, res) => {
   const details = emails.details([['Client', c.name], ['Phone', c.phone], ['Email', c.email], ['Address', r.address || 'not given'], ['Preferred', `${preferredDate || 'any day'}, ${preferredTime === 'any' ? 'any time' : preferredTime}`]]);
   const sent = await sendTemplate('workRequest', db.company.email, { client: c.name, title, details, request: r.details, business: db.company.name, account_url: baseUrl() });
   db.notifications.unshift({ id: uid(), at: r.createdAt, clientId: c.id, clientName: c.name, channel: 'email', kind: 'request', refId: r.id, refNumber: '', to: db.company.email || '', subject: `New request: ${title}`, body: sent.text, status: sent.status, detail: sent.detail });
-  save(); res.status(201).json({ ...requestForClient(r), smsConsent: !!c.smsConsent, phone: c.phone }); if (optedIn) optInText(c).catch(() => {});
+  save(); pushNewRequest('request', c, r); res.status(201).json({ ...requestForClient(r), smsConsent: !!c.smsConsent, phone: c.phone }); if (optedIn) optInText(c).catch(() => {});
 });
 
 // ---------- reports ----------
@@ -2883,6 +2962,7 @@ if (rpp > 0) { // same for the platform console login: node server.js --reset-pl
   tenancy.savePlatform(); console.log(`Platform password updated for ${a.email}`); process.exit(0);
 }
 setTimeout(remindExpiring, 10e3); setInterval(remindExpiring, 3600e3); // reminder emails before an account's last day of access
+setTimeout(pushOverviews, 20e3); setInterval(pushOverviews, 15 * 60e3); // the morning's Today's work overview notifications
 require('http').createServer(dispatch).listen(PORT, () => {
   console.log(`App running at ${BASE_URL}`);
   console.log(tenancy.devMode ? `Alpha console: ${BASE_URL}/alpha (set PLATFORM_DOMAIN to host accounts on their own addresses)` : `Platform: ${tenancy.platformUrl()}  ·  accounts at <address>.${tenancy.PLATFORM_DOMAIN}`);
