@@ -2015,9 +2015,9 @@ function mobileInvoicePreview(d) {
 <p class="mp-meta">Billed to ${esc(c.name || 'no client')}${d.subject ? ` · ${esc(d.subject)}` : ''}<br>Issued ${fmtDate((d.issueDate || '').slice(0, 10))} · Due ${d.dueDate && d.dueDate > d.issueDate ? fmtDate(d.dueDate) : 'upon receipt'}</p>
 ${items}<div class="mp-totals">${row('Subtotal', money(d.subtotal || 0))}${d.discount ? row('Discount', '−' + money(d.discount)) : ''}${d.tax ? row(`Tax${Number(d.taxRate) ? ` (${d.taxRate}%)` : ''}`, money(d.tax)) : ''}${row('Total', money(d.total || 0), 'b')}${d.status === 'paid' ? '' : row('Balance due', money(invBalance(d)), 'b')}</div>
 ${d.notes ? `<p class="mp-note">${esc(d.notes)}</p>` : ''}${d.disclaimer ? `<p class="mp-note muted">${esc(d.disclaimer)}</p>` : ''}</div>`;
-  const acc = (title, body, open) => `<details class="mp-acc"${open ? ' open' : ''}><summary>${title}${CHEV('M6 9l6 6 6-6')}</summary>${body}</details>`;
+  const acc = (title, body) => `<details class="mp-acc"><summary>${title}${CHEV('M6 9l6 6 6-6')}</summary>${body}</details>`;
   const rcpt = receipts.map((r) => `<div class="mp-rcpt"><span>${money(r.amount)} on ${fmtDate(String(r.date).slice(0, 10))}</span><a class="btn alt" href="/invoices/view?id=${d.id}&preview=1&receipt=${encodeURIComponent(r.id)}" data-link>View</a></div>`).join('');
-  return mpShell('Preview', `/invoices/view?id=${d.id}`, acc('View Invoice', invoice, !receipts.length) + (receipts.length ? acc('Receipts', rcpt, true) : ''));
+  return mpShell('Preview', `/invoices/view?id=${d.id}`, acc('View Invoice', invoice) + (receipts.length ? acc('Receipts', rcpt) : ''));
 }
 function mobileReceipt(d, id) {
   const r = invReceipts(d).find((x) => x.id === id); const back = `/invoices/view?id=${d.id}&preview=1`;
