@@ -1,11 +1,14 @@
 'use strict';
 // Login page: log in, first-run owner setup, forgot password, and reset (from the emailed ?reset= link).
+// On the platform's own address (/sign-in, <body data-central>) it's the one login for every business: the email finds the business, or a list to choose from.
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const params = new URLSearchParams(location.search);
 // only same-site paths, so a crafted link can't send people elsewhere after login
 const nextUrl = () => { const n = params.get('next') || '/'; return n.startsWith('/') && !n.startsWith('//') ? n : '/'; };
 let state = {};
+const central = document.body.hasAttribute('data-central');
+let signIn = null; // central: the email and password while a business is chosen
 
 async function post(url, body) {
   const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -24,9 +27,13 @@ function show(view, note) {
 ${field('email', 'Email address*', 'email', 'autocomplete="username" required autofocus')}${field('password', 'Password*', 'password', 'autocomplete="current-password" required')}
 <button type="button" class="linkish" data-go="forgot">Forgot password?</button>
 <button class="btn go">Log In</button></form>
-<p class="alt">Team member without an account? Ask the account owner to set you up.</p>`;
-    $('#f').addEventListener('submit', (e) => submit(e, async (b) => { await post('/api/auth/login', b); location.href = nextUrl(); }));
+<p class="alt">Team member without an account? Ask the account owner to set you up.</p>${central ? `<p class="alt">New to ${esc(state.product.name || 'Worklio Pro')}? <a href="/pricing">Get started</a></p>` : ''}`;
+    $('#f').addEventListener('submit', (e) => submit(e, central ? (b) => centralLogin(b) : async (b) => { await post('/api/auth/login', b); location.href = nextUrl(); }));
     if (params.get('email')) { $('#f [name=email]').value = params.get('email'); $('#f [name=password]').focus(); } // from sign-up
+  } else if (view === 'choose') {
+    p.innerHTML = `<h1>Choose a business</h1><p class="lead">Your email logs in to more than one business.</p>${msg(note && note.text)}
+<div class="pick">${state.accounts.map((a) => `<button type="button" class="pick-row" data-account="${esc(a.id)}"><strong>${esc(a.name)}</strong><small>${esc(a.address)}</small></button>`).join('')}</div>
+<p class="alt"><button type="button" class="linkish" data-go="login">Use a different email</button></p>`;
   } else if (view === 'setup') {
     p.innerHTML = `<h1>Create your owner account</h1><p class="lead">This is the first sign-in for ${esc(state.company.name || 'your business')}. You'll use it to log in from now on.</p>
 <form id="f" novalidate>${msg(note && note.text)}${field('name', 'Your name*', 'text', 'autocomplete="name" required autofocus')}${field('email', 'Email address*', 'email', 'autocomplete="username" required')}
@@ -37,7 +44,7 @@ ${field('password', 'Password* (8+ characters)', 'password', 'autocomplete="new-
 <form id="f" novalidate>${msg(note && note.text)}${state.emailReady ? '' : msg('Email sending isn’t set up on this server yet, so the reset email can’t be delivered. The account owner can reset a password from the server instead.', 'err')}
 ${field('email', 'Email address*', 'email', 'autocomplete="username" required autofocus')}<button class="btn go">Send reset link</button></form>
 <p class="alt"><button type="button" class="linkish" data-go="login">Back to log in</button></p>`;
-    $('#f').addEventListener('submit', (e) => submit(e, async (b) => { await post('/api/auth/forgot', b); show('login', { text: 'If that email has an account, a reset link is on its way. Check your inbox.', kind: 'ok' }); }));
+    $('#f').addEventListener('submit', (e) => submit(e, async (b) => { await post(central ? '/api/site/forgot' : '/api/auth/forgot', b); show('login', { text: central ? 'If that email has an account, a reset link is on its way from each business it logs in to. Check your inbox.' : 'If that email has an account, a reset link is on its way. Check your inbox.', kind: 'ok' }); }));
   } else if (view === 'invite') {
     p.innerHTML = state.invite ? `<h1>Welcome, ${esc(state.invite.name)}</h1><p class="lead">Choose a password to finish setting up your login for ${esc(state.company.name || 'the team')}.</p>
 <form id="f" novalidate>${msg(note && note.text)}<label class="of"><span>Email address</span><input value="${esc(state.invite.email)}" readonly autocomplete="username"></label>
@@ -51,6 +58,12 @@ ${field('password', 'Password* (8+ characters)', 'password', 'autocomplete="new-
   }
   const first = p.querySelector('[autofocus]'); if (first && !(view === 'login' && params.get('email'))) first.focus();
 }
+// central: one business opens straight away; several show the list
+async function centralLogin(b) {
+  const r = await post('/api/site/sign-in', b);
+  if (r.url) { location.href = r.url; return; }
+  signIn = { email: b.email, password: b.password }; state.accounts = r.accounts; show('choose');
+}
 async function submit(e, fn) {
   e.preventDefault(); const form = e.target; const btn = form.querySelector('.go'); const label = btn.textContent;
   const b = Object.fromEntries(new FormData(form));
@@ -62,12 +75,26 @@ async function submit(e, fn) {
 function flash(form, text) { const old = form.querySelector('.msg'); if (old) old.remove(); form.insertAdjacentHTML('afterbegin', msg(text)); }
 
 document.addEventListener('click', (e) => {
-  const go = e.target.closest('[data-go]'); if (go) { e.preventDefault(); return show(go.dataset.go); }
+  const go = e.target.closest('[data-go]'); if (go) { e.preventDefault(); signIn = null; return show(go.dataset.go); }
+  const acct = e.target.closest('[data-account]');
+  if (acct && signIn) {
+    document.querySelectorAll('[data-account]').forEach((x) => { x.disabled = true; }); acct.querySelector('small').textContent = 'Opening…';
+    post('/api/site/sign-in', { ...signIn, account: acct.dataset.account }).then((r) => { location.href = r.url; })
+      .catch((err) => { if (/match|Too many/.test(err.message)) { signIn = null; show('login', { text: err.message }); } else show('choose', { text: err.message }); });
+  }
   const eye = e.target.closest('[data-eye]');
   if (eye) { const i = eye.parentElement.querySelector('input'); const showing = i.type === 'text'; i.type = showing ? 'password' : 'text'; eye.setAttribute('aria-label', showing ? 'Show password' : 'Hide password'); eye.style.color = showing ? '' : 'var(--link)'; i.focus(); }
 });
 
 (async () => {
+  if (central) {
+    try { state = await (await fetch('/api/site/sign-in')).json(); } catch (e) { state = {}; }
+    state.product = state.product || {}; const name = state.product.name || 'Worklio Pro';
+    document.title = `Log in · ${name}`;
+    $('#brand').innerHTML = `${brandImg(state.product)}${state.product.logoHasName ? '' : `<span>${esc(name)}</span>`}`;
+    $('#promoCo').textContent = name;
+    return show('login');
+  }
   try { state = await (await fetch('/api/auth/state')).json(); } catch (e) { state = { company: {} }; }
   const co = state.company || {};
   if (co.brandColor) document.documentElement.style.setProperty('--brand', co.brandColor);

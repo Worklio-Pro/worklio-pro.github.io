@@ -34,6 +34,8 @@ Each business can instead send through its own email (Gmail, SendGrid or an SMTP
 | Links in messages | `BASE_URL` (your public address) | Links point at http://localhost:3000 |
 
 ## Before real customers use it
+- **One login for every business** at `<platform address>/sign-in` (the **Log in** link on the public pages; `localhost:3000/sign-in` while developing): the email and password find the business and open it at its own address. An email in several businesses gets a list to choose from, and Forgot password sends a reset link from each. The phone app will open here too.
+- **One email, one business:** sign-up and Alpha → Accounts refuse an owner email that already has a login in any business (team members on two teams are invited instead). An unpaid sign-up left at checkout doesn't block it: signing up again replaces it, unless its Stripe checkout started in the last day.
 - Staff log in at `/login`. The first visit creates the owner account, so do that before the app is reachable by others.
   Client pages (`/p/quote/…`, `/pay/…`, `/client-portal?c=…`) stay public. Forgot-password emails need email set up.
   Invite team members from Manage Team. Access levels: Technician (view jobs, clients and the schedule; no prices),

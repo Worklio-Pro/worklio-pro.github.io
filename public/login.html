@@ -37,6 +37,11 @@
     .auth .msg{margin:0 0 16px;padding:10px 12px;border-radius:8px;font-size:14px}
     .msg.err{background:var(--bad-bg);color:var(--bad-fg)}.msg.ok{background:var(--ok-bg);color:var(--ok-fg)}
     .auth .alt{text-align:center;margin-top:28px;font-size:14px;color:var(--muted)}
+    .auth .alt+.alt{margin-top:10px}.auth .alt a{color:var(--link);text-decoration:none}
+    .pick{display:grid;gap:10px}
+    .pick-row{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;padding:14px 16px;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--text);font:inherit;text-align:left;cursor:pointer}
+    .pick-row:hover,.pick-row:focus-visible{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand);outline:0}
+    .pick-row strong{font-size:15px}.pick-row small{font-size:13px;color:var(--muted)}
     .auth-side{justify-self:start;max-width:360px;width:100%}
     .promo{border-radius:14px;overflow:hidden;border:1px solid var(--line);background:var(--card)}
     .promo-art{background:linear-gradient(135deg,var(--brand),#0f1f3d);color:#fff;padding:28px 24px;min-height:180px;display:flex;flex-direction:column;justify-content:space-between}
@@ -64,6 +69,6 @@
     </aside>
   </main>
   <script src="/brand.js?v=1"></script>
-  <script src="/login.js?v=3"></script>
+  <script src="/login.js?v=4"></script>
 </body>
 </html>

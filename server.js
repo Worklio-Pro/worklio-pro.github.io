@@ -414,7 +414,7 @@ const PUBLIC_API = (req) => req.path === '/api/stripe/webhook' || req.path.start
 app.use((req, res, next) => {
   const p = req.path;
   if (p.startsWith('/api/')) return PUBLIC_API(req) || currentUser(req) ? next() : res.status(401).json({ error: 'Please log in' });
-  if (p === '/login' || p === '/manifest.webmanifest' || p === '/support-login' || p === '/client-portal' || p.startsWith('/p/') || p.startsWith('/pay/') || p.startsWith('/refer/') || p === '/book' || p.startsWith('/uploads/') || /\.(js|css|png|jpe?g|gif|webp|svg|ico)$/i.test(p)) return next();
+  if (p === '/login' || p === '/login/handoff' || p === '/manifest.webmanifest' || p === '/support-login' || p === '/client-portal' || p.startsWith('/p/') || p.startsWith('/pay/') || p.startsWith('/refer/') || p === '/book' || p.startsWith('/uploads/') || /\.(js|css|png|jpe?g|gif|webp|svg|ico)$/i.test(p)) return next();
   if (currentUser(req)) return next();
   res.redirect('/login' + (p !== '/' ? '?next=' + encodeURIComponent(req.url) : ''));
 });
@@ -629,13 +629,37 @@ app.get('/api/auth/verify-email', (req, res) => {
   sendTemplate('welcome', u.email, { name: u.name, business: db.company.name || tenancy.current().name, account_url: baseUrl() }, { server: true }).catch(() => {});
   res.send(notice('Email confirmed', `Thanks, ${esc(u.name)}. Your email address is confirmed. ${login}`));
 });
+// the "choose a new password" email (1 hour). Runs inside the account.
+function sendPasswordReset(user) {
+  const token = crypto.randomBytes(32).toString('hex'); db.resetTokens[sha(token)] = { userId: user.id, expires: Date.now() + 60 * 60e3 }; save();
+  return sendTemplate('passwordReset', user.email, { name: user.name, business: db.company.name, link: `${baseUrl()}/login?reset=${token}` });
+}
 app.post('/api/auth/forgot', async (req, res) => { // always answers the same, so it doesn't reveal which emails have accounts
   const user = db.users.find((u) => u.email === normEmail(req.body && req.body.email));
-  if (user) {
-    const token = crypto.randomBytes(32).toString('hex'); db.resetTokens[sha(token)] = { userId: user.id, expires: Date.now() + 60 * 60e3 }; save();
-    await sendTemplate('passwordReset', user.email, { name: user.name, business: db.company.name, link: `${baseUrl()}/login?reset=${token}` });
-  }
+  if (user) await sendPasswordReset(user);
   res.json({ ok: true });
+});
+
+// ---------- one login for every business (<platform address>/sign-in, and the phone app) ----------
+// every login with this email, in any business: [{ t, user, business, active }]. active: has a password and isn't deactivated.
+function loginsFor(email) {
+  const e = normEmail(email); if (!e) return [];
+  return tenancy.platform().tenants.flatMap((t) => tenancy.run(t, () => db.users.filter((u) => u.email === e)
+    .map((user) => ({ t, user, business: db.company.name || t.name, active: !!user.passwordHash && !staffBlocked(user) }))));
+}
+// the central login hands the person to their business's own address with a one-time link (1 minute), which logs them in there
+const handoffs = new Map(); // token hash -> { tenantId, userId, expires }
+function handoffUrl(t, user) {
+  const tok = crypto.randomBytes(32).toString('hex'); const now = Date.now();
+  for (const [k, x] of handoffs) if (x.expires < now) handoffs.delete(k);
+  handoffs.set(sha(tok), { tenantId: t.id, userId: user.id, expires: now + 60e3 });
+  return `${tenancy.tenantUrl(t)}/login/handoff?token=${tok}`;
+}
+app.get('/login/handoff', (req, res) => {
+  const k = sha(String(req.query.token || '')); const x = handoffs.get(k); handoffs.delete(k);
+  const user = x && x.expires > Date.now() && x.tenantId === tenancy.current().id && db.users.find((u) => u.id === x.userId);
+  if (!user || !user.passwordHash || staffBlocked(user)) return res.redirect('/login');
+  user.lastLoginAt = new Date().toISOString(); startSession(res, user); res.redirect('/');
 });
 app.post('/api/auth/reset', (req, res) => {
   const k = sha((req.body && req.body.token) || ''); const t = db.resetTokens[k];
@@ -2827,11 +2851,11 @@ const helpApp = require('./lib/help')({ sendTemplate, normEmail, emails });
 const legal = require('./lib/legal');
 const platformApp = require('./lib/platform')({
   hashPassword, checkPassword, sha, normEmail, cookies, tooMany, recordFailure, clearFailures: (k) => failures.delete(k),
-  createOwner, ownerLink, sendVerifyEmail, tenantStats, endSupportSessions, sendEmail, sendTemplate, sendSms, emailProvider: serverEmailProvider, applyStripeSession, syncStripeAccount, resetDemo, saveConnection, setCompanyEmail: (e) => { if (!db.company.email) { db.company.email = e; save(); } },
+  createOwner, ownerLink, sendVerifyEmail, sendPasswordReset, loginsFor, handoffUrl, tenantStats, endSupportSessions, sendEmail, sendTemplate, sendSms, emailProvider: serverEmailProvider, applyStripeSession, syncStripeAccount, resetDemo, saveConnection, setCompanyEmail: (e) => { if (!db.company.email) { db.company.email = e; save(); } },
   setCompanyIndustry: (i) => { Object.assign(db.company, i); save(); },
 });
 // which app answers: the platform's (its own domain, or /alpha… while developing) or an account's
-const PLATFORM_PATHS = /^\/(alpha(\/.*)?|platform(\/.*)?|stripe\/go\/[a-z]+|oauth\/(google|meta|tiktok)\/callback|home|features|pricing|signup|supporters|industries(\/[a-z-]+)?|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;
+const PLATFORM_PATHS = /^\/(alpha(\/.*)?|platform(\/.*)?|stripe\/go\/[a-z]+|oauth\/(google|meta|tiktok)\/callback|home|features|pricing|signup|sign-in|supporters|industries(\/[a-z-]+)?|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;
 function dispatch(req, res) {
   // www. → the bare domain, so search engines see one copy of each page (the canonical links name the bare domain). Page loads only: a form or webhook posted to www. still works
   if (!tenancy.devMode && /^(GET|HEAD)$/.test(req.method) && tenancy.hostOnly(req.headers.host) === 'www.' + tenancy.PLATFORM_DOMAIN) { res.writeHead(301, { Location: tenancy.platformUrl() + req.url }); return res.end(); }

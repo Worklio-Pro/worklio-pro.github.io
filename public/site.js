@@ -113,7 +113,7 @@ ${both ? `<label>Billing<select name="interval"><option value="month" ${period =
     const r = await fetch('/api/site/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
     const j = await r.json().catch(() => ({}));
     if (r.ok) { location.href = j.url; return; }
-    $('#err').innerHTML = `<div class="msg err" role="alert">${esc(j.error || 'Something went wrong. Try again.')}</div>`; btn.disabled = false; btn.textContent = goLabel();
+    $('#err').innerHTML = `<div class="msg err" role="alert">${esc(j.error || 'Something went wrong. Try again.')}${j.signIn ? ` <a href="/sign-in">Log in</a>` : ''}</div>`; // the email already has a login btn.disabled = false; btn.textContent = goLabel();
   });
 })();
 
