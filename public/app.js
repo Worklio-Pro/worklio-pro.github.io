@@ -415,12 +415,6 @@ document.addEventListener('keydown', (e) => {
   if (((e.key === '/' && !typing) || (e.key.toLowerCase() === 'k' && (e.metaKey || e.ctrlKey))) && $('#featSearch') && $('#topbar').style.display !== 'none' && !$('#overlay')) { e.preventDefault(); closeHelp(); $('#featSearch').focus(); }
   if (e.key === 'Escape') closeHelp();
 });
-function updateAppIcon() {
-  let link = $('link[rel="icon"]');
-  if (!link) { link = document.createElement('link'); link.rel = 'icon'; document.head.appendChild(link); }
-  const href = company.icon ? '/favicon.ico?v=' + encodeURIComponent(company.icon.split('/').pop()) : '/favicon.ico';
-  if (link.getAttribute('href') !== href) link.href = href;
-}
 async function render() {
   const path = curPath();
   const mpT = document.getElementById('mpTheme'); if (mpT) mpT.remove();
@@ -432,7 +426,6 @@ async function render() {
   const main = $('#main');
   const portal = path === '/client-portal' && new URLSearchParams(location.search).get('c');
   try { company = await api('GET', '/api/company'); } catch (e) { /* ignore */ }
-  updateAppIcon();
   $('#side').style.display = portal ? 'none' : ''; $('#menuBtn').style.display = portal ? 'none' : ''; $('#bnav').style.display = portal ? 'none' : ''; $('#topbar').style.display = portal ? 'none' : '';
   closeHelp();
   main.className = portal ? 'portal' : '';

@@ -1251,11 +1251,11 @@ A.rmLogo = async (d) => {
   if (d.k === 'icon') { toast('App icon removed'); iconCard($('#iconCard')); refreshTabIcon(); } else { toast('Logo removed'); render(); }
 };
 // the app icon (lib/brand.js): browser tabs, bookmarks, Google results and phones' home screens, for the public pages, the Help Center, Alpha,
-// and every business's app until it uploads its own
+// and every business's app
 const refreshTabIcon = () => { const l = $('link[rel=icon]'); if (l) l.href = '/favicon.ico?v=' + Date.now(); };
 function iconCard(box) {
   if (!box) return; const s = D.settings;
-  box.innerHTML = `<h2>App icon</h2><p class="muted" style="font-size:13px;margin-top:0">The small square picture in browser tabs, bookmarks and Google search results, and on a phone’s home screen when someone saves your site. Used on your home, pricing and help center pages, here in Alpha, and in every business’s app until it uploads its own (App Settings → App icon).</p>
+  box.innerHTML = `<h2>App icon</h2><p class="muted" style="font-size:13px;margin-top:0">The small square picture in browser tabs, bookmarks and Google search results, and on a phone’s home screen when someone saves your site. Used on your home, pricing and help center pages, here in Alpha, and in every business’s app.</p>
 <div class="ai-row"><div class="ai-prev">${s.icon ? `<img src="${esc(s.icon)}" alt="App icon">` : '<span class="muted">None</span>'}</div>
 <div class="ai-tabs"><span class="muted" style="font-size:12px">Browser tab</span><div class="ai-tab"><span class="ai-fav">${s.icon ? `<img src="${esc(s.icon)}" alt="">` : ''}</span><span class="ai-t">${esc(s.productName)}</span><span aria-hidden="true">×</span></div></div></div>
 <div class="lg-acts"><label class="btn alt sm">${s.icon ? 'Replace' : 'Upload'}<input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" data-icon hidden></label>${s.icon ? '<button type="button" class="btn alt sm" data-act="rmLogo" data-k="icon">Remove</button>' : ''}</div>

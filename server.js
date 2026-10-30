@@ -86,7 +86,7 @@ function seed() {
     { id: 'e3', date: daysFromNow(-3), category: 'Fuel', vendor: 'Shell', description: 'Truck fuel', amount: 74.15, jobId: null },
   ];
   return {
-    company: { name: 'Your Business Name', email: 'hello@example.com', phone: '+17135550100', website: '', address: '100 Commerce St, Houston, TX 77002', logo: '', icon: '', taxRate: 8.25, paymentTermsDays: 14, invoiceFooter: 'Thank you for your business!', brandColor: '#0f766e' },
+    company: { name: 'Your Business Name', email: 'hello@example.com', phone: '+17135550100', website: '', address: '100 Commerce St, Houston, TX 77002', logo: '', taxRate: 8.25, paymentTermsDays: 14, invoiceFooter: 'Thank you for your business!', brandColor: '#0f766e' },
     clients, services, staff, quotes, jobs, invoices, expenses, notifications: [], photos: [],
     counters: { quote: 1002, job: 2006, invoice: 3004 },
   };
@@ -94,7 +94,7 @@ function seed() {
 // a new account that starts without demo data
 function emptySeed() {
   return {
-    company: { name: '', email: '', phone: '', website: '', address: '', logo: '', icon: '', taxRate: 0, paymentTermsDays: 14, invoiceFooter: 'Thank you for your business!', brandColor: '#0f766e' },
+    company: { name: '', email: '', phone: '', website: '', address: '', logo: '', taxRate: 0, paymentTermsDays: 14, invoiceFooter: 'Thank you for your business!', brandColor: '#0f766e' },
     clients: [], services: [], staff: [], quotes: [], jobs: [], invoices: [], expenses: [], notifications: [], photos: [],
     counters: { quote: 1000, job: 2000, invoice: 3000 }, users: [], sessions: {}, resetTokens: {},
   };
@@ -836,35 +836,15 @@ app.delete('/api/company/logo', (req, res) => {
   if (old) fs.rm(path.join(uploadDir(), old[1]), () => {});
   db.company.logo = ''; save(); res.json(db.company);
 });
-app.post('/api/company/icon', (req, res) => {
-  const { dataUrl } = req.body;
-  const m = /^data:image\/(png|jpeg|jpg|webp|svg\+xml);base64,([A-Za-z0-9+/]+=*)$/.exec(dataUrl || '');
-  if (!m || dataUrl.length > 2e6) return res.status(400).json({ error: 'Invalid icon image' });
-  const ext = m[1] === 'svg+xml' ? 'svg' : m[1] === 'jpeg' ? 'jpg' : m[1];
-  const file = `icon-${Date.now()}-${uid()}.${ext}`;
-  fs.writeFileSync(path.join(uploadDir(), file), Buffer.from(m[2], 'base64'));
-  const old = /^\/uploads\/(icon-[\w-]+\.\w+)$/.exec(db.company.icon || '');
-  if (old) fs.rm(path.join(uploadDir(), old[1]), () => {});
-  db.company.icon = `/uploads/${file}`; save(); res.json(db.company);
-});
-app.get('/favicon.ico', (req, res) => {
-  const m = /^\/uploads\/(icon-[\w-]+\.\w+)$/.exec(db.company.icon || '');
-  if (!m) { if (brandLib.serveIcon(req, res)) return; res.statusCode = 404; return res.end(); } // no icon of its own: the platform's app icon
-  res.setHeader('Cache-Control', 'no-cache'); // browsers recheck, so a new icon shows on the next page load
-  res.sendFile(path.join(uploadDir(), m[1]));
-});
+// every business uses the Worklio Pro app icon (Alpha → Settings → App icon), or the built-in one until that's uploaded
+const APP_ICON_DIR = path.join(__dirname, 'public', 'img', 'app');
+app.get('/favicon.ico', (req, res) => { if (!brandLib.serveIcon(req, res)) res.sendFile(path.join(APP_ICON_DIR, 'icon-192.png')); });
 
-// Install on a phone (Add to Home Screen): the app opens full screen with the business's name, color and icon, on the same server and data as the website
-const ownIcon = () => /^\/uploads\/(icon-[\w-]+\.(png|jpg))$/.exec(db.company.icon || ''); // home screens need a PNG or JPG
-app.get('/apple-touch-icon.png', (req, res) => {
-  const m = ownIcon();
-  if (m) { res.setHeader('Cache-Control', 'no-cache'); return res.sendFile(path.join(uploadDir(), m[1])); }
-  if (brandLib.serveIcon(req, res)) return; // the platform's app icon
-  res.sendFile(path.join(__dirname, 'public', 'img', 'app', 'icon-180.png'));
-});
+// Install on a phone (Add to Home Screen): the app opens full screen with the business's name and the app icon, on the same server and data as the website
+app.get('/apple-touch-icon.png', (req, res) => { if (!brandLib.serveIcon(req, res)) res.sendFile(path.join(APP_ICON_DIR, 'icon-180.png')); });
 app.get('/manifest.webmanifest', (req, res) => {
-  const name = db.company.name || brandLib.brand().name || 'Worklio Pro'; const m = ownIcon();
-  const icons = m ? [{ src: db.company.icon, sizes: 'any', type: m[2] === 'png' ? 'image/png' : 'image/jpeg' }]
+  const name = db.company.name || brandLib.brand().name || 'Worklio Pro'; const own = /\.(png|jpg)$/.exec(tenancy.platform().settings.icon || ''); // home screens need a PNG or JPG
+  const icons = own ? [{ src: tenancy.platform().settings.icon, sizes: 'any', type: own[1] === 'png' ? 'image/png' : 'image/jpeg' }]
     : [192, 512].map((n) => ({ src: `/img/app/icon-${n}.png`, sizes: `${n}x${n}`, type: 'image/png', purpose: 'any maskable' }));
   res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
   res.end(JSON.stringify({ id: '/', name, short_name: name.length > 12 ? name.split(/\s+/)[0].slice(0, 12) : name, start_url: '/', scope: '/', display: 'standalone',
@@ -2869,7 +2849,7 @@ function dispatch(req, res) {
   const p = req.url.split('?')[0]; const r = tenancy.resolve(req.headers.host);
   // robots.txt, sitemap.xml, and no search results for account apps, client links or Alpha (lib/seo.js)
   if (seo.handle(req, res, tenancy.isHelpHost(req.headers.host) ? 'help' : r.kind === 'platform' ? 'platform' : 'account')) return;
-  if ((r.kind === 'platform' || tenancy.isHelpHost(req.headers.host)) && brandLib.serveIcon(req, res)) return; // the app icon (Settings → Your product); accounts fall back to it in /favicon.ico
+  if ((r.kind === 'platform' || tenancy.isHelpHost(req.headers.host)) && brandLib.serveIcon(req, res)) return; // the app icon (Settings → Your product); accounts use it too, through their /favicon.ico
   if (chat.handle(req, res, { tenant: r.kind === 'tenant' ? r.tenant : null })) return; // the chat button (lib/chat.js), on every address
   // pages and API replies depend on who is logged in: hosting caches (e.g. SiteGround's dynamic cache) must never store or share them
   if (!/\.(js|css|png|jpe?g|gif|webp|svg|ico|woff2?)$/i.test(p)) res.setHeader('Cache-Control', 'private, no-store');

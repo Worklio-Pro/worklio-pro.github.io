@@ -977,7 +977,6 @@ async function companyPage(main, full) {
   const c = company; const integ = full ? await api('GET', '/api/integrations') : null;
   // App Settings boxes; on App Settings they sit in two columns outside the form, so their fields say form="cf"
   const logoBox = planHas('branding') ? `<div class="card${full ? '' : ' cs'}"><h2>Logo</h2><div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap"><div id="logoPrev" style="width:120px;height:70px;border:1px dashed var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden">${c.logo ? `<img src="${esc(c.logo)}" style="max-width:100%;max-height:100%">` : '<span class="muted">No logo</span>'}</div><div class="logo-side"><div class="logo-acts"><input type="file" id="logoFile" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" style="width:auto">${c.logo ? '<button type="button" class="btn danger sm" data-act="removeLogo">Delete logo</button>' : ''}</div><div class="muted">Appears on quotes, invoices and the client portal.</div></div></div></div>` : '';
-  const iconBox = full && planHas('branding') ? `<div class="card"><h2>App icon</h2><div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap"><div id="iconPrev" style="width:64px;height:64px;border:1px dashed var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden">${c.icon ? `<img src="${esc(c.icon)}" style="width:100%;height:100%;object-fit:contain">` : '<span class="muted">No icon</span>'}</div><div class="logo-side"><input type="file" id="iconFile" accept="image/png,image/jpeg,image/webp,image/svg+xml" style="width:auto"><div class="muted">Shown in the browser tab. A square image works best.</div></div></div></div>` : '';
   const brandBox = full ? `<div class="card"><h2>${planHas('branding') ? 'Branding and defaults' : 'Defaults'}</h2>${planHas('branding') ? `<div class="row"><label>Brand color<input form="cf" name="brandColor" type="color" value="${esc(c.brandColor || '#2563eb')}"><span class="muted">Used on quotes, invoices and emails to clients.</span></label><label>Accent color<input form="cf" name="accentColor" type="color" value="${esc(c.accentColor || c.defaultAccent)}"><span class="muted">Used on your client portal.${c.accentColor ? ' <button type="button" class="linkbtn" data-act="resetAccent">Reset</button>' : ''}</span></label></div>` : ''}<label>Invoice footer message<input form="cf" name="invoiceFooter" value="${esc(c.invoiceFooter)}"></label></div>` : '';
   const prefixBox = full ? planHas('numberPrefixes') ? `<div class="card"><h2>Number prefixes</h2><p class="muted" style="margin-top:0">The label in front of each quote, job and invoice number. Changes apply to new ones only; existing numbers stay as they are.</p>
 <div class="row3 prefix-row">${[['quotePrefix', 'Quotes', 1005], ['jobPrefix', 'Jobs', 2010], ['invoicePrefix', 'Invoices', 3010]].map(([k, l, n]) => `<label>${l}<input form="cf" name="${k}" maxlength="10" value="${esc(docPrefix(k))}" data-sample="${n}"><span class="muted prefix-eg">e.g. ${esc(docPrefix(k))}${n}</span></label>`).join('')}</div></div>` : '' : '';
@@ -985,7 +984,7 @@ async function companyPage(main, full) {
 <div class="row"><label>Zelle email or phone<input form="cf" name="zelleRecipient" value="${esc(c.zelleRecipient || '')}" placeholder="payments@yourbusiness.com or +17135550100"></label><label>Name registered with Zelle<input form="cf" name="zelleName" value="${esc(c.zelleName || '')}" placeholder="e.g. TLB Group LLC"></label></div></div>` : '';
   main.innerHTML = `<div class="head"><div><h1>${full ? 'App Settings' : 'Company settings'}</h1>${full ? '<p class="sub">Branding and defaults used on every quote and invoice. Business details, social media and tax settings are on <a href="/settings/company" data-link>Company Profile</a>.</p>' : ''}</div></div>
 ${full ? planCard(c.account) : ''}
-${full ? `<div class="as-cols"><div class="as-col">${webAddressCard(c.account)}${iconBox}${brandBox}${regionalBox(c)}</div><div class="as-col">${payCard(integ)}${zelleBox}${prefixBox}</div></div>
+${full ? `<div class="as-cols"><div class="as-col">${webAddressCard(c.account)}${brandBox}${regionalBox(c)}</div><div class="as-col">${payCard(integ)}${zelleBox}${prefixBox}</div></div>
 <form id="cf"><div class="as-save"><button class="btn">Save changes</button></div></form>` : `<form id="cf" class="cs-form">${companySettingsHtml(c, logoBox)}<div class="cs-foot"><button class="btn">Update settings</button></div></form>`}`;
   $$('.prefix-row input').forEach((i) => i.addEventListener('input', () => { i.nextElementSibling.textContent = 'e.g. ' + i.value.trim() + i.dataset.sample; }));
   if (!full) { wireHours(main); phoneMask($('#cf input[name=phone]', main)); }
@@ -1008,14 +1007,6 @@ ${full ? `<div class="as-cols"><div class="as-col">${webAddressCard(c.account)}$
     const f = e.target.files[0]; if (!f) return; if (f.size > 4e6) return toast('Logo must be under 4 MB', true);
     const dataUrl = f.type === 'image/svg+xml' ? await readFileAsDataUrl(f) : await resizeImage(f, 600);
     await api('POST', '/api/company/logo', { dataUrl }); toast('Logo updated'); refresh();
-  });
-  if ($('#iconFile')) $('#iconFile').addEventListener('change', async (e) => {
-    const f = e.target.files[0]; if (!f) return;
-    if (f.type === 'image/svg+xml' && f.size > 1e6) { e.target.value = ''; return toast('SVG icons must be under 1 MB', true); }
-    try {
-      const dataUrl = f.type === 'image/svg+xml' ? await readFileAsDataUrl(f) : await resizeImage(f, 256);
-      await api('POST', '/api/company/icon', { dataUrl }); toast('App icon updated'); refresh();
-    } catch (err) { toast(err.message || 'Couldn’t upload that image', true); e.target.value = ''; }
   });
 }
 /* ===== App Settings: plan, web address, card payments ===== */
