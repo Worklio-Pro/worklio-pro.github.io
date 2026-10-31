@@ -751,7 +751,8 @@ function duplicateIds() {
 }
 const clientTags = (c) => (Array.isArray(c.tags) ? c.tags : String(c.tags || '').split(',')).map((t) => t.trim()).filter(Boolean);
 // the Clients list shows 10 per page on phone screens (matches the 760px CSS breakpoint) and 20 on larger ones
-const phoneMq = matchMedia('(max-width:760px)'); phoneMq.addEventListener('change', () => { if ($('#cq')) refresh(); });
+const phoneMq = matchMedia('(max-width:760px)'); const mOpenNow = () => !!document.querySelector('.mpage, #msheet'); // a page or sheet is open: turning the phone mustn't redraw behind it, which would close it
+phoneMq.addEventListener('change', () => { if ($('#cq') && !mOpenNow()) refresh(); });
 let clientView = { status: 'all', tag: '', q: '', since: '', dupes: false, sort: 'name', dir: 1, page: 0 }; const clientSel = new Set();
 PAGES['/clients'] = {
   title: 'Clients',
@@ -2238,7 +2239,7 @@ ${mTextSec(kind, d, 'message', 'Client message', d.notes, 'Add a message for the
 ${mTextSec(kind, d, 'terms', 'Contract / disclaimer', d.disclaimer, 'Add a contract or disclaimer')}</div>
 <div class="md-pane" data-pane="notes" hidden>${mTextSec(kind, d, 'notes', 'Internal notes', d.internalNotes, 'Add a note. Clients never see these.')}</div></div>`;
 }
-phoneMq.addEventListener('change', () => { if (/^\/(quotes|invoices|jobs|clients\/view)(\/|$)/.test(curPath())) refresh(); });
+phoneMq.addEventListener('change', () => { if (/^\/(quotes|invoices|jobs|clients\/view)(\/|$)/.test(curPath()) && !mOpenNow()) refresh(); });
 // phones: Add client, a full-screen chooser: search, Create New Client, then clients by most recent activity (person or building
 // icon, last activity and street, Lead marked). Its own layer, so it can open over a phone edit sheet without closing it.
 function clientSheet({ onPick, onNew, current = '' }) {
@@ -2754,23 +2755,32 @@ ${s ? `<div class="sig-show"><img class="sig-img" src="${esc(s.file)}" alt="Sign
 <p class="sig-meta">Signed by <strong>${esc(s.name)}</strong> on ${esc(fmtStamp(s.signedAt))}${s.collectedBy ? ` <span class="muted">· collected by ${esc(s.collectedBy)}</span>` : ''}</p>
 ${s.statement ? `<p class="muted sig-stmt">“${esc(s.statement)}”</p>` : ''}<button type="button" class="btn danger sm need-jobs-edit" data-act="rmSignature" data-id="${j.id}">Remove signature</button>`
     : ''}</div>`; };
-// phones: a full-screen pad held sideways: everything reads turned a quarter, and the saved picture is turned back upright with dark ink
+// phones: a full-screen pad for signing sideways. Upright on the screen it reads turned a quarter; once the phone rotates its screen it's laid out normally.
+// The ink is kept across a rotation, and the saved picture is always upright with dark ink
 function mSignPad({ icon, label, amount, save }) {
   const page = mPage('Collect signature', `<div class="sg"><div class="sg-acts"><button type="button" class="sg-skip" data-sg="skip"><span>Skip</span></button><span class="sg-right"><button type="button" class="sg-clear" data-sg="clear"><span>Clear</span></button><button type="button" class="btn sg-ok" data-sg="ok"><span>Confirm</span></button></span></div>
 <div class="sg-pad"><canvas aria-label="Signature pad. Turn the phone sideways and sign with your finger"></canvas><div class="sg-label"><span class="sg-doc">${icon}${esc(label)}</span>${amount ? `<strong>${esc(amount)}</strong>` : ''}</div><span class="sg-hint">Sign here</span></div></div>`, '', true);
   page.classList.add('sg-page'); const pad = $('.sg-pad', page); const cv = $('canvas', page); const ctx = cv.getContext('2d');
-  const r0 = cv.getBoundingClientRect(); const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1)); cv.width = Math.round(r0.width * dpr); cv.height = Math.round(r0.height * dpr);
-  const ink = getComputedStyle(pad).color; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.lineWidth = 2.6; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = ctx.fillStyle = ink;
-  let inked = false; let last = null;
+  const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1)); const ink = getComputedStyle(pad).color;
+  let inked = false; let last = null; let sideways = false;
+  // what's been signed, the right way up
+  const uprightCopy = () => { if (!sideways) { const o = document.createElement('canvas'); o.width = cv.width; o.height = cv.height; o.getContext('2d').drawImage(cv, 0, 0); return o; } const o = document.createElement('canvas'); o.width = cv.height; o.height = cv.width; const x = o.getContext('2d'); x.translate(0, o.height); x.rotate(-Math.PI / 2); x.drawImage(cv, 0, 0); return o; };
+  const fit = () => {
+    const r = pad.getBoundingClientRect(); if (!r.width || !r.height) return; const w = Math.round(r.width * dpr); const h = Math.round(r.height * dpr); if (cv.width === w && cv.height === h) return;
+    const old = inked ? uprightCopy() : null; cv.width = w; cv.height = h; sideways = r.height > r.width;
+    if (old) { const W = sideways ? h : w; const H = sideways ? w : h; const k = Math.min(W / old.width, H / old.height); ctx.save(); if (sideways) { ctx.translate(w, 0); ctx.rotate(Math.PI / 2); } ctx.drawImage(old, (W - old.width * k) / 2, (H - old.height * k) / 2, old.width * k, old.height * k); ctx.restore(); }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.lineWidth = 2.6; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = ctx.fillStyle = ink;
+  };
+  fit(); const watch = new ResizeObserver(() => { if (page.isConnected) fit(); else watch.disconnect(); }); watch.observe(pad);
   const at = (e) => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
   cv.addEventListener('pointerdown', (e) => { e.preventDefault(); cv.setPointerCapture(e.pointerId); last = at(e); ctx.beginPath(); ctx.arc(last.x, last.y, 1.3, 0, Math.PI * 2); ctx.fill(); inked = true; pad.classList.add('inked'); });
   cv.addEventListener('pointermove', (e) => { if (!last) return; e.preventDefault(); const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : []; for (const ev of (evs.length ? evs : [e])) { const p = at(ev); ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.lineTo(p.x, p.y); ctx.stroke(); last = p; } });
   const end = () => { last = null; }; cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
-  const upright = () => { const o = document.createElement('canvas'); o.width = cv.height; o.height = cv.width; const x = o.getContext('2d'); x.translate(0, o.height); x.rotate(-Math.PI / 2); x.drawImage(cv, 0, 0); x.setTransform(1, 0, 0, 1, 0, 0); x.globalCompositeOperation = 'source-in'; x.fillStyle = '#111827'; x.fillRect(0, 0, o.width, o.height); return o.toDataURL('image/png'); };
+  const upright = () => { const o = uprightCopy(); const x = o.getContext('2d'); x.globalCompositeOperation = 'source-in'; x.fillStyle = '#111827'; x.fillRect(0, 0, o.width, o.height); return o.toDataURL('image/png'); };
   page.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-sg]'); if (!b) return;
     if (b.dataset.sg === 'skip') return A.mPageBack({}, b);
-    if (b.dataset.sg === 'clear') { ctx.clearRect(0, 0, r0.width, r0.height); inked = false; pad.classList.remove('inked'); return; }
+    if (b.dataset.sg === 'clear') { ctx.clearRect(0, 0, cv.width, cv.height); inked = false; pad.classList.remove('inked'); return; }
     if (!inked) return toast('Please sign in the box first', true);
     b.disabled = true; try { await save(upright()); mPagesClose(); toast('Signature saved'); refresh(); } catch (x) { toast(x.message, true); b.disabled = false; }
   });
