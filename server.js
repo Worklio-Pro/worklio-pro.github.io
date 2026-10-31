@@ -1145,7 +1145,7 @@ function customNumber(col, raw, id) {
 app.post('/api/:col', (req, res, next) => {
   const col = req.params.col;
   if (!COLLECTIONS.includes(col) || col === 'photos') return next();
-  let b = req.body || {};
+  let b = req.body || {}; delete b.noteEntries; // notes only through /notes
   if (col === 'jobs' && isMemberReq(req)) b = Object.fromEntries(Object.entries(b).filter(([k]) => MEMBER_JOB_FIELDS.includes(k)));
   if (col === 'staff') { // a new team member needs a name, an email and a mobile number
     const name = String(b.name || '').trim(); const email = String(b.email || '').trim(); const phone = String(b.phone || '').replace(/\D/g, '');
@@ -1187,7 +1187,8 @@ app.put('/api/:col/:id', (req, res, next) => {
   const i = db[col].findIndex((x) => x.id === req.params.id);
   if (i < 0) return res.status(404).json({ error: 'Not found' });
   const protectedKeys = ['id', 'number', 'token', 'portalToken', 'createdAt'];
-  let upd = { ...req.body }; protectedKeys.forEach((k) => delete upd[k]);
+  let upd = { ...req.body }; protectedKeys.forEach((k) => delete upd[k]); delete upd.noteEntries; // notes change only through /notes
+  if (col === 'invoices') { delete upd.signedAt; delete upd.signedName; delete upd.signature; } // signatures only through /signature
   (PAYMENT_FIELDS[col] || []).forEach((k) => delete upd[k]);
   if (col === 'invoices' && (upd.status === 'paid' || db.invoices[i].status === 'paid')) delete upd.status; // paid only by its payments
   if (col === 'invoices' && upd.depositCreditRemoved && !db.invoices[i].depositCreditRemoved) delete upd.depositCreditRemoved; // a collected deposit stays credited
@@ -1238,6 +1239,99 @@ app.delete('/api/:col/:id', (req, res, next) => {
 });
 
 // photos
+// a signature collected on the team member's phone for an invoice
+app.post('/api/invoices/:id/signature', (req, res) => {
+  const d = db.invoices.find((x) => x.id === req.params.id); if (!d) return res.status(404).json({ error: 'Not found' });
+  if (d.signedAt) return res.status(400).json({ error: 'This invoice is already signed' });
+  const name = String((req.body && req.body.name) || '').trim().slice(0, 100); if (!name) return res.status(400).json({ error: 'Enter the name of the person signing' });
+  const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec((req.body && req.body.dataUrl) || '');
+  if (!m || m[1].length < 200) return res.status(400).json({ error: 'Please sign in the box first' });
+  if (m[1].length > 2e6) return res.status(400).json({ error: 'That signature image is too large' });
+  const file = `sig-${token()}.png`; fs.writeFileSync(path.join(uploadDir(), file), Buffer.from(m[1], 'base64')); const u = currentUser(req);
+  d.signedAt = iso(new Date()); d.signedName = name; d.signature = { file: `/uploads/${file}`, method: 'drawn', collectedBy: u ? u.name : '' };
+  addSignedNote('invoice', d); save(); res.status(201).json(withStatus(d));
+});
+// ---- notes on a quote, job or invoice: text, files and photos, and where else they show (internal: clients never get them) ----
+const NOTE_LINKS = { quotes: ['jobs'], jobs: ['invoices'], invoices: ['jobs'] };
+const NOTE_FILE_RE = /^\/uploads\/((?:note|signed)-[a-f0-9]+\.(?:png|jpg|webp|pdf))$/;
+const NOTE_TYPES = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'application/pdf': 'pdf' };
+const rmNoteFile = (f) => { const m = NOTE_FILE_RE.exec((f && f.url) || ''); if (m) fs.rm(path.join(uploadDir(), m[1]), { force: true }, () => {}); };
+function saveNoteFiles(list) { // [{ name, dataUrl }] → stored files. The name is what people see; the address is unguessable, since uploads are served without login
+  return (Array.isArray(list) ? list : []).slice(0, 10).map((x) => {
+    const m = /^data:([\w/.+-]+);base64,([A-Za-z0-9+/=]+)$/.exec((x && x.dataUrl) || ''); const ext = m && NOTE_TYPES[m[1]]; if (!ext) throw Object.assign(new Error('Attach a photo (PNG, JPG or WebP) or a PDF'), { status: 400 });
+    const file = `note-${token()}.${ext}`; fs.writeFileSync(path.join(uploadDir(), file), Buffer.from(m[2], 'base64'));
+    return { name: String(x.name || file).replace(/[\\/]+/g, '-').slice(0, 120), url: `/uploads/${file}`, type: ext === 'pdf' ? 'pdf' : 'image' };
+  });
+}
+for (const col of ['quotes', 'jobs', 'invoices']) {
+  const docOf = (req) => db[col].find((x) => x.id === req.params.id);
+  const reply = (req, res, d) => res.json(d.noteEntries || []);
+  const links = (b) => (Array.isArray(b.links) ? b.links.filter((k) => NOTE_LINKS[col].includes(k)) : []);
+  app.post(`/api/${col}/:id/notes`, (req, res) => {
+    const d = docOf(req); if (!d) return res.status(404).json({ error: 'Not found' }); const b = req.body || {}; const text = String(b.text || '').trim().slice(0, 5000);
+    let files; try { files = saveNoteFiles(b.add); } catch (e) { return res.status(e.status || 500).json({ error: e.message }); }
+    if (!text && !files.length) return res.status(400).json({ error: 'Write a note or attach a file' });
+    const u = currentUser(req); d.noteEntries = [{ id: uid(), text, at: new Date().toISOString(), by: u ? u.name : '', files, links: links(b) }, ...(d.noteEntries || [])]; save(); reply(req, res, d);
+  });
+  app.put(`/api/${col}/:id/notes/:note`, (req, res) => {
+    const d = docOf(req); const n = d && (d.noteEntries || []).find((x) => x.id === req.params.note); if (!n) return res.status(404).json({ error: 'Not found' }); const b = req.body || {};
+    let added; try { added = saveNoteFiles(b.add); } catch (e) { return res.status(e.status || 500).json({ error: e.message }); }
+    const keep = Array.isArray(b.keep) ? n.files.filter((f) => b.keep.includes(f.url)) : n.files; const text = String(b.text || '').trim().slice(0, 5000);
+    if (!text && !keep.length && !added.length) return res.status(400).json({ error: 'Write a note or attach a file' });
+    n.files.filter((f) => !keep.includes(f)).forEach(rmNoteFile); n.text = text; n.files = [...keep, ...added]; n.links = links(b); n.editedAt = new Date().toISOString(); save(); reply(req, res, d);
+  });
+  app.delete(`/api/${col}/:id/notes/:note`, (req, res) => {
+    const d = docOf(req); const n = d && (d.noteEntries || []).find((x) => x.id === req.params.note); if (!n) return res.status(404).json({ error: 'Not found' });
+    (n.files || []).forEach(rmNoteFile); d.noteEntries = d.noteEntries.filter((x) => x !== n); save(); reply(req, res, d);
+  });
+}
+// after signing: a note holding the signed copy as a PDF. The signature itself is already saved, so a problem here never stops it.
+function addSignedNote(kind, d) {
+  try {
+    const file = `signed-${token()}.pdf`; fs.writeFileSync(path.join(uploadDir(), file), signedPdf(kind, d)); const num = String(d.number).replace(/[^\w-]+/g, '');
+    d.noteEntries = [{ id: uid(), text: `Signed copy of ${kind} #${d.number}`, at: new Date().toISOString(), by: brandLib.brand().name || 'Worklio Pro', signed: true, links: [], files: [{ name: `signed-copy-${kind}-${num}.pdf`, url: `/uploads/${file}`, type: 'pdf' }] }, ...(d.noteEntries || [])];
+  } catch (e) { console.error('Signed copy failed:', e.message); }
+}
+// the signed copy: the business and its logo, who it's for, a box of the key facts, the line items (a job's show no prices), terms and the signature
+function signedPdf(kind, d) {
+  const job = kind === 'job'; const q = kind === 'quote'; const co = db.company; const c = findClient(d.clientId) || {}; const pdf = createPdf(); const L = 58; const R = 554; const BLUE = '#5b94c5'; const GRAY = '#f1f1f1'; const INK = '#111827';
+  const read = (u) => { const m = /^\/uploads\/([\w.-]+)$/.exec(u || ''); if (!m) return null; try { return fs.readFileSync(path.join(uploadDir(), m[1])); } catch (e) { return null; } };
+  const on = (k) => kind !== 'invoice' || d[k] !== 'off'; let y = 72;
+  pdf.text(L, y, co.name || '', { size: 15, bold: true, color: INK }); y += 18;
+  if (co.phone) { pdf.text(L, y, fmtUsPhone(co.phone), { size: 10, color: INK }); y += 14; }
+  const reach = [co.email, co.website && co.website.replace(/^https?:\/\//, '')].filter(Boolean).join('  |  '); if (reach) { pdf.text(L, y, reach, { size: 10, color: INK }); y += 14; }
+  const logo = read(co.logo); if (logo) pdf.image(logo, R - 120, 60, 120, 60, { alignRight: true });
+  // who it's for, and the facts in a box
+  const top = 150; let ly = top + 8; pdf.text(L, ly, 'RECIPIENT:', { size: 8.5, bold: true, color: INK }); ly += 22; pdf.text(L, ly, c.name || '', { size: 12, bold: true, color: INK }); ly += 16;
+  const where = String(d.address || c.address || '').split(',').map((s) => s.trim()).filter(Boolean); const lines = where.length > 2 ? [where.slice(0, -2).join(', '), where.slice(-2).join(', ')] : where.length ? [where.join(', ')] : [];
+  for (const t of lines) ly = pdf.para(L, ly, t, 240, { size: 10, color: INK, lineHeight: 14 });
+  const word = job ? 'Job' : q ? 'Quote' : 'Invoice'; const bx = 322; const facts = (job ? [['Scheduled', d.date ? niceDate(d.date) : 'Not Scheduled'], ['Description', d.title || '']] : q ? [['Created', niceDate(String(d.createdAt || '').slice(0, 10))], ['Description', d.title || ''], ['Total', money(d.total || 0)]] : [['Issued', niceDate(d.issueDate)], ['Due', niceDate(d.dueDate)], ['Description', d.subject || ''], ['Total', money(d.total || 0)]]).filter(([, v]) => v);
+  pdf.rect(bx, top, R - bx, 34, { fill: BLUE }); pdf.text(bx + 11, top + 22, `${word} #${d.number}`, { size: 14, bold: true, color: '#ffffff' }); pdf.rect(bx, top + 34, R - bx, facts.length * 21, { fill: GRAY });
+  facts.forEach(([k, v], i) => { const ry = top + 34 + i * 21 + 15; pdf.text(bx + 11, ry, k, { size: 10, color: INK }); pdf.text(R - 11, ry, v.length > 28 ? v.slice(0, 27) + '…' : v, { size: 10, color: INK, align: 'right' }); });
+  y = Math.max(ly, top + 34 + facts.length * 21) + 16;
+  // line items
+  const qtyOn = on('showQty'); const unitOn = !job && on('showUnit'); const lineOn = !job && on('showLineTotals'); const cDesc = L + 140; const cQty = job ? R - 6 : unitOn || lineOn ? 400 : R - 6; const cUnit = 474; const descW = (cQty - 36) - cDesc;
+  const head = () => { pdf.rect(L, y, R - L, 22, { fill: BLUE }); const o = { size: 10, bold: true, color: '#ffffff' }; pdf.text(L + 6, y + 15, 'Product/Service', o); pdf.text(cDesc + 6, y + 15, 'Description', o); if (qtyOn) pdf.text(cQty, y + 15, 'Qty.', { ...o, align: 'right' }); if (unitOn) pdf.text(cUnit, y + 15, 'Unit price', { ...o, align: 'right' }); if (lineOn) pdf.text(R - 6, y + 15, 'Total', { ...o, align: 'right' }); y += 22; };
+  head();
+  for (const it of d.items || []) {
+    const need = Math.ceil(pdf.width(it.details || '', 10) / Math.max(40, descW)) + String(it.details || '').split('\n').length; if (y + 26 + need * 13 > 720) { pdf.addPage(); y = 64; head(); }
+    const tp = y + 16; const a = pdf.para(L + 6, tp, it.desc, 128, { size: 10, color: INK, lineHeight: 13 }); let b = tp; for (const t of String(it.details || '').split('\n').filter((s) => s.trim())) b = pdf.para(cDesc + 6, b, t, descW, { size: 10, color: INK, lineHeight: 13 });
+    if (qtyOn) pdf.text(cQty, tp, String(it.qty), { size: 10, color: INK, align: 'right' }); if (unitOn) pdf.text(cUnit, tp, money(it.price), { size: 10, color: INK, align: 'right' }); if (lineOn) pdf.text(R - 6, tp, money(round2(it.qty * it.price)), { size: 10, color: INK, align: 'right' }); y = Math.max(a, b) + 4;
+  }
+  pdf.line(L, y, R, y, { color: '#a3a3a3', w: 1.5 }); y += 8;
+  if (!job) { // totals
+    const row = (k, v, bold) => { if (y + 20 > 720) { pdf.addPage(); y = 64; } pdf.text(R - 130, y + 12, k, { size: 10, bold, color: INK }); pdf.text(R - 6, y + 12, v, { size: 10, bold, color: INK, align: 'right' }); y += 18; };
+    row('Subtotal', money(d.subtotal || 0)); if (d.discount > 0) row('Discount', '-' + money(d.discount)); if (Number(d.taxRate)) row(`Tax (${d.taxRate}%)`, money(d.tax || 0)); row('Total', money(d.total || 0), true);
+    if (q && d.depositFee > 0) row('Required deposit', money(d.depositFee)); if (!q) row('Balance due', money(withStatus(d).balanceDue ?? d.total), true);
+  }
+  // terms on the left, the date and the signature on the right
+  const when = job ? d.signature && d.signature.signedAt : d.signedAt; const who = job ? d.signature && d.signature.name : d.signedName; y = Math.max(y + 34, job ? 560 : y + 34); if (y + 70 > 730) { pdf.addPage(); y = 90; }
+  const sigY = y; const terms = job ? (d.signature && d.signature.statement) || '' : d.disclaimer || ''; const sx = 372; const line = sigY + 34;
+  pdf.text(sx, line - 4, when ? niceDate(String(when).slice(0, 10)) : '', { size: 10, color: INK }); const pic = read(d.signature && d.signature.file); if (pic) pdf.image(pic, sx + 66, line - 46, R - sx - 66, 54, { alignBottom: true });
+  pdf.line(sx, line, R, line, { color: '#6b7280', w: 0.75 }); pdf.text(sx, line + 13, 'Date', { size: 8, color: INK }); pdf.text(sx + 84, line + 13, 'Client Signature', { size: 8, color: INK }); if (who) pdf.text(sx + 84, line + 24, who, { size: 8, color: INK });
+  let ty = sigY; for (const para of String(terms).split('\n')) { if (ty > 730) { pdf.addPage(); ty = 64; } ty = para.trim() ? pdf.para(L, ty, para, 290, { size: 9, color: INK, lineHeight: 11.5 }) : ty + 6; }
+  return pdf.toBuffer(`Signed ${word.toLowerCase()} ${d.number}`);
+}
 // ---- client signature on a job: collected on the team member's device (finger or mouse), saved as a PNG ----
 // Anyone who can open the job may collect it; only managers / admins can remove one (so a technician can't overwrite it).
 app.post('/api/jobs/:id/signature', (req, res) => {
@@ -1253,7 +1347,7 @@ app.post('/api/jobs/:id/signature', (req, res) => {
   fs.writeFileSync(path.join(uploadDir(), file), Buffer.from(m[1], 'base64'));
   removeSignatureFile(j);
   j.signature = { file: `/uploads/${file}`, name, statement: String(b.statement || '').trim().slice(0, 300), signedAt: new Date().toISOString(), collectedBy: u ? u.name : '' };
-  save(); res.status(201).json(isMemberReq(req) ? jobForMember(j) : j);
+  addSignedNote('job', j); save(); res.status(201).json(isMemberReq(req) ? jobForMember(j) : j);
 });
 app.delete('/api/jobs/:id/signature', (req, res) => {
   const j = db.jobs.find((x) => x.id === req.params.id); if (!j) return res.status(404).json({ error: 'Job not found' });
@@ -1390,7 +1484,7 @@ app.post('/api/quotes/:id/signature', (req, res) => {
   if (q.status !== 'approved') { q.status = 'approved'; q.respondedAt = iso(new Date()); }
   q.signedAt = iso(new Date()); q.signedName = name; q.signature = { file: `/uploads/${file}`, method: 'drawn', collectedBy: u ? u.name : '' };
   if (q.depositFee > 0 && !q.depositStatus) q.depositStatus = 'pending';
-  save(); res.status(201).json(q);
+  addSignedNote('quote', q); save(); res.status(201).json(q);
 });
 
 app.post('/api/quotes/:id/convert-to-job', (req, res) => {
@@ -2048,7 +2142,7 @@ app.post('/p/quote/:token/sign', (req, res) => {
   removeSignatureFile(q);
   q.signedAt = iso(new Date()); q.signedName = name; q.signature = { file: `/uploads/${file}`, method: req.body.sigMode === 'typed' ? 'typed' : 'drawn' };
   if (q.depositFee > 0 && !q.depositStatus) q.depositStatus = 'pending';
-  save(); tellBusinessQuote(q, 'signed');
+  addSignedNote('quote', q); save(); tellBusinessQuote(q, 'signed');
   res.redirect(`/p/quote/${q.token}`);
 });
 app.post('/p/quote/:token/zelle-sent', (req, res) => {
@@ -2096,7 +2190,7 @@ app.post('/api/quotes/:id/set-deposit', (req, res) => {
 // ---------- client portal data ----------
 // strip what clients must not see: internal notes and the business's cost/markup per line
 function forClient(doc) {
-  const { internalNotes, ...rest } = doc;
+  const { internalNotes, noteEntries, ...rest } = doc;
   return { ...rest, items: (doc.items || []).map(({ cost, markup, markupType, ...it }) => it) };
 }
 // a client's visits: schedule details only (no internal notes, prices or line items)

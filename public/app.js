@@ -1863,7 +1863,7 @@ const docSide = (kind, d) => {
   const view = [['showQty', 'Quantities'], ['showUnit', 'Unit prices'], ['showLineTotals', 'Line item totals'], ['showAccountBalance', 'Account balance'], ['showLateStamp', 'Late stamp (if overdue)']].map(([k, l]) => [l, on(k)]);
   return `<aside class="qside"><div class="qcard"><div class="qcard-h"><h2>Client payments</h2>${editBtn(kind, d, 'payments')}</div>${vopts(pays, 'No online payment options on your plan')}</div>
 ${kind === 'invoice' ? `<div class="qcard"><div class="qcard-h"><h2>Client view</h2>${editBtn(kind, d, 'clientView')}</div>${vopts(view)}</div>` : ''}
-${textCard(kind, d, 'notes', 'Internal Notes', d.internalNotes, 'No internal notes. Clients never see these.')}</aside>`;
+${textCard(kind, d, 'notes', 'Internal Notes', d.internalNotes, 'No internal notes. Clients never see these.')}${noteFilesCard(kind, d)}</aside>`;
 };
 function viewPage(kind) {
   return {
@@ -2026,6 +2026,54 @@ const onSubmit = (form, fn) => form.addEventListener('submit', async (e) => {
   e.preventDefault(); const b = $('.ms-save', form); if (b) b.disabled = true;
   try { await fn(new FormData(form)); } catch (x) { toast(x.message, true); if (b) b.disabled = false; }
 });
+/* ===== notes on a quote, job or invoice: text, files and photos, and where else each one shows. Internal: clients never get them ===== */
+const NOTE_ICO = { pdf: '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 17c2-1 4-4 4-7 0 3 2 5 4 6-3-.3-5.500 0-8 1z"/></svg>' };
+const NOTE_LINK = { quote: [['jobs', 'Jobs']], job: [['invoices', 'Invoices']], invoice: [['jobs', 'Jobs']] };
+const noteFile = (f) => `<a class="mnt-file" href="${esc(f.url)}" target="_blank" rel="noopener" title="${esc(f.name)}"><span class="mnt-thumb">${f.type === 'pdf' ? NOTE_ICO.pdf : `<img src="${esc(f.url)}" alt="">`}</span><span class="mnt-name">${esc(f.name)}</span></a>`;
+// notes linked here from the quote this job came from, this job's invoices, or the job this invoice came from
+function linkedNotes(kind, d) {
+  const from = (k, list, to) => (list || []).flatMap((x) => (x.noteEntries || []).filter((n) => (n.links || []).includes(to)).map((n) => ({ n, label: `${k} #${x.number}` })));
+  if (kind === 'job') return [...from('Quote', (D.quotes || []).filter((q) => q.id === d.quoteId), 'jobs'), ...from('Invoice', (D.invoices || []).filter((i) => i.jobId === d.id), 'jobs')];
+  if (kind === 'invoice') return from('Job', (D.jobs || []).filter((j) => j.id === d.jobId), 'invoices');
+  return [];
+}
+const noteView = (n, head) => `<section class="mnt"><div class="mnt-h"><span><strong>${esc(n.by || 'Note')}</strong><small>Created ${esc(fmtStamp(n.at))}${head.label ? ` · from ${esc(head.label)}` : ''}</small></span>${head.edit || ''}</div>${n.text ? `<p class="mnt-text">${esc(n.text)}</p>` : ''}${(n.files || []).length ? `<div class="mnt-files">${n.files.map(noteFile).join('')}</div>` : ''}</section>`;
+function mNotesPane(kind, d, older = '') {
+  const at = `data-kind="${kind}" data-id="${d.id}"`; const CAM = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8a2 2 0 0 1 2-2h2l2-2h6l2 2h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.500"/></svg>';
+  const pencil = (n) => `<button type="button" class="mnt-edit" data-act="mNoteEdit" ${at} data-note="${esc(n.id)}" aria-label="Edit note">${svgIcon('<path d="M17 3a2.850 2.850 0 0 1 4 4L7.500 20.500 2 22l1.500-5.500z"/>', 22)}</button>`;
+  const own = (d.noteEntries || []); const linked = linkedNotes(kind, d);
+  return `<div class="mnt-acts"><button type="button" class="btn alt mcv-noteb" data-act="mNoteEdit" ${at}>Add Note</button><label class="btn alt mnt-cam" aria-label="Take a photo for a new note">${CAM}<input type="file" accept="image/*" capture="environment" hidden data-note-cam data-kind="${kind}" data-id="${d.id}"></label></div>
+${own.map((n) => noteView(n, { edit: pencil(n) })).join('')}${linked.map((x) => noteView(x.n, { label: x.label })).join('')}${older}${!own.length && !linked.length && !older ? '<p class="muted mnt-none">No notes yet. Clients never see these.</p>' : ''}`;
+}
+// desktop: the same notes and files beside the internal notes
+const noteFilesCard = (kind, d) => { const own = d.noteEntries || []; const linked = linkedNotes(kind, d); return own.length || linked.length ? `<div class="qcard mnt-card"><div class="qcard-h"><h2>Notes and files</h2></div>${own.map((n) => noteView(n, {})).join('')}${linked.map((x) => noteView(x.n, { label: x.label })).join('')}</div>` : ''; };
+const noteRead = async (f) => ({ name: f.name || 'photo.jpg', dataUrl: f.type.startsWith('image/') ? await resizeImage(f, 1800) : await readFileAsDataUrl(f) });
+// Add note / Edit note, from the bottom
+function mNotePage(kind, d, note, firstFiles = []) {
+  const col = kind + 's'; const keep = [...((note && note.files) || [])]; const added = [...firstFiles]; const links = new Set((note && note.links) || []); const opts = NOTE_LINK[kind];
+  const tiles = () => `<label class="mnt-add" aria-label="Attach files and photos">${svgIcon('<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.500" cy="8.500" r="1.500"/><path d="M21 15l-5-5L5 21"/>', 26)}<input type="file" accept="image/*,application/pdf" multiple hidden data-add></label>
+${keep.map((f, i) => `<div class="mnt-tile">${noteFile(f)}<button type="button" class="mnt-x" data-rm-keep="${i}" aria-label="Remove ${esc(f.name)}">${X_ICO}</button></div>`).join('')}${added.map((f, i) => `<div class="mnt-tile"><span class="mnt-file"><span class="mnt-thumb">${f.dataUrl.startsWith('data:image') ? `<img src="${f.dataUrl}" alt="">` : NOTE_ICO.pdf}</span><span class="mnt-name">${esc(f.name)}</span></span><button type="button" class="mnt-x" data-rm-add="${i}" aria-label="Remove ${esc(f.name)}">${X_ICO}</button></div>`).join('')}`;
+  const page = mPage(note ? 'Edit note' : 'Add note', `<form class="pfm mnt-form" novalidate>${mField('Write a note to your team', `<textarea name="text" rows="2" placeholder=" ">${esc((note && note.text) || '')}</textarea>`)}
+<div><h3 class="mnt-sh">Attach files &amp; photos</h3><div class="mnt-tiles">${tiles()}</div></div>
+<div><h3 class="mnt-sh">Link note</h3><p class="muted mnt-sub">Share note internally on selected client work</p>${opts.map(([k, l]) => `<label class="mnt-link"><span>${l}</span><input type="checkbox" name="link" value="${k}" ${links.has(k) ? 'checked' : ''}></label>`).join('')}</div>
+<div class="pfm-foot mnt-foot"><button class="btn">Save</button>${note ? '<button type="button" class="btn alt ms-more" data-del aria-label="Delete note" title="Delete note">⋯</button>' : ''}</div></form>`, '', true);
+  const f = $('form', page); const box = $('.mnt-tiles', f); const draw = () => { box.innerHTML = tiles(); };
+  const done = async (msg) => { mPagesClose(); toast(msg); await refresh(); const t = $('.md-tabs [data-k="notes"]'); if (t) t.click(); };
+  f.addEventListener('change', async (e) => { if (!e.target.matches('[data-add]')) return; try { for (const x of e.target.files) { if (x.size > 12e6) { toast(`${x.name} is too large (12 MB at most)`, true); continue; } added.push(await noteRead(x)); } draw(); } catch (err) { toast('Couldn’t read that file', true); } });
+  f.addEventListener('click', async (e) => {
+    const t = e.target.closest('[data-rm-keep], [data-rm-add], [data-del]'); if (!t) return; e.preventDefault();
+    if (t.dataset.rmKeep !== undefined) { keep.splice(Number(t.dataset.rmKeep), 1); return draw(); }
+    if (t.dataset.rmAdd !== undefined) { added.splice(Number(t.dataset.rmAdd), 1); return draw(); }
+    if (!confirm('Delete this note and its files?')) return; try { await api('DELETE', `/api/${col}/${d.id}/notes/${note.id}`); await done('Note deleted'); } catch (x) { toast(x.message, true); }
+  });
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault(); const text = f.text.value.trim(); if (!text && !keep.length && !added.length) return toast('Write a note or attach a file', true); const btn = $('.pfm-foot .btn', f); btn.disabled = true;
+    const body = { text, add: added, links: $$('[name=link]:checked', f).map((x) => x.value) };
+    try { if (note) await api('PUT', `/api/${col}/${d.id}/notes/${note.id}`, { ...body, keep: keep.map((x) => x.url) }); else await api('POST', `/api/${col}/${d.id}/notes`, body); await done(note ? 'Note saved' : 'Note added'); } catch (x) { toast(x.message, true); btn.disabled = false; }
+  });
+}
+A.mNoteEdit = (x) => { const d = byId(D[x.kind + 's'], x.id); if (d) mNotePage(x.kind, d, x.note ? (d.noteEntries || []).find((n) => n.id === x.note) : null); };
+document.addEventListener('change', async (e) => { const i = e.target; if (!i.matches || !i.matches('[data-note-cam]') || !i.files[0]) return; const d = byId(D[i.dataset.kind + 's'], i.dataset.id); try { const f = await noteRead(i.files[0]); i.value = ''; if (d) mNotePage(i.dataset.kind, d, null, [f]); } catch (x) { toast('Couldn’t read that photo', true); } });
 // phones: Add line item: the business's products and services to pick from. A pick opens the line item filled in; + starts a blank one
 function mItemPicker(kind, d, x) {
   const f = mSheet('Add line item', `<label class="mli-search">${svgIcon(ICONS.search, 22)}<input type="search" name="q" placeholder="Search line items" aria-label="Search line items" autocomplete="off"></label><div class="mli-list"></div>`, { full: true });
@@ -2160,7 +2208,7 @@ ${d.status === 'sent' ? item('approveQuote', 'Mark approved') : ''}
 ${!d.signedAt && ['draft', 'sent', 'approved'].includes(d.status) ? item('mSignQuote', 'Collect signature') : ''}
 ${d.status !== 'declined' && d.depositFee > 0 && !d.depositPaidAt ? item('markDepositPaid', `Record deposit payment${d.zelleSentAt ? ' (Zelle sent)' : ''}`) : ''}
 ${canJob ? item('quoteToJob', 'Create job') : ''}${job ? `<a href="/jobs/edit?id=${job.id}" data-link>Go to job ${esc(job.number)}</a>` : ''}`
-    : `<a href="/invoices/view?id=${d.id}&preview=1" data-link>${d.status === 'paid' ? 'View receipt' : 'View invoice'}</a>${d.status !== 'paid' ? item('collectPayment', 'Collect payment') : ''}`}
+    : `<a href="/invoices/view?id=${d.id}&preview=1" data-link>${d.status === 'paid' ? 'View receipt' : 'View invoice'}</a>${d.status !== 'paid' ? item('collectPayment', 'Collect payment') : ''}${!d.signedAt && planHas('signatures') ? item('mSignInvoice', 'Collect signature') : ''}`}
 <a href="/${x.kind}s/edit?id=${d.id}" data-link>Edit everything at once</a>
 ${item('delDoc', `Delete ${x.kind}`, `data-kind="${x.kind}" class="danger-text"`)}</div>`);
   f.addEventListener('click', (e) => { if (e.target.closest('a, button[data-act]')) mClose(true); });
@@ -2228,7 +2276,7 @@ function mobileDocPage(kind, d) {
   const on = (k) => d[k] !== 'off';
   const viewSec = q ? '' : mTap(kind, d, 'clientView', `<span class="md-sh">Client view${ARROW}</span><span class="md-text muted">${[['showQty', 'Quantities'], ['showUnit', 'Unit prices'], ['showLineTotals', 'Line totals'], ['showAccountBalance', 'Account balance'], ['showLateStamp', 'Late stamp']].filter(([k]) => on(k)).map(([, l]) => l).join(', ') || 'Totals only'}</span>`, 'md-sec');
   return `<div class="mdoc"><a href="/${kind}s" data-link class="md-back" aria-label="Back to ${kind}s">${CHEV('M15 18l-6-6 6-6')}</a>
-<div class="md-st">${q ? qBadge(st) : iBadge(st)}${q && d.signedAt ? `<span class="vsign">✓ Signed${d.signedName ? ' by ' + esc(d.signedName) : ''}</span>` : ''}</div>
+<div class="md-st">${q ? qBadge(st) : iBadge(st)}${d.signedAt ? `<span class="vsign">✓ Signed${d.signedName ? ' by ' + esc(d.signedName) : ''}</span>` : ''}</div>
 ${mTap(kind, d, 'details', `<span class="md-h">${q ? 'Quote' : 'Invoice'} #${esc(d.number)} for ${esc(c.name || 'no client')} for ${money(d.total || 0)}</span>${(q ? d.title : d.subject) ? `<span class="md-sub">${esc(q ? d.title : d.subject)}</span>` : ''}
 <span class="md-dates"><span><small>${q ? 'Created' : 'Issued'}</small>${fmtDate(((q ? d.createdAt : d.issueDate) || '').slice(0, 10))}</span>${second && second[1] ? `<span><small>${second[0]}</small>${fmtDate(String(second[1]).slice(0, 10))}</span>` : ''}</span>`, 'md-head')}
 <div class="md-acts">${acts.filter(Boolean).join('')}<button type="button" class="btn alt md-more" data-act="mMore" data-kind="${kind}" data-id="${d.id}" aria-label="More actions">⋯</button></div>
@@ -2237,7 +2285,7 @@ ${mTap(kind, d, 'details', `<span class="md-h">${q ? 'Quote' : 'Invoice'} #${esc
 <section class="md-block md-totals">${totals}</section>${paySec}${viewSec}
 ${mTextSec(kind, d, 'message', 'Client message', d.notes, 'Add a message for the client')}
 ${mTextSec(kind, d, 'terms', 'Contract / disclaimer', d.disclaimer, 'Add a contract or disclaimer')}</div>
-<div class="md-pane" data-pane="notes" hidden>${mTextSec(kind, d, 'notes', 'Internal notes', d.internalNotes, 'Add a note. Clients never see these.')}</div></div>`;
+<div class="md-pane" data-pane="notes" hidden>${mNotesPane(kind, d, d.internalNotes ? mTextSec(kind, d, 'notes', 'Internal notes', d.internalNotes, '') : '')}</div></div>`;
 }
 phoneMq.addEventListener('change', () => { if (/^\/(quotes|invoices|jobs|clients\/view)(\/|$)/.test(curPath()) && !mOpenNow()) refresh(); });
 // phones: Add client, a full-screen chooser: search, Create New Client, then clients by most recent activity (person or building
@@ -2463,7 +2511,7 @@ ${sig ? `<section class="md-block"><h2 class="md-sh">Client signature</h2><img c
     : planHas('signatures') ? `<button type="button" class="md-tap md-sec" data-act="collectSignature" data-id="${j.id}"><span class="md-sh">Client signature${ARROW}</span><span class="md-text muted">Collect the client’s signature</span></button>` : ''}
 ${prices && planHas('invoices') ? `<section class="md-block need-invoices"><div class="md-lh"><h2 class="md-sh" style="margin:0">Billing</h2>${edit ? `<button type="button" class="md-plus" data-act="jobInvoice" data-id="${j.id}" aria-label="Create invoice">${CHEV('M12 5v14M5 12h14')}</button>` : ''}</div>
 ${invs.map((i) => `<a class="md-inv" href="/invoices/view?id=${i.id}" data-link><span><strong>Invoice #${esc(i.number)}</strong><small>${esc(I_STATUS[i.displayStatus] || i.displayStatus)} · due ${fmtDate(i.dueDate)}</small></span><span>${money(i.total)}</span></a>`).join('') || '<p class="muted md-empty">No invoices yet. Create one when the work is done.</p>'}</section>` : ''}</div>
-<div class="md-pane" data-pane="notes" hidden>${textSec('notes', 'Internal notes', j.internalNotes, 'Add a note. Clients never see these.')}</div></div>`;
+<div class="md-pane" data-pane="notes" hidden>${mNotesPane('job', j, j.internalNotes ? textSec('notes', 'Internal notes', j.internalNotes, '') : '')}</div></div>`;
 }
 PAGES['/quotes/new'] = docPage('quote', true); PAGES['/quotes/edit'] = docPage('quote', false);
 PAGES['/invoices/new'] = docPage('invoice', true); PAGES['/invoices/edit'] = docPage('invoice', false);
@@ -2684,7 +2732,7 @@ ${canDo('jobs.prices') ? `<div class="qcard"><div class="qcard-h"><h2>Product / 
 <dt>Team</dt><dd>${team.length ? `<span class="vteam">${team.map((t) => `<span>${avatarHtml(t, 24)}${esc(t.name)}</span>`).join('')}</span>` : none('Nobody assigned yet')}</dd>
 <dt>Instructions</dt><dd>${j.description ? `<p class="vtext">${esc(j.description)}</p>` : none('None')}</dd></dl></div>
 ${j.signature ? sigCard(j) : ''}${jobBilling(j, jobInvoices(j))}</div>
-<aside class="qside">${textCard('job', j, 'notes', 'Internal Notes', j.internalNotes, 'No internal notes. Clients never see these.')}</aside></div></div>`;
+<aside class="qside">${textCard('job', j, 'notes', 'Internal Notes', j.internalNotes, 'No internal notes. Clients never see these.')}${noteFilesCard('job', j)}</aside></div></div>`;
 }
 // the Billing card (job form and job page): the job's invoices, and Create invoice
 const jobBilling = (j, invs) => `<div class="qcard need-jobs-prices"><div class="qcard-h"><h2>Billing</h2>${j.id ? `<button type="button" class="btn alt sm" data-act="jobInvoice" data-id="${j.id}">+ Create invoice</button>` : ''}</div>
@@ -2776,7 +2824,11 @@ function mSignPad({ icon, label, amount, save }) {
   cv.addEventListener('pointerdown', (e) => { e.preventDefault(); cv.setPointerCapture(e.pointerId); last = at(e); ctx.beginPath(); ctx.arc(last.x, last.y, 1.3, 0, Math.PI * 2); ctx.fill(); inked = true; pad.classList.add('inked'); });
   cv.addEventListener('pointermove', (e) => { if (!last) return; e.preventDefault(); const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : []; for (const ev of (evs.length ? evs : [e])) { const p = at(ev); ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.lineTo(p.x, p.y); ctx.stroke(); last = p; } });
   const end = () => { last = null; }; cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
-  const upright = () => { const o = uprightCopy(); const x = o.getContext('2d'); x.globalCompositeOperation = 'source-in'; x.fillStyle = '#111827'; x.fillRect(0, 0, o.width, o.height); return o.toDataURL('image/png'); };
+  const upright = () => { const o = uprightCopy(); const x = o.getContext('2d'); x.globalCompositeOperation = 'source-in'; x.fillStyle = '#111827'; x.fillRect(0, 0, o.width, o.height);
+    // trimmed to the ink, so the signature fills the line it's shown on
+    const px = x.getImageData(0, 0, o.width, o.height).data; let l = o.width; let r = 0; let t = o.height; let b = 0; for (let yy = 0; yy < o.height; yy++) for (let xx = 0; xx < o.width; xx++) if (px[(yy * o.width + xx) * 4 + 3] > 16) { if (xx < l) l = xx; if (xx > r) r = xx; if (yy < t) t = yy; if (yy > b) b = yy; }
+    if (r < l) return o.toDataURL('image/png'); const pad = Math.round(6 * dpr); l = Math.max(0, l - pad); t = Math.max(0, t - pad); r = Math.min(o.width - 1, r + pad); b = Math.min(o.height - 1, b + pad);
+    const c = document.createElement('canvas'); c.width = r - l + 1; c.height = b - t + 1; c.getContext('2d').drawImage(o, -l, -t); return c.toDataURL('image/png'); };
   page.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-sg]'); if (!b) return;
     if (b.dataset.sg === 'skip') return A.mPageBack({}, b);
@@ -2786,6 +2838,7 @@ function mSignPad({ icon, label, amount, save }) {
   });
 }
 A.mSignQuote = (d) => { const q = byId(D.quotes, d.id); const c = byId(D.clients, q.clientId) || {}; mSignPad({ icon: PI.quote, label: `Quote #${q.number}`, amount: money(q.total || 0), save: (dataUrl) => api('POST', `/api/quotes/${q.id}/signature`, { name: c.name || 'Client', dataUrl }) }); };
+A.mSignInvoice = (d) => { const i = byId(D.invoices, d.id); const c = byId(D.clients, i.clientId) || {}; mSignPad({ icon: QM.invoice, label: `Invoice #${i.number}`, amount: money(i.total || 0), save: (dataUrl) => api('POST', `/api/invoices/${i.id}/signature`, { name: c.name || 'Client', dataUrl }) }); };
 A.collectSignature = (d) => {
   const j = byId(D.jobs, d.id); const c = byId(D.clients, j.clientId) || {};
   if (phoneMq.matches) return mSignPad({ icon: PI.job, label: `Job #${j.number}`, save: (dataUrl) => api('POST', `/api/jobs/${j.id}/signature`, { name: c.name || 'Client', statement: SIG_STATEMENT, dataUrl }) });
