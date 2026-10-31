@@ -637,7 +637,7 @@ PAGES['/reviews'] = {
   title: 'Reviews',
   async render(main) {
     const google = revState.source === 'google';
-    main.innerHTML = `<div class="head"><div><h1>Reviews</h1><p class="sub">${google ? 'Your Google reviews. Replies show publicly on Google under the review.' : 'What clients say after a job is completed or an invoice is paid. Only your team sees these.'}</p></div></div>
+    main.innerHTML = `<div class="head"><div><h1>Reviews</h1><p class="sub">${google ? 'Your Google reviews. Replies show publicly on Google under the review.' : 'What clients say after a job is completed or an invoice is paid. Only your team and the client who wrote each one see them.'}</p></div></div>
 <div class="tabs rv-src" role="tablist">${[['clients', 'From your clients'], ['google', 'Google']].map(([k, l]) => `<button type="button" role="tab" class="${revState.source === k ? 'on' : ''}" data-act="revSource" data-s="${k}">${l}</button>`).join('')}</div><div id="rvBody"></div>`;
     await (google ? renderGoogleReviews : renderClientReviews)($('#rvBody', main));
   },
@@ -876,10 +876,11 @@ const CP_ICON = {
   wallet: '<rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h3"/>',
   contact: '<path d="M5 4h3.5l1.5 4.5-2 1.5a12 12 0 0 0 6 6l1.5-2 4.5 1.5V19a1.5 1.5 0 0 1-1.5 1.5A16.5 16.5 0 0 1 3.5 5.5 1.5 1.5 0 0 1 5 4z"/>',
   refer: '<path d="M7 11v9H4v-9zM7 11l4-7c1.4 0 2.3 1 2 2.4L12.5 10H18a2 2 0 0 1 2 2.3l-1.1 6A2 2 0 0 1 17 20H7"/>',
+  reviews: '<path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
 };
 const cpIcon = (k, size = 22) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${CP_ICON[k]}</svg>`;
-const CP_NAV = [[['requests', 'Requests'], ['estimates', 'Estimates'], ['appointments', 'Appointments'], ['invoices', 'Invoices']], [['wallet', 'Wallet']], [['contact', 'Contact Us']]];
+const CP_NAV = [[['requests', 'Requests'], ['estimates', 'Estimates'], ['appointments', 'Appointments'], ['invoices', 'Invoices'], ['reviews', 'Reviews']], [['wallet', 'Wallet']], [['contact', 'Contact Us']]];
 const CP_STATUS = { new: 'Received', sent: 'Awaiting your approval', approved: 'Approved', declined: 'Declined', converted: 'Approved', scheduled: 'Scheduled', completed: 'Completed', cancelled: 'Cancelled', paid: 'Paid', overdue: 'Overdue', unpaid: 'Due', partial: 'Partly paid' };
 const cpBadge = (s) => `<span class="cp-badge cp-${esc(s)}">${esc(CP_STATUS[s] || s)}</span>`;
 const cpEmpty = (icon, title, text, action = '') => `<div class="cp-empty"><div class="cp-empty-ic">${cpIcon(icon, 24)}</div><h2>${title}</h2><p>${text}</p>${action}</div>`;
@@ -916,6 +917,8 @@ ${p.client.smsConsent ? `<p class="cp-sub" style="margin:4px 0 12px">You get tex
     invoices: () => (invoices.length ? head('Invoices') + (openInv.length ? `<div class="cp-due"><span>Balance due</span><strong>${money(openInv.reduce((s, i) => s + (i.balanceDue ?? i.total), 0))}</strong></div>` : '')
       + `<div class="cp-list">${[...openInv, ...invoices.filter((i) => i.displayStatus === 'paid')].map((i) => row(`${esc(i.subject || 'Invoice')} <span class="cp-num">#${esc(i.number)}</span>`, [i.displayStatus === 'paid' ? `Paid ${fmtDate((i.paidAt || i.issueDate).slice(0, 10))}` : `Due ${fmtDate(i.dueDate)}`, i.displayStatus === 'paid' ? money(i.total) : `${money(i.balanceDue ?? i.total)}${i.depositApplied > 0 ? ` after ${money(i.depositApplied)} deposit` : ''}`], `${cpBadge(i.displayStatus)}<a class="cp-btn ${i.displayStatus === 'paid' ? '' : 'primary'}" href="${esc(i.link)}">${i.displayStatus === 'paid' ? 'Receipt' : 'Pay now'}</a>`)).join('')}</div>`
       : cpEmpty('invoices', 'No invoices', 'Invoices we send you will show up here, ready to pay online.')),
+    reviews: () => (p.reviews.length ? head('Reviews') + `<div class="cp-list">${p.reviews.map((r) => row(`${esc(r.title || (r.kind === 'job' ? 'Job' : 'Invoice'))}${r.refNumber ? ` <span class="cp-num">#${esc(r.refNumber)}</span>` : ''}`, [`Sent ${fmtDate(r.submittedAt.slice(0, 10))}`, ...r.answers.map((a) => `${esc(a.question)} ${a.type === 'stars' ? starRow(a.answer, 14) : esc(a.answer)}`), r.comment ? esc(r.comment) : ''], starRow(r.stars))).join('')}</div>`
+      : cpEmpty('reviews', 'No reviews yet', `Reviews you send ${esc(co.name)} will show up here.`)),
     wallet: () => cpEmpty('wallet', 'No saved payment methods', 'Pay any invoice by card or Zelle when you open it. Card details are handled securely by Stripe and are never stored by us.'),
     contact: () => `${head('Contact us')}<div class="cp-card">${co.logo ? `<img src="${esc(co.logo)}" alt="" class="cp-card-logo">` : ''}<h2>${esc(co.name)}</h2>
 ${co.phone ? `<a class="cp-contact" href="tel:${esc(co.phone)}">${cpIcon('contact', 18)} ${esc(co.phone)}</a>` : ''}${co.email ? `<a class="cp-contact" href="mailto:${esc(co.email)}">✉ ${esc(co.email)}</a>` : ''}
@@ -930,10 +933,10 @@ ${co.hours ? `<h3 class="cp-sec">Business hours</h3><table class="cp-hours">${WE
 <a class="cp-out wide" href="https://outlook.live.com/mail/0/deeplink/compose?${q({ subject, body })}" target="_blank" rel="noopener">Outlook</a>
 <a class="cp-out wide" href="https://mail.google.com/mail/?${q({ view: 'cm', fs: '1', su: subject, body })}" target="_blank" rel="noopener">Gmail</a></div>`; },
   };
-  const nav = (cur) => CP_NAV.map((grp) => grp.map(([k, l]) => `<button type="button" class="cp-nav ${cur === k || (cur === 'new-request' && k === 'requests') ? 'on' : ''}" data-cp="${k}">${cpIcon(k)}<span>${l}</span></button>`).join('')).join('<hr>')
+  const nav = (cur) => CP_NAV.map((grp) => grp.filter(([k]) => k !== 'reviews' || p.reviews).map(([k, l]) => `<button type="button" class="cp-nav ${cur === k || (cur === 'new-request' && k === 'requests') ? 'on' : ''}" data-cp="${k}">${cpIcon(k)}<span>${l}</span></button>`).join('')).join('<hr>')
     + (p.referralLink ? `<hr><button type="button" class="cp-nav cp-refer ${cur === 'refer' ? 'on' : ''}" data-cp="refer">${cpIcon('refer')}<span>Refer a Friend</span></button>` : '');
   const show = (section) => {
-    if (!views[section] || (section === 'refer' && !p.referralLink)) section = 'requests';
+    if (!views[section] || (section === 'refer' && !p.referralLink) || (section === 'reviews' && !p.reviews)) section = 'requests';
     $('.cp-navs', main).innerHTML = nav(section); $('.cp-main', main).innerHTML = views[section]();
     if (location.hash.slice(1) !== section) history.replaceState({}, '', location.pathname + location.search + '#' + section);
     const f = $('#cpReq', main);

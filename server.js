@@ -2316,6 +2316,8 @@ app.get('/api/portal/:token', (req, res) => {
     company: { name: db.company.name, logo: db.company.logo, email: db.company.email, phone: db.company.phone, accentColor: accentColor(), address: db.company.addressPrivate ? '' : db.company.address, website: db.company.website, hours: db.company.showHours ? db.company.hours || null : null },
     client: { id: c.id, name: c.name, email: c.email, phone: c.phone, address: c.address, smsConsent: !!c.smsConsent },
     referralLink: tenancy.has('referrals') ? referralLink(c) : null,
+    reviews: !tenancy.has('reviews') ? null : (db.clientReviews || []).filter((r) => r.clientId === c.id && r.submittedAt).sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
+      .map((r) => ({ id: r.id, kind: r.kind, refNumber: r.refNumber, title: r.title, stars: r.stars, comment: r.comment, submittedAt: r.submittedAt, answers: (r.answers || []).map((a) => ({ question: a.question, type: a.type, answer: a.answer })) })),
     requests: (db.requests || []).filter((r) => r.clientId === c.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(requestForClient),
     jobs: db.jobs.filter((j) => j.clientId === c.id).sort((a, b) => b.date.localeCompare(a.date)).map(jobForClient),
     quotes: db.quotes.filter((q) => q.clientId === c.id).map((q) => ({ ...forClient(q), link: quoteLink(q) })),
