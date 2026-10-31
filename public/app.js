@@ -2047,6 +2047,22 @@ ${own.map((n) => noteView(n, { edit: pencil(n) })).join('')}${linked.map((x) => 
 }
 // desktop: the same notes and files beside the internal notes
 const noteFilesCard = (kind, d) => { const own = d.noteEntries || []; const linked = linkedNotes(kind, d); return own.length || linked.length ? `<div class="qcard mnt-card"><div class="qcard-h"><h2>Notes and files</h2></div>${own.map((n) => noteView(n, {})).join('')}${linked.map((x) => noteView(x.n, { label: x.label })).join('')}</div>` : ''; };
+// phones: a note's PDF or photo opens inside the app with a Back link, so nobody gets stuck outside it. pdf.js draws every page (iPhones often show only a PDF's first page in a frame); without it, the browser's own view
+const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+const pdfjsReady = () => (window.pdfjsLib ? Promise.resolve(window.pdfjsLib) : new Promise((res, rej) => { const s = document.createElement('script'); s.src = PDFJS + 'pdf.min.js'; s.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + 'pdf.worker.min.js'; res(window.pdfjsLib); }; s.onerror = rej; document.head.append(s); }));
+async function mFileView(url, name, isPdf) {
+  const page = mPage(name, `<div class="mfv">${isPdf ? '<p class="muted mfv-wait">Opening…</p>' : `<img src="${esc(url)}" alt="${esc(name)}">`}</div>`); page.classList.add('mfv-page');
+  $('.ms-x', page).innerHTML = `${CHEV('M15 18l-6-6 6-6')}<span>Back</span>`; $('.ms-x', page).classList.add('mfv-back'); if (!isPdf) return; const box = $('.mfv', page);
+  try {
+    const [lib, data] = await Promise.all([pdfjsReady(), fetch(url).then((r) => { if (!r.ok) throw new Error('not found'); return r.arrayBuffer(); })]);
+    const pdf = await lib.getDocument({ data }).promise; box.innerHTML = ''; const dpr = Math.min(3, window.devicePixelRatio || 1);
+    for (let n = 1; n <= pdf.numPages && page.isConnected; n++) {
+      const pg = await pdf.getPage(n); const w = box.clientWidth || innerWidth; const v = pg.getViewport({ scale: (w / pg.getViewport({ scale: 1 }).width) * dpr });
+      const c = document.createElement('canvas'); c.width = v.width; c.height = v.height; box.append(c); await pg.render({ canvasContext: c.getContext('2d'), viewport: v }).promise;
+    }
+  } catch (e) { box.innerHTML = `<iframe src="${esc(url)}" title="${esc(name)}"></iframe><a class="mfv-open" href="${esc(url)}" target="_blank" rel="noopener">Open in browser</a>`; }
+}
+document.addEventListener('click', (e) => { const a = e.target.closest && e.target.closest('a.mnt-file'); if (!a || !phoneMq.matches) return; e.preventDefault(); e.stopPropagation(); mFileView(a.getAttribute('href'), a.title || 'File', /\.pdf$/i.test(a.getAttribute('href'))); }, true);
 const noteRead = async (f) => ({ name: f.name || 'photo.jpg', dataUrl: f.type.startsWith('image/') ? await resizeImage(f, 1800) : await readFileAsDataUrl(f) });
 // Add note / Edit note, from the bottom
 function mNotePage(kind, d, note, firstFiles = []) {
@@ -2205,10 +2221,10 @@ A.mMore = (x) => {
   const item = (act, label, extra = '') => `<button type="button" data-act="${act}" data-id="${d.id}" ${extra}>${label}</button>`;
   const f = mSheet('More', `<div class="ms-list">${q ? `<a href="/p/quote/${d.token}" target="_blank">View as client</a>
 ${d.status === 'sent' ? item('approveQuote', 'Mark approved') : ''}
-${!d.signedAt && ['draft', 'sent', 'approved'].includes(d.status) ? item('mSignQuote', 'Collect signature') : ''}
+${['draft', 'sent', 'approved'].includes(d.status) ? item('mSignQuote', d.signedAt ? 'Collect another signature' : 'Collect signature') : ''}
 ${d.status !== 'declined' && d.depositFee > 0 && !d.depositPaidAt ? item('markDepositPaid', `Record deposit payment${d.zelleSentAt ? ' (Zelle sent)' : ''}`) : ''}
 ${canJob ? item('quoteToJob', 'Create job') : ''}${job ? `<a href="/jobs/edit?id=${job.id}" data-link>Go to job ${esc(job.number)}</a>` : ''}`
-    : `<a href="/invoices/view?id=${d.id}&preview=1" data-link>${d.status === 'paid' ? 'View receipt' : 'View invoice'}</a>${d.status !== 'paid' ? item('collectPayment', 'Collect payment') : ''}${!d.signedAt && planHas('signatures') ? item('mSignInvoice', 'Collect signature') : ''}`}
+    : `<a href="/invoices/view?id=${d.id}&preview=1" data-link>${d.status === 'paid' ? 'View receipt' : 'View invoice'}</a>${d.status !== 'paid' ? item('collectPayment', 'Collect payment') : ''}${planHas('signatures') ? item('mSignInvoice', d.signedAt ? 'Collect another signature' : 'Collect signature') : ''}`}
 <a href="/${x.kind}s/edit?id=${d.id}" data-link>Edit everything at once</a>
 ${item('delDoc', `Delete ${x.kind}`, `data-kind="${x.kind}" class="danger-text"`)}</div>`);
   f.addEventListener('click', (e) => { if (e.target.closest('a, button[data-act]')) mClose(true); });
@@ -2470,7 +2486,7 @@ ${mField('Status', `<select name="status">${[['scheduled', 'Scheduled'], ['compl
 // ⋯ on the job page
 A.mJobMore = (x) => {
   const j = byId(D.jobs, x.id); const edit = canDo('jobs.edit');
-  const f = mSheet('More', `<div class="ms-list">${!j.signature && planHas('signatures') ? `<button type="button" data-act="collectSignature" data-id="${j.id}">Collect signature</button>` : ''}
+  const f = mSheet('More', `<div class="ms-list">${planHas('signatures') ? `<button type="button" data-act="collectSignature" data-id="${j.id}">${j.signature ? 'Collect another signature' : 'Collect signature'}</button>` : ''}
 ${edit ? `<button type="button" data-act="jobRemind" data-id="${j.id}">${planHas('sms') && byId(D.clients, j.clientId)?.smsConsent ? 'Text' : 'Email'} reminder to client</button>` : ''}
 ${planHas('invoices') ? `<button type="button" class="need-invoices" data-act="jobInvoice" data-id="${j.id}">Create invoice</button>` : ''}
 ${planHas('timeOff') && me && me.staffId && (j.staffIds || []).includes(me.staffId) && j.date >= ymd(new Date()) ? `<button type="button" data-act="jobRequestOff" data-id="${j.id}">Request off for this job</button>` : ''}
@@ -2507,7 +2523,7 @@ ${tap('team', `<span class="md-sh">Assigned team${ARROW}</span>${team.length ? `
 ${textSec('instructions', 'Instructions', j.description, 'Add instructions for the team')}
 ${prices ? `<section class="md-block"><h2 class="md-sh">Product / Service</h2><div class="md-lh"><strong>Line items</strong>${edit ? `<button type="button" class="md-plus" data-act="mEdit" data-kind="job" data-id="${j.id}" data-sec="item" data-i="" aria-label="Add line item">${CHEV('M12 5v14M5 12h14')}</button>` : ''}</div>${items || '<p class="muted md-empty">No line items yet.</p>'}</section>
 ${totals ? `<section class="md-block md-totals">${totals}</section>` : ''}` : ''}
-${sig ? `<section class="md-block"><h2 class="md-sh">Client signature</h2><img class="sig-img" src="${esc(sig.file)}" alt="Signature of ${esc(sig.name)}"><p class="md-text">Signed by <strong>${esc(sig.name)}</strong> · ${esc(fmtStamp(sig.signedAt))}</p></section>`
+${sig ? `<section class="md-block"><div class="md-lh"><h2 class="md-sh" style="margin:0">Client signature</h2>${planHas('signatures') ? `<button type="button" class="md-plus" data-act="collectSignature" data-id="${j.id}" aria-label="Collect another signature">${CHEV('M12 5v14M5 12h14')}</button>` : ''}</div><img class="sig-img" src="${esc(sig.file)}" alt="Signature of ${esc(sig.name)}"><p class="md-text">Signed by <strong>${esc(sig.name)}</strong> · ${esc(fmtStamp(sig.signedAt))}</p></section>`
     : planHas('signatures') ? `<button type="button" class="md-tap md-sec" data-act="collectSignature" data-id="${j.id}"><span class="md-sh">Client signature${ARROW}</span><span class="md-text muted">Collect the client’s signature</span></button>` : ''}
 ${prices && planHas('invoices') ? `<section class="md-block need-invoices"><div class="md-lh"><h2 class="md-sh" style="margin:0">Billing</h2>${edit ? `<button type="button" class="md-plus" data-act="jobInvoice" data-id="${j.id}" aria-label="Create invoice">${CHEV('M12 5v14M5 12h14')}</button>` : ''}</div>
 ${invs.map((i) => `<a class="md-inv" href="/invoices/view?id=${i.id}" data-link><span><strong>Invoice #${esc(i.number)}</strong><small>${esc(I_STATUS[i.displayStatus] || i.displayStatus)} · due ${fmtDate(i.dueDate)}</small></span><span>${money(i.total)}</span></a>`).join('') || '<p class="muted md-empty">No invoices yet. Create one when the work is done.</p>'}</section>` : ''}</div>
@@ -2711,7 +2727,7 @@ function jobMore(j) {
   const sms = planHas('sms') && byId(D.clients, j.clientId)?.smsConsent;
   const off = planHas('timeOff') && me && me.staffId && (j.staffIds || []).includes(me.staffId) && j.date >= ymd(new Date());
   return `<details class="menu more-menu"><summary class="btn alt"><span class="more-dots" aria-hidden="true">•••</span> More</summary><div class="menu-list">
-${planHas('invoices') ? b('jobInvoice', 'invoice', 'Create Invoice', 'need-invoices') : ''}${j.signature || !planHas('signatures') ? '' : b('collectSignature', 'sign', 'Collect Signature')}
+${planHas('invoices') ? b('jobInvoice', 'invoice', 'Create Invoice', 'need-invoices') : ''}${!planHas('signatures') ? '' : b('collectSignature', 'sign', j.signature ? 'Collect Another Signature' : 'Collect Signature')}
 <div class="need-jobs-edit"><hr class="mi-sep"><div class="mi-h">Send as…</div>${b('jobRemind', sms ? 'text' : 'email', `${sms ? 'Text' : 'Email'} Reminder`)}</div>
 <hr class="mi-sep">${off ? b('jobRequestOff', 'calendar', 'Request Off for This Job') : ''}<a class="mi" href="/calendar" data-link>${QM.calendar}Open Calendar</a>
 ${b('delJob', 'trash', 'Delete', 'need-jobs-edit')}</div></details>`;
@@ -2748,7 +2764,7 @@ function jobPage(main, job, preset) {
   main.innerHTML = `<form class="qform jform"><div class="qpage"><div class="qmain">
 <div class="qtop"><div class="qtop-l"><a href="/jobs" data-link class="back">← Jobs</a><span class="cstatus ${J_CLASS[st]}">${J_STATUS[st]}</span></div>
 <div class="actions">${j.id ? `<details class="menu"><summary class="btn alt">⋯ More</summary><div class="menu-list">
-${j.signature || !planHas('signatures') ? '' : `<button type="button" data-act="collectSignature" data-id="${j.id}">Collect signature</button>`}${planHas('timeOff') && me && me.staffId && (j.staffIds || []).includes(me.staffId) && j.date >= ymd(new Date()) ? `<button type="button" data-act="jobRequestOff" data-id="${j.id}">Request off for this job</button>` : ''}
+${!planHas('signatures') ? '' : `<button type="button" data-act="collectSignature" data-id="${j.id}">${j.signature ? 'Collect another signature' : 'Collect signature'}</button>`}${planHas('timeOff') && me && me.staffId && (j.staffIds || []).includes(me.staffId) && j.date >= ymd(new Date()) ? `<button type="button" data-act="jobRequestOff" data-id="${j.id}">Request off for this job</button>` : ''}
 <button type="button" class="need-jobs-edit" data-act="jobRemind" data-id="${j.id}">${planHas('sms') && byId(D.clients, j.clientId)?.smsConsent ? 'Text' : 'Email'} reminder to client</button>${planHas('invoices') ? `<button type="button" class="need-invoices" data-act="jobInvoice" data-id="${j.id}">Create invoice</button>` : ''}
 <a href="/calendar" data-link>Open calendar</a><button type="button" class="danger-text need-jobs-edit" data-act="delJob" data-id="${j.id}">Delete job</button></div></details>
 ${j.status === 'scheduled' ? `<button type="button" class="btn alt need-jobs-edit" data-act="completeJob" data-id="${j.id}">Mark complete</button>` : `<button type="button" class="btn alt need-jobs-edit" data-act="reopenJob" data-id="${j.id}">↺ Reopen job</button>`}

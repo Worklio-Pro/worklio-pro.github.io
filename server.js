@@ -1242,12 +1242,11 @@ app.delete('/api/:col/:id', (req, res, next) => {
 // a signature collected on the team member's phone for an invoice
 app.post('/api/invoices/:id/signature', (req, res) => {
   const d = db.invoices.find((x) => x.id === req.params.id); if (!d) return res.status(404).json({ error: 'Not found' });
-  if (d.signedAt) return res.status(400).json({ error: 'This invoice is already signed' });
   const name = String((req.body && req.body.name) || '').trim().slice(0, 100); if (!name) return res.status(400).json({ error: 'Enter the name of the person signing' });
   const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec((req.body && req.body.dataUrl) || '');
   if (!m || m[1].length < 200) return res.status(400).json({ error: 'Please sign in the box first' });
   if (m[1].length > 2e6) return res.status(400).json({ error: 'That signature image is too large' });
-  const file = `sig-${token()}.png`; fs.writeFileSync(path.join(uploadDir(), file), Buffer.from(m[1], 'base64')); const u = currentUser(req);
+  const file = `sig-${token()}.png`; fs.writeFileSync(path.join(uploadDir(), file), Buffer.from(m[1], 'base64')); const u = currentUser(req); removeSignatureFile(d);
   d.signedAt = iso(new Date()); d.signedName = name; d.signature = { file: `/uploads/${file}`, method: 'drawn', collectedBy: u ? u.name : '' };
   addSignedNote('invoice', d); save(); res.status(201).json(withStatus(d));
 });
@@ -1285,11 +1284,11 @@ for (const col of ['quotes', 'jobs', 'invoices']) {
     (n.files || []).forEach(rmNoteFile); d.noteEntries = d.noteEntries.filter((x) => x !== n); save(); reply(req, res, d);
   });
 }
-// after signing: a note holding the signed copy as a PDF. The signature itself is already saved, so a problem here never stops it.
+// after signing: a new note holding the signed copy as a PDF, one per signature. The signature itself is already saved, so a problem here never stops it.
 function addSignedNote(kind, d) {
   try {
-    const file = `signed-${token()}.pdf`; fs.writeFileSync(path.join(uploadDir(), file), signedPdf(kind, d)); const num = String(d.number).replace(/[^\w-]+/g, '');
-    d.noteEntries = [{ id: uid(), text: `Signed copy of ${kind} #${d.number}`, at: new Date().toISOString(), by: brandLib.brand().name || 'Worklio Pro', signed: true, links: [], files: [{ name: `signed-copy-${kind}-${num}.pdf`, url: `/uploads/${file}`, type: 'pdf' }] }, ...(d.noteEntries || [])];
+    const file = `signed-${token()}.pdf`; fs.writeFileSync(path.join(uploadDir(), file), signedPdf(kind, d)); const num = String(d.number).replace(/[^\w-]+/g, ''); const nth = (d.noteEntries || []).filter((n) => n.signed).length + 1;
+    d.noteEntries = [{ id: uid(), text: `Signed copy of ${kind} #${d.number}${nth > 1 ? ` (signature ${nth})` : ''}`, at: new Date().toISOString(), by: brandLib.brand().name || 'Worklio Pro', signed: true, links: [], files: [{ name: `signed-copy-${kind}-${num}${nth > 1 ? `-${nth}` : ''}.pdf`, url: `/uploads/${file}`, type: 'pdf' }] }, ...(d.noteEntries || [])];
   } catch (e) { console.error('Signed copy failed:', e.message); }
 }
 // the signed copy: the business and its logo, who it's for, a box of the key facts, the line items (a job's show no prices), terms and the signature
@@ -1337,7 +1336,6 @@ function signedPdf(kind, d) {
 app.post('/api/jobs/:id/signature', (req, res) => {
   const j = db.jobs.find((x) => x.id === req.params.id); if (!j) return res.status(404).json({ error: 'Job not found' });
   const u = currentUser(req);
-  if (j.signature && !isAdmin(u) && u.role !== 'manager') return res.status(400).json({ error: 'This job is already signed. Ask a manager to remove the signature first.' });
   const b = req.body || {}; const name = String(b.name || '').trim().slice(0, 100);
   if (!name) return res.status(400).json({ error: 'Enter the name of the person signing' });
   const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(b.dataUrl || '');
@@ -1469,10 +1467,10 @@ app.post('/api/quotes/:id/approve', (req, res) => {
   q.status = req.body.status === 'declined' ? 'declined' : 'approved'; q.respondedAt = iso(new Date()); save(); res.json(q);
 });
 
-// a signature collected on the team member's phone: signing accepts the quote, so a draft or sent one is approved too (the same record as the client's own page)
+// a signature collected on the team member's phone: signing accepts the quote, so a draft or sent one is approved too (the same record as the client's own page).
+// Several people can sign: the newest shows on the quote, and each one's signed copy stays in its own note
 app.post('/api/quotes/:id/signature', (req, res) => {
   const q = db.quotes.find((x) => x.id === req.params.id); if (!q) return res.status(404).json({ error: 'Not found' });
-  if (q.signedAt) return res.status(400).json({ error: 'This quote is already signed' });
   if (!['draft', 'sent', 'approved'].includes(q.status)) return res.status(400).json({ error: 'This quote can’t be signed' });
   const name = String((req.body && req.body.name) || '').trim().slice(0, 100); if (!name) return res.status(400).json({ error: 'Enter the name of the person signing' });
   const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec((req.body && req.body.dataUrl) || '');
