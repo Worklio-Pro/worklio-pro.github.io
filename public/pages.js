@@ -645,7 +645,7 @@ PAGES['/reviews'] = {
 A.revSource = (d) => { revState.source = d.s; PAGES['/reviews'].render($('#main')); };
 const crvRef = (r) => { const what = `${r.kind === 'job' ? 'Job' : 'Invoice'} ${esc(r.refNumber || '')}`; const can = r.kind === 'job' ? canDo('jobs.view') : canDo('invoices'); return (can ? `<a href="/${r.kind === 'job' ? 'jobs/edit' : 'invoices/view'}?id=${r.refId}" data-link>${what}</a>` : what) + (r.title ? ` · ${esc(r.title)}` : ''); };
 const clientReviewCard = (r) => `<article class="card rv crv" data-id="${esc(r.id)}"><header><span class="rv-ini">${esc((r.clientName[0] || '?').toUpperCase())}</span><div><strong>${r.clientId && canDo('clients.view') ? `<a href="/clients/view?id=${r.clientId}" data-link>${esc(r.clientName)}</a>` : esc(r.clientName)}</strong><div>${starRow(r.stars)} <span class="muted">${fmtDate(r.submittedAt.slice(0, 10))}${r.editedAt ? ` · Edited by the client ${fmtDate(r.editedAt.slice(0, 10))}` : ''}</span></div></div></header>
-${(r.answers || []).map((a) => `<div class="rv-ans"><strong>${esc(a.question)}</strong><div>${a.type === 'stars' ? starRow(a.answer) : esc(a.answer)}</div></div>`).join('')}${r.comment ? `<p class="rv-text">${esc(r.comment)}</p>` : (r.answers || []).length ? '' : '<p class="muted rv-text">A rating with no comment.</p>'}<p class="muted rv-for">${crvRef(r)}</p>${r.reply ? `<div class="rv-reply"><div class="rv-reply-h"><strong>Your reply</strong><span class="muted">${fmtDate(r.reply.updatedAt.slice(0, 10))}</span></div><p>${esc(r.reply.comment)}</p><div class="rv-acts"><button type="button" class="link-btn" data-act="crvEdit">Edit</button><button type="button" class="link-btn danger" data-act="crvDelete">Delete</button></div></div>` : '<div class="rv-acts"><button type="button" class="btn alt sm" data-act="crvEdit">Reply</button></div>'}</article>`;
+${(r.answers || []).map((a) => `<div class="rv-ans"><strong>${esc(a.question)}</strong><div>${a.type === 'stars' ? starRow(a.answer) : esc(a.answer)}</div></div>`).join('')}${r.comment ? `<p class="rv-text">${esc(r.comment)}</p>` : (r.answers || []).length ? '' : '<p class="muted rv-text">A rating with no comment.</p>'}${(r.media || []).length ? rvMediaHtml(r.media) : ''}<p class="muted rv-for">${crvRef(r)}</p>${r.reply ? `<div class="rv-reply"><div class="rv-reply-h"><strong>Your reply</strong><span class="muted">${fmtDate(r.reply.updatedAt.slice(0, 10))}</span></div><p>${esc(r.reply.comment)}</p><div class="rv-acts"><button type="button" class="link-btn" data-act="crvEdit">Edit</button><button type="button" class="link-btn danger" data-act="crvDelete">Delete</button></div></div>` : '<div class="rv-acts"><button type="button" class="btn alt sm" data-act="crvEdit">Reply</button></div>'}</article>`;
 const crvOf = (el) => { const card = el.closest('.crv'); return { card, r: revState.clients.find((x) => x.id === card.dataset.id) }; };
 const crvRedraw = (card, r) => { card.outerHTML = clientReviewCard(r); };
 A.crvEdit = (d, el) => {
@@ -897,12 +897,14 @@ const CP_ICON = {
   refer: '<path d="M7 11v9H4v-9zM7 11l4-7c1.4 0 2.3 1 2 2.4L12.5 10H18a2 2 0 0 1 2 2.3l-1.1 6A2 2 0 0 1 17 20H7"/>',
   reviews: '<path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  camera: '<path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/>',
 };
 const cpIcon = (k, size = 22) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${CP_ICON[k]}</svg>`;
 const CP_NAV = [[['requests', 'Requests'], ['estimates', 'Estimates'], ['appointments', 'Appointments'], ['invoices', 'Invoices'], ['reviews', 'Reviews']], [['wallet', 'Wallet']], [['contact', 'Contact Us']]];
 const CP_STATUS = { new: 'Received', sent: 'Awaiting your approval', approved: 'Approved', declined: 'Declined', converted: 'Approved', scheduled: 'Scheduled', completed: 'Completed', cancelled: 'Cancelled', paid: 'Paid', overdue: 'Overdue', unpaid: 'Due', partial: 'Partly paid' };
 const cpBadge = (s) => `<span class="cp-badge cp-${esc(s)}">${esc(CP_STATUS[s] || s)}</span>`;
 const cpEmpty = (icon, title, text, action = '') => `<div class="cp-empty"><div class="cp-empty-ic">${cpIcon(icon, 24)}</div><h2>${title}</h2><p>${text}</p>${action}</div>`;
+const rvMediaHtml = (media) => `<div class="rv-media">${media.map((m) => (m.type === 'video' ? `<video src="${esc(m.url)}" controls preload="metadata" playsinline></video>` : `<a href="${esc(m.url)}" target="_blank" rel="noopener"><img src="${esc(m.url)}" alt="Photo from the review"></a>`)).join('')}</div>`;
 const TIME_LABEL = { any: 'Any time', morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening' };
 function renderPortal(main, tok, p) {
   const today = ymd(new Date());
@@ -923,6 +925,42 @@ function renderPortal(main, tok, p) {
   const rvField = (q) => { const name = 'q_' + q.id; const need = q.required ? 'required' : ''; const val = rvVal(q);
     return `<div class="cp-rv-q"><div class="cp-rv-l">${esc(q.text)}${q.required ? '' : ' <span class="cp-num">(optional)</span>'}</div>${q.type === 'stars' ? rvStars(name, q.text, q.required, val)
       : q.type === 'yesno' ? ['Yes', 'No'].map((v) => `<label class="cp-rv-yn"><input type="radio" name="${name}" value="${v}" ${need} ${val === v ? 'checked' : ''}> ${v}</label>`).join('') : `<textarea name="${name}" rows="3" maxlength="1000" ${need}>${esc(val ?? '')}</textarea>`}</div>`; };
+  const RV_ACCEPT = 'image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/webm';
+  // the review popup, like writing one on Google: stars, the business's questions, the review and its photos and videos
+  const openReview = (item) => {
+    reviewing = item; const edit = item.edit; let have = edit ? [...(edit.media || [])] : []; const gone = []; let added = [];
+    closeModal();
+    const ov = document.createElement('div'); ov.className = 'overlay'; ov.id = 'overlay';
+    ov.innerHTML = `<form class="modal cp-rv-modal" role="dialog" aria-modal="true" aria-label="${edit ? 'Edit your review' : 'Write a review'}"><h2>${esc(co.name)}</h2>
+<p class="cp-sub">${esc(item.title || (item.kind === 'job' ? 'Your job' : 'Your invoice'))}${item.number ? ` (#${esc(item.number)})` : ''}. Your review goes to the business and isn’t posted publicly.</p>
+<div class="cp-rv-top">${rvStars('stars', 'Your overall rating', true, edit && edit.stars)}</div>${(p.reviewQuestions[item.kind] || []).map(rvField).join('')}
+<textarea name="comment" rows="4" maxlength="2000" aria-label="Your review" placeholder="Share details of your own experience with ${esc(co.name)}">${esc((edit && edit.comment) || '')}</textarea>
+<div class="cp-rv-tiles"></div><label class="cp-rv-add">${cpIcon('camera', 18)} Add photos &amp; videos<input type="file" multiple accept="${RV_ACCEPT}" hidden></label>
+<div class="cp-actions"><button type="button" class="cp-btn ghost" data-rv-cancel>Cancel</button><button class="cp-btn primary">${edit ? 'Save changes' : 'Send review'}</button></div></form>`;
+    $('.cp', main).append(ov); const f = $('form', ov); const tiles = $('.cp-rv-tiles', f); const pick = $('input[type=file]', f);
+    const tile = (src, video, rm) => { const d = document.createElement('div'); d.className = 'cp-rv-tile'; d.innerHTML = (video ? '<span>Video</span>' : `<img src="${esc(src)}" alt="">`) + '<button type="button" aria-label="Remove">×</button>'; $('button', d).onclick = rm; tiles.append(d); };
+    const draw = () => { tiles.textContent = '';
+      have.forEach((m) => tile(m.url, m.type === 'video', () => { gone.push(m.id); have = have.filter((x) => x !== m); draw(); }));
+      added.forEach((x) => { const v = x.type.startsWith('video'); tile(v ? '' : URL.createObjectURL(x), v, () => { added = added.filter((y) => y !== x); draw(); }); }); };
+    draw();
+    pick.onchange = () => { for (const x of pick.files) { const v = x.type.startsWith('video'); if (have.length + added.length >= 10) { toast('Up to 10 photos and videos on a review', true); break; } if (x.size > (v ? 100e6 : 15e6)) { toast(`${x.name} is too large. Photos can be up to 15 MB and videos up to 100 MB.`, true); continue; } added.push(x); } pick.value = ''; draw(); };
+    $('[data-rv-cancel]', f).onclick = closeModal;
+    f.onsubmit = async (e) => {
+      e.preventDefault(); const btn = $('.primary', f); const label = btn.textContent; btn.disabled = true; btn.textContent = 'Sending…';
+      const fields = Object.fromEntries(new FormData(f)); const base = `/api/portal/${encodeURIComponent(tok)}/reviews`;
+      let r;
+      try { r = edit ? await api('PUT', `${base}/${encodeURIComponent(edit.id)}`, fields) : await api('POST', base, { ...fields, kind: item.kind, id: item.id }); }
+      catch (err) { toast(err.message, true); btn.disabled = false; btn.textContent = label; return; }
+      if (edit) p.reviews[p.reviews.indexOf(edit)] = r; else { p.reviews.unshift(r); p.reviewable = p.reviewable.filter((x) => x !== item); }
+      const mediaUrl = `${base}/${encodeURIComponent(r.id)}/media`; let bad = 0; const keep = (x) => { p.reviews[p.reviews.findIndex((y) => y.id === x.id)] = x; };
+      for (const id of gone) { try { keep(await api('DELETE', `${mediaUrl}/${encodeURIComponent(id)}`)); } catch (err) { bad++; } }
+      for (let n = 0; n < added.length; n++) { btn.textContent = `Uploading ${n + 1} of ${added.length}…`;
+        try { const u = await fetch(mediaUrl, { method: 'POST', headers: { 'Content-Type': added[n].type || 'application/octet-stream' }, body: added[n] }); const j = await u.json().catch(() => ({})); if (u.ok) keep(j); else { bad++; toast(j.error || 'A file didn’t upload', true); } } catch (err) { bad++; } }
+      reviewing = null; closeModal(); toast(bad ? `Your review was saved, but ${bad} file${bad === 1 ? '' : 's'} didn’t upload. Choose Edit to try again.` : edit ? 'Your review was updated.' : 'Thank you! Your review was sent.', !!bad); show('reviews');
+    };
+    $('[name=stars]:checked', f) ? $('textarea[name=comment]', f).focus() : $('.cp-rv-top input:last-of-type', f).focus();
+  };
+  const rvMedia = (r) => ((r.media || []).length ? rvMediaHtml(r.media) : '');
   const views = {
     requests: () => (p.requests.length ? head('Requests', newReqBtn) + `<div class="cp-list">${p.requests.map((r) => row(esc(r.title), [`Sent ${fmtDate(r.createdAt.slice(0, 10))}`, r.preferredDate || r.preferredTime !== 'any' ? `Preferred: ${r.preferredDate ? fmtDate(r.preferredDate) : 'any day'}, ${TIME_LABEL[r.preferredTime].toLowerCase()}` : '', r.details ? esc(r.details) : ''], cpBadge(r.status))).join('')}</div>`
       : cpEmpty('requests', 'Get work done', 'Send us a request to fill us in on the details', newReqBtn)),
@@ -945,12 +983,8 @@ ${p.client.smsConsent ? `<p class="cp-sub" style="margin:4px 0 12px">You get tex
       + `<div class="cp-list">${[...openInv, ...invoices.filter((i) => i.displayStatus === 'paid')].map((i) => row(`${esc(i.subject || 'Invoice')} <span class="cp-num">#${esc(i.number)}</span>`, [i.displayStatus === 'paid' ? `Paid ${fmtDate((i.paidAt || i.issueDate).slice(0, 10))}` : `Due ${fmtDate(i.dueDate)}`, i.displayStatus === 'paid' ? money(i.total) : `${money(i.balanceDue ?? i.total)}${i.depositApplied > 0 ? ` after ${money(i.depositApplied)} deposit` : ''}`], `${cpBadge(i.displayStatus)}<a class="cp-btn ${i.displayStatus === 'paid' ? '' : 'primary'}" href="${esc(i.link)}">${i.displayStatus === 'paid' ? 'Receipt' : 'Pay now'}</a>${i.displayStatus === 'paid' ? rvBtn(i.id) : ''}`)).join('')}</div>`
       : cpEmpty('invoices', 'No invoices', 'Invoices we send you will show up here, ready to pay online.')),
     reviews: () => (p.reviews.length || p.reviewable.length ? head('Reviews') + (p.reviewable.length ? `<h3 class="cp-sec">Waiting for your review</h3><div class="cp-list">${p.reviewable.map((x, i) => row(`${esc(x.title || (x.kind === 'job' ? 'Job' : 'Invoice'))}${x.number ? ` <span class="cp-num">#${esc(x.number)}</span>` : ''}`, [x.kind === 'job' ? `Completed ${fmtDate(x.date)}` : `Paid ${fmtDate(x.date)}`], p.reviewsViewOnly ? '' : `<button type="button" class="cp-btn primary" data-cp="write-review" data-rv="${i}">Write a review</button>`)).join('')}</div>` : '')
-      + (p.reviews.length ? `<h3 class="cp-sec">Your reviews</h3><div class="cp-list">${p.reviews.map((r, i) => row(`${esc(r.title || (r.kind === 'job' ? 'Job' : 'Invoice'))}${r.refNumber ? ` <span class="cp-num">#${esc(r.refNumber)}</span>` : ''}`, [`Sent ${fmtDate(r.submittedAt.slice(0, 10))}${r.editedAt ? ` · Edited ${fmtDate(r.editedAt.slice(0, 10))}` : ''}`, ...r.answers.map((a) => `${esc(a.question)} ${a.type === 'stars' ? starRow(a.answer, 14) : esc(a.answer)}`), r.comment ? esc(r.comment) : '', r.reply ? `<b>Reply from ${esc(co.name)}:</b> ${esc(r.reply.comment)}` : ''], `${starRow(r.stars)}${p.reviewsViewOnly ? '' : `<button type="button" class="cp-btn" data-cp="write-review" data-rve="${i}">Edit</button>`}`)).join('')}</div>` : '')
+      + (p.reviews.length ? `<h3 class="cp-sec">Your reviews</h3><div class="cp-list">${p.reviews.map((r, i) => row(`${esc(r.title || (r.kind === 'job' ? 'Job' : 'Invoice'))}${r.refNumber ? ` <span class="cp-num">#${esc(r.refNumber)}</span>` : ''}`, [`Sent ${fmtDate(r.submittedAt.slice(0, 10))}${r.editedAt ? ` · Edited ${fmtDate(r.editedAt.slice(0, 10))}` : ''}`, ...r.answers.map((a) => `${esc(a.question)} ${a.type === 'stars' ? starRow(a.answer, 14) : esc(a.answer)}`), r.comment ? esc(r.comment) : '', rvMedia(r), r.reply ? `<b>Reply from ${esc(co.name)}:</b> ${esc(r.reply.comment)}` : ''], `${starRow(r.stars)}${p.reviewsViewOnly ? '' : `<button type="button" class="cp-btn" data-cp="write-review" data-rve="${i}">Edit</button>`}`)).join('')}</div>` : '')
       : cpEmpty('reviews', 'No reviews yet', `When a job is completed or an invoice is paid, you can review it here.`)),
-    'write-review': () => `${head(reviewing.edit ? 'Edit your review' : 'Write a review')}<form class="cp-form" id="cpRev"><p class="cp-sub" style="margin:0 0 14px">Tell ${esc(co.name)} about ${esc(reviewing.title || (reviewing.kind === 'job' ? 'this job' : 'this invoice'))}${reviewing.number ? ` (#${esc(reviewing.number)})` : ''}. Your review goes to the business and isn’t posted publicly.</p>
-<div class="cp-rv-q"><div class="cp-rv-l">Your overall rating</div>${rvStars('stars', 'Your overall rating', true, reviewing.edit && reviewing.edit.stars)}</div>${(p.reviewQuestions[reviewing.kind] || []).map(rvField).join('')}
-<div class="cp-rv-q"><div class="cp-rv-l">Anything you’d like to add? <span class="cp-num">(optional)</span></div><textarea name="comment" rows="5" maxlength="2000">${esc((reviewing.edit && reviewing.edit.comment) || '')}</textarea></div>
-<div class="cp-actions"><button type="button" class="cp-btn ghost" data-cp="reviews">Cancel</button><button class="cp-btn primary">${reviewing.edit ? 'Save changes' : 'Send review'}</button></div></form>`,
     wallet: () => cpEmpty('wallet', 'No saved payment methods', 'Pay any invoice by card or Zelle when you open it. Card details are handled securely by Stripe and are never stored by us.'),
     contact: () => `${head('Contact us')}<div class="cp-card">${co.logo ? `<img src="${esc(co.logo)}" alt="" class="cp-card-logo">` : ''}<h2>${esc(co.name)}</h2>
 ${co.phone ? `<a class="cp-contact" href="tel:${esc(co.phone)}">${cpIcon('contact', 18)} ${esc(co.phone)}</a>` : ''}${co.email ? `<a class="cp-contact" href="mailto:${esc(co.email)}">✉ ${esc(co.email)}</a>` : ''}
@@ -965,11 +999,10 @@ ${co.hours ? `<h3 class="cp-sec">Business hours</h3><table class="cp-hours">${WE
 <a class="cp-out wide" href="https://outlook.live.com/mail/0/deeplink/compose?${q({ subject, body })}" target="_blank" rel="noopener">Outlook</a>
 <a class="cp-out wide" href="https://mail.google.com/mail/?${q({ view: 'cm', fs: '1', su: subject, body })}" target="_blank" rel="noopener">Gmail</a></div>`; },
   };
-  const nav = (cur) => CP_NAV.map((grp) => grp.filter(([k]) => k !== 'reviews' || p.reviews).map(([k, l]) => `<button type="button" class="cp-nav ${cur === k || (cur === 'new-request' && k === 'requests') || (cur === 'write-review' && k === 'reviews') ? 'on' : ''}" data-cp="${k}">${cpIcon(k)}<span>${l}</span></button>`).join('')).join('<hr>')
+  const nav = (cur) => CP_NAV.map((grp) => grp.filter(([k]) => k !== 'reviews' || p.reviews).map(([k, l]) => `<button type="button" class="cp-nav ${cur === k || (cur === 'new-request' && k === 'requests') ? 'on' : ''}" data-cp="${k}">${cpIcon(k)}<span>${l}</span></button>`).join('')).join('<hr>')
     + (p.referralLink ? `<hr><button type="button" class="cp-nav cp-refer ${cur === 'refer' ? 'on' : ''}" data-cp="refer">${cpIcon('refer')}<span>Refer a Friend</span></button>` : '');
   const show = (section) => {
     if (!views[section] || (section === 'refer' && !p.referralLink) || (section === 'reviews' && !p.reviews)) section = 'requests';
-    if (section === 'write-review' && !reviewing) section = 'reviews';
     $('.cp-navs', main).innerHTML = nav(section); $('.cp-main', main).innerHTML = views[section]();
     if (location.hash.slice(1) !== section) history.replaceState({}, '', location.pathname + location.search + '#' + section);
     const f = $('#cpReq', main);
@@ -978,22 +1011,13 @@ ${co.hours ? `<h3 class="cp-sec">Business hours</h3><table class="cp-hours">${WE
       try { const r = await api('POST', `/api/portal/${encodeURIComponent(tok)}/requests`, Object.fromEntries(new FormData(f))); p.requests.unshift(r); p.client.smsConsent = r.smsConsent; p.client.phone = r.phone; toast('Request sent. We’ll be in touch soon.'); show('requests'); }
       catch (err) { toast(err.message, true); btn.disabled = false; btn.textContent = 'Send request'; }
     });
-    const rf = $('#cpRev', main);
-    if (rf) rf.addEventListener('submit', async (e) => {
-      e.preventDefault(); const btn = $('.primary', rf); btn.disabled = true; const label = btn.textContent; btn.textContent = 'Sending…'; const item = reviewing; const fields = Object.fromEntries(new FormData(rf)); const base = `/api/portal/${encodeURIComponent(tok)}/reviews`;
-      try {
-        if (item.edit) { const r = await api('PUT', `${base}/${encodeURIComponent(item.edit.id)}`, fields); p.reviews[p.reviews.indexOf(item.edit)] = r; toast('Your review was updated.'); }
-        else { const r = await api('POST', base, { ...fields, kind: item.kind, id: item.id }); p.reviews.unshift(r); p.reviewable = p.reviewable.filter((x) => x !== item); toast('Thank you! Your review was sent.'); }
-        reviewing = null; show('reviews');
-      } catch (err) { toast(err.message, true); btn.disabled = false; btn.textContent = label; }
-    });
     const on = $('.cp-navs', main); const cur = $('.cp-nav.on', on); if (cur && on.scrollWidth > on.clientWidth) on.scrollLeft = cur.offsetLeft - 12; // phone: keep the selected tab visible
     main.scrollTop = 0; window.scrollTo(0, 0);
   };
   main.innerHTML = `<div class="cp"><aside class="cp-side"><div class="cp-brand">${co.logo ? `<img src="${esc(co.logo)}" alt="${esc(co.name)}">` : `<div class="cp-mono">${esc(initials(co.name || '?'))}</div>`}</div>
 <div class="cp-co">${esc(co.name)}</div><nav class="cp-navs" aria-label="Client hub"></nav></aside><section class="cp-main" aria-live="polite"></section></div>`;
   main.onclick = async (e) => {
-    const b = e.target.closest('[data-cp]'); if (b) { e.preventDefault(); if (b.dataset.rv) reviewing = p.reviewable[Number(b.dataset.rv)]; if (b.dataset.rve) { const r = p.reviews[Number(b.dataset.rve)]; reviewing = { kind: r.kind, title: r.title, number: r.refNumber, edit: r }; } show(b.dataset.cp); return; }
+    const b = e.target.closest('[data-cp]'); if (b) { e.preventDefault(); if (b.dataset.rv) return openReview(p.reviewable[Number(b.dataset.rv)]); if (b.dataset.rve) { const r = p.reviews[Number(b.dataset.rve)]; return openReview({ kind: r.kind, title: r.title, number: r.refNumber, edit: r }); } show(b.dataset.cp); return; }
     const cp = e.target.closest('[data-cp-copy]');
     if (cp) {
       const i = $('#cpRefLink', main); try { await navigator.clipboard.writeText(i.value); } catch (err) { i.select(); document.execCommand('copy'); }

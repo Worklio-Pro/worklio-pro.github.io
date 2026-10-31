@@ -2173,7 +2173,7 @@ function tellBusinessReview(r, edited) {
     db.notifications.unshift({ id: uid(), at: new Date().toISOString(), clientId: r.clientId, clientName: name, channel: 'email', kind: 'review', refId: r.refId, refNumber: r.refNumber, to: db.company.email, subject: sent.subject, body: sent.text, status: sent.status, detail: sent.detail }); save();
   }).catch(() => {});
 }
-const REVIEW_STYLE = '<style>.rv-stars{display:inline-flex;flex-direction:row-reverse;gap:4px;margin:4px 0 14px}.rv-stars input{position:absolute;opacity:0;width:1px;height:1px;margin:0;padding:0}.rv-stars label{font-size:42px;line-height:1;color:#d1d5db;cursor:pointer}.rv-stars input:checked~label,.rv-stars label:hover,.rv-stars label:hover~label{color:#f59e0b}.rv-stars input:focus-visible+label{outline:2px solid #2563eb;border-radius:4px}textarea{padding:10px;border:1px solid #d1d5db;border-radius:8px;width:100%;box-sizing:border-box;margin:4px 0 14px;font:inherit}.rv-shown{color:#f59e0b;font-size:28px;letter-spacing:2px}.rv-shown i{font-style:normal;color:#d1d5db}</style>';
+const REVIEW_STYLE = '<style>.rv-stars{display:inline-flex;flex-direction:row-reverse;gap:4px;margin:4px 0 14px}.rv-stars input{position:absolute;opacity:0;width:1px;height:1px;margin:0;padding:0}.rv-stars label{font-size:42px;line-height:1;color:#d1d5db;cursor:pointer}.rv-stars input:checked~label,.rv-stars label:hover,.rv-stars label:hover~label{color:#f59e0b}.rv-stars input:focus-visible+label{outline:2px solid #2563eb;border-radius:4px}textarea{padding:10px;border:1px solid #d1d5db;border-radius:8px;width:100%;box-sizing:border-box;margin:4px 0 14px;font:inherit}.rv-shown{color:#f59e0b;font-size:28px;letter-spacing:2px}.rv-shown i{font-style:normal;color:#d1d5db}.rv-media{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}.rv-media img,.rv-media video{height:120px;max-width:100%;border-radius:8px;display:block;background:#000}.rv-add{display:block;width:100%;box-sizing:border-box;padding:12px;margin:0 0 14px;border:1px solid #d1d5db;border-radius:99px;background:#f3f4f6;color:#111827;font:inherit;font-weight:600;text-align:center;cursor:pointer}.rv-tiles{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}.rv-tile{position:relative;width:72px;height:72px;border-radius:8px;background:#111827;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;overflow:hidden}.rv-tile img{width:100%;height:100%;object-fit:cover}.rv-tile button{position:absolute;top:2px;right:2px;width:22px;height:22px;border:0;border-radius:50%;background:rgba(0,0,0,.7);color:#fff;cursor:pointer;line-height:1;padding:0}</style>';
 const reviewPage = (inner) => shell('Leave a review', REVIEW_STYLE + inner);
 // the business's own questions (Reviews → Your questions): each is asked on the modules it picks. A review keeps the wording it was answered with, so later edits don't change it.
 const REVIEW_MODULES = ['job', 'invoice']; const REVIEW_Q_TYPES = ['stars', 'yesno', 'text'];
@@ -2195,15 +2195,62 @@ function readReviewAnswers(kind, body) {
   return { answers };
 }
 const answerText = (a) => (a.type === 'stars' ? `${a.answer} out of 5` : a.answer);
+// adds the photo and video picker (without JavaScript the form still sends the review): the review saves first, then each file goes up
+const reviewFormScript = (r) => `<script>(function(){var T=${JSON.stringify(r.token)},have=${JSON.stringify(reviewMediaForClient(r)).replace(/</g, '\\u003c')},gone=[],added=[],f=document.querySelector('form'),box=document.getElementById('rvTiles'),inp=document.getElementById('rvFiles'),btn=f.querySelector('.btn'),base='/p/review/'+T+'/media';document.getElementById('rvAdd').hidden=false;
+function tile(src,video,rm){var d=document.createElement('div');d.className='rv-tile';if(video)d.textContent='Video';else{var i=document.createElement('img');i.src=src;i.alt='';d.appendChild(i)}var b=document.createElement('button');b.type='button';b.textContent='×';b.setAttribute('aria-label','Remove');b.onclick=rm;d.appendChild(b);box.appendChild(d)}
+function draw(){box.textContent='';have.forEach(function(m){tile(m.url,m.type==='video',function(){gone.push(m.id);have=have.filter(function(x){return x!==m});draw()})});added.forEach(function(x){var v=/^video/.test(x.type);tile(v?'':URL.createObjectURL(x),v,function(){added=added.filter(function(y){return y!==x});draw()})})}
+inp.onchange=function(){[].forEach.call(inp.files,function(x){var v=/^video/.test(x.type);if(have.length+added.length>=${REVIEW_MEDIA_COUNT})return alert('Up to ${REVIEW_MEDIA_COUNT} photos and videos on a review');if(x.size>(v?${REVIEW_VIDEO_MAX}:${REVIEW_PHOTO_MAX}))return alert(x.name+' is too large. Photos can be up to 15 MB and videos up to 100 MB.');added.push(x)});inp.value='';draw()};
+f.onsubmit=async function(e){e.preventDefault();btn.disabled=true;btn.textContent='Sending…';try{var r=await fetch(f.action,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(new FormData(f))});if(!r.ok){document.open();document.write(await r.text());document.close();return}var bad=0;for(var i=0;i<gone.length;i++)await fetch(base+'/'+gone[i],{method:'DELETE'});for(var n=0;n<added.length;n++){btn.textContent='Uploading '+(n+1)+' of '+added.length+'…';try{var u=await fetch(base,{method:'POST',headers:{'Content-Type':added[n].type||'application/octet-stream'},body:added[n]});if(!u.ok)bad++}catch(x){bad++}}if(bad)alert('Your review was saved, but '+bad+' file'+(bad===1?'':'s')+' didn’t upload. Choose Edit your review to try again.');location.href='/p/review/'+T}catch(x){btn.disabled=false;btn.textContent='Try again';alert('That didn’t send. Please check your connection and try again.')}};draw()})();</script>`;
 function reviewForm(r, error) {
   const c = findClient(r.clientId);
   const answerOf = (q) => ((r.answers || []).find((a) => a.questionId === q.id) || {}).answer;
   return reviewPage(`<h1>${r.submittedAt ? 'Edit your review' : 'How did we do?'}</h1><p class="muted">${c ? `${esc(c.name)}, tell` : 'Tell'} ${esc(db.company.name)} about ${esc(r.title || 'your recent work')}. Your review goes to the business and isn’t posted publicly.</p>
 ${error ? `<p style="color:#b91c1c">${esc(error)}</p>` : ''}<form method="post" action="/p/review/${esc(r.token)}"><div style="font-weight:600;margin-bottom:4px">Your overall rating</div><div class="rv-stars" role="radiogroup" aria-label="Your rating">${[5, 4, 3, 2, 1].map((n) => `<input type="radio" id="st${n}" name="stars" value="${n}" required${r.stars === n ? ' checked' : ''}><label for="st${n}" title="${n} out of 5" aria-label="${n} out of 5 stars">★</label>`).join('')}</div>
-${reviewQuestionsFor(r.kind).map((q) => reviewQuestionField(q, answerOf(q))).join('')}<label class="muted" for="comment" style="display:block">Anything you’d like to add? (optional)</label><textarea id="comment" name="comment" rows="5" maxlength="2000">${esc(r.comment)}</textarea><button class="btn">${r.submittedAt ? 'Save changes' : 'Send review'}</button></form>`);
+${reviewQuestionsFor(r.kind).map((q) => reviewQuestionField(q, answerOf(q))).join('')}<textarea id="comment" name="comment" rows="5" maxlength="2000" aria-label="Your review" placeholder="Share details of your own experience with ${esc(db.company.name)}">${esc(r.comment)}</textarea><div class="rv-tiles" id="rvTiles"></div><label class="rv-add" id="rvAdd" hidden>Add photos &amp; videos<input type="file" id="rvFiles" multiple accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/webm" style="display:none"></label><button class="btn">${r.submittedAt ? 'Save changes' : 'Send review'}</button></form>${reviewFormScript(r)}`);
 }
 // a review is the client's: only they can write or change it, from the emailed link or the client portal. Someone logged in to the business (including "Log in as Client") can only look
 const REVIEW_STAFF_ONLY_VIEW = 'You’re logged in to the business account, so you can view reviews but not write or change them.';
+// photos and videos on a review: sent one at a time after the review is saved, as the file itself rather than JSON because videos are large.
+// The kind of file is read from its first bytes, never from what the browser says, and only these are kept, so an upload can't be a web page.
+const REVIEW_MEDIA_COUNT = 10; const REVIEW_PHOTO_MAX = 15e6; const REVIEW_VIDEO_MAX = 100e6; const REVIEW_MEDIA_GRACE = 15 * 60e3;
+function sniffReviewMedia(b) {
+  const at = (i, s) => b.toString('latin1', i, i + s.length) === s;
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return { ext: 'jpg', type: 'photo' };
+  if (at(0, '\x89PNG')) return { ext: 'png', type: 'photo' };
+  if (at(0, 'GIF8')) return { ext: 'gif', type: 'photo' };
+  if (at(0, 'RIFF') && at(8, 'WEBP')) return { ext: 'webp', type: 'photo' };
+  if (at(0, '\x1a\x45\xdf\xa3')) return { ext: 'webm', type: 'video' };
+  if (at(4, 'ftypqt')) return { ext: 'mov', type: 'video' };
+  if (at(4, 'ftyp') && !/^(heic|heix|hevc|mif1|msf1|avif)/.test(b.toString('latin1', 8, 12))) return { ext: 'mp4', type: 'video' };
+  return null;
+}
+const reviewMediaForClient = (r) => (r.media || []).map(({ id, url, type }) => ({ id, url, type }));
+// a photo added just after sending is part of the review; later it counts as an edit
+const reviewMediaChanged = (r) => { if (Date.now() - Date.parse(r.submittedAt) > REVIEW_MEDIA_GRACE) r.editedAt = new Date().toISOString(); };
+async function addReviewMedia(r, req, res) {
+  const fail = (status, error) => { res.setHeader('Connection', 'close'); return res.status(status).json({ error }); };
+  if (!r.submittedAt) return fail(400, 'Send the review first');
+  if ((r.media || []).length >= REVIEW_MEDIA_COUNT) return fail(400, `Up to ${REVIEW_MEDIA_COUNT} photos and videos on a review`);
+  if (/json|urlencoded/i.test(req.headers['content-type'] || '')) return fail(400, 'Choose a photo or video');
+  if (Number(req.headers['content-length']) > REVIEW_VIDEO_MAX) return fail(413, 'Videos can be up to 100 MB');
+  const dir = uploadDir(); fs.mkdirSync(dir, { recursive: true }); const tmp = path.join(dir, `tmp-${token()}.part`); let size = 0; let head = Buffer.alloc(0);
+  try {
+    await require('stream/promises').pipeline(req, async function* (src) {
+      for await (const chunk of src) { size += chunk.length; if (size > REVIEW_VIDEO_MAX) throw Object.assign(new Error('Videos can be up to 100 MB'), { status: 413 }); if (head.length < 16) head = Buffer.concat([head, chunk]).subarray(0, 16); yield chunk; }
+    }, fs.createWriteStream(tmp));
+    const kind = sniffReviewMedia(head); if (!kind) throw Object.assign(new Error('Choose a JPEG, PNG, GIF or WebP photo, or an MP4, MOV or WebM video'), { status: 400 });
+    if (kind.type === 'photo' && size > REVIEW_PHOTO_MAX) throw Object.assign(new Error('Photos can be up to 15 MB'), { status: 413 });
+    if ((r.media || []).length >= REVIEW_MEDIA_COUNT) throw Object.assign(new Error(`Up to ${REVIEW_MEDIA_COUNT} photos and videos on a review`), { status: 400 });
+    const file = `review-${token()}.${kind.ext}`; fs.renameSync(tmp, path.join(dir, file));
+    r.media = [...(r.media || []), { id: uid(), url: '/uploads/' + file, type: kind.type, size, at: new Date().toISOString() }]; reviewMediaChanged(r); save();
+    res.status(201).json(reviewForClient(r));
+  } catch (e) { fs.rm(tmp, { force: true }, () => {}); if (!res.headersSent) fail(e.status || 400, e.status ? e.message : 'That file didn’t finish uploading. Please try again.'); }
+}
+function removeReviewMedia(r, mid, res) {
+  const m = (r.media || []).find((x) => x.id === mid); if (!m) return res.status(404).json({ error: 'Not found' });
+  r.media = r.media.filter((x) => x !== m); fs.rm(path.join(uploadDir(), path.basename(m.url)), { force: true }, () => {}); reviewMediaChanged(r); save(); res.json(reviewForClient(r));
+}
+const reviewMediaHtml = (r) => (r.media || []).length ? `<div class="rv-media">${r.media.map((m) => (m.type === 'video' ? `<video src="${esc(m.url)}" controls preload="metadata" playsinline></video>` : `<a href="${esc(m.url)}" target="_blank" rel="noopener"><img src="${esc(m.url)}" alt="Photo from the review"></a>`)).join('')}</div>` : '';
 // one review, new or edited: answers an error message, or nothing once it's saved. Answers to questions the business has since removed stay as they were
 function submitReview(r, body) {
   const stars = Number(body.stars); if (![1, 2, 3, 4, 5].includes(stars)) return 'Choose a star rating first.';
@@ -2215,7 +2262,7 @@ function submitReview(r, body) {
   if (r.stars === stars && r.comment === comment && sameAnswers(r.answers || []) === sameAnswers(answers)) return ''; // nothing changed
   Object.assign(r, { stars, answers, comment, editedAt: now }); save(); tellBusinessReview(r, true); return '';
 }
-const reviewForClient = (r) => ({ id: r.id, kind: r.kind, refNumber: r.refNumber, title: r.title, stars: r.stars, comment: r.comment, submittedAt: r.submittedAt, editedAt: r.editedAt || '', reply: r.reply ? { comment: r.reply.comment, updatedAt: r.reply.updatedAt } : null, answers: (r.answers || []).map((a) => ({ questionId: a.questionId, question: a.question, type: a.type, answer: a.answer })) });
+const reviewForClient = (r) => ({ id: r.id, kind: r.kind, refNumber: r.refNumber, title: r.title, stars: r.stars, comment: r.comment, submittedAt: r.submittedAt, editedAt: r.editedAt || '', reply: r.reply ? { comment: r.reply.comment, updatedAt: r.reply.updatedAt } : null, media: reviewMediaForClient(r), answers: (r.answers || []).map((a) => ({ questionId: a.questionId, question: a.question, type: a.type, answer: a.answer })) });
 // the client portal: this client's completed jobs and paid invoices with no review yet. A job and its invoices are one piece of work, listed once, as the job
 function reviewableFor(c) {
   const seen = new Set(); const out = [];
@@ -2246,6 +2293,24 @@ app.put('/api/portal/:token/reviews/:id', (req, res) => {
   const error = submitReview(r, req.body || {}); if (error) return res.status(400).json({ error });
   res.json(reviewForClient(r));
 });
+const portalReview = (req, res) => {
+  const c = db.clients.find((x) => x.portalToken === req.params.token); if (!c) { res.status(404).json({ error: 'Invalid portal link' }); return null; }
+  if (!tenancy.has('reviews')) { res.status(403).json({ error: 'Reviews aren’t available' }); return null; }
+  if (currentUser(req)) { res.status(403).json({ error: REVIEW_STAFF_ONLY_VIEW }); return null; }
+  const r = clientReviews().find((x) => x.id === req.params.id && x.clientId === c.id && x.submittedAt); if (!r) res.status(404).json({ error: 'Review not found' });
+  return r || null;
+};
+app.post('/api/portal/:token/reviews/:id/media', async (req, res) => { const r = portalReview(req, res); if (r) await addReviewMedia(r, req, res); });
+app.delete('/api/portal/:token/reviews/:id/media/:mid', (req, res) => { const r = portalReview(req, res); if (r) removeReviewMedia(r, req.params.mid, res); });
+// the same from the emailed link
+const linkReview = (req, res) => {
+  const r = clientReviews().find((x) => x.token === req.params.token); if (!r) { res.status(404).json({ error: 'Review link not found' }); return null; }
+  if (!tenancy.has('reviews')) { res.status(403).json({ error: 'Reviews aren’t available' }); return null; }
+  if (currentUser(req)) { res.status(403).json({ error: REVIEW_STAFF_ONLY_VIEW }); return null; }
+  return r;
+};
+app.post('/p/review/:token/media', async (req, res) => { const r = linkReview(req, res); if (r) await addReviewMedia(r, req, res); });
+app.delete('/p/review/:token/media/:mid', (req, res) => { const r = linkReview(req, res); if (r) removeReviewMedia(r, req.params.mid, res); });
 app.get('/p/review/:token', (req, res) => {
   res.setHeader('X-Robots-Tag', 'noindex');
   const r = clientReviews().find((x) => x.token === req.params.token);
@@ -2253,7 +2318,7 @@ app.get('/p/review/:token', (req, res) => {
   if (r.submittedAt && req.query.edit && tenancy.has('reviews')) return res.send(reviewForm(r));
   if (!r.submittedAt) return res.send(tenancy.has('reviews') ? reviewForm(r) : shell('Reviews', `<h1>Reviews are closed</h1><p class="muted">${esc(db.company.name)} isn’t taking reviews here right now.</p>`));
   const g = connOf('google'); const google = g && g.reviews !== false && /^https:\/\//.test(g.reviewUrl || '') ? g.reviewUrl : ''; // offered whatever the rating: asking only happy clients is against Google's review rules
-  res.send(reviewPage(`<h1>Thank you!</h1><div class="rv-shown" aria-label="${r.stars} out of 5 stars">${'★'.repeat(r.stars)}<i>${'★'.repeat(5 - r.stars)}</i></div>${(r.answers || []).map((a) => `<p style="margin:8px 0"><strong>${esc(a.question)}</strong><br>${esc(answerText(a))}</p>`).join('')}${r.comment ? `<p style="white-space:pre-wrap">${esc(r.comment)}</p>` : ''}${r.reply ? `<div style="margin:12px 0;padding:12px 14px;border-left:3px solid ${esc(db.company.brandColor)};background:#f9fafb"><strong>Reply from ${esc(db.company.name)}</strong><p style="margin:6px 0 0;white-space:pre-wrap">${esc(r.reply.comment)}</p></div>` : ''}<p class="muted">Your review was sent to ${esc(db.company.name)}.${tenancy.has('reviews') && !currentUser(req) ? ` <a href="/p/review/${esc(r.token)}?edit=1">Edit your review</a>` : ''}</p>${google ? `<p><a class="btn alt" style="display:inline-block;text-decoration:none" href="${esc(google)}" target="_blank" rel="noopener noreferrer">Share it on Google too</a></p>` : ''}`));
+  res.send(reviewPage(`<h1>Thank you!</h1><div class="rv-shown" aria-label="${r.stars} out of 5 stars">${'★'.repeat(r.stars)}<i>${'★'.repeat(5 - r.stars)}</i></div>${(r.answers || []).map((a) => `<p style="margin:8px 0"><strong>${esc(a.question)}</strong><br>${esc(answerText(a))}</p>`).join('')}${r.comment ? `<p style="white-space:pre-wrap">${esc(r.comment)}</p>` : ''}${reviewMediaHtml(r)}${r.reply ? `<div style="margin:12px 0;padding:12px 14px;border-left:3px solid ${esc(db.company.brandColor)};background:#f9fafb"><strong>Reply from ${esc(db.company.name)}</strong><p style="margin:6px 0 0;white-space:pre-wrap">${esc(r.reply.comment)}</p></div>` : ''}<p class="muted">Your review was sent to ${esc(db.company.name)}.${tenancy.has('reviews') && !currentUser(req) ? ` <a href="/p/review/${esc(r.token)}?edit=1">Edit your review</a>` : ''}</p>${google ? `<p><a class="btn alt" style="display:inline-block;text-decoration:none" href="${esc(google)}" target="_blank" rel="noopener noreferrer">Share it on Google too</a></p>` : ''}`));
 });
 app.post('/p/review/:token', (req, res) => {
   const r = clientReviews().find((x) => x.token === req.params.token);
@@ -2267,7 +2332,7 @@ app.post('/p/review/:token', (req, res) => {
 app.get('/api/reviews/client', (req, res) => {
   const done = clientReviews().filter((r) => r.submittedAt).sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));
   res.json({ questions: db.reviewQuestions || [], settings: reviewSettings(), gapDays: REVIEW_ASK_GAP_DAYS, waiting: clientReviews().filter((r) => r.emailedAt && !r.submittedAt).length, total: done.length, average: done.length ? done.reduce((s, r) => s + r.stars, 0) / done.length : 0,
-    reviews: done.map((r) => { const c = findClient(r.clientId); return { id: r.id, clientId: c ? r.clientId : '', clientName: c ? c.name : 'Former client', kind: r.kind, refId: r.refId, refNumber: r.refNumber, title: r.title, stars: r.stars, answers: r.answers || [], comment: r.comment, submittedAt: r.submittedAt, editedAt: r.editedAt || '', reply: r.reply || null }; }) });
+    reviews: done.map((r) => { const c = findClient(r.clientId); return { id: r.id, clientId: c ? r.clientId : '', clientName: c ? c.name : 'Former client', kind: r.kind, refId: r.refId, refNumber: r.refNumber, title: r.title, stars: r.stars, answers: r.answers || [], comment: r.comment, submittedAt: r.submittedAt, editedAt: r.editedAt || '', reply: r.reply || null, media: reviewMediaForClient(r) }; }) });
 });
 // the business's side of a client review: it can't change the review, only reply. The client sees the reply, and is emailed the first time
 const clientReviewById = (id) => clientReviews().find((x) => x.id === id && x.submittedAt);
