@@ -418,6 +418,7 @@ body.row-drag,body.row-drag *{cursor:grabbing!important;user-select:none}
 .cp-nav svg{flex:none}.cp-nav:hover{background:var(--cp-hover)}.cp-nav.on{background:var(--cp-on)}
 .cp-nav:focus-visible,.cp-btn:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
 .cp-refer{color:var(--cp-green)}
+.cp-burger{display:none}
 .cp-main{flex:1;min-width:0;padding:28px 40px 48px}
 .cp-empty{display:flex;flex-direction:column;align-items:center;text-align:center;padding-top:16px}
 .cp-empty-ic{width:80px;height:80px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;margin-bottom:22px}
@@ -452,11 +453,13 @@ body.row-drag,body.row-drag *{cursor:grabbing!important;user-select:none}
 .cp-invalid{max-width:520px;margin:60px auto;background:#fff;border-radius:12px;padding:28px}
 @media (max-width:760px){
  .cp{flex-direction:column}
- .cp-side{width:auto;height:auto;position:static;padding:14px 12px 6px;border-right:0;border-bottom:1px solid var(--cp-line)}
- .cp-brand{justify-content:flex-start;padding:0 4px 8px}.cp-brand img{max-height:48px}.cp-mono{width:44px;height:44px;font-size:18px;border-radius:10px}
- .cp-co{padding:4px 4px 8px}
- .cp-navs{display:flex;gap:4px;overflow-x:auto;padding-bottom:6px}.cp-navs hr{display:none}
- .cp-nav{width:auto;flex:none;gap:8px;padding:8px 12px}
+ .cp-side{width:auto;height:auto;position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:10px;padding:8px 8px 8px 12px;border-right:0;border-bottom:1px solid var(--cp-line);overflow:visible}
+ .cp-brand{flex:none;padding:0}.cp-brand img{max-height:40px;max-width:96px}.cp-mono{width:40px;height:40px;font-size:16px;border-radius:10px}
+ .cp-co{flex:1;min-width:0;padding:0;overflow-wrap:anywhere}
+ .cp-burger{display:flex;flex:none;align-items:center;justify-content:center;width:44px;height:44px;padding:0;border:0;border-radius:8px;background:none;color:var(--cp-ink);cursor:pointer}.cp-burger:hover{background:var(--cp-hover)}.cp-burger:focus-visible{outline:2px solid var(--brand);outline-offset:-2px}
+ .cp-navs{display:none;position:absolute;top:100%;left:0;right:0;max-height:calc(100vh - 57px);overflow-y:auto;padding:6px 8px 10px;background:#fff;border-bottom:1px solid var(--cp-line);box-shadow:0 10px 20px rgba(3,43,58,.12)}
+ .cp-side.open .cp-navs{display:block}
+ .cp-nav{padding:12px 8px}
  .cp-main{padding:20px 16px 40px}
  .cp-item{flex-direction:column;align-items:flex-start}.cp-row{grid-template-columns:1fr}
 }

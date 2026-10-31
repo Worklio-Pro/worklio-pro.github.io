@@ -897,6 +897,8 @@ const CP_ICON = {
   refer: '<path d="M7 11v9H4v-9zM7 11l4-7c1.4 0 2.3 1 2 2.4L12.5 10H18a2 2 0 0 1 2 2.3l-1.1 6A2 2 0 0 1 17 20H7"/>',
   reviews: '<path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+  close: '<path d="M6 6l12 12M18 6 6 18"/>',
   camera: '<path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/>',
 };
 const cpIcon = (k, size = 22) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${CP_ICON[k]}</svg>`;
@@ -1011,12 +1013,20 @@ ${co.hours ? `<h3 class="cp-sec">Business hours</h3><table class="cp-hours">${WE
       try { const r = await api('POST', `/api/portal/${encodeURIComponent(tok)}/requests`, Object.fromEntries(new FormData(f))); p.requests.unshift(r); p.client.smsConsent = r.smsConsent; p.client.phone = r.phone; toast('Request sent. We’ll be in touch soon.'); show('requests'); }
       catch (err) { toast(err.message, true); btn.disabled = false; btn.textContent = 'Send request'; }
     });
-    const on = $('.cp-navs', main); const cur = $('.cp-nav.on', on); if (cur && on.scrollWidth > on.clientWidth) on.scrollLeft = cur.offsetLeft - 12; // phone: keep the selected tab visible
+    setMenu(false);
     main.scrollTop = 0; window.scrollTo(0, 0);
   };
   main.innerHTML = `<div class="cp"><aside class="cp-side"><div class="cp-brand">${co.logo ? `<img src="${esc(co.logo)}" alt="${esc(co.name)}">` : `<div class="cp-mono">${esc(initials(co.name || '?'))}</div>`}</div>
-<div class="cp-co">${esc(co.name)}</div><nav class="cp-navs" aria-label="Client hub"></nav></aside><section class="cp-main" aria-live="polite"></section></div>`;
+<div class="cp-co">${esc(co.name)}</div><button type="button" class="cp-burger" aria-label="Open menu" aria-expanded="false" aria-controls="cpNavs">${cpIcon('menu', 26)}</button><nav class="cp-navs" id="cpNavs" aria-label="Client hub"></nav></aside><section class="cp-main" aria-live="polite"></section></div>`;
+  // phones: the menu folds away behind a hamburger button
+  function setMenu(open) {
+    const side = $('.cp-side', main); const btn = $('.cp-burger', main); if (!side || !btn) return;
+    side.classList.toggle('open', open); btn.setAttribute('aria-expanded', open); btn.setAttribute('aria-label', open ? 'Close menu' : 'Open menu'); btn.innerHTML = cpIcon(open ? 'close' : 'menu', 26);
+  }
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $('.cp-side.open', main)) { setMenu(false); $('.cp-burger', main).focus(); } });
   main.onclick = async (e) => {
+    if (e.target.closest('.cp-burger')) return setMenu(!$('.cp-side.open', main));
+    if ($('.cp-side.open', main) && !e.target.closest('.cp-navs')) setMenu(false);
     const b = e.target.closest('[data-cp]'); if (b) { e.preventDefault(); if (b.dataset.rv) return openReview(p.reviewable[Number(b.dataset.rv)]); if (b.dataset.rve) { const r = p.reviews[Number(b.dataset.rve)]; return openReview({ kind: r.kind, title: r.title, number: r.refNumber, edit: r }); } show(b.dataset.cp); return; }
     const cp = e.target.closest('[data-cp-copy]');
     if (cp) {
