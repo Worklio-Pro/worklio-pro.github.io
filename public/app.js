@@ -417,6 +417,7 @@ document.addEventListener('keydown', (e) => {
 async function render() {
   const path = curPath();
   const mpT = document.getElementById('mpTheme'); if (mpT) mpT.remove();
+  mPagesClose();
   const isPortal = path === '/client-portal' && new URLSearchParams(location.search).get('c');
   if (!isPortal && !me) { try { me = await api('GET', '/api/auth/me'); } catch (e) { /* api() sends you to the login page */ } } // needed before picking the start page
   if (path === '/time-off') { history.replaceState({}, '', '/requests'); return render(); } // the page's old address (links in earlier emails)
@@ -981,6 +982,15 @@ function clientSavedInEditor(saved) {
   if (pick.value === saved.id) { pick._refreshing = true; pick.dispatchEvent(new Event('change', { bubbles: true })); pick._refreshing = false; } // same client, new details: not a change of client
 }
 
+/* ===== phones: a page that slides in from the right, over whatever is open. A second one stacks on top; everything saved closes them all ===== */
+function mPage(title, html, right = '') {
+  const o = document.createElement('div'); o.className = 'mpage'; o.setAttribute('role', 'dialog'); o.setAttribute('aria-modal', 'true'); o.setAttribute('aria-label', title);
+  o.innerHTML = `<div class="ms-head"><button type="button" class="ms-x" data-act="mPageBack" aria-label="Back">${CHEV('M15 18l-6-6 6-6')}</button><h2>${esc(title)}</h2>${right || '<span class="ms-sp"></span>'}</div><div class="mp-page">${html}</div>`;
+  o.addEventListener('click', (e) => { if (e.target.closest('a[data-link]')) mPagesClose(); });
+  document.body.append(o); requestAnimationFrame(() => o.classList.add('on'));
+  return o;
+}
+const mPagesClose = () => $$('.mpage').forEach((o) => o.remove());
 /* ===== a client's profile (/clients/view?id=) ===== */
 // "702 Old Oyster Trail, Sugar Land, TX 77479" → street, city, state and ZIP; anything else stays whole in the street column
 function splitAddr(a) {
@@ -1081,7 +1091,8 @@ function propertyForm(c, p, after) {
   const wasBilling = !isNew && sameAddr(propAddr(p), c.address); const rate = Number(company.taxRate) || 0;
   const mode = p.taxRate == null || p.taxRate === '' ? 'default' : Number(p.taxRate) === 0 ? 'none' : 'custom';
   const countries = ['United States', 'Canada', 'Mexico', 'Other'];
-  const mb = modal(isNew ? 'New property' : 'Edit ' + propAddr(p), `<form class="pf"><label>Property name<input name="name" value="${esc(p.name)}" placeholder="Optional, e.g. Rental home"></label>
+  const open = phoneMq.matches ? mPage : modal; const close = phoneMq.matches ? mPagesClose : closeModal;
+  const mb = open(isNew ? 'New property' : 'Edit property', `<form class="pf"><label>Property name<input name="name" value="${esc(p.name)}" placeholder="Optional, e.g. Rental home"></label>
 <div class="pf-addr"><label class="pf-w">Street 1<input name="street1" required value="${esc(p.street1)}"></label><label class="pf-w">Street 2<input name="street2" value="${esc(p.street2)}"></label>
 <label>City<input name="city" value="${esc(p.city)}"></label><label>State<input name="state" value="${esc(p.state)}"></label><label>ZIP code<input name="zip" value="${esc(p.zip)}"></label>
 <label>Country<select name="country">${countries.map((x) => `<option ${(p.country || 'United States') === x || (x === 'Other' && p.country && !countries.includes(p.country)) ? 'selected' : ''}>${x}</option>`).join('')}</select></label></div>
@@ -1100,8 +1111,8 @@ function propertyForm(c, p, after) {
     await saveProps(c, props, wasBilling || f.billing.checked ? { address: propAddr(np) } : {}); // the billing address follows its property
     return np;
   };
-  f.addEventListener('submit', async (e) => { e.preventDefault(); if (!f.reportValidity()) return; const np = await save(); closeModal(); toast(isNew ? 'Property added' : 'Property saved'); if (after) after(np); else refresh(); });
-  $('[data-pf-contact]', f).addEventListener('click', async () => { if (!f.reportValidity()) return; const np = await save(); refresh(); A.contactAdd({ client: c.id, prop: np.id }); }); // saves the property first
+  f.addEventListener('submit', async (e) => { e.preventDefault(); if (!f.reportValidity()) return; const np = await save(); close(); toast(isNew ? 'Property added' : 'Property saved'); if (after) after(np); else refresh(); });
+  $('[data-pf-contact]', f).addEventListener('click', async () => { if (!f.reportValidity()) return; const np = await save(); mPagesClose(); refresh(); A.contactAdd({ client: c.id, prop: np.id }); }); // saves the property first
 }
 A.propEdit = (d) => { const c = byId(D.clients, d.client); propertyForm(c, d.id ? clientProps(c).find((p) => p.id === d.id) : null); };
 // a request taken down by the business (a call, a text, a visit)
@@ -1138,7 +1149,7 @@ A.propDelete = async (d) => {
   if (props.length < 2) return toast('A client needs at least one property. Edit this one instead.', true);
   if (!confirm(`Delete the property at ${propAddr(p)}? Quotes, jobs and invoices for it keep its address.`)) return;
   const rest = props.filter((x) => x.id !== p.id);
-  await saveProps(c, rest, sameAddr(propAddr(p), c.address) ? { address: propAddr(rest[0]) } : {}); closeModal(); toast('Property deleted'); navigate('/clients/view?id=' + c.id);
+  await saveProps(c, rest, sameAddr(propAddr(p), c.address) ? { address: propAddr(rest[0]) } : {}); closeModal(); mPagesClose(); toast('Property deleted'); navigate('/clients/view?id=' + c.id);
 };
 // a property's page (/clients/property?client=&id=): its client, tax rate, work, schedule and contacts
 let ppState = { key: '', types: [], status: 'all' };
@@ -1233,6 +1244,7 @@ PAGES['/clients/view'] = {
     const sched = clientSched(c).filter((s) => (v.sType === 'all' || s.kind === v.sType) && (v.sStatus === 'all' || (v.sStatus === 'done' ? s.done : !s.done && !s.off)));
     const contacts = c.contacts || []; const tags = clientTags(c); const last = msgs && msgs[0];
     const portal = c.portalToken && planHas('clientPortal') ? location.origin + '/client-portal?c=' + c.portalToken : '';
+    if (phoneMq.matches && qp('full') !== '1') { main.innerHTML = mobileClientPage(c, { reqs, msgs, balance, portal, edit, props }); return; } // phones: Client, Work and Notes tabs (⋯ → Full profile for everything else)
     const sel = (k, opts) => `<select data-cvf="${k}" aria-label="${k}">${opts.map(([val, l]) => `<option value="${val}" ${v[k] === val ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
     const field = (l, val) => `<div class="cv-f"><span>${l}</span><div>${val || '<span class="muted">—</span>'}</div></div>`;
     const card = (title, body, act = '', cls = '') => `<section class="cv-card ${cls}"><div class="cv-ch"><h2>${title}</h2>${act}</div>${body}</section>`;
@@ -1284,6 +1296,55 @@ ${card('Notes', v.edit === 'notes' ? `<form class="cv-notef"><textarea name="not
 };
 // redraw the profile with its current filters and tab (the data is already loaded)
 const cvDraw = () => PAGES['/clients/view'].render($('#main'));
+/* ===== phones: a client's profile: name, balance and Create, then the Client, Work and Notes tabs ===== */
+const mcvRate = (p) => (p.taxRate == null || p.taxRate === '' ? Number(company.taxRate) || 0 : Number(p.taxRate));
+const mcvProp = (c, p) => `<a class="mcv-prop" href="/clients/property?client=${c.id}&id=${encodeURIComponent(p.id)}" data-link><span class="mcv-pt"><span>${p.name ? `<strong>${esc(p.name)}</strong>` : ''}${esc(propAddr(p))}</span>${ARROW}</span><small>Tax rate</small>${mcvRate(p)}%</a>`;
+function mobileClientPage(c, { reqs, msgs, balance, edit, props }) {
+  const v = cvState; const tab = v.m || 'client'; const type = v.mType || '';
+  const head = (title, right) => `<div class="mcv-sh"><h2>${title}</h2>${right || ''}</div>`;
+  const toEdit = edit ? `<a href="/clients/edit?id=${c.id}" data-link aria-label="Edit client">${ARROW}</a>` : '';
+  const kv = (l, val) => `<div class="mcv-kv"><small>${l}</small><div>${val || '—'}</div></div>`;
+  const billingFirst = [...props].sort((a, b) => sameAddr(propAddr(b), c.address) - sameAddr(propAddr(a), c.address));
+  const phones = (c.phones && c.phones.length ? c.phones : [{ number: c.phone, type: 'Phone' }]).filter((p) => p.number);
+  const mails = (c.emails && c.emails.length ? c.emails : [{ address: c.email, type: 'Email' }]).filter((m) => m.address);
+  const STAR = '<svg class="mcv-star" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" role="img" aria-label="Primary email"><path d="M12 2l3 6.6 7 .8-5.200 4.800 1.400 7.100L12 17.700 5.800 21.300l1.400-7.100L2 9.400l7-.8z"/></svg>';
+  const client = `<section class="mcv-sec">${head(esc(c.name), toEdit)}${c.company && c.company !== c.name ? kv('Company', esc(c.company)) : ''}${c.role ? kv('Role', esc(c.role)) : ''}${kv('Lead source', esc(c.leadSource || ((c.tags || []).includes('Online booking') ? 'Online booking' : '')))}${kv('Payment terms', esc((TERMS.find(([k]) => k === c.paymentTerms) || [, 'Company default (Due upon receipt)'])[1]))}</section>
+<section class="mcv-sec">${head('Properties', edit ? `<button type="button" class="mcv-add" data-act="propEdit" data-client="${c.id}" aria-label="New property">${CHEV('M12 5v14M5 12h14')}</button>` : '')}${billingFirst[0] ? mcvProp(c, billingFirst[0]) : '<p class="muted mcv-none">No properties yet</p>'}${props.length > 1 ? `<button type="button" class="mcv-all" data-act="cvPropsAll" data-id="${c.id}">View All</button>` : ''}</section>
+<section class="mcv-sec">${head('Billing address', toEdit)}<div>${c.address ? esc(c.address) : '<span class="muted">No billing address</span>'}</div></section>
+<section class="mcv-sec">${head('Contact details', toEdit)}${phones.map((p) => kv(esc(p.type || 'Phone'), `<a href="tel:${esc(p.number)}">${esc(p.number)}</a>`)).join('')}${mails.map((m) => kv(esc(m.type || 'Email'), `<a href="mailto:${esc(m.address)}">${esc(m.address)}</a>${mails.length > 1 && m.primary ? STAR : ''}`)).join('')}${(c.contacts || []).map((x) => kv(esc(x.role || 'Contact'), [esc(x.name), x.phone ? `<a href="tel:${esc(x.phone)}">${esc(x.phone)}</a>` : '', x.email ? `<a href="mailto:${esc(x.email)}">${esc(x.email)}</a>` : ''].filter(Boolean).join('<br>'))).join('')}${!phones.length && !mails.length && !(c.contacts || []).length ? '<p class="muted mcv-none">No contact details yet</p>' : ''}</section>
+${msgs ? `<section class="mcv-sec">${head('Communication')}${msgs.slice(0, 10).map((n) => `<button type="button" class="mcv-msg" data-act="viewNotif" data-id="${n.id}"><span class="mcv-mt"><strong>${esc(n.to || c.name)}</strong><span>${esc(fmtDate(String(n.at).slice(0, 10)))}</span></span><span class="muted">${esc(n.subject || n.kind)}</span></button>`).join('') || '<p class="muted mcv-none">No emails or texts yet</p>'}</section>` : ''}`;
+  const WORK = [['requests', 'Requests', '', PI.request], ['quotes', 'Quotes', 'need-quotes', PI.quote], ['jobs', 'Jobs', '', PI.job], ['invoices', 'Invoices', 'need-invoices', QM.invoice]];
+  const icon = Object.fromEntries(WORK.map(([k, , , ic]) => [k, ic]));
+  const rows = clientWork(c, reqs).filter((w) => !type || w.type === type).map((w) => { const body = `<span class="ml-ic">${icon[w.type]}</span><span class="ml-main"><strong>${esc(w.title || w.item)}</strong><span class="ml-meta">${[mDay(w.date), w.amount == null ? '' : mAmt(w.amount), w.addr ? esc(splitAddr(w.addr).street) : ''].filter(Boolean).join('<i>|</i>')}</span></span><span class="ml-st"><span>${esc(w.label)}</span><i class="cstatus ${w.cls}"></i></span>`;
+    return w.href ? `<button type="button" class="ml-row" data-act="mlOpen" data-href="${esc(w.href)}">${body}</button>` : `<div class="ml-row">${body}</div>`; }).join('');
+  const work = `<div class="ml-chips"><button type="button" class="ml-chip${type ? '' : ' on mcv-allchip'}" data-act="cvmType" data-k="" aria-pressed="${!type}">All</button>${WORK.map(([k, l, cls, ic]) => `<button type="button" class="ml-chip mcv-chip ${cls}${type === k ? ' on mcv-allchip' : ''}" data-act="cvmType" data-k="${k}" aria-pressed="${type === k}">${ic}${l}</button>`).join('')}</div>
+<h2 class="ml-sub">Recently active</h2><div class="ml-rows">${rows || `<p class="muted ml-empty">No ${type || 'work'} for this client yet</p>`}</div>`;
+  const notes = `<div class="mcv-notes">${c.notes ? `<div class="cv-note mcv-note">${esc(c.notes)}</div>` : `<p class="muted">${esc(c.name)} has no notes</p>`}${edit ? `<button type="button" class="btn alt mcv-noteb" data-act="cvmNote">${c.notes ? 'Edit Note' : 'Add Note'}</button>` : ''}</div>`;
+  const tabs = [['client', 'Client'], ['work', 'Work'], ['notes', 'Notes']];
+  return `<div class="mdoc mcv"><div class="mcv-top"><a href="/clients" data-link class="md-back" aria-label="Back to clients">${CHEV('M15 18l-6-6 6-6')}</a><span class="mcv-acts">${c.phone ? `<a href="tel:${esc(c.phone)}" aria-label="Call ${esc(c.name)}">${svgIcon(MCV_PHONE, 22)}</a>` : ''}<button type="button" data-act="cvmMore" aria-label="More actions"><span class="more-dots" aria-hidden="true">•••</span></button></span></div>
+<h1 class="mcv-name">${esc(c.name)}${c.archived ? ' <span class="cstatus q-draft">Archived</span>' : ''}</h1>
+<div class="mcv-bal need-invoices"><span>Client balance</span><span>${money(balance)}</span></div>
+<button type="button" class="btn mcv-create" data-act="cvmCreate" data-id="${c.id}">${CHEV('M12 5v14M5 12h14')}Create</button>
+<div class="md-tabs mcv-tabs" role="tablist">${tabs.map(([k, l]) => `<button type="button" role="tab" class="${tab === k ? 'on' : ''}" aria-selected="${tab === k}" data-act="cvmTab" data-k="${k}">${l}</button>`).join('')}</div>
+${tabs.map(([k]) => `<div class="md-pane" data-pane="${k}" ${tab === k ? '' : 'hidden'}>${{ client, work, notes }[k]}</div>`).join('')}</div>`;
+}
+const MCV_PHONE = '<path d="M22 16.900v3a2 2 0 0 1-2.200 2 19.800 19.800 0 0 1-8.600-3.100 19.500 19.500 0 0 1-6-6A19.800 19.800 0 0 1 2.100 4.200 2 2 0 0 1 4.100 2h3a2 2 0 0 1 2 1.700c.1 1 .4 1.900.7 2.800a2 2 0 0 1-.5 2.100L8.100 9.900a16 16 0 0 0 6 6l1.300-1.300a2 2 0 0 1 2.100-.4c.9.300 1.800.6 2.800.7a2 2 0 0 1 1.700 2z"/>';
+A.mPageBack = (d, el) => { const o = el.closest('.mpage'); o.classList.remove('on'); setTimeout(() => o.remove(), 220); };
+A.cvmTab = (d, el) => { cvState.m = d.k; A.mTab(d, el); };
+A.cvmType = (d) => { cvState.mType = d.k; cvDraw(); };
+A.cvPropsAll = (d) => { const c = byId(D.clients, d.id); mPage('Properties', `<div class="mcv-plist">${clientProps(c).map((p) => mcvProp(c, p)).join('')}</div>`, canDo('clients.edit') ? `<button type="button" class="ms-x" data-act="propEdit" data-client="${c.id}" aria-label="New property">${CHEV('M12 5v14M5 12h14')}</button>` : ''); };
+A.cvmCreate = (d) => { const c = byId(D.clients, d.id); const f = mSheet('Create', `<div class="ms-list">${workMenuItems(c)}<button type="button" class="mi need-invoices" data-act="cvNewInvoice" data-id="${c.id}">${QM.invoice}Invoice</button></div>`); f.addEventListener('click', (e) => { if (e.target.closest('a, button[data-act]')) mClose(true); }); };
+A.cvmMore = () => {
+  const c = cvClient(); const portal = c.portalToken && planHas('clientPortal') ? location.origin + '/client-portal?c=' + c.portalToken : '';
+  const f = mSheet('More', `<div class="ms-list">${c.email ? `<a href="mailto:${esc(c.email)}">Email client</a>` : ''}${portal && c.email ? '<button type="button" class="need-clients-edit" data-act="cvLoginEmail">Send login email</button>' : ''}${portal ? `<a href="${esc(portal)}" target="_blank" rel="noopener">Log in as client</a>` : ''}<a href="/clients/view?id=${c.id}&full=1" data-link>Full profile</a>
+<button type="button" class="need-clients-edit" data-act="cvArchive">${c.archived ? 'Unarchive' : 'Archive'}</button><button type="button" class="admin-only" data-act="cvMerge" ${D.clients.length > 1 ? '' : 'disabled'}>Merge client</button><button type="button" class="admin-only danger-text" data-act="delClient" data-id="${c.id}">Delete client</button></div>`);
+  f.addEventListener('click', (e) => { if (e.target.closest('a, button[data-act]')) mClose(true); });
+};
+A.cvmNote = () => {
+  const c = cvClient(); const f = mSheet(c.notes ? 'Edit note' : 'Add note', `${mField('Internal note', `<textarea name="notes" rows="6" placeholder="Leave an internal note for yourself or a team member">${esc(c.notes)}</textarea>`)}${mSaveBtn()}`);
+  f.notes.focus();
+  f.addEventListener('submit', async (e) => { e.preventDefault(); try { await api('PUT', '/api/clients/' + c.id, { notes: f.notes.value }); mClose(); toast('Note saved'); refresh(); } catch (x) { toast(x.message, true); } });
+};
 const cvClient = () => byId(D.clients, cvState.id);
 A.cvTab = (d) => { cvState.tab = d.t; cvDraw(); };
 A.cvEdit = (d) => { cvState.edit = d.k; cvDraw(); };
@@ -2079,7 +2140,7 @@ ${mTextSec(kind, d, 'message', 'Client message', d.notes, 'Add a message for the
 ${mTextSec(kind, d, 'terms', 'Contract / disclaimer', d.disclaimer, 'Add a contract or disclaimer')}</div>
 <div class="md-pane" data-pane="notes" hidden>${mTextSec(kind, d, 'notes', 'Internal notes', d.internalNotes, 'Add a note. Clients never see these.')}</div></div>`;
 }
-phoneMq.addEventListener('change', () => { if (/^\/(quotes|invoices|jobs)(\/|$)/.test(curPath())) refresh(); });
+phoneMq.addEventListener('change', () => { if (/^\/(quotes|invoices|jobs|clients\/view)(\/|$)/.test(curPath())) refresh(); });
 // phones: Add client, a full-screen chooser: search, Create New Client, then clients by most recent activity (person or building
 // icon, last activity and street, Lead marked). Its own layer, so it can open over a phone edit sheet without closing it.
 function clientSheet({ onPick, onNew, current = '' }) {
