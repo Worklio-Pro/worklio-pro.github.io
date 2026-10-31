@@ -274,6 +274,7 @@ details.menu{position:relative}details.menu summary{list-style:none}details.menu
 .merge-pick label{display:flex;gap:10px;align-items:flex-start;margin:0;padding:10px 12px;border:1px solid var(--line);border-radius:8px;color:var(--text);font-size:14px;cursor:pointer}
 .merge-pick input{margin-top:3px}
 @media (max-width:1000px){.cstats{grid-template-columns:1fr 1fr}.csearch{margin-left:0;width:100%}}
+@media (max-width:760px){.cl-stats{display:none}}
 .back{color:var(--muted);text-decoration:none;font-size:13px}
 .deposit{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
 .deposit input{width:120px}.deposit select{width:auto}

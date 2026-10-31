@@ -787,7 +787,7 @@ PAGES['/clients'] = {
     const arrow = (k) => `<span class="sort ${v.sort === k ? 'on' : ''}">${v.sort === k ? (v.dir > 0 ? '▲' : '▼') : '⇅'}</span>`;
     main.innerHTML = `<div class="head"><h1>Clients</h1><div class="actions need-clients-edit"><button class="btn" data-act="newClient">New Client</button>
 <details class="menu"><summary class="btn alt">⋯ More Actions</summary><div class="menu-list">${planHas('clientImport') ? '<a href="/clients/import" data-link class="admin-only">Import clients</a>' : ''}<button data-act="exportClients">Export to CSV</button></div></details></div></div>
-<div class="cstats">
+<div class="cstats cl-stats">
 <button class="cstat" data-act="clientCard" data-k="leads"><div class="cs-h"><strong>New leads</strong><span>↗</span></div><div class="muted">Past 30 days</div><div class="cs-v">${leadsNow} ${change(leadsNow, leadsPrev)}</div></button>
 <button class="cstat" data-act="clientCard" data-k="active"><div class="cs-h"><strong>New clients</strong><span>↗</span></div><div class="muted">Past 30 days</div><div class="cs-v">${actNow} ${change(actNow, actPrev)}</div></button>
 <button class="cstat" data-act="clientCard" data-k="ytd"><div class="cs-h"><strong>Total new clients</strong><span>↗</span></div><div class="muted">Year to date</div><div class="cs-v">${ytd}</div></button>
