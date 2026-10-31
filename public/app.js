@@ -2156,6 +2156,7 @@ A.mMore = (x) => {
   const item = (act, label, extra = '') => `<button type="button" data-act="${act}" data-id="${d.id}" ${extra}>${label}</button>`;
   const f = mSheet('More', `<div class="ms-list">${q ? `<a href="/p/quote/${d.token}" target="_blank">View as client</a>
 ${d.status === 'sent' ? item('approveQuote', 'Mark approved') : ''}
+${!d.signedAt && ['draft', 'sent', 'approved'].includes(d.status) ? item('mSignQuote', 'Collect signature') : ''}
 ${d.status !== 'declined' && d.depositFee > 0 && !d.depositPaidAt ? item('markDepositPaid', `Record deposit payment${d.zelleSentAt ? ' (Zelle sent)' : ''}`) : ''}
 ${canJob ? item('quoteToJob', 'Create job') : ''}${job ? `<a href="/jobs/edit?id=${job.id}" data-link>Go to job ${esc(job.number)}</a>` : ''}`
     : `<a href="/invoices/view?id=${d.id}&preview=1" data-link>${d.status === 'paid' ? 'View receipt' : 'View invoice'}</a>${d.status !== 'paid' ? item('collectPayment', 'Collect payment') : ''}`}
@@ -2753,8 +2754,31 @@ ${s ? `<div class="sig-show"><img class="sig-img" src="${esc(s.file)}" alt="Sign
 <p class="sig-meta">Signed by <strong>${esc(s.name)}</strong> on ${esc(fmtStamp(s.signedAt))}${s.collectedBy ? ` <span class="muted">· collected by ${esc(s.collectedBy)}</span>` : ''}</p>
 ${s.statement ? `<p class="muted sig-stmt">“${esc(s.statement)}”</p>` : ''}<button type="button" class="btn danger sm need-jobs-edit" data-act="rmSignature" data-id="${j.id}">Remove signature</button>`
     : ''}</div>`; };
+// phones: a full-screen pad held sideways: everything reads turned a quarter, and the saved picture is turned back upright with dark ink
+function mSignPad({ icon, label, amount, save }) {
+  const page = mPage('Collect signature', `<div class="sg"><div class="sg-acts"><button type="button" class="sg-skip" data-sg="skip"><span>Skip</span></button><span class="sg-right"><button type="button" class="sg-clear" data-sg="clear"><span>Clear</span></button><button type="button" class="btn sg-ok" data-sg="ok"><span>Confirm</span></button></span></div>
+<div class="sg-pad"><canvas aria-label="Signature pad. Turn the phone sideways and sign with your finger"></canvas><div class="sg-label"><span class="sg-doc">${icon}${esc(label)}</span>${amount ? `<strong>${esc(amount)}</strong>` : ''}</div><span class="sg-hint">Sign here</span></div></div>`, '', true);
+  page.classList.add('sg-page'); const pad = $('.sg-pad', page); const cv = $('canvas', page); const ctx = cv.getContext('2d');
+  const r0 = cv.getBoundingClientRect(); const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1)); cv.width = Math.round(r0.width * dpr); cv.height = Math.round(r0.height * dpr);
+  const ink = getComputedStyle(pad).color; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.lineWidth = 2.6; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = ctx.fillStyle = ink;
+  let inked = false; let last = null;
+  const at = (e) => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  cv.addEventListener('pointerdown', (e) => { e.preventDefault(); cv.setPointerCapture(e.pointerId); last = at(e); ctx.beginPath(); ctx.arc(last.x, last.y, 1.3, 0, Math.PI * 2); ctx.fill(); inked = true; pad.classList.add('inked'); });
+  cv.addEventListener('pointermove', (e) => { if (!last) return; e.preventDefault(); const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : []; for (const ev of (evs.length ? evs : [e])) { const p = at(ev); ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.lineTo(p.x, p.y); ctx.stroke(); last = p; } });
+  const end = () => { last = null; }; cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
+  const upright = () => { const o = document.createElement('canvas'); o.width = cv.height; o.height = cv.width; const x = o.getContext('2d'); x.translate(0, o.height); x.rotate(-Math.PI / 2); x.drawImage(cv, 0, 0); x.setTransform(1, 0, 0, 1, 0, 0); x.globalCompositeOperation = 'source-in'; x.fillStyle = '#111827'; x.fillRect(0, 0, o.width, o.height); return o.toDataURL('image/png'); };
+  page.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-sg]'); if (!b) return;
+    if (b.dataset.sg === 'skip') return A.mPageBack({}, b);
+    if (b.dataset.sg === 'clear') { ctx.clearRect(0, 0, r0.width, r0.height); inked = false; pad.classList.remove('inked'); return; }
+    if (!inked) return toast('Please sign in the box first', true);
+    b.disabled = true; try { await save(upright()); mPagesClose(); toast('Signature saved'); refresh(); } catch (x) { toast(x.message, true); b.disabled = false; }
+  });
+}
+A.mSignQuote = (d) => { const q = byId(D.quotes, d.id); const c = byId(D.clients, q.clientId) || {}; mSignPad({ icon: PI.quote, label: `Quote #${q.number}`, amount: money(q.total || 0), save: (dataUrl) => api('POST', `/api/quotes/${q.id}/signature`, { name: c.name || 'Client', dataUrl }) }); };
 A.collectSignature = (d) => {
   const j = byId(D.jobs, d.id); const c = byId(D.clients, j.clientId) || {};
+  if (phoneMq.matches) return mSignPad({ icon: PI.job, label: `Job #${j.number}`, save: (dataUrl) => api('POST', `/api/jobs/${j.id}/signature`, { name: c.name || 'Client', statement: SIG_STATEMENT, dataUrl }) });
   const mb = modal('Collect signature', `<form class="sig-form" data-sticky><div class="sig-job"><strong>${esc(j.title)}</strong> <span class="muted">#${esc(j.number)}</span><div class="muted">${esc(c.name || '')}${j.date ? ' · ' + fmtDate(j.date) : ''}</div></div>
 <label class="fl"><span>Statement</span><textarea name="statement" rows="2" maxlength="300">${esc(SIG_STATEMENT)}</textarea></label>
 <div class="sig-pad"><canvas aria-label="Signature pad. Sign with your finger, stylus or mouse"></canvas><span class="sig-line"></span><span class="sig-hint">Sign here</span>

@@ -1375,6 +1375,24 @@ app.post('/api/quotes/:id/approve', (req, res) => {
   q.status = req.body.status === 'declined' ? 'declined' : 'approved'; q.respondedAt = iso(new Date()); save(); res.json(q);
 });
 
+// a signature collected on the team member's phone: signing accepts the quote, so a draft or sent one is approved too (the same record as the client's own page)
+app.post('/api/quotes/:id/signature', (req, res) => {
+  const q = db.quotes.find((x) => x.id === req.params.id); if (!q) return res.status(404).json({ error: 'Not found' });
+  if (q.signedAt) return res.status(400).json({ error: 'This quote is already signed' });
+  if (!['draft', 'sent', 'approved'].includes(q.status)) return res.status(400).json({ error: 'This quote can’t be signed' });
+  const name = String((req.body && req.body.name) || '').trim().slice(0, 100); if (!name) return res.status(400).json({ error: 'Enter the name of the person signing' });
+  const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec((req.body && req.body.dataUrl) || '');
+  if (!m || m[1].length < 200) return res.status(400).json({ error: 'Please sign in the box first' });
+  if (m[1].length > 2e6) return res.status(400).json({ error: 'That signature image is too large' });
+  const file = `sig-${token()}.png`; // unguessable name: uploads are served without login
+  fs.writeFileSync(path.join(uploadDir(), file), Buffer.from(m[1], 'base64'));
+  removeSignatureFile(q); const u = currentUser(req);
+  if (q.status !== 'approved') { q.status = 'approved'; q.respondedAt = iso(new Date()); }
+  q.signedAt = iso(new Date()); q.signedName = name; q.signature = { file: `/uploads/${file}`, method: 'drawn', collectedBy: u ? u.name : '' };
+  if (q.depositFee > 0 && !q.depositStatus) q.depositStatus = 'pending';
+  save(); res.status(201).json(q);
+});
+
 app.post('/api/quotes/:id/convert-to-job', (req, res) => {
   const q = db.quotes.find((x) => x.id === req.params.id);
   if (!q) return res.status(404).json({ error: 'Not found' });
