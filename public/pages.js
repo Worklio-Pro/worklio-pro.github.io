@@ -896,6 +896,13 @@ function renderPortal(main, tok, p) {
   const newReqBtn = `<button type="button" class="cp-btn" data-cp="new-request">${cpIcon('plus', 18)} New Request</button>`;
   const row = (title, sub, right) => `<div class="cp-item"><div class="cp-item-main"><strong>${title}</strong>${sub.filter(Boolean).map((x) => `<div class="cp-sub">${x}</div>`).join('')}</div><div class="cp-item-side">${right}</div></div>`;
   const head = (title, action = '') => `<div class="cp-head"><h1>${title}</h1>${action}</div>`;
+  // the review form opens on one finished job or invoice; its questions are the ones the business set for that module
+  let reviewing = null;
+  const rvBtn = (id) => { const i = p.reviewable.findIndex((x) => x.refs.includes(id)); return i < 0 ? '' : `<button type="button" class="cp-btn primary" data-cp="write-review" data-rv="${i}">Write a review</button>`; };
+  const rvStars = (name, label, required) => `<div class="cp-rv-stars" role="radiogroup" aria-label="${esc(label)}">${[5, 4, 3, 2, 1].map((n) => `<input type="radio" id="${name}_${n}" name="${name}" value="${n}" ${required ? 'required' : ''}><label for="${name}_${n}" title="${n} out of 5" aria-label="${n} out of 5 stars">★</label>`).join('')}</div>`;
+  const rvField = (q) => { const name = 'q_' + q.id; const need = q.required ? 'required' : '';
+    return `<div class="cp-rv-q"><div class="cp-rv-l">${esc(q.text)}${q.required ? '' : ' <span class="cp-num">(optional)</span>'}</div>${q.type === 'stars' ? rvStars(name, q.text, q.required)
+      : q.type === 'yesno' ? ['Yes', 'No'].map((v) => `<label class="cp-rv-yn"><input type="radio" name="${name}" value="${v}" ${need}> ${v}</label>`).join('') : `<textarea name="${name}" rows="3" maxlength="1000" ${need}></textarea>`}</div>`; };
   const views = {
     requests: () => (p.requests.length ? head('Requests', newReqBtn) + `<div class="cp-list">${p.requests.map((r) => row(esc(r.title), [`Sent ${fmtDate(r.createdAt.slice(0, 10))}`, r.preferredDate || r.preferredTime !== 'any' ? `Preferred: ${r.preferredDate ? fmtDate(r.preferredDate) : 'any day'}, ${TIME_LABEL[r.preferredTime].toLowerCase()}` : '', r.details ? esc(r.details) : ''], cpBadge(r.status))).join('')}</div>`
       : cpEmpty('requests', 'Get work done', 'Send us a request to fill us in on the details', newReqBtn)),
@@ -912,13 +919,18 @@ ${p.client.smsConsent ? `<p class="cp-sub" style="margin:4px 0 12px">You get tex
     estimates: () => (quotes.length ? head('Estimates') + `<div class="cp-list">${quotes.map((q) => row(`${esc(q.title || 'Estimate')} <span class="cp-num">#${esc(q.number)}</span>`, [`Sent ${fmtDate((q.sentAt || q.createdAt).slice(0, 10))}`, `Total ${money(q.total)}`, q.depositFee > 0 ? (q.depositPaidAt ? `Deposit paid ${money(q.depositPaidAmount ?? q.depositFee)}` : `Deposit ${money(q.depositFee)}`) : ''], `${cpBadge(q.status)}<a class="cp-btn ${q.status === 'sent' ? 'primary' : ''}" href="${esc(q.link)}">${q.status === 'sent' ? 'Review' : 'View'}</a>`)).join('')}</div>`
       : cpEmpty('estimates', 'No estimates yet', 'When we send you an estimate, you can review and approve it here.')),
     appointments: () => (p.jobs.length ? head('Appointments') + (upcoming.length ? `<h3 class="cp-sec">Upcoming</h3><div class="cp-list">${upcoming.map((j) => row(esc(j.title), [`${fmtDate(j.date)} · ${fmtTime(j.startTime)} – ${fmtTime(j.endTime)}`, esc(j.address)], cpBadge('scheduled'))).join('')}</div>` : '')
-      + (past.length ? `<h3 class="cp-sec">Past</h3><div class="cp-list">${past.map((j) => row(esc(j.title), [fmtDate(j.date), esc(j.address)], cpBadge(j.status))).join('')}</div>` : '')
+      + (past.length ? `<h3 class="cp-sec">Past</h3><div class="cp-list">${past.map((j) => row(esc(j.title), [fmtDate(j.date), esc(j.address)], `${cpBadge(j.status)}${rvBtn(j.id)}`)).join('')}</div>` : '')
       : cpEmpty('appointments', 'No appointments', 'Your scheduled visits will show up here.')),
     invoices: () => (invoices.length ? head('Invoices') + (openInv.length ? `<div class="cp-due"><span>Balance due</span><strong>${money(openInv.reduce((s, i) => s + (i.balanceDue ?? i.total), 0))}</strong></div>` : '')
-      + `<div class="cp-list">${[...openInv, ...invoices.filter((i) => i.displayStatus === 'paid')].map((i) => row(`${esc(i.subject || 'Invoice')} <span class="cp-num">#${esc(i.number)}</span>`, [i.displayStatus === 'paid' ? `Paid ${fmtDate((i.paidAt || i.issueDate).slice(0, 10))}` : `Due ${fmtDate(i.dueDate)}`, i.displayStatus === 'paid' ? money(i.total) : `${money(i.balanceDue ?? i.total)}${i.depositApplied > 0 ? ` after ${money(i.depositApplied)} deposit` : ''}`], `${cpBadge(i.displayStatus)}<a class="cp-btn ${i.displayStatus === 'paid' ? '' : 'primary'}" href="${esc(i.link)}">${i.displayStatus === 'paid' ? 'Receipt' : 'Pay now'}</a>`)).join('')}</div>`
+      + `<div class="cp-list">${[...openInv, ...invoices.filter((i) => i.displayStatus === 'paid')].map((i) => row(`${esc(i.subject || 'Invoice')} <span class="cp-num">#${esc(i.number)}</span>`, [i.displayStatus === 'paid' ? `Paid ${fmtDate((i.paidAt || i.issueDate).slice(0, 10))}` : `Due ${fmtDate(i.dueDate)}`, i.displayStatus === 'paid' ? money(i.total) : `${money(i.balanceDue ?? i.total)}${i.depositApplied > 0 ? ` after ${money(i.depositApplied)} deposit` : ''}`], `${cpBadge(i.displayStatus)}<a class="cp-btn ${i.displayStatus === 'paid' ? '' : 'primary'}" href="${esc(i.link)}">${i.displayStatus === 'paid' ? 'Receipt' : 'Pay now'}</a>${i.displayStatus === 'paid' ? rvBtn(i.id) : ''}`)).join('')}</div>`
       : cpEmpty('invoices', 'No invoices', 'Invoices we send you will show up here, ready to pay online.')),
-    reviews: () => (p.reviews.length ? head('Reviews') + `<div class="cp-list">${p.reviews.map((r) => row(`${esc(r.title || (r.kind === 'job' ? 'Job' : 'Invoice'))}${r.refNumber ? ` <span class="cp-num">#${esc(r.refNumber)}</span>` : ''}`, [`Sent ${fmtDate(r.submittedAt.slice(0, 10))}`, ...r.answers.map((a) => `${esc(a.question)} ${a.type === 'stars' ? starRow(a.answer, 14) : esc(a.answer)}`), r.comment ? esc(r.comment) : ''], starRow(r.stars))).join('')}</div>`
-      : cpEmpty('reviews', 'No reviews yet', `Reviews you send ${esc(co.name)} will show up here.`)),
+    reviews: () => (p.reviews.length || p.reviewable.length ? head('Reviews') + (p.reviewable.length ? `<h3 class="cp-sec">Waiting for your review</h3><div class="cp-list">${p.reviewable.map((x, i) => row(`${esc(x.title || (x.kind === 'job' ? 'Job' : 'Invoice'))}${x.number ? ` <span class="cp-num">#${esc(x.number)}</span>` : ''}`, [x.kind === 'job' ? `Completed ${fmtDate(x.date)}` : `Paid ${fmtDate(x.date)}`], `<button type="button" class="cp-btn primary" data-cp="write-review" data-rv="${i}">Write a review</button>`)).join('')}</div>` : '')
+      + (p.reviews.length ? `<h3 class="cp-sec">Your reviews</h3><div class="cp-list">${p.reviews.map((r) => row(`${esc(r.title || (r.kind === 'job' ? 'Job' : 'Invoice'))}${r.refNumber ? ` <span class="cp-num">#${esc(r.refNumber)}</span>` : ''}`, [`Sent ${fmtDate(r.submittedAt.slice(0, 10))}`, ...r.answers.map((a) => `${esc(a.question)} ${a.type === 'stars' ? starRow(a.answer, 14) : esc(a.answer)}`), r.comment ? esc(r.comment) : ''], starRow(r.stars))).join('')}</div>` : '')
+      : cpEmpty('reviews', 'No reviews yet', `When a job is completed or an invoice is paid, you can review it here.`)),
+    'write-review': () => `${head('Write a review')}<form class="cp-form" id="cpRev"><p class="cp-sub" style="margin:0 0 14px">Tell ${esc(co.name)} about ${esc(reviewing.title || (reviewing.kind === 'job' ? 'this job' : 'this invoice'))}${reviewing.number ? ` (#${esc(reviewing.number)})` : ''}. Your review goes to the business and isn’t posted publicly.</p>
+<div class="cp-rv-q"><div class="cp-rv-l">Your overall rating</div>${rvStars('stars', 'Your overall rating', true)}</div>${(p.reviewQuestions[reviewing.kind] || []).map(rvField).join('')}
+<div class="cp-rv-q"><div class="cp-rv-l">Anything you’d like to add? <span class="cp-num">(optional)</span></div><textarea name="comment" rows="5" maxlength="2000"></textarea></div>
+<div class="cp-actions"><button type="button" class="cp-btn ghost" data-cp="reviews">Cancel</button><button class="cp-btn primary">Send review</button></div></form>`,
     wallet: () => cpEmpty('wallet', 'No saved payment methods', 'Pay any invoice by card or Zelle when you open it. Card details are handled securely by Stripe and are never stored by us.'),
     contact: () => `${head('Contact us')}<div class="cp-card">${co.logo ? `<img src="${esc(co.logo)}" alt="" class="cp-card-logo">` : ''}<h2>${esc(co.name)}</h2>
 ${co.phone ? `<a class="cp-contact" href="tel:${esc(co.phone)}">${cpIcon('contact', 18)} ${esc(co.phone)}</a>` : ''}${co.email ? `<a class="cp-contact" href="mailto:${esc(co.email)}">✉ ${esc(co.email)}</a>` : ''}
@@ -933,10 +945,11 @@ ${co.hours ? `<h3 class="cp-sec">Business hours</h3><table class="cp-hours">${WE
 <a class="cp-out wide" href="https://outlook.live.com/mail/0/deeplink/compose?${q({ subject, body })}" target="_blank" rel="noopener">Outlook</a>
 <a class="cp-out wide" href="https://mail.google.com/mail/?${q({ view: 'cm', fs: '1', su: subject, body })}" target="_blank" rel="noopener">Gmail</a></div>`; },
   };
-  const nav = (cur) => CP_NAV.map((grp) => grp.filter(([k]) => k !== 'reviews' || p.reviews).map(([k, l]) => `<button type="button" class="cp-nav ${cur === k || (cur === 'new-request' && k === 'requests') ? 'on' : ''}" data-cp="${k}">${cpIcon(k)}<span>${l}</span></button>`).join('')).join('<hr>')
+  const nav = (cur) => CP_NAV.map((grp) => grp.filter(([k]) => k !== 'reviews' || p.reviews).map(([k, l]) => `<button type="button" class="cp-nav ${cur === k || (cur === 'new-request' && k === 'requests') || (cur === 'write-review' && k === 'reviews') ? 'on' : ''}" data-cp="${k}">${cpIcon(k)}<span>${l}</span></button>`).join('')).join('<hr>')
     + (p.referralLink ? `<hr><button type="button" class="cp-nav cp-refer ${cur === 'refer' ? 'on' : ''}" data-cp="refer">${cpIcon('refer')}<span>Refer a Friend</span></button>` : '');
   const show = (section) => {
     if (!views[section] || (section === 'refer' && !p.referralLink) || (section === 'reviews' && !p.reviews)) section = 'requests';
+    if (section === 'write-review' && !reviewing) section = 'reviews';
     $('.cp-navs', main).innerHTML = nav(section); $('.cp-main', main).innerHTML = views[section]();
     if (location.hash.slice(1) !== section) history.replaceState({}, '', location.pathname + location.search + '#' + section);
     const f = $('#cpReq', main);
@@ -945,13 +958,19 @@ ${co.hours ? `<h3 class="cp-sec">Business hours</h3><table class="cp-hours">${WE
       try { const r = await api('POST', `/api/portal/${encodeURIComponent(tok)}/requests`, Object.fromEntries(new FormData(f))); p.requests.unshift(r); p.client.smsConsent = r.smsConsent; p.client.phone = r.phone; toast('Request sent. We’ll be in touch soon.'); show('requests'); }
       catch (err) { toast(err.message, true); btn.disabled = false; btn.textContent = 'Send request'; }
     });
+    const rf = $('#cpRev', main);
+    if (rf) rf.addEventListener('submit', async (e) => {
+      e.preventDefault(); const btn = $('.primary', rf); btn.disabled = true; btn.textContent = 'Sending…'; const item = reviewing;
+      try { const r = await api('POST', `/api/portal/${encodeURIComponent(tok)}/reviews`, { ...Object.fromEntries(new FormData(rf)), kind: item.kind, id: item.id }); p.reviews.unshift(r); p.reviewable = p.reviewable.filter((x) => x !== item); reviewing = null; toast('Thank you! Your review was sent.'); show('reviews'); }
+      catch (err) { toast(err.message, true); btn.disabled = false; btn.textContent = 'Send review'; }
+    });
     const on = $('.cp-navs', main); const cur = $('.cp-nav.on', on); if (cur && on.scrollWidth > on.clientWidth) on.scrollLeft = cur.offsetLeft - 12; // phone: keep the selected tab visible
     main.scrollTop = 0; window.scrollTo(0, 0);
   };
   main.innerHTML = `<div class="cp"><aside class="cp-side"><div class="cp-brand">${co.logo ? `<img src="${esc(co.logo)}" alt="${esc(co.name)}">` : `<div class="cp-mono">${esc(initials(co.name || '?'))}</div>`}</div>
 <div class="cp-co">${esc(co.name)}</div><nav class="cp-navs" aria-label="Client hub"></nav></aside><section class="cp-main" aria-live="polite"></section></div>`;
   main.onclick = async (e) => {
-    const b = e.target.closest('[data-cp]'); if (b) { e.preventDefault(); show(b.dataset.cp); return; }
+    const b = e.target.closest('[data-cp]'); if (b) { e.preventDefault(); if (b.dataset.rv) reviewing = p.reviewable[Number(b.dataset.rv)]; show(b.dataset.cp); return; }
     const cp = e.target.closest('[data-cp-copy]');
     if (cp) {
       const i = $('#cpRefLink', main); try { await navigator.clipboard.writeText(i.value); } catch (err) { i.select(); document.execCommand('copy'); }

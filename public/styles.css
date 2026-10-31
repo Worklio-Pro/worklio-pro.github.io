@@ -435,6 +435,8 @@ body.row-drag,body.row-drag *{cursor:grabbing!important;user-select:none}
 .cp-item-side{display:flex;align-items:center;gap:12px;flex:none}
 .cp-badge{display:inline-block;padding:3px 10px;border-radius:99px;font-size:12px;font-weight:600;background:#eef0f1;color:#3d4b50}
 .cp-sent,.cp-unpaid,.cp-new,.cp-scheduled{background:#e7f0fb;color:#1d4f91}.cp-approved,.cp-converted,.cp-paid,.cp-completed{background:#e5f4e3;color:#2c6a1b}.cp-overdue,.cp-declined{background:#fbe9e7;color:#a8321f}.cp-partial{background:#fdf2dc;color:#8a5a00}
+.cp-rv-q{margin-bottom:16px}.cp-rv-l{font-weight:600;font-size:14px;margin-bottom:6px}.cp-rv-q textarea{width:100%;box-sizing:border-box;margin:0}.cp-rv-yn{display:inline-flex;align-items:center;gap:6px;margin:0 18px 0 0;font-size:14px}.cp-rv-yn input{width:auto;margin:0}
+.cp-rv-stars{display:inline-flex;flex-direction:row-reverse;gap:4px;position:relative}.cp-rv-stars input{position:absolute;opacity:0;width:1px;height:1px;margin:0;padding:0}.cp-rv-stars label{margin:0;font-size:36px;line-height:1;color:#d1d5db;cursor:pointer}.cp-rv-stars input:checked~label,.cp-rv-stars label:hover,.cp-rv-stars label:hover~label{color:#f59e0b}.cp-rv-stars input:focus-visible+label{outline:2px solid var(--brand);border-radius:4px}
 .cp-due{display:flex;justify-content:space-between;align-items:center;background:#fff;border:1px solid var(--cp-line);border-radius:10px;padding:16px 18px;margin-bottom:14px}.cp-due strong{font-size:20px}
 .cp-form{max-width:640px;background:#fff;border:1px solid var(--cp-line);border-radius:10px;padding:20px}
 .cp-form .fl{background:#fff}.cp-form .fl>select{border:0;padding:0;height:24px;background-color:transparent;box-shadow:none;width:100%}

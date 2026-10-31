@@ -2195,6 +2195,35 @@ function reviewForm(r, error) {
 ${error ? `<p style="color:#b91c1c">${esc(error)}</p>` : ''}<form method="post" action="/p/review/${esc(r.token)}"><div style="font-weight:600;margin-bottom:4px">Your overall rating</div><div class="rv-stars" role="radiogroup" aria-label="Your rating">${[5, 4, 3, 2, 1].map((n) => `<input type="radio" id="st${n}" name="stars" value="${n}" required><label for="st${n}" title="${n} out of 5" aria-label="${n} out of 5 stars">★</label>`).join('')}</div>
 ${reviewQuestionsFor(r.kind).map(reviewQuestionField).join('')}<label class="muted" for="comment" style="display:block">Anything you’d like to add? (optional)</label><textarea id="comment" name="comment" rows="5" maxlength="2000"></textarea><button class="btn">Send review</button></form>`);
 }
+// one review, from the emailed link or the client portal: answers an error message, or nothing once it's saved
+function submitReview(r, body) {
+  const stars = Number(body.stars); if (![1, 2, 3, 4, 5].includes(stars)) return 'Choose a star rating first.';
+  const read = readReviewAnswers(r.kind, body); if (read.error) return read.error;
+  Object.assign(r, { stars, answers: read.answers, comment: String(body.comment || '').trim().slice(0, 2000), submittedAt: new Date().toISOString() });
+  save(); tellBusinessReview(r); return '';
+}
+const reviewForClient = (r) => ({ id: r.id, kind: r.kind, refNumber: r.refNumber, title: r.title, stars: r.stars, comment: r.comment, submittedAt: r.submittedAt, answers: (r.answers || []).map((a) => ({ question: a.question, type: a.type, answer: a.answer })) });
+// the client portal: this client's completed jobs and paid invoices with no review yet. A job and its invoices are one piece of work, listed once, as the job
+function reviewableFor(c) {
+  const seen = new Set(); const out = [];
+  const add = (kind, doc, date) => {
+    const refs = reviewRefs(kind, doc); if (refs.some((x) => seen.has(x))) return; refs.forEach((x) => seen.add(x));
+    const r = clientReviews().find((x) => refs.includes(x.refId)); if (r && r.submittedAt) return;
+    out.push({ kind: r ? r.kind : kind, id: r ? r.refId : doc.id, number: r ? r.refNumber : doc.number, title: (r ? r.title : kind === 'job' ? doc.title : doc.subject) || '', date: String(date || '').slice(0, 10), refs });
+  };
+  for (const j of db.jobs) if (j.clientId === c.id && j.status === 'completed') add('job', j, j.date);
+  for (const i of db.invoices) if (i.clientId === c.id && i.status === 'paid') add('invoice', i, i.paidAt);
+  return out.sort((a, b) => b.date.localeCompare(a.date));
+}
+app.post('/api/portal/:token/reviews', (req, res) => {
+  const c = db.clients.find((x) => x.portalToken === req.params.token); if (!c) return res.status(404).json({ error: 'Invalid portal link' });
+  if (!tenancy.has('reviews')) return res.status(403).json({ error: 'Reviews aren’t available' });
+  const b = req.body || {}; const item = reviewableFor(c).find((x) => x.kind === b.kind && x.id === b.id); // only their own finished work, not yet reviewed
+  if (!item) return res.status(400).json({ error: 'This has already been reviewed' });
+  const doc = (item.kind === 'job' ? db.jobs : db.invoices).find((x) => x.id === item.id); if (!doc) return res.status(404).json({ error: 'Not found' });
+  const r = reviewRecord(item.kind, doc); const error = submitReview(r, b); if (error) return res.status(400).json({ error });
+  res.status(201).json(reviewForClient(r));
+});
 app.get('/p/review/:token', (req, res) => {
   res.setHeader('X-Robots-Tag', 'noindex');
   const r = clientReviews().find((x) => x.token === req.params.token);
@@ -2207,10 +2236,8 @@ app.post('/p/review/:token', (req, res) => {
   const r = clientReviews().find((x) => x.token === req.params.token);
   if (!r) return res.status(404).send(shell('Not found', '<h1>Review link not found</h1>'));
   if (r.submittedAt || !tenancy.has('reviews')) return res.redirect(`/p/review/${r.token}`);
-  const stars = Number(req.body.stars); if (![1, 2, 3, 4, 5].includes(stars)) return res.status(400).send(reviewForm(r, 'Choose a star rating first.'));
-  const read = readReviewAnswers(r.kind, req.body); if (read.error) return res.status(400).send(reviewForm(r, read.error));
-  Object.assign(r, { stars, answers: read.answers, comment: String(req.body.comment || '').trim().slice(0, 2000), submittedAt: new Date().toISOString() });
-  save(); tellBusinessReview(r); res.redirect(303, `/p/review/${r.token}`);
+  const error = submitReview(r, req.body); if (error) return res.status(400).send(reviewForm(r, error));
+  res.redirect(303, `/p/review/${r.token}`);
 });
 // the Reviews page: what clients sent (never the private link) and the automatic-ask switches
 app.get('/api/reviews/client', (req, res) => {
@@ -2317,7 +2344,9 @@ app.get('/api/portal/:token', (req, res) => {
     client: { id: c.id, name: c.name, email: c.email, phone: c.phone, address: c.address, smsConsent: !!c.smsConsent },
     referralLink: tenancy.has('referrals') ? referralLink(c) : null,
     reviews: !tenancy.has('reviews') ? null : (db.clientReviews || []).filter((r) => r.clientId === c.id && r.submittedAt).sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
-      .map((r) => ({ id: r.id, kind: r.kind, refNumber: r.refNumber, title: r.title, stars: r.stars, comment: r.comment, submittedAt: r.submittedAt, answers: (r.answers || []).map((a) => ({ question: a.question, type: a.type, answer: a.answer })) })),
+      .map(reviewForClient),
+    reviewable: tenancy.has('reviews') ? reviewableFor(c) : [],
+    reviewQuestions: tenancy.has('reviews') ? Object.fromEntries(REVIEW_MODULES.map((m) => [m, reviewQuestionsFor(m).map(({ id, text, type, required }) => ({ id, text, type, required }))])) : {},
     requests: (db.requests || []).filter((r) => r.clientId === c.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(requestForClient),
     jobs: db.jobs.filter((j) => j.clientId === c.id).sort((a, b) => b.date.localeCompare(a.date)).map(jobForClient),
     quotes: db.quotes.filter((q) => q.clientId === c.id).map((q) => ({ ...forClient(q), link: quoteLink(q) })),
