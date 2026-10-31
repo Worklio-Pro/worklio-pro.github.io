@@ -12,7 +12,7 @@ Data is stored in `data/db.json` (created with demo data on first start). Upload
 /business-overview, /calendar, /staff-schedules, /clients, /quotes, /jobs, /invoices, /payments, /payments/settings, /services, /expenses,
 /reports, /tax-summary, /project-gallery, /notifications, /settings/company, /settings, /marketplace (App Marketplace: apps that connect today, and "I want this" votes for the rest, counted in Alpha → Messages → App requests)
 
-Clients get public links (no login): `/p/quote/<token>` to approve a quote, `/pay/<token>` to pay an invoice,
+Clients get public links (no login): `/p/quote/<token>` to approve a quote, `/pay/<token>` to pay an invoice, `/p/review/<token>` to review finished work (emailed when a job is completed or an invoice is paid; read under Reviews),
 and `/client-portal?c=<token>` for their portal. Copy each client's portal link from their record.
 
 ## Going live (environment variables)

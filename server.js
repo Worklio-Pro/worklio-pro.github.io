@@ -711,7 +711,7 @@ app.post('/api/auth/hours', (req, res) => {
   st.hours = hours; save(); res.json(profileOf(u));
 });
 // ---- push notifications (Gear → Preferences): each login picks what it gets; each browser or phone it turns them on for is saved on the login ----
-const PUSH_KINDS = ['overview', 'schedule', 'request', 'booking', 'quoteViewed', 'quoteApproved'];
+const PUSH_KINDS = ['overview', 'schedule', 'request', 'booking', 'quoteViewed', 'quoteApproved', 'review'];
 const pushPrefs = (u) => Object.fromEntries(PUSH_KINDS.map((k) => [k, !u.pushPrefs || u.pushPrefs[k] !== false]));
 const isOwnerOrAdmin = (u) => u.role === 'owner' || u.role === 'admin';
 // never throws: a notification must not get in the way of the work that caused it. A subscription the browser has dropped is forgotten.
@@ -1221,7 +1221,7 @@ app.put('/api/:col/:id', (req, res, next) => {
   if (col === 'expenses') doc.amount = Number(doc.amount) || 0;
   if (col === 'services') { doc.price = Number(doc.price) || 0; homeDepot.clean(doc); }
   if (col === 'quotes' && was.signature && !doc.signature) removeSignatureFile(was);
-  db[col][i] = doc; save(); if (col === 'clients' && doc.smsConsent && !was.smsConsent) optInText(doc).catch(() => {}); if (col === 'jobs') pushScheduleChange(was, doc, currentUser(req));
+  db[col][i] = doc; save(); if (col === 'clients' && doc.smsConsent && !was.smsConsent) optInText(doc).catch(() => {}); if (col === 'jobs') { pushScheduleChange(was, doc, currentUser(req)); if (doc.status === 'completed' && was.status !== 'completed') askForReview('job', doc); }
   res.json(col === 'invoices' ? withStatus(doc) : col === 'jobs' && isMemberReq(req) ? jobForMember(doc) : doc);
 });
 
@@ -1402,6 +1402,12 @@ const EMAIL_TEMPLATES = {
     subject: 'Receipt from {{company_name}}',
     body: '# Thank you for your payment\n\nHello {{client_name}},\n\nWe received your payment of **{{amount}}** for {{paid_for}}.\n\n> Paid on {{date}}\n> Payment reference: {{reference}}\n\nThank you,\n{{company_name}}',
     vars: { client_name: 'Client name', company_name: 'Your business name', company_email: 'Your business email', amount: 'Amount paid', paid_for: 'What was paid, e.g. Invoice INV-3010', date: 'Payment date', reference: 'Payment reference' },
+  },
+  reviewRequest: {
+    label: 'Review request', description: 'Sent when a job is completed or an invoice is paid, if you turned this on in Reviews.',
+    subject: 'How did we do, {{client_name}}?',
+    body: '# How did we do?\n\nHello {{client_name}},\n\nThanks for choosing {{company_name}} for {{work}}. We\x27d love to hear how it went.\n\n[Leave a review]({{link}})\n\nThank you,\n{{company_name}}',
+    vars: { client_name: 'Client name', company_name: 'Your business name', company_email: 'Your business email', work: 'The job or invoice title', link: 'Link to leave a review' },
   },
   portal: {
     label: 'Client portal login', description: 'Sent when you choose Send Login Email on a client’s profile.',
@@ -1641,12 +1647,13 @@ function readPayment(b, max) {
 }
 // paid / reopened from the payments list (keeps the most recent payment's date and method on the invoice)
 function settleInvoice(inv) {
-  const { balanceDue } = invoiceCredits(inv, true);
+  const wasPaid = inv.status === 'paid'; const { balanceDue } = invoiceCredits(inv, true);
   if (balanceDue <= 0.004 && (inv.payments || []).length) {
     const last = [...inv.payments].sort((a, b) => a.date.localeCompare(b.date)).pop();
     Object.assign(inv, { status: 'paid', paidAt: last.date, paymentMethod: last.method });
   } else if (inv.status === 'paid') { Object.assign(inv, { status: 'sent', paidAt: null, paymentMethod: null }); }
   else if (inv.status === 'draft' && (inv.payments || []).length) inv.status = 'sent';
+  if (!wasPaid && inv.status === 'paid') askForReview('invoice', inv);
 }
 app.post('/api/invoices/:id/payments', (req, res) => {
   const inv = db.invoices.find((x) => x.id === req.params.id); if (!inv) return res.status(404).json({ error: 'Not found' });
@@ -1664,7 +1671,7 @@ app.post('/api/invoices/:id/mark-paid', (req, res) => {
   if (!inv) return res.status(404).json({ error: 'Not found' });
   const method = PAY_METHODS[req.body.method] ? req.body.method : 'other'; const owed = invoiceCredits(inv, true).balanceDue; const u = currentUser(req);
   if (owed > 0) inv.payments = [...(inv.payments || []), { id: uid(), amount: owed, method, date: iso(new Date()), reference: '', recordedBy: u ? u.name : '', createdAt: new Date().toISOString() }];
-  settleInvoice(inv); if (inv.status !== 'paid') Object.assign(inv, { status: 'paid', paidAt: iso(new Date()), paymentMethod: method });
+  settleInvoice(inv); if (inv.status !== 'paid') { Object.assign(inv, { status: 'paid', paidAt: iso(new Date()), paymentMethod: method }); askForReview('invoice', inv); }
   save(); res.json(withStatus(inv));
 });
 
@@ -2012,7 +2019,7 @@ ${db.company.taxIdNumber ? `<div class="muted">${esc(db.company.taxIdName || 'Ta
 ${itemsTable(x, { qty: on('showQty'), unit: on('showUnit'), line: on('showLineTotals'), invoice: true })}
 ${on('showAccountBalance') && st !== 'paid' && account > 0 ? `<p class="muted" style="text-align:right">Account balance (all open invoices): <strong>${money(account)}</strong></p>` : ''}
 ${inv.notes ? `<p style="white-space:pre-wrap">${esc(inv.notes)}</p>` : ''}
-${st === 'paid' ? `<p>Paid on ${esc(niceDate(inv.paidAt))}. Thank you!</p>` : card + zelle + (!card && !zelle ? `<p class="muted">Please contact ${esc(db.company.name)} at ${esc(db.company.phone || db.company.email)} to arrange payment.</p>` : '')}
+${st === 'paid' ? `<p>Paid on ${esc(niceDate(inv.paidAt))}. Thank you!</p>${reviewPrompt(inv)}` : card + zelle + (!card && !zelle ? `<p class="muted">Please contact ${esc(db.company.name)} at ${esc(db.company.phone || db.company.email)} to arrange payment.</p>` : '')}
 ${inv.disclaimer ? `<div style="margin:16px 0;padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px;white-space:pre-wrap" class="muted">${esc(inv.disclaimer)}</div>` : `<p class="muted">${esc(db.company.invoiceFooter)}</p>`}`));
 });
 app.use('/pay', express.urlencoded({ extended: false }));
@@ -2120,6 +2127,112 @@ function tellBusinessQuote(q, status) {
   }).catch(() => {});
 }
 app.use('/p', express.urlencoded({ extended: false }));
+
+// ---------- client reviews ----------
+// When a job is completed or an invoice is paid, the client is emailed a private link (/p/review/<token>) to rate the work. Reviews show on the Reviews page.
+// One ask per piece of work (a job and its invoices count as one), and at most one in REVIEW_ASK_GAP_DAYS per client, so regular clients aren't asked after every visit.
+// Email only: clients agreed to texts about their quotes, invoices and appointments, not requests like this.
+const REVIEW_ASK_GAP_DAYS = 30;
+const reviewSettings = () => ({ afterJob: true, afterInvoice: true, notifyEmail: true, ...(db.reviewSettings || {}) });
+const clientReviews = () => (db.clientReviews = db.clientReviews || []);
+const reviewRefs = (kind, doc) => { const job = kind === 'job' ? doc : doc.jobId && db.jobs.find((j) => j.id === doc.jobId); return job ? [job.id, ...db.invoices.filter((i) => i.jobId === job.id).map((i) => i.id)] : [doc.id]; };
+function reviewRecord(kind, doc) {
+  const refs = reviewRefs(kind, doc); let r = clientReviews().find((x) => refs.includes(x.refId));
+  if (!r) { r = { id: uid(), token: token(), clientId: doc.clientId, kind, refId: doc.id, refNumber: doc.number, title: (kind === 'job' ? doc.title : doc.subject) || '', createdAt: new Date().toISOString() }; clientReviews().push(r); save(); }
+  return r;
+}
+const reviewLink = (r) => baseUrl() + '/p/review/' + r.token;
+function askForReview(kind, doc) {
+  if (!tenancy.has('reviews') || !reviewSettings()[kind === 'job' ? 'afterJob' : 'afterInvoice']) return;
+  const c = findClient(doc.clientId); if (!c || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email || '')) return;
+  const refs = reviewRefs(kind, doc); if (clientReviews().some((x) => refs.includes(x.refId) && (x.emailedAt || x.submittedAt))) return;
+  const since = new Date(Date.now() - REVIEW_ASK_GAP_DAYS * 864e5).toISOString();
+  if (clientReviews().some((x) => x.clientId === c.id && ((x.emailedAt || '') > since || (x.submittedAt || '') > since))) return;
+  const r = reviewRecord(kind, doc); r.emailedAt = new Date().toISOString(); save();
+  const m = renderEmail('reviewRequest', { client_name: c.name, company_name: db.company.name, work: r.title || 'your recent work', link: reviewLink(r) });
+  notify({ clientId: c.id, channel: 'email', kind: 'review', refId: doc.id, refNumber: doc.number, subject: m.subject, body: m.text, html: m.html })
+    .then((n) => { if (n.status === 'failed') delete r.emailedAt; save(); }).catch(() => {}); // a failed email can be asked again next time
+}
+// the paid invoice page's button, so clients without an email address (and those who come back to pay) can leave one too
+function reviewPrompt(inv) {
+  if (!tenancy.has('reviews') || !reviewSettings().afterInvoice) return '';
+  const refs = reviewRefs('invoice', inv); if (clientReviews().some((x) => refs.includes(x.refId) && x.submittedAt)) return '';
+  return `<p><a class="btn" style="display:inline-block;text-decoration:none" href="/p/review/${esc(reviewRecord('invoice', inv).token)}">Leave a review</a></p>`;
+}
+function tellBusinessReview(r) {
+  const c = findClient(r.clientId); const name = c ? c.name : 'A client';
+  pushTo(usersWhoCan('reviews'), 'review', { title: `New ${r.stars}-star review`, body: r.comment ? `${name}: ${r.comment.slice(0, 120)}` : name, url: '/reviews' });
+  if (!reviewSettings().notifyEmail || !db.company.email) return;
+  sendTemplate('reviewReceived', db.company.email, { client: name, rating: `${r.stars} out of 5 stars`, work: r.title || r.refNumber || 'their recent work', comment: [...(r.answers || []).map((a) => `${a.question} ${answerText(a)}`), r.comment].filter(Boolean).join('\n'), business: db.company.name, link: `${baseUrl()}/reviews` }).then((sent) => {
+    db.notifications.unshift({ id: uid(), at: new Date().toISOString(), clientId: r.clientId, clientName: name, channel: 'email', kind: 'review', refId: r.refId, refNumber: r.refNumber, to: db.company.email, subject: sent.subject, body: sent.text, status: sent.status, detail: sent.detail }); save();
+  }).catch(() => {});
+}
+const REVIEW_STYLE = '<style>.rv-stars{display:inline-flex;flex-direction:row-reverse;gap:4px;margin:4px 0 14px}.rv-stars input{position:absolute;opacity:0;width:1px;height:1px;margin:0;padding:0}.rv-stars label{font-size:42px;line-height:1;color:#d1d5db;cursor:pointer}.rv-stars input:checked~label,.rv-stars label:hover,.rv-stars label:hover~label{color:#f59e0b}.rv-stars input:focus-visible+label{outline:2px solid #2563eb;border-radius:4px}textarea{padding:10px;border:1px solid #d1d5db;border-radius:8px;width:100%;box-sizing:border-box;margin:4px 0 14px;font:inherit}.rv-shown{color:#f59e0b;font-size:28px;letter-spacing:2px}.rv-shown i{font-style:normal;color:#d1d5db}</style>';
+const reviewPage = (inner) => shell('Leave a review', REVIEW_STYLE + inner);
+// the business's own questions (Reviews → Your questions): each is asked on the modules it picks. A review keeps the wording it was answered with, so later edits don't change it.
+const REVIEW_MODULES = ['job', 'invoice']; const REVIEW_Q_TYPES = ['stars', 'yesno', 'text'];
+const reviewQuestionsFor = (kind) => (db.reviewQuestions || []).filter((q) => q.modules.includes(kind));
+function reviewQuestionField(q) {
+  const name = 'q_' + q.id; const need = q.required ? ' required' : ''; const legend = `<div style="font-weight:600;margin-bottom:4px">${esc(q.text)}${q.required ? '' : ' <span class="muted" style="font-weight:400">(optional)</span>'}</div>`;
+  if (q.type === 'stars') return `<div>${legend}<div class="rv-stars" role="radiogroup" aria-label="${esc(q.text)}">${[5, 4, 3, 2, 1].map((n) => `<input type="radio" id="${name}_${n}" name="${name}" value="${n}"${need}><label for="${name}_${n}" title="${n} out of 5" aria-label="${n} out of 5 stars">★</label>`).join('')}</div></div>`;
+  if (q.type === 'yesno') return `<div style="margin-bottom:14px">${legend}${['Yes', 'No'].map((v) => `<label style="margin-right:18px"><input type="radio" name="${name}" value="${v}" style="width:auto;margin:0 6px 0 0"${need}>${v}</label>`).join('')}</div>`;
+  return `<div>${legend}<textarea name="${name}" rows="3" maxlength="1000"${need}></textarea></div>`;
+}
+function readReviewAnswers(kind, body) {
+  const answers = [];
+  for (const q of reviewQuestionsFor(kind)) {
+    const raw = String(body['q_' + q.id] || '').trim();
+    const ok = q.type === 'stars' ? ['1', '2', '3', '4', '5'].includes(raw) : q.type === 'yesno' ? ['Yes', 'No'].includes(raw) : !!raw;
+    if (!ok) { if (q.required) return { error: `Please answer: ${q.text}` }; continue; }
+    answers.push({ questionId: q.id, question: q.text, type: q.type, answer: q.type === 'stars' ? Number(raw) : raw.slice(0, 1000) });
+  }
+  return { answers };
+}
+const answerText = (a) => (a.type === 'stars' ? `${a.answer} out of 5` : a.answer);
+function reviewForm(r, error) {
+  const c = findClient(r.clientId);
+  return reviewPage(`<h1>How did we do?</h1><p class="muted">${c ? `${esc(c.name)}, tell` : 'Tell'} ${esc(db.company.name)} about ${esc(r.title || 'your recent work')}. Your review goes to the business and isn’t posted publicly.</p>
+${error ? `<p style="color:#b91c1c">${esc(error)}</p>` : ''}<form method="post" action="/p/review/${esc(r.token)}"><div style="font-weight:600;margin-bottom:4px">Your overall rating</div><div class="rv-stars" role="radiogroup" aria-label="Your rating">${[5, 4, 3, 2, 1].map((n) => `<input type="radio" id="st${n}" name="stars" value="${n}" required><label for="st${n}" title="${n} out of 5" aria-label="${n} out of 5 stars">★</label>`).join('')}</div>
+${reviewQuestionsFor(r.kind).map(reviewQuestionField).join('')}<label class="muted" for="comment" style="display:block">Anything you’d like to add? (optional)</label><textarea id="comment" name="comment" rows="5" maxlength="2000"></textarea><button class="btn">Send review</button></form>`);
+}
+app.get('/p/review/:token', (req, res) => {
+  res.setHeader('X-Robots-Tag', 'noindex');
+  const r = clientReviews().find((x) => x.token === req.params.token);
+  if (!r) return res.status(404).send(shell('Not found', '<h1>Review link not found</h1>'));
+  if (!r.submittedAt) return res.send(tenancy.has('reviews') ? reviewForm(r) : shell('Reviews', `<h1>Reviews are closed</h1><p class="muted">${esc(db.company.name)} isn’t taking reviews here right now.</p>`));
+  const g = connOf('google'); const google = g && g.reviews !== false && /^https:\/\//.test(g.reviewUrl || '') ? g.reviewUrl : ''; // offered whatever the rating: asking only happy clients is against Google's review rules
+  res.send(reviewPage(`<h1>Thank you!</h1><div class="rv-shown" aria-label="${r.stars} out of 5 stars">${'★'.repeat(r.stars)}<i>${'★'.repeat(5 - r.stars)}</i></div>${(r.answers || []).map((a) => `<p style="margin:8px 0"><strong>${esc(a.question)}</strong><br>${esc(answerText(a))}</p>`).join('')}${r.comment ? `<p style="white-space:pre-wrap">${esc(r.comment)}</p>` : ''}<p class="muted">Your review was sent to ${esc(db.company.name)}.</p>${google ? `<p><a class="btn alt" style="display:inline-block;text-decoration:none" href="${esc(google)}" target="_blank" rel="noopener noreferrer">Share it on Google too</a></p>` : ''}`));
+});
+app.post('/p/review/:token', (req, res) => {
+  const r = clientReviews().find((x) => x.token === req.params.token);
+  if (!r) return res.status(404).send(shell('Not found', '<h1>Review link not found</h1>'));
+  if (r.submittedAt || !tenancy.has('reviews')) return res.redirect(`/p/review/${r.token}`);
+  const stars = Number(req.body.stars); if (![1, 2, 3, 4, 5].includes(stars)) return res.status(400).send(reviewForm(r, 'Choose a star rating first.'));
+  const read = readReviewAnswers(r.kind, req.body); if (read.error) return res.status(400).send(reviewForm(r, read.error));
+  Object.assign(r, { stars, answers: read.answers, comment: String(req.body.comment || '').trim().slice(0, 2000), submittedAt: new Date().toISOString() });
+  save(); tellBusinessReview(r); res.redirect(303, `/p/review/${r.token}`);
+});
+// the Reviews page: what clients sent (never the private link) and the automatic-ask switches
+app.get('/api/reviews/client', (req, res) => {
+  const done = clientReviews().filter((r) => r.submittedAt).sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));
+  res.json({ questions: db.reviewQuestions || [], settings: reviewSettings(), gapDays: REVIEW_ASK_GAP_DAYS, waiting: clientReviews().filter((r) => r.emailedAt && !r.submittedAt).length, total: done.length, average: done.length ? done.reduce((s, r) => s + r.stars, 0) / done.length : 0,
+    reviews: done.map((r) => { const c = findClient(r.clientId); return { id: r.id, clientId: c ? r.clientId : '', clientName: c ? c.name : 'Former client', kind: r.kind, refId: r.refId, refNumber: r.refNumber, title: r.title, stars: r.stars, answers: r.answers || [], comment: r.comment, submittedAt: r.submittedAt }; }) });
+});
+app.put('/api/reviews/questions', (req, res) => {
+  const list = req.body && req.body.questions; if (!Array.isArray(list)) return res.status(400).json({ error: 'Nothing to save' });
+  if (list.length > 20) return res.status(400).json({ error: 'Up to 20 questions' });
+  const out = [];
+  for (const q of list) {
+    const text = String((q && q.text) || '').trim().slice(0, 200); if (!text) return res.status(400).json({ error: 'Write every question, or remove the empty one' });
+    const modules = REVIEW_MODULES.filter((m) => Array.isArray(q.modules) && q.modules.includes(m)); if (!modules.length) return res.status(400).json({ error: `Choose Jobs or Invoices for “${text}”` });
+    out.push({ id: /^[a-z0-9]{4,40}$/i.test(q.id || '') ? q.id : uid(), text, type: REVIEW_Q_TYPES.includes(q.type) ? q.type : 'text', modules, required: !!q.required });
+  }
+  db.reviewQuestions = out; save(); res.json(out);
+});
+app.put('/api/reviews/settings', (req, res) => {
+  const s = reviewSettings(); for (const k of Object.keys(s)) if (req.body && k in req.body) s[k] = !!req.body[k];
+  db.reviewSettings = s; save(); res.json(s);
+});
 app.post('/p/quote/:token/respond', (req, res) => {
   const q = db.quotes.find((x) => x.token === req.params.token);
   if (!q) return res.status(404).send('Not found');
@@ -2431,7 +2544,7 @@ app.post('/api/clients/merge', (req, res) => {
   const others = [...new Set((req.body && req.body.mergeIds) || [])].filter((id) => id !== (keep && keep.id)).map(findClient).filter(Boolean);
   if (!keep || !others.length) return res.status(400).json({ error: 'Choose a client to keep and at least one to merge into it' });
   const ids = new Set(others.map((c) => c.id));
-  for (const col of ['quotes', 'jobs', 'invoices', 'notifications', 'requests', 'tasks']) (db[col] || []).forEach((x) => { if (ids.has(x.clientId)) { x.clientId = keep.id; if (col === 'notifications') x.clientName = keep.name; } });
+  for (const col of ['quotes', 'jobs', 'invoices', 'notifications', 'requests', 'tasks', 'clientReviews']) (db[col] || []).forEach((x) => { if (ids.has(x.clientId)) { x.clientId = keep.id; if (col === 'notifications') x.clientName = keep.name; } });
   const tags = (c) => (Array.isArray(c.tags) ? c.tags : String(c.tags || '').split(',')).map((t) => t.trim()).filter(Boolean);
   // properties (older profiles have only an address) and contacts are combined; a property already on the kept profile isn't added twice
   const props = (c) => (Array.isArray(c.properties) ? c.properties : String(c.address || '').trim() ? [{ id: c.id === keep.id ? 'p0' : uid(), name: '', street1: c.address.trim(), street2: '', city: '', state: '', zip: '', country: '', contacts: [] }] : []);

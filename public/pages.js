@@ -630,22 +630,59 @@ A.roleSave = async (d, el) => {
   catch (x) { el.disabled = false; toast(x.message, true); }
 };
 
-/* ===== /reviews: Google reviews from the connected Business Profile, with replies ===== */
-let revState = { filter: 'all', list: [], next: '' };
+/* ===== /reviews: reviews clients sent through their private link, and Google reviews from the connected Business Profile, with replies ===== */
+let revState = { source: 'clients', filter: 'all', list: [], next: '' };
 const starRow = (n, size = 16) => `<span class="stars" style="--sz:${size}px" aria-label="${n} out of 5 stars">${[1, 2, 3, 4, 5].map((i) => `<i class="${i <= Math.round(n) ? 'on' : ''}">★</i>`).join('')}</span>`;
 PAGES['/reviews'] = {
   title: 'Reviews',
   async render(main) {
-    const head = '<div class="head"><div><h1>Reviews</h1><p class="sub">Your Google reviews. Replies show publicly on Google under the review.</p></div></div>';
+    const google = revState.source === 'google';
+    main.innerHTML = `<div class="head"><div><h1>Reviews</h1><p class="sub">${google ? 'Your Google reviews. Replies show publicly on Google under the review.' : 'What clients say after a job is completed or an invoice is paid. Only your team sees these.'}</p></div></div>
+<div class="tabs rv-src" role="tablist">${[['clients', 'From your clients'], ['google', 'Google']].map(([k, l]) => `<button type="button" role="tab" class="${revState.source === k ? 'on' : ''}" data-act="revSource" data-s="${k}">${l}</button>`).join('')}</div><div id="rvBody"></div>`;
+    await (google ? renderGoogleReviews : renderClientReviews)($('#rvBody', main));
+  },
+};
+A.revSource = (d) => { revState.source = d.s; PAGES['/reviews'].render($('#main')); };
+async function renderClientReviews(box) {
+  const R = await api('GET', '/api/reviews/client'); const S = R.settings; revState.questions = R.questions;
+  const sw = (k, label, note) => `<label class="sw-row"><span>${label}<small class="muted">${note}</small></span><input type="checkbox" class="sw" data-rvset="${k}" ${S[k] ? 'checked' : ''}><i></i></label>`;
+  const ref = (r) => { const what = `${r.kind === 'job' ? 'Job' : 'Invoice'} ${esc(r.refNumber || '')}`; const can = r.kind === 'job' ? canDo('jobs.view') : canDo('invoices'); return (can ? `<a href="/${r.kind === 'job' ? 'jobs/edit' : 'invoices/view'}?id=${r.refId}" data-link>${what}</a>` : what) + (r.title ? ` · ${esc(r.title)}` : ''); };
+  box.innerHTML = `<div class="card rv-sum"><div class="rv-avg"><strong>${R.average.toFixed(1)}</strong>${starRow(R.average, 20)}<span class="muted">${R.total} review${R.total === 1 ? '' : 's'}${R.waiting ? `, ${R.waiting} waiting` : ''}</span></div>
+<div class="rv-ask"><h3>Ask clients automatically</h3><p class="muted">Clients with an email address get a private review link. A job and its invoice count as one request, and a client is asked at most once every ${R.gapDays} days.</p>
+${sw('afterJob', 'When a job is completed', 'The email goes out as soon as the job is marked complete')}${sw('afterInvoice', 'When an invoice is paid', 'Also adds a Leave a review button to the paid invoice page')}${sw('notifyEmail', 'Email me new reviews', `Sent to ${esc(company.email || 'your company email')}`)}</div></div>
+<div class="card"><h2>Your questions</h2><p class="muted">Clients see these on the review form, after the star rating. Choose which modules ask each one.</p><div id="rvQs"></div><div class="rv-acts"><button type="button" class="btn alt sm" data-act="rvqAdd">Add question</button><button type="button" class="btn sm" data-act="rvqSave">Save questions</button></div></div>
+${R.reviews.length ? R.reviews.map((r) => `<article class="card rv"><header><span class="rv-ini">${esc((r.clientName[0] || '?').toUpperCase())}</span><div><strong>${r.clientId && canDo('clients.view') ? `<a href="/clients/view?id=${r.clientId}" data-link>${esc(r.clientName)}</a>` : esc(r.clientName)}</strong><div>${starRow(r.stars)} <span class="muted">${fmtDate(r.submittedAt.slice(0, 10))}</span></div></div></header>
+${(r.answers || []).map((a) => `<div class="rv-ans"><strong>${esc(a.question)}</strong><div>${a.type === 'stars' ? starRow(a.answer) : esc(a.answer)}</div></div>`).join('')}${r.comment ? `<p class="rv-text">${esc(r.comment)}</p>` : (r.answers || []).length ? '' : '<p class="muted rv-text">A rating with no comment.</p>'}<p class="muted rv-for">${ref(r)}</p></article>`).join('') : '<div class="card"><p class="muted" style="margin:0">No client reviews yet. They’ll show here as clients answer.</p></div>'}`;
+  drawReviewQuestions();
+  box.addEventListener('change', async (e) => {
+    const c = e.target.closest('[data-rvset]'); if (!c) return;
+    try { await api('PUT', '/api/reviews/settings', { [c.dataset.rvset]: c.checked }); toast('Saved'); } catch (x) { c.checked = !c.checked; toast(x.message, true); }
+  });
+}
+function drawReviewQuestions() {
+  const box = $('#rvQs'); if (!box) return; const Q = revState.questions;
+  box.innerHTML = Q.length ? Q.map((q, i) => `<div class="rvq" data-i="${i}" data-id="${esc(q.id || '')}"><input name="text" maxlength="200" placeholder="e.g. Did we arrive on time?" aria-label="Question" value="${esc(q.text)}">
+<select name="type" aria-label="Answer type">${[['stars', 'Star rating'], ['yesno', 'Yes or no'], ['text', 'Written answer']].map(([k, l]) => `<option value="${k}" ${q.type === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+<span class="rvq-opts"><label><input type="checkbox" name="job" ${q.modules.includes('job') ? 'checked' : ''}> Jobs</label><label><input type="checkbox" name="invoice" ${q.modules.includes('invoice') ? 'checked' : ''}> Invoices</label><label><input type="checkbox" name="required" ${q.required ? 'checked' : ''}> Required</label><button type="button" class="link-btn danger" data-act="rvqRm">Remove</button></span></div>`).join('') : '<p class="muted" style="margin:0">No questions yet. Clients are asked for a star rating and a comment.</p>';
+}
+const readReviewQuestions = () => $$('#rvQs .rvq').map((el) => ({ id: el.dataset.id, text: $('[name=text]', el).value, type: $('[name=type]', el).value, modules: ['job', 'invoice'].filter((m) => $(`[name=${m}]`, el).checked), required: $('[name=required]', el).checked }));
+A.rvqAdd = () => { revState.questions = [...readReviewQuestions(), { id: '', text: '', type: 'stars', modules: ['job', 'invoice'], required: false }]; drawReviewQuestions(); const all = $$('#rvQs [name=text]'); all[all.length - 1].focus(); };
+A.rvqRm = (d, el) => { const i = Number(el.closest('.rvq').dataset.i); revState.questions = readReviewQuestions().filter((q, n) => n !== i); drawReviewQuestions(); };
+A.rvqSave = async (d, el) => {
+  el.disabled = true;
+  try { revState.questions = await api('PUT', '/api/reviews/questions', { questions: readReviewQuestions() }); drawReviewQuestions(); toast('Questions saved'); } catch (x) { toast(x.message, true); }
+  el.disabled = false;
+};
+async function renderGoogleReviews(main) {
     const R = await api('GET', '/api/reviews');
     if (!R.connected) {
-      main.innerHTML = `${head}<div class="card rv-empty"><div class="conn-ic">${CONN_ICONS.google}</div><h2>Connect your Google Business Profile</h2><p class="muted">See every Google review in one place and reply without leaving ${esc(company.account.productName)}.</p>
+      main.innerHTML = `<div class="card rv-empty"><div class="conn-ic">${CONN_ICONS.google}</div><h2>Connect your Google Business Profile</h2><p class="muted">See every Google review in one place and reply without leaving ${esc(company.account.productName)}.</p>
 ${['owner', 'admin'].includes(role()) ? '<a class="btn" href="/settings/connections" data-link>Go to Account Connections</a>' : '<p class="muted">Ask the account owner or an admin to connect it in Account Connections.</p>'}</div>`;
       return;
     }
     revState = { ...revState, list: R.reviews || [], next: R.next || '' };
     const noReply = revState.list.filter((r) => !r.reply).length;
-    main.innerHTML = `${head}
+    main.innerHTML = `
 <div class="card rv-sum"><div class="rv-avg"><strong>${(R.average || 0).toFixed(1)}</strong>${starRow(R.average || 0, 20)}<span class="muted">${R.total || 0} review${R.total === 1 ? '' : 's'} on Google</span></div>
 <div class="rv-ask"><h3>Ask for reviews</h3><p class="muted">Send happy clients this link. It opens Google’s review form for ${esc(R.title || 'your business')}.</p>
 ${R.reviewUrl ? `<div class="copy-row"><input readonly value="${esc(R.reviewUrl)}" onclick="this.select()" aria-label="Review link"><button type="button" class="btn alt sm" data-act="copyInput">Copy</button></div>` : '<p class="muted">Google hasn’t given a review link for this profile yet.</p>'}
@@ -653,8 +690,7 @@ ${R.mapsUrl ? `<p style="margin:10px 0 0;font-size:13px"><a href="${esc(R.mapsUr
 <div class="tabs rv-tabs" role="tablist">${[['all', 'All'], ['open', `Needs a reply${noReply ? ` (${noReply})` : ''}`], ['replied', 'Replied']].map(([k, l]) => `<button type="button" role="tab" class="${revState.filter === k ? 'on' : ''}" data-act="revFilter" data-f="${k}">${l}</button>`).join('')}</div>
 <div id="rvList"></div>`;
     drawReviews();
-  },
-};
+}
 function drawReviews() {
   const box = $('#rvList'); if (!box) return;
   const f = revState.filter; const list = revState.list.filter((r) => f === 'all' || (f === 'open' ? !r.reply : !!r.reply));
@@ -811,7 +847,7 @@ PAGES['/notifications'] = {
     const all = await api('GET', '/api/notifications'); window.__notifs = all;
     const list = all.filter((n) => (!notifFilter.kind || n.kind === notifFilter.kind) && (!notifFilter.channel || n.channel === notifFilter.channel));
     const sel = (k, opts) => `<select data-nf="${k}" style="width:auto"><option value="">All</option>${opts.map((o) => `<option ${notifFilter[k] === o ? 'selected' : ''}>${o}</option>`).join('')}</select>`;
-    main.innerHTML = `<div class="head"><div><h1>Notifications Log</h1><p class="sub">Every email and text message sent to clients for quotes, jobs and invoices.</p></div><div class="actions">Type ${sel('kind', ['quote', 'job', 'invoice'])} Channel ${sel('channel', ['email', 'sms'])}</div></div>
+    main.innerHTML = `<div class="head"><div><h1>Notifications Log</h1><p class="sub">Every email and text message sent to clients for quotes, jobs and invoices.</p></div><div class="actions">Type ${sel('kind', ['quote', 'job', 'invoice', 'review'])} Channel ${sel('channel', ['email', 'sms'])}</div></div>
 <div class="card"><div class="tablewrap"><table><tr><th>Sent</th><th>Client</th><th>Channel</th><th>Type</th><th>Ref</th><th>Status</th><th></th></tr>${list.map((n) => `<tr><td>${new Date(n.at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}</td><td>${esc(n.clientName)}<div class="muted">${esc(n.to || '')}</div></td><td>${n.channel === 'email' ? 'Email' : 'Text'}</td><td>${esc(n.kind)}</td><td>${esc(n.refNumber)}</td><td>${badge(n.status)}</td><td class="actions"><button class="btn alt sm" data-act="viewNotif" data-id="${n.id}">View</button></td></tr>`).join('') || '<tr><td colspan="7" class="empty">Nothing sent yet. Send a quote or invoice and it will appear here.</td></tr>'}</table></div></div>`;
     $$('[data-nf]').forEach((s) => s.addEventListener('change', (e) => { notifFilter[e.target.dataset.nf] = e.target.value; refresh(); }));
   },
@@ -1093,7 +1129,7 @@ async function connectionsPage(main) {
   // Google's features, each managed on its own (Jobber-style sub-rows)
   const sub = (title, desc, chip, btn) => `<div class="conn-sub"><div><h3>${title} ${chip}</h3><p>${desc}</p></div>${btn}</div>`;
   const gSubs = G.connected ? [
-    G.reviewsPlan ? sub('Reviews', 'See your Google reviews and reply to them from here.', '', '<a class="btn alt sm" href="/reviews" data-link>Manage</a>') : '',
+    G.reviewsPlan ? sub('Reviews', 'See client and Google reviews, and reply to Google reviews from here.', '', '<a class="btn alt sm" href="/reviews" data-link>Manage</a>') : '',
     G.bookingPlan ? sub('Online booking', 'Add a <strong>Book</strong> button to your Google Business Profile that opens your booking page.', G.booking ? connChip('on', 'On') : connChip('off', 'Off'), admin ? '<button type="button" class="btn alt sm" data-act="bookingManage">Manage</button>' : '') : '',
   ].join('') : '';
   const posts = C.postsPlan ? ' Then post your project photos from <a href="/social-posts" data-link>Social Posts</a>.' : '';
@@ -1451,7 +1487,7 @@ PAGES['/settings/preferences'] = {
     const quotes = canDo('quotes') && planHas('quotes');
     const kinds = [['overview', 'Today’s work overview', 'Each morning, if there are jobs today', true], ['schedule', 'Today’s schedule changed', 'A job today is added, moved, reassigned or cancelled', true],
       ['request', 'New request', 'A client asks for work from their portal or a referral', canDo('clients.view')], ['booking', 'New online booking', 'Someone books on your booking page', canDo('clients.view') && planHas('onlineBooking')],
-      ['quoteViewed', 'Client viewed quote', 'The first time a client opens a sent quote', quotes], ['quoteApproved', 'Client approved quote', 'A client approves a quote', quotes]].filter((k) => k[3]);
+      ['quoteViewed', 'Client viewed quote', 'The first time a client opens a sent quote', quotes], ['quoteApproved', 'Client approved quote', 'A client approves a quote', quotes], ['review', 'New client review', 'A client leaves a review', canDo('reviews') && planHas('reviews')]].filter((k) => k[3]);
     const why = !capable ? (ios ? 'On iPhone and iPad, add this app to your Home Screen first (Share → Add to Home Screen), then open it from there and come back to this page. Needs iOS 16.4 or later.' : 'This browser can’t receive push notifications. Try Chrome, Edge, Firefox or Safari.')
       : Notification.permission === 'denied' ? 'Notifications are blocked for this app. Allow them in your browser or device settings, then come back to this page.' : '';
     const t = getTheme();
@@ -1496,8 +1532,8 @@ ${TPL.list.map((t) => `<tr class="crow" data-act="editTpl" data-key="${t.key}"><
   },
 };
 const TPL = { list: [] };
-const tplSample = () => ({ client_name: 'Jane Smith', company_name: company.name || 'Your Business', company_email: company.email || 'hello@yourbusiness.com', sent_date: fmtDate(ymd(new Date())), quote_number: docPrefix('quotePrefix') + '1005', quote_title: 'Backyard cleanup', invoice_number: docPrefix('invoicePrefix') + '3010', total: '$1,250.00', due_date: fmtDate(ymd(addDays(new Date(), 14))), job_number: docPrefix('jobPrefix') + '2010', job_title: 'Gutter cleaning', date: fmtDate(ymd(addDays(new Date(), 2))), time: '09:00', address: '100 Main St, Houston, TX 77002', amount: '$1,250.00', paid_for: 'Invoice ' + docPrefix('invoicePrefix') + '3010', reference: 'pi_3Q8x2L4eZvKYlo2C' });
-const tplLinks = () => ({ quote: location.origin + '/p/quote/abc123', invoice: location.origin + '/pay/abc123' });
+const tplSample = () => ({ work: 'Gutter cleaning', client_name: 'Jane Smith', company_name: company.name || 'Your Business', company_email: company.email || 'hello@yourbusiness.com', sent_date: fmtDate(ymd(new Date())), quote_number: docPrefix('quotePrefix') + '1005', quote_title: 'Backyard cleanup', invoice_number: docPrefix('invoicePrefix') + '3010', total: '$1,250.00', due_date: fmtDate(ymd(addDays(new Date(), 14))), job_number: docPrefix('jobPrefix') + '2010', job_title: 'Gutter cleaning', date: fmtDate(ymd(addDays(new Date(), 2))), time: '09:00', address: '100 Main St, Houston, TX 77002', amount: '$1,250.00', paid_for: 'Invoice ' + docPrefix('invoicePrefix') + '3010', reference: 'pi_3Q8x2L4eZvKYlo2C' });
+const tplLinks = () => ({ quote: location.origin + '/p/quote/abc123', invoice: location.origin + '/pay/abc123', reviewRequest: location.origin + '/p/review/abc123' });
 A.editTpl = (d) => {
   const t = TPL.list.find((x) => x.key === d.key); if (!t) return; const vars = { ...tplSample(), link: tplLinks()[t.key] || '' };
   const body = modal(`${t.label} email`, `<form class="tpl" data-sticky><p class="muted" style="margin:-4px 0 12px">${esc(t.description)}</p>
