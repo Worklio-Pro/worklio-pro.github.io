@@ -2025,6 +2025,18 @@ const onSubmit = (form, fn) => form.addEventListener('submit', async (e) => {
   e.preventDefault(); const b = $('.ms-save', form); if (b) b.disabled = true;
   try { await fn(new FormData(form)); } catch (x) { toast(x.message, true); if (b) b.disabled = false; }
 });
+// phones: Add line item: the business's products and services to pick from. A pick opens the line item filled in; + starts a blank one
+function mItemPicker(kind, d, x) {
+  const f = mSheet('Add line item', `<label class="mli-search">${svgIcon(ICONS.search, 22)}<input type="search" name="q" placeholder="Search line items" aria-label="Search line items" autocomplete="off"></label><div class="mli-list"></div>`, { full: true });
+  f.classList.add('mli'); f.addEventListener('submit', (e) => e.preventDefault());
+  $('#msheet .ms-sp').outerHTML = `<button type="button" class="ms-x mli-new" aria-label="Add a custom line item">${CHEV('M12 5v14M5 12h14')}</button>`;
+  const open = (svc) => M_EDIT.item(kind, d, { ...x, chosen: true, svc });
+  const draw = () => { const q = f.q.value.trim().toLowerCase(); const list = D.services.filter((s) => !q || [s.name, s.description].join(' ').toLowerCase().includes(q));
+    $('.mli-list', f).innerHTML = list.map((s) => `<button type="button" class="mli-row" data-svc="${esc(s.id)}"><strong>${esc(s.name)}</strong><span class="mli-sub"><span>${esc(s.description || '')}</span><span>${money(s.price || 0)}</span></span></button>`).join('') || `<p class="muted mli-none">${D.services.length ? 'No line items match' : 'No products or services saved yet. Tap + to add a line item.'}</p>`; };
+  draw(); f.q.addEventListener('input', draw);
+  $('.mli-list', f).addEventListener('click', (e) => { const b = e.target.closest('[data-svc]'); if (b) open(b.dataset.svc); });
+  $('#msheet .mli-new').addEventListener('click', () => open(''));
+}
 A.mEdit = (x) => {
   const kind = x.kind; const found = byId(D[kind + 's'], x.id); if (!found) return; const d = kind === 'job' ? jobDoc(found) : found;
   const open = () => M_EDIT[x.sec](kind, d, x);
@@ -2066,7 +2078,10 @@ ${mField('Due date', `<input type="date" name="dueDate" value="${esc(d.dueDate |
     onSubmit(f, (fd) => { const b = Object.fromEntries(fd); if (!b.clientId) throw new Error('Choose a client'); return mSave(kind, d, b); });
   },
   item(kind, d, x) {
-    const i = x.i === '' || x.i === undefined ? -1 : Number(x.i); const it = i >= 0 ? d.items[i] : { qty: 1 };
+    const i = x.i === '' || x.i === undefined ? -1 : Number(x.i);
+    if (i < 0 && !x.chosen) return mItemPicker(kind, d, x); // a new line starts from the list of services
+    const svc = x.svc && D.services.find((s) => s.id === x.svc);
+    const it = i >= 0 ? d.items[i] : svc ? { qty: 1, desc: svc.name, details: svc.description || '', cost: svc.price } : { qty: 1 };
     const f = mSheet(i >= 0 ? 'Edit line item' : 'Add line item', `<div class="item-row m-item">${mField('Name', `<input class="desc" name="desc" list="mSvc" value="${esc(it.desc || '')}" maxlength="200" autocomplete="off">`)}
 <datalist id="mSvc">${D.services.map((s) => `<option value="${esc(s.name)}">`).join('')}</datalist>
 <label class="mf"><span>Description</span><textarea class="details" name="details" rows="4">${esc(it.details || '')}</textarea>${aiOn() ? AI_BTN : ''}</label></div>
@@ -2089,7 +2104,7 @@ ${mField('Quantity', `<input name="qty" type="number" inputmode="decimal" step="
       const items = [...(d.items || [])]; if (i >= 0) items[i] = item; else items.push(item);
       return mSave(kind, d, { items }, i >= 0 ? 'Line item saved' : 'Line item added');
     });
-    if (i < 0) setTimeout(() => f.desc.focus(), 260);
+    if (i < 0 && !svc) setTimeout(() => f.desc.focus(), 260);
   },
   discount: (kind, d) => mAmount(kind, d, { title: d.discount ? 'Edit discount' : 'Add discount', label: 'Discount', type: d.discountType, value: d.discountValue, name: 'discount', pct: 'Percent' }),
   deposit: (kind, d) => mAmount(kind, d, { title: 'Required deposit', label: 'Deposit', type: d.depositType, value: d.depositValue ?? d.depositFee, name: 'deposit', pct: 'Percent' }),
