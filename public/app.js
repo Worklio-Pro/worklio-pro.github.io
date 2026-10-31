@@ -1329,7 +1329,7 @@ function mobileClientPage(c, { reqs, msgs, balance, edit, props }) {
   const phones = (c.phones && c.phones.length ? c.phones : [{ number: c.phone, type: 'Phone' }]).filter((p) => p.number);
   const mails = (c.emails && c.emails.length ? c.emails : [{ address: c.email, type: 'Email' }]).filter((m) => m.address);
   const STAR = mcvStar();
-  const client = `<section class="mcv-sec">${head(esc(c.name), toEdit)}${c.company && c.company !== c.name ? kv('Company', esc(c.company)) : ''}${c.role ? kv('Role', esc(c.role)) : ''}${kv('Lead source', esc(c.leadSource || ((c.tags || []).includes('Online booking') ? 'Online booking' : '')))}${kv('Payment terms', esc((TERMS.find(([k]) => k === c.paymentTerms) || [, 'Company default (Due upon receipt)'])[1]))}</section>
+  const client = `<section class="mcv-sec">${head(esc(c.name), edit ? `<button type="button" class="mcv-add" data-act="cvmClient" aria-label="Edit client">${ARROW}</button>` : '')}${c.company && c.company !== c.name ? kv('Company', esc(c.company)) : ''}${c.role ? kv('Role', esc(c.role)) : ''}${kv('Lead source', esc(c.leadSource || ((c.tags || []).includes('Online booking') ? 'Online booking' : '')))}${kv('Payment terms', esc((TERMS.find(([k]) => k === c.paymentTerms) || [, 'Company default (Due upon receipt)'])[1]))}</section>
 <section class="mcv-sec">${head('Properties', edit ? `<button type="button" class="mcv-add" data-act="propEdit" data-client="${c.id}" aria-label="New property">${CHEV('M12 5v14M5 12h14')}</button>` : '')}${billingFirst[0] ? mcvProp(c, billingFirst[0]) : '<p class="muted mcv-none">No properties yet</p>'}${props.length > 1 ? `<button type="button" class="mcv-all" data-act="cvPropsAll" data-id="${c.id}">View All</button>` : ''}</section>
 <section class="mcv-sec">${head('Billing address', toEdit)}<div>${c.address ? esc(c.address) : '<span class="muted">No billing address</span>'}</div></section>
 <section class="mcv-sec">${head('Contact details', edit ? `<button type="button" class="mcv-add" data-act="cvmContact" aria-label="Edit contact details">${ARROW}</button>` : '')}${phones.map((p) => kv(esc(p.type || 'Phone'), `<a href="tel:${esc(p.number)}">${esc(p.number)}</a>`)).join('')}${mails.map((m) => kv(esc(m.type || 'Email'), `<a href="mailto:${esc(m.address)}">${esc(m.address)}</a>${mails.length > 1 && m.primary ? STAR : ''}`)).join('')}${(c.contacts || []).map((x) => kv(esc(x.role || 'Contact'), [esc(x.name), x.phone ? `<a href="tel:${esc(x.phone)}">${esc(x.phone)}</a>` : '', x.email ? `<a href="mailto:${esc(x.email)}">${esc(x.email)}</a>` : ''].filter(Boolean).join('<br>'))).join('')}${!phones.length && !mails.length && !(c.contacts || []).length ? '<p class="muted mcv-none">No contact details yet</p>' : ''}</section>
@@ -1398,6 +1398,28 @@ ${emails.slice(1).map((m, i) => `<div class="mcd-h mcd-gap"><h3>Additional email
     const emailList = emails.map((m) => ({ ...m, address: m.address.trim() })).filter((m) => m.address); if (emailList.length && !emailList.some((m) => m.primary)) emailList[0].primary = true;
     const btn = $('.pfm-foot .btn', f); btn.disabled = true;
     try { await api('PUT', '/api/clients/' + c.id, { phones: phoneList, phone: phoneList[0] ? phoneList[0].number : '', emails: emailList, email: (emailList.find((m) => m.primary) || {}).address || '', smsConsent: sms }); mPagesClose(); toast('Contact details saved'); refresh(); } catch (x) { toast(x.message, true); btn.disabled = false; }
+  });
+};
+// the name card's arrow: name, company, lead source and payment terms (saved the same way as Edit client)
+A.cvmClient = () => {
+  const c = cvClient(); const n = nameParts(c); const lead = c.leadSource || ((c.tags || []).includes('Online booking') ? 'Online booking' : '');
+  const txt = (name, label, val) => mField(label, `<input name="${name}" value="${esc(val)}" placeholder=" " autocomplete="off">`);
+  const row = (ic, inner) => `<div class="pfm-row"><span class="pfm-ic">${ic}</span><div class="pfm-col">${inner}</div></div>`;
+  const leadField = `${mField('Lead source', `<input name="leadSource" list="mcvLeads" value="${esc(lead)}" placeholder=" " autocomplete="off">`)}<datalist id="mcvLeads">${LEAD_SOURCES.map((s) => `<option value="${s}">`).join('')}</datalist>`;
+  const page = mPage('Edit client', `<form class="pfm" novalidate>${row(svgIcon('<rect x="5" y="3" width="15" height="18" rx="2"/><circle cx="12.500" cy="10" r="2.500"/><path d="M8.500 17a4 4 0 0 1 8 0M3 8h3M3 12h3M3 16h3"/>', 24), txt('firstName', 'First name', n.first) + txt('lastName', 'Last name', n.last))}
+${row(svgIcon('<rect x="6" y="3" width="12" height="18" rx="1"/><path d="M2 21h20M10 7h.01M14 7h.01M10 11h.01M14 11h.01M10 15h4v6h-4z"/>', 24), `${txt('company', 'Company name', c.company || '')}<label class="sw-row mcd-sms mec-com"><span>Commercial client: Use company name as client name</span><input type="checkbox" class="sw" name="commercial" ${n.commercial ? 'checked' : ''}><i></i></label>`)}
+${row(svgIcon('<path d="M4 7h7M15 7h5M4 12h3M11 12h9M4 17h9M17 17h3"/>', 24), `<div class="mec-lead">${lead ? leadField : '<button type="button" class="mcd-def mec-add">Add Lead Source</button>'}</div>`)}
+${row(QM.invoice, `<label class="mf mf-sel"><span>Payment terms</span><select name="paymentTerms"><option value="">Company default (Due upon receipt)</option>${TERMS.filter(([k]) => k !== 'custom').map(([k, l]) => `<option value="${k}" ${c.paymentTerms === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`)}
+<div class="pfm-foot"><button class="btn">Save</button></div></form>`, '', true);
+  const f = $('form', page);
+  const add = $('.mec-add', f); if (add) add.addEventListener('click', () => { $('.mec-lead', f).innerHTML = leadField; f.leadSource.focus(); });
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault(); const v = (k) => (f[k] ? f[k].value.trim() : '');
+    const name = (f.commercial.checked && v('company')) || [v('firstName'), v('lastName')].filter(Boolean).join(' ') || v('company');
+    if (!name) { toast('Enter the client’s first name or company name', true); return f.firstName.focus(); }
+    if (f.commercial.checked && !v('company')) { toast('Enter the company name, or turn off Commercial client', true); return f.company.focus(); }
+    const btn = $('.pfm-foot .btn', f); btn.disabled = true;
+    try { await api('PUT', '/api/clients/' + c.id, { firstName: v('firstName'), lastName: v('lastName'), company: v('company'), commercial: f.commercial.checked, name, paymentTerms: f.paymentTerms.value, leadSource: f.leadSource ? v('leadSource') : (c.leadSource || '') }); mPagesClose(); toast('Client updated'); refresh(); } catch (x) { toast(x.message, true); btn.disabled = false; }
   });
 };
 A.cvmNote = () => {
