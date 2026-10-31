@@ -474,7 +474,9 @@ A.toggleSide = (d, el) => { const open = $('#side').classList.toggle('open'); el
 // tapping outside the open menu drawer closes it
 document.addEventListener('click', (e) => { const side = $('#side'); if (side.classList.contains('open') && !e.target.closest('#side, #menuBtn, [data-act="toggleSide"]')) { side.classList.remove('open'); const b = $('#bnav [data-act="toggleSide"]'); if (b) b.setAttribute('aria-expanded', 'false'); } });
 // form submit handlers are async: show any save error (e.g. "Another invoice already uses number …") instead of failing silently
-window.addEventListener('unhandledrejection', (e) => { if (e.reason && e.reason.message) { toast(e.reason.message, true); e.preventDefault(); } });
+// an error whose stack never touches this site's code came from something else on the page (a browser extension, say): not the client's or team's to see
+const foreignError = (err) => { const st = String(err.stack || ''); return /:\d+:\d+/.test(st) && !st.includes(location.origin); };
+window.addEventListener('unhandledrejection', (e) => { if (e.reason && e.reason.message && !foreignError(e.reason)) { toast(e.reason.message, true); e.preventDefault(); } });
 A.closeModal = closeModal;
 // ⋯ menus close when you click anywhere else
 document.addEventListener('click', (e) => $$('details.menu[open]').forEach((m) => { if (!m.contains(e.target)) m.open = false; }));
