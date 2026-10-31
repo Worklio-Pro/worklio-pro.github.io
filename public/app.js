@@ -983,9 +983,9 @@ function clientSavedInEditor(saved) {
 }
 
 /* ===== phones: a page that slides in from the right, over whatever is open. A second one stacks on top; everything saved closes them all ===== */
-function mPage(title, html, right = '') {
-  const o = document.createElement('div'); o.className = 'mpage'; o.setAttribute('role', 'dialog'); o.setAttribute('aria-modal', 'true'); o.setAttribute('aria-label', title);
-  o.innerHTML = `<div class="ms-head"><button type="button" class="ms-x" data-act="mPageBack" aria-label="Back">${CHEV('M15 18l-6-6 6-6')}</button><h2>${esc(title)}</h2>${right || '<span class="ms-sp"></span>'}</div><div class="mp-page">${html}</div>`;
+function mPage(title, html, right = '', up = false) {
+  const o = document.createElement('div'); o.className = `mpage${up ? ' up' : ''}`; o.setAttribute('role', 'dialog'); o.setAttribute('aria-modal', 'true'); o.setAttribute('aria-label', title);
+  o.innerHTML = `<div class="ms-head"><button type="button" class="ms-x" data-act="mPageBack" aria-label="${up ? 'Close' : 'Back'}">${up ? X_ICO : CHEV('M15 18l-6-6 6-6')}</button><h2>${esc(title)}</h2>${right || '<span class="ms-sp"></span>'}</div><div class="mp-page">${html}</div>`;
   o.addEventListener('click', (e) => { if (e.target.closest('a[data-link]')) mPagesClose(); });
   document.body.append(o); requestAnimationFrame(() => o.classList.add('on'));
   return o;
@@ -1085,14 +1085,32 @@ function contactModal(onAdd) {
 const withContact = (list, x) => [...list.map((o) => (x.billing ? { ...o, billing: false } : o)), x]; // one billing contact
 A.contactAdd = (d) => { const c = byId(D.clients, d.client); contactModal(async (x) => { await saveContacts(c, d.prop, withContact(contactsOf(c, d.prop), x)); toast('Contact added'); refresh(); }); };
 A.contactDel = async (d) => { const c = byId(D.clients, d.client); if (!confirm('Remove this contact?')) return; await saveContacts(c, d.prop, contactsOf(c, d.prop).filter((x) => x.id !== d.cid)); toast('Contact removed'); refresh(); };
+const US_STATES = [['AL', 'Alabama'], ['AK', 'Alaska'], ['AZ', 'Arizona'], ['AR', 'Arkansas'], ['CA', 'California'], ['CO', 'Colorado'], ['CT', 'Connecticut'], ['DE', 'Delaware'], ['DC', 'District of Columbia'], ['FL', 'Florida'], ['GA', 'Georgia'], ['HI', 'Hawaii'], ['ID', 'Idaho'], ['IL', 'Illinois'], ['IN', 'Indiana'], ['IA', 'Iowa'], ['KS', 'Kansas'], ['KY', 'Kentucky'], ['LA', 'Louisiana'], ['ME', 'Maine'], ['MD', 'Maryland'], ['MA', 'Massachusetts'], ['MI', 'Michigan'], ['MN', 'Minnesota'], ['MS', 'Mississippi'], ['MO', 'Missouri'], ['MT', 'Montana'], ['NE', 'Nebraska'], ['NV', 'Nevada'], ['NH', 'New Hampshire'], ['NJ', 'New Jersey'], ['NM', 'New Mexico'], ['NY', 'New York'], ['NC', 'North Carolina'], ['ND', 'North Dakota'], ['OH', 'Ohio'], ['OK', 'Oklahoma'], ['OR', 'Oregon'], ['PA', 'Pennsylvania'], ['PR', 'Puerto Rico'], ['RI', 'Rhode Island'], ['SC', 'South Carolina'], ['SD', 'South Dakota'], ['TN', 'Tennessee'], ['TX', 'Texas'], ['UT', 'Utah'], ['VT', 'Vermont'], ['VA', 'Virginia'], ['WA', 'Washington'], ['WV', 'West Virginia'], ['WI', 'Wisconsin'], ['WY', 'Wyoming']];
+// phones: the property form as a page from the bottom. The state is a list in the United States (a saved value that isn't on it stays as a choice) and typed elsewhere
+function propertyPhoneHtml(c, p, { isNew, wasBilling, mode, rate, countries }) {
+  const txt = (name, label, val, extra = '') => mField(label, `<input name="${name}" value="${esc(val)}" placeholder=" " ${extra}>`);
+  const pick = (label, inner, cls = '') => `<label class="mf mf-sel ${cls}"><span>${label}</span>${inner}</label>`;
+  const s = String(p.state || '').trim(); const us = US_STATES.find(([k, n]) => [k.toLowerCase(), n.toLowerCase()].includes(s.toLowerCase()));
+  const other = !isNew && p.country && !countries.includes(p.country) ? p.country : '';
+  return `<form class="pf pfm" novalidate><div class="pfm-row"><span class="pfm-ic">${PI.pin}</span><div class="pfm-col">${txt('name', 'Property name', p.name)}${txt('street1', 'Property address', p.street1, 'required')}${txt('street2', 'Address line 2', p.street2)}${txt('city', 'City', p.city)}
+${pick('State', `<select name="state"><option value="">Choose a state</option>${s && !us ? `<option selected>${esc(s)}</option>` : ''}${US_STATES.map(([k, n]) => `<option value="${k}" ${us && us[0] === k ? 'selected' : ''}>${n}</option>`).join('')}</select>`, 'pfm-st-us')}
+<div class="pfm-st-o" hidden>${txt('stateOther', 'State / province', s)}</div>${txt('zip', 'Zip code', p.zip, 'inputmode="numeric"')}
+${pick('Country', `<select name="country">${countries.map((x) => `<option ${(p.country || 'United States') === x || (x === 'Other' && other) ? 'selected' : ''}>${x}</option>`).join('')}</select>`)}</div></div>
+<div class="pfm-row"><span class="pfm-ic">${svgIcon('<path d="M4 7h7M15 7h5M4 12h3M11 12h9M4 17h9M17 17h3"/>', 22)}</span><div class="pfm-col">${pick('Tax rate', `<select name="taxMode"><option value="default" ${mode === 'default' ? 'selected' : ''}>Company default (${rate}%)</option><option value="none" ${mode === 'none' ? 'selected' : ''}>No tax (0%)</option><option value="custom" ${mode === 'custom' ? 'selected' : ''}>Custom rate</option></select>`)}
+<div class="pf-rate" ${mode === 'custom' ? '' : 'hidden'}>${mField('Tax rate for this property (%)', `<input name="taxRate" type="number" step="any" min="0" inputmode="decimal" value="${mode === 'custom' ? esc(p.taxRate) : ''}">`)}</div>
+<label class="m-chk"><input type="checkbox" name="billing" ${wasBilling || (isNew && !String(c.address || '').trim()) ? 'checked' : ''} ${wasBilling ? 'disabled' : ''}> Billing address is the same as property address</label>
+<details class="pf-contacts"><summary>Property contacts${(p.contacts || []).length ? ` (${p.contacts.length})` : ''}</summary><div class="pf-cbody"><span class="muted">For contacts with access limited to this property, e.g., tenants.${(p.contacts || []).length ? ' ' + p.contacts.map((x) => esc(x.name)).join(', ') : ''}</span><button type="button" class="btn alt sm" data-pf-contact>Add Contact</button></div></details>
+${isNew ? '' : `<button type="button" class="pfm-del admin-only" data-act="propDelete" data-client="${c.id}" data-id="${esc(p.id)}">Delete property</button>`}</div></div>
+<div class="pfm-foot"><button class="btn">Save Property</button></div></form>`;
+}
 // New property / Edit property. after(property): instead of redrawing the page (the quote, job and invoice editors keep their unsaved changes)
 function propertyForm(c, p, after) {
   const isNew = !p; p = p || { id: '', name: '', street1: '', street2: '', city: '', state: '', zip: '', country: 'United States', contacts: [] };
   const wasBilling = !isNew && sameAddr(propAddr(p), c.address); const rate = Number(company.taxRate) || 0;
   const mode = p.taxRate == null || p.taxRate === '' ? 'default' : Number(p.taxRate) === 0 ? 'none' : 'custom';
   const countries = ['United States', 'Canada', 'Mexico', 'Other'];
-  const open = phoneMq.matches ? mPage : modal; const close = phoneMq.matches ? mPagesClose : closeModal;
-  const mb = open(isNew ? 'New property' : 'Edit property', `<form class="pf"><label>Property name<input name="name" value="${esc(p.name)}" placeholder="Optional, e.g. Rental home"></label>
+  const phone = phoneMq.matches; const close = phone ? mPagesClose : closeModal;
+  const mb = phone ? mPage(isNew ? 'New property' : 'Edit property', propertyPhoneHtml(c, p, { isNew, wasBilling, mode, rate, countries }), '', true) : modal(isNew ? 'New property' : 'Edit ' + propAddr(p), `<form class="pf"><label>Property name<input name="name" value="${esc(p.name)}" placeholder="Optional, e.g. Rental home"></label>
 <div class="pf-addr"><label class="pf-w">Street 1<input name="street1" required value="${esc(p.street1)}"></label><label class="pf-w">Street 2<input name="street2" value="${esc(p.street2)}"></label>
 <label>City<input name="city" value="${esc(p.city)}"></label><label>State<input name="state" value="${esc(p.state)}"></label><label>ZIP code<input name="zip" value="${esc(p.zip)}"></label>
 <label>Country<select name="country">${countries.map((x) => `<option ${(p.country || 'United States') === x || (x === 'Other' && p.country && !countries.includes(p.country)) ? 'selected' : ''}>${x}</option>`).join('')}</select></label></div>
@@ -1101,7 +1119,8 @@ function propertyForm(c, p, after) {
 <div class="chk"><label><input type="checkbox" name="billing" ${wasBilling || (isNew && !String(c.address || '').trim()) ? 'checked' : ''} ${wasBilling ? 'disabled title="Make another property the billing address to change this"' : ''}> Billing address is the same as property address</label></div>
 <details class="pf-contacts"><summary>Property contacts${(p.contacts || []).length ? ` (${p.contacts.length})` : ''}</summary><div class="pf-cbody"><span class="muted">For contacts with access limited to this property, e.g., tenants.${(p.contacts || []).length ? ' ' + p.contacts.map((x) => esc(x.name)).join(', ') : ''}</span><button type="button" class="btn alt sm" data-pf-contact>Add Contact</button></div></details>
 <div class="foot">${isNew ? '' : `<button type="button" class="btn danger admin-only" style="margin-right:auto" data-act="propDelete" data-client="${c.id}" data-id="${esc(p.id)}">Delete</button>`}<button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save</button></div></form>`);
-  const f = $('form', mb); f.street1.focus();
+  const f = $('form', mb); if (!phone) f.street1.focus();
+  if (phone) { const st = () => { const us = f.country.value === 'United States'; $('.pfm-st-us', f).hidden = !us; $('.pfm-st-o', f).hidden = us; $('.pfm-st-us select', f).name = us ? 'state' : ''; $('.pfm-st-o input', f).name = us ? '' : 'state'; }; f.country.addEventListener('change', st); st(); }
   f.taxMode.addEventListener('change', () => { $('.pf-rate', f).hidden = f.taxMode.value !== 'custom'; if (f.taxMode.value === 'custom') f.taxRate.focus(); });
   const save = async () => {
     const v = (n) => f[n].value.trim();
@@ -1298,7 +1317,8 @@ ${card('Notes', v.edit === 'notes' ? `<form class="cv-notef"><textarea name="not
 const cvDraw = () => PAGES['/clients/view'].render($('#main'));
 /* ===== phones: a client's profile: name, balance and Create, then the Client, Work and Notes tabs ===== */
 const mcvRate = (p) => (p.taxRate == null || p.taxRate === '' ? Number(company.taxRate) || 0 : Number(p.taxRate));
-const mcvProp = (c, p) => `<a class="mcv-prop" href="/clients/property?client=${c.id}&id=${encodeURIComponent(p.id)}" data-link><span class="mcv-pt"><span>${p.name ? `<strong>${esc(p.name)}</strong>` : ''}${esc(propAddr(p))}</span>${ARROW}</span><small>Tax rate</small>${mcvRate(p)}%</a>`;
+const mcvProp = (c, p) => { const body = `<span class="mcv-pt"><span>${p.name ? `<strong>${esc(p.name)}</strong>` : ''}${esc(propAddr(p))}</span>${ARROW}</span><small>Tax rate</small>${mcvRate(p)}%`;
+  return canDo('clients.edit') ? `<button type="button" class="mcv-prop" data-act="propEdit" data-client="${c.id}" data-id="${esc(p.id)}" aria-label="Edit property">${body}</button>` : `<a class="mcv-prop" href="/clients/property?client=${c.id}&id=${encodeURIComponent(p.id)}" data-link>${body}</a>`; };
 function mobileClientPage(c, { reqs, msgs, balance, edit, props }) {
   const v = cvState; const tab = v.m || 'client'; const type = v.mType || '';
   const head = (title, right) => `<div class="mcv-sh"><h2>${title}</h2>${right || ''}</div>`;
