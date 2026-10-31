@@ -1409,6 +1409,12 @@ const EMAIL_TEMPLATES = {
     body: '# How did we do?\n\nHello {{client_name}},\n\nThanks for choosing {{company_name}} for {{work}}. We\x27d love to hear how it went.\n\n[Leave a review]({{link}})\n\nThank you,\n{{company_name}}',
     vars: { client_name: 'Client name', company_name: 'Your business name', company_email: 'Your business email', work: 'The job or invoice title', link: 'Link to leave a review' },
   },
+  reviewReply: {
+    label: 'Reply to a review', description: 'Sent the first time you reply to a client’s review in Reviews.',
+    subject: '{{company_name}} replied to your review',
+    body: '# We replied to your review\n\nHello {{client_name}},\n\nThanks for your review of {{work}}. Here\x27s our reply:\n\n> {{reply}}\n\n[See your review]({{link}})\n\nThank you,\n{{company_name}}',
+    vars: { client_name: 'Client name', company_name: 'Your business name', company_email: 'Your business email', work: 'The job or invoice title', reply: 'Your reply', link: 'Link to their review' },
+  },
   portal: {
     label: 'Client portal login', description: 'Sent when you choose Send Login Email on a client’s profile.',
     subject: 'Your client portal for {{company_name}}',
@@ -2159,11 +2165,11 @@ function reviewPrompt(inv) {
   const refs = reviewRefs('invoice', inv); if (clientReviews().some((x) => refs.includes(x.refId) && x.submittedAt)) return '';
   return `<p><a class="btn" style="display:inline-block;text-decoration:none" href="/p/review/${esc(reviewRecord('invoice', inv).token)}">Leave a review</a></p>`;
 }
-function tellBusinessReview(r) {
+function tellBusinessReview(r, edited) {
   const c = findClient(r.clientId); const name = c ? c.name : 'A client';
-  pushTo(usersWhoCan('reviews'), 'review', { title: `New ${r.stars}-star review`, body: r.comment ? `${name}: ${r.comment.slice(0, 120)}` : name, url: '/reviews' });
+  pushTo(usersWhoCan('reviews'), 'review', { title: edited ? `Review updated: ${r.stars} stars` : `New ${r.stars}-star review`, body: r.comment ? `${name}: ${r.comment.slice(0, 120)}` : name, url: '/reviews' });
   if (!reviewSettings().notifyEmail || !db.company.email) return;
-  sendTemplate('reviewReceived', db.company.email, { client: name, rating: `${r.stars} out of 5 stars`, work: r.title || r.refNumber || 'their recent work', comment: [...(r.answers || []).map((a) => `${a.question} ${answerText(a)}`), r.comment].filter(Boolean).join('\n'), business: db.company.name, link: `${baseUrl()}/reviews` }).then((sent) => {
+  sendTemplate(edited ? 'reviewUpdated' : 'reviewReceived', db.company.email, { client: name, rating: `${r.stars} out of 5 stars`, work: r.title || r.refNumber || 'their recent work', comment: [...(r.answers || []).map((a) => `${a.question} ${answerText(a)}`), r.comment].filter(Boolean).join('\n'), business: db.company.name, link: `${baseUrl()}/reviews` }).then((sent) => {
     db.notifications.unshift({ id: uid(), at: new Date().toISOString(), clientId: r.clientId, clientName: name, channel: 'email', kind: 'review', refId: r.refId, refNumber: r.refNumber, to: db.company.email, subject: sent.subject, body: sent.text, status: sent.status, detail: sent.detail }); save();
   }).catch(() => {});
 }
@@ -2172,11 +2178,11 @@ const reviewPage = (inner) => shell('Leave a review', REVIEW_STYLE + inner);
 // the business's own questions (Reviews → Your questions): each is asked on the modules it picks. A review keeps the wording it was answered with, so later edits don't change it.
 const REVIEW_MODULES = ['job', 'invoice']; const REVIEW_Q_TYPES = ['stars', 'yesno', 'text'];
 const reviewQuestionsFor = (kind) => (db.reviewQuestions || []).filter((q) => q.modules.includes(kind));
-function reviewQuestionField(q) {
+function reviewQuestionField(q, value) {
   const name = 'q_' + q.id; const need = q.required ? ' required' : ''; const legend = `<div style="font-weight:600;margin-bottom:4px">${esc(q.text)}${q.required ? '' : ' <span class="muted" style="font-weight:400">(optional)</span>'}</div>`;
-  if (q.type === 'stars') return `<div>${legend}<div class="rv-stars" role="radiogroup" aria-label="${esc(q.text)}">${[5, 4, 3, 2, 1].map((n) => `<input type="radio" id="${name}_${n}" name="${name}" value="${n}"${need}><label for="${name}_${n}" title="${n} out of 5" aria-label="${n} out of 5 stars">★</label>`).join('')}</div></div>`;
-  if (q.type === 'yesno') return `<div style="margin-bottom:14px">${legend}${['Yes', 'No'].map((v) => `<label style="margin-right:18px"><input type="radio" name="${name}" value="${v}" style="width:auto;margin:0 6px 0 0"${need}>${v}</label>`).join('')}</div>`;
-  return `<div>${legend}<textarea name="${name}" rows="3" maxlength="1000"${need}></textarea></div>`;
+  if (q.type === 'stars') return `<div>${legend}<div class="rv-stars" role="radiogroup" aria-label="${esc(q.text)}">${[5, 4, 3, 2, 1].map((n) => `<input type="radio" id="${name}_${n}" name="${name}" value="${n}"${need}${Number(value) === n ? ' checked' : ''}><label for="${name}_${n}" title="${n} out of 5" aria-label="${n} out of 5 stars">★</label>`).join('')}</div></div>`;
+  if (q.type === 'yesno') return `<div style="margin-bottom:14px">${legend}${['Yes', 'No'].map((v) => `<label style="margin-right:18px"><input type="radio" name="${name}" value="${v}" style="width:auto;margin:0 6px 0 0"${need}${value === v ? ' checked' : ''}>${v}</label>`).join('')}</div>`;
+  return `<div>${legend}<textarea name="${name}" rows="3" maxlength="1000"${need}>${esc(value)}</textarea></div>`;
 }
 function readReviewAnswers(kind, body) {
   const answers = [];
@@ -2191,18 +2197,25 @@ function readReviewAnswers(kind, body) {
 const answerText = (a) => (a.type === 'stars' ? `${a.answer} out of 5` : a.answer);
 function reviewForm(r, error) {
   const c = findClient(r.clientId);
-  return reviewPage(`<h1>How did we do?</h1><p class="muted">${c ? `${esc(c.name)}, tell` : 'Tell'} ${esc(db.company.name)} about ${esc(r.title || 'your recent work')}. Your review goes to the business and isn’t posted publicly.</p>
-${error ? `<p style="color:#b91c1c">${esc(error)}</p>` : ''}<form method="post" action="/p/review/${esc(r.token)}"><div style="font-weight:600;margin-bottom:4px">Your overall rating</div><div class="rv-stars" role="radiogroup" aria-label="Your rating">${[5, 4, 3, 2, 1].map((n) => `<input type="radio" id="st${n}" name="stars" value="${n}" required><label for="st${n}" title="${n} out of 5" aria-label="${n} out of 5 stars">★</label>`).join('')}</div>
-${reviewQuestionsFor(r.kind).map(reviewQuestionField).join('')}<label class="muted" for="comment" style="display:block">Anything you’d like to add? (optional)</label><textarea id="comment" name="comment" rows="5" maxlength="2000"></textarea><button class="btn">Send review</button></form>`);
+  const answerOf = (q) => ((r.answers || []).find((a) => a.questionId === q.id) || {}).answer;
+  return reviewPage(`<h1>${r.submittedAt ? 'Edit your review' : 'How did we do?'}</h1><p class="muted">${c ? `${esc(c.name)}, tell` : 'Tell'} ${esc(db.company.name)} about ${esc(r.title || 'your recent work')}. Your review goes to the business and isn’t posted publicly.</p>
+${error ? `<p style="color:#b91c1c">${esc(error)}</p>` : ''}<form method="post" action="/p/review/${esc(r.token)}"><div style="font-weight:600;margin-bottom:4px">Your overall rating</div><div class="rv-stars" role="radiogroup" aria-label="Your rating">${[5, 4, 3, 2, 1].map((n) => `<input type="radio" id="st${n}" name="stars" value="${n}" required${r.stars === n ? ' checked' : ''}><label for="st${n}" title="${n} out of 5" aria-label="${n} out of 5 stars">★</label>`).join('')}</div>
+${reviewQuestionsFor(r.kind).map((q) => reviewQuestionField(q, answerOf(q))).join('')}<label class="muted" for="comment" style="display:block">Anything you’d like to add? (optional)</label><textarea id="comment" name="comment" rows="5" maxlength="2000">${esc(r.comment)}</textarea><button class="btn">${r.submittedAt ? 'Save changes' : 'Send review'}</button></form>`);
 }
-// one review, from the emailed link or the client portal: answers an error message, or nothing once it's saved
+// a review is the client's: only they can write or change it, from the emailed link or the client portal. Someone logged in to the business (including "Log in as Client") can only look
+const REVIEW_STAFF_ONLY_VIEW = 'You’re logged in to the business account, so you can view reviews but not write or change them.';
+// one review, new or edited: answers an error message, or nothing once it's saved. Answers to questions the business has since removed stay as they were
 function submitReview(r, body) {
   const stars = Number(body.stars); if (![1, 2, 3, 4, 5].includes(stars)) return 'Choose a star rating first.';
   const read = readReviewAnswers(r.kind, body); if (read.error) return read.error;
-  Object.assign(r, { stars, answers: read.answers, comment: String(body.comment || '').trim().slice(0, 2000), submittedAt: new Date().toISOString() });
-  save(); tellBusinessReview(r); return '';
+  const current = reviewQuestionsFor(r.kind).map((q) => q.id); const answers = [...read.answers, ...(r.answers || []).filter((a) => !current.includes(a.questionId))];
+  const comment = String(body.comment || '').trim().slice(0, 2000); const now = new Date().toISOString();
+  if (!r.submittedAt) { Object.assign(r, { stars, answers, comment, submittedAt: now }); save(); tellBusinessReview(r); return ''; }
+  const sameAnswers = (x) => JSON.stringify([...x].map((a) => [a.questionId, a.answer]).sort());
+  if (r.stars === stars && r.comment === comment && sameAnswers(r.answers || []) === sameAnswers(answers)) return ''; // nothing changed
+  Object.assign(r, { stars, answers, comment, editedAt: now }); save(); tellBusinessReview(r, true); return '';
 }
-const reviewForClient = (r) => ({ id: r.id, kind: r.kind, refNumber: r.refNumber, title: r.title, stars: r.stars, comment: r.comment, submittedAt: r.submittedAt, answers: (r.answers || []).map((a) => ({ question: a.question, type: a.type, answer: a.answer })) });
+const reviewForClient = (r) => ({ id: r.id, kind: r.kind, refNumber: r.refNumber, title: r.title, stars: r.stars, comment: r.comment, submittedAt: r.submittedAt, editedAt: r.editedAt || '', reply: r.reply ? { comment: r.reply.comment, updatedAt: r.reply.updatedAt } : null, answers: (r.answers || []).map((a) => ({ questionId: a.questionId, question: a.question, type: a.type, answer: a.answer })) });
 // the client portal: this client's completed jobs and paid invoices with no review yet. A job and its invoices are one piece of work, listed once, as the job
 function reviewableFor(c) {
   const seen = new Set(); const out = [];
@@ -2218,24 +2231,35 @@ function reviewableFor(c) {
 app.post('/api/portal/:token/reviews', (req, res) => {
   const c = db.clients.find((x) => x.portalToken === req.params.token); if (!c) return res.status(404).json({ error: 'Invalid portal link' });
   if (!tenancy.has('reviews')) return res.status(403).json({ error: 'Reviews aren’t available' });
+  if (currentUser(req)) return res.status(403).json({ error: REVIEW_STAFF_ONLY_VIEW });
   const b = req.body || {}; const item = reviewableFor(c).find((x) => x.kind === b.kind && x.id === b.id); // only their own finished work, not yet reviewed
   if (!item) return res.status(400).json({ error: 'This has already been reviewed' });
   const doc = (item.kind === 'job' ? db.jobs : db.invoices).find((x) => x.id === item.id); if (!doc) return res.status(404).json({ error: 'Not found' });
   const r = reviewRecord(item.kind, doc); const error = submitReview(r, b); if (error) return res.status(400).json({ error });
   res.status(201).json(reviewForClient(r));
 });
+app.put('/api/portal/:token/reviews/:id', (req, res) => {
+  const c = db.clients.find((x) => x.portalToken === req.params.token); if (!c) return res.status(404).json({ error: 'Invalid portal link' });
+  if (!tenancy.has('reviews')) return res.status(403).json({ error: 'Reviews aren’t available' });
+  if (currentUser(req)) return res.status(403).json({ error: REVIEW_STAFF_ONLY_VIEW });
+  const r = clientReviews().find((x) => x.id === req.params.id && x.clientId === c.id && x.submittedAt); if (!r) return res.status(404).json({ error: 'Review not found' });
+  const error = submitReview(r, req.body || {}); if (error) return res.status(400).json({ error });
+  res.json(reviewForClient(r));
+});
 app.get('/p/review/:token', (req, res) => {
   res.setHeader('X-Robots-Tag', 'noindex');
   const r = clientReviews().find((x) => x.token === req.params.token);
   if (!r) return res.status(404).send(shell('Not found', '<h1>Review link not found</h1>'));
+  if (r.submittedAt && req.query.edit && tenancy.has('reviews')) return res.send(reviewForm(r));
   if (!r.submittedAt) return res.send(tenancy.has('reviews') ? reviewForm(r) : shell('Reviews', `<h1>Reviews are closed</h1><p class="muted">${esc(db.company.name)} isn’t taking reviews here right now.</p>`));
   const g = connOf('google'); const google = g && g.reviews !== false && /^https:\/\//.test(g.reviewUrl || '') ? g.reviewUrl : ''; // offered whatever the rating: asking only happy clients is against Google's review rules
-  res.send(reviewPage(`<h1>Thank you!</h1><div class="rv-shown" aria-label="${r.stars} out of 5 stars">${'★'.repeat(r.stars)}<i>${'★'.repeat(5 - r.stars)}</i></div>${(r.answers || []).map((a) => `<p style="margin:8px 0"><strong>${esc(a.question)}</strong><br>${esc(answerText(a))}</p>`).join('')}${r.comment ? `<p style="white-space:pre-wrap">${esc(r.comment)}</p>` : ''}<p class="muted">Your review was sent to ${esc(db.company.name)}.</p>${google ? `<p><a class="btn alt" style="display:inline-block;text-decoration:none" href="${esc(google)}" target="_blank" rel="noopener noreferrer">Share it on Google too</a></p>` : ''}`));
+  res.send(reviewPage(`<h1>Thank you!</h1><div class="rv-shown" aria-label="${r.stars} out of 5 stars">${'★'.repeat(r.stars)}<i>${'★'.repeat(5 - r.stars)}</i></div>${(r.answers || []).map((a) => `<p style="margin:8px 0"><strong>${esc(a.question)}</strong><br>${esc(answerText(a))}</p>`).join('')}${r.comment ? `<p style="white-space:pre-wrap">${esc(r.comment)}</p>` : ''}${r.reply ? `<div style="margin:12px 0;padding:12px 14px;border-left:3px solid ${esc(db.company.brandColor)};background:#f9fafb"><strong>Reply from ${esc(db.company.name)}</strong><p style="margin:6px 0 0;white-space:pre-wrap">${esc(r.reply.comment)}</p></div>` : ''}<p class="muted">Your review was sent to ${esc(db.company.name)}.${tenancy.has('reviews') && !currentUser(req) ? ` <a href="/p/review/${esc(r.token)}?edit=1">Edit your review</a>` : ''}</p>${google ? `<p><a class="btn alt" style="display:inline-block;text-decoration:none" href="${esc(google)}" target="_blank" rel="noopener noreferrer">Share it on Google too</a></p>` : ''}`));
 });
 app.post('/p/review/:token', (req, res) => {
   const r = clientReviews().find((x) => x.token === req.params.token);
   if (!r) return res.status(404).send(shell('Not found', '<h1>Review link not found</h1>'));
-  if (r.submittedAt || !tenancy.has('reviews')) return res.redirect(`/p/review/${r.token}`);
+  if (!tenancy.has('reviews')) return res.redirect(`/p/review/${r.token}`);
+  if (currentUser(req)) return res.status(403).send(reviewForm(r, REVIEW_STAFF_ONLY_VIEW));
   const error = submitReview(r, req.body); if (error) return res.status(400).send(reviewForm(r, error));
   res.redirect(303, `/p/review/${r.token}`);
 });
@@ -2243,7 +2267,25 @@ app.post('/p/review/:token', (req, res) => {
 app.get('/api/reviews/client', (req, res) => {
   const done = clientReviews().filter((r) => r.submittedAt).sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));
   res.json({ questions: db.reviewQuestions || [], settings: reviewSettings(), gapDays: REVIEW_ASK_GAP_DAYS, waiting: clientReviews().filter((r) => r.emailedAt && !r.submittedAt).length, total: done.length, average: done.length ? done.reduce((s, r) => s + r.stars, 0) / done.length : 0,
-    reviews: done.map((r) => { const c = findClient(r.clientId); return { id: r.id, clientId: c ? r.clientId : '', clientName: c ? c.name : 'Former client', kind: r.kind, refId: r.refId, refNumber: r.refNumber, title: r.title, stars: r.stars, answers: r.answers || [], comment: r.comment, submittedAt: r.submittedAt }; }) });
+    reviews: done.map((r) => { const c = findClient(r.clientId); return { id: r.id, clientId: c ? r.clientId : '', clientName: c ? c.name : 'Former client', kind: r.kind, refId: r.refId, refNumber: r.refNumber, title: r.title, stars: r.stars, answers: r.answers || [], comment: r.comment, submittedAt: r.submittedAt, editedAt: r.editedAt || '', reply: r.reply || null }; }) });
+});
+// the business's side of a client review: it can't change the review, only reply. The client sees the reply, and is emailed the first time
+const clientReviewById = (id) => clientReviews().find((x) => x.id === id && x.submittedAt);
+app.put('/api/reviews/client/:id/reply', async (req, res) => {
+  const r = clientReviewById(req.params.id); if (!r) return res.status(404).json({ error: 'Review not found' });
+  const comment = String((req.body && req.body.comment) || '').trim(); if (!comment) return res.status(400).json({ error: 'Write a reply first' });
+  if (comment.length > 2000) return res.status(400).json({ error: 'Keep the reply under 2,000 characters' });
+  const first = !r.reply; const u = currentUser(req); r.reply = { comment, by: u ? u.name : '', updatedAt: new Date().toISOString() }; save();
+  const c = findClient(r.clientId);
+  if (first && c && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email || '')) {
+    const m = renderEmail('reviewReply', { client_name: c.name, company_name: db.company.name, work: r.title || 'your recent work', reply: comment, link: reviewLink(r) });
+    notify({ clientId: c.id, channel: 'email', kind: 'review', refId: r.refId, refNumber: r.refNumber, subject: m.subject, body: m.text, html: m.html }).then(() => save()).catch(() => {});
+  }
+  res.json(r.reply);
+});
+app.delete('/api/reviews/client/:id/reply', (req, res) => {
+  const r = clientReviewById(req.params.id); if (!r) return res.status(404).json({ error: 'Review not found' });
+  delete r.reply; save(); res.json({ ok: true });
 });
 app.put('/api/reviews/questions', (req, res) => {
   const list = req.body && req.body.questions; if (!Array.isArray(list)) return res.status(400).json({ error: 'Nothing to save' });
@@ -2346,6 +2388,7 @@ app.get('/api/portal/:token', (req, res) => {
     reviews: !tenancy.has('reviews') ? null : (db.clientReviews || []).filter((r) => r.clientId === c.id && r.submittedAt).sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
       .map(reviewForClient),
     reviewable: tenancy.has('reviews') ? reviewableFor(c) : [],
+    reviewsViewOnly: !!currentUser(req),
     reviewQuestions: tenancy.has('reviews') ? Object.fromEntries(REVIEW_MODULES.map((m) => [m, reviewQuestionsFor(m).map(({ id, text, type, required }) => ({ id, text, type, required }))])) : {},
     requests: (db.requests || []).filter((r) => r.clientId === c.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(requestForClient),
     jobs: db.jobs.filter((j) => j.clientId === c.id).sort((a, b) => b.date.localeCompare(a.date)).map(jobForClient),

@@ -637,22 +637,41 @@ PAGES['/reviews'] = {
   title: 'Reviews',
   async render(main) {
     const google = revState.source === 'google';
-    main.innerHTML = `<div class="head"><div><h1>Reviews</h1><p class="sub">${google ? 'Your Google reviews. Replies show publicly on Google under the review.' : 'What clients say after a job is completed or an invoice is paid. Only your team and the client who wrote each one see them.'}</p></div></div>
+    main.innerHTML = `<div class="head"><div><h1>Reviews</h1><p class="sub">${google ? 'Your Google reviews. Replies show publicly on Google under the review.' : 'What clients say after a job is completed or an invoice is paid. Only your team and the client who wrote each one see them, and only that client can change them. You can reply.'}</p></div></div>
 <div class="tabs rv-src" role="tablist">${[['clients', 'From your clients'], ['google', 'Google']].map(([k, l]) => `<button type="button" role="tab" class="${revState.source === k ? 'on' : ''}" data-act="revSource" data-s="${k}">${l}</button>`).join('')}</div><div id="rvBody"></div>`;
     await (google ? renderGoogleReviews : renderClientReviews)($('#rvBody', main));
   },
 };
 A.revSource = (d) => { revState.source = d.s; PAGES['/reviews'].render($('#main')); };
+const crvRef = (r) => { const what = `${r.kind === 'job' ? 'Job' : 'Invoice'} ${esc(r.refNumber || '')}`; const can = r.kind === 'job' ? canDo('jobs.view') : canDo('invoices'); return (can ? `<a href="/${r.kind === 'job' ? 'jobs/edit' : 'invoices/view'}?id=${r.refId}" data-link>${what}</a>` : what) + (r.title ? ` · ${esc(r.title)}` : ''); };
+const clientReviewCard = (r) => `<article class="card rv crv" data-id="${esc(r.id)}"><header><span class="rv-ini">${esc((r.clientName[0] || '?').toUpperCase())}</span><div><strong>${r.clientId && canDo('clients.view') ? `<a href="/clients/view?id=${r.clientId}" data-link>${esc(r.clientName)}</a>` : esc(r.clientName)}</strong><div>${starRow(r.stars)} <span class="muted">${fmtDate(r.submittedAt.slice(0, 10))}${r.editedAt ? ` · Edited by the client ${fmtDate(r.editedAt.slice(0, 10))}` : ''}</span></div></div></header>
+${(r.answers || []).map((a) => `<div class="rv-ans"><strong>${esc(a.question)}</strong><div>${a.type === 'stars' ? starRow(a.answer) : esc(a.answer)}</div></div>`).join('')}${r.comment ? `<p class="rv-text">${esc(r.comment)}</p>` : (r.answers || []).length ? '' : '<p class="muted rv-text">A rating with no comment.</p>'}<p class="muted rv-for">${crvRef(r)}</p>${r.reply ? `<div class="rv-reply"><div class="rv-reply-h"><strong>Your reply</strong><span class="muted">${fmtDate(r.reply.updatedAt.slice(0, 10))}</span></div><p>${esc(r.reply.comment)}</p><div class="rv-acts"><button type="button" class="link-btn" data-act="crvEdit">Edit</button><button type="button" class="link-btn danger" data-act="crvDelete">Delete</button></div></div>` : '<div class="rv-acts"><button type="button" class="btn alt sm" data-act="crvEdit">Reply</button></div>'}</article>`;
+const crvOf = (el) => { const card = el.closest('.crv'); return { card, r: revState.clients.find((x) => x.id === card.dataset.id) }; };
+const crvRedraw = (card, r) => { card.outerHTML = clientReviewCard(r); };
+A.crvEdit = (d, el) => {
+  const { card, r } = crvOf(el); const box = $('.rv-reply', card) || $('.rv-acts', card);
+  const f = document.createElement('form'); f.className = 'rv-form';
+  f.innerHTML = `<label>Your reply<textarea name="comment" rows="4" maxlength="2000" required placeholder="Thank ${esc(r.clientName.split(' ')[0])} for the review">${esc(r.reply ? r.reply.comment : '')}</textarea></label>
+<p class="muted" style="font-size:12px;margin:0 0 8px">The client sees your reply${r.reply ? '' : ' and gets an email with it'}. You can’t change their review.</p><div class="rv-acts"><button type="button" class="btn alt sm" data-act="crvCancel">Cancel</button><button class="btn sm">${r.reply ? 'Save reply' : 'Send reply'}</button></div>`;
+  box.replaceWith(f); $('textarea', f).focus();
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault(); const btn = $('button.btn:not(.alt)', f); btn.disabled = true;
+    try { r.reply = await api('PUT', `/api/reviews/client/${encodeURIComponent(r.id)}/reply`, { comment: f.comment.value }); toast('Reply saved'); crvRedraw(card, r); } catch (err) { btn.disabled = false; toast(err.message, true); }
+  });
+};
+A.crvCancel = (d, el) => { const { card, r } = crvOf(el); crvRedraw(card, r); };
+A.crvDelete = async (d, el) => {
+  const { card, r } = crvOf(el); if (!confirm('Delete your reply? The client won’t see it anymore.')) return;
+  try { await api('DELETE', `/api/reviews/client/${encodeURIComponent(r.id)}/reply`); r.reply = null; toast('Reply deleted'); crvRedraw(card, r); } catch (e) { toast(e.message, true); }
+};
 async function renderClientReviews(box) {
-  const R = await api('GET', '/api/reviews/client'); const S = R.settings; revState.questions = R.questions;
+  const R = await api('GET', '/api/reviews/client'); const S = R.settings; revState.questions = R.questions; revState.clients = R.reviews;
   const sw = (k, label, note) => `<label class="sw-row"><span>${label}<small class="muted">${note}</small></span><input type="checkbox" class="sw" data-rvset="${k}" ${S[k] ? 'checked' : ''}><i></i></label>`;
-  const ref = (r) => { const what = `${r.kind === 'job' ? 'Job' : 'Invoice'} ${esc(r.refNumber || '')}`; const can = r.kind === 'job' ? canDo('jobs.view') : canDo('invoices'); return (can ? `<a href="/${r.kind === 'job' ? 'jobs/edit' : 'invoices/view'}?id=${r.refId}" data-link>${what}</a>` : what) + (r.title ? ` · ${esc(r.title)}` : ''); };
   box.innerHTML = `<div class="card rv-sum"><div class="rv-avg"><strong>${R.average.toFixed(1)}</strong>${starRow(R.average, 20)}<span class="muted">${R.total} review${R.total === 1 ? '' : 's'}${R.waiting ? `, ${R.waiting} waiting` : ''}</span></div>
 <div class="rv-ask"><h3>Ask clients automatically</h3><p class="muted">Clients with an email address get a private review link. A job and its invoice count as one request, and a client is asked at most once every ${R.gapDays} days.</p>
 ${sw('afterJob', 'When a job is completed', 'The email goes out as soon as the job is marked complete')}${sw('afterInvoice', 'When an invoice is paid', 'Also adds a Leave a review button to the paid invoice page')}${sw('notifyEmail', 'Email me new reviews', `Sent to ${esc(company.email || 'your company email')}`)}</div></div>
 <div class="card"><h2>Your questions</h2><p class="muted">Clients see these on the review form, after the star rating. Choose which modules ask each one.</p><div id="rvQs"></div><div class="rv-acts"><button type="button" class="btn alt sm" data-act="rvqAdd">Add question</button><button type="button" class="btn sm" data-act="rvqSave">Save questions</button></div></div>
-${R.reviews.length ? R.reviews.map((r) => `<article class="card rv"><header><span class="rv-ini">${esc((r.clientName[0] || '?').toUpperCase())}</span><div><strong>${r.clientId && canDo('clients.view') ? `<a href="/clients/view?id=${r.clientId}" data-link>${esc(r.clientName)}</a>` : esc(r.clientName)}</strong><div>${starRow(r.stars)} <span class="muted">${fmtDate(r.submittedAt.slice(0, 10))}</span></div></div></header>
-${(r.answers || []).map((a) => `<div class="rv-ans"><strong>${esc(a.question)}</strong><div>${a.type === 'stars' ? starRow(a.answer) : esc(a.answer)}</div></div>`).join('')}${r.comment ? `<p class="rv-text">${esc(r.comment)}</p>` : (r.answers || []).length ? '' : '<p class="muted rv-text">A rating with no comment.</p>'}<p class="muted rv-for">${ref(r)}</p></article>`).join('') : '<div class="card"><p class="muted" style="margin:0">No client reviews yet. They’ll show here as clients answer.</p></div>'}`;
+${R.reviews.length ? R.reviews.map(clientReviewCard).join('') : '<div class="card"><p class="muted" style="margin:0">No client reviews yet. They’ll show here as clients answer.</p></div>'}`;
   drawReviewQuestions();
   box.addEventListener('change', async (e) => {
     const c = e.target.closest('[data-rvset]'); if (!c) return;
@@ -898,11 +917,12 @@ function renderPortal(main, tok, p) {
   const head = (title, action = '') => `<div class="cp-head"><h1>${title}</h1>${action}</div>`;
   // the review form opens on one finished job or invoice; its questions are the ones the business set for that module
   let reviewing = null;
-  const rvBtn = (id) => { const i = p.reviewable.findIndex((x) => x.refs.includes(id)); return i < 0 ? '' : `<button type="button" class="cp-btn primary" data-cp="write-review" data-rv="${i}">Write a review</button>`; };
-  const rvStars = (name, label, required) => `<div class="cp-rv-stars" role="radiogroup" aria-label="${esc(label)}">${[5, 4, 3, 2, 1].map((n) => `<input type="radio" id="${name}_${n}" name="${name}" value="${n}" ${required ? 'required' : ''}><label for="${name}_${n}" title="${n} out of 5" aria-label="${n} out of 5 stars">★</label>`).join('')}</div>`;
-  const rvField = (q) => { const name = 'q_' + q.id; const need = q.required ? 'required' : '';
-    return `<div class="cp-rv-q"><div class="cp-rv-l">${esc(q.text)}${q.required ? '' : ' <span class="cp-num">(optional)</span>'}</div>${q.type === 'stars' ? rvStars(name, q.text, q.required)
-      : q.type === 'yesno' ? ['Yes', 'No'].map((v) => `<label class="cp-rv-yn"><input type="radio" name="${name}" value="${v}" ${need}> ${v}</label>`).join('') : `<textarea name="${name}" rows="3" maxlength="1000" ${need}></textarea>`}</div>`; };
+  const rvBtn = (id) => { const i = p.reviewable.findIndex((x) => x.refs.includes(id)); return i < 0 || p.reviewsViewOnly ? '' : `<button type="button" class="cp-btn primary" data-cp="write-review" data-rv="${i}">Write a review</button>`; };
+  const rvVal = (q) => ((reviewing.edit && reviewing.edit.answers) || []).find((a) => a.questionId === q.id)?.answer;
+  const rvStars = (name, label, required, value) => `<div class="cp-rv-stars" role="radiogroup" aria-label="${esc(label)}">${[5, 4, 3, 2, 1].map((n) => `<input type="radio" id="${name}_${n}" name="${name}" value="${n}" ${required ? 'required' : ''} ${Number(value) === n ? 'checked' : ''}><label for="${name}_${n}" title="${n} out of 5" aria-label="${n} out of 5 stars">★</label>`).join('')}</div>`;
+  const rvField = (q) => { const name = 'q_' + q.id; const need = q.required ? 'required' : ''; const val = rvVal(q);
+    return `<div class="cp-rv-q"><div class="cp-rv-l">${esc(q.text)}${q.required ? '' : ' <span class="cp-num">(optional)</span>'}</div>${q.type === 'stars' ? rvStars(name, q.text, q.required, val)
+      : q.type === 'yesno' ? ['Yes', 'No'].map((v) => `<label class="cp-rv-yn"><input type="radio" name="${name}" value="${v}" ${need} ${val === v ? 'checked' : ''}> ${v}</label>`).join('') : `<textarea name="${name}" rows="3" maxlength="1000" ${need}>${esc(val ?? '')}</textarea>`}</div>`; };
   const views = {
     requests: () => (p.requests.length ? head('Requests', newReqBtn) + `<div class="cp-list">${p.requests.map((r) => row(esc(r.title), [`Sent ${fmtDate(r.createdAt.slice(0, 10))}`, r.preferredDate || r.preferredTime !== 'any' ? `Preferred: ${r.preferredDate ? fmtDate(r.preferredDate) : 'any day'}, ${TIME_LABEL[r.preferredTime].toLowerCase()}` : '', r.details ? esc(r.details) : ''], cpBadge(r.status))).join('')}</div>`
       : cpEmpty('requests', 'Get work done', 'Send us a request to fill us in on the details', newReqBtn)),
@@ -924,13 +944,13 @@ ${p.client.smsConsent ? `<p class="cp-sub" style="margin:4px 0 12px">You get tex
     invoices: () => (invoices.length ? head('Invoices') + (openInv.length ? `<div class="cp-due"><span>Balance due</span><strong>${money(openInv.reduce((s, i) => s + (i.balanceDue ?? i.total), 0))}</strong></div>` : '')
       + `<div class="cp-list">${[...openInv, ...invoices.filter((i) => i.displayStatus === 'paid')].map((i) => row(`${esc(i.subject || 'Invoice')} <span class="cp-num">#${esc(i.number)}</span>`, [i.displayStatus === 'paid' ? `Paid ${fmtDate((i.paidAt || i.issueDate).slice(0, 10))}` : `Due ${fmtDate(i.dueDate)}`, i.displayStatus === 'paid' ? money(i.total) : `${money(i.balanceDue ?? i.total)}${i.depositApplied > 0 ? ` after ${money(i.depositApplied)} deposit` : ''}`], `${cpBadge(i.displayStatus)}<a class="cp-btn ${i.displayStatus === 'paid' ? '' : 'primary'}" href="${esc(i.link)}">${i.displayStatus === 'paid' ? 'Receipt' : 'Pay now'}</a>${i.displayStatus === 'paid' ? rvBtn(i.id) : ''}`)).join('')}</div>`
       : cpEmpty('invoices', 'No invoices', 'Invoices we send you will show up here, ready to pay online.')),
-    reviews: () => (p.reviews.length || p.reviewable.length ? head('Reviews') + (p.reviewable.length ? `<h3 class="cp-sec">Waiting for your review</h3><div class="cp-list">${p.reviewable.map((x, i) => row(`${esc(x.title || (x.kind === 'job' ? 'Job' : 'Invoice'))}${x.number ? ` <span class="cp-num">#${esc(x.number)}</span>` : ''}`, [x.kind === 'job' ? `Completed ${fmtDate(x.date)}` : `Paid ${fmtDate(x.date)}`], `<button type="button" class="cp-btn primary" data-cp="write-review" data-rv="${i}">Write a review</button>`)).join('')}</div>` : '')
-      + (p.reviews.length ? `<h3 class="cp-sec">Your reviews</h3><div class="cp-list">${p.reviews.map((r) => row(`${esc(r.title || (r.kind === 'job' ? 'Job' : 'Invoice'))}${r.refNumber ? ` <span class="cp-num">#${esc(r.refNumber)}</span>` : ''}`, [`Sent ${fmtDate(r.submittedAt.slice(0, 10))}`, ...r.answers.map((a) => `${esc(a.question)} ${a.type === 'stars' ? starRow(a.answer, 14) : esc(a.answer)}`), r.comment ? esc(r.comment) : ''], starRow(r.stars))).join('')}</div>` : '')
+    reviews: () => (p.reviews.length || p.reviewable.length ? head('Reviews') + (p.reviewable.length ? `<h3 class="cp-sec">Waiting for your review</h3><div class="cp-list">${p.reviewable.map((x, i) => row(`${esc(x.title || (x.kind === 'job' ? 'Job' : 'Invoice'))}${x.number ? ` <span class="cp-num">#${esc(x.number)}</span>` : ''}`, [x.kind === 'job' ? `Completed ${fmtDate(x.date)}` : `Paid ${fmtDate(x.date)}`], p.reviewsViewOnly ? '' : `<button type="button" class="cp-btn primary" data-cp="write-review" data-rv="${i}">Write a review</button>`)).join('')}</div>` : '')
+      + (p.reviews.length ? `<h3 class="cp-sec">Your reviews</h3><div class="cp-list">${p.reviews.map((r, i) => row(`${esc(r.title || (r.kind === 'job' ? 'Job' : 'Invoice'))}${r.refNumber ? ` <span class="cp-num">#${esc(r.refNumber)}</span>` : ''}`, [`Sent ${fmtDate(r.submittedAt.slice(0, 10))}${r.editedAt ? ` · Edited ${fmtDate(r.editedAt.slice(0, 10))}` : ''}`, ...r.answers.map((a) => `${esc(a.question)} ${a.type === 'stars' ? starRow(a.answer, 14) : esc(a.answer)}`), r.comment ? esc(r.comment) : '', r.reply ? `<b>Reply from ${esc(co.name)}:</b> ${esc(r.reply.comment)}` : ''], `${starRow(r.stars)}${p.reviewsViewOnly ? '' : `<button type="button" class="cp-btn" data-cp="write-review" data-rve="${i}">Edit</button>`}`)).join('')}</div>` : '')
       : cpEmpty('reviews', 'No reviews yet', `When a job is completed or an invoice is paid, you can review it here.`)),
-    'write-review': () => `${head('Write a review')}<form class="cp-form" id="cpRev"><p class="cp-sub" style="margin:0 0 14px">Tell ${esc(co.name)} about ${esc(reviewing.title || (reviewing.kind === 'job' ? 'this job' : 'this invoice'))}${reviewing.number ? ` (#${esc(reviewing.number)})` : ''}. Your review goes to the business and isn’t posted publicly.</p>
-<div class="cp-rv-q"><div class="cp-rv-l">Your overall rating</div>${rvStars('stars', 'Your overall rating', true)}</div>${(p.reviewQuestions[reviewing.kind] || []).map(rvField).join('')}
-<div class="cp-rv-q"><div class="cp-rv-l">Anything you’d like to add? <span class="cp-num">(optional)</span></div><textarea name="comment" rows="5" maxlength="2000"></textarea></div>
-<div class="cp-actions"><button type="button" class="cp-btn ghost" data-cp="reviews">Cancel</button><button class="cp-btn primary">Send review</button></div></form>`,
+    'write-review': () => `${head(reviewing.edit ? 'Edit your review' : 'Write a review')}<form class="cp-form" id="cpRev"><p class="cp-sub" style="margin:0 0 14px">Tell ${esc(co.name)} about ${esc(reviewing.title || (reviewing.kind === 'job' ? 'this job' : 'this invoice'))}${reviewing.number ? ` (#${esc(reviewing.number)})` : ''}. Your review goes to the business and isn’t posted publicly.</p>
+<div class="cp-rv-q"><div class="cp-rv-l">Your overall rating</div>${rvStars('stars', 'Your overall rating', true, reviewing.edit && reviewing.edit.stars)}</div>${(p.reviewQuestions[reviewing.kind] || []).map(rvField).join('')}
+<div class="cp-rv-q"><div class="cp-rv-l">Anything you’d like to add? <span class="cp-num">(optional)</span></div><textarea name="comment" rows="5" maxlength="2000">${esc((reviewing.edit && reviewing.edit.comment) || '')}</textarea></div>
+<div class="cp-actions"><button type="button" class="cp-btn ghost" data-cp="reviews">Cancel</button><button class="cp-btn primary">${reviewing.edit ? 'Save changes' : 'Send review'}</button></div></form>`,
     wallet: () => cpEmpty('wallet', 'No saved payment methods', 'Pay any invoice by card or Zelle when you open it. Card details are handled securely by Stripe and are never stored by us.'),
     contact: () => `${head('Contact us')}<div class="cp-card">${co.logo ? `<img src="${esc(co.logo)}" alt="" class="cp-card-logo">` : ''}<h2>${esc(co.name)}</h2>
 ${co.phone ? `<a class="cp-contact" href="tel:${esc(co.phone)}">${cpIcon('contact', 18)} ${esc(co.phone)}</a>` : ''}${co.email ? `<a class="cp-contact" href="mailto:${esc(co.email)}">✉ ${esc(co.email)}</a>` : ''}
@@ -960,9 +980,12 @@ ${co.hours ? `<h3 class="cp-sec">Business hours</h3><table class="cp-hours">${WE
     });
     const rf = $('#cpRev', main);
     if (rf) rf.addEventListener('submit', async (e) => {
-      e.preventDefault(); const btn = $('.primary', rf); btn.disabled = true; btn.textContent = 'Sending…'; const item = reviewing;
-      try { const r = await api('POST', `/api/portal/${encodeURIComponent(tok)}/reviews`, { ...Object.fromEntries(new FormData(rf)), kind: item.kind, id: item.id }); p.reviews.unshift(r); p.reviewable = p.reviewable.filter((x) => x !== item); reviewing = null; toast('Thank you! Your review was sent.'); show('reviews'); }
-      catch (err) { toast(err.message, true); btn.disabled = false; btn.textContent = 'Send review'; }
+      e.preventDefault(); const btn = $('.primary', rf); btn.disabled = true; const label = btn.textContent; btn.textContent = 'Sending…'; const item = reviewing; const fields = Object.fromEntries(new FormData(rf)); const base = `/api/portal/${encodeURIComponent(tok)}/reviews`;
+      try {
+        if (item.edit) { const r = await api('PUT', `${base}/${encodeURIComponent(item.edit.id)}`, fields); p.reviews[p.reviews.indexOf(item.edit)] = r; toast('Your review was updated.'); }
+        else { const r = await api('POST', base, { ...fields, kind: item.kind, id: item.id }); p.reviews.unshift(r); p.reviewable = p.reviewable.filter((x) => x !== item); toast('Thank you! Your review was sent.'); }
+        reviewing = null; show('reviews');
+      } catch (err) { toast(err.message, true); btn.disabled = false; btn.textContent = label; }
     });
     const on = $('.cp-navs', main); const cur = $('.cp-nav.on', on); if (cur && on.scrollWidth > on.clientWidth) on.scrollLeft = cur.offsetLeft - 12; // phone: keep the selected tab visible
     main.scrollTop = 0; window.scrollTo(0, 0);
@@ -970,7 +993,7 @@ ${co.hours ? `<h3 class="cp-sec">Business hours</h3><table class="cp-hours">${WE
   main.innerHTML = `<div class="cp"><aside class="cp-side"><div class="cp-brand">${co.logo ? `<img src="${esc(co.logo)}" alt="${esc(co.name)}">` : `<div class="cp-mono">${esc(initials(co.name || '?'))}</div>`}</div>
 <div class="cp-co">${esc(co.name)}</div><nav class="cp-navs" aria-label="Client hub"></nav></aside><section class="cp-main" aria-live="polite"></section></div>`;
   main.onclick = async (e) => {
-    const b = e.target.closest('[data-cp]'); if (b) { e.preventDefault(); if (b.dataset.rv) reviewing = p.reviewable[Number(b.dataset.rv)]; show(b.dataset.cp); return; }
+    const b = e.target.closest('[data-cp]'); if (b) { e.preventDefault(); if (b.dataset.rv) reviewing = p.reviewable[Number(b.dataset.rv)]; if (b.dataset.rve) { const r = p.reviews[Number(b.dataset.rve)]; reviewing = { kind: r.kind, title: r.title, number: r.refNumber, edit: r }; } show(b.dataset.cp); return; }
     const cp = e.target.closest('[data-cp-copy]');
     if (cp) {
       const i = $('#cpRefLink', main); try { await navigator.clipboard.writeText(i.value); } catch (err) { i.select(); document.execCommand('copy'); }
@@ -1554,8 +1577,8 @@ ${TPL.list.map((t) => `<tr class="crow" data-act="editTpl" data-key="${t.key}"><
   },
 };
 const TPL = { list: [] };
-const tplSample = () => ({ work: 'Gutter cleaning', client_name: 'Jane Smith', company_name: company.name || 'Your Business', company_email: company.email || 'hello@yourbusiness.com', sent_date: fmtDate(ymd(new Date())), quote_number: docPrefix('quotePrefix') + '1005', quote_title: 'Backyard cleanup', invoice_number: docPrefix('invoicePrefix') + '3010', total: '$1,250.00', due_date: fmtDate(ymd(addDays(new Date(), 14))), job_number: docPrefix('jobPrefix') + '2010', job_title: 'Gutter cleaning', date: fmtDate(ymd(addDays(new Date(), 2))), time: '09:00', address: '100 Main St, Houston, TX 77002', amount: '$1,250.00', paid_for: 'Invoice ' + docPrefix('invoicePrefix') + '3010', reference: 'pi_3Q8x2L4eZvKYlo2C' });
-const tplLinks = () => ({ quote: location.origin + '/p/quote/abc123', invoice: location.origin + '/pay/abc123', reviewRequest: location.origin + '/p/review/abc123' });
+const tplSample = () => ({ work: 'Gutter cleaning', reply: 'Thank you! It was a pleasure working with you.', client_name: 'Jane Smith', company_name: company.name || 'Your Business', company_email: company.email || 'hello@yourbusiness.com', sent_date: fmtDate(ymd(new Date())), quote_number: docPrefix('quotePrefix') + '1005', quote_title: 'Backyard cleanup', invoice_number: docPrefix('invoicePrefix') + '3010', total: '$1,250.00', due_date: fmtDate(ymd(addDays(new Date(), 14))), job_number: docPrefix('jobPrefix') + '2010', job_title: 'Gutter cleaning', date: fmtDate(ymd(addDays(new Date(), 2))), time: '09:00', address: '100 Main St, Houston, TX 77002', amount: '$1,250.00', paid_for: 'Invoice ' + docPrefix('invoicePrefix') + '3010', reference: 'pi_3Q8x2L4eZvKYlo2C' });
+const tplLinks = () => ({ quote: location.origin + '/p/quote/abc123', invoice: location.origin + '/pay/abc123', reviewRequest: location.origin + '/p/review/abc123', reviewReply: location.origin + '/p/review/abc123' });
 A.editTpl = (d) => {
   const t = TPL.list.find((x) => x.key === d.key); if (!t) return; const vars = { ...tplSample(), link: tplLinks()[t.key] || '' };
   const body = modal(`${t.label} email`, `<form class="tpl" data-sticky><p class="muted" style="margin:-4px 0 12px">${esc(t.description)}</p>
