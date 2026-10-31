@@ -1316,6 +1316,7 @@ ${card('Notes', v.edit === 'notes' ? `<form class="cv-notef"><textarea name="not
 // redraw the profile with its current filters and tab (the data is already loaded)
 const cvDraw = () => PAGES['/clients/view'].render($('#main'));
 /* ===== phones: a client's profile: name, balance and Create, then the Client, Work and Notes tabs ===== */
+const mcvStar = (outline) => `<svg class="mcv-star" width="22" height="22" viewBox="0 0 24 24" fill="${outline ? 'none' : 'currentColor'}" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 2l3 6.6 7 .8-5.200 4.800 1.400 7.100L12 17.700 5.800 21.300l1.400-7.100L2 9.400l7-.8z"/></svg>`;
 const mcvRate = (p) => (p.taxRate == null || p.taxRate === '' ? Number(company.taxRate) || 0 : Number(p.taxRate));
 const mcvProp = (c, p) => { const body = `<span class="mcv-pt"><span>${p.name ? `<strong>${esc(p.name)}</strong>` : ''}${esc(propAddr(p))}</span>${ARROW}</span><small>Tax rate</small>${mcvRate(p)}%`;
   return canDo('clients.edit') ? `<button type="button" class="mcv-prop" data-act="propEdit" data-client="${c.id}" data-id="${esc(p.id)}" aria-label="Edit property">${body}</button>` : `<a class="mcv-prop" href="/clients/property?client=${c.id}&id=${encodeURIComponent(p.id)}" data-link>${body}</a>`; };
@@ -1327,11 +1328,11 @@ function mobileClientPage(c, { reqs, msgs, balance, edit, props }) {
   const billingFirst = [...props].sort((a, b) => sameAddr(propAddr(b), c.address) - sameAddr(propAddr(a), c.address));
   const phones = (c.phones && c.phones.length ? c.phones : [{ number: c.phone, type: 'Phone' }]).filter((p) => p.number);
   const mails = (c.emails && c.emails.length ? c.emails : [{ address: c.email, type: 'Email' }]).filter((m) => m.address);
-  const STAR = '<svg class="mcv-star" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" role="img" aria-label="Primary email"><path d="M12 2l3 6.6 7 .8-5.200 4.800 1.400 7.100L12 17.700 5.800 21.300l1.400-7.100L2 9.400l7-.8z"/></svg>';
+  const STAR = mcvStar();
   const client = `<section class="mcv-sec">${head(esc(c.name), toEdit)}${c.company && c.company !== c.name ? kv('Company', esc(c.company)) : ''}${c.role ? kv('Role', esc(c.role)) : ''}${kv('Lead source', esc(c.leadSource || ((c.tags || []).includes('Online booking') ? 'Online booking' : '')))}${kv('Payment terms', esc((TERMS.find(([k]) => k === c.paymentTerms) || [, 'Company default (Due upon receipt)'])[1]))}</section>
 <section class="mcv-sec">${head('Properties', edit ? `<button type="button" class="mcv-add" data-act="propEdit" data-client="${c.id}" aria-label="New property">${CHEV('M12 5v14M5 12h14')}</button>` : '')}${billingFirst[0] ? mcvProp(c, billingFirst[0]) : '<p class="muted mcv-none">No properties yet</p>'}${props.length > 1 ? `<button type="button" class="mcv-all" data-act="cvPropsAll" data-id="${c.id}">View All</button>` : ''}</section>
 <section class="mcv-sec">${head('Billing address', toEdit)}<div>${c.address ? esc(c.address) : '<span class="muted">No billing address</span>'}</div></section>
-<section class="mcv-sec">${head('Contact details', toEdit)}${phones.map((p) => kv(esc(p.type || 'Phone'), `<a href="tel:${esc(p.number)}">${esc(p.number)}</a>`)).join('')}${mails.map((m) => kv(esc(m.type || 'Email'), `<a href="mailto:${esc(m.address)}">${esc(m.address)}</a>${mails.length > 1 && m.primary ? STAR : ''}`)).join('')}${(c.contacts || []).map((x) => kv(esc(x.role || 'Contact'), [esc(x.name), x.phone ? `<a href="tel:${esc(x.phone)}">${esc(x.phone)}</a>` : '', x.email ? `<a href="mailto:${esc(x.email)}">${esc(x.email)}</a>` : ''].filter(Boolean).join('<br>'))).join('')}${!phones.length && !mails.length && !(c.contacts || []).length ? '<p class="muted mcv-none">No contact details yet</p>' : ''}</section>
+<section class="mcv-sec">${head('Contact details', edit ? `<button type="button" class="mcv-add" data-act="cvmContact" aria-label="Edit contact details">${ARROW}</button>` : '')}${phones.map((p) => kv(esc(p.type || 'Phone'), `<a href="tel:${esc(p.number)}">${esc(p.number)}</a>`)).join('')}${mails.map((m) => kv(esc(m.type || 'Email'), `<a href="mailto:${esc(m.address)}">${esc(m.address)}</a>${mails.length > 1 && m.primary ? STAR : ''}`)).join('')}${(c.contacts || []).map((x) => kv(esc(x.role || 'Contact'), [esc(x.name), x.phone ? `<a href="tel:${esc(x.phone)}">${esc(x.phone)}</a>` : '', x.email ? `<a href="mailto:${esc(x.email)}">${esc(x.email)}</a>` : ''].filter(Boolean).join('<br>'))).join('')}${!phones.length && !mails.length && !(c.contacts || []).length ? '<p class="muted mcv-none">No contact details yet</p>' : ''}</section>
 ${msgs ? `<section class="mcv-sec">${head('Communication')}${msgs.slice(0, 10).map((n) => `<button type="button" class="mcv-msg" data-act="viewNotif" data-id="${n.id}"><span class="mcv-mt"><strong>${esc(n.to || c.name)}</strong><span>${esc(fmtDate(String(n.at).slice(0, 10)))}</span></span><span class="muted">${esc(n.subject || n.kind)}</span></button>`).join('') || '<p class="muted mcv-none">No emails or texts yet</p>'}</section>` : ''}`;
   const WORK = [['requests', 'Requests', '', PI.request], ['quotes', 'Quotes', 'need-quotes', PI.quote], ['jobs', 'Jobs', '', PI.job], ['invoices', 'Invoices', 'need-invoices', QM.invoice]];
   const icon = Object.fromEntries(WORK.map(([k, , , ic]) => [k, ic]));
@@ -1359,6 +1360,45 @@ A.cvmMore = () => {
   const f = mSheet('More', `<div class="ms-list">${c.email ? `<a href="mailto:${esc(c.email)}">Email client</a>` : ''}${portal && c.email ? '<button type="button" class="need-clients-edit" data-act="cvLoginEmail">Send login email</button>' : ''}${portal ? `<a href="${esc(portal)}" target="_blank" rel="noopener">Log in as client</a>` : ''}<a href="/clients/view?id=${c.id}&full=1" data-link>Full profile</a>
 <button type="button" class="need-clients-edit" data-act="cvArchive">${c.archived ? 'Unarchive' : 'Archive'}</button><button type="button" class="admin-only" data-act="cvMerge" ${D.clients.length > 1 ? '' : 'disabled'}>Merge client</button><button type="button" class="admin-only danger-text" data-act="delClient" data-id="${c.id}">Delete client</button></div>`);
   f.addEventListener('click', (e) => { if (e.target.closest('a, button[data-act]')) mClose(true); });
+};
+// the Contact details arrow: phone numbers and emails. The first phone is the one texts and calls use; the starred email gets quotes, invoices and messages (the same data as Edit client)
+A.cvmContact = () => {
+  const c = cvClient(); const dom = location.hostname.split('.').slice(-2).join('.');
+  const phones = (c.phones && c.phones.length ? c.phones : [{ number: c.phone || '', type: 'Main' }]).map((p) => ({ number: p.number, type: p.type }));
+  const emails = (c.emails && c.emails.length ? c.emails : [{ address: c.email || '', type: 'Personal' }]).map((m) => ({ address: m.address, type: m.type, primary: !!m.primary }));
+  if (emails.some((m) => m.primary)) emails.sort((a, b) => b.primary - a.primary); emails[0].primary = true;
+  let sms = !!c.smsConsent; let open = false;
+  const label = (i, kind, types, cur) => `<label class="mf mf-sel"><span>Label</span><select data-t="${kind}" data-i="${i}">${[...new Set([...types, ...(cur ? [cur] : [])])].map((t) => `<option ${cur === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>`;
+  const PT = ['Main', 'Mobile', 'Work', 'Home', 'Fax', 'Other']; const ET = ['Personal', 'Work', 'Other'];
+  const num = (p, i) => `${mField('Phone number', `<input type="tel" data-n="${i}" value="${esc(p.number)}" placeholder=" " autocomplete="off">`)}${label(i, 'p', PT, p.type)}`;
+  const adr = (m, i) => `${mField('Email address', `<input type="email" data-a="${i}" value="${esc(m.address)}" placeholder=" " autocomplete="off" autocapitalize="off">`)}${label(i, 'e', ET, m.type)}`;
+  const addRow = (title, k) => `<div class="mcd-h"><h3>${title}</h3><button type="button" class="mcv-add" data-add="${k}" aria-label="Add ${title.toLowerCase()}">${CHEV('M12 5v14M5 12h14')}</button></div>`;
+  const rm = (k, i) => `<button type="button" class="pfm-del" data-rm="${k}" data-i="${i}">Remove</button>`;
+  const body = () => `<div class="mcd-h">${mcvStar()}<h3>Default phone number</h3></div>${num(phones[0], 0)}
+<label class="sw-row mcd-sms"><span>Receives text messages</span><input type="checkbox" class="sw" name="smsConsent" ${sms ? 'checked' : ''}><i></i></label>
+<details class="mcd-consent"${open ? ' open' : ''}><summary>Before turning this on</summary><p class="muted">${c.smsConsent ? `Agreed ${esc(fmtDate(c.smsConsent.at.slice(0, 10)))}${c.smsConsent.source !== 'business' ? ' on the ' + esc(c.smsConsent.source) : ''}. ` : ''}Only turn it on if the client said yes after you read them: “Can we text you at the number you just gave us about your quotes, invoices and appointments? Message frequency varies, and msg &amp; data rates may apply. Reply HELP for help or STOP at any time to opt out. Our text terms and privacy policy are at ${esc(dom)}/terms and ${esc(dom)}/privacy. Agreeing isn’t required to do business with us. Do you agree to receive texts?” Turning it on sends them a confirmation text.</p></details>
+${phones.slice(1).map((p, i) => `<div class="mcd-h"><h3>Additional phone number</h3></div>${num(p, i + 1)}${rm('p', i + 1)}`).join('')}${addRow('Additional phone number', 'p')}
+<div class="mcd-h mcd-gap">${mcvStar()}<h3>Default email address</h3></div>${adr(emails[0], 0)}
+${emails.slice(1).map((m, i) => `<div class="mcd-h mcd-gap"><h3>Additional email address</h3></div>${adr(m, i + 1)}<button type="button" class="mcd-def" data-def="${i + 1}">${mcvStar(true)}Make default email address</button><p class="muted mcd-note">Making this default will send all automated client reminders to this email.</p>${rm('e', i + 1)}`).join('')}${addRow('Additional email address', 'e')}`;
+  const page = mPage('Edit contact details', `<form class="pfm mcd" novalidate><div class="pfm-col mcd-body">${body()}</div><div class="pfm-foot"><button class="btn">Save</button></div></form>`, '', true);
+  const f = $('form', page); const box = $('.mcd-body', f);
+  const sync = () => { $$('[data-n]', f).forEach((x) => { phones[x.dataset.n].number = x.value; }); $$('[data-a]', f).forEach((x) => { emails[x.dataset.a].address = x.value; }); $$('[data-t]', f).forEach((x) => { (x.dataset.t === 'p' ? phones : emails)[x.dataset.i].type = x.value; }); sms = f.smsConsent.checked; open = $('.mcd-consent', f).open; };
+  const draw = () => { box.innerHTML = body(); };
+  f.addEventListener('click', (e) => {
+    const t = e.target.closest('[data-add], [data-rm], [data-def]'); if (!t) return; sync();
+    if (t.dataset.add === 'p') { phones.push({ number: '', type: 'Mobile' }); draw(); $(`[data-n="${phones.length - 1}"]`, f).focus(); return; }
+    if (t.dataset.add === 'e') { emails.push({ address: '', type: 'Work', primary: false }); draw(); $(`[data-a="${emails.length - 1}"]`, f).focus(); return; }
+    if (t.dataset.rm) (t.dataset.rm === 'p' ? phones : emails).splice(Number(t.dataset.i), 1);
+    if (t.dataset.def) { const [m] = emails.splice(Number(t.dataset.def), 1); emails.forEach((x) => { x.primary = false; }); m.primary = true; emails.unshift(m); }
+    draw();
+  });
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault(); sync(); const bad = $$('[data-a]', f).find((x) => x.value.trim() && !x.checkValidity()); if (bad) { toast('Check the email address', true); return bad.focus(); }
+    const phoneList = phones.map((p) => ({ number: p.number.trim(), type: p.type })).filter((p) => p.number);
+    const emailList = emails.map((m) => ({ ...m, address: m.address.trim() })).filter((m) => m.address); if (emailList.length && !emailList.some((m) => m.primary)) emailList[0].primary = true;
+    const btn = $('.pfm-foot .btn', f); btn.disabled = true;
+    try { await api('PUT', '/api/clients/' + c.id, { phones: phoneList, phone: phoneList[0] ? phoneList[0].number : '', emails: emailList, email: (emailList.find((m) => m.primary) || {}).address || '', smsConsent: sms }); mPagesClose(); toast('Contact details saved'); refresh(); } catch (x) { toast(x.message, true); btn.disabled = false; }
+  });
 };
 A.cvmNote = () => {
   const c = cvClient(); const f = mSheet(c.notes ? 'Edit note' : 'Add note', `${mField('Internal note', `<textarea name="notes" rows="6" placeholder="Leave an internal note for yourself or a team member">${esc(c.notes)}</textarea>`)}${mSaveBtn()}`);
