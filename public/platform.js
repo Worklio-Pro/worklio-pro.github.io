@@ -508,6 +508,9 @@ function seoDraw(box) {
 <div class="row" style="margin-top:12px"><label>Google Search Console verification<input name="googleVerification" value="${esc(S.googleVerification)}" placeholder="Paste the meta tag or its content value" autocomplete="off"></label>
 <label>Bing Webmaster Tools verification<input name="bingVerification" value="${esc(S.bingVerification)}" placeholder="Paste the meta tag or its content value" autocomplete="off"></label></div>
 <p class="muted" style="font-size:13px;margin-top:-4px">After verifying, submit your sitemaps in Search Console and Bing: ${S.sitemaps.map((u) => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(u)}</a>`).join(' and ')}. Robots file: <a href="${esc(S.robots)}" target="_blank" rel="noopener">${esc(S.robots)}</a>.</p>
+<h2 style="margin-top:22px">Retargeting pixels</h2><p class="muted" style="font-size:13px;margin-top:-6px">They run only on the home, pricing, features, industries and supporters pages, and only after a visitor accepts the cookie notice. Saving an ID also updates the Privacy Policy to describe them.</p>
+<div class="row"><label>Meta Pixel ID<input name="metaPixelId" value="${esc(S.metaPixelId)}" placeholder="From Meta Events Manager, like 1234567890123456" autocomplete="off"></label>
+<label>Google tag ID<input name="googleTagId" value="${esc(S.googleTagId)}" placeholder="From Google Ads, like AW-123456789" autocomplete="off"></label></div>
 <h2 style="margin-top:22px">Pages</h2><p class="muted" style="font-size:13px;margin-top:-6px">What Google shows for each page. Keep titles under ${SEO_LIMITS.title} characters and descriptions under ${SEO_LIMITS.description} so they aren’t cut off. Tokens like <code>{product}</code> fill in automatically, so prices and names stay current.</p>
 <div id="seoPages">${S.pages.map(page).join('')}</div>
 <h2 style="margin-top:22px">Sharing</h2>
@@ -525,7 +528,7 @@ function seoDraw(box) {
   $$('.seo-page', f).forEach((row) => { update(row); row.addEventListener('input', () => update(row)); });
   f._update = update;
   f.addEventListener('submit', async (e) => {
-    e.preventDefault(); const b = { indexing: !!f.indexing.checked, googleVerification: f.googleVerification.value, bingVerification: f.bingVerification.value, shareImage: seoDraft.shareImage || '', social: {}, pages: {} };
+    e.preventDefault(); const b = { indexing: !!f.indexing.checked, googleVerification: f.googleVerification.value, bingVerification: f.bingVerification.value, metaPixelId: f.metaPixelId.value, googleTagId: f.googleTagId.value, shareImage: seoDraft.shareImage || '', social: {}, pages: {} };
     $$('[name^="social."]', f).forEach((i) => { b.social[i.name.slice(7)] = i.value; });
     $$('.seo-page', f).forEach((row) => { b.pages[row.dataset.key] = { title: $('[name=title]', row).value, description: $('[name=description]', row).value }; });
     if (!b.indexing && SEO.indexing && !confirm('Hide the whole public site from Google and other search engines? Pages already in results drop out over the next few weeks.')) return;
