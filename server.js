@@ -711,7 +711,7 @@ app.post('/api/auth/hours', (req, res) => {
   st.hours = hours; save(); res.json(profileOf(u));
 });
 // ---- push notifications (Gear → Preferences): each login picks what it gets; each browser or phone it turns them on for is saved on the login ----
-const PUSH_KINDS = ['overview', 'schedule', 'request', 'booking', 'quoteViewed', 'quoteApproved', 'review'];
+const PUSH_KINDS = ['overview', 'schedule', 'request', 'booking', 'quoteViewed', 'quoteApproved', 'review', 'automation'];
 const pushPrefs = (u) => Object.fromEntries(PUSH_KINDS.map((k) => [k, !u.pushPrefs || u.pushPrefs[k] !== false]));
 const isOwnerOrAdmin = (u) => u.role === 'owner' || u.role === 'admin';
 // never throws: a notification must not get in the way of the work that caused it. A subscription the browser has dropped is forgotten.
@@ -1221,6 +1221,7 @@ app.put('/api/:col/:id', (req, res, next) => {
   if (col === 'expenses') doc.amount = Number(doc.amount) || 0;
   if (col === 'services') { doc.price = Number(doc.price) || 0; homeDepot.clean(doc); }
   if (col === 'quotes' && was.signature && !doc.signature) removeSignatureFile(was);
+  if (col === 'jobs' && doc.status === 'completed' && was.status !== 'completed') doc.completedAt = iso(new Date()); // the "job completed" automations count from this
   db[col][i] = doc; save(); if (col === 'clients' && doc.smsConsent && !was.smsConsent) optInText(doc).catch(() => {}); if (col === 'jobs') { pushScheduleChange(was, doc, currentUser(req)); if (doc.status === 'completed' && was.status !== 'completed') askForReview('job', doc); }
   res.json(col === 'invoices' ? withStatus(doc) : col === 'jobs' && isMemberReq(req) ? jobForMember(doc) : doc);
 });
@@ -2853,6 +2854,25 @@ app.delete('/api/reviews/reply', async (req, res) => {
 // Social Posts: project photos to the connected Facebook Page and Instagram account. Photos arrive as JPEGs (the browser converts them)
 // and are saved in the account's uploads, because Facebook and Instagram fetch them from a public address.
 const POST_TO = { facebook: (c, p) => social.facebookPost(c, p), instagram: (c, p) => social.instagramPost(c, p) };
+// ---------- the business's own automations (lib/business-automations.js) ----------
+const portalLink = (c) => { if (!c.portalToken) { c.portalToken = token(); save(); } return `${baseUrl()}/client-portal?c=${c.portalToken}`; };
+const bizAuto = require('./lib/business-automations')({ db, save, uid, token, iso, niceDate, money, findClient, tenancy, localNow, withStatus, quoteLink, invoiceLink, portalLink, baseUrl, renderEmail, notify, sendEmail, pushTo, jobCrew, pushTime });
+const autoRoute = (fn) => async (req, res) => { try { res.json(await fn(req)); } catch (e) { if (!e.status) console.error('automations:', e.message); res.status(e.status || 500).json({ error: e.status ? e.message : 'Something went wrong' }); } };
+app.get('/api/automations', autoRoute(() => bizAuto.view()));
+app.post('/api/automations', autoRoute((req) => { bizAuto.create(req.body || {}); return bizAuto.view(); }));
+app.post('/api/automations/preview', autoRoute((req) => bizAuto.preview(req.body || {})));
+app.post('/api/automations/test', autoRoute((req) => bizAuto.test(req.body || {}, currentUser(req).email)));
+app.put('/api/automations/:id', autoRoute((req) => { bizAuto.update(req.params.id, req.body || {}); return bizAuto.view(); }));
+app.post('/api/automations/:id', autoRoute((req) => { bizAuto.setEnabled(req.params.id, !!(req.body || {}).on); return bizAuto.view(); }));
+app.delete('/api/automations/:id', autoRoute((req) => { bizAuto.remove(req.params.id); return bizAuto.view(); }));
+// the unsubscribe link in automation emails: a button, not a plain visit, so email scanners that open links don't unsubscribe anyone
+const autoUnsubPage = (c, tk) => {
+  const off = bizAuto.isOptedOut(c);
+  return shell('Email preferences', `<h1>${off ? 'You’re unsubscribed' : 'Unsubscribe?'}</h1><p class="muted">${off ? `You won’t get automated emails from ${esc(db.company.name)}. You’ll still get quotes and invoices they send you.` : `Stop automated emails from ${esc(db.company.name)}, such as reminders and follow-ups. You’ll still get quotes and invoices they send you.`}</p>
+<form method="post" action="/p/automations/${esc(tk)}${off ? '?on=1' : ''}"><button class="btn" type="submit">${off ? 'Subscribe again' : 'Unsubscribe'}</button></form>`);
+};
+app.get('/p/automations/:token', (req, res) => { const c = bizAuto.clientByToken(req.params.token); if (!c) return res.status(404).send(shell('Link not found', '<h1>This link isn’t valid</h1>')); res.send(autoUnsubPage(c, req.params.token)); });
+app.post('/p/automations/:token', (req, res) => { const c = bizAuto.clientByToken(req.params.token); if (!c) return res.status(404).send(shell('Link not found', '<h1>This link isn’t valid</h1>')); bizAuto.setOptOut(c, !req.query.on); res.send(autoUnsubPage(c, req.params.token)); });
 app.get('/api/social-posts', (req, res) => {
   const f = connOf('facebook'); const i = connOf('instagram');
   res.json({ posts: (db.socialPosts || []).slice(0, 100), facebook: f ? { name: f.name, link: f.link } : null, instagram: i ? { username: i.username } : null });
@@ -3347,6 +3367,7 @@ if (rpp > 0) { // same for the platform console login: node server.js --reset-pl
   tenancy.savePlatform(); console.log(`Platform password updated for ${a.email}`); process.exit(0);
 }
 setTimeout(remindExpiring, 10e3); setInterval(remindExpiring, 3600e3); // reminder emails before an account's last day of access
+setTimeout(() => bizAuto.runAll().catch((e) => console.error('automations:', e.message)), 30e3); setInterval(() => bizAuto.runAll().catch((e) => console.error('automations:', e.message)), 3600e3); // checks every automation hourly
 setTimeout(pushOverviews, 20e3); setInterval(pushOverviews, 15 * 60e3); // the morning's Today's work overview notifications
 require('http').createServer(dispatch).listen(PORT, () => {
   console.log(`App running at ${BASE_URL}`);

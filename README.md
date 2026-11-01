@@ -57,6 +57,7 @@ your platform owner login; that login is separate from any account's logins.
   approve or remove its custom domains, get a new owner invite/reset link, or delete it (a copy is kept in `data/deleted/`).
 - **Plans & features:** a grid of plans × features. Tick what each plan includes, set the name, price, description and the number of
   team logins (0 = unlimited). Starts with Core, Advanced and Expert; add or remove plans as you like. Changes apply as soon as you save.
+- **Automations (plan extra):** the `automations` feature gives a business Marketing → Automations (`lib/business-automations.js`): its own rules that email or text clients, or notify the team, checked hourly. On Expert and Trial to start; tick it for other plans in the grid above. Separate from Alpha → Messages → Automations (`lib/automations.js`), which emails businesses.
 - **Settings:** product name, contact email, whether businesses can sign themselves up on the pricing page (`/pricing`), and
   **Integrations**: the status of email, text messages, AI and Stripe, webhook addresses to copy, test email/text, and your platform fee on card payments.
 - **Settings → SEO** (`lib/seo.js`): each public page's search title and description (with a Google-style preview), Google and Bing verification,

@@ -144,7 +144,7 @@ const PAGES = {};
 const NAV = [
   ['Operations', [['/business-overview', 'Home'], ['/calendar', 'Calendar'], ['/requests', 'Requests'], ['/clients', 'Clients'], ['/quotes', 'Quotes'], ['/jobs', 'Jobs'], ['/invoices', 'Invoices']]],
   ['Money', [['/payments', 'Payments'], ['/services', 'Products & Services'], ['/expenses', 'Expenses'], ['/reports', 'Financial Reports'], ['/tax-summary', 'Tax Summary']]],
-  ['Marketing', [['/reviews', 'Reviews'], ['/social-posts', 'Social Posts']]],
+  ['Marketing', [['/reviews', 'Reviews'], ['/social-posts', 'Social Posts'], ['/automations', 'Automations']]],
   ['Records', [['/project-gallery', 'Project Gallery'], ['/notifications', 'Notifications Log']]],
 ];
 // the Settings pages live in the top bar's gear menu, not the sidebar
@@ -217,6 +217,7 @@ const NAV_ICONS = {
   '/reports': '<path d="M3 3v18h18"/><path d="M8 17v-5M13 17V8M18 17v-9"/>',
   '/tax-summary': '<path d="M19 5L5 19"/><circle cx="7" cy="7" r="2.5"/><circle cx="17" cy="17" r="2.5"/>',
   '/reviews': '<path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/>',
+  '/automations': '<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>',
   '/social-posts': '<path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1z"/><path d="M15 9a4 4 0 0 1 0 6M18 6a8 8 0 0 1 0 12"/>',
   '/project-gallery': '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>',
   '/notifications': '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
@@ -258,7 +259,7 @@ const FEATURE_EXTRAS = [['/quotes/new', 'New quote', 'Quotes', 'create estimate'
 const FEATURE_WORDS = {
   '/business-overview': 'dashboard overview', '/calendar': 'schedule schedules appointments visits tasks events job calendar', '/clients': 'customers contacts',
   '/quotes': 'estimates proposals', '/jobs': 'work orders visits', '/invoices': 'billing', '/payments': 'card online stripe', '/services': 'catalog products price list items',
-  '/expenses': 'costs receipts spending', '/reports': 'revenue profit charts', '/tax-summary': 'sales tax', '/project-gallery': 'photos pictures', '/reviews': 'client google reviews ratings stars reply feedback', '/social-posts': 'facebook instagram social media post marketing', '/notifications': 'emails texts sms sent messages log',
+  '/expenses': 'costs receipts spending', '/reports': 'revenue profit charts', '/tax-summary': 'sales tax', '/project-gallery': 'photos pictures', '/reviews': 'client google reviews ratings stars reply feedback', '/automations': 'automatic follow up reminder rules workflow messages overdue', '/social-posts': 'facebook instagram social media post marketing', '/notifications': 'emails texts sms sent messages log',
   '/requests': 'time off day off vacation sick leave request approve', '/settings/roles': 'roles permissions access manager technician what team can see do', '/settings/company': 'business details logo address phone social media facebook instagram tiktok tax', '/team': 'staff employees users access roles technicians', '/settings/emails': 'templates text messages sms reminders',
   '/settings/preferences': 'appearance theme dark mode light system push notifications alerts phone', '/settings': 'number prefixes branding brand color zelle defaults stripe card payments online payments regional time zone date format time format week', '/settings/connections': 'integrations google facebook instagram ai', '/marketplace': 'apps integrations connect quickbooks xero accounting home depot lowes supplies materials zapier chatgpt claude ai automation calendar slack gusto payroll', '/settings/billing': 'subscription plan upgrade payment method', '/settings/support-access': 'grant revoke help troubleshoot permission',
 };
