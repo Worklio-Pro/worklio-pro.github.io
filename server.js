@@ -2856,7 +2856,7 @@ app.delete('/api/reviews/reply', async (req, res) => {
 const POST_TO = { facebook: (c, p) => social.facebookPost(c, p), instagram: (c, p) => social.instagramPost(c, p) };
 // ---------- the business's own automations (lib/business-automations.js) ----------
 const portalLink = (c) => { if (!c.portalToken) { c.portalToken = token(); save(); } return `${baseUrl()}/client-portal?c=${c.portalToken}`; };
-const bizAuto = require('./lib/business-automations')({ db, save, uid, token, iso, niceDate, money, findClient, tenancy, localNow, withStatus, quoteLink, invoiceLink, portalLink, baseUrl, renderEmail, notify, sendEmail, pushTo, jobCrew, pushTime });
+const bizAuto = require('./lib/business-automations')({ db, save, uid, token, iso, niceDate, money, findClient, tenancy, localNow, withStatus, quoteLink, invoiceLink, portalLink, baseUrl, renderEmail, notify, sendEmail, pushTo, jobCrew, pushTime, reviewRecord, reviewLink });
 const autoRoute = (fn) => async (req, res) => { try { res.json(await fn(req)); } catch (e) { if (!e.status) console.error('automations:', e.message); res.status(e.status || 500).json({ error: e.status ? e.message : 'Something went wrong' }); } };
 app.get('/api/automations', autoRoute(() => bizAuto.view()));
 app.post('/api/automations', autoRoute((req) => { bizAuto.create(req.body || {}); return bizAuto.view(); }));
