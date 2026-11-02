@@ -1,5 +1,6 @@
 'use strict';
-// Checkout after sign-up: review the account and plan, switch plans if wanted, then pay (Stripe Checkout, or a demo without Stripe keys).
+// Checkout after sign-up: review the account and plan, switch plans if wanted, then pay: Stripe's form on this page (card or Link) when
+// the publishable key is set, else Stripe's own Checkout page, or a demo without Stripe keys.
 const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const token = location.pathname.split('/')[2] || '';
@@ -18,9 +19,11 @@ const renewText = (c, D) => {
   return `After this payment, your plan renews at ${full} until you cancel.`;
 };
 let codeErr = ''; let codeTyped = '';
+let EC = null; // Stripe's payment form while it's on the page
 let C; let err = new URLSearchParams(location.search).get('unpaid') ? 'Your payment wasn’t completed, so nothing was charged. You can try again below.' : '';
 
 function render() {
+  if (EC) { EC.destroy(); EC = null; } // a new plan or code needs a new form
   document.title = `Checkout · ${C.productName}`; $('#brand').innerHTML = brandImg(C.brand) + (C.brand && C.brand.logoHasName ? '' : `<span>${esc(C.productName)}</span>`);
   const main = $('#main');
   if (C.status !== 'pending') { // already paid (or moved to a free plan)
@@ -48,7 +51,7 @@ ${D ? `<p class="line disc"><span>Code <strong>${esc(D.code)}</strong> <button t
 <p class="line total"><span>Due today</span><span>${money(due)}</span></p>
 <button class="btn pay" id="pay"><span class="lock">${C.live && !(D && D.trial) ? '🔒 ' : ''}${D && D.trial ? 'Start my free trial' : due ? `Pay ${money(due)} and start` : 'Start my account'}</span></button>
 ${D && D.trial ? `<p class="fine">No card needed. Your free trial runs for ${D.days} days; add a card any time in Account and billing to keep your account after that.</p>`
-    : C.live ? `<p class="fine">You’ll enter your card on Stripe’s secure checkout page. ${renewText(c, D)}${C.testMode ? '<br><strong>Test mode:</strong> use card 4242 4242 4242 4242.' : ''}</p>`
+    : C.live ? `<p class="fine">${C.embedded ? 'Pay with your card or Link on the next step, secured by Stripe.' : 'You’ll enter your card on Stripe’s secure checkout page.'} ${renewText(c, D)}${C.testMode ? '<br><strong>Test mode:</strong> use card 4242 4242 4242 4242.' : ''}</p>`
     : '<div class="msg warn" style="margin:12px 0 0;font-size:13px">Demo checkout: card payments aren’t set up yet, so no card is charged. Your account starts right away.</div>'}
 <details><summary>What’s included in ${esc(p.name)}</summary><ul>${feats.map((f) => `<li>${f}</li>`).join('')}${C.alwaysIncluded.map((f) => `<li>${esc(f)}</li>`).join('')}</ul></details>
 ${C.contactEmail ? `<p class="fine">Questions? <a href="mailto:${esc(C.contactEmail)}">${esc(C.contactEmail)}</a></p>` : ''}</aside></div>`;
@@ -63,9 +66,22 @@ ${C.contactEmail ? `<p class="fine">Questions? <a href="mailto:${esc(C.contactEm
   main.querySelectorAll('[data-period]').forEach((b) => b.addEventListener('click', () => pick({ interval: b.dataset.period })));
   $('#pay').addEventListener('click', async (e) => {
     const b = e.currentTarget; b.disabled = true; b.textContent = C.live ? 'Opening secure checkout…' : 'Starting your account…';
-    try { const r = await api('POST', `/api/site/checkout/${token}/pay`); location.href = r.redirect || r.url; }
+    try { const r = await api('POST', `/api/site/checkout/${token}/pay`, { embedded: !!C.embedded }); if (r.clientSecret) return payHere(r); location.href = r.redirect || r.url; }
     catch (x) { err = x.message; C = await api('GET', `/api/site/checkout/${token}`).catch(() => C); render(); } // e.g. the code ran out: show the new total
   });
+}
+
+// Stripe's payment form in place of the plan list; "Change plan" puts the list back
+async function payHere(r) {
+  const b = $('#pay'); const sec = $('.co section');
+  try {
+    if (!window.Stripe) await new Promise((ok, fail) => { const s = document.createElement('script'); s.src = 'https://js.stripe.com/v3/'; s.onload = ok; s.onerror = () => fail(new Error('Stripe’s payment form couldn’t load. Check your connection and try again.')); document.head.appendChild(s); });
+    EC = await Stripe(r.publishableKey).initEmbeddedCheckout({ fetchClientSecret: async () => r.clientSecret });
+  } catch (e) { err = e.message; render(); return; }
+  sec.querySelectorAll('.card')[1].outerHTML = '<div class="card pad"><div class="ec-h"><h2>Payment</h2><button type="button" class="linkish" id="chPlan">Change plan</button></div><div id="ec"></div></div>';
+  EC.mount('#ec'); b.hidden = true; $('#chPlan').addEventListener('click', render);
+  $('.sum .fine').textContent = 'Pay with your card or Link in the form. ' + renewText(C.plan.charge, C.discount);
+  if (matchMedia('(max-width:820px)').matches) $('#ec').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 (async () => {
