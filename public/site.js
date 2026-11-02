@@ -107,13 +107,15 @@ ${both ? `<label>Billing<select name="interval"><option value="month" ${period =
     $('#plans').before(box); if (!code.value && L.code) { code.value = L.code; checkCode(); }
   }).catch(() => {});
   document.addEventListener('click', (e) => { const b = e.target.closest('[data-plan], a[href="#signup"]'); if (!b) return; e.preventDefault(); openSignup(b.dataset.plan); });
+  ['input', 'change'].forEach((ev) => f.addEventListener(ev, (e) => { if (e.target.name !== 'code') $('#err').innerHTML = ''; })); // fixing a field clears the error
   f.addEventListener('submit', async (e) => {
     e.preventDefault(); const btn = $('.go', f); const b = Object.fromEntries(new FormData(f)); b.slug = b.slug.trim().toLowerCase();
     btn.disabled = true; btn.textContent = 'Creating your account…';
     const r = await fetch('/api/site/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
     const j = await r.json().catch(() => ({}));
     if (r.ok) { location.href = j.url; return; }
-    $('#err').innerHTML = `<div class="msg err" role="alert">${esc(j.error || 'Something went wrong. Try again.')}${j.signIn ? ` <a href="/sign-in">Log in</a>` : ''}</div>`; // the email already has a login btn.disabled = false; btn.textContent = goLabel();
+    $('#err').innerHTML = `<div class="msg err" role="alert">${esc(j.error || 'Something went wrong. Try again.')}${j.signIn ? ` <a href="/sign-in">Log in</a>` : ''}</div>`; // Log in: the email already has a login
+    btn.disabled = false; btn.textContent = goLabel();
   });
 })();
 
