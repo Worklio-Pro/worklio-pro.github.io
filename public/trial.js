@@ -77,7 +77,7 @@ ${plans.map((p) => { const c = per(p); return `<label><input type="radio" name="
     $('[name=industry]', f2).addEventListener('change', (e) => { $('.tr-other', f2).hidden = e.target.value !== 'other'; if (e.target.value === 'other') $('[name=industryOther]', f2).focus(); });
     const sum = () => { const p = plans.find((x) => x.id === $('[name=plan]:checked', f2).value); const c = per(p);
       const end = new Date(Date.now() + 29 * 864e5).toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
-      $('.tr-sum', f2).innerHTML = `<b>${esc(p.name)}</b> free until ${end}, then ${amount(c.v)}/${c.per} if you keep it.`; };
+      $('.tr-sum', f2).innerHTML = `${S.trialCode ? `Code <b>${esc(S.trialCode)}</b> applied: ` : ''}<b>${esc(p.name)}</b> free until ${end}, then ${amount(c.v)}/${c.per} if you keep it.`; };
     f2.addEventListener('change', (e) => { if (e.target.name === 'plan') sum(); }); sum();
     f2.addEventListener('submit', async (e) => {
       e.preventDefault(); const b = { ...Object.fromEntries(new FormData(f1)), ...Object.fromEntries(new FormData(f2)) };
