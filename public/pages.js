@@ -757,34 +757,37 @@ const AB_STARTERS = {
   quiet: { name: 'Win back quiet clients', trigger: 'clientQuiet', days: 180, hour: 10, to: 'client', channels: ['email'], subject: 'It’s been a while, {{first_name}}', body: 'Hello {{first_name}},\n\nIt’s been a while since our last visit. If there’s anything we can help with, we’d love to hear from you.\n\n[Request work]({{portal_link}})\n\n{{company_name}}', smsBody: '' },
   team: { name: 'Tell the team about overdue invoices', trigger: 'invoiceOverdue', days: 14, hour: 8, to: 'team', channels: ['push', 'email'], subject: '{{client_name}}: invoice {{number}} is 14 days overdue', body: 'Invoice {{number}} for {{client_name}} still has {{balance}} open. It was due {{due_date}}.', smsBody: '' },
 };
+const abBadge = (a) => `<span class="badge ${a.enabled ? 'approved' : 'draft'}">${a.enabled ? 'Active' : 'Not active'}</span>`;
 const abChannel = { email: 'Email', sms: 'Text', push: 'App notification' };
 PAGES['/automations'] = {
   title: 'Automations',
   async render(main) {
     AB = await api('GET', '/api/automations');
     const t = AB.triggers;
-    const row = (a) => `<div class="ab-row ${a.enabled ? '' : 'off'}"><div class="ab-main"><strong>${esc(a.name)}</strong><div class="muted">${esc(t[a.trigger].label)}: ${a.days} ${esc(t[a.trigger].when)}, at ${abHour(a.hour)}</div><div class="muted">To ${a.to === 'team' ? 'your team' : 'the client'} by ${a.channels.map((c) => abChannel[c].toLowerCase()).join(' and ')} · ${a.sentCount || 0} sent</div></div>
-<label class="sw-row ab-sw" aria-label="Turn ${esc(a.name)} on or off"><input type="checkbox" class="sw" data-ab-on="${a.id}" ${a.enabled ? 'checked' : ''}><i></i></label>
-<div class="ab-acts"><button type="button" class="btn alt sm" data-act="abEdit" data-id="${a.id}">Edit</button><button type="button" class="btn alt sm" data-act="abDel" data-id="${a.id}">Delete</button></div></div>`;
-    const starters = Object.entries(AB_STARTERS).map(([k, s]) => `<button type="button" class="ab-starter" data-act="abNew" data-k="${k}"><strong>${esc(s.name)}</strong><span class="muted">${esc(t[s.trigger].label)}</span></button>`).join('');
-    main.innerHTML = `<div class="head"><div><h1>Automations</h1><p class="sub">Send follow-ups and reminders on their own. Turning one on only affects what comes due from that day on, so it won’t message old quotes or invoices.</p></div><div class="actions"><button type="button" class="btn" data-act="abNew">New automation</button></div></div>
+    const row = (a) => `<a class="ab-row ${a.enabled ? '' : 'off'}" href="/automations/edit?id=${a.id}" data-link><div class="ab-main"><strong>${esc(a.name)}</strong><div class="muted">${esc(t[a.trigger].label)}: ${a.days} ${esc(t[a.trigger].when)}, at ${abHour(a.hour)}</div><div class="muted">To ${a.to === 'team' ? 'your team' : 'the client'} by ${a.channels.map((c) => abChannel[c].toLowerCase()).join(' and ')} · ${a.sentCount || 0} sent</div></div>${abBadge(a)}<span class="ab-go" aria-hidden="true">›</span></a>`;
+    const starters = Object.entries(AB_STARTERS).map(([k, s]) => `<a class="ab-starter" href="/automations/edit?k=${k}" data-link><strong>${esc(s.name)}</strong><span class="muted">${esc(t[s.trigger].label)}</span></a>`).join('');
+    main.innerHTML = `<div class="head"><div><h1>Automations</h1><p class="sub">Send follow-ups and reminders on their own. Turning one on only affects what comes due from that day on, so it won’t message old quotes or invoices.</p></div><div class="actions"><a class="btn" href="/automations/edit" data-link>New automation</a></div></div>
 <div class="card"><h2>Your automations</h2>${AB.automations.length ? `<div class="ab-list">${AB.automations.map(row).join('')}</div>` : '<p class="muted">None yet. Start with a template below.</p>'}</div>
 <div class="card"><h2>Start from a template</h2><div class="ab-starters">${starters}</div></div>
 <div class="card"><h2>Recently sent</h2>${AB.log.length ? `<div class="tablewrap"><table><tr><th>When</th><th>Automation</th><th>Client</th><th>By</th><th>Status</th></tr>${AB.log.map((l) => `<tr><td>${esc(new Date(l.at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }))}</td><td>${esc(l.automation)}</td><td>${esc(l.clientName)}${l.refNumber ? ` (${esc(l.refNumber)})` : ''}</td><td>${esc(abChannel[l.channel] || l.channel)}</td><td>${esc(l.status)}${l.detail ? `<small class="muted" style="display:block">${esc(l.detail)}</small>` : ''}</td></tr>`).join('')}</table></div>` : '<p class="muted">Nothing sent yet.</p>'}</div>`;
-    $$('[data-ab-on]', main).forEach((box) => box.addEventListener('change', async () => {
-      try { await api('POST', `/api/automations/${box.dataset.abOn}`, { on: box.checked }); toast(box.checked ? 'Automation on' : 'Automation off'); PAGES['/automations'].render(main); } catch (x) { box.checked = !box.checked; toast(x.message, true); }
-    }));
   },
 };
-A.abNew = (d) => abEditor(structuredClone(AB_STARTERS[d.k] || { name: '', trigger: 'quoteSent', days: 3, hour: 9, to: 'client', channels: ['email'], subject: '', body: '', smsBody: '' }));
-A.abEdit = (d) => abEditor(structuredClone(AB.automations.find((x) => x.id === d.id)));
-A.abDel = async (d) => { const a = AB.automations.find((x) => x.id === d.id); if (!confirm(`Delete “${a.name}”?`)) return; await api('DELETE', `/api/automations/${d.id}`); toast('Automation deleted'); PAGES['/automations'].render($('#main')); };
-function abEditor(a) {
+PAGES['/automations/edit'] = {
+  title: 'Automation',
+  async render(main) {
+    AB = await api('GET', '/api/automations');
+    const id = qp('id'); const found = id && AB.automations.find((x) => x.id === id);
+    if (id && !found) { main.innerHTML = '<a class="back" href="/automations" data-link>← Automations</a><div class="card"><h2>Automation not found</h2><p class="muted">It may have been deleted.</p></div>'; return; }
+    abEditor(main, structuredClone(found || AB_STARTERS[qp('k')] || { name: '', trigger: 'quoteSent', days: 3, hour: 9, to: 'client', channels: ['email'], subject: '', body: '', smsBody: '' }));
+  },
+};
+function abEditor(main, a) {
   const t = AB.triggers; const groups = { quote: 'Quotes', invoice: 'Invoices', job: 'Jobs', client: 'Clients' };
   const opts = Object.entries(groups).map(([k, g]) => `<optgroup label="${g}">${Object.entries(t).filter(([, x]) => x.kind === k).map(([id, x]) => `<option value="${id}" ${a.trigger === id ? 'selected' : ''}>${esc(x.label)}</option>`).join('')}</optgroup>`).join('');
   const hours = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].map((h) => `<option value="${h}" ${a.hour === h ? 'selected' : ''}>${abHour(h)}</option>`).join('');
   const tags = AB.tags.length ? `<div class="ab-checks"><span>Only clients tagged</span>${AB.tags.map((g) => `<label><input type="checkbox" name="tags" value="${esc(g)}" ${(a.tags || []).includes(g) ? 'checked' : ''}> ${esc(g)}</label>`).join('')}</div>` : '';
-  const mb = modal(a.id ? `Edit “${a.name}”` : 'New automation', `<form id="abf" data-sticky>
+  main.innerHTML = `<div class="head"><div><a class="back" href="/automations" data-link>← Automations</a><h1>${a.id ? esc(a.name) : 'New automation'}</h1>${a.id ? `<p class="sub" id="abState"></p>` : '<p class="sub">Save it first. You can activate it after that.</p>'}</div>${a.id ? '<div class="actions"><button type="button" class="btn" id="abToggle"></button><button type="button" class="btn alt" id="abDelete">Delete</button></div>' : ''}</div>
+<div class="card"><form id="abf">
 <label>Name<input name="name" maxlength="80" required value="${esc(a.name)}"></label>
 <h4 class="ab-h">When</h4><div class="row"><label>Trigger<select name="trigger">${opts}</select></label><label>Days<input name="days" type="number" min="0" max="365" value="${a.days}"></label><label>Send at<select name="hour">${hours}</select></label></div><p class="muted ab-when" id="abWhen"></p>
 <h4 class="ab-h">Only if</h4>${tags}<label id="abMinW">The amount is at least<input name="minAmount" type="number" min="0" step="0.01" value="${a.minAmount || ''}" placeholder="Any amount"></label>
@@ -792,8 +795,8 @@ function abEditor(a) {
 <div id="abMsg"><h4 class="ab-h">Message</h4><label>Subject<input name="subject" maxlength="200" value="${esc(a.subject)}"></label><label>Message<textarea name="body" rows="8" maxlength="10000">${esc(a.body)}</textarea></label></div>
 <div id="abSms"><h4 class="ab-h">Text message</h4><label>Text<textarea name="smsBody" rows="3" maxlength="480">${esc(a.smsBody)}</textarea></label></div>
 <div class="ab-vars" id="abVars"></div><div class="ab-who" id="abWho" hidden></div>
-<div class="ab-foot"><button type="button" class="btn alt" id="abPreview">Who would get this?</button><button type="button" class="btn alt" id="abTest">Email me a test</button><button class="btn" type="submit">Save</button></div></form>`, true);
-  const f = $('#abf', mb); let last = f.elements.body;
+<div class="ab-foot"><button type="button" class="btn alt" id="abPreview">Who would get this?</button><button type="button" class="btn alt" id="abTest">Email me a test</button><button class="btn" type="submit">Save</button></div></form></div>`;
+  const f = $('#abf', main); let last = f.elements.body;
   const chosen = (name) => $$(`[name="${name}"]:checked`, f).map((x) => x.value);
   const sync = (keep) => {
     const tr = t[f.elements.trigger.value]; const to = chosen('to')[0]; const was = keep || chosen('ch');
@@ -820,9 +823,27 @@ function abEditor(a) {
   $('#abTest', f).addEventListener('click', async () => { try { const r = await api('POST', '/api/automations/test', read()); toast(r.status === 'simulated' ? `Test logged for ${r.to} (no email provider set up)` : `Test sent to ${r.to}`); } catch (x) { toast(x.message, true); } });
   f.addEventListener('submit', async (e) => {
     e.preventDefault();
-    try { await api(a.id ? 'PUT' : 'POST', a.id ? `/api/automations/${a.id}` : '/api/automations', read()); closeModal(); toast(a.id ? 'Automation saved' : 'Saved. Turn it on when you’re ready.'); PAGES['/automations'].render($('#main')); } catch (x) { toast(x.message, true); }
+    try {
+      const r = await api(a.id ? 'PUT' : 'POST', a.id ? `/api/automations/${a.id}` : '/api/automations', read());
+      if (a.id) { toast('Automation saved'); $('h1', main).textContent = f.elements.name.value.trim(); return; }
+      toast('Saved. Activate it when you’re ready.'); navigate(`/automations/edit?id=${r.automations[r.automations.length - 1].id}`);
+    } catch (x) { toast(x.message, true); }
   });
   sync(a.channels);
+  if (!a.id) return;
+  const showState = () => { $('#abState', main).innerHTML = `${abBadge(a)} ${a.sentCount || 0} sent`; $('#abToggle', main).textContent = a.enabled ? 'Deactivate' : 'Activate'; };
+  showState();
+  $('#abToggle', main).addEventListener('click', async () => {
+    try { // activating saves the form first, so what goes live is what's on screen
+      if (!a.enabled) await api('PUT', `/api/automations/${a.id}`, read());
+      const r = await api('POST', `/api/automations/${a.id}`, { on: !a.enabled });
+      a.enabled = r.automations.find((x) => x.id === a.id).enabled; showState(); toast(a.enabled ? 'Automation activated' : 'Automation deactivated');
+    } catch (x) { toast(x.message, true); }
+  });
+  $('#abDelete', main).addEventListener('click', async () => {
+    if (!confirm(`Delete “${a.name}”?`)) return;
+    try { await api('DELETE', `/api/automations/${a.id}`); toast('Automation deleted'); navigate('/automations'); } catch (x) { toast(x.message, true); }
+  });
 }
 
 /* ===== /social-posts: project photos to the connected Facebook Page and Instagram account ===== */
