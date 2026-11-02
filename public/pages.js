@@ -1840,7 +1840,7 @@ PAGES['/payments/view'] = {
       X && X.bank ? field('Bank account', `${esc(X.bank.name)} •••• ${esc(X.bank.last4)}`) : '',
       X ? field(X.card ? 'Name on card' : 'Account holder', esc(X.name)) : '',
       X ? field('Billing address', esc(X.address)) : '',
-      X ? field('Paid through', X.card && X.card.wallet ? `Digital wallet (${esc(WALLET[X.card.wallet] || X.card.wallet)})` : 'Online payment page') : '',
+      X ? field('Paid through', X.card && X.card.wallet ? `Digital wallet (${esc(WALLET[X.card.wallet] || X.card.wallet)})` : X.link ? `Link by Stripe${X.link.email ? ` (${esc(X.link.email)})` : ''}` : 'Online payment page') : '',
       field('Transaction number', X ? `<code>${esc(X.chargeId || X.paymentIntent)}</code>` : P.reference ? esc(P.reference) : ''),
       !X ? field('Recorded by', esc(P.recordedBy)) : '',
       field('Details', `Payment applied to ${esc(docName)}`),
@@ -2055,7 +2055,7 @@ PAGES['/payments/settings'] = {
   title: 'Payment settings',
   async render(main) {
     const S = planHas('onlinePayments') ? await api('GET', '/api/payments/stripe').catch(() => ({ connected: false })) : { connected: false };
-    const P = { ...{ quoteCard: true, quoteAch: false, invoiceCard: true, invoiceAch: false, notifyEmail: true, emailReceipts: true, disabled: false }, ...(company.paySettings || {}) };
+    const P = { ...{ quoteCard: true, quoteAch: false, invoiceCard: true, invoiceAch: false, link: true, notifyEmail: true, emailReceipts: true, disabled: false }, ...(company.paySettings || {}) };
     const can = planHas('onlinePayments');
     const sw = (k, label, note, icon, disabled) => `<label class="sw-row pay-sw">${icon ? `<span class="pay-ic" aria-hidden="true">${icon}</span>` : ''}<span class="grow">${label}${note ? `<small class="muted">${note}</small>` : ''}</span><input type="checkbox" class="sw" data-pay="${k}" ${P[k] ? 'checked' : ''} ${disabled ? 'disabled' : ''}><i></i></label>`;
     const off = !can || P.disabled;
@@ -2067,7 +2067,8 @@ PAGES['/payments/settings'] = {
 ${!can ? '<div class="notice">Online payments aren’t included in your plan. You can still record cash, check and other payments on invoices.</div>' : !S.connected ? `<div class="notice">Set up card payments in <a href="/settings#payments" data-link>App Settings → Card payments</a> to take online payments. Until then, clients can’t pay by card.</div>` : ''}
 <div class="card"><h2>Client payments</h2>
 <h3 class="pay-h">Quote payments<small class="muted">Let clients pay deposits online when viewing quotes</small></h3>${methodRows('quote')}
-<h3 class="pay-h">Invoice payments<small class="muted">Let clients pay online when viewing invoices</small></h3>${methodRows('invoice')}</div>
+<h3 class="pay-h">Invoice payments<small class="muted">Let clients pay online when viewing invoices</small></h3>${methodRows('invoice')}
+<h3 class="pay-h">Faster checkout<small class="muted">On every payment page that takes cards</small></h3>${sw('link', 'Link by Stripe', 'Clients who saved their details with Link pay in one click, with a code sent to their phone. Same rate as cards.', '⚡', off || !(P.quoteCard || P.invoiceCard))}</div>
 <div class="card"><h2>Notifications</h2>${sw('notifyEmail', 'Get notified of payments by email', `Sent to ${esc(company.email || 'your company email')} when a client pays online`)}${sw('emailReceipts', 'Automatically email receipts to clients', 'Sent from your business when a client pays online')}</div>
 ${can ? `<div class="card pay-off"><div><h2>${P.disabled ? 'Payments are disabled' : 'Disable payments'}</h2><p class="muted">${P.disabled ? 'Clients can’t pay quotes and invoices online. Zelle details and recorded payments still work.' : 'Clients can’t pay outstanding or new quotes and invoices online.'}</p></div>
 <button type="button" class="btn ${P.disabled ? '' : 'danger'}" data-act="payDisable" data-on="${P.disabled ? '0' : '1'}">${P.disabled ? 'Turn payments back on' : 'Disable payments'}</button></div>` : ''}
@@ -2145,6 +2146,7 @@ PAGES['/settings/billing'] = {
 <div class="bill-grid">
 <div class="card"><div class="bill-h"><h2>Billing details</h2>${B.live && B.managed ? '<button type="button" class="btn alt sm" data-act="billEdit">Edit</button>' : ''}</div>
 ${B.card ? `<div class="bill-card"><span class="bill-brand">${esc(CARD_BRANDS[B.card.brand] || B.card.brand)}</span><div><small class="muted">CARD NUMBER</small><div>•••• ${esc(B.card.last4)}</div></div><div class="r"><small class="muted">EXPIRY</small><div>${String(B.card.expMonth).padStart(2, '0')}/${String(B.card.expYear).slice(-2)}</div></div></div>`
+  : B.link ? `<div class="bill-card"><span class="bill-brand">Link</span><div><small class="muted">PAYING WITH LINK</small><div>${esc(B.link.email) || 'Saved details'}</div></div><div></div></div>`
   : `<div class="bill-card"><span class="muted">No card on file.</span>${B.live && B.managed ? '<span></span><button type="button" class="btn alt sm" data-act="billCard">Add card</button>' : ''}</div>`}
 ${B.managed ? `<div class="bill-two"><div><strong>Name</strong><div>${esc(B.customer && B.customer.name) || '<span class="muted">—</span>'}</div>${B.customer && B.customer.email ? `<div class="muted" style="font-size:13px">${esc(B.customer.email)}</div>` : ''}</div><div><strong>Address</strong><div>${addr(B.customer && B.customer.address)}</div></div></div>` : ''}
 <div class="bill-sub"><strong>Plan subscription</strong>${subText}</div></div>
@@ -2236,7 +2238,7 @@ A.billEdit = () => {
 <label>Address<input name="line1" maxlength="200" value="${esc(a.line1 || '')}" autocomplete="address-line1"></label><label>Apartment, suite (optional)<input name="line2" maxlength="200" value="${esc(a.line2 || '')}" autocomplete="address-line2"></label>
 <div class="row3"><label>City<input name="city" maxlength="100" value="${esc(a.city || '')}"></label><label>State<input name="state" maxlength="100" value="${esc(a.state || '')}"></label><label>ZIP code<input name="postal_code" maxlength="20" value="${esc(a.postal_code || '')}"></label></div>
 <label>Country<select name="country">${[['US', 'United States'], ['CA', 'Canada'], ['GB', 'United Kingdom'], ['AU', 'Australia'], ['MX', 'Mexico']].map(([k, l]) => `<option value="${k}" ${(a.country || 'US') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-<div class="bill-cardrow"><span>Card: ${billingData.card ? `${esc(CARD_BRANDS[billingData.card.brand] || billingData.card.brand)} •••• ${esc(billingData.card.last4)}` : 'none on file'}</span><button type="button" class="btn alt sm" data-act="billCard">${billingData.card ? 'Update card' : 'Add card'}</button></div>
+<div class="bill-cardrow"><span>Card: ${billingData.card ? `${esc(CARD_BRANDS[billingData.card.brand] || billingData.card.brand)} •••• ${esc(billingData.card.last4)}` : billingData.link ? `Link${billingData.link.email ? ` (${esc(billingData.link.email)})` : ''}` : 'none on file'}</span><button type="button" class="btn alt sm" data-act="billCard">${billingData.card || billingData.link ? 'Update card' : 'Add card'}</button></div>
 <div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save</button></div></form>`);
   $('#bdf', m).addEventListener('submit', async (e) => {
     e.preventDefault(); const btn = $('button.btn:not(.alt)', e.target); btn.disabled = true;

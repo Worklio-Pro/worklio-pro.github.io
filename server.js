@@ -1744,7 +1744,7 @@ const stripeWebhookSecret = () => secrets().stripeWebhookSecret || (tenancy.isDe
 const stripeMode = () => stripeLib.modeOf(stripeKey());
 const stripeApi = (method, endpoint, params) => stripeLib.request(stripeKey(), method, endpoint, params, connectedAccount());
 // ---------- payment settings (Payments → Settings) ----------
-const PAY_DEFAULTS = { quoteCard: true, quoteAch: false, invoiceCard: true, invoiceAch: false, notifyEmail: true, emailReceipts: true, disabled: false };
+const PAY_DEFAULTS = { quoteCard: true, quoteAch: false, invoiceCard: true, invoiceAch: false, link: true, notifyEmail: true, emailReceipts: true, disabled: false };
 const paySettings = () => ({ ...PAY_DEFAULTS, ...(db.company.paySettings || {}) });
 // the online methods a client can use for an invoice or a quote deposit ([] = none); bank (ACH) needs a live Stripe connection
 function onlineMethods(kind, doc) {
@@ -1765,11 +1765,8 @@ async function stripeCheckout({ amount, name, client, meta, successUrl, cancelUr
   if (connectedAccount() && fee > 0) p['payment_intent_data[application_fee_amount]'] = String(Math.round(amount * fee)); // amount is dollars, fee is %
   if (client && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(client.email || '')) p.customer_email = client.email; // Stripe emails the receipt
   methods.forEach((m, i) => { p[`payment_method_types[${i}]`] = m; });
-  try { return await stripeApi('POST', 'checkout/sessions', p); } catch (e) {
-    if (methods.length < 2 || !/payment method type|us_bank_account/i.test(e.message)) throw e;
-    for (const k of Object.keys(p)) if (k.startsWith('payment_method_types')) delete p[k]; // bank payments not switched on in their Stripe account: card only
-    p['payment_method_types[0]'] = 'card'; return stripeApi('POST', 'checkout/sessions', p);
-  }
+  if (methods.includes('card') && paySettings().link) p[`payment_method_types[${methods.length}]`] = 'link'; // Link next to cards (Payments → Settings)
+  return stripeLib.checkoutSession(stripeKey(), p, connectedAccount()); // a method that isn't switched on in their Stripe account is dropped
 }
 // record a paid Checkout session on its invoice or quote (safe to call more than once for the same session)
 function applyStripeSession(s) {
@@ -1925,7 +1922,7 @@ async function paymentDetail(f) {
         status: ch.disputed ? 'disputed' : ch.refunded ? 'refunded' : ch.amount_refunded ? 'partly refunded' : ch.status === 'failed' ? 'failed' : ch.status === 'pending' ? 'processing' : 'succeeded',
         created: day(ch.created || pi.created), chargeId: ch.id || '', paymentIntent: pi.id, receiptUrl: ch.receipt_url || '',
         type: pm.type || '', card: card ? { brand: card.brand, last4: card.last4, expMonth: card.exp_month, expYear: card.exp_year, funding: card.funding, wallet: card.wallet ? card.wallet.type : '' } : null,
-        bank: bank ? { name: bank.bank_name || 'Bank account', last4: bank.last4 || '' } : null,
+        bank: bank ? { name: bank.bank_name || 'Bank account', last4: bank.last4 || '' } : null, link: pm.type === 'link' ? { email: (pm.link && pm.link.email) || '' } : null,
         name: (ch.billing_details && ch.billing_details.name) || '', address: [ad.line1, ad.line2, ad.city, [ad.state, ad.postal_code].filter(Boolean).join(' '), ad.country].filter(Boolean).join(', '),
         refunded: round2((ch.amount_refunded || 0) / 100), fee: bt.fee != null ? round2(bt.fee / 100) : null, net: bt.net != null ? round2(bt.net / 100) : null, payout,
       };
@@ -1980,7 +1977,7 @@ app.get('/api/payment-detail/:id/pdf', async (req, res) => {
   if (C) { pdf.text(L, y, C.company ? `${C.name} (${C.company})` : C.name, { size: 11, bold: true }); y += 15; for (const s of [C.address, C.email, C.phone ? fmtUsPhone(C.phone) : ''].filter(Boolean)) y = pdf.para(L, y, s, 230, { size: 10, color: '#334155', lineHeight: 14 }); }
   let y2 = top; const M = 320; pdf.text(M, y2, 'PAYMENT DETAILS', { size: 9, bold: true, color: '#64748b' }); y2 += 16;
   const brand = { visa: 'Visa', mastercard: 'Mastercard', amex: 'American Express', discover: 'Discover' };
-  const how = X ? (X.card ? `${brand[X.card.brand] || X.card.brand || 'Card'} •••• ${X.card.last4}${X.card.wallet ? ` (${{ apple_pay: 'Apple Pay', google_pay: 'Google Pay', link: 'Link' }[X.card.wallet] || 'digital wallet'})` : ''}` : X.bank ? `${X.bank.name} •••• ${X.bank.last4}` : 'Online payment')
+  const how = X ? (X.card ? `${brand[X.card.brand] || X.card.brand || 'Card'} •••• ${X.card.last4}${X.card.wallet ? ` (${{ apple_pay: 'Apple Pay', google_pay: 'Google Pay', link: 'Link' }[X.card.wallet] || 'digital wallet'})` : ''}` : X.bank ? `${X.bank.name} •••• ${X.bank.last4}` : X.link ? 'Link' : 'Online payment')
     : { cash: 'Cash', check: 'Check', card: 'Credit/debit card', bank: 'Bank payment', zelle: 'Zelle', cashapp: 'Cash App', paypal: 'PayPal', venmo: 'Venmo' }[P.method] || 'Other';
   for (const [k, v] of [['Method', how], ['Date', niceDate(P.date)], ['Transaction', X ? X.chargeId || X.paymentIntent : P.reference], ['Applied to', `${d.doc.kind === 'quote' ? 'Deposit on quote' : 'Invoice'} #${d.doc.number}`]]) {
     if (!v) continue; pdf.text(M, y2, k, { size: 10, color: '#64748b' }); y2 = pdf.para(M + 78, y2, v, R - M - 78, { size: 10, lineHeight: 14 }) + 2;
@@ -2914,7 +2911,7 @@ app.delete('/api/social-posts/:id', (req, res) => {
 const ownerOnly = (req, res) => { const u = currentUser(req); if (u && u.role === 'owner') return true; res.status(403).json({ error: 'Only the account owner can manage billing' }); return false; };
 // seeing the plans and choosing one: the owner, or also an admin while the account is paused
 const planChooser = (req, res) => (isAdmin(currentUser(req)) && isPaused()) || ownerOnly(req, res);
-const billingCall = (method, endpoint, params) => stripeLib.request(stripeLib.platformKey(), method, endpoint, params);
+const billingCall = (method, endpoint, params) => (method === 'POST' && endpoint === 'checkout/sessions' ? stripeLib.checkoutSession(stripeLib.platformKey(), params) : stripeLib.request(stripeLib.platformKey(), method, endpoint, params)); // Checkout pages offer Link next to cards
 const unix = (t) => (t ? iso(new Date(t * 1000)) : null);
 app.get('/api/account/billing', async (req, res) => {
   if (!planChooser(req, res)) return;
@@ -2930,6 +2927,7 @@ app.get('/api/account/billing', async (req, res) => {
       b.subscriptionId ? get(`subscriptions/${encodeURIComponent(b.subscriptionId)}?expand[]=default_payment_method`) : null, get(`invoices?customer=${encodeURIComponent(b.customerId)}&limit=24`)]);
     const pm = (sub && typeof sub.default_payment_method === 'object' && sub.default_payment_method) || (cust && cust.invoice_settings && typeof cust.invoice_settings.default_payment_method === 'object' && cust.invoice_settings.default_payment_method);
     if (pm && pm.card) out.card = { brand: pm.card.brand, last4: pm.card.last4, expMonth: pm.card.exp_month, expYear: pm.card.exp_year };
+    else if (pm && pm.type === 'link') out.link = { email: (pm.link && pm.link.email) || '' }; // paying with Link
     if (cust && !cust.deleted) out.customer = { name: cust.name || (pm && pm.billing_details && pm.billing_details.name) || b.ownerName || '', email: cust.email || b.email || '', address: cust.address || (pm && pm.billing_details && pm.billing_details.address) || null };
     if (sub) {
       const item = sub.items && sub.items.data && sub.items.data[0]; const price = item && item.price;
@@ -3177,7 +3175,7 @@ async function subscribeSession(t, u, to, c, { trial = onTrial(t) } = {}) {
   const b = t.billing || {};
   const p = { mode: 'subscription', client_reference_id: t.id, 'metadata[tenantId]': t.id, 'metadata[planId]': to.id, 'metadata[interval]': c.interval, 'subscription_data[metadata][tenantId]': t.id,
     'line_items[0][quantity]': '1', 'line_items[0][price_data][currency]': 'usd', 'line_items[0][price_data][product]': await planProduct(to),
-    'line_items[0][price_data][unit_amount]': String(c.cents), 'line_items[0][price_data][recurring][interval]': c.interval,
+    'line_items[0][price_data][unit_amount]': String(c.cents), 'line_items[0][price_data][recurring][interval]': c.interval, 'payment_method_types[0]': 'card',
     success_url: `${baseUrl()}/settings/billing?checkout={CHECKOUT_SESSION_ID}`, cancel_url: `${baseUrl()}/settings/billing` };
   if (b.customerId) p.customer = b.customerId; else p.customer_email = u.email;
   Object.assign(p, referrals.bankedTrial(t)); // free months earned by referring other businesses
