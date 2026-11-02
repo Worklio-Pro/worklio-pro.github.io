@@ -38,7 +38,7 @@ ${S.allowSignups ? `<a class="btn ${i === mid ? '' : 'alt'}" href="#signup" data
   document.addEventListener('click', (e) => { const b = e.target.closest('[data-contact]'); if (b) { e.preventDefault(); openContact(S, b.dataset.contact); } });
   if (location.hash === '#contact') openContact(S, ''); // a link straight to the contact form (e.g. from the chat when no one is available)
   if (!S.allowSignups) return;
-  const cta = $('#topCta'); cta.textContent = 'Get started'; delete cta.dataset.contact;
+  const cta = $('#topCta'); cta.textContent = 'Start 30-day trial'; delete cta.dataset.contact; cta.href = '#trial'; cta.dataset.trial = ''; // the two-step trial pop-up (trial.js)
   // a referral link (/pricing?ref=…) from another business: kept for this visit, so it's still there after looking around
   const qs = new URLSearchParams(location.search); let ref = (qs.get('ref') || '').trim().toLowerCase().slice(0, 20);
   try { if (ref) sessionStorage.setItem('ref', ref); else ref = sessionStorage.getItem('ref') || ''; } catch (e) { /* private mode */ }

@@ -1,7 +1,7 @@
 'use strict';
 // "Start 30-day trial" on the home page: a two-step sign-up pop-up. Step 1 is the business and how to reach them,
 // step 2 the plan, web address and password. The account opens right away on the chosen plan, free for 30 days with no card
-// (lib/platform.js, SITE_TRIAL). Without self sign-up the buttons stay links to the pricing page.
+// (lib/platform.js, SITE_TRIAL). Used on the home and pricing pages; without self sign-up the home page's button stays a link to the pricing page.
 (async () => {
   const $ = (s, el = document) => el.querySelector(s);
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -13,6 +13,12 @@
   const per = (p) => (p.monthly ? { v: p.monthly, per: 'month' } : { v: p.yearly, per: 'year' }); // monthly when the plan has it
   const start = plans.find((p) => p.id === S.signupPlan) || plans[0];
   const root = S.rootDomain;
+  // the phone's country code: US and Canada numbers are written (123) 456-7890, others are kept as typed
+  const COUNTRIES = [['US', '1', 'United States'], ['CA', '1', 'Canada'], ['MX', '52', 'Mexico'], ['PR', '1', 'Puerto Rico'], ['GB', '44', 'United Kingdom'], ['IE', '353', 'Ireland'],
+    ['AU', '61', 'Australia'], ['NZ', '64', 'New Zealand'], ['DE', '49', 'Germany'], ['FR', '33', 'France'], ['ES', '34', 'Spain'], ['IT', '39', 'Italy'], ['NL', '31', 'Netherlands'],
+    ['BR', '55', 'Brazil'], ['CO', '57', 'Colombia'], ['PH', '63', 'Philippines'], ['IN', '91', 'India'], ['ZA', '27', 'South Africa']];
+  const flag = (cc) => String.fromCodePoint(...[...cc].map((c) => 0x1f1a5 + c.charCodeAt(0)));
+  const usPhone = (d) => (d.length > 6 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : d.length > 3 ? `(${d.slice(0, 3)}) ${d.slice(3)}` : d.length ? `(${d}` : '');
 
   function open() {
     const opener = document.activeElement; const old = $('#overlay'); if (old) old.remove();
@@ -25,7 +31,7 @@
 <input name="company" required maxlength="100" autocomplete="organization" placeholder="Business name" aria-label="Business name">
 <input name="name" required maxlength="100" autocomplete="name" placeholder="Full name" aria-label="Full name">
 <input name="email" type="email" required maxlength="200" autocomplete="email" placeholder="Email address" aria-label="Email address">
-<input name="phone" type="tel" required maxlength="40" autocomplete="tel" placeholder="Phone number" aria-label="Phone number">
+<div class="tr-phone"><select name="country" aria-label="Country code">${COUNTRIES.map(([cc, code, n]) => `<option value="${cc}" data-code="${code}" title="${n}">${flag(cc)} +${code}</option>`).join('')}</select><input name="phone" type="tel" required maxlength="20" autocomplete="tel-national" placeholder="(123) 456-7890" aria-label="Phone number"></div>
 <button class="btn tr-go">Go to step 2</button><p class="tr-note">No credit card needed.</p></form>
 <form id="tr2" novalidate hidden><div class="tr-err"></div><button type="button" class="tr-back">← Back to step 1</button>
 <fieldset class="tr-plans"><legend class="tr-head"><span>Plan</span><span>Price</span></legend>
@@ -47,11 +53,17 @@ ${plans.map((p) => { const c = per(p); return `<label><input type="radio" name="
     const step = (n) => { f1.hidden = n !== 1; f2.hidden = n !== 2; o.querySelectorAll('[data-step]').forEach((li) => li.classList.toggle('on', li.dataset.step === String(n)));
       const first = [...(n === 1 ? f1 : f2).querySelectorAll('input:not([type=radio]):not([type=checkbox]),select')].find((x) => !x.value); if (first) first.focus(); };
     $('[name=company]', f1).focus();
+    const phone = $('[name=phone]', f1); const country = $('[name=country]', f1);
+    const dial = () => country.selectedOptions[0].dataset.code;
+    const fmt = () => { const d = phone.value.replace(/\D/g, ''); phone.value = dial() === '1' ? usPhone(d.replace(/^1(?=\d{10})/, '').slice(0, 10)) : d.slice(0, 14); };
+    phone.addEventListener('input', (e) => { if (e.inputType !== 'deleteContentBackward') fmt(); }); // formatted as it's typed; backspace isn't fought
+    country.addEventListener('change', () => { phone.placeholder = dial() === '1' ? '(123) 456-7890' : 'Phone number'; fmt(); phone.focus(); });
     f1.addEventListener('submit', (e) => {
       e.preventDefault(); const b = Object.fromEntries(new FormData(f1));
       if (!b.company.trim()) return err(f1, 'Enter your business name.');
       if (!b.name.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(b.email.trim())) return err(f1, 'Enter your name and a valid email address.');
-      if (b.phone.replace(/\D/g, '').length < 10) return err(f1, 'Enter a phone number we can reach you at.');
+      const n = b.phone.replace(/\D/g, ''); if (dial() === '1' ? n.length !== 10 : n.length < 6) return err(f1, 'Enter a phone number we can reach you at.');
+      fmt();
       err(f1, ''); if (!slug.dataset.touched) { slug.value = slugify(b.company); check(); } step(2);
     });
     $('.tr-back', f2).addEventListener('click', () => step(1));
@@ -72,6 +84,7 @@ ${plans.map((p) => { const c = per(p); return `<label><input type="radio" name="
       if (b.password.length < 8) return err(f2, 'Use a password with at least 8 characters.');
       if (!b.agree) return err(f2, 'Agree to the Terms of Service and Privacy Policy to start your trial.');
       const p = plans.find((x) => x.id === b.plan); b.interval = per(p).per; b.slug = b.slug.trim().toLowerCase(); b.trial = true; delete b.agree;
+      const n = b.phone.replace(/\D/g, ''); b.phone = dial() === '1' ? usPhone(n) : `+${dial()} ${n}`; delete b.country; // +1 numbers are saved as (123) 456-7890
       const btn = $('.tr-go', f2); btn.disabled = true; btn.textContent = 'Starting your trial…'; err(f2, '');
       const r = await fetch('/api/site/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }).catch(() => null);
       const j = r ? await r.json().catch(() => ({})) : {};
@@ -80,6 +93,6 @@ ${plans.map((p) => { const c = per(p); return `<label><input type="radio" name="
       btn.disabled = false; btn.textContent = 'Start my 30-day free trial';
     });
   }
-  document.querySelectorAll('[data-trial]').forEach((a) => { a.addEventListener('click', (e) => { e.preventDefault(); open(); }); });
+  document.addEventListener('click', (e) => { if (e.target.closest('[data-trial]')) { e.preventDefault(); open(); } }); // also the pricing page's button, which site.js turns on
   if (location.hash === '#trial') open();
 })();
