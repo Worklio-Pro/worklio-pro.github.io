@@ -10,7 +10,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="stylesheet" href="/styles.css?v=52">
   <link rel="stylesheet" href="/theme.css">
-  <link rel="stylesheet" href="/home.css?v=6">
+  <link rel="stylesheet" href="/home.css?v=8">
+  <link rel="stylesheet" href="/trial.css?v=1">
 </head>
 <body>
   <header class="h-top h-has-drawer"><div class="h-wrap">
@@ -19,7 +20,7 @@
     <div class="h-panel" id="h-panel">
       <button type="button" class="h-close" aria-label="Close menu"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
       <nav class="h-links" aria-label="Site"><!--features-menu:current--><!--industries-menu--><a href="/#how" data-home="#how">How it works</a><a href="/#faq" data-home="#faq">FAQ</a><a href="/pricing">Pricing</a><a href="/sign-in">Log in</a></nav>
-      <a class="btn" href="/pricing">Get started</a>
+      <a class="btn" href="/pricing" data-trial>Start 30-day trial</a>
     </div>
     <button type="button" class="h-burger" aria-expanded="false" aria-controls="h-panel" aria-label="Open menu"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
     <div class="h-scrim" aria-hidden="true"></div>
@@ -228,6 +229,7 @@
     document.querySelectorAll('.f-shot img').forEach((img) => img.addEventListener('click', () => { zimg.src = img.currentSrc || img.src; zimg.alt = img.alt; zoom.showModal(); }));
     zoom.addEventListener('click', () => zoom.close());
   </script>
+  <script src="/trial.js?v=3"></script>
   <script src="/chat.js?v=6" data-where="site" defer></script>
 </body>
 </html>

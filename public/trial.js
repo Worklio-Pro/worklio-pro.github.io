@@ -1,7 +1,7 @@
 'use strict';
 // "Start 30-day trial" on the home page: a two-step sign-up pop-up. Step 1 is the business and how to reach them,
 // step 2 the plan, web address and password. The account opens right away on the chosen plan, free for 30 days with no card
-// (lib/platform.js, SITE_TRIAL). Used on the home and pricing pages; without self sign-up the home page's button stays a link to the pricing page.
+// (lib/platform.js, SITE_TRIAL). Used on the home, pricing, features and industry pages; without self sign-up their buttons stay links to the pricing page.
 (async () => {
   const $ = (s, el = document) => el.querySelector(s);
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -13,6 +13,7 @@
   const per = (p) => (p.monthly ? { v: p.monthly, per: 'month' } : { v: p.yearly, per: 'year' }); // monthly when the plan has it
   const start = plans.find((p) => p.id === S.signupPlan) || plans[0];
   const root = S.rootDomain;
+  const pageIndustry = (location.pathname.match(/^\/industries\/([^/]+)/) || [])[1] || ''; // opened from an industry's page: that industry is chosen
   // the phone's country code: US and Canada numbers are written (123) 456-7890, others are kept as typed
   const COUNTRIES = [['US', '1', 'United States'], ['CA', '1', 'Canada'], ['MX', '52', 'Mexico'], ['PR', '1', 'Puerto Rico'], ['GB', '44', 'United Kingdom'], ['IE', '353', 'Ireland'],
     ['AU', '61', 'Australia'], ['NZ', '64', 'New Zealand'], ['DE', '49', 'Germany'], ['FR', '33', 'France'], ['ES', '34', 'Spain'], ['IT', '39', 'Italy'], ['NL', '31', 'Netherlands'],
@@ -36,7 +37,7 @@
 <form id="tr2" novalidate hidden><div class="tr-err"></div><button type="button" class="tr-back">← Back to step 1</button>
 <fieldset class="tr-plans"><legend class="tr-head"><span>Plan</span><span>Price</span></legend>
 ${plans.map((p) => { const c = per(p); return `<label><input type="radio" name="plan" value="${esc(p.id)}" ${p === start ? 'checked' : ''}><span>${esc(p.name)}</span><span class="tr-price">30 days free, then ${amount(c.v)}/${c.per}</span></label>`; }).join('')}</fieldset>
-<label>What kind of work do you do?<select name="industry" required><option value="">Choose your industry</option>${(S.industries || []).map((i) => `<option value="${esc(i.slug)}">${esc(i.name)}</option>`).join('')}</select></label>
+<label>What kind of work do you do?<select name="industry" required><option value="">Choose your industry</option>${(S.industries || []).map((i) => `<option value="${esc(i.slug)}" ${i.slug === pageIndustry ? 'selected' : ''}>${esc(i.name)}</option>`).join('')}</select></label>
 <label class="tr-other" hidden>Your industry<input name="industryOther" maxlength="80" placeholder="e.g. Septic pumping"></label>
 <label>Your web address<div class="slug"><input name="slug" required maxlength="32" autocomplete="off" spellcheck="false"><span>.${esc(root)}</span></div><div class="hint"></div></label>
 <label>Password (8+ characters)<input name="password" type="password" required minlength="8" autocomplete="new-password"></label>
