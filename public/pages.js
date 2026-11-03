@@ -858,13 +858,15 @@ async function toJpeg(src, max = 1440, maxBytes = 0) {
   return out;
 }
 // the networks in the post form: key, name, the account it posts to, and its limits (the server checks the same):
-// text = caption length (Bluesky counts graphemes), needsPhoto / needsText, maxPhotos
+// text = caption length (Bluesky counts graphemes), needsPhoto / needsText / needsVideo, maxPhotos
 const SP_NETS = [
   ['facebook', 'Facebook', (R) => R.facebook.name, { text: 63206 }],
   ['instagram', 'Instagram', (R) => '@' + R.instagram.username, { text: 2200, needsPhoto: true }],
   ['linkedin', 'LinkedIn', (R) => R.linkedin.name, { text: 3000 }],
   ['tiktok', 'TikTok', (R) => R.tiktok.name, { text: 4000, needsPhoto: true }],
+  ['youtube', 'YouTube', (R) => R.youtube.name, { text: 5000, needsVideo: true }],
   ['threads', 'Threads', (R) => '@' + R.threads.username, { text: 500 }],
+  ['x', 'X', (R) => '@' + R.x.username, { text: 280, maxPhotos: 4 }],
   ['pinterest', 'Pinterest', (R) => R.pinterest.name, { text: 500, needsPhoto: true }],
   ['bluesky', 'Bluesky', (R) => '@' + R.bluesky.handle, { text: 300, graphemes: true, maxPhotos: 4 }],
   ['google', 'Google Business Profile', (R) => R.google.title, { text: 1500, needsText: true }],
@@ -886,10 +888,26 @@ A.bskyConnect = () => {
     catch (x) { btn.disabled = false; btn.textContent = 'Connect'; toast(x.message, true); }
   });
 };
+// X: the keys from the business's own X developer app (X bills that app for each post), checked with X before they're saved
+A.xConnect = () => {
+  const body = modal('Connect X', `<form class="bsky-form"><p class="muted" style="margin:0 0 10px">X charges for each post made through its API, so you post with your own X developer app and X bills your developer account. Posts with a link cost more than posts without one. See prices at <a href="https://developer.x.com" target="_blank" rel="noopener">developer.x.com</a>.</p>
+<ol class="pay-steps" style="margin:0 0 14px"><li>Sign in at <a href="https://developer.x.com" target="_blank" rel="noopener">developer.x.com</a> with your business’s X account and add credits.</li>
+<li>Create an app. In its <strong>User authentication settings</strong>, set the app permissions to <strong>Read and write</strong>.</li>
+<li>Under <strong>Keys and tokens</strong>, copy the API key and secret, then generate an access token and secret, and paste all four here.</li></ol>
+<label>API key<input name="apiKey" required autocomplete="off" spellcheck="false"></label>
+<label>API key secret<input name="apiSecret" required autocomplete="off" spellcheck="false"></label>
+<label>Access token<input name="accessToken" required autocomplete="off" spellcheck="false"></label>
+<label>Access token secret<input name="accessSecret" required autocomplete="off" spellcheck="false"></label>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Connect</button></div></form>`);
+  const f = $('form', body); f.apiKey.focus();
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault(); const btn = $('.foot .btn:not(.alt)', f); btn.disabled = true; btn.textContent = 'Connecting…';
+    try { const C = await api('POST', '/api/connections/x', Object.fromEntries(['apiKey', 'apiSecret', 'accessToken', 'accessSecret'].map((k) => [k, f[k].value]))); closeModal(); toast(`X connected as @${C.x.username}`); refresh(); }
+    catch (x) { btn.disabled = false; btn.textContent = 'Connect'; toast(x.message, true); }
+  });
+};
 // Marketing → Connect your social accounts: the business connects its own accounts here (the same connections as Account Connections)
 const MK_ICONS = {
-  youtube: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#FF0000"/><rect x="10" y="14" width="28" height="20" rx="6" fill="#fff"/><path fill="#FF0000" d="M21 19v10l8.5-5z"/></svg>',
-  x: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#000"/><path fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" d="M15 14l18 20M33 14L15 34"/></svg>',
   // Google's G on a white tile, built when drawn (CONN_ICONS comes later in this file)
   get google() { return '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3.5" y="3.5" width="41" height="41" rx="10" fill="#fff" stroke="#dadce0"/><g transform="translate(10 10) scale(.583)">' + CONN_ICONS.google.replace(/^<svg[^>]*>/, '').replace(/<\/svg>$/, '') + '</g></svg>'; },
 };
@@ -897,13 +915,13 @@ function marketingConnect(C) {
   const admin = ['owner', 'admin'].includes(role());
   const card = (name, icon, body, on) => `<div class="mk-card${on ? ' on' : ''}"><span class="mk-ic">${icon}</span><strong>${name}</strong>${body}</div>`;
   const soon = '<span class="mk-btn soon">Coming soon</span>';
+  const ask = '<small class="muted">Ask the account owner or an admin to connect it</small>';
   // the business signs in with its own account on each network
   // who: the account it's connected to; a network the server doesn't list yet shows Coming soon
   const live = (kind, name, who) => { const x = C[kind] || {}; return card(name, CONN_ICONS[kind], x.connected
     ? `<span class="mk-on">Connected</span><small class="muted">${esc(who(x))}</small>${admin ? `<a class="mk-link" href="/settings/connections#conn-${kind}" data-link>Manage</a>` : ''}`
     : !x.available ? soon
       : admin ? `<button type="button" class="mk-btn" data-act="socialConnect" data-kind="${kind}" data-back="/social-posts">+ Connect</button>` : '<small class="muted">Ask the account owner or an admin to connect it</small>', x.connected); };
-  const later = (name, key) => card(name, MK_ICONS[key], soon);
   const G = C.google || {};
   const gbp = card('Google Business Profile', MK_ICONS.google, G.connected
     ? `<span class="mk-on">Connected</span><small class="muted">${esc(G.title)}</small>${admin ? '<a class="mk-link" href="/settings/connections#conn-google" data-link>Manage</a>' : ''}`
@@ -912,9 +930,13 @@ function marketingConnect(C) {
   const bsky = card('Bluesky', CONN_ICONS.bluesky, B.connected
     ? `<span class="mk-on">Connected</span><small class="muted">@${esc(B.handle)}</small>${admin ? '<a class="mk-link" href="/settings/connections#conn-bluesky" data-link>Manage</a>' : ''}`
     : admin ? '<button type="button" class="mk-btn" data-act="bskyConnect">+ Connect</button>' : '<small class="muted">Ask the account owner or an admin to connect it</small>', B.connected);
+  const X = C.x || {};
+  const xCard = card('X', CONN_ICONS.x, X.connected
+    ? `<span class="mk-on">Connected</span><small class="muted">@${esc(X.username)}</small>${admin ? '<a class="mk-link" href="/settings/connections#conn-x" data-link>Manage</a>' : ''}`
+    : admin ? '<button type="button" class="mk-btn" data-act="xConnect">+ Connect</button>' : ask, X.connected);
   return `<section class="mk-connect"><h2>Connect your social accounts</h2><p class="muted">Pick where you want to publish. You can add or remove networks anytime.</p>
-<div class="mk-grp">Major networks</div><div class="mk-grid">${live('facebook', 'Facebook', (x) => x.name)}${live('instagram', 'Instagram', (x) => '@' + x.username)}${live('linkedin', 'LinkedIn', (x) => x.name)}${live('tiktok', 'TikTok', (x) => x.name)}${later('YouTube', 'youtube')}</div>
-<div class="mk-grp">More networks</div><div class="mk-grid">${bsky}${live('pinterest', 'Pinterest', (x) => x.name)}${live('threads', 'Threads', (x) => '@' + x.username)}${later('X', 'x')}${gbp}</div></section>`;
+<div class="mk-grp">Major networks</div><div class="mk-grid">${live('facebook', 'Facebook', (x) => x.name)}${live('instagram', 'Instagram', (x) => '@' + x.username)}${live('linkedin', 'LinkedIn', (x) => x.name)}${live('tiktok', 'TikTok', (x) => x.name)}${live('youtube', 'YouTube', (x) => x.name)}</div>
+<div class="mk-grp">More networks</div><div class="mk-grid">${bsky}${live('pinterest', 'Pinterest', (x) => x.name)}${live('threads', 'Threads', (x) => '@' + x.username)}${xCard}${gbp}</div></section>`;
 }
 PAGES['/social-posts'] = {
   title: 'Marketing',
@@ -931,12 +953,14 @@ ${marketingConnect(C)}`;
 <form class="card sp-new" id="spForm"><h2>New post</h2>
 <div class="sp-dests">${SP_NETS.filter(([k]) => R[k] || k === 'facebook' || k === 'instagram').map(([k, n, who]) => dest(k, n, R[k] && who(R))).join('')}</div>
 <div class="sp-tt" id="spTt" hidden></div>
+<div class="sp-tt" id="spYt" hidden></div>
 <div class="sp-photos" id="spPhotos"></div>
-<div class="sp-add"><button type="button" class="btn alt sm" data-act="spGallery">Choose from Project Gallery</button><label class="btn alt sm">Upload photos<input type="file" accept="image/*" multiple hidden id="spFile"></label><span class="muted" style="font-size:13px">Up to 10 photos. The first one is the cover; Pinterest and Google use only that one, Bluesky up to 4.</span></div>
+<div class="sp-add"><button type="button" class="btn alt sm" data-act="spGallery">Choose from Project Gallery</button><label class="btn alt sm">Upload photos<input type="file" accept="image/*" multiple hidden id="spFile"></label>${R.youtube ? '<label class="btn alt sm">Add video<input type="file" accept="video/mp4,video/quicktime,video/webm" hidden id="spVid"></label>' : ''}<span class="muted" style="font-size:13px">Up to 10 photos. The first one is the cover; Pinterest and Google use only that one, Bluesky and X up to 4.${R.youtube ? ' Only YouTube uses the video.' : ''}</span></div>
+<div class="sp-video" id="spVideo" hidden></div>
 <label>Caption<textarea name="caption" rows="4" maxlength="2200" placeholder="Another pool back to sparkling! Swipe to see the before and after. Call us for a free quote.">${esc(spDraft.caption || '')}</textarea></label>
 <div class="sp-foot"><span class="muted" id="spCount" style="font-size:13px"></span><button class="btn">Post now</button></div></form>
 <div class="card"><h2>Posted</h2>${(R.posts || []).length ? `<div class="sp-list">${R.posts.map((p) => `<div class="sp-row">${p.images[0] ? `<img src="${esc(p.images[0])}" alt="" loading="lazy">` : '<span class="sp-noimg"></span>'}
-<div><p>${p.caption ? esc(p.caption.length > 220 ? p.caption.slice(0, 220) + '…' : p.caption) : '<span class="muted">No caption</span>'}</p><div class="sp-meta"><span class="muted">${fmtDate(p.createdAt.slice(0, 10))}${p.by ? ' · ' + esc(p.by) : ''}${p.images.length > 1 ? ` · ${p.images.length} photos` : ''}</span>${SP_NETS.map(([k]) => res(p, k, SP_NAMES[k])).join('')}</div>
+<div><p>${p.caption ? esc(p.caption.length > 220 ? p.caption.slice(0, 220) + '…' : p.caption) : '<span class="muted">No caption</span>'}</p><div class="sp-meta"><span class="muted">${fmtDate(p.createdAt.slice(0, 10))}${p.by ? ' · ' + esc(p.by) : ''}${p.images.length > 1 ? ` · ${p.images.length} photos` : ''}${p.video ? ' · video' : ''}</span>${SP_NETS.map(([k]) => res(p, k, SP_NAMES[k])).join('')}</div>
 ${Object.values(p.results).filter((r) => r.status !== 'posted').map((r) => `<p class="sp-err">${esc(r.error)}</p>`).join('')}</div>
 ${['owner', 'admin'].includes(role()) ? `<button type="button" class="x sp-x" data-act="spRemove" data-id="${p.id}" title="Remove from this list (it stays on the networks it was posted to)" aria-label="Remove from this list">×</button>` : ''}</div>`).join('')}</div>` : '<p class="muted" style="margin:0">Nothing posted yet.</p>'}</div>`;
     const f = $('#spForm'); const cap = f.caption;
@@ -948,8 +972,15 @@ ${['owner', 'admin'].includes(role()) ? `<button type="button" class="x sp-x" da
       el.textContent = `${n.toLocaleString('en-US')} / ${max.toLocaleString('en-US')}${k && spDraft.to.length > 1 ? ` (${SP_NAMES[k]})` : ''}`; el.classList.toggle('sp-over', n > max); spDraft.caption = cap.value;
     };
     cap.addEventListener('input', count); count();
-    $$('input[name=to]', f).forEach((c) => c.addEventListener('change', () => { spDraft.to = $$('input[name=to]:checked', f).map((x) => x.value); count(); spTikTok(); }));
-    spTikTok();
+    $$('input[name=to]', f).forEach((c) => c.addEventListener('change', () => { spDraft.to = $$('input[name=to]:checked', f).map((x) => x.value); count(); spTikTok(); spYouTube(); }));
+    spTikTok(); spYouTube();
+    const vid = $('#spVid');
+    if (vid) vid.addEventListener('change', (e) => {
+      const file = e.target.files[0]; e.target.value = ''; if (!file) return;
+      if (file.size > 500e6) return toast('Videos can be up to 500 MB', true);
+      spDraft.video = file; spDraft.videoPath = ''; drawSpVideo();
+    });
+    drawSpVideo();
     $('#spFile').addEventListener('change', async (e) => {
       for (const file of [...e.target.files]) { if (spDraft.photos.length >= 10) { toast('Up to 10 photos per post', true); break; } try { spDraft.photos.push({ src: await readFileAsDataUrl(file), label: file.name }); } catch (x) { toast('Couldn’t read ' + file.name, true); } }
       e.target.value = ''; drawSpPhotos();
@@ -964,14 +995,20 @@ ${['owner', 'admin'].includes(role()) ? `<button type="button" class="x sp-x" da
         if (L.needsPhoto && !spDraft.photos.length) return toast(`${n} posts need at least one photo`, true);
         if (L.needsText && !text) return toast(`${n} posts need a caption`, true);
         if (L.maxPhotos && spDraft.photos.length > L.maxPhotos) return toast(`${n} posts can have up to ${L.maxPhotos} photos. Remove some or untick ${n}.`, true);
+        if (L.needsVideo && !spDraft.video) return toast(`${n} posts need a video. Click Add video, or untick ${n}.`, true);
       }
       const tt = to.includes('tiktok') ? spDraft.tiktok || {} : null;
       if (tt && !tt.privacy) return toast('Choose who can see the TikTok post', true);
-      if (!spDraft.photos.length && !cap.value.trim()) return toast('Add a photo or write a caption', true);
+      const yt = to.includes('youtube') ? spDraft.youtube || {} : null;
+      if (yt && !yt.privacy) return toast('Choose who can see the YouTube video', true);
+      if (!spDraft.photos.length && !cap.value.trim() && !yt) return toast('Add a photo or write a caption', true);
       btn.disabled = true; btn.textContent = 'Posting…';
       try {
+        // the video goes up first, as the file itself; it's kept for another try if the post doesn't go out
+        if (yt && !spDraft.videoPath) spDraft.videoPath = await spUploadVideo(spDraft.video, (pct) => { btn.textContent = `Uploading video ${pct}%`; });
+        btn.textContent = 'Posting…';
         const images = []; for (const p of spDraft.photos) images.push(await toJpeg(p.src, 1440, to.includes('bluesky') ? 950000 : 0));
-        const p = await api('POST', '/api/social-posts', { caption: cap.value, images, to, ...(tt ? { tiktok: tt } : {}) });
+        const p = await api('POST', '/api/social-posts', { caption: cap.value, images, to, ...(tt ? { tiktok: tt } : {}), ...(yt ? { youtube: yt, video: spDraft.videoPath } : {}) });
         const bad = Object.entries(p.results).filter(([, r]) => r.status !== 'posted');
         if (bad.length) toast(`Didn’t post to ${bad.map(([k]) => SP_NAMES[k]).join(' or ')}: ${bad[0][1].error}`, true); else toast('Posted');
         if (bad.length < Object.keys(p.results).length) spDraft = { photos: [], to: null };
@@ -981,6 +1018,34 @@ ${['owner', 'admin'].includes(role()) ? `<button type="button" class="x sp-x" da
     drawSpPhotos();
   },
 };
+// the post's video (YouTube only): its name and size, with a button to take it off
+function drawSpVideo() {
+  const box = $('#spVideo'); if (!box) return; const v = spDraft.video; box.hidden = !v; if (!v) return;
+  box.innerHTML = `${CONN_ICONS.youtube}<span><strong>${esc(v.name)}</strong> <small class="muted">${v.size < 1e6 ? `${Math.ceil(v.size / 1e3)} KB` : `${(v.size / 1e6).toFixed(1)} MB`}</small></span><button type="button" class="x" data-act="spDropVideo" title="Remove video" aria-label="Remove video">×</button>`;
+}
+A.spDropVideo = () => { spDraft.video = null; spDraft.videoPath = ''; drawSpVideo(); };
+// sends the video as the file itself (it can be large), with progress; resolves to its address on the server
+const spUploadVideo = (file, progress) => new Promise((resolve, reject) => {
+  const x = new XMLHttpRequest(); x.open('POST', '/api/social-posts/video'); x.setRequestHeader('content-type', file.type || 'application/octet-stream');
+  x.upload.onprogress = (e) => { if (e.lengthComputable) progress(Math.floor((e.loaded / e.total) * 100)); };
+  x.onload = () => { let j = {}; try { j = JSON.parse(x.responseText); } catch (e) { /* not JSON */ } if (x.status < 300 && j.video) resolve(j.video); else reject(new Error(j.error || 'The video didn’t finish uploading. Please try again.')); };
+  x.onerror = () => reject(new Error('The video didn’t finish uploading. Check your connection and try again.'));
+  x.send(file);
+});
+// YouTube's choices for the video: its title (the caption's first line if left empty), who can see it, and whether it's made for kids
+async function spYouTube() {
+  const box = $('#spYt'); if (!box) return; const on = spDraft.to.includes('youtube'); box.hidden = !on; if (!on || box.dataset.loaded) return;
+  box.dataset.loaded = '1';
+  const y = spDraft.youtube = spDraft.youtube || { title: '', privacy: '', kids: false };
+  box.innerHTML = `<h3>${CONN_ICONS.youtube}YouTube video</h3>
+<div class="sp-tt-row"><label>Title<input name="ytTitle" maxlength="100" value="${esc(y.title)}" placeholder="The caption’s first line"></label>
+<label>Who can see it<select name="ytPrivacy"><option value="">Choose…</option>${[['public', 'Public'], ['unlisted', 'Unlisted'], ['private', 'Private']].map(([k, n]) => `<option value="${k}" ${y.privacy === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+<label class="sp-chk"><input type="checkbox" name="ytKids" ${y.kids ? 'checked' : ''}> Made for kids</label></div>
+<p class="muted">The caption becomes the video’s description. A vertical video up to 3 minutes long becomes a YouTube Short. Until Google approves this app, uploaded videos stay private.</p>`;
+  box.querySelector('[name=ytTitle]').addEventListener('input', (e) => { y.title = e.target.value; });
+  box.querySelector('[name=ytPrivacy]').addEventListener('change', (e) => { y.privacy = e.target.value; });
+  box.querySelector('[name=ytKids]').addEventListener('change', (e) => { y.kids = e.target.checked; });
+}
 const TT_HINT = { SELF_ONLY: 'Until TikTok approves this app, posts can only be private.' };
 async function spTikTok() {
   const box = $('#spTt'); if (!box) return; const on = spDraft.to.includes('tiktok'); box.hidden = !on; if (!on || box.dataset.loaded) return;
@@ -1353,6 +1418,8 @@ const CONN_ICONS = {
   twilio: '<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="21" fill="#F22F46"/><circle cx="24" cy="24" r="13" fill="none" stroke="#fff" stroke-width="3.2"/><circle cx="19.6" cy="19.6" r="3.1" fill="#fff"/><circle cx="28.4" cy="19.6" r="3.1" fill="#fff"/><circle cx="19.6" cy="28.4" r="3.1" fill="#fff"/><circle cx="28.4" cy="28.4" r="3.1" fill="#fff"/></svg>',
   email: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="var(--brand)"/><rect x="11" y="15" width="26" height="18" rx="2.5" fill="none" stroke="#fff" stroke-width="2.6"/><path d="M12 17l12 9 12-9" fill="none" stroke="#fff" stroke-width="2.6" stroke-linejoin="round"/></svg>',
   bluesky: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#1185FE"/><path fill="#fff" d="M16.5 14.6c2.9 2.2 6 6.6 7.5 9 1.5-2.4 4.6-6.8 7.5-9 2.1-1.6 5.5-2.8 5.5 1.1 0 .8-.4 6.6-.7 7.5-.9 3.3-4.3 4.1-7.3 3.6 5.2.9 6.5 3.8 3.7 6.7-5.4 5.5-7.7-1.4-8.3-3.1l-.4-1.1-.4 1.1c-.6 1.7-2.9 8.6-8.3 3.1-2.8-2.9-1.5-5.8 3.7-6.7-3 .5-6.4-.3-7.3-3.6-.3-.9-.7-6.7-.7-7.5 0-3.9 3.4-2.7 5.5-1.1z"/></svg>',
+  youtube: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#FF0000"/><rect x="10" y="14" width="28" height="20" rx="6" fill="#fff"/><path fill="#FF0000" d="M21 19v10l8.5-5z"/></svg>',
+  x: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#000"/><path fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" d="M15 14l18 20M33 14L15 34"/></svg>',
   linkedin: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#0A66C2"/><rect x="12.5" y="20" width="5" height="15" fill="#fff"/><circle cx="15" cy="14.6" r="3" fill="#fff"/><path fill="#fff" d="M22 20h4.8v2.2c.7-1.3 2.4-2.6 5-2.6 5 0 5.9 3.2 5.9 7.4V35h-5v-7.1c0-1.7 0-3.9-2.4-3.9s-2.8 1.9-2.8 3.8V35H22z"/></svg>',
   tiktok: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#000"/><path fill="#fff" d="M26.5 11h4.3c.3 2.9 2.3 5 5.2 5.3v4.3c-1.9 0-3.7-.6-5.2-1.6v9a7.6 7.6 0 1 1-7.6-7.6l1.1.1v4.4a3.2 3.2 0 1 0 2.2 3.1z"/></svg>',
   pinterest: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#E60023"/><path fill="#fff" d="M24.6 11c-7.4 0-11.2 5.3-11.2 9.7 0 2.7 1 5 3.2 5.9.4.1.7 0 .8-.4l.3-1.3c.1-.4.1-.5-.2-.9-.7-.8-1.1-1.8-1.1-3.2 0-4.2 3.1-7.9 8.1-7.9 4.4 0 6.9 2.7 6.9 6.3 0 4.7-2.1 8.8-5.2 8.8-1.7 0-3-1.4-2.6-3.2.5-2.1 1.5-4.3 1.5-5.8 0-1.4-.7-2.5-2.3-2.5-1.8 0-3.2 1.9-3.2 4.3 0 1.6.5 2.6.5 2.6l-2.2 9.1c-.6 2.7-.1 6 0 6.3h.4c.2-.3 2.4-3 3.1-5.8l1.2-4.7c.6 1.2 2.4 2.2 4.2 2.2 5.5 0 9.2-5 9.2-11.7C35.5 15.7 31.3 11 24.6 11z"/></svg>',
@@ -1421,12 +1488,17 @@ async function connectionsPage(main) {
     ...[['linkedin', 'LinkedIn page', 'Connect a LinkedIn company page you’re an admin of to publish posts there.', (x) => (x.link ? `<a href="${esc(x.link)}" target="_blank" rel="noopener"><strong>${esc(x.name)}</strong></a>` : `<strong>${esc(x.name)}</strong>`)],
       ['tiktok', 'TikTok account', 'Connect your TikTok account to publish photo posts. Until TikTok approves this app, posts can only be private.', (x) => `<strong>${esc(x.name)}</strong>`],
       ['threads', 'Threads account', 'Connect your Threads account to publish posts there.', (x) => `<a href="https://www.threads.net/@${encodeURIComponent(x.username)}" target="_blank" rel="noopener"><strong>@${esc(x.username)}</strong></a>`],
-      ['pinterest', 'Pinterest account', 'Connect your Pinterest account to save your photos as Pins on one of your boards.', (x) => `the board <strong>${esc(x.name)}</strong>${x.username ? ` (@${esc(x.username)})` : ''}`]]
-      .map(([id, title, desc, to]) => { const x = C[id] || {}; return { id, icon: id, title, desc: desc + (x.connected ? posts : ''), ...state(id, x, x.connected ? to(x) : '') }; }),
+      ['pinterest', 'Pinterest account', 'Connect your Pinterest account to save your photos as Pins on one of your boards.', (x) => `the board <strong>${esc(x.name)}</strong>${x.username ? ` (@${esc(x.username)})` : ''}`],
+      ['youtube', 'YouTube channel', 'Connect your YouTube channel to upload videos of your work. A vertical video up to 3 minutes long becomes a YouTube Short. Until Google approves this app, uploaded videos stay private.', (x) => (x.link ? `<a href="${esc(x.link)}" target="_blank" rel="noopener"><strong>${esc(x.name)}</strong></a>` : `<strong>${esc(x.name)}</strong>`)]]
+      .map(([id, title, desc, to]) => { const x = C[id] || {}; return { id, icon: id, title, desc: desc + (x.connected ? (id === 'youtube' ? posts.replace('project photos', 'videos') : posts) : ''), ...state(id, x, x.connected ? to(x) : '') }; }),
     { id: 'bluesky', icon: 'bluesky', title: 'Bluesky account', desc: `Connect your Bluesky account with an app password to publish posts there.${B.connected ? posts : ''}`,
       ...(B.connected ? { status: connChip('on', 'Connected'), connectedTo: `Connected to <a href="https://bsky.app/profile/${encodeURIComponent(B.handle)}" target="_blank" rel="noopener"><strong>@${esc(B.handle)}</strong></a>.`,
         button: admin ? '<button type="button" class="btn alt conn-btn" data-act="socialDisconnect" data-kind="bluesky">Disconnect</button>' : '' }
         : { status: connChip('off', 'Not connected'), button: admin ? '<button type="button" class="btn alt conn-btn" data-act="bskyConnect">Connect</button>' : '' }) },
+    { id: 'x', icon: 'x', title: 'X account', desc: `Connect your X account with your own X developer app to publish posts there. X bills your developer account for each post.${C.x && C.x.connected ? posts : ''}`,
+      ...(C.x && C.x.connected ? { status: connChip('on', 'Connected'), connectedTo: `Connected to <a href="https://x.com/${encodeURIComponent(C.x.username)}" target="_blank" rel="noopener"><strong>@${esc(C.x.username)}</strong></a>.`,
+        button: admin ? '<button type="button" class="btn alt conn-btn" data-act="socialDisconnect" data-kind="x">Disconnect</button>' : '' }
+        : { status: connChip('off', 'Not connected'), button: admin ? '<button type="button" class="btn alt conn-btn" data-act="xConnect">Connect</button>' : '' }) },
     ...(aiOn() ? [{ id: 'ai', icon: 'ai', feature: 'ai', title: 'AI descriptions', button: '', body: '', status: integ.ai ? connChip('on', 'On') : connChip('off', 'Not available yet'),
       desc: `“Write with AI” drafts product and service descriptions from their name.` }] : []),
   ];
@@ -1442,7 +1514,7 @@ ${admin ? '' : '<p class="muted" style="font-size:13px">Only the account owner o
   connectionsData = C;
 }
 let connectionsData = null;
-const CONN_NAMES = { google: 'Google Business Profile', facebook: 'Facebook Page', instagram: 'Instagram account', bluesky: 'Bluesky account', linkedin: 'LinkedIn page', pinterest: 'Pinterest account', threads: 'Threads account', tiktok: 'TikTok account' };
+const CONN_NAMES = { google: 'Google Business Profile', facebook: 'Facebook Page', instagram: 'Instagram account', bluesky: 'Bluesky account', linkedin: 'LinkedIn page', pinterest: 'Pinterest account', threads: 'Threads account', tiktok: 'TikTok account', youtube: 'YouTube channel', x: 'X account' };
 // back from Google or Facebook's sign-in (lib/platform.js → /oauth/…/callback)
 function connReturnNotice() {
   const q = new URLSearchParams(location.search); const ok = q.get('connected'); const bad = q.get('connect_error'); if (!ok && !bad) return;
@@ -1455,7 +1527,7 @@ A.socialConnect = async (d, el) => {
   try { const { url } = await api('POST', `/api/connections/${d.kind}/start`, d.back ? { back: d.back } : {}); location.href = url; } catch (e) { el.disabled = false; toast(e.message, true); }
 };
 A.socialDisconnect = async (d) => {
-  const why = { google: 'Your reviews will stop showing here, and the Book button comes off your Google profile.', facebook: 'You won’t be able to post to the Page from here.', instagram: 'You won’t be able to post to Instagram from here.', bluesky: 'You won’t be able to post to Bluesky from here. You can also revoke the app password in Bluesky.' }[d.kind] || `You won’t be able to post to ${CONN_NAMES[d.kind].replace(/ (page|account)$/, '')} from here.`;
+  const why = { google: 'Your reviews will stop showing here, and the Book button comes off your Google profile.', facebook: 'You won’t be able to post to the Page from here.', instagram: 'You won’t be able to post to Instagram from here.', bluesky: 'You won’t be able to post to Bluesky from here. You can also revoke the app password in Bluesky.', x: 'You won’t be able to post to X from here. You can also regenerate the keys in your X developer app.' }[d.kind] || `You won’t be able to post to ${CONN_NAMES[d.kind].replace(/ (page|account|channel)$/, '')} from here.`;
   if (!confirm(`Disconnect your ${CONN_NAMES[d.kind]}? ${why}`)) return;
   try { await api('DELETE', `/api/connections/${d.kind}`); toast(`${CONN_NAMES[d.kind]} disconnected`); refresh(); } catch (e) { toast(e.message, true); }
 };

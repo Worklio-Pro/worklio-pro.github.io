@@ -21,7 +21,8 @@ const maintenance = require('./lib/maintenance');
 const stripeLib = require('./lib/stripe');
 const social = require('./lib/social');
 const bluesky = require('./lib/bluesky');
-const networks = require('./lib/networks'); // LinkedIn, Pinterest, Threads and TikTok for Marketing
+const networks = require('./lib/networks'); // LinkedIn, Pinterest, Threads, TikTok and YouTube for Marketing
+const xposts = require('./lib/xposts'); // X, with the business's own developer app
 const tiktokLib = require('./lib/tiktok'); tiktokLib.init(); // Alpha → Social: scheduled TikTok posts, checked every 30 seconds
 const rolesLib = require('./lib/roles');
 const iconsLib = require('./lib/icons');
@@ -2730,13 +2731,14 @@ function saveConnection(kind, conn) {
 }
 const bookingUrl = () => `${baseUrl()}/book`;
 function connectionsView() {
-  const g = connOf('google'); const f = connOf('facebook'); const i = connOf('instagram'); const bs = connOf('bluesky');
+  const g = connOf('google'); const f = connOf('facebook'); const i = connOf('instagram'); const bs = connOf('bluesky'); const x = connOf('x');
   return {
     google: { available: social.ready('google'), connected: !!g, title: g ? g.title : '', address: g ? g.address : '', mapsUrl: g ? g.mapsUrl : '', reviewUrl: g ? g.reviewUrl : '', choices: g ? g.choices || 1 : 0,
       reviews: !!(g && g.reviews !== false), booking: !!(g && g.booking), bookingUrl: bookingUrl(), bookingPlan: tenancy.has('onlineBooking'), reviewsPlan: tenancy.has('reviews') },
     facebook: { available: social.ready('facebook'), connected: !!f, name: f ? f.name : '', link: f ? f.link : '', choices: f ? f.choices || 1 : 0 },
     instagram: { available: social.ready('instagram'), connected: !!i, username: i ? i.username : '', choices: i ? i.choices || 1 : 0 },
     bluesky: { available: true, connected: !!bs, handle: bs ? bs.handle : '' }, // the business's own handle and app password: nothing for the platform to set up
+    x: { available: true, connected: !!x, username: x ? x.username : '', name: x ? x.name : '' }, // the business's own X developer app
     ...Object.fromEntries(Object.keys(networks.NETWORKS).map((k) => { const c = connOf(k); return [k, { available: social.ready(k), connected: !!c, name: c ? c.name || '' : '', username: c ? c.username || '' : '', link: c ? c.link || '' : '', choices: c ? c.choices || 1 : 0 }]; })),
     postsPlan: tenancy.has('socialPosts'),
   };
@@ -2756,6 +2758,12 @@ app.post('/api/connections/bluesky', async (req, res) => {
   try { setConnection('bluesky', await bluesky.connect(b.handle, b.appPassword)); res.json(connectionsView()); } catch (e) { res.status(e.status || 502).json({ error: e.message }); }
 });
 app.delete('/api/connections/bluesky', (req, res) => { if (!adminOnly(req, res)) return; setConnection('bluesky', null); res.json(connectionsView()); }); // the business can also revoke the app password in Bluesky
+// X: the keys from the business's own X developer app, checked with X before they're saved
+app.post('/api/connections/x', async (req, res) => {
+  if (!adminOnly(req, res)) return;
+  try { setConnection('x', await xposts.connect(req.body || {})); res.json(connectionsView()); } catch (e) { res.status(e.status || 502).json({ error: e.message }); }
+});
+app.delete('/api/connections/x', (req, res) => { if (!adminOnly(req, res)) return; setConnection('x', null); res.json(connectionsView()); }); // the business can also regenerate the keys in its X app
 app.post('/api/connections/:kind/start', (req, res) => {
   const kind = connKind(req, res); if (!kind) return;
   if (!social.ready(kind)) return res.status(503).json({ error: 'This connection isn’t available yet.' });
@@ -2809,7 +2817,7 @@ app.put('/api/connections/:kind', async (req, res) => {
 function liveAppState(a) {
   const planOk = !a.feature || tenancy.has(a.feature);
   if (SOCIAL_KINDS.includes(a.id)) return { planOk, available: social.ready(a.id), connected: !!connOf(a.id) };
-  if (a.id === 'bluesky') return { planOk, available: true, connected: !!connOf('bluesky') }; // the business's own app password: nothing for the platform to set up
+  if (a.id === 'bluesky' || a.id === 'x') return { planOk, available: true, connected: !!connOf(a.id) }; // the business's own app password or X app: nothing for the platform to set up
   if (a.id === 'stripe') { const s = secrets(); const on = !!stripeKey() && (!!s.stripeChargesEnabled || !!s.stripeSecretKey || (tenancy.isDefault() && !!process.env.STRIPE_SECRET_KEY)); return { planOk, available: on || !!stripeLib.platformKey(), connected: on }; }
   if (a.id === 'homedepot') return { planOk, available: homeDepot.ready(), connected: !!hdSettings().on };
   if (a.id === 'claude') { const on = !!process.env.ANTHROPIC_API_KEY; return { planOk, available: on, connected: on }; }
@@ -2877,11 +2885,14 @@ const POST_TO = { facebook: (c, p) => social.facebookPost(c, p), instagram: (c, 
   pinterest: (c, p) => networks.NETWORKS.pinterest.post(c, { ...p, link: db.company.website || (tenancy.has('onlineBooking') ? bookingUrl() : baseUrl()) }),
   threads: (c, p) => networks.NETWORKS.threads.post(c, p),
   tiktok: (c, p) => networks.NETWORKS.tiktok.post(c, { ...p, images: p.paths.map((u) => tenancy.subdomainUrl(tenancy.current()) + u) }),
+  // YouTube takes only the post's video; X gets the photos themselves, posted with the business's own X app
+  youtube: (c, p) => networks.NETWORKS.youtube.post(c, p),
+  x: (c, p) => xposts.post(c, p),
 };
-// each network's caption limit, photo limit and whether it needs a photo (Bluesky checks its own in lib/bluesky.js)
+// each network's caption limit, photo limit and whether it needs a photo or video (Bluesky and X check their own in lib/bluesky.js and lib/xposts.js)
 const POST_LIMITS = { facebook: { text: 63206, photos: 10 }, instagram: { text: 2200, photos: 10, needsPhoto: true }, google: { text: social.GOOGLE_POST_MAX, photos: 10, needsText: true },
   ...Object.fromEntries(Object.entries(networks.NETWORKS).map(([k, n]) => [k, n.limits])) };
-const NET_NAMES = { facebook: 'Facebook', instagram: 'Instagram', google: 'Google', bluesky: 'Bluesky', ...Object.fromEntries(Object.entries(networks.NETWORKS).map(([k, n]) => [k, n.name])) };
+const NET_NAMES = { facebook: 'Facebook', instagram: 'Instagram', google: 'Google', bluesky: 'Bluesky', x: 'X', ...Object.fromEntries(Object.entries(networks.NETWORKS).map(([k, n]) => [k, n.name])) };
 // ---------- the business's own automations (lib/business-automations.js) ----------
 const portalLink = (c) => { if (!c.portalToken) { c.portalToken = token(); save(); } return `${baseUrl()}/client-portal?c=${c.portalToken}`; };
 const bizAuto = require('./lib/business-automations')({ db, save, uid, token, iso, niceDate, money, findClient, tenancy, localNow, withStatus, quoteLink, invoiceLink, portalLink, baseUrl, renderEmail, notify, sendEmail, pushTo, jobCrew, pushTime, reviewRecord, reviewLink });
@@ -2902,9 +2913,29 @@ const autoUnsubPage = (c, tk) => {
 app.get('/p/automations/:token', (req, res) => { const c = bizAuto.clientByToken(req.params.token); if (!c) return res.status(404).send(shell('Link not found', '<h1>This link isn’t valid</h1>')); res.send(autoUnsubPage(c, req.params.token)); });
 app.post('/p/automations/:token', (req, res) => { const c = bizAuto.clientByToken(req.params.token); if (!c) return res.status(404).send(shell('Link not found', '<h1>This link isn’t valid</h1>')); bizAuto.setOptOut(c, !req.query.on); res.send(autoUnsubPage(c, req.params.token)); });
 app.get('/api/social-posts', (req, res) => {
-  const f = connOf('facebook'); const i = connOf('instagram'); const bs = connOf('bluesky'); const g = connOf('google');
+  const f = connOf('facebook'); const i = connOf('instagram'); const bs = connOf('bluesky'); const g = connOf('google'); const x = connOf('x');
   const net = Object.fromEntries(Object.keys(networks.NETWORKS).map((k) => { const c = connOf(k); return [k, c ? { name: c.name || '', username: c.username || '' } : null]; }));
-  res.json({ posts: (db.socialPosts || []).slice(0, 100), facebook: f ? { name: f.name, link: f.link } : null, instagram: i ? { username: i.username } : null, bluesky: bs ? { handle: bs.handle } : null, google: g ? { title: g.title } : null, ...net });
+  res.json({ posts: (db.socialPosts || []).slice(0, 100), facebook: f ? { name: f.name, link: f.link } : null, instagram: i ? { username: i.username } : null, bluesky: bs ? { handle: bs.handle } : null, google: g ? { title: g.title } : null,
+    x: x ? { name: x.name, username: x.username } : null, ...net });
+});
+// a post's video (for YouTube), sent as the file itself before the post because videos are large. It's kept until the post goes out,
+// then deleted; one that's never posted is cleared after a day. The kind is read from its first bytes, as for review videos.
+const POST_VIDEO_MAX = 500e6; const POST_VIDEO_RE = /^\/uploads\/(post-video-[\w-]+\.(mp4|mov|webm))$/;
+app.post('/api/social-posts/video', async (req, res) => {
+  const fail = (status, error) => { res.setHeader('Connection', 'close'); return res.status(status).json({ error }); };
+  if (!connOf('youtube')) return fail(400, 'Connect YouTube first');
+  if (Number(req.headers['content-length']) > POST_VIDEO_MAX) return fail(413, 'Videos can be up to 500 MB');
+  const dir = uploadDir(); fs.mkdirSync(dir, { recursive: true });
+  for (const n of fs.readdirSync(dir)) if (/^post-video-/.test(n)) { const p = path.join(dir, n); try { if (Date.now() - fs.statSync(p).mtimeMs > 864e5) fs.rmSync(p, { force: true }); } catch (e) { /* already gone */ } }
+  const tmp = path.join(dir, `tmp-${token()}.part`); let size = 0; let head = Buffer.alloc(0);
+  try {
+    await require('stream/promises').pipeline(req, async function* (src) {
+      for await (const chunk of src) { size += chunk.length; if (size > POST_VIDEO_MAX) throw Object.assign(new Error('Videos can be up to 500 MB'), { status: 413 }); if (head.length < 16) head = Buffer.concat([head, chunk]).subarray(0, 16); yield chunk; }
+    }, fs.createWriteStream(tmp));
+    const kind = sniffReviewMedia(head); if (!kind || kind.type !== 'video') throw Object.assign(new Error('Choose an MP4, MOV or WebM video'), { status: 400 });
+    const file = `post-video-${token()}.${kind.ext}`; fs.renameSync(tmp, path.join(dir, file));
+    res.status(201).json({ video: '/uploads/' + file, size });
+  } catch (e) { fs.rm(tmp, { force: true }, () => {}); if (!res.headersSent) fail(e.status || 400, e.status ? e.message : 'The video didn’t finish uploading. Please try again.'); }
 });
 // what the TikTok account may post right now: who can see it and whether comments can be on (TikTok asks apps to check before each post)
 app.get('/api/social-posts/tiktok', async (req, res) => {
@@ -2924,23 +2955,30 @@ app.post('/api/social-posts', async (req, res) => {
     if (L.needsText && !caption) return res.status(400).json({ error: `${NET_NAMES[k]} posts need a caption` });
   }
   if (to.includes('tiktok') && !(b.tiktok && b.tiktok.privacy)) return res.status(400).json({ error: 'Choose who can see the TikTok post' });
-  if (!imgs.length && !caption) return res.status(400).json({ error: 'Add a photo or write a caption' });
+  // the video uploaded just before (only YouTube uses it)
+  const vm = POST_VIDEO_RE.exec(String(b.video || '')); const vfile = vm && path.join(uploadDir(), vm[1]);
+  const video = to.includes('youtube') && vfile && fs.existsSync(vfile) ? { file: vfile, size: fs.statSync(vfile).size, ext: vm[2] } : null;
+  if (to.includes('youtube') && !video) return res.status(400).json({ error: 'YouTube posts need a video' });
+  if (to.includes('youtube') && !networks.YT_PRIVACY[(b.youtube || {}).privacy]) return res.status(400).json({ error: 'Choose who can see the YouTube video' });
+  if (!imgs.length && !caption && !video) return res.status(400).json({ error: 'Add a photo or write a caption' });
   const bufs = [];
   for (const d of imgs) {
     const m = /^data:image\/jpeg;base64,(.+)$/.exec(d || ''); if (!m) return res.status(400).json({ error: 'Photos must be JPEG images' });
     const buf = Buffer.from(m[1], 'base64'); if (buf.length > 8e6) return res.status(400).json({ error: 'Each photo must be under 8 MB' }); bufs.push(buf);
   }
   if (to.includes('bluesky')) { const bad = bluesky.problem({ caption, jpegs: bufs }); if (bad) return res.status(400).json({ error: bad }); } // before posting anywhere
+  if (to.includes('x')) { const bad = xposts.problem({ caption, jpegs: bufs }); if (bad) return res.status(400).json({ error: bad }); }
   if (to.includes('google') && caption.length > social.GOOGLE_POST_MAX) return res.status(400).json({ error: `Google posts can be up to ${social.GOOGLE_POST_MAX.toLocaleString('en-US')} characters` });
   if (to.includes('google') && !caption) return res.status(400).json({ error: 'Google posts need a caption' });
   const images = bufs.map((buf) => { const file = `post-${Date.now()}-${uid()}.jpg`; fs.writeFileSync(path.join(uploadDir(), file), buf); return `/uploads/${file}`; });
-  const post = { id: uid(), caption, images, results: {}, createdAt: new Date().toISOString(), by: currentUser(req).name || '' };
+  const post = { id: uid(), caption, images, ...(video ? { video: true } : {}), results: {}, createdAt: new Date().toISOString(), by: currentUser(req).name || '' };
   for (const k of to) {
     try {
-      const r = await POST_TO[k](connOf(k), { caption, images: images.map((u) => baseUrl() + u), paths: images, jpegs: bufs, options: k === 'tiktok' ? b.tiktok : undefined });
-      post.results[k] = { status: 'posted', url: k === 'facebook' ? `https://www.facebook.com/${r.post_id || r.id}` : k === 'bluesky' || networks.has(k) ? r.url : k === 'google' ? r.searchUrl || connOf('google').mapsUrl || '' : r.permalink || `https://www.instagram.com/${connOf(k).username}` };
+      const r = await POST_TO[k](connOf(k), { caption, images: images.map((u) => baseUrl() + u), paths: images, jpegs: bufs, video, options: k === 'tiktok' ? b.tiktok : k === 'youtube' ? b.youtube : undefined });
+      post.results[k] = { status: 'posted', url: k === 'facebook' ? `https://www.facebook.com/${r.post_id || r.id}` : k === 'bluesky' || k === 'x' || networks.has(k) ? r.url : k === 'google' ? r.searchUrl || connOf('google').mapsUrl || '' : r.permalink || `https://www.instagram.com/${connOf(k).username}` };
     } catch (e) { post.results[k] = { status: 'failed', error: e.message }; }
   }
+  if (video && post.results.youtube.status === 'posted') fs.rm(video.file, { force: true }, () => {}); // kept after a failure, so posting again doesn't need a new upload
   db.socialPosts = [post, ...(db.socialPosts || [])].slice(0, 500); save();
   res.status(201).json(post);
 });

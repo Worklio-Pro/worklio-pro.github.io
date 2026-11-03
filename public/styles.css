@@ -936,6 +936,7 @@ a.conn-chip{text-decoration:none}a.conn-chip:hover{text-decoration:underline}
 .sp-tools button{width:26px;height:26px;border-radius:50%;border:0;background:rgba(0,0,0,.65);color:#fff;font-size:16px;line-height:1;cursor:pointer}
 .sp-add{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:14px}
 .sp-add label.btn{margin:0;cursor:pointer}
+.sp-video{display:flex;align-items:center;gap:10px;margin:-4px 0 14px;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);font-size:14px}.sp-video svg{width:24px;height:24px;flex:none}.sp-video span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sp-video .x{position:static}
 .sp-foot{display:flex;justify-content:space-between;align-items:center;gap:12px}
 .sp-list{display:grid}
 .sp-row{display:grid;grid-template-columns:72px minmax(0,1fr) auto;gap:14px;align-items:start;padding:14px 0;border-top:1px solid var(--line)}
