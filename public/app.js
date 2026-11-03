@@ -149,7 +149,7 @@ const NAV = [
 ];
 // the Settings pages open in their own sidebar column (Settings at the bottom of the sidebar), in these groups
 const SETTINGS_NAV = [['/settings/company', 'Company Profile'], ['/team', 'Manage Team'], ['/settings/roles', 'Roles & Permissions'], ['/settings/emails', 'Email Templates'], ['/settings', 'App Settings'], ['/settings/preferences', 'Preferences'], ['/settings/connections', 'Account Connections'], ['/marketplace', 'App Marketplace'], ['/settings/billing', 'Account and Billing'], ['/rewards', 'Refer & Earn'], ['/settings/support-access', 'Support Access']];
-const SETTINGS_GROUPS = [['My Business', ['/settings/company', '/team', '/settings/roles', '/settings/billing']], ['Business Services', ['/settings/emails', '/settings/connections', '/marketplace']], ['Other Settings', ['/settings', '/settings/preferences', '/rewards', '/settings/support-access']]];
+const SETTINGS_GROUPS = [['My Business', ['/settings/company', '/profile', '/team', '/settings/roles', '/settings/billing']], ['Business Services', ['/settings/emails', '/settings/connections', '/marketplace']], ['Other Settings', ['/settings', '/settings/preferences', '/rewards', '/settings/support-access']]];
 const navPaths = [...NAV.flatMap(([, items]) => items.map(([p]) => p)), ...SETTINGS_NAV.map(([p]) => p)];
 const curPath = () => location.pathname.replace(/\/+$/, '') || '/';
 function navigate(url) { history.pushState({}, '', url); window.scrollTo(0, 0); return render(); }
@@ -205,7 +205,7 @@ function fillSide(path) { $('#side').innerHTML = sideHtml(path); $('#side .brand
 const isOnPage = (p, path) => p === path || (!navPaths.includes(path) && path.startsWith(p + '/'));
 const SIDE_BREAKS = ['Money', 'Marketing']; // a line above these sections; the main menu shows no section names
 function sideHtml(path) {
-  const items = settingsFor();
+  const items = me ? [['/profile', 'My Profile'], ...settingsFor()] : settingsFor(); // everyone can edit their own profile
   const brand = `<div class="brand">${company.logo ? `<a href="/" data-link class="brand-logo" title="Home"><img src="${esc(company.logo)}" alt="Home"></a>` : brandImg(company.account && company.account.product, 'dark')}<span>${esc(company.name || (company.account && company.account.productName) || 'Worklio Pro')}</span></div>`;
   if (items.length && (sideMode || (items.some(([p]) => isOnPage(p, path)) ? 'settings' : 'main')) === 'settings') {
     const label = Object.fromEntries(items);
