@@ -356,6 +356,10 @@ details.menu{position:relative}details.menu summary{list-style:none}details.menu
 .pwf .eye{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:0;color:var(--link);font:inherit;font-size:13px;font-weight:600;cursor:pointer;padding:6px 8px;border-radius:6px}
 .pwf .eye:hover{background:var(--hover,rgba(0,0,0,.05))}
 .pf-pw{max-width:420px;margin-top:12px}
+/* My profile: Working hours and Change password side by side (stacked on narrower screens) */
+.pf-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,440px),1fr));gap:16px;align-items:stretch;margin-bottom:16px}
+.pf-cols>form{display:flex;min-width:0}.pf-cols .qcard{flex:1;display:flex;flex-direction:column;min-width:0;margin:0}.pf-cols .qcard>.foot{margin-top:auto}
+.pf-cols .hours{min-width:0}.pf-cols .hours.edit input[type=time]{width:118px}
 /* totals: Subtotal / Discount / Tax / Total, modeled on Jobber (label | control | amount | remove) */
 .qtotals .tl{display:grid;grid-template-columns:110px 1fr 112px 28px;align-items:center;gap:12px;min-height:56px;padding:6px 0;border-bottom:1px solid var(--line);font-size:14px}
 .qtotals .tl>:nth-child(2){justify-self:end}.qtotals .tl>:nth-child(3){justify-self:end;text-align:right}

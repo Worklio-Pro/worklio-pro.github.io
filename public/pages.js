@@ -1773,13 +1773,13 @@ ${p.jobTitle ? `<p class="muted">Role: ${esc(p.jobTitle)}. Ask the account owner
 <div class="addr"><input name="street" value="${esc(p.street)}" placeholder="Street address" aria-label="Street address" autocomplete="address-line1"><input name="city" value="${esc(p.city)}" placeholder="City" aria-label="City" autocomplete="address-level2">
 <input name="state" value="${esc(p.state)}" placeholder="State" aria-label="State" autocomplete="address-level1"><div class="addr-row"><input name="zip" value="${esc(p.zip)}" placeholder="ZIP code" aria-label="ZIP code" autocomplete="postal-code"><input name="country" value="${esc(p.country || 'United States')}" placeholder="Country" aria-label="Country" autocomplete="country-name"></div></div></div>
 <div class="foot"><button class="btn">Save profile</button></div></div></form>
-${p.linked ? `<form class="tmform" id="pfHours"><div class="qcard login-card"><h2>Working hours</h2>
+<div class="pf-cols">${p.linked ? `<form class="tmform" id="pfHours"><div class="qcard login-card"><h2>Working hours</h2>
 <p class="muted">When you're available to work. The office gets a warning if a job is booked outside them.</p>
 ${hoursHtml(staffHours(p))}<div class="foot"><button class="btn">Save hours</button></div></div></form>` : ''}
 <form class="tmform" id="pfPass"><div class="qcard login-card"><h2>Change password</h2><p class="muted">Use at least 8 characters. Changing it signs you out on your other devices.</p>
 <div class="pf-pw"><input type="email" name="username" value="${esc(p.email)}" autocomplete="username" hidden>
 ${pw('currentPassword', 'Current password', 'current-password')}${pw('newPassword', 'New password', 'new-password')}${pw('confirm', 'Confirm new password', 'new-password')}</div>
-<div class="foot"><button class="btn">Update password</button></div></div></form>`;
+<div class="foot"><button class="btn">Update password</button></div></div></form></div>`;
     const info = $('#pfInfo'); const email = $('[name=email]', info);
     email.addEventListener('input', () => { $('#pfEmailPw').hidden = email.value.trim().toLowerCase() === p.email; });
     $('#pfPhoto').addEventListener('change', async (e) => {
