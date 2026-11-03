@@ -2860,7 +2860,9 @@ app.delete('/api/reviews/reply', async (req, res) => {
 
 // Social Posts: project photos to the connected Facebook Page and Instagram account. Photos arrive as JPEGs (the browser converts them)
 // and are saved in the account's uploads, because Facebook and Instagram fetch them from a public address.
-const POST_TO = { facebook: (c, p) => social.facebookPost(c, p), instagram: (c, p) => social.instagramPost(c, p), bluesky: (c, p) => bluesky.post(c, p) }; // Bluesky gets the photos themselves (jpegs)
+// Bluesky gets the photos themselves (jpegs); a Google post gets a Book button while the Business Profile's booking button is on
+const POST_TO = { facebook: (c, p) => social.facebookPost(c, p), instagram: (c, p) => social.instagramPost(c, p), bluesky: (c, p) => bluesky.post(c, p),
+  google: (c, p) => social.googlePost(c, { ...p, book: c.booking && tenancy.has('onlineBooking') ? bookingUrl() : '' }) };
 // ---------- the business's own automations (lib/business-automations.js) ----------
 const portalLink = (c) => { if (!c.portalToken) { c.portalToken = token(); save(); } return `${baseUrl()}/client-portal?c=${c.portalToken}`; };
 const bizAuto = require('./lib/business-automations')({ db, save, uid, token, iso, niceDate, money, findClient, tenancy, localNow, withStatus, quoteLink, invoiceLink, portalLink, baseUrl, renderEmail, notify, sendEmail, pushTo, jobCrew, pushTime, reviewRecord, reviewLink });
@@ -2881,8 +2883,8 @@ const autoUnsubPage = (c, tk) => {
 app.get('/p/automations/:token', (req, res) => { const c = bizAuto.clientByToken(req.params.token); if (!c) return res.status(404).send(shell('Link not found', '<h1>This link isn’t valid</h1>')); res.send(autoUnsubPage(c, req.params.token)); });
 app.post('/p/automations/:token', (req, res) => { const c = bizAuto.clientByToken(req.params.token); if (!c) return res.status(404).send(shell('Link not found', '<h1>This link isn’t valid</h1>')); bizAuto.setOptOut(c, !req.query.on); res.send(autoUnsubPage(c, req.params.token)); });
 app.get('/api/social-posts', (req, res) => {
-  const f = connOf('facebook'); const i = connOf('instagram'); const bs = connOf('bluesky');
-  res.json({ posts: (db.socialPosts || []).slice(0, 100), facebook: f ? { name: f.name, link: f.link } : null, instagram: i ? { username: i.username } : null, bluesky: bs ? { handle: bs.handle } : null });
+  const f = connOf('facebook'); const i = connOf('instagram'); const bs = connOf('bluesky'); const g = connOf('google');
+  res.json({ posts: (db.socialPosts || []).slice(0, 100), facebook: f ? { name: f.name, link: f.link } : null, instagram: i ? { username: i.username } : null, bluesky: bs ? { handle: bs.handle } : null, google: g ? { title: g.title } : null });
 });
 app.post('/api/social-posts', async (req, res) => {
   const b = req.body || {}; const caption = String(b.caption || '').trim();
@@ -2899,12 +2901,14 @@ app.post('/api/social-posts', async (req, res) => {
     const buf = Buffer.from(m[1], 'base64'); if (buf.length > 8e6) return res.status(400).json({ error: 'Each photo must be under 8 MB' }); bufs.push(buf);
   }
   if (to.includes('bluesky')) { const bad = bluesky.problem({ caption, jpegs: bufs }); if (bad) return res.status(400).json({ error: bad }); } // before posting anywhere
+  if (to.includes('google') && caption.length > social.GOOGLE_POST_MAX) return res.status(400).json({ error: `Google posts can be up to ${social.GOOGLE_POST_MAX.toLocaleString('en-US')} characters` });
+  if (to.includes('google') && !caption) return res.status(400).json({ error: 'Google posts need a caption' });
   const images = bufs.map((buf) => { const file = `post-${Date.now()}-${uid()}.jpg`; fs.writeFileSync(path.join(uploadDir(), file), buf); return `/uploads/${file}`; });
   const post = { id: uid(), caption, images, results: {}, createdAt: new Date().toISOString(), by: currentUser(req).name || '' };
   for (const k of to) {
     try {
       const r = await POST_TO[k](connOf(k), { caption, images: images.map((u) => baseUrl() + u), jpegs: bufs });
-      post.results[k] = { status: 'posted', url: k === 'facebook' ? `https://www.facebook.com/${r.post_id || r.id}` : k === 'bluesky' ? r.url : r.permalink || `https://www.instagram.com/${connOf(k).username}` };
+      post.results[k] = { status: 'posted', url: k === 'facebook' ? `https://www.facebook.com/${r.post_id || r.id}` : k === 'bluesky' ? r.url : k === 'google' ? r.searchUrl || connOf('google').mapsUrl || '' : r.permalink || `https://www.instagram.com/${connOf(k).username}` };
     } catch (e) { post.results[k] = { status: 'failed', error: e.message }; }
   }
   db.socialPosts = [post, ...(db.socialPosts || [])].slice(0, 500); save();

@@ -857,8 +857,8 @@ async function toJpeg(src, max = 1440, maxBytes = 0) {
   while (maxBytes && q > 0.5 && out.length * 0.75 > maxBytes) { q -= 0.08; out = c.toDataURL('image/jpeg', q); } // base64 is 4/3 of the bytes
   return out;
 }
-const SP_NAMES = { facebook: 'Facebook', instagram: 'Instagram', bluesky: 'Bluesky' };
-const BSKY_TEXT = 300; const BSKY_PHOTOS = 4;
+const SP_NAMES = { facebook: 'Facebook', instagram: 'Instagram', bluesky: 'Bluesky', google: 'Google' };
+const BSKY_TEXT = 300; const BSKY_PHOTOS = 4; const GOOGLE_TEXT = 1500;
 const graphemeCount = (t) => (typeof Intl !== 'undefined' && Intl.Segmenter ? [...new Intl.Segmenter('en', { granularity: 'grapheme' }).segment(t)].length : [...t].length);
 // Bluesky: the business's handle and an app password (made in Bluesky's settings), checked by signing in
 A.bskyConnect = () => {
@@ -894,13 +894,17 @@ function marketingConnect(C) {
     : !x.available ? soon
       : admin ? `<button type="button" class="mk-btn" data-act="socialConnect" data-kind="${kind}" data-back="/social-posts">+ Connect</button>` : '<small class="muted">Ask the account owner or an admin to connect it</small>', x.connected);
   const later = (name, key) => card(name, MK_ICONS[key], soon);
+  const G = C.google || {};
+  const gbp = card('Google Business Profile', MK_ICONS.google, G.connected
+    ? `<span class="mk-on">Connected</span><small class="muted">${esc(G.title)}</small>${admin ? '<a class="mk-link" href="/settings/connections#conn-google" data-link>Manage</a>' : ''}`
+    : !G.available ? soon : admin ? '<button type="button" class="mk-btn" data-act="socialConnect" data-kind="google" data-back="/social-posts">+ Connect</button>' : '<small class="muted">Ask the account owner or an admin to connect it</small>', G.connected);
   const B = C.bluesky || {};
   const bsky = card('Bluesky', CONN_ICONS.bluesky, B.connected
     ? `<span class="mk-on">Connected</span><small class="muted">@${esc(B.handle)}</small>${admin ? '<a class="mk-link" href="/settings/connections#conn-bluesky" data-link>Manage</a>' : ''}`
     : admin ? '<button type="button" class="mk-btn" data-act="bskyConnect">+ Connect</button>' : '<small class="muted">Ask the account owner or an admin to connect it</small>', B.connected);
   return `<section class="mk-connect"><h2>Connect your social accounts</h2><p class="muted">Pick where you want to publish. You can add or remove networks anytime.</p>
 <div class="mk-grp">Major networks</div><div class="mk-grid">${live('facebook', 'Facebook', C.facebook, C.facebook.name)}${live('instagram', 'Instagram', C.instagram, '@' + C.instagram.username)}${later('LinkedIn', 'linkedin')}${later('TikTok', 'tiktok')}${later('YouTube', 'youtube')}</div>
-<div class="mk-grp">More networks</div><div class="mk-grid">${bsky}${later('Pinterest', 'pinterest')}${later('Threads', 'threads')}${later('X', 'x')}${later('Google Business Profile', 'google')}</div></section>`;
+<div class="mk-grp">More networks</div><div class="mk-grid">${bsky}${later('Pinterest', 'pinterest')}${later('Threads', 'threads')}${later('X', 'x')}${gbp}</div></section>`;
 }
 PAGES['/social-posts'] = {
   title: 'Marketing',
@@ -909,24 +913,28 @@ PAGES['/social-posts'] = {
     connReturnNotice();
     const head = `<div class="mk-hero"><h1>Grow your audience by posting across platforms in minutes</h1><p class="sub">One place for your business’s social media. Create a post once and publish it to every account you connect. Before-and-after photos from your jobs make great posts.</p></div>
 ${marketingConnect(C)}`;
-    if (!R.facebook && !R.instagram && !R.bluesky) { main.innerHTML = head; return; }
+    if (!R.facebook && !R.instagram && !R.bluesky && !R.google) { main.innerHTML = head; return; }
     if (!spDraft.to) spDraft.to = Object.keys(SP_NAMES).filter((k) => R[k]);
     const dest = (k, name, label) => `<label class="sp-dest ${R[k] ? '' : 'off'}"><input type="checkbox" name="to" value="${k}" ${R[k] ? '' : 'disabled'} ${R[k] && spDraft.to.includes(k) ? 'checked' : ''}>${CONN_ICONS[k]}<span><strong>${name}</strong><small>${R[k] ? esc(label) : 'Not connected'}</small></span></label>`;
     const res = (p, k, name) => { const r = p.results[k]; if (!r) return ''; return r.status === 'posted' ? `<a class="conn-chip on" href="${esc(r.url)}" target="_blank" rel="noopener"><i></i>${name}: view post</a>` : `<span class="conn-chip bad" title="${esc(r.error)}"><i></i>${name}: didn’t post</span>`; };
     main.innerHTML = `${head}
 <form class="card sp-new" id="spForm"><h2>New post</h2>
-<div class="sp-dests">${dest('facebook', 'Facebook', R.facebook && R.facebook.name)}${dest('instagram', 'Instagram', R.instagram && '@' + R.instagram.username)}${R.bluesky ? dest('bluesky', 'Bluesky', '@' + R.bluesky.handle) : ''}</div>
+<div class="sp-dests">${dest('facebook', 'Facebook', R.facebook && R.facebook.name)}${dest('instagram', 'Instagram', R.instagram && '@' + R.instagram.username)}${R.bluesky ? dest('bluesky', 'Bluesky', '@' + R.bluesky.handle) : ''}${R.google ? dest('google', 'Google Business Profile', R.google.title) : ''}</div>
 <div class="sp-photos" id="spPhotos"></div>
-<div class="sp-add"><button type="button" class="btn alt sm" data-act="spGallery">Choose from Project Gallery</button><label class="btn alt sm">Upload photos<input type="file" accept="image/*" multiple hidden id="spFile"></label><span class="muted" style="font-size:13px">Up to 10 photos (4 on Bluesky). The first one is the cover.</span></div>
+<div class="sp-add"><button type="button" class="btn alt sm" data-act="spGallery">Choose from Project Gallery</button><label class="btn alt sm">Upload photos<input type="file" accept="image/*" multiple hidden id="spFile"></label><span class="muted" style="font-size:13px">Up to 10 photos (4 on Bluesky, 1 on Google). The first one is the cover.</span></div>
 <label>Caption<textarea name="caption" rows="4" maxlength="2200" placeholder="Another pool back to sparkling! Swipe to see the before and after. Call us for a free quote.">${esc(spDraft.caption || '')}</textarea></label>
 <div class="sp-foot"><span class="muted" id="spCount" style="font-size:13px"></span><button class="btn">Post now</button></div></form>
 <div class="card"><h2>Posted</h2>${(R.posts || []).length ? `<div class="sp-list">${R.posts.map((p) => `<div class="sp-row">${p.images[0] ? `<img src="${esc(p.images[0])}" alt="" loading="lazy">` : '<span class="sp-noimg"></span>'}
-<div><p>${p.caption ? esc(p.caption.length > 220 ? p.caption.slice(0, 220) + '…' : p.caption) : '<span class="muted">No caption</span>'}</p><div class="sp-meta"><span class="muted">${fmtDate(p.createdAt.slice(0, 10))}${p.by ? ' · ' + esc(p.by) : ''}${p.images.length > 1 ? ` · ${p.images.length} photos` : ''}</span>${res(p, 'facebook', 'Facebook')}${res(p, 'instagram', 'Instagram')}${res(p, 'bluesky', 'Bluesky')}</div>
+<div><p>${p.caption ? esc(p.caption.length > 220 ? p.caption.slice(0, 220) + '…' : p.caption) : '<span class="muted">No caption</span>'}</p><div class="sp-meta"><span class="muted">${fmtDate(p.createdAt.slice(0, 10))}${p.by ? ' · ' + esc(p.by) : ''}${p.images.length > 1 ? ` · ${p.images.length} photos` : ''}</span>${res(p, 'facebook', 'Facebook')}${res(p, 'instagram', 'Instagram')}${res(p, 'bluesky', 'Bluesky')}${res(p, 'google', 'Google')}</div>
 ${Object.values(p.results).filter((r) => r.status !== 'posted').map((r) => `<p class="sp-err">${esc(r.error)}</p>`).join('')}</div>
 ${['owner', 'admin'].includes(role()) ? `<button type="button" class="x sp-x" data-act="spRemove" data-id="${p.id}" title="Remove from this list (it stays on the networks it was posted to)" aria-label="Remove from this list">×</button>` : ''}</div>`).join('')}</div>` : '<p class="muted" style="margin:0">Nothing posted yet.</p>'}</div>`;
     const f = $('#spForm'); const cap = f.caption;
-    // the caption limit: Bluesky's 300 while it's ticked, otherwise Instagram's 2,200
-    const count = () => { const b = spDraft.to.includes('bluesky'); const n = b ? graphemeCount(cap.value) : cap.value.length; const el = $('#spCount'); el.textContent = b ? `${n} / ${BSKY_TEXT} (Bluesky)` : `${n} / 2,200`; el.classList.toggle('sp-over', b && n > BSKY_TEXT); spDraft.caption = cap.value; };
+    // the caption limit: the shortest of the ticked networks' (Bluesky 300, Google 1,500, Instagram 2,200)
+    const count = () => {
+      const t = spDraft.to; const [max, name] = t.includes('bluesky') ? [BSKY_TEXT, 'Bluesky'] : t.includes('google') ? [GOOGLE_TEXT, 'Google'] : [2200, ''];
+      const n = name === 'Bluesky' ? graphemeCount(cap.value) : cap.value.length; const el = $('#spCount');
+      el.textContent = `${n.toLocaleString('en-US')} / ${max.toLocaleString('en-US')}${name ? ` (${name})` : ''}`; el.classList.toggle('sp-over', n > max); spDraft.caption = cap.value;
+    };
     cap.addEventListener('input', count); count();
     $$('input[name=to]', f).forEach((c) => c.addEventListener('change', () => { spDraft.to = $$('input[name=to]:checked', f).map((x) => x.value); count(); }));
     $('#spFile').addEventListener('change', async (e) => {
@@ -937,6 +945,8 @@ ${['owner', 'admin'].includes(role()) ? `<button type="button" class="x sp-x" da
       e.preventDefault(); const btn = $('.sp-foot .btn', f); const to = spDraft.to;
       if (!to.length) return toast('Choose where to post', true);
       if (to.includes('bluesky') && graphemeCount(cap.value.trim()) > BSKY_TEXT) return toast(`Bluesky posts can be up to ${BSKY_TEXT} characters. Shorten the caption or untick Bluesky.`, true);
+      if (to.includes('google') && cap.value.trim().length > GOOGLE_TEXT) return toast(`Google posts can be up to ${GOOGLE_TEXT.toLocaleString('en-US')} characters. Shorten the caption or untick Google.`, true);
+      if (to.includes('google') && !cap.value.trim()) return toast('Google posts need a caption', true);
       if (to.includes('bluesky') && spDraft.photos.length > BSKY_PHOTOS) return toast(`Bluesky posts can have up to ${BSKY_PHOTOS} photos. Remove some or untick Bluesky.`, true);
       if (to.includes('instagram') && !spDraft.photos.length) return toast('Instagram posts need at least one photo', true);
       if (!spDraft.photos.length && !cap.value.trim()) return toast('Add a photo or write a caption', true);
@@ -1359,6 +1369,7 @@ async function connectionsPage(main) {
   const sub = (title, desc, chip, btn) => `<div class="conn-sub"><div><h3>${title} ${chip}</h3><p>${desc}</p></div>${btn}</div>`;
   const gSubs = G.connected ? [
     G.reviewsPlan ? sub('Reviews', 'See client and Google reviews, and reply to Google reviews from here.', '', '<a class="btn alt sm" href="/reviews" data-link>Manage</a>') : '',
+    C.postsPlan ? sub('Posts', 'Share updates with a photo on your Business Profile from Marketing, along with your other social accounts.', '', '<a class="btn alt sm" href="/social-posts" data-link>Manage</a>') : '',
     G.bookingPlan ? sub('Online booking', 'Add a <strong>Book</strong> button to your Google Business Profile that opens your booking page.', G.booking ? connChip('on', 'On') : connChip('off', 'Off'), admin ? '<button type="button" class="btn alt sm" data-act="bookingManage">Manage</button>' : '') : '',
   ].join('') : '';
   const posts = C.postsPlan ? ' Then post your project photos from <a href="/social-posts" data-link>Marketing</a>.' : '';
