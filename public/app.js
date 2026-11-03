@@ -142,14 +142,14 @@ const clientOptions = (sel) => `<option value="">Select client…</option>` + D.
 /* ===== router ===== */
 const PAGES = {};
 const NAV = [
-  ['Operations', [['/business-overview', 'Home'], ['/calendar', 'Calendar'], ['/requests', 'Requests'], ['/clients', 'Clients'], ['/quotes', 'Quotes'], ['/jobs', 'Jobs'], ['/invoices', 'Invoices']]],
+  ['Operations', [['/business-overview', 'Home'], ['/calendar', 'Calendar'], ['/clients', 'Clients'], ['/quotes', 'Quotes'], ['/jobs', 'Jobs'], ['/invoices', 'Invoices']]],
   ['Money', [['/payments', 'Payments'], ['/services', 'Products & Services'], ['/expenses', 'Expenses'], ['/reports', 'Financial Reports'], ['/tax-summary', 'Tax Summary']]],
   ['Marketing', [['/reviews', 'Reviews'], ['/social-posts', 'Marketing'], ['/automations', 'Automations']]],
   ['Records', [['/project-gallery', 'Project Gallery'], ['/notifications', 'Notifications Log']]],
 ];
 // the Settings pages open in their own sidebar column (Settings at the bottom of the sidebar), in these groups
-const SETTINGS_NAV = [['/settings/company', 'Company Profile'], ['/team', 'Manage Team'], ['/settings/roles', 'Roles & Permissions'], ['/settings/emails', 'Email Templates'], ['/settings', 'App Settings'], ['/settings/preferences', 'Preferences'], ['/settings/connections', 'Account Connections'], ['/marketplace', 'App Marketplace'], ['/settings/billing', 'Account and Billing'], ['/rewards', 'Refer & Earn'], ['/settings/support-access', 'Support Access']];
-const SETTINGS_GROUPS = [['My Business', ['/settings/company', '/profile', '/team', '/settings/roles', '/settings/billing']], ['Business Services', ['/settings/emails', '/settings/connections', '/marketplace']], ['Other Settings', ['/settings', '/settings/preferences', '/rewards', '/settings/support-access']]];
+const SETTINGS_NAV = [['/settings/company', 'Company Profile'], ['/team', 'Manage Team'], ['/requests', 'Team Requests'], ['/settings/roles', 'Roles & Permissions'], ['/settings/emails', 'Email Templates'], ['/settings', 'App Settings'], ['/settings/preferences', 'Preferences'], ['/settings/connections', 'Account Connections'], ['/marketplace', 'App Marketplace'], ['/settings/billing', 'Account and Billing'], ['/rewards', 'Refer & Earn'], ['/settings/support-access', 'Support Access']];
+const SETTINGS_GROUPS = [['My Business', ['/settings/company', '/profile', '/team', '/requests', '/settings/roles', '/settings/billing']], ['Business Services', ['/settings/emails', '/settings/connections', '/marketplace']], ['Other Settings', ['/settings', '/settings/preferences', '/rewards', '/settings/support-access']]];
 const navPaths = [...NAV.flatMap(([, items]) => items.map(([p]) => p)), ...SETTINGS_NAV.map(([p]) => p)];
 const curPath = () => location.pathname.replace(/\/+$/, '') || '/';
 function navigate(url) { history.pushState({}, '', url); window.scrollTo(0, 0); return render(); }
@@ -188,10 +188,15 @@ function navList() {
   return NAV.map(([g]) => [g, list.filter((o) => o.group === g).map((o) => [o.path, label[o.path]])]);
 }
 const navFor = () => navList().map(([g, items]) => [g, items.filter(([p]) => memberCan(p) && !planLocked(p))]).filter(([, items]) => items.length);
-// the sidebar's Requests link shows how many time-off requests are waiting for this approver
+// Team Requests (in Settings) shows how many time-off requests are waiting for this approver, and so does the Settings button
 // a page in beta testing (Alpha → Pricing → Plans & features) says so in a banner at the top, instead of a tag in the menu
 const BETA_BAR = '<div class="beta-bar" role="status"><span class="beta-pill">Beta</span><span>This page is in beta testing. It works, but it may change and you might run into rough edges. <button type="button" class="link-btn" data-act="feedbackForm">Tell us</button> if something doesn’t look right.</span></div>';
-function timeOffBadge() { const a = $('#side a[href="/requests"]'); if (a && D.timeOffWaiting) a.insertAdjacentHTML('beforeend', ` <span class="nav-n" title="Requests waiting for you">${D.timeOffWaiting}</span>`); }
+function timeOffBadge() {
+  $$('#side .nav-n.to-n').forEach((n) => n.remove()); const n = D && D.timeOffWaiting; if (!n) return;
+  const badge = ` <span class="nav-n to-n" title="Requests waiting for you">${n}</span>`;
+  const a = $('#side a[href="/requests"]'); if (a) a.insertAdjacentHTML('beforeend', badge);
+  const set = $('#side .side-set-btn .nav-l'); if (set) set.insertAdjacentHTML('beforeend', badge); // Team Requests is in Settings
+}
 // the sidebar shows the Settings column on a Settings page, or after Settings is clicked; Go Back returns to the main menu until the page changes
 let sideMode = null; let sidePath = null; // sideMode: 'settings' | 'main' chosen on this page, null: follow the page
 function renderSide(path) {
@@ -201,7 +206,7 @@ function renderSide(path) {
   renderBottomNav(path);
 }
 // the business logo and the search box top both columns; the search box is one element moved between them, so it keeps its handlers
-function fillSide(path) { $('#side').innerHTML = sideHtml(path); $('#side .brand').after(searchBox()); }
+function fillSide(path) { $('#side').innerHTML = sideHtml(path); $('#side .brand').after(searchBox()); timeOffBadge(); }
 const isOnPage = (p, path) => p === path || (!navPaths.includes(path) && path.startsWith(p + '/'));
 const SIDE_BREAKS = ['Money', 'Marketing']; // a line above these sections; the main menu shows no section names
 function sideHtml(path) {
