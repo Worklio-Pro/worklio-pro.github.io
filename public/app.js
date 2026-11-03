@@ -148,8 +148,8 @@ const NAV = [
   ['Records', [['/project-gallery', 'Project Gallery'], ['/notifications', 'Notifications Log']]],
 ];
 // the Settings pages open in their own sidebar column (Settings at the bottom of the sidebar), in these groups
-const SETTINGS_NAV = [['/settings/company', 'Company Profile'], ['/team', 'Manage Team'], ['/requests', 'Team Requests'], ['/settings/roles', 'Roles & Permissions'], ['/settings/emails', 'Email Templates'], ['/settings', 'App Settings'], ['/settings/preferences', 'Preferences'], ['/settings/connections', 'Account Connections'], ['/marketplace', 'App Marketplace'], ['/settings/billing', 'Account and Billing'], ['/rewards', 'Refer & Earn'], ['/settings/support-access', 'Support Access']];
-const SETTINGS_GROUPS = [['My Business', ['/settings/company', '/profile', '/team', '/requests', '/settings/roles', '/settings/billing']], ['Business Services', ['/settings/emails', '/settings/connections', '/marketplace']], ['Other Settings', ['/settings', '/settings/preferences', '/rewards', '/settings/support-access']]];
+const SETTINGS_NAV = [['/settings/company', 'Company Profile'], ['/settings/business-page', 'Business Page'], ['/team', 'Manage Team'], ['/requests', 'Team Requests'], ['/settings/roles', 'Roles & Permissions'], ['/settings/emails', 'Email Templates'], ['/settings', 'App Settings'], ['/settings/preferences', 'Preferences'], ['/settings/connections', 'Account Connections'], ['/marketplace', 'App Marketplace'], ['/settings/billing', 'Account and Billing'], ['/rewards', 'Refer & Earn'], ['/settings/support-access', 'Support Access']];
+const SETTINGS_GROUPS = [['My Business', ['/settings/company', '/settings/business-page', '/profile', '/team', '/requests', '/settings/roles', '/settings/billing']], ['Business Services', ['/settings/emails', '/settings/connections', '/marketplace']], ['Other Settings', ['/settings', '/settings/preferences', '/rewards', '/settings/support-access']]];
 const navPaths = [...NAV.flatMap(([, items]) => items.map(([p]) => p)), ...SETTINGS_NAV.map(([p]) => p)];
 const curPath = () => location.pathname.replace(/\/+$/, '') || '/';
 function navigate(url) { history.pushState({}, '', url); window.scrollTo(0, 0); return render(); }
@@ -290,7 +290,7 @@ const FEATURE_WORDS = {
   '/quotes': 'estimates proposals', '/jobs': 'work orders visits', '/invoices': 'billing', '/payments': 'card online stripe', '/services': 'catalog products price list items',
   '/expenses': 'costs receipts spending', '/reports': 'revenue profit charts', '/tax-summary': 'sales tax', '/project-gallery': 'photos pictures', '/reviews': 'client google reviews ratings stars reply feedback', '/automations': 'automatic follow up reminder rules workflow messages overdue', '/social-posts': 'facebook instagram social media post marketing', '/notifications': 'emails texts sms sent messages log',
   '/requests': 'time off day off vacation sick leave request approve', '/settings/roles': 'roles permissions access manager technician what team can see do', '/settings/company': 'business details logo address phone social media facebook instagram tiktok tax', '/team': 'staff employees users access roles technicians', '/settings/emails': 'templates text messages sms reminders',
-  '/settings/preferences': 'appearance theme dark mode light system push notifications alerts phone', '/settings': 'number prefixes branding brand color zelle defaults stripe card payments online payments regional time zone date format time format week', '/settings/connections': 'integrations google facebook instagram ai', '/marketplace': 'apps integrations connect quickbooks xero accounting home depot lowes supplies materials zapier chatgpt claude ai automation calendar slack gusto payroll', '/settings/billing': 'subscription plan upgrade payment method', '/settings/support-access': 'grant revoke help troubleshoot permission',
+  '/settings/preferences': 'appearance theme dark mode light system push notifications alerts phone', '/settings': 'number prefixes branding brand color zelle defaults stripe card payments online payments regional time zone date format time format week', '/settings/connections': 'integrations google facebook instagram ai', '/settings/business-page': 'qr code business card digital card link in bio links save contact vcard scan limit expiry', '/marketplace': 'apps integrations connect quickbooks xero accounting home depot lowes supplies materials zapier chatgpt claude ai automation calendar slack gusto payroll', '/settings/billing': 'subscription plan upgrade payment method', '/settings/support-access': 'grant revoke help troubleshoot permission',
 };
 const featureList = () => {
   const open = (p) => PAGES[p] && memberCan(p) && !planLocked(p) && !planLocked(p.split('/').slice(0, 2).join('/')) && (p !== '/forum' || !!(company.account && company.account.forum));
@@ -351,7 +351,9 @@ function renderTopbar(path) {
 <button type="button" class="tb-icon me-qr" data-act="businessQr" title="QR code" aria-label="Show QR code">${svgIcon(ICONS.qr)}</button></div><hr class="mi-sep"><button type="button" class="me-out" data-act="logout">Log out</button>`;
 }
 // the business's QR code: its online booking page (or its web address when the plan has no booking), to print or share
-const qrLink = () => { const url = (company.account && company.account.url) || location.origin; return planHas('onlineBooking') ? url + '/book' : url; };
+// the business page (Settings → Business Page) that the QR code opens; ?qr=1 counts the scan
+const pageLink = () => ((company.account && company.account.url) || location.origin) + '/card';
+const qrLink = () => pageLink() + '?qr=1';
 // short how-to guides shown in the help panel; each step can link to the page it mentions
 const HELP_TOPICS = [
   { id: 'start', hc: 'get-started', title: 'Get Started', blurb: 'Set up your business details, branding and team so you’re ready to send your first quote.', steps: [
@@ -535,12 +537,13 @@ A.openSettings = () => sideSwitch('settings', '.side-back');
 A.sideBack = () => sideSwitch('main', '.side-set-btn');
 A.businessQr = () => {
   const url = qrLink(); const name = company.name || (company.account && company.account.productName) || 'Your business';
-  const body = modal('QR code', `<div class="qr-pop"><h2>${esc(name)}</h2><div class="qr-img">${qrSvg(url)}</div><p class="muted">Scan to ${url.endsWith('/book') ? 'book online' : 'visit'} · ${esc(url.replace(/^https?:\/\//, ''))}</p>
-<div class="qr-acts"><a href="${esc(url)}" target="_blank" rel="noopener">${svgIcon(ICONS.eye)}<span>Preview</span></a><button type="button" data-act="qrDownload">${svgIcon(ICONS.download)}<span>Download</span></button><button type="button" data-act="qrCopy">${svgIcon(ICONS.link)}<span>Copy link</span></button></div></div>`);
+  const body = modal('QR code', `<div class="qr-pop"><h2>${esc(name)}</h2><div class="qr-img">${qrSvg(url)}</div>${['owner', 'admin'].includes(role()) ? '<button type="button" class="link-btn qr-edit" data-act="qrEditPage">Edit business page</button>' : ''}
+<div class="qr-acts"><a href="${esc(pageLink())}" target="_blank" rel="noopener">${svgIcon(ICONS.eye)}<span>Preview</span></a><button type="button" data-act="qrDownload">${svgIcon(ICONS.download)}<span>Download</span></button><button type="button" data-act="qrCopy">${svgIcon(ICONS.link)}<span>Copy link</span></button></div></div>`);
   body.closest('.modal').classList.add('qr-modal');
 };
 A.qrDownload = () => { const a = document.createElement('a'); a.href = qrPng(qrLink()); a.download = `${(company.name || 'qr-code').replace(/[^\w-]+/g, '-').toLowerCase()}-qr.png`; a.click(); };
-A.qrCopy = async () => { await navigator.clipboard.writeText(qrLink()); toast('Link copied'); };
+A.qrCopy = async () => { await navigator.clipboard.writeText(pageLink()); toast('Link copied'); };
+A.qrEditPage = () => { closeModal(); navigate('/settings/business-page'); };
 A.feedbackForm = () => feedbackForm();
 A.closeHelp = closeHelp;
 A.helpTopic = (d) => openHelp(d.id);

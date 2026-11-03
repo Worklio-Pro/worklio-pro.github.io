@@ -1636,6 +1636,116 @@ PAGES['/settings/card-payments'] = {
 PAGES['/settings/company'] = { title: 'Company Profile', render: (m) => companyPage(m, false) };
 PAGES['/settings'] = { title: 'App Settings', render: (m) => companyPage(m, true) };
 PAGES['/settings/connections'] = { title: 'Account Connections', render: connectionsPage };
+
+/* ===== /settings/business-page: the page the business QR code opens (lib/business-page.js), with a phone preview ===== */
+const BP_SECTIONS = [['info', 'Your information'], ['styles', 'Styles'], ['links', 'Links'], ['exchange', 'Exchange contact'], ['usage', 'Usage limits']];
+const BP_COLORS = [['pageColor', 'Page color'], ['textColor', 'Text color'], ['iconColor', 'Logo / icon'], ['buttonColor', 'Button color'], ['buttonTextColor', 'Button text color']];
+let bp = null; // { page (what's being edited), V (from the server) }
+// a logo as a PNG (keeps a transparent background), at most max pixels on its longer side
+async function toPng(src, max) {
+  const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+  const k = Math.min(1, max / Math.max(img.width, img.height)); const c = document.createElement('canvas');
+  c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); return c.toDataURL('image/png');
+}
+PAGES['/settings/business-page'] = {
+  title: 'Business Page',
+  async render(main) {
+    const V = await api('GET', '/api/business-page'); const P = { ...V.page, links: V.page.links.map((l) => ({ ...l })) }; bp = { page: P, V };
+    const admin = ['owner', 'admin'].includes(role());
+    const range = (k) => `<div class="bp-range"><input type="range" name="${k}" min="0" max="100" step="1"><output data-for="${k}"></output></div>`;
+    const sw = (name, title, note) => `<label class="sw-row"><span>${title}<small class="muted">${note}</small></span><input type="checkbox" class="sw" name="${name}"><i></i></label>`;
+    main.innerHTML = `<div class="head"><div><h1>Business Page</h1><p class="sub">The page people see when they scan your QR code: your details, links and a Save contact button. Your page: <a href="${esc(V.url)}" target="_blank" rel="noopener">${esc(V.url.replace(/^https?:\/\//, ''))}</a></p></div></div>
+<div class="bp-edit"><nav class="bp-nav">${BP_SECTIONS.map(([k, n], i) => `<button type="button" data-act="bpSec" data-sec="${k}" class="${i ? '' : 'on'}">${n}</button>`).join('')}</nav>
+<form class="card bp-form" id="bpForm" novalidate><fieldset class="bp-fs" ${admin ? '' : 'disabled'}>
+<section data-sec="info"><h2>Your information</h2>
+<span class="bp-lbl">Company logo</span><div class="bp-img"><span class="bp-thumb round" id="bpLogo"></span><label class="btn alt sm">Browse<input type="file" accept="image/png,image/jpeg,image/webp" hidden id="bpLogoFile"></label>${V.companyLogo ? '<button type="button" class="btn alt sm" data-act="bpLogo" data-v="company">Use company logo</button>' : ''}<button type="button" class="link-btn danger" data-act="bpLogo" data-v="">Remove</button></div>
+<span class="bp-lbl">Logo opacity</span>${range('logoOpacity')}
+<label>Company name<input name="name" maxlength="100" required></label>
+<label>Company description<textarea name="description" rows="3" maxlength="500" placeholder="What you do, in a sentence or two"></textarea></label>
+<div class="bp-two"><label>Email address<input name="email" type="email" maxlength="120"></label><label>Website<input name="website" maxlength="300" placeholder="yourbusiness.com"></label></div>
+<div class="bp-two"><label>Company phone<input name="phone" type="tel" maxlength="40"></label><label>Address<input name="address" maxlength="300" placeholder="Leave empty to keep it off the page"></label></div></section>
+<section data-sec="styles" hidden><h2>Styles</h2>
+<span class="bp-lbl">Sample cover images</span><div class="bp-covers">${Object.entries(V.covers).map(([k, css]) => `<button type="button" class="bp-cov" data-act="bpCover" data-c="${k}" style="background:${esc(css)}" aria-label="Cover ${k}"></button>`).join('')}<label class="bp-cov bp-cov-up" title="Your own image"><span id="bpCoverUp">+</span><input type="file" accept="image/png,image/jpeg,image/webp" hidden id="bpCoverFile"></label></div>
+<span class="bp-lbl">Cover opacity</span>${range('coverOpacity')}
+<div class="bp-colors">${BP_COLORS.map(([k, n]) => `<label>${n}<span class="bp-color"><input name="${k}" maxlength="7" spellcheck="false"><input type="color" data-for="${k}" aria-label="${n}"></span></label>`).join('')}</div>
+${sw('showLabels', 'Show icon labels', 'Names under the Phone, Email and Website buttons.')}</section>
+<section data-sec="links" hidden><h2>Links</h2><p class="muted bp-note">Add your social media and other pages. For most networks you can enter just your handle, like @yourbusiness.</p>
+<select id="bpAdd" aria-label="Add a link"></select><div id="bpLinks"></div><button type="button" class="bp-addcustom" data-act="bpCustom">+ Add custom link</button></section>
+<section data-sec="exchange" hidden><h2>Exchange contact</h2>${sw('exchange', 'Show a contact form', 'People can leave their name, email, phone and a message. Each one comes to you as a new request, and the person is added to your clients.')}</section>
+<section data-sec="usage" hidden><h2>Usage limits</h2><p class="muted bp-note">Control how many times your QR code can be scanned and how long it keeps working. The link itself (${esc(V.url.replace(/^https?:\/\//, ''))}) always works.</p>
+${sw('scanOn', 'Scan limit', 'The QR code stops working after this many scans.')}<label class="bp-sub">Number of scans<input name="scanMax" type="number" min="1" max="10000000" step="1"></label>
+${sw('expOn', 'Expiry', 'After this date, scanning the QR code shows an “expired” page instead of your business page.')}<label class="bp-sub">Last day it works<input name="expDate" type="date"></label>
+<p class="muted bp-note">Scanned ${V.scans.toLocaleString('en-US')} time${V.scans === 1 ? '' : 's'} so far.${V.scans && admin ? ' <button type="button" class="link-btn" data-act="bpResetScans">Reset the count</button>' : ''}</p></section>
+${admin ? '<div class="bp-foot"><a class="btn alt" href="' + esc(V.url) + '" target="_blank" rel="noopener">View page</a><button class="btn">Save changes</button></div>' : '<p class="muted" style="font-size:13px">Only the account owner or an admin can change the business page.</p>'}
+</fieldset></form>
+<div class="bp-phone"><iframe id="bpPrev" title="Preview of your business page" sandbox="allow-popups allow-popups-to-escape-sandbox"></iframe></div></div>`;
+    const f = $('#bpForm');
+    // the form shows bp.page; every change goes back into it and refreshes the preview
+    for (const k of ['name', 'description', 'email', 'website', 'phone', 'address', 'logoOpacity', 'coverOpacity', ...BP_COLORS.map(([c]) => c)]) f.elements[k].value = P[k] ?? '';
+    f.showLabels.checked = P.showLabels; f.exchange.checked = P.exchange;
+    f.scanOn.checked = P.scanLimit.on; f.scanMax.value = P.scanLimit.max; f.expOn.checked = P.expiry.on; f.expDate.value = P.expiry.date;
+    BP_COLORS.forEach(([k]) => { $(`input[type=color][data-for=${k}]`, f).value = P[k].toLowerCase(); });
+    const read = () => {
+      for (const k of ['name', 'description', 'email', 'website', 'phone', 'address']) P[k] = f.elements[k].value;
+      P.logoOpacity = +f.logoOpacity.value; P.coverOpacity = +f.coverOpacity.value;
+      BP_COLORS.forEach(([k]) => { P[k] = f.elements[k].value.trim(); });
+      P.showLabels = f.showLabels.checked; P.exchange = f.exchange.checked;
+      P.scanLimit = { on: f.scanOn.checked, max: +f.scanMax.value || 100 }; P.expiry = { on: f.expOn.checked, date: f.expDate.value };
+      $$('#bpLinks .bp-link').forEach((row, i) => { const l = P.links[i]; l.url = $('[data-f=url]', row).value; if (l.kind === 'custom') l.label = $('[data-f=label]', row).value; });
+      bpDraw(); bpPreview();
+    };
+    f.addEventListener('input', (e) => {
+      if (e.target.type === 'color') f.elements[e.target.dataset.for].value = e.target.value.toUpperCase();
+      else if (BP_COLORS.some(([k]) => k === e.target.name) && /^#[0-9a-f]{6}$/i.test(e.target.value)) $(`input[type=color][data-for=${e.target.name}]`, f).value = e.target.value.toLowerCase();
+      if (e.target.type !== 'file') read();
+    });
+    f.addEventListener('change', (e) => { if (e.target.type === 'checkbox') read(); });
+    $('#bpLogoFile').addEventListener('change', async (e) => { const file = e.target.files[0]; e.target.value = ''; if (!file) return; try { P.logo = await toPng(await readFileAsDataUrl(file), 400); read(); } catch (x) { toast('Couldn’t read that image', true); } });
+    $('#bpCoverFile').addEventListener('change', async (e) => { const file = e.target.files[0]; e.target.value = ''; if (!file) return; try { P.cover = await toJpeg(await readFileAsDataUrl(file), 1200); read(); } catch (x) { toast('Couldn’t read that image', true); } });
+    $('#bpAdd').addEventListener('change', (e) => { if (!e.target.value) return; P.links.push({ kind: e.target.value, url: '' }); bpLinks(); const ins = $$('#bpLinks [data-f=url]'); ins[ins.length - 1].focus(); });
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault(); read(); const btn = $('.bp-foot .btn:not(.alt)', f); btn.disabled = true;
+      try { const r = await api('PUT', '/api/business-page', P); bp.V = r; Object.assign(P, { logo: r.page.logo, cover: r.page.cover, links: r.page.links.map((l) => ({ ...l })) }); bpLinks(); toast('Business page saved'); }
+      catch (x) { toast(x.message, true); } finally { btn.disabled = false; }
+    });
+    bpLinks(); bpDraw(); bpPreview();
+  },
+};
+// the parts of the form drawn from bp.page: the logo, the chosen cover, the opacity numbers
+function bpDraw() {
+  const P = bp.page; const logo = P.logo === 'company' ? bp.V.companyLogo : P.logo;
+  const box = $('#bpLogo'); if (!box) return; box.style.backgroundImage = logo ? `url("${logo}")` : ''; box.textContent = logo ? '' : '—';
+  $$('.bp-cov[data-c]').forEach((b) => b.classList.toggle('on', b.dataset.c === P.cover));
+  const own = !bp.V.covers[P.cover]; const up = $('#bpCoverUp').parentElement; up.classList.toggle('on', own); up.style.background = own ? `url("${P.cover}") center/cover` : ''; $('#bpCoverUp').textContent = own ? '' : '+';
+  $$('.bp-range output').forEach((o) => { o.textContent = `${P[o.dataset.for]}%`; });
+}
+// the Links list: one row per link, in the order they show on the page
+function bpLinks() {
+  const P = bp.page; const N = bp.V.networks; const used = P.links.map((l) => l.kind);
+  $('#bpAdd').innerHTML = `<option value="">Add a link…</option>${Object.entries(N).filter(([k]) => !used.includes(k)).map(([k, n]) => `<option value="${k}">${esc(n.name)}</option>`).join('')}`;
+  $('#bpLinks').innerHTML = P.links.map((l, i) => { const n = N[l.kind];
+    return `<div class="bp-link">${l.kind === 'custom' ? `<input data-f="label" maxlength="40" placeholder="Name, like Our reviews" value="${esc(l.label || '')}">` : `<span class="bp-lname">${CONN_ICONS[l.kind] || ''}${esc(n.name)}</span>`}
+<input data-f="url" maxlength="300" placeholder="${l.kind === 'custom' ? 'https://' : n.handle ? '@yourbusiness or a link' : 'Link to your page'}" value="${esc(l.url || '')}">
+<button type="button" class="btn alt sm" data-act="bpUp" data-i="${i}" ${i ? '' : 'disabled'} title="Move up" aria-label="Move up">↑</button><button type="button" class="btn alt sm" data-act="bpRm" data-i="${i}" title="Remove" aria-label="Remove link">×</button></div>`; }).join('');
+}
+let bpTimer = 0;
+function bpPreview() {
+  clearTimeout(bpTimer);
+  bpTimer = setTimeout(async () => {
+    const P = bp.page; const frame = $('#bpPrev'); if (!frame) return;
+    try { const r = await api('POST', '/api/business-page/preview', { ...P, logo: P.logo === 'company' ? bp.V.companyLogo : P.logo }); if (r.html) frame.srcdoc = r.html; } catch (x) { /* keep the last preview */ }
+  }, 250);
+}
+A.bpSec = (d) => { $$('.bp-nav button').forEach((b) => b.classList.toggle('on', b.dataset.sec === d.sec)); $$('#bpForm section').forEach((s) => { s.hidden = s.dataset.sec !== d.sec; }); };
+A.bpCover = (d) => { bp.page.cover = d.c; bpDraw(); bpPreview(); };
+A.bpLogo = (d) => { bp.page.logo = d.v === 'company' ? bp.V.companyLogo : ''; bpDraw(); bpPreview(); };
+A.bpCustom = () => { bp.page.links.push({ kind: 'custom', label: '', url: '' }); bpLinks(); const ins = $$('#bpLinks [data-f=label]'); ins[ins.length - 1].focus(); };
+A.bpUp = (d) => { const L = bp.page.links; const i = +d.i; [L[i - 1], L[i]] = [L[i], L[i - 1]]; bpLinks(); bpPreview(); };
+A.bpRm = (d) => { bp.page.links.splice(+d.i, 1); bpLinks(); bpPreview(); };
+A.bpResetScans = async () => {
+  if (!confirm('Reset the scan count to 0? If a scan limit is on, the QR code works again until it reaches the limit.')) return;
+  try { bp.V = await api('PUT', '/api/business-page', { ...bp.page, resetScans: true }); toast('Scan count reset'); refresh(); } catch (x) { toast(x.message, true); }
+};
 /* ===== /marketplace: App Marketplace (lib/marketplace.js) ===== */
 // apps that connect today open the page they're set up on; the rest take "I want this", which Alpha counts
 CONN_ICONS.claude = '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#D97757"/><path stroke="#fff" stroke-width="3.4" stroke-linecap="round" d="M24 12v24M12 24h24M15.5 15.5l17 17M32.5 15.5l-17 17"/></svg>';

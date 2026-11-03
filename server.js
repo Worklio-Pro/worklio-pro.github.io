@@ -23,6 +23,7 @@ const social = require('./lib/social');
 const bluesky = require('./lib/bluesky');
 const networks = require('./lib/networks'); // LinkedIn, Pinterest, Threads, TikTok and YouTube for Marketing
 const xposts = require('./lib/xposts'); // X, with the business's own developer app
+const businessPage = require('./lib/business-page'); // the page the business QR code opens
 const tiktokLib = require('./lib/tiktok'); tiktokLib.init(); // Alpha → Social: scheduled TikTok posts, checked every 30 seconds
 const rolesLib = require('./lib/roles');
 const iconsLib = require('./lib/icons');
@@ -418,7 +419,7 @@ const PUBLIC_API = (req) => req.path === '/api/stripe/webhook' || req.path.start
 app.use((req, res, next) => {
   const p = req.path;
   if (p.startsWith('/api/')) return PUBLIC_API(req) || currentUser(req) ? next() : res.status(401).json({ error: 'Please log in' });
-  if (p === '/login' || p === '/login/handoff' || p === '/manifest.webmanifest' || p === '/support-login' || p === '/client-portal' || p.startsWith('/p/') || p.startsWith('/pay/') || p.startsWith('/refer/') || p === '/book' || p.startsWith('/uploads/') || /\.(js|css|png|jpe?g|gif|webp|svg|ico)$/i.test(p)) return next();
+  if (p === '/login' || p === '/login/handoff' || p === '/manifest.webmanifest' || p === '/support-login' || p === '/client-portal' || p.startsWith('/p/') || p.startsWith('/pay/') || p.startsWith('/refer/') || p === '/book' || p === '/card' || p.startsWith('/card/') || p.startsWith('/uploads/') || /\.(js|css|png|jpe?g|gif|webp|svg|ico)$/i.test(p)) return next();
   if (currentUser(req)) return next();
   res.redirect('/login' + (p !== '/' ? '?next=' + encodeURIComponent(req.url) : ''));
 });
@@ -2575,6 +2576,87 @@ app.post('/book', async (req, res) => {
   const sent = await sendTemplate('workRequest', db.company.email, { client: name, title, details, request: r.details, business: db.company.name, account_url: baseUrl() });
   db.notifications.unshift({ id: uid(), at: r.createdAt, clientId: c.id, clientName: c.name, channel: 'email', kind: 'request', refId: r.id, refNumber: '', to: db.company.email || '', subject: `New request: ${title}`, body: sent.text, status: sent.status, detail: sent.detail });
   save(); pushNewRequest('booking', c, r); res.send(done); if (optedIn) optInText(c).catch(() => {});
+});
+
+// ---------- the business page (lib/business-page.js): <account address>/card, which the business QR code opens ----------
+const bizPage = () => businessPage.view(db.businessPage, db.company);
+const pageBook = () => (tenancy.has('onlineBooking') ? bookingUrl() : '');
+app.use('/card', express.urlencoded({ extended: false }));
+// ?qr=1: a scan of the QR code, counted, and turned away once the scan limit or end date is reached
+app.get('/card', (req, res) => {
+  const p = bizPage();
+  if (req.query.qr) {
+    const scans = (db.businessPage && db.businessPage.scans) || 0;
+    if (!businessPage.qrActive(p, scans, localNow().date)) return res.status(410).send(businessPage.expiredPage(p.name));
+    db.businessPage = { ...(db.businessPage || {}), scans: scans + 1 }; save();
+  }
+  res.send(businessPage.render(p, { book: pageBook() }));
+});
+app.get('/card/contact.vcf', (req, res) => {
+  const p = bizPage(); res.setHeader('Content-Type', 'text/vcard; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${(p.name || 'contact').replace(/[^\w -]+/g, '').trim() || 'contact'}.vcf"`);
+  res.end(businessPage.vcard(p, `${baseUrl()}/card`));
+});
+// Exchange contact: the visitor's details become a lead and a request, like an online booking
+app.post('/card/exchange', async (req, res) => {
+  const p = bizPage(); const b = req.body || {}; const clip = (k, n) => String(b[k] || '').trim().slice(0, n);
+  const again = (status, error) => res.status(status).send(businessPage.render(p, { book: pageBook(), error, values: b }));
+  if (!p.exchange) return res.redirect('/card');
+  if (b.website) return res.send(businessPage.render(p, { book: pageBook(), done: true, values: b })); // honeypot: bots fill every field
+  const ip = req.socket.remoteAddress; const now = Date.now(); const hits = (bookHits.get(ip) || []).filter((t) => now - t < 3600e3);
+  if (hits.length >= 5) return again(429, 'Too many messages from this connection. Please call or email us instead.');
+  const name = clip('name', 100); const email = normEmail(clip('email', 120)); const phone = clip('phone', 40);
+  if (!name) return again(400, 'Please enter your name.');
+  if (!email && !phone) return again(400, 'Please give us an email or phone number so we can reach you.');
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return again(400, 'Please check your email address.');
+  hits.push(now); bookHits.set(ip, hits);
+  const digits = (s) => String(s || '').replace(/\D/g, '').slice(-10);
+  let c = db.clients.find((x) => (email && normEmail(x.email) === email) || (digits(phone).length === 10 && digits(x.phone) === digits(phone)));
+  const isNew = !c;
+  if (!c) { c = { id: uid(), name, email, phone, address: '', company: '', tags: ['Business page'], notes: 'Left their details on the business page', portalToken: token(), createdAt: iso(new Date()) }; db.clients.push(c); }
+  db.requests = db.requests || [];
+  const r = { id: uid(), clientId: c.id, title: 'Contact from your business page', details: clip('message', 2000), address: c.address || '', preferredDate: '', preferredTime: 'any', status: 'new', source: 'business page', createdAt: new Date().toISOString() };
+  db.requests.push(r);
+  const details = emails.details([['Name', name + (isNew ? ' (new lead)' : '')], ['Phone', phone || c.phone], ['Email', email || c.email], ['From', 'Business page']]);
+  const sent = await sendTemplate('workRequest', db.company.email, { client: name, title: r.title, details, request: r.details, business: db.company.name, account_url: baseUrl() });
+  db.notifications.unshift({ id: uid(), at: r.createdAt, clientId: c.id, clientName: c.name, channel: 'email', kind: 'request', refId: r.id, refNumber: '', to: db.company.email || '', subject: `New request: ${r.title}`, body: sent.text, status: sent.status, detail: sent.detail });
+  save(); pushNewRequest('request', c, r); res.send(businessPage.render(p, { book: pageBook(), done: true, values: b }));
+});
+// Settings → Business Page: the page, its address, and how many times the QR code has been scanned
+const pageView = () => ({ page: bizPage(), scans: (db.businessPage && db.businessPage.scans) || 0, url: `${baseUrl()}/card`, companyLogo: db.company.logo || '', covers: businessPage.COVERS, networks: Object.fromEntries(Object.entries(businessPage.NETWORKS).map(([k, [n, h]]) => [k, { name: n, handle: !!h }])) });
+app.get('/api/business-page', (req, res) => res.json(pageView()));
+// a new logo or cover arrives as a data URL; it's saved in the account's uploads, and the one it replaces is deleted
+const PAGE_IMG = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/;
+const pageImage = (v, old) => {
+  const m = PAGE_IMG.exec(v || ''); if (!m) return null;
+  const buf = Buffer.from(m[2], 'base64'); if (buf.length > 5e6) throw Object.assign(new Error('Images can be up to 5 MB'), { status: 400 });
+  const file = `page-${token()}.${m[1] === 'jpeg' ? 'jpg' : m[1]}`; fs.writeFileSync(path.join(uploadDir(), file), buf);
+  const was = /^\/uploads\/(page-[\w-]+\.\w+)$/.exec(old || ''); if (was) fs.rm(path.join(uploadDir(), was[1]), { force: true }, () => {});
+  return `/uploads/${file}`;
+};
+// logo: a new image, '' for none, or the saved address; cover: a sample's name, a new image, or the saved address
+const pageImages = (b, old) => {
+  const logo = pageImage(b.logo, old.logo) ?? (b.logo === '' || b.logo === db.company.logo || b.logo === old.logo ? b.logo : old.logo);
+  const cover = businessPage.COVERS[b.cover] ? b.cover : pageImage(b.cover, old.cover) ?? (b.cover === old.cover ? old.cover : 'sky');
+  const drop = (u) => { const m = /^\/uploads\/(page-[\w-]+\.\w+)$/.exec(u || ''); if (m && u !== logo && u !== cover) fs.rm(path.join(uploadDir(), m[1]), { force: true }, () => {}); };
+  drop(old.logo); drop(old.cover); return { logo, cover };
+};
+app.put('/api/business-page', (req, res) => {
+  if (!isAdmin(currentUser(req))) return res.status(403).json({ error: 'Only the account owner or an admin can change the business page' });
+  const b = req.body || {};
+  try {
+    const page = businessPage.clean(b); const old = bizPage();
+    db.businessPage = { ...page, ...pageImages(b, old), scans: (db.businessPage && db.businessPage.scans) || 0 };
+    if (b.resetScans) db.businessPage.scans = 0;
+    save(); res.json(pageView());
+  } catch (e) { res.status(e.status || 400).json({ error: e.message }); }
+});
+// the phone preview while editing: the page as it would look, images shown straight from the browser, nothing saved
+app.post('/api/business-page/preview', (req, res) => {
+  const b = req.body || {}; let page; try { page = businessPage.clean(b); } catch (e) { return res.json({ error: e.message }); } // the preview keeps showing the last good version
+  const pick = (v, old) => (PAGE_IMG.test(v || '') || v === '' || v === db.company.logo || v === old || businessPage.COVERS[v] ? v : old);
+  const old = bizPage();
+  res.json({ html: businessPage.render({ ...old, ...page, logo: pick(b.logo, old.logo), cover: pick(b.cover, old.cover) }, { book: pageBook(), preview: true }) });
 });
 
 // a client asks for work from their portal: saved as a request and emailed to the business
