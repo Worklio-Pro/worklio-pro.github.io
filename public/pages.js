@@ -1638,7 +1638,28 @@ PAGES['/settings'] = { title: 'App Settings', render: (m) => companyPage(m, true
 PAGES['/settings/connections'] = { title: 'Account Connections', render: connectionsPage };
 
 /* ===== /settings/business-page: the page the business QR code opens (lib/business-page.js), with a phone preview ===== */
-const BP_SECTIONS = [['info', 'Your information'], ['styles', 'Styles'], ['links', 'Links'], ['exchange', 'Exchange contact'], ['usage', 'Usage limits']];
+// two tabs, each with its sections; Next goes through them in order, from Business details on to QR code appearance
+const BP_TABS = [['details', 'Business details', [['info', 'Your information'], ['styles', 'Styles'], ['links', 'Links'], ['exchange', 'Exchange contact'], ['usage', 'Usage limits']]],
+  ['qr', 'QR code appearance', [['qrcolor', 'Color'], ['qrshape', 'Shape & form'], ['qrlogo', 'Logo'], ['qrbg', 'Page background'], ['qrrim', 'Rim content']]]];
+const BP_ORDER = BP_TABS.flatMap(([t, , secs]) => secs.map(([k]) => [k, t]));
+const QR_COLORS = [['bg', 'Background color'], ['dots', 'Dots color'], ['mBorder', 'Marker border color'], ['mCenter', 'Marker center color']];
+// the samples a QR code's logo can be: network logos (CONN_ICONS) and simple icons in a dark circle
+const QR_GLYPHS = {
+  phone: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>', email: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
+  website: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>', book: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',
+};
+function qrLogoHref(key, companyLogo) {
+  if (!key) return ''; if (key === 'company') return companyLogo || ''; if (/^(data:|\/uploads\/)/.test(key)) return key;
+  const svg = QR_GLYPHS[key] ? `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><circle cx="24" cy="24" r="23" fill="#111827"/><g transform="translate(12 12)" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${QR_GLYPHS[key]}</g></svg>`
+    : (CONN_ICONS[key] || '').replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ');
+  return svg ? 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg) : '';
+}
+// the saved QR look, ready for qrStyled (public/qr.js); qrInline makes its images data: URLs, which a downloaded PNG needs
+const qrStyleFor = (q, companyLogo) => ({ ...q, logo: qrLogoHref(q.logo, companyLogo) });
+async function qrInline(st) {
+  const data = async (u) => (!u || u.startsWith('data:') ? u : readFileAsDataUrl(await (await fetch(u)).blob()));
+  return { ...st, logo: await data(st.logo), bgImg: await data(st.bgImg) };
+}
 const BP_COLORS = [['pageColor', 'Page color'], ['textColor', 'Text color'], ['iconColor', 'Logo / icon'], ['buttonColor', 'Button color'], ['buttonTextColor', 'Button text color']];
 let bp = null; // { page (what's being edited), V (from the server) }
 // a logo as a PNG (keeps a transparent background), at most max pixels on its longer side
@@ -1650,12 +1671,22 @@ async function toPng(src, max) {
 PAGES['/settings/business-page'] = {
   title: 'Business Page',
   async render(main) {
-    const V = await api('GET', '/api/business-page'); const P = { ...V.page, links: V.page.links.map((l) => ({ ...l })) }; bp = { page: P, V };
+    bpAt = 'info';
+    const V = await api('GET', '/api/business-page'); const P = { ...V.page, links: V.page.links.map((l) => ({ ...l })), qr: { ...V.page.qr, header: { ...V.page.qr.header }, footer: { ...V.page.qr.footer } } }; bp = { page: P, V };
+    const Q = P.qr; const qrUrl = V.url + '?qr=1';
+    // a choice in Shape & form, shown as a small QR code drawn that way
+    // zoomed in on what the choice changes: a corner marker, or some dots (the sample code is 21 modules with a 4-module margin)
+    const ZOOM = { dot: '10.5 10.5 8 8', border: '3.5 3.5 8 8', center: '5 5 5 5' };
+    const opt = (k, v, label) => `<button type="button" class="bp-opt" data-act="bpQrOpt" data-k="${k}" data-v="${v}" title="${label}" aria-label="${label}">${qrStyled('Worklio', { [k]: v, ...(k === 'border' && v === 'circle' ? { center: 'circle' } : {}), ...(k === 'center' ? { border: 'circle' } : {}) }).replace(/viewBox="[^"]*"/, (m) => (ZOOM[k] ? `viewBox="${ZOOM[k]}"` : m))}${k === 'frame' ? `<span>${label}</span>` : ''}</button>`;
+    const color = (name, label) => `<label>${label}<span class="bp-color"><input name="${name}" maxlength="7" spellcheck="false"><input type="color" data-for="${name}" aria-label="${label}"></span></label>`;
+    const rim = (k, title) => `<h3 class="bp-h3">${title}</h3><label>${title} text<input name="qr_${k}Text" maxlength="40" placeholder="Scan me"></label>
+<div class="bp-two"><label>Font family<select name="qr_${k}Font">${V.qrFonts.map((n) => `<option>${n}</option>`).join('')}</select></label>${color(`qr_${k}Color`, 'Color')}</div>`;
     const admin = ['owner', 'admin'].includes(role());
     const range = (k) => `<div class="bp-range"><input type="range" name="${k}" min="0" max="100" step="1"><output data-for="${k}"></output></div>`;
     const sw = (name, title, note) => `<label class="sw-row"><span>${title}<small class="muted">${note}</small></span><input type="checkbox" class="sw" name="${name}"><i></i></label>`;
     main.innerHTML = `<div class="head"><div><h1>Business Page</h1><p class="sub">The page people see when they scan your QR code: your details, links and a Save contact button. Your page: <a href="${esc(V.url)}" target="_blank" rel="noopener">${esc(V.url.replace(/^https?:\/\//, ''))}</a></p></div></div>
-<div class="bp-edit"><nav class="bp-nav">${BP_SECTIONS.map(([k, n], i) => `<button type="button" data-act="bpSec" data-sec="${k}" class="${i ? '' : 'on'}">${n}</button>`).join('')}</nav>
+<div class="bp-tabs" role="tablist">${BP_TABS.map(([t, n], i) => `<button type="button" role="tab" data-act="bpTab" data-tab="${t}" class="${i ? '' : 'on'}">${n}</button>`).join('')}</div>
+<div class="bp-edit">${BP_TABS.map(([t, , secs], ti) => `<nav class="bp-nav" data-tab="${t}" ${ti ? 'hidden' : ''}>${secs.map(([k, n], i) => `<button type="button" data-act="bpSec" data-sec="${k}" class="${i || ti ? '' : 'on'}">${n}</button>`).join('')}</nav>`).join('')}
 <form class="card bp-form" id="bpForm" novalidate><fieldset class="bp-fs" ${admin ? '' : 'disabled'}>
 <section data-sec="info"><h2>Your information</h2>
 <span class="bp-lbl">Company logo</span><div class="bp-img"><span class="bp-thumb round" id="bpLogo"></span><label class="btn alt sm">Browse<input type="file" accept="image/png,image/jpeg,image/webp" hidden id="bpLogoFile"></label>${V.companyLogo ? '<button type="button" class="btn alt sm" data-act="bpLogo" data-v="company">Use company logo</button>' : ''}<button type="button" class="link-btn danger" data-act="bpLogo" data-v="">Remove</button></div>
@@ -1676,16 +1707,39 @@ ${sw('showLabels', 'Show icon labels', 'Names under the Phone, Email and Website
 ${sw('scanOn', 'Scan limit', 'The QR code stops working after this many scans.')}<label class="bp-sub">Number of scans<input name="scanMax" type="number" min="1" max="10000000" step="1"></label>
 ${sw('expOn', 'Expiry', 'After this date, scanning the QR code shows an “expired” page instead of your business page.')}<label class="bp-sub">Last day it works<input name="expDate" type="date"></label>
 <p class="muted bp-note">Scanned ${V.scans.toLocaleString('en-US')} time${V.scans === 1 ? '' : 's'} so far.${V.scans && admin ? ' <button type="button" class="link-btn" data-act="bpResetScans">Reset the count</button>' : ''}</p></section>
-${admin ? '<div class="bp-foot"><a class="btn alt" href="' + esc(V.url) + '" target="_blank" rel="noopener">View page</a><button class="btn">Save changes</button></div>' : '<p class="muted" style="font-size:13px">Only the account owner or an admin can change the business page.</p>'}
+<section data-sec="qrcolor" hidden><h2>Color</h2><div class="bp-stack">${QR_COLORS.map(([k, n]) => color('qr_' + k, n)).join('')}</div>
+<p class="muted bp-note">Keep the dots much darker than the background, or phones may not be able to read the code.</p></section>
+<section data-sec="qrshape" hidden><h2>Shape &amp; form</h2>
+<span class="bp-lbl">QR shape</span><div class="bp-opts">${opt('shape', 'square', 'Square')}${opt('shape', 'rounded', 'Rounded')}${opt('shape', 'circle', 'Circle')}</div>
+<span class="bp-lbl">Dots</span><div class="bp-opts">${opt('dot', 'square', 'Squares')}${opt('dot', 'rounded', 'Rounded')}${opt('dot', 'dots', 'Dots')}${opt('dot', 'diamond', 'Diamonds')}${opt('dot', 'vertical', 'Vertical lines')}${opt('dot', 'horizontal', 'Horizontal lines')}</div>
+<span class="bp-lbl">Marker border</span><div class="bp-opts">${opt('border', 'square', 'Square')}${opt('border', 'rounded', 'Rounded')}${opt('border', 'circle', 'Circle')}</div>
+<span class="bp-lbl">Marker center</span><div class="bp-opts">${opt('center', 'square', 'Square')}${opt('center', 'circle', 'Circle')}</div>
+<span class="bp-lbl">Border and frame</span><div class="bp-opts wide">${opt('frame', 'none', 'None')}${opt('frame', 'border', 'Border')}${opt('frame', 'frame', 'Frame')}</div></section>
+<section data-sec="qrlogo" hidden><h2>Logo</h2><span class="bp-lbl">Upload image</span><div class="bp-img"><span class="bp-thumb" id="bpQrLogo"></span><label class="btn alt sm">Browse<input type="file" accept="image/png,image/jpeg,image/webp" hidden id="bpQrLogoFile"></label></div>
+<span class="bp-lbl">Or use one of these</span><div class="bp-logos"><button type="button" class="bp-lg" data-act="bpQrLogo" data-v="" title="No logo" aria-label="No logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/></svg></button>${V.qrLogos.filter((k) => k !== 'company' || V.companyLogo).map((k) => `<button type="button" class="bp-lg" data-act="bpQrLogo" data-v="${k}" title="${k === 'company' ? 'Company logo' : esc(k)}" aria-label="${k === 'company' ? 'Company logo' : esc(k)}"><img src="${esc(qrLogoHref(k, V.companyLogo))}" alt=""></button>`).join('')}</div>
+${sw('qr_logoClear', 'Remove dots behind the logo', 'Clears the dots under the logo so it stands out. The code still scans.')}</section>
+<section data-sec="qrbg" hidden><h2>Page background</h2><p class="muted bp-note">A picture behind your QR code and its text. The code itself keeps its background color so it stays readable.</p>
+<span class="bp-lbl">Upload image</span><div class="bp-img"><span class="bp-thumb" id="bpQrBg"></span><label class="btn alt sm">Browse<input type="file" accept="image/png,image/jpeg,image/webp" hidden id="bpQrBgFile"></label><button type="button" class="link-btn danger" data-act="bpQrBgNone">Remove</button></div>
+<span class="bp-lbl">Transparency</span>${range('qr_bgOpacity')}</section>
+<section data-sec="qrrim" hidden><h2>Rim content</h2><p class="muted bp-note">Text above and below your QR code, like “Scan me” or your business name.</p>${rim('header', 'Header')}${rim('footer', 'Footer')}</section>
+<div class="bp-foot"><button type="button" class="btn alt" data-act="bpStep" data-d="-1" id="bpPrevBtn">← Previous</button><span class="bp-gap"></span><a class="btn alt" href="${esc(V.url)}" target="_blank" rel="noopener">View page</a><button type="button" class="btn alt" data-act="bpStep" data-d="1" id="bpNextBtn">Next →</button>${admin ? '<button class="btn" id="bpSave">Save changes</button>' : ''}</div>
+${admin ? '' : '<p class="muted" style="font-size:13px">Only the account owner or an admin can change the business page.</p>'}
 </fieldset></form>
-<div class="bp-phone"><iframe id="bpPrev" title="Preview of your business page" sandbox="allow-popups allow-popups-to-escape-sandbox"></iframe></div></div>`;
+<div class="bp-phone" id="bpPhone"><iframe id="bpPrev" title="Preview of your business page" sandbox="allow-popups allow-popups-to-escape-sandbox"></iframe></div>
+<div class="bp-qrbox" id="bpQrBox" hidden><div class="bp-qrimg" id="bpQr"></div><div class="bp-qr-acts"><button type="button" class="btn alt sm" data-act="bpQrDownload">Download</button><button type="button" class="btn alt sm" data-act="bpQrCopy">Copy link</button></div><p class="muted">Saved changes apply to your QR code everywhere it’s shown. Codes you’ve already printed keep working.</p></div></div>`;
     const f = $('#bpForm');
     // the form shows bp.page; every change goes back into it and refreshes the preview
     for (const k of ['name', 'description', 'email', 'website', 'phone', 'address', 'logoOpacity', 'coverOpacity', ...BP_COLORS.map(([c]) => c)]) f.elements[k].value = P[k] ?? '';
     f.showLabels.checked = P.showLabels; f.exchange.checked = P.exchange;
     f.scanOn.checked = P.scanLimit.on; f.scanMax.value = P.scanLimit.max; f.expOn.checked = P.expiry.on; f.expDate.value = P.expiry.date;
-    BP_COLORS.forEach(([k]) => { $(`input[type=color][data-for=${k}]`, f).value = P[k].toLowerCase(); });
+    QR_COLORS.forEach(([k]) => { f.elements['qr_' + k].value = Q[k]; });
+    f.qr_logoClear.checked = Q.logoClear; f.qr_bgOpacity.value = Q.bgOpacity;
+    for (const k of ['header', 'footer']) { f.elements[`qr_${k}Text`].value = Q[k].text; f.elements[`qr_${k}Font`].value = Q[k].font; f.elements[`qr_${k}Color`].value = Q[k].color; }
+    $$('input[type=color][data-for]', f).forEach((c) => { const v = f.elements[c.dataset.for].value; if (/^#[0-9a-f]{6}$/i.test(v)) c.value = v.toLowerCase(); });
     const read = () => {
+      QR_COLORS.forEach(([k]) => { Q[k] = f.elements['qr_' + k].value.trim(); });
+      Q.logoClear = f.qr_logoClear.checked; Q.bgOpacity = +f.qr_bgOpacity.value;
+      for (const k of ['header', 'footer']) Q[k] = { text: f.elements[`qr_${k}Text`].value, font: f.elements[`qr_${k}Font`].value, color: f.elements[`qr_${k}Color`].value.trim() };
       for (const k of ['name', 'description', 'email', 'website', 'phone', 'address']) P[k] = f.elements[k].value;
       P.logoOpacity = +f.logoOpacity.value; P.coverOpacity = +f.coverOpacity.value;
       BP_COLORS.forEach(([k]) => { P[k] = f.elements[k].value.trim(); });
@@ -1694,30 +1748,50 @@ ${admin ? '<div class="bp-foot"><a class="btn alt" href="' + esc(V.url) + '" tar
       $$('#bpLinks .bp-link').forEach((row, i) => { const l = P.links[i]; l.url = $('[data-f=url]', row).value; if (l.kind === 'custom') l.label = $('[data-f=label]', row).value; });
       bpDraw(); bpPreview();
     };
+    // a color picker fills in its hex box, and a valid hex code moves the picker
     f.addEventListener('input', (e) => {
       if (e.target.type === 'color') f.elements[e.target.dataset.for].value = e.target.value.toUpperCase();
-      else if (BP_COLORS.some(([k]) => k === e.target.name) && /^#[0-9a-f]{6}$/i.test(e.target.value)) $(`input[type=color][data-for=${e.target.name}]`, f).value = e.target.value.toLowerCase();
+      else { const pick = e.target.name && $(`input[type=color][data-for="${e.target.name}"]`, f); if (pick && /^#[0-9a-f]{6}$/i.test(e.target.value)) pick.value = e.target.value.toLowerCase(); }
       if (e.target.type !== 'file') read();
     });
-    f.addEventListener('change', (e) => { if (e.target.type === 'checkbox') read(); });
+    f.addEventListener('change', (e) => { if (e.target.type === 'checkbox' || e.target.tagName === 'SELECT') read(); });
+    $('#bpQrLogoFile').addEventListener('change', async (e) => { const file = e.target.files[0]; e.target.value = ''; if (!file) return; try { Q.logo = await toPng(await readFileAsDataUrl(file), 300); read(); } catch (x) { toast('Couldn’t read that image', true); } });
+    $('#bpQrBgFile').addEventListener('change', async (e) => { const file = e.target.files[0]; e.target.value = ''; if (!file) return; try { Q.bgImg = await toJpeg(await readFileAsDataUrl(file), 1200); read(); } catch (x) { toast('Couldn’t read that image', true); } });
     $('#bpLogoFile').addEventListener('change', async (e) => { const file = e.target.files[0]; e.target.value = ''; if (!file) return; try { P.logo = await toPng(await readFileAsDataUrl(file), 400); read(); } catch (x) { toast('Couldn’t read that image', true); } });
     $('#bpCoverFile').addEventListener('change', async (e) => { const file = e.target.files[0]; e.target.value = ''; if (!file) return; try { P.cover = await toJpeg(await readFileAsDataUrl(file), 1200); read(); } catch (x) { toast('Couldn’t read that image', true); } });
     $('#bpAdd').addEventListener('change', (e) => { if (!e.target.value) return; P.links.push({ kind: e.target.value, url: '' }); bpLinks(); const ins = $$('#bpLinks [data-f=url]'); ins[ins.length - 1].focus(); });
     f.addEventListener('submit', async (e) => {
-      e.preventDefault(); read(); const btn = $('.bp-foot .btn:not(.alt)', f); btn.disabled = true;
-      try { const r = await api('PUT', '/api/business-page', P); bp.V = r; Object.assign(P, { logo: r.page.logo, cover: r.page.cover, links: r.page.links.map((l) => ({ ...l })) }); bpLinks(); toast('Business page saved'); }
+      e.preventDefault(); read(); const btn = $('#bpSave'); btn.disabled = true;
+      try { const r = await api('PUT', '/api/business-page', P); bp.V = r; Object.assign(P, { logo: r.page.logo, cover: r.page.cover, links: r.page.links.map((l) => ({ ...l })) }); Object.assign(Q, { logo: r.page.qr.logo, bgImg: r.page.qr.bgImg }); bpLinks(); bpDraw(); toast('Business page saved'); }
       catch (x) { toast(x.message, true); } finally { btn.disabled = false; }
     });
-    bpLinks(); bpDraw(); bpPreview();
+    bpLinks(); bpDraw(); bpPreview(); bpGo('info');
   },
 };
+let bpAt = 'info'; // the section showing
+// shows a section: its tab, its place in the left menu, the phone (Business details) or the QR code (QR code appearance), and Previous / Next
+function bpGo(sec) {
+  bpAt = sec; const tab = BP_ORDER.find(([k]) => k === sec)[1]; const i = BP_ORDER.findIndex(([k]) => k === sec);
+  $$('.bp-tabs button').forEach((b) => { b.classList.toggle('on', b.dataset.tab === tab); b.setAttribute('aria-selected', b.dataset.tab === tab); });
+  $$('.bp-nav').forEach((n) => { n.hidden = n.dataset.tab !== tab; }); $$('.bp-nav button').forEach((b) => b.classList.toggle('on', b.dataset.sec === sec));
+  $$('#bpForm section').forEach((s) => { s.hidden = s.dataset.sec !== sec; });
+  $('#bpPhone').hidden = tab !== 'details'; $('#bpQrBox').hidden = tab !== 'qr';
+  $('#bpPrevBtn').disabled = i === 0; $('#bpNextBtn').hidden = i === BP_ORDER.length - 1;
+  $('#bpNextBtn').textContent = BP_ORDER[i + 1] && BP_ORDER[i + 1][1] !== tab ? 'Next: QR code appearance →' : 'Next →';
+}
 // the parts of the form drawn from bp.page: the logo, the chosen cover, the opacity numbers
 function bpDraw() {
   const P = bp.page; const logo = P.logo === 'company' ? bp.V.companyLogo : P.logo;
   const box = $('#bpLogo'); if (!box) return; box.style.backgroundImage = logo ? `url("${logo}")` : ''; box.textContent = logo ? '' : '—';
   $$('.bp-cov[data-c]').forEach((b) => b.classList.toggle('on', b.dataset.c === P.cover));
   const own = !bp.V.covers[P.cover]; const up = $('#bpCoverUp').parentElement; up.classList.toggle('on', own); up.style.background = own ? `url("${P.cover}") center/cover` : ''; $('#bpCoverUp').textContent = own ? '' : '+';
-  $$('.bp-range output').forEach((o) => { o.textContent = `${P[o.dataset.for]}%`; });
+  $$('.bp-range output').forEach((o) => { o.textContent = `${o.dataset.for === 'qr_bgOpacity' ? P.qr.bgOpacity : P[o.dataset.for]}%`; });
+  // QR code appearance: the chosen options and logo, the pictures, and the code itself
+  const Q = P.qr; const thumb = (id, u) => { const t = $(id); t.style.backgroundImage = u ? `url("${u}")` : ''; t.textContent = u ? '' : '—'; };
+  $$('.bp-opt').forEach((b) => b.classList.toggle('on', Q[b.dataset.k] === b.dataset.v));
+  $$('.bp-lg').forEach((b) => b.classList.toggle('on', (Q.logo || '') === b.dataset.v));
+  thumb('#bpQrLogo', /^(data:|\/uploads\/)/.test(Q.logo || '') ? Q.logo : ''); thumb('#bpQrBg', Q.bgImg);
+  $('#bpQr').innerHTML = qrStyled(bp.V.url + '?qr=1', qrStyleFor(Q, bp.V.companyLogo)) || '<p class="muted">Check the colors: each one needs a hex code like #1A2B3C.</p>';
 }
 // the Links list: one row per link, in the order they show on the page
 function bpLinks() {
@@ -1736,7 +1810,17 @@ function bpPreview() {
     try { const r = await api('POST', '/api/business-page/preview', { ...P, logo: P.logo === 'company' ? bp.V.companyLogo : P.logo }); if (r.html) frame.srcdoc = r.html; } catch (x) { /* keep the last preview */ }
   }, 250);
 }
-A.bpSec = (d) => { $$('.bp-nav button').forEach((b) => b.classList.toggle('on', b.dataset.sec === d.sec)); $$('#bpForm section').forEach((s) => { s.hidden = s.dataset.sec !== d.sec; }); };
+A.bpSec = (d) => bpGo(d.sec);
+A.bpTab = (d) => bpGo(BP_TABS.find(([t]) => t === d.tab)[2][0][0]);
+A.bpStep = (d) => { const i = BP_ORDER.findIndex(([k]) => k === bpAt) + Number(d.d); if (BP_ORDER[i]) { bpGo(BP_ORDER[i][0]); window.scrollTo(0, 0); } };
+A.bpQrOpt = (d) => { bp.page.qr[d.k] = d.v; if (d.k === 'border' && d.v === 'circle') bp.page.qr.center = 'circle'; bpDraw(); };
+A.bpQrLogo = (d) => { bp.page.qr.logo = d.v; bpDraw(); };
+A.bpQrBgNone = () => { bp.page.qr.bgImg = ''; bpDraw(); };
+A.bpQrDownload = async () => {
+  try { const png = await qrStyledPng(bp.V.url + '?qr=1', await qrInline(qrStyleFor(bp.page.qr, bp.V.companyLogo)));
+    const a = document.createElement('a'); a.href = png; a.download = `${(bp.page.name || 'qr-code').replace(/[^\w-]+/g, '-').toLowerCase()}-qr.png`; a.click(); } catch (x) { toast('Couldn’t make the image. Try again.', true); }
+};
+A.bpQrCopy = async () => { await navigator.clipboard.writeText(bp.V.url); toast('Link copied'); };
 A.bpCover = (d) => { bp.page.cover = d.c; bpDraw(); bpPreview(); };
 A.bpLogo = (d) => { bp.page.logo = d.v === 'company' ? bp.V.companyLogo : ''; bpDraw(); bpPreview(); };
 A.bpCustom = () => { bp.page.links.push({ kind: 'custom', label: '', url: '' }); bpLinks(); const ins = $$('#bpLinks [data-f=label]'); ins[ins.length - 1].focus(); };

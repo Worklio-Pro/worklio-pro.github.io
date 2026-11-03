@@ -535,13 +535,16 @@ A.openHelp = () => openHelp();
 const sideSwitch = (mode, focus) => { sideMode = mode; fillSide(curPath()); const f = $(focus, $('#side')); if (f) f.focus(); };
 A.openSettings = () => sideSwitch('settings', '.side-back');
 A.sideBack = () => sideSwitch('main', '.side-set-btn');
-A.businessQr = () => {
+// the QR code drawn the way Settings → Business Page → QR code appearance sets it (plain until it loads, or if it can't)
+let qrLook = null;
+A.businessQr = async () => {
   const url = qrLink(); const name = company.name || (company.account && company.account.productName) || 'Your business';
-  const body = modal('QR code', `<div class="qr-pop"><h2>${esc(name)}</h2><div class="qr-img">${qrSvg(url)}</div>${['owner', 'admin'].includes(role()) ? '<button type="button" class="qr-edit" data-act="qrEditPage">' + svgIcon('<path d="M17 3a2.85 2.85 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5z"/>', 18) + '<span>Edit business page</span></button>' : ''}
+  const body = modal('QR code', `<div class="qr-pop"><h2>${esc(name)}</h2><div class="qr-img" id="qrImg">${qrLook ? qrStyled(url, qrLook) : qrSvg(url)}</div>${['owner', 'admin'].includes(role()) ? '<button type="button" class="qr-edit" data-act="qrEditPage">' + svgIcon('<path d="M17 3a2.85 2.85 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5z"/>', 18) + '<span>Edit business page</span></button>' : ''}
 <div class="qr-acts"><a href="${esc(pageLink())}" target="_blank" rel="noopener">${svgIcon(ICONS.eye)}<span>Preview</span></a><button type="button" data-act="qrDownload">${svgIcon(ICONS.download)}<span>Download</span></button><button type="button" data-act="qrCopy">${svgIcon(ICONS.link)}<span>Copy link</span></button></div></div>`);
   body.closest('.modal').classList.add('qr-modal');
+  try { const V = await api('GET', '/api/business-page'); qrLook = qrStyleFor(V.page.qr, V.companyLogo); const box = $('#qrImg'); if (box) box.innerHTML = qrStyled(url, qrLook) || qrSvg(url); } catch (e) { /* keep the plain code */ }
 };
-A.qrDownload = () => { const a = document.createElement('a'); a.href = qrPng(qrLink()); a.download = `${(company.name || 'qr-code').replace(/[^\w-]+/g, '-').toLowerCase()}-qr.png`; a.click(); };
+A.qrDownload = async () => { const a = document.createElement('a'); a.href = qrLook ? await qrStyledPng(qrLink(), await qrInline(qrLook)).catch(() => qrPng(qrLink())) : qrPng(qrLink()); a.download = `${(company.name || 'qr-code').replace(/[^\w-]+/g, '-').toLowerCase()}-qr.png`; a.click(); };
 A.qrCopy = async () => { await navigator.clipboard.writeText(pageLink()); toast('Link copied'); };
 A.qrEditPage = () => { closeModal(); navigate('/settings/business-page'); };
 A.feedbackForm = () => feedbackForm();

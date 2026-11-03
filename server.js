@@ -2623,7 +2623,7 @@ app.post('/card/exchange', async (req, res) => {
   save(); pushNewRequest('request', c, r); res.send(businessPage.render(p, { book: pageBook(), done: true, values: b }));
 });
 // Settings → Business Page: the page, its address, and how many times the QR code has been scanned
-const pageView = () => ({ page: bizPage(), scans: (db.businessPage && db.businessPage.scans) || 0, url: `${baseUrl()}/card`, companyLogo: db.company.logo || '', covers: businessPage.COVERS, networks: Object.fromEntries(Object.entries(businessPage.NETWORKS).map(([k, [n, h]]) => [k, { name: n, handle: !!h }])) });
+const pageView = () => ({ page: bizPage(), scans: (db.businessPage && db.businessPage.scans) || 0, url: `${baseUrl()}/card`, companyLogo: db.company.logo || '', covers: businessPage.COVERS, qrLogos: businessPage.QR_LOGOS, qrFonts: businessPage.QR_FONTS, networks: Object.fromEntries(Object.entries(businessPage.NETWORKS).map(([k, [n, h]]) => [k, { name: n, handle: !!h }])) });
 app.get('/api/business-page', (req, res) => res.json(pageView()));
 // a new logo or cover arrives as a data URL; it's saved in the account's uploads, and the one it replaces is deleted
 const PAGE_IMG = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/;
@@ -2646,7 +2646,12 @@ app.put('/api/business-page', (req, res) => {
   const b = req.body || {};
   try {
     const page = businessPage.clean(b); const old = bizPage();
-    db.businessPage = { ...page, ...pageImages(b, old), scans: (db.businessPage && db.businessPage.scans) || 0 };
+    const q = b.qr || {}; const qr = businessPage.cleanQr(q);
+    // the QR code's logo: a sample, the company logo, a new image or the saved one; its background picture: a new image, the saved one or none
+    qr.logo = businessPage.QR_LOGOS.includes(q.logo) || !q.logo ? q.logo || '' : pageImage(q.logo, old.qr.logo) ?? (q.logo === old.qr.logo ? q.logo : '');
+    qr.bgImg = !q.bgImg ? '' : pageImage(q.bgImg, old.qr.bgImg) ?? (q.bgImg === old.qr.bgImg ? q.bgImg : '');
+    for (const k of ['logo', 'bgImg']) { const was = /^\/uploads\/(page-[\w-]+\.\w+)$/.exec(old.qr[k] || ''); if (was && qr[k] !== old.qr[k] && !PAGE_IMG.test(q[k] || '')) fs.rm(path.join(uploadDir(), was[1]), { force: true }, () => {}); }
+    db.businessPage = { ...page, ...pageImages(b, old), qr, scans: (db.businessPage && db.businessPage.scans) || 0 };
     if (b.resetScans) db.businessPage.scans = 0;
     save(); res.json(pageView());
   } catch (e) { res.status(e.status || 400).json({ error: e.message }); }
