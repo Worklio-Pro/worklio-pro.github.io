@@ -1433,9 +1433,10 @@ async function connectionsPage(main) {
   // connections for features the platform marks as Beta get a Beta tag and a short notice
   const beta = (r) => !!(r.feature && company.account && (company.account.featureList || []).some((f) => f.key === r.feature && f.beta));
   main.innerHTML = `<div class="head"><div><h1>Account Connections</h1><p class="sub">Manage the accounts your business has connected: change the Page, account or board you use, disconnect, and set up Google reviews and booking.${planHas('socialPosts') ? ' To post to social media, go to <a href="/social-posts" data-link>Marketing</a>.' : ''} Card payments are set up in <a href="/settings#payments" data-link>App Settings</a>; emails and texts to clients are sent for you.</p></div></div>
-<div class="card conn-list">${rows.map((r) => `<section class="conn" id="conn-${r.id}"><div class="conn-ic">${CONN_ICONS[r.icon]}</div>
-<div class="conn-main"><h2>${esc(r.title)}${beta(r) ? '<span class="beta-tag" title="This feature is in beta testing">Beta</span>' : ''} ${r.status}</h2>${r.connectedTo ? `<p class="conn-to">${r.connectedTo}</p>` : ''}<p>${r.desc}</p>${beta(r) ? '<p class="beta-note">This feature is in beta testing. It works, but it may change and you might run into rough edges. Tell us if something doesn’t look right.</p>' : ''}</div>
-<div class="conn-act">${r.button || ''}</div>
+<div class="conn-list">${rows.map((r) => `<section class="card conn${r.body ? ' wide' : ''}" id="conn-${r.id}"><div class="conn-top"><div class="conn-ic">${CONN_ICONS[r.icon]}</div>
+<div class="conn-main"><h2>${esc(r.title)}${beta(r) ? '<span class="beta-tag" title="This feature is in beta testing">Beta</span>' : ''}</h2>${r.status}</div></div>
+<div class="conn-main">${r.connectedTo ? `<p class="conn-to">${r.connectedTo}</p>` : ''}<p>${r.desc}</p>${beta(r) ? '<p class="beta-note">This feature is in beta testing. It works, but it may change and you might run into rough edges. Tell us if something doesn’t look right.</p>' : ''}</div>
+${r.button ? `<div class="conn-act">${r.button}</div>` : ''}
 ${r.body ? `<div class="conn-body conn-subs">${r.body}</div>` : ''}</section>`).join('')}</div>
 ${admin ? '' : '<p class="muted" style="font-size:13px">Only the account owner or an admin can connect or disconnect accounts.</p>'}`;
   connectionsData = C;
