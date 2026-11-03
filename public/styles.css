@@ -23,9 +23,12 @@
 .login-card{margin-top:22px}.login-card .role-pick{max-width:560px;margin:10px 0 0}
 .login-card .msg-ok{margin:12px 0 0;padding:10px 12px;border-radius:8px;background:var(--ok-bg);color:var(--ok-fg);font-size:14px}
 .copy-row{display:flex;gap:8px;margin-top:8px}.copy-row input{height:36px;font-size:13px}
-.side-user{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 6px 0;padding:8px 6px 0;border-top:1px solid rgba(255,255,255,.08);font-size:13px}
-.side-user-name{color:var(--nav-text,#e2e8f0);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.side-user button{background:none;border:0;color:var(--nav-text,#94a3b8);font:inherit;font-size:13px;cursor:pointer;padding:4px 6px;border-radius:6px;flex-shrink:0}.side-user button:hover{color:#fff;background:rgba(255,255,255,.08)}
+/* Settings at the bottom of the sidebar: its pages open just above it */
+.side-set{margin:8px 0 0;padding:8px 0 0;border-top:1px solid rgba(255,255,255,.08)}
+.side-set-list{padding:0 0 4px 32px}#side .side-set-list a{padding:6px 10px;font-size:14px}
+.side-set-btn{display:flex;align-items:center;gap:12px;width:100%;padding:7px 10px;border:0;border-radius:8px;background:none;color:var(--nav-text,#cbd5e1);font:inherit;text-align:left;cursor:pointer}
+.side-set-btn:hover{background:var(--nav-hover,#1e3a6e)}.side-set-btn:hover .nav-ic{opacity:1}
+.side-set-btn>svg{flex:none;opacity:.7;transform:rotate(180deg);transition:transform .15s}.side-set-btn.open>svg{transform:none}
 
 *{box-sizing:border-box}
 [hidden]{display:none!important}
@@ -345,10 +348,6 @@ details.menu{position:relative}details.menu summary{list-style:none}details.menu
 }
 @media print{#side,#menuBtn,.noprint{display:none!important}#main{padding:0}}
 /* my profile */
-#side a.side-user-name{flex:1;display:flex;align-items:center;gap:10px;min-width:0;text-decoration:none;padding:4px 6px;border-radius:6px}
-a.side-user-name:hover,a.side-user-name.on{background:rgba(255,255,255,.08);color:#fff}
-a.side-user-name>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-a.side-user-name .avatar{flex-shrink:0;margin:0}
 .pwf{padding-right:64px}
 .pwf .eye{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:0;color:var(--link);font:inherit;font-size:13px;font-weight:600;cursor:pointer;padding:6px 8px;border-radius:6px}
 .pwf .eye:hover{background:var(--hover,rgba(0,0,0,.05))}
@@ -636,9 +635,27 @@ table.domains td{vertical-align:middle}.dom-acts{display:flex;gap:6px;justify-co
 .tb-results a.act,.tb-results a:hover{background:var(--tint)}
 .tb-none{padding:10px 12px}
 .tb-icon{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border:0;border-radius:10px;background:none;color:var(--tool-icon,var(--muted));cursor:pointer;flex-shrink:0}
-.tb-icon:hover,.tb-gear[open]>summary{background:var(--surface-2);color:var(--text)}
+.tb-icon:hover{background:var(--surface-2);color:var(--text)}
 .tb-icon.on{color:var(--link)}
-.tb-gear .menu-list{min-width:230px}
+/* your account: the initials circle at the top right; its menu has your name, the QR code button and Log out */
+.tb-avatar{display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;cursor:pointer;margin-left:2px}
+.tb-avatar .avatar{margin:0;transition:box-shadow .15s}.tb-avatar:hover .avatar,.tb-me[open]>.tb-avatar .avatar{box-shadow:0 0 0 3px var(--surface-2)}
+.tb-me .menu-list{min-width:290px;max-width:calc(100vw - 20px)}
+.me-head{display:flex;align-items:center;gap:6px}
+.menu-list a.me-who{flex:1;display:flex;align-items:center;gap:12px;min-width:0;padding:8px 10px}
+.menu-list a.me-who.on{background:var(--surface-2);color:var(--text);font-weight:400}
+.me-who>span{display:flex;flex-direction:column;min-width:0}.me-who strong,.me-who small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.me-who small{color:var(--muted);font-size:13px}
+.menu-list .me-qr{display:inline-flex;width:40px;height:40px;padding:0;border-radius:50%;background:var(--surface-2);color:var(--text);flex:none;margin-right:4px}
+.menu-list .me-qr:hover{background:var(--tint);color:var(--tint-fg)}
+/* the business's QR code popup */
+.modal.qr-modal{max-width:400px}
+.qr-pop{text-align:center}.qr-pop h2{margin:0 0 14px;font-size:22px}
+.qr-img{width:220px;max-width:100%;margin:0 auto;padding:10px;background:#fff;border-radius:14px;box-shadow:var(--shadow-sm);border:1px solid var(--line)}.qr-img svg{display:block;width:100%;height:auto}
+.qr-pop>p{margin:12px 0 18px;font-size:14px;overflow-wrap:anywhere}
+.qr-acts{display:flex;justify-content:space-around;gap:8px;padding-top:14px;border-top:1px solid var(--line)}
+.qr-acts a,.qr-acts button{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 4px;border:0;border-radius:10px;background:none;color:var(--text);font:inherit;font-size:14px;font-weight:600;text-decoration:none;cursor:pointer}
+.qr-acts a:hover,.qr-acts button:hover{background:var(--surface-2)}
 .menu-h{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:8px 12px 4px}
 .menu-list a.on{background:var(--tint);color:var(--tint-fg);font-weight:600}
 /* help panel: slides in from the right */

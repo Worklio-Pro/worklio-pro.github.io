@@ -193,9 +193,16 @@ const BETA_BAR = '<div class="beta-bar" role="status"><span class="beta-pill">Be
 function timeOffBadge() { const a = $('#side a[href="/requests"]'); if (a && D.timeOffWaiting) a.insertAdjacentHTML('beforeend', ` <span class="nav-n" title="Requests waiting for you">${D.timeOffWaiting}</span>`); }
 function renderSide(path) {
   $('#side').innerHTML = `<div class="side-nav"><div class="brand">${company.logo ? `<a href="/" data-link class="brand-logo" title="Home"><img src="${esc(company.logo)}" alt="Home"></a>` : brandImg(company.account && company.account.product, 'dark')}<span>${esc(company.name || (company.account && company.account.productName) || 'Worklio Pro')}</span></div>` +
-    navFor().map(([g, items]) => `<div class="grp">${g}</div>` + items.map(([p, l]) => `<a href="${p}" data-link class="nav-link ${p === path || (!navPaths.includes(path) && path.startsWith(p + '/')) ? 'on' : ''}">${navIcon(p)}<span class="nav-l">${l}</span></a>`).join('')).join('') + `</div>${me ? `<div class="side-user"><a href="/profile" data-link class="side-user-name${path === '/profile' ? ' on' : ''}" title="My profile (${esc(me.email)})">${avatarHtml(me, 26)}<span>${esc(me.name)}</span></a><button type="button" data-act="logout">Log out</button></div>` : ''}`;
+    navFor().map(([g, items]) => `<div class="grp">${g}</div>` + items.map(([p, l]) => `<a href="${p}" data-link class="nav-link ${p === path || (!navPaths.includes(path) && path.startsWith(p + '/')) ? 'on' : ''}">${navIcon(p)}<span class="nav-l">${l}</span></a>`).join('')).join('') + `</div>${sideSettings(path)}`;
   $('#side').classList.remove('open');
   renderBottomNav(path);
+}
+// Settings at the bottom of the sidebar: opens its pages just above it, and stays open on a Settings page
+function sideSettings(path) {
+  const items = settingsFor(); if (!items.length) return '';
+  const isOn = (p) => p === path || (!navPaths.includes(path) && path.startsWith(p + '/')); const open = items.some(([p]) => isOn(p));
+  return `<div class="side-set"><div class="side-set-list" id="gearMenu"${open ? '' : ' hidden'}>${items.map(([p, l]) => `<a href="${p}" data-link class="${isOn(p) ? 'on' : ''}">${l}</a>`).join('')}</div>
+<button type="button" class="side-set-btn${open ? ' open' : ''}" data-act="toggleSettings" aria-expanded="${open}" aria-controls="gearMenu"><span class="nav-ic">${svgIcon(ICONS.gear, 19)}</span><span class="nav-l">Settings</span>${svgIcon(ICONS.chevUp, 16)}</button></div>`;
 }
 // bottom tab bar (phones): the first four main pages this member can open, then More for the full menu
 const bico = (d) => `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
@@ -230,13 +237,18 @@ function renderBottomNav(path) {
   $('#bnav').innerHTML = items.map(([p, l, d]) => { const on = p === path || (!navPaths.includes(path) && path.startsWith(p + '/')); return `<a href="${p}" data-link class="${on ? 'on' : ''}"${on ? ' aria-current="page"' : ''}>${bico(iconOf(p) || d)}<span>${l}</span></a>`; }).join('')
     + `<button type="button" data-act="toggleSide" aria-label="More menu" aria-expanded="false">${bico('<path d="M4 6h16M4 12h16M4 18h16"/>')}<span>More</span></button>`;
 }
-/* ===== top bar: feature search, help panel, settings (gear) menu ===== */
+/* ===== top bar: feature search, help panel, your account (initials) menu ===== */
 const svgIcon = (d, size = 20) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const ICONS = {
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
   help: '<circle cx="12" cy="12" r="9"/><path d="M9.6 9.2a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.3-2.4 3.9"/><path d="M12 17.2h.01"/>',
   gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
   close: '<path d="M18 6 6 18M6 6l12 12"/>',
+  qr: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 17h4v4h-4"/>',
+  chevUp: '<path d="m18 15-6-6-6 6"/>',
+  download: '<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>',
+  link: '<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>',
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   gift: '<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5C11 3 12 8 12 8s1-5 4.5-5a2.5 2.5 0 0 1 0 5"/>',
   back: '<path d="m15 18-6-6 6-6"/>',
   book: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5V21h16"/>',
@@ -278,7 +290,7 @@ function buildTopbar() {
   $('#topbar').innerHTML = `<a href="/" data-link class="tb-logo" title="Home">${company.logo ? `<img src="${esc(company.logo)}" alt="${esc(company.name || 'Home')}">` : `<span>${esc(company.name || 'Home')}</span>`}</a><div class="tb-search" role="search">${svgIcon(ICONS.search, 18)}<input id="featSearch" type="search" placeholder="Press / to search" autocomplete="off" spellcheck="false" aria-label="Search features" role="combobox" aria-autocomplete="list" aria-controls="featResults" aria-expanded="false"><div id="featResults" class="tb-results" role="listbox" hidden></div></div>
 <a class="tb-fb tb-ref" href="/rewards" data-link title="Refer other businesses and earn free months" hidden>${svgIcon(ICONS.gift, 18)}<span>Refer &amp; earn</span></a><a class="tb-fb tb-forum" href="/forum" data-link title="Suggest features and report issues, with other businesses" hidden>${svgIcon(ICONS.forum, 18)}<span>Forum</span></a><button type="button" class="tb-fb" data-act="feedbackForm" title="Send feedback about the app">${svgIcon(ICONS.feedback, 18)}<span>Feedback</span></button>
 <button type="button" class="tb-icon" data-act="openHelp" title="Help and support" aria-label="Help and support">${svgIcon(ICONS.help)}</button>
-<details class="menu tb-gear"><summary class="tb-icon" title="Settings" aria-label="Settings">${svgIcon(ICONS.gear)}</summary><div class="menu-list" id="gearMenu"></div></details>`;
+<details class="menu tb-me" hidden><summary class="tb-avatar" title="Your account" aria-label="Your account"></summary><div class="menu-list" id="meMenu"></div></details>`;
   const input = $('#featSearch'); const box = $('#featResults'); let hits = []; let sel = 0;
   const show = () => {
     hits = searchFeatures(input.value); sel = 0;
@@ -299,13 +311,16 @@ function buildTopbar() {
 function renderTopbar(path) {
   if (!$('#featSearch')) buildTopbar();
   const input = $('#featSearch'); input.value = ''; input.blur(); $('#featResults').hidden = true; input.setAttribute('aria-expanded', 'false');
-  const items = settingsFor(); const gear = $('.tb-gear'); gear.open = false; gear.hidden = !items.length;
+  const mine = $('.tb-me'); mine.open = false; mine.hidden = !me;
   $('.tb-ref').hidden = !(referralsOn() && memberCan('/rewards'));
   const fo = $('.tb-forum'); fo.hidden = !(isAdminMe() && company.account && company.account.forum); fo.classList.toggle('on', path === '/forum'); // owners and admins, while the forum is open
-  const isOn = (p) => p === path || (!navPaths.includes(path) && path.startsWith(p + '/'));
-  $('summary', gear).classList.toggle('on', items.some(([p]) => isOn(p)));
-  $('#gearMenu').innerHTML = '<div class="menu-h">Settings</div>' + items.map(([p, l]) => `<a href="${p}" data-link class="${isOn(p) ? 'on' : ''}">${l}</a>`).join('');
+  if (!me) return;
+  $('summary', mine).innerHTML = avatarHtml(me, 34);
+  $('#meMenu').innerHTML = `<div class="me-head"><a href="/profile" data-link class="me-who${path === '/profile' ? ' on' : ''}" title="My profile">${avatarHtml(me, 40)}<span><strong>${esc(me.name)}</strong><small>${esc(me.email)}</small></span></a>
+<button type="button" class="tb-icon me-qr" data-act="businessQr" title="QR code" aria-label="Show QR code">${svgIcon(ICONS.qr)}</button></div><hr class="mi-sep"><button type="button" class="me-out" data-act="logout">Log out</button>`;
 }
+// the business's QR code: its online booking page (or its web address when the plan has no booking), to print or share
+const qrLink = () => { const url = (company.account && company.account.url) || location.origin; return planHas('onlineBooking') ? url + '/book' : url; };
 // short how-to guides shown in the help panel; each step can link to the page it mentions
 const HELP_TOPICS = [
   { id: 'start', hc: 'get-started', title: 'Get Started', blurb: 'Set up your business details, branding and team so you’re ready to send your first quote.', steps: [
@@ -355,7 +370,7 @@ ${memberCan('/settings/support-access') ? `<a class="hp-link hp-nav" href="/sett
 function openHelp(topicId) {
   const p = $('#helpPanel'); p.innerHTML = helpView(topicId);
   p.classList.add('open'); p.setAttribute('aria-hidden', 'false'); $('#helpShade').hidden = false;
-  const g = $('.tb-gear'); if (g) g.open = false;
+  const g = $('.tb-me'); if (g) g.open = false;
   const f = $('.hp-head .tb-icon', p); if (f) f.focus();
 }
 function closeHelp() {
@@ -483,6 +498,15 @@ A.closeModal = closeModal;
 document.addEventListener('click', (e) => $$('details.menu[open]').forEach((m) => { if (!m.contains(e.target)) m.open = false; }));
 A.logout = async () => { await pushOffHere().catch(() => {}); await api('POST', '/api/auth/logout', {}); location.href = '/login'; };
 A.openHelp = () => openHelp();
+A.toggleSettings = (d, el) => { const list = $('#gearMenu'); list.hidden = !list.hidden; el.classList.toggle('open', !list.hidden); el.setAttribute('aria-expanded', !list.hidden); };
+A.businessQr = () => {
+  const url = qrLink(); const name = company.name || (company.account && company.account.productName) || 'Your business';
+  const body = modal('QR code', `<div class="qr-pop"><h2>${esc(name)}</h2><div class="qr-img">${qrSvg(url)}</div><p class="muted">Scan to ${url.endsWith('/book') ? 'book online' : 'visit'} · ${esc(url.replace(/^https?:\/\//, ''))}</p>
+<div class="qr-acts"><a href="${esc(url)}" target="_blank" rel="noopener">${svgIcon(ICONS.eye)}<span>Preview</span></a><button type="button" data-act="qrDownload">${svgIcon(ICONS.download)}<span>Download</span></button><button type="button" data-act="qrCopy">${svgIcon(ICONS.link)}<span>Copy link</span></button></div></div>`);
+  body.closest('.modal').classList.add('qr-modal');
+};
+A.qrDownload = () => { const a = document.createElement('a'); a.href = qrPng(qrLink()); a.download = `${(company.name || 'qr-code').replace(/[^\w-]+/g, '-').toLowerCase()}-qr.png`; a.click(); };
+A.qrCopy = async () => { await navigator.clipboard.writeText(qrLink()); toast('Link copied'); };
 A.feedbackForm = () => feedbackForm();
 A.closeHelp = closeHelp;
 A.helpTopic = (d) => openHelp(d.id);

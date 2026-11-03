@@ -14,9 +14,9 @@ const TOUR_STEPS = [
   { at: tourLink('/payments'), title: 'Money', text: 'Payments, expenses and reports show what came in, what went out and what you made.' },
   { at: ['.tb-search'], title: 'Search', text: 'Type what you’re after, like “new invoice” or “sales tax”, to jump straight there. Press / from any page.' },
   { at: ['#topbar [data-act=openHelp]'], title: 'Help', text: 'Short how-to guides, the Help Center and a way to message support. You can take this tour again from here.' },
-  { at: ['#topbar .tb-gear'], title: 'Settings', text: 'Your company profile, team, email templates, payments and plan.' },
   { at: ['#topbar .tb-forum', '#topbar [data-act=feedbackForm]'], title: 'Tell us what to improve', text: 'Suggest features and report issues in the Forum, where other businesses can vote on them, or send us private feedback.', alt: 'Tell us what’s working and what isn’t. Every message is read by the people who build the app.' },
-  { at: ['#side .side-user'], title: 'Your profile', text: 'Your name, photo and password. Switch between light and dark mode just above.' },
+  { at: ['#side .side-set'], title: 'Settings', text: 'Your company profile, team, email templates, payments and plan.' },
+  { at: ['#topbar .tb-me'], title: 'Your profile', text: 'Your name, photo and password, the QR code for your business, and Log out.' },
   { title: 'You’re all set', text: 'Want a checklist for setting up? Get Started walks you through your company details, services and team.', last: true },
 ];
 const tourVisible = (el) => { if (!el) return false; const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && r.right > 0 && r.left < innerWidth && r.bottom > 0 && r.top < innerHeight + 200; };
