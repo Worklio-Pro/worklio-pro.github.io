@@ -25,10 +25,14 @@
 .copy-row{display:flex;gap:8px;margin-top:8px}.copy-row input{height:36px;font-size:13px}
 /* Settings at the bottom of the sidebar: its pages open just above it */
 .side-set{margin:8px 0 0;padding:8px 0 0;border-top:1px solid rgba(255,255,255,.08)}
-.side-set-list{padding:0 0 4px 32px}#side .side-set-list a{padding:6px 10px;font-size:14px}
 .side-set-btn{display:flex;align-items:center;gap:12px;width:100%;padding:7px 10px;border:0;border-radius:8px;background:none;color:var(--nav-text,#cbd5e1);font:inherit;text-align:left;cursor:pointer}
 .side-set-btn:hover{background:var(--nav-hover,#1e3a6e)}.side-set-btn:hover .nav-ic{opacity:1}
-.side-set-btn>svg{flex:none;opacity:.7;transform:rotate(180deg);transition:transform .15s}.side-set-btn.open>svg{transform:none}
+.side-set-btn>svg{flex:none;opacity:.7}
+/* the Settings column: Go Back, the title, then its groups with a rule after each name */
+.side-back{display:inline-flex;align-items:center;gap:6px;margin:0 0 14px;padding:8px 12px 8px 8px;border:0;border-radius:8px;background:rgba(255,255,255,.08);color:var(--nav-text,#e2e8f0);font:inherit;font-weight:600;cursor:pointer}
+.side-back:hover{background:var(--nav-hover,#1e3a6e);color:#fff}
+.side-title{margin:0 10px 4px;font-size:20px;color:var(--nav-text,#fff)}
+.side-settings .grp{display:flex;align-items:center;gap:10px}.side-settings .grp::after{content:'';flex:1;border-top:1px solid color-mix(in srgb,var(--nav-text,#cbd5e1) 35%,transparent)}
 
 *{box-sizing:border-box}
 [hidden]{display:none!important}

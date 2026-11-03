@@ -147,8 +147,9 @@ const NAV = [
   ['Marketing', [['/reviews', 'Reviews'], ['/social-posts', 'Social Posts'], ['/automations', 'Automations']]],
   ['Records', [['/project-gallery', 'Project Gallery'], ['/notifications', 'Notifications Log']]],
 ];
-// the Settings pages live in the top bar's gear menu, not the sidebar
+// the Settings pages open in their own sidebar column (Settings at the bottom of the sidebar), in these groups
 const SETTINGS_NAV = [['/settings/company', 'Company Profile'], ['/team', 'Manage Team'], ['/settings/roles', 'Roles & Permissions'], ['/settings/emails', 'Email Templates'], ['/settings', 'App Settings'], ['/settings/preferences', 'Preferences'], ['/settings/connections', 'Account Connections'], ['/marketplace', 'App Marketplace'], ['/settings/billing', 'Account and Billing'], ['/rewards', 'Refer & Earn'], ['/settings/support-access', 'Support Access']];
+const SETTINGS_GROUPS = [['My Business', ['/settings/company', '/team', '/settings/roles', '/settings/billing']], ['Business Services', ['/settings/emails', '/settings/connections', '/marketplace']], ['Other Settings', ['/settings', '/settings/preferences', '/rewards', '/settings/support-access']]];
 const navPaths = [...NAV.flatMap(([, items]) => items.map(([p]) => p)), ...SETTINGS_NAV.map(([p]) => p)];
 const curPath = () => location.pathname.replace(/\/+$/, '') || '/';
 function navigate(url) { history.pushState({}, '', url); window.scrollTo(0, 0); return render(); }
@@ -191,18 +192,25 @@ const navFor = () => navList().map(([g, items]) => [g, items.filter(([p]) => mem
 // a page in beta testing (Alpha → Pricing → Plans & features) says so in a banner at the top, instead of a tag in the menu
 const BETA_BAR = '<div class="beta-bar" role="status"><span class="beta-pill">Beta</span><span>This page is in beta testing. It works, but it may change and you might run into rough edges. <button type="button" class="link-btn" data-act="feedbackForm">Tell us</button> if something doesn’t look right.</span></div>';
 function timeOffBadge() { const a = $('#side a[href="/requests"]'); if (a && D.timeOffWaiting) a.insertAdjacentHTML('beforeend', ` <span class="nav-n" title="Requests waiting for you">${D.timeOffWaiting}</span>`); }
+// the sidebar shows the Settings column on a Settings page, or after Settings is clicked; Go Back returns to the main menu until the page changes
+let sideMode = null; let sidePath = null; // sideMode: 'settings' | 'main' chosen on this page, null: follow the page
 function renderSide(path) {
-  $('#side').innerHTML = `<div class="side-nav"><div class="brand">${company.logo ? `<a href="/" data-link class="brand-logo" title="Home"><img src="${esc(company.logo)}" alt="Home"></a>` : brandImg(company.account && company.account.product, 'dark')}<span>${esc(company.name || (company.account && company.account.productName) || 'Worklio Pro')}</span></div>` +
-    navFor().map(([g, items]) => `<div class="grp">${g}</div>` + items.map(([p, l]) => `<a href="${p}" data-link class="nav-link ${p === path || (!navPaths.includes(path) && path.startsWith(p + '/')) ? 'on' : ''}">${navIcon(p)}<span class="nav-l">${l}</span></a>`).join('')).join('') + `</div>${sideSettings(path)}`;
+  if (path !== sidePath) { sidePath = path; sideMode = null; }
+  $('#side').innerHTML = sideHtml(path);
   $('#side').classList.remove('open');
   renderBottomNav(path);
 }
-// Settings at the bottom of the sidebar: opens its pages just above it, and stays open on a Settings page
-function sideSettings(path) {
-  const items = settingsFor(); if (!items.length) return '';
-  const isOn = (p) => p === path || (!navPaths.includes(path) && path.startsWith(p + '/')); const open = items.some(([p]) => isOn(p));
-  return `<div class="side-set"><div class="side-set-list" id="gearMenu"${open ? '' : ' hidden'}>${items.map(([p, l]) => `<a href="${p}" data-link class="${isOn(p) ? 'on' : ''}">${l}</a>`).join('')}</div>
-<button type="button" class="side-set-btn${open ? ' open' : ''}" data-act="toggleSettings" aria-expanded="${open}" aria-controls="gearMenu"><span class="nav-ic">${svgIcon(ICONS.gear, 19)}</span><span class="nav-l">Settings</span>${svgIcon(ICONS.chevUp, 16)}</button></div>`;
+const isOnPage = (p, path) => p === path || (!navPaths.includes(path) && path.startsWith(p + '/'));
+function sideHtml(path) {
+  const items = settingsFor();
+  if (items.length && (sideMode || (items.some(([p]) => isOnPage(p, path)) ? 'settings' : 'main')) === 'settings') {
+    const label = Object.fromEntries(items);
+    return `<div class="side-nav side-settings"><button type="button" class="side-back" data-act="sideBack">${svgIcon(ICONS.back, 18)}<span>Go Back</span></button><h2 class="side-title">Settings</h2>` +
+      SETTINGS_GROUPS.map(([g, paths]) => [g, paths.filter((p) => label[p])]).filter(([, ps]) => ps.length)
+        .map(([g, ps]) => `<div class="grp">${g}</div>` + ps.map((p) => `<a href="${p}" data-link class="${isOnPage(p, path) ? 'on' : ''}">${label[p]}</a>`).join('')).join('') + '</div>';
+  }
+  return `<div class="side-nav"><div class="brand">${company.logo ? `<a href="/" data-link class="brand-logo" title="Home"><img src="${esc(company.logo)}" alt="Home"></a>` : brandImg(company.account && company.account.product, 'dark')}<span>${esc(company.name || (company.account && company.account.productName) || 'Worklio Pro')}</span></div>` +
+    navFor().map(([g, items]) => `<div class="grp">${g}</div>` + items.map(([p, l]) => `<a href="${p}" data-link class="nav-link ${p === path || (!navPaths.includes(path) && path.startsWith(p + '/')) ? 'on' : ''}">${navIcon(p)}<span class="nav-l">${l}</span></a>`).join('')).join('') + `</div>${items.length ? `<div class="side-set"><button type="button" class="side-set-btn" data-act="openSettings"><span class="nav-ic">${svgIcon(ICONS.gear, 19)}</span><span class="nav-l">Settings</span>${svgIcon(ICONS.next, 16)}</button></div>` : ''}`;
 }
 // bottom tab bar (phones): the first four main pages this member can open, then More for the full menu
 const bico = (d) => `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
@@ -245,7 +253,7 @@ const ICONS = {
   gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
   close: '<path d="M18 6 6 18M6 6l12 12"/>',
   qr: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 17h4v4h-4"/>',
-  chevUp: '<path d="m18 15-6-6-6 6"/>',
+  next: '<path d="m9 18 6-6-6-6"/>',
   download: '<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>',
   link: '<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>',
   eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
@@ -498,7 +506,10 @@ A.closeModal = closeModal;
 document.addEventListener('click', (e) => $$('details.menu[open]').forEach((m) => { if (!m.contains(e.target)) m.open = false; }));
 A.logout = async () => { await pushOffHere().catch(() => {}); await api('POST', '/api/auth/logout', {}); location.href = '/login'; };
 A.openHelp = () => openHelp();
-A.toggleSettings = (d, el) => { const list = $('#gearMenu'); list.hidden = !list.hidden; el.classList.toggle('open', !list.hidden); el.setAttribute('aria-expanded', !list.hidden); };
+// switch the sidebar's column without closing the phone menu drawer
+const sideSwitch = (mode, focus) => { sideMode = mode; $('#side').innerHTML = sideHtml(curPath()); const f = $(focus, $('#side')); if (f) f.focus(); };
+A.openSettings = () => sideSwitch('settings', '.side-back');
+A.sideBack = () => sideSwitch('main', '.side-set-btn');
 A.businessQr = () => {
   const url = qrLink(); const name = company.name || (company.account && company.account.productName) || 'Your business';
   const body = modal('QR code', `<div class="qr-pop"><h2>${esc(name)}</h2><div class="qr-img">${qrSvg(url)}</div><p class="muted">Scan to ${url.endsWith('/book') ? 'book online' : 'visit'} · ${esc(url.replace(/^https?:\/\//, ''))}</p>
