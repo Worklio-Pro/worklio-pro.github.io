@@ -2809,6 +2809,7 @@ app.put('/api/connections/:kind', async (req, res) => {
 function liveAppState(a) {
   const planOk = !a.feature || tenancy.has(a.feature);
   if (SOCIAL_KINDS.includes(a.id)) return { planOk, available: social.ready(a.id), connected: !!connOf(a.id) };
+  if (a.id === 'bluesky') return { planOk, available: true, connected: !!connOf('bluesky') }; // the business's own app password: nothing for the platform to set up
   if (a.id === 'stripe') { const s = secrets(); const on = !!stripeKey() && (!!s.stripeChargesEnabled || !!s.stripeSecretKey || (tenancy.isDefault() && !!process.env.STRIPE_SECRET_KEY)); return { planOk, available: on || !!stripeLib.platformKey(), connected: on }; }
   if (a.id === 'homedepot') return { planOk, available: homeDepot.ready(), connected: !!hdSettings().on };
   if (a.id === 'claude') { const on = !!process.env.ANTHROPIC_API_KEY; return { planOk, available: on, connected: on }; }
