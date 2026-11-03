@@ -44,7 +44,7 @@ ${plans.map((p) => { const c = per(p); return `<label><input type="radio" name="
 <label>Password (8+ characters)<input name="password" type="password" required minlength="8" autocomplete="new-password"></label>
 <p class="tr-sum"></p>
 <label class="tr-agree"><input type="checkbox" name="agree"> <span>I agree to the <a href="/terms" target="_blank" rel="noopener">Terms of Service</a> and <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</span></label>
-<button class="btn tr-go">Start my 30-day free trial</button><p class="tr-note">No credit card needed. Add one in Account and billing before your trial ends to keep your account.</p></form></div></div>`;
+<button class="btn tr-go" disabled>Start my 30-day free trial</button><p class="tr-note">No credit card needed. Add one in Account and billing before your trial ends to keep your account.</p></form></div></div>`;
     document.body.appendChild(o);
     const close = () => { o.remove(); document.removeEventListener('keydown', onKey); if (opener && opener.focus) opener.focus(); };
     const onKey = (e) => { if (e.key === 'Escape') close(); }; document.addEventListener('keydown', onKey);
@@ -79,6 +79,7 @@ ${plans.map((p) => { const c = per(p); return `<label><input type="radio" name="
       const end = new Date(Date.now() + 29 * 864e5).toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
       $('.tr-sum', f2).innerHTML = `${S.trialCode ? `Code <b>${esc(S.trialCode)}</b> applied: ` : ''}<b>${esc(p.name)}</b> free until ${end}, then ${amount(c.v)}/${c.per} if you keep it.`; };
     f2.addEventListener('change', (e) => { if (e.target.name === 'plan') sum(); }); sum();
+    const agree = $('[name=agree]', f2); agree.addEventListener('change', () => { $('.tr-go', f2).disabled = !agree.checked; }); // ticking Terms and Privacy turns the button on
     f2.addEventListener('submit', async (e) => {
       e.preventDefault(); const b = { ...Object.fromEntries(new FormData(f1)), ...Object.fromEntries(new FormData(f2)) };
       if (!b.industry) return err(f2, 'Choose the kind of work you do.');
@@ -92,7 +93,7 @@ ${plans.map((p) => { const c = per(p); return `<label><input type="radio" name="
       const j = r ? await r.json().catch(() => ({})) : {};
       if (r && r.ok) { location.href = j.url; return; }
       err(f2, `${esc(j.error || 'Something went wrong. Check your connection and try again.')}${j.signIn ? ' <a href="/sign-in">Log in</a>' : ''}`); // the email already has a login
-      btn.disabled = false; btn.textContent = 'Start my 30-day free trial';
+      btn.disabled = !agree.checked; btn.textContent = 'Start my 30-day free trial';
     });
   }
   document.addEventListener('click', (e) => { if (e.target.closest('[data-trial]')) { e.preventDefault(); open(); } }); // also the pricing page's button, which site.js turns on
