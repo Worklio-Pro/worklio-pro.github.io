@@ -898,10 +898,11 @@ function marketingConnect(C) {
   const card = (name, icon, body, on) => `<div class="mk-card${on ? ' on' : ''}"><span class="mk-ic">${icon}</span><strong>${name}</strong>${body}</div>`;
   const soon = '<span class="mk-btn soon">Coming soon</span>';
   // the business signs in with its own account on each network
-  const live = (kind, name, x, who) => card(name, CONN_ICONS[kind], x.connected
-    ? `<span class="mk-on">Connected</span><small class="muted">${esc(who)}</small>${admin ? `<a class="mk-link" href="/settings/connections#conn-${kind}" data-link>Manage</a>` : ''}`
+  // who: the account it's connected to; a network the server doesn't list yet shows Coming soon
+  const live = (kind, name, who) => { const x = C[kind] || {}; return card(name, CONN_ICONS[kind], x.connected
+    ? `<span class="mk-on">Connected</span><small class="muted">${esc(who(x))}</small>${admin ? `<a class="mk-link" href="/settings/connections#conn-${kind}" data-link>Manage</a>` : ''}`
     : !x.available ? soon
-      : admin ? `<button type="button" class="mk-btn" data-act="socialConnect" data-kind="${kind}" data-back="/social-posts">+ Connect</button>` : '<small class="muted">Ask the account owner or an admin to connect it</small>', x.connected);
+      : admin ? `<button type="button" class="mk-btn" data-act="socialConnect" data-kind="${kind}" data-back="/social-posts">+ Connect</button>` : '<small class="muted">Ask the account owner or an admin to connect it</small>', x.connected); };
   const later = (name, key) => card(name, MK_ICONS[key], soon);
   const G = C.google || {};
   const gbp = card('Google Business Profile', MK_ICONS.google, G.connected
@@ -912,8 +913,8 @@ function marketingConnect(C) {
     ? `<span class="mk-on">Connected</span><small class="muted">@${esc(B.handle)}</small>${admin ? '<a class="mk-link" href="/settings/connections#conn-bluesky" data-link>Manage</a>' : ''}`
     : admin ? '<button type="button" class="mk-btn" data-act="bskyConnect">+ Connect</button>' : '<small class="muted">Ask the account owner or an admin to connect it</small>', B.connected);
   return `<section class="mk-connect"><h2>Connect your social accounts</h2><p class="muted">Pick where you want to publish. You can add or remove networks anytime.</p>
-<div class="mk-grp">Major networks</div><div class="mk-grid">${live('facebook', 'Facebook', C.facebook, C.facebook.name)}${live('instagram', 'Instagram', C.instagram, '@' + C.instagram.username)}${live('linkedin', 'LinkedIn', C.linkedin, C.linkedin.name)}${live('tiktok', 'TikTok', C.tiktok, C.tiktok.name)}${later('YouTube', 'youtube')}</div>
-<div class="mk-grp">More networks</div><div class="mk-grid">${bsky}${live('pinterest', 'Pinterest', C.pinterest, C.pinterest.name)}${live('threads', 'Threads', C.threads, '@' + C.threads.username)}${later('X', 'x')}${gbp}</div></section>`;
+<div class="mk-grp">Major networks</div><div class="mk-grid">${live('facebook', 'Facebook', (x) => x.name)}${live('instagram', 'Instagram', (x) => '@' + x.username)}${live('linkedin', 'LinkedIn', (x) => x.name)}${live('tiktok', 'TikTok', (x) => x.name)}${later('YouTube', 'youtube')}</div>
+<div class="mk-grp">More networks</div><div class="mk-grid">${bsky}${live('pinterest', 'Pinterest', (x) => x.name)}${live('threads', 'Threads', (x) => '@' + x.username)}${later('X', 'x')}${gbp}</div></section>`;
 }
 PAGES['/social-posts'] = {
   title: 'Marketing',
@@ -1421,7 +1422,7 @@ async function connectionsPage(main) {
       ['tiktok', 'TikTok account', 'Connect your TikTok account to publish photo posts. Until TikTok approves this app, posts can only be private.', (x) => `<strong>${esc(x.name)}</strong>`],
       ['threads', 'Threads account', 'Connect your Threads account to publish posts there.', (x) => `<a href="https://www.threads.net/@${encodeURIComponent(x.username)}" target="_blank" rel="noopener"><strong>@${esc(x.username)}</strong></a>`],
       ['pinterest', 'Pinterest account', 'Connect your Pinterest account to save your photos as Pins on one of your boards.', (x) => `the board <strong>${esc(x.name)}</strong>${x.username ? ` (@${esc(x.username)})` : ''}`]]
-      .map(([id, title, desc, to]) => ({ id, icon: id, title, desc: desc + (C[id].connected ? posts : ''), ...state(id, C[id], to(C[id])) })),
+      .map(([id, title, desc, to]) => { const x = C[id] || {}; return { id, icon: id, title, desc: desc + (x.connected ? posts : ''), ...state(id, x, x.connected ? to(x) : '') }; }),
     { id: 'bluesky', icon: 'bluesky', title: 'Bluesky account', desc: `Connect your Bluesky account with an app password to publish posts there.${B.connected ? posts : ''}`,
       ...(B.connected ? { status: connChip('on', 'Connected'), connectedTo: `Connected to <a href="https://bsky.app/profile/${encodeURIComponent(B.handle)}" target="_blank" rel="noopener"><strong>@${esc(B.handle)}</strong></a>.`,
         button: admin ? '<button type="button" class="btn alt conn-btn" data-act="socialDisconnect" data-kind="bluesky">Disconnect</button>' : '' }
