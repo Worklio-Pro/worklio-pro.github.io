@@ -537,7 +537,7 @@ A.openSettings = () => sideSwitch('settings', '.side-back');
 A.sideBack = () => sideSwitch('main', '.side-set-btn');
 A.businessQr = () => {
   const url = qrLink(); const name = company.name || (company.account && company.account.productName) || 'Your business';
-  const body = modal('QR code', `<div class="qr-pop"><h2>${esc(name)}</h2><div class="qr-img">${qrSvg(url)}</div>${['owner', 'admin'].includes(role()) ? '<button type="button" class="link-btn qr-edit" data-act="qrEditPage">Edit business page</button>' : ''}
+  const body = modal('QR code', `<div class="qr-pop"><h2>${esc(name)}</h2><div class="qr-img">${qrSvg(url)}</div>${['owner', 'admin'].includes(role()) ? '<button type="button" class="qr-edit" data-act="qrEditPage">' + svgIcon('<path d="M17 3a2.85 2.85 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5z"/>', 18) + '<span>Edit business page</span></button>' : ''}
 <div class="qr-acts"><a href="${esc(pageLink())}" target="_blank" rel="noopener">${svgIcon(ICONS.eye)}<span>Preview</span></a><button type="button" data-act="qrDownload">${svgIcon(ICONS.download)}<span>Download</span></button><button type="button" data-act="qrCopy">${svgIcon(ICONS.link)}<span>Copy link</span></button></div></div>`);
   body.closest('.modal').classList.add('qr-modal');
 };
