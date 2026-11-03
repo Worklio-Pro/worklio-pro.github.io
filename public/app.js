@@ -144,7 +144,7 @@ const PAGES = {};
 const NAV = [
   ['Operations', [['/business-overview', 'Home'], ['/calendar', 'Calendar'], ['/requests', 'Requests'], ['/clients', 'Clients'], ['/quotes', 'Quotes'], ['/jobs', 'Jobs'], ['/invoices', 'Invoices']]],
   ['Money', [['/payments', 'Payments'], ['/services', 'Products & Services'], ['/expenses', 'Expenses'], ['/reports', 'Financial Reports'], ['/tax-summary', 'Tax Summary']]],
-  ['Marketing', [['/reviews', 'Reviews'], ['/social-posts', 'Social Posts'], ['/automations', 'Automations']]],
+  ['Marketing', [['/reviews', 'Reviews'], ['/social-posts', 'Marketing'], ['/automations', 'Automations']]],
   ['Records', [['/project-gallery', 'Project Gallery'], ['/notifications', 'Notifications Log']]],
 ];
 // the Settings pages open in their own sidebar column (Settings at the bottom of the sidebar), in these groups
@@ -196,21 +196,25 @@ function timeOffBadge() { const a = $('#side a[href="/requests"]'); if (a && D.t
 let sideMode = null; let sidePath = null; // sideMode: 'settings' | 'main' chosen on this page, null: follow the page
 function renderSide(path) {
   if (path !== sidePath) { sidePath = path; sideMode = null; }
-  $('#side').innerHTML = sideHtml(path);
+  fillSide(path);
   $('#side').classList.remove('open');
   renderBottomNav(path);
 }
+// the business logo and the search box top both columns; the search box is one element moved between them, so it keeps its handlers
+function fillSide(path) { $('#side').innerHTML = sideHtml(path); $('#side .brand').after(searchBox()); }
 const isOnPage = (p, path) => p === path || (!navPaths.includes(path) && path.startsWith(p + '/'));
+const SIDE_BREAKS = ['Money', 'Marketing']; // a line above these sections; the main menu shows no section names
 function sideHtml(path) {
   const items = settingsFor();
+  const brand = `<div class="brand">${company.logo ? `<a href="/" data-link class="brand-logo" title="Home"><img src="${esc(company.logo)}" alt="Home"></a>` : brandImg(company.account && company.account.product, 'dark')}<span>${esc(company.name || (company.account && company.account.productName) || 'Worklio Pro')}</span></div>`;
   if (items.length && (sideMode || (items.some(([p]) => isOnPage(p, path)) ? 'settings' : 'main')) === 'settings') {
     const label = Object.fromEntries(items);
-    return `<div class="side-nav side-settings"><button type="button" class="side-back" data-act="sideBack">${svgIcon(ICONS.back, 18)}<span>Go Back</span></button><h2 class="side-title">Settings</h2>` +
+    return `<div class="side-nav side-settings">${brand}<button type="button" class="side-back" data-act="sideBack">${svgIcon(ICONS.back, 18)}<span>Go Back</span></button><h2 class="side-title">Settings</h2>` +
       SETTINGS_GROUPS.map(([g, paths]) => [g, paths.filter((p) => label[p])]).filter(([, ps]) => ps.length)
         .map(([g, ps]) => `<div class="grp">${g}</div>` + ps.map((p) => `<a href="${p}" data-link class="${isOnPage(p, path) ? 'on' : ''}">${label[p]}</a>`).join('')).join('') + '</div>';
   }
-  return `<div class="side-nav"><div class="brand">${company.logo ? `<a href="/" data-link class="brand-logo" title="Home"><img src="${esc(company.logo)}" alt="Home"></a>` : brandImg(company.account && company.account.product, 'dark')}<span>${esc(company.name || (company.account && company.account.productName) || 'Worklio Pro')}</span></div>` +
-    navFor().map(([g, items]) => `<div class="grp">${g}</div>` + items.map(([p, l]) => `<a href="${p}" data-link class="nav-link ${p === path || (!navPaths.includes(path) && path.startsWith(p + '/')) ? 'on' : ''}">${navIcon(p)}<span class="nav-l">${l}</span></a>`).join('')).join('') + `</div>${items.length ? `<div class="side-set"><button type="button" class="side-set-btn" data-act="openSettings"><span class="nav-ic">${svgIcon(ICONS.gear, 19)}</span><span class="nav-l">Settings</span>${svgIcon(ICONS.next, 16)}</button></div>` : ''}`;
+  return `<div class="side-nav">${brand}` +
+    navFor().map(([g, items]) => (SIDE_BREAKS.includes(g) ? '<hr class="side-div">' : '') + items.map(([p, l]) => `<a href="${p}" data-link class="nav-link ${p === path || (!navPaths.includes(path) && path.startsWith(p + '/')) ? 'on' : ''}">${navIcon(p)}<span class="nav-l">${l}</span></a>`).join('')).join('') + `</div>${items.length ? `<div class="side-set"><button type="button" class="side-set-btn" data-act="openSettings"><span class="nav-ic">${svgIcon(ICONS.gear, 19)}</span><span class="nav-l">Settings</span>${svgIcon(ICONS.next, 16)}</button></div>` : ''}`;
 }
 // bottom tab bar (phones): the first four main pages this member can open, then More for the full menu
 const bico = (d) => `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
@@ -294,12 +298,19 @@ function searchFeatures(q) {
   return featureList().filter((f) => terms.every((t) => f.words.includes(t))).sort((a, b) => rank(a) - rank(b)).slice(0, 8);
 }
 function buildTopbar() {
-  // phones: the company logo (or name) in place of the search box
-  $('#topbar').innerHTML = `<a href="/" data-link class="tb-logo" title="Home">${company.logo ? `<img src="${esc(company.logo)}" alt="${esc(company.name || 'Home')}">` : `<span>${esc(company.name || 'Home')}</span>`}</a><div class="tb-search" role="search">${svgIcon(ICONS.search, 18)}<input id="featSearch" type="search" placeholder="Press / to search" autocomplete="off" spellcheck="false" aria-label="Search features" role="combobox" aria-autocomplete="list" aria-controls="featResults" aria-expanded="false"><div id="featResults" class="tb-results" role="listbox" hidden></div></div>
+  // phones: the company logo (or name) on the left
+  $('#topbar').innerHTML = `<a href="/" data-link class="tb-logo" title="Home">${company.logo ? `<img src="${esc(company.logo)}" alt="${esc(company.name || 'Home')}">` : `<span>${esc(company.name || 'Home')}</span>`}</a>
 <a class="tb-fb tb-ref" href="/rewards" data-link title="Refer other businesses and earn free months" hidden>${svgIcon(ICONS.gift, 18)}<span>Refer &amp; earn</span></a><a class="tb-fb tb-forum" href="/forum" data-link title="Suggest features and report issues, with other businesses" hidden>${svgIcon(ICONS.forum, 18)}<span>Forum</span></a><button type="button" class="tb-fb" data-act="feedbackForm" title="Send feedback about the app">${svgIcon(ICONS.feedback, 18)}<span>Feedback</span></button>
 <button type="button" class="tb-icon" data-act="openHelp" title="Help and support" aria-label="Help and support">${svgIcon(ICONS.help)}</button>
 <details class="menu tb-me" hidden><summary class="tb-avatar" title="Your account" aria-label="Your account"></summary><div class="menu-list" id="meMenu"></div></details>`;
-  const input = $('#featSearch'); const box = $('#featResults'); let hits = []; let sel = 0;
+}
+// the feature search, under the business logo in the sidebar
+let searchEl = null;
+function searchBox() {
+  if (searchEl) return searchEl;
+  searchEl = document.createElement('div'); searchEl.className = 'tb-search side-search'; searchEl.setAttribute('role', 'search');
+  searchEl.innerHTML = `${svgIcon(ICONS.search, 18)}<input id="featSearch" type="search" placeholder="Press / to search" autocomplete="off" spellcheck="false" aria-label="Search features" role="combobox" aria-autocomplete="list" aria-controls="featResults" aria-expanded="false"><div id="featResults" class="tb-results" role="listbox" hidden></div>`;
+  const input = $('input', searchEl); const box = $('.tb-results', searchEl); let hits = []; let sel = 0;
   const show = () => {
     hits = searchFeatures(input.value); sel = 0;
     box.hidden = !input.value.trim(); input.setAttribute('aria-expanded', !box.hidden);
@@ -315,10 +326,17 @@ function buildTopbar() {
     else if (e.key === 'Escape') { e.stopPropagation(); if (input.value) { input.value = ''; show(); } else input.blur(); }
   });
   document.addEventListener('click', (e) => { if (!e.target.closest('.tb-search')) { box.hidden = true; input.setAttribute('aria-expanded', 'false'); } });
+  return searchEl;
+}
+// "/" and the help panel's Search features: on a phone or narrow window the sidebar is a drawer, so open it first
+function focusSearch() {
+  closeHelp(); const side = $('#side');
+  if (getComputedStyle(side).position === 'fixed') setTimeout(() => side.classList.add('open')); // after the click that would close the drawer
+  $('#featSearch').focus();
 }
 function renderTopbar(path) {
-  if (!$('#featSearch')) buildTopbar();
-  const input = $('#featSearch'); input.value = ''; input.blur(); $('#featResults').hidden = true; input.setAttribute('aria-expanded', 'false');
+  if (!$('.tb-me')) buildTopbar();
+  const input = $('input', searchBox()); input.value = ''; input.blur(); $('#featResults').hidden = true; input.setAttribute('aria-expanded', 'false');
   const mine = $('.tb-me'); mine.open = false; mine.hidden = !me;
   $('.tb-ref').hidden = !(referralsOn() && memberCan('/rewards'));
   const fo = $('.tb-forum'); fo.hidden = !(isAdminMe() && company.account && company.account.forum); fo.classList.toggle('on', path === '/forum'); // owners and admins, while the forum is open
@@ -435,7 +453,7 @@ function feedbackForm() {
 // "/" (or Ctrl/⌘ K) jumps to the search box from anywhere except while typing
 document.addEventListener('keydown', (e) => {
   const typing = e.target.closest('input, textarea, select, [contenteditable]');
-  if (((e.key === '/' && !typing) || (e.key.toLowerCase() === 'k' && (e.metaKey || e.ctrlKey))) && $('#featSearch') && $('#topbar').style.display !== 'none' && !$('#overlay')) { e.preventDefault(); closeHelp(); $('#featSearch').focus(); }
+  if (((e.key === '/' && !typing) || (e.key.toLowerCase() === 'k' && (e.metaKey || e.ctrlKey))) && $('#featSearch') && $('#topbar').style.display !== 'none' && !$('#overlay')) { e.preventDefault(); focusSearch(); }
   if (e.key === 'Escape') closeHelp();
 });
 async function render() {
@@ -507,7 +525,7 @@ document.addEventListener('click', (e) => $$('details.menu[open]').forEach((m) =
 A.logout = async () => { await pushOffHere().catch(() => {}); await api('POST', '/api/auth/logout', {}); location.href = '/login'; };
 A.openHelp = () => openHelp();
 // switch the sidebar's column without closing the phone menu drawer
-const sideSwitch = (mode, focus) => { sideMode = mode; $('#side').innerHTML = sideHtml(curPath()); const f = $(focus, $('#side')); if (f) f.focus(); };
+const sideSwitch = (mode, focus) => { sideMode = mode; fillSide(curPath()); const f = $(focus, $('#side')); if (f) f.focus(); };
 A.openSettings = () => sideSwitch('settings', '.side-back');
 A.sideBack = () => sideSwitch('main', '.side-set-btn');
 A.businessQr = () => {
@@ -522,7 +540,7 @@ A.feedbackForm = () => feedbackForm();
 A.closeHelp = closeHelp;
 A.helpTopic = (d) => openHelp(d.id);
 A.supportForm = (d) => supportForm({ title: d.title, topic: d.topic });
-A.focusSearch = () => { closeHelp(); $('#featSearch').focus(); };
+A.focusSearch = focusSearch;
 A.setTheme = (d) => { applyTheme(d.t); $$('.ap-card').forEach((b) => { b.classList.toggle('on', b.dataset.t === d.t); b.setAttribute('aria-pressed', b.dataset.t === d.t); }); };
 
 /* ===== line items editor (quotes + invoices) ===== */

@@ -856,10 +856,10 @@ async function toJpeg(src, max = 1440) {
   return c.toDataURL('image/jpeg', 0.88);
 }
 PAGES['/social-posts'] = {
-  title: 'Social Posts',
+  title: 'Marketing',
   async render(main) {
     const R = await api('GET', '/api/social-posts');
-    const head = '<div class="head"><div><h1>Social Posts</h1><p class="sub">Share your work on Facebook and Instagram. Before-and-after photos from your jobs make great posts.</p></div></div>';
+    const head = '<div class="head"><div><h1>Marketing</h1><p class="sub">Share your work on Facebook and Instagram. Before-and-after photos from your jobs make great posts.</p></div></div>';
     if (!R.facebook && !R.instagram) {
       main.innerHTML = `${head}<div class="card rv-empty"><div class="conn-ic sp-ics">${CONN_ICONS.facebook}${CONN_ICONS.instagram}</div><h2>Connect Facebook or Instagram</h2><p class="muted">Then post photos from your Project Gallery to your Facebook Page and Instagram, right from here.</p>
 ${['owner', 'admin'].includes(role()) ? '<a class="btn" href="/settings/connections" data-link>Go to Account Connections</a>' : '<p class="muted">Ask the account owner or an admin to connect them in Account Connections.</p>'}</div>`;
@@ -1311,7 +1311,7 @@ async function connectionsPage(main) {
     G.reviewsPlan ? sub('Reviews', 'See client and Google reviews, and reply to Google reviews from here.', '', '<a class="btn alt sm" href="/reviews" data-link>Manage</a>') : '',
     G.bookingPlan ? sub('Online booking', 'Add a <strong>Book</strong> button to your Google Business Profile that opens your booking page.', G.booking ? connChip('on', 'On') : connChip('off', 'Off'), admin ? '<button type="button" class="btn alt sm" data-act="bookingManage">Manage</button>' : '') : '',
   ].join('') : '';
-  const posts = C.postsPlan ? ' Then post your project photos from <a href="/social-posts" data-link>Social Posts</a>.' : '';
+  const posts = C.postsPlan ? ' Then post your project photos from <a href="/social-posts" data-link>Marketing</a>.' : '';
   const rows = [
     { id: 'google', icon: 'google', title: 'Google Business Profile', desc: 'Connect your Google Business Profile and manage which features use it.', ...state('google', G, `<strong>${esc(G.title)}</strong>`), body: gSubs },
     { id: 'facebook', icon: 'facebook', title: 'Facebook Business Page', desc: `Connect your Facebook Business Page and manage which features use it. You’ll need full admin permissions for the business profile to connect it.${F.connected ? posts : ''}`,
