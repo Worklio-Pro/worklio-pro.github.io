@@ -309,7 +309,7 @@ let searchEl = null;
 function searchBox() {
   if (searchEl) return searchEl;
   searchEl = document.createElement('div'); searchEl.className = 'tb-search side-search'; searchEl.setAttribute('role', 'search');
-  searchEl.innerHTML = `${svgIcon(ICONS.search, 18)}<input id="featSearch" type="search" placeholder="Press / to search" autocomplete="off" spellcheck="false" aria-label="Search features" role="combobox" aria-autocomplete="list" aria-controls="featResults" aria-expanded="false"><div id="featResults" class="tb-results" role="listbox" hidden></div>`;
+  searchEl.innerHTML = `${svgIcon(ICONS.search, 18)}<input id="featSearch" type="search" placeholder="Search" autocomplete="off" spellcheck="false" aria-label="Search features" role="combobox" aria-autocomplete="list" aria-controls="featResults" aria-expanded="false"><div id="featResults" class="tb-results" role="listbox" hidden></div>`;
   const input = $('input', searchEl); const box = $('.tb-results', searchEl); let hits = []; let sel = 0;
   const show = () => {
     hits = searchFeatures(input.value); sel = 0;
