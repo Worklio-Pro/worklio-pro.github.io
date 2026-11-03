@@ -912,6 +912,7 @@ a.conn-chip{text-decoration:none}a.conn-chip:hover{text-decoration:underline}
 .mk-btn:hover:not(.soon){background:var(--tint);color:var(--tint-fg)}.mk-btn.soon{color:var(--muted);cursor:default}
 .mk-on{display:inline-flex;align-items:center;gap:6px;margin-top:4px;padding:4px 10px;border-radius:99px;background:var(--ok-bg);color:var(--ok-fg);font-size:13px;font-weight:600}.mk-on::before{content:'✓'}
 .mk-link{font-size:13px;font-weight:600;text-decoration:none}
+.sp-over{color:var(--danger)!important;font-weight:600} /* the caption is over Bluesky's 300 characters */
 .sp-dests{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px}
 .sp-dest{display:flex;align-items:center;gap:10px;padding:10px 14px;border:1px solid var(--line);border-radius:10px;cursor:pointer;margin:0;min-width:220px}
 .sp-dest:has(input:checked){border-color:var(--brand);background:var(--tint)}

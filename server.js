@@ -20,6 +20,7 @@ const seo = require('./lib/seo');
 const maintenance = require('./lib/maintenance');
 const stripeLib = require('./lib/stripe');
 const social = require('./lib/social');
+const bluesky = require('./lib/bluesky');
 const tiktokLib = require('./lib/tiktok'); tiktokLib.init(); // Alpha → Social: scheduled TikTok posts, checked every 30 seconds
 const rolesLib = require('./lib/roles');
 const iconsLib = require('./lib/icons');
@@ -2714,7 +2715,7 @@ app.get('/api/integrations', async (req, res) => {
   });
 });
 
-// ---------- Account Connections: Google Business Profile, Facebook and Instagram (lib/social.js) ----------
+// ---------- Account Connections: Google Business Profile, Facebook and Instagram (lib/social.js), and Bluesky (lib/bluesky.js) ----------
 // The sign-in returns to the platform address, which calls saveConnection inside this account. Tokens stay in the account's secrets.
 const SOCIAL_KINDS = ['google', 'facebook', 'instagram'];
 const connOf = (kind) => (secrets().social || {})[kind] || null;
@@ -2728,12 +2729,13 @@ function saveConnection(kind, conn) {
 }
 const bookingUrl = () => `${baseUrl()}/book`;
 function connectionsView() {
-  const g = connOf('google'); const f = connOf('facebook'); const i = connOf('instagram');
+  const g = connOf('google'); const f = connOf('facebook'); const i = connOf('instagram'); const bs = connOf('bluesky');
   return {
     google: { available: social.ready('google'), connected: !!g, title: g ? g.title : '', address: g ? g.address : '', mapsUrl: g ? g.mapsUrl : '', reviewUrl: g ? g.reviewUrl : '', choices: g ? g.choices || 1 : 0,
       reviews: !!(g && g.reviews !== false), booking: !!(g && g.booking), bookingUrl: bookingUrl(), bookingPlan: tenancy.has('onlineBooking'), reviewsPlan: tenancy.has('reviews') },
     facebook: { available: social.ready('facebook'), connected: !!f, name: f ? f.name : '', link: f ? f.link : '', choices: f ? f.choices || 1 : 0 },
     instagram: { available: social.ready('instagram'), connected: !!i, username: i ? i.username : '', choices: i ? i.choices || 1 : 0 },
+    bluesky: { available: true, connected: !!bs, handle: bs ? bs.handle : '' }, // the business's own handle and app password: nothing for the platform to set up
     postsPlan: tenancy.has('socialPosts'),
   };
 }
@@ -2745,6 +2747,13 @@ const connKind = (req, res) => {
 // a Google or Meta call failed: the message, and a saved token refresh either way
 const connFail = (res, e) => { save(); res.status(e.status || 502).json({ error: e.message }); };
 app.get('/api/connections', (req, res) => res.json(connectionsView()));
+// Bluesky: the handle and an app password, checked by signing in before they're saved
+const adminOnly = (req, res) => { if (isAdmin(currentUser(req))) return true; res.status(403).json({ error: 'Only the account owner or an admin can manage connections' }); return false; };
+app.post('/api/connections/bluesky', async (req, res) => {
+  if (!adminOnly(req, res)) return; const b = req.body || {};
+  try { setConnection('bluesky', await bluesky.connect(b.handle, b.appPassword)); res.json(connectionsView()); } catch (e) { res.status(e.status || 502).json({ error: e.message }); }
+});
+app.delete('/api/connections/bluesky', (req, res) => { if (!adminOnly(req, res)) return; setConnection('bluesky', null); res.json(connectionsView()); }); // the business can also revoke the app password in Bluesky
 app.post('/api/connections/:kind/start', (req, res) => {
   const kind = connKind(req, res); if (!kind) return;
   if (!social.ready(kind)) return res.status(503).json({ error: 'This connection isn’t available yet.' });
@@ -2851,7 +2860,7 @@ app.delete('/api/reviews/reply', async (req, res) => {
 
 // Social Posts: project photos to the connected Facebook Page and Instagram account. Photos arrive as JPEGs (the browser converts them)
 // and are saved in the account's uploads, because Facebook and Instagram fetch them from a public address.
-const POST_TO = { facebook: (c, p) => social.facebookPost(c, p), instagram: (c, p) => social.instagramPost(c, p) };
+const POST_TO = { facebook: (c, p) => social.facebookPost(c, p), instagram: (c, p) => social.instagramPost(c, p), bluesky: (c, p) => bluesky.post(c, p) }; // Bluesky gets the photos themselves (jpegs)
 // ---------- the business's own automations (lib/business-automations.js) ----------
 const portalLink = (c) => { if (!c.portalToken) { c.portalToken = token(); save(); } return `${baseUrl()}/client-portal?c=${c.portalToken}`; };
 const bizAuto = require('./lib/business-automations')({ db, save, uid, token, iso, niceDate, money, findClient, tenancy, localNow, withStatus, quoteLink, invoiceLink, portalLink, baseUrl, renderEmail, notify, sendEmail, pushTo, jobCrew, pushTime, reviewRecord, reviewLink });
@@ -2872,8 +2881,8 @@ const autoUnsubPage = (c, tk) => {
 app.get('/p/automations/:token', (req, res) => { const c = bizAuto.clientByToken(req.params.token); if (!c) return res.status(404).send(shell('Link not found', '<h1>This link isn’t valid</h1>')); res.send(autoUnsubPage(c, req.params.token)); });
 app.post('/p/automations/:token', (req, res) => { const c = bizAuto.clientByToken(req.params.token); if (!c) return res.status(404).send(shell('Link not found', '<h1>This link isn’t valid</h1>')); bizAuto.setOptOut(c, !req.query.on); res.send(autoUnsubPage(c, req.params.token)); });
 app.get('/api/social-posts', (req, res) => {
-  const f = connOf('facebook'); const i = connOf('instagram');
-  res.json({ posts: (db.socialPosts || []).slice(0, 100), facebook: f ? { name: f.name, link: f.link } : null, instagram: i ? { username: i.username } : null });
+  const f = connOf('facebook'); const i = connOf('instagram'); const bs = connOf('bluesky');
+  res.json({ posts: (db.socialPosts || []).slice(0, 100), facebook: f ? { name: f.name, link: f.link } : null, instagram: i ? { username: i.username } : null, bluesky: bs ? { handle: bs.handle } : null });
 });
 app.post('/api/social-posts', async (req, res) => {
   const b = req.body || {}; const caption = String(b.caption || '').trim();
@@ -2889,18 +2898,19 @@ app.post('/api/social-posts', async (req, res) => {
     const m = /^data:image\/jpeg;base64,(.+)$/.exec(d || ''); if (!m) return res.status(400).json({ error: 'Photos must be JPEG images' });
     const buf = Buffer.from(m[1], 'base64'); if (buf.length > 8e6) return res.status(400).json({ error: 'Each photo must be under 8 MB' }); bufs.push(buf);
   }
+  if (to.includes('bluesky')) { const bad = bluesky.problem({ caption, jpegs: bufs }); if (bad) return res.status(400).json({ error: bad }); } // before posting anywhere
   const images = bufs.map((buf) => { const file = `post-${Date.now()}-${uid()}.jpg`; fs.writeFileSync(path.join(uploadDir(), file), buf); return `/uploads/${file}`; });
   const post = { id: uid(), caption, images, results: {}, createdAt: new Date().toISOString(), by: currentUser(req).name || '' };
   for (const k of to) {
     try {
-      const r = await POST_TO[k](connOf(k), { caption, images: images.map((u) => baseUrl() + u) });
-      post.results[k] = { status: 'posted', url: k === 'facebook' ? `https://www.facebook.com/${r.post_id || r.id}` : r.permalink || `https://www.instagram.com/${connOf(k).username}` };
+      const r = await POST_TO[k](connOf(k), { caption, images: images.map((u) => baseUrl() + u), jpegs: bufs });
+      post.results[k] = { status: 'posted', url: k === 'facebook' ? `https://www.facebook.com/${r.post_id || r.id}` : k === 'bluesky' ? r.url : r.permalink || `https://www.instagram.com/${connOf(k).username}` };
     } catch (e) { post.results[k] = { status: 'failed', error: e.message }; }
   }
   db.socialPosts = [post, ...(db.socialPosts || [])].slice(0, 500); save();
   res.status(201).json(post);
 });
-// takes a post off this list only: it stays on Facebook and Instagram
+// takes a post off this list only: it stays on the networks it was posted to
 app.delete('/api/social-posts/:id', (req, res) => {
   if (!isAdmin(currentUser(req))) return res.status(403).json({ error: 'Ask the account owner or an admin' });
   db.socialPosts = (db.socialPosts || []).filter((p) => p.id !== req.params.id); save(); res.json({ ok: true });
