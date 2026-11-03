@@ -899,6 +899,19 @@ a.hp-nav{color:var(--text);text-decoration:none;padding:6px 8px;margin:0 -8px 10
 .conn-chip.bad i{background:var(--danger)}
 a.conn-chip{text-decoration:none}a.conn-chip:hover{text-decoration:underline}
 .sp-ics{gap:8px}.sp-ics svg{width:40px;height:40px}
+/* Marketing: the intro, then Connect your social accounts as a grid of networks */
+.mk-hero{text-align:center;max-width:780px;margin:8px auto 28px}.mk-hero h1{font-size:28px;margin:0 0 10px}.mk-hero .sub{line-height:1.6}
+.mk-connect{max-width:1080px;margin:0 auto 28px}.mk-connect>h2{text-align:center;font-size:17px;margin:0 0 4px}.mk-connect>p{text-align:center;margin:0 0 18px;font-size:14px}
+.mk-grp{font-size:13px;color:var(--muted);margin:18px 0 10px}
+.mk-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.mk-card{display:flex;flex-direction:column;align-items:center;gap:8px;padding:20px 12px 18px;background:var(--card);border:1px solid var(--line);border-radius:12px;text-align:center;min-width:0}
+.mk-card.on{border-color:color-mix(in srgb,var(--ok-fg,#16a34a) 45%,var(--line))}
+.mk-card>strong{font-weight:500;font-size:15px}.mk-card small{font-size:12px;overflow-wrap:anywhere}
+.mk-ic svg{width:48px;height:48px;display:block}
+.mk-btn{display:inline-block;margin-top:4px;padding:6px 14px;border:0;border-radius:6px;background:var(--surface-2);color:var(--text);font:inherit;font-size:13px;cursor:pointer}
+.mk-btn:hover:not(.soon){background:var(--tint);color:var(--tint-fg)}.mk-btn.soon{color:var(--muted);cursor:default}
+.mk-on{display:inline-flex;align-items:center;gap:6px;margin-top:4px;padding:4px 10px;border-radius:99px;background:var(--ok-bg);color:var(--ok-fg);font-size:13px;font-weight:600}.mk-on::before{content:'✓'}
+.mk-link{font-size:13px;font-weight:600;text-decoration:none}
 .sp-dests{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px}
 .sp-dest{display:flex;align-items:center;gap:10px;padding:10px 14px;border:1px solid var(--line);border-radius:10px;cursor:pointer;margin:0;min-width:220px}
 .sp-dest:has(input:checked){border-color:var(--brand);background:var(--tint)}

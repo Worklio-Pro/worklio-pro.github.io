@@ -855,16 +855,40 @@ async function toJpeg(src, max = 1440) {
   const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
   return c.toDataURL('image/jpeg', 0.88);
 }
+// Marketing → Connect your social accounts: the business connects its own accounts here (the same connections as Account Connections)
+const MK_ICONS = {
+  linkedin: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#0A66C2"/><rect x="12.5" y="20" width="5" height="15" fill="#fff"/><circle cx="15" cy="14.6" r="3" fill="#fff"/><path fill="#fff" d="M22 20h4.8v2.2c.7-1.3 2.4-2.6 5-2.6 5 0 5.9 3.2 5.9 7.4V35h-5v-7.1c0-1.7 0-3.9-2.4-3.9s-2.8 1.9-2.8 3.8V35H22z"/></svg>',
+  tiktok: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#000"/><path fill="#fff" d="M26.5 11h4.3c.3 2.9 2.3 5 5.2 5.3v4.3c-1.9 0-3.7-.6-5.2-1.6v9a7.6 7.6 0 1 1-7.6-7.6l1.1.1v4.4a3.2 3.2 0 1 0 2.2 3.1z"/></svg>',
+  youtube: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#FF0000"/><rect x="10" y="14" width="28" height="20" rx="6" fill="#fff"/><path fill="#FF0000" d="M21 19v10l8.5-5z"/></svg>',
+  pinterest: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#E60023"/><path fill="#fff" d="M24.6 11c-7.4 0-11.2 5.3-11.2 9.7 0 2.7 1 5 3.2 5.9.4.1.7 0 .8-.4l.3-1.3c.1-.4.1-.5-.2-.9-.7-.8-1.1-1.8-1.1-3.2 0-4.2 3.1-7.9 8.1-7.9 4.4 0 6.9 2.7 6.9 6.3 0 4.7-2.1 8.8-5.2 8.8-1.7 0-3-1.4-2.6-3.2.5-2.1 1.5-4.3 1.5-5.8 0-1.4-.7-2.5-2.3-2.5-1.8 0-3.2 1.9-3.2 4.3 0 1.6.5 2.6.5 2.6l-2.2 9.1c-.6 2.7-.1 6 0 6.3h.4c.2-.3 2.4-3 3.1-5.8l1.2-4.7c.6 1.2 2.4 2.2 4.2 2.2 5.5 0 9.2-5 9.2-11.7C35.5 15.7 31.3 11 24.6 11z"/></svg>',
+  threads: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#000"/><text x="24" y="32.5" text-anchor="middle" font-family="system-ui,sans-serif" font-size="25" font-weight="700" fill="#fff">@</text></svg>',
+  bluesky: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#1185FE"/><path fill="#fff" d="M16.5 14.6c2.9 2.2 6 6.6 7.5 9 1.5-2.4 4.6-6.8 7.5-9 2.1-1.6 5.5-2.8 5.5 1.1 0 .8-.4 6.6-.7 7.5-.9 3.3-4.3 4.1-7.3 3.6 5.2.9 6.5 3.8 3.7 6.7-5.4 5.5-7.7-1.4-8.3-3.1l-.4-1.1-.4 1.1c-.6 1.7-2.9 8.6-8.3 3.1-2.8-2.9-1.5-5.8 3.7-6.7-3 .5-6.4-.3-7.3-3.6-.3-.9-.7-6.7-.7-7.5 0-3.9 3.4-2.7 5.5-1.1z"/></svg>',
+  x: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#000"/><path fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" d="M15 14l18 20M33 14L15 34"/></svg>',
+  // Google's G on a white tile, built when drawn (CONN_ICONS comes later in this file)
+  get google() { return '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3.5" y="3.5" width="41" height="41" rx="10" fill="#fff" stroke="#dadce0"/><g transform="translate(10 10) scale(.583)">' + CONN_ICONS.google.replace(/^<svg[^>]*>/, '').replace(/<\/svg>$/, '') + '</g></svg>'; },
+};
+function marketingConnect(C) {
+  const admin = ['owner', 'admin'].includes(role());
+  const card = (name, icon, body, on) => `<div class="mk-card${on ? ' on' : ''}"><span class="mk-ic">${icon}</span><strong>${name}</strong>${body}</div>`;
+  const soon = '<span class="mk-btn soon">Coming soon</span>';
+  // Facebook and Instagram: the business signs in with its own Page and account
+  const live = (kind, name, x, who) => card(name, CONN_ICONS[kind], x.connected
+    ? `<span class="mk-on">Connected</span><small class="muted">${esc(who)}</small>${admin ? `<a class="mk-link" href="/settings/connections#conn-${kind}" data-link>Manage</a>` : ''}`
+    : !x.available ? soon
+      : admin ? `<button type="button" class="mk-btn" data-act="socialConnect" data-kind="${kind}" data-back="/social-posts">+ Connect</button>` : '<small class="muted">Ask the account owner or an admin to connect it</small>', x.connected);
+  const later = (name, key) => card(name, MK_ICONS[key], soon);
+  return `<section class="mk-connect"><h2>Connect your social accounts</h2><p class="muted">Pick where you want to publish. You can add or remove networks anytime.</p>
+<div class="mk-grp">Major networks</div><div class="mk-grid">${live('facebook', 'Facebook', C.facebook, C.facebook.name)}${live('instagram', 'Instagram', C.instagram, '@' + C.instagram.username)}${later('LinkedIn', 'linkedin')}${later('TikTok', 'tiktok')}${later('YouTube', 'youtube')}</div>
+<div class="mk-grp">Coming soon</div><div class="mk-grid">${later('Pinterest', 'pinterest')}${later('Threads', 'threads')}${later('Bluesky', 'bluesky')}${later('X', 'x')}${later('Google Business Profile', 'google')}</div></section>`;
+}
 PAGES['/social-posts'] = {
   title: 'Marketing',
   async render(main) {
-    const R = await api('GET', '/api/social-posts');
-    const head = '<div class="head"><div><h1>Marketing</h1><p class="sub">Share your work on Facebook and Instagram. Before-and-after photos from your jobs make great posts.</p></div></div>';
-    if (!R.facebook && !R.instagram) {
-      main.innerHTML = `${head}<div class="card rv-empty"><div class="conn-ic sp-ics">${CONN_ICONS.facebook}${CONN_ICONS.instagram}</div><h2>Connect Facebook or Instagram</h2><p class="muted">Then post photos from your Project Gallery to your Facebook Page and Instagram, right from here.</p>
-${['owner', 'admin'].includes(role()) ? '<a class="btn" href="/settings/connections" data-link>Go to Account Connections</a>' : '<p class="muted">Ask the account owner or an admin to connect them in Account Connections.</p>'}</div>`;
-      return;
-    }
+    const [R, C] = await Promise.all([api('GET', '/api/social-posts'), api('GET', '/api/connections')]);
+    connReturnNotice();
+    const head = `<div class="mk-hero"><h1>Grow your audience by posting across platforms in minutes</h1><p class="sub">One place for your business’s social media. Create a post once and publish it to every account you connect. Before-and-after photos from your jobs make great posts.</p></div>
+${marketingConnect(C)}`;
+    if (!R.facebook && !R.instagram) { main.innerHTML = head; return; }
     if (!spDraft.to) spDraft.to = ['facebook', 'instagram'].filter((k) => R[k]);
     const dest = (k, name, label) => `<label class="sp-dest ${R[k] ? '' : 'off'}"><input type="checkbox" name="to" value="${k}" ${R[k] ? '' : 'disabled'} ${R[k] && spDraft.to.includes(k) ? 'checked' : ''}>${CONN_ICONS[k]}<span><strong>${name}</strong><small>${R[k] ? esc(label) : 'Not connected'}</small></span></label>`;
     const res = (p, k, name) => { const r = p.results[k]; if (!r) return ''; return r.status === 'posted' ? `<a class="conn-chip on" href="${esc(r.url)}" target="_blank" rel="noopener"><i></i>${name}: view post</a>` : `<span class="conn-chip bad" title="${esc(r.error)}"><i></i>${name}: didn’t post</span>`; };
@@ -1342,7 +1366,7 @@ function connReturnNotice() {
 }
 A.socialConnect = async (d, el) => {
   el.disabled = true;
-  try { const { url } = await api('POST', `/api/connections/${d.kind}/start`, {}); location.href = url; } catch (e) { el.disabled = false; toast(e.message, true); }
+  try { const { url } = await api('POST', `/api/connections/${d.kind}/start`, d.back ? { back: d.back } : {}); location.href = url; } catch (e) { el.disabled = false; toast(e.message, true); }
 };
 A.socialDisconnect = async (d) => {
   const why = { google: 'Your reviews will stop showing here, and the Book button comes off your Google profile.', facebook: 'You won’t be able to post to the Page from here.', instagram: 'You won’t be able to post to Instagram from here.' }[d.kind];

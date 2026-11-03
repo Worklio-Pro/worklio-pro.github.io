@@ -2748,7 +2748,8 @@ app.get('/api/connections', (req, res) => res.json(connectionsView()));
 app.post('/api/connections/:kind/start', (req, res) => {
   const kind = connKind(req, res); if (!kind) return;
   if (!social.ready(kind)) return res.status(503).json({ error: 'This connection isn’t available yet.' });
-  res.json({ url: social.startUrl(kind, tenancy.current().id, currentUser(req).id) });
+  const back = (req.body || {}).back === '/social-posts' ? '/social-posts' : ''; // connecting from Marketing returns there
+  res.json({ url: social.startUrl(kind, tenancy.current().id, currentUser(req).id, back) });
 });
 app.delete('/api/connections/:kind', async (req, res) => {
   const kind = connKind(req, res); if (!kind) return; const c = connOf(kind);
