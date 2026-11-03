@@ -2590,7 +2590,7 @@ app.get('/card', (req, res) => {
     if (!businessPage.qrActive(p, scans, localNow().date)) return res.status(410).send(businessPage.expiredPage(p.name));
     db.businessPage = { ...(db.businessPage || {}), scans: scans + 1 }; save();
   }
-  res.send(businessPage.render(p, { book: pageBook() }));
+  res.send(businessPage.render(p, { book: pageBook(), back: req.query.preview === '1' })); // ?preview=1: opened from the app, with a Back button
 });
 app.get('/card/contact.vcf', (req, res) => {
   const p = bizPage(); res.setHeader('Content-Type', 'text/vcard; charset=utf-8');
