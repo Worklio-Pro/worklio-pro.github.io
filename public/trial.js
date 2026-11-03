@@ -9,7 +9,7 @@
   const amount = (n) => '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 });
   const S = await fetch('/api/site').then((r) => r.json()).catch(() => null);
   const paid = S && S.allowSignups ? S.plans.filter((p) => p.monthly || p.yearly) : [];
-  const plans = paid.some((p) => p.id === S.trialPlan) ? paid.filter((p) => p.id === S.trialPlan) : paid; // the trial is for Expert (lib/platform.js, SITE_TRIAL)
+  const plans = paid.some((p) => p.id === S.trialPlan) ? paid.filter((p) => p.id === S.trialPlan) : paid; // the trial is for Unlimited (lib/platform.js, SITE_TRIAL)
   if (!plans.length) return;
   const per = (p) => (p.monthly ? { v: p.monthly, per: 'month' } : { v: p.yearly, per: 'year' }); // monthly when the plan has it
   const start = plans.find((p) => p.id === S.signupPlan) || plans[0];

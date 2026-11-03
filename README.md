@@ -56,8 +56,8 @@ your platform owner login; that login is separate from any account's logins.
 - **Accounts:** create an account (the owner gets an emailed link to choose a password), change its plan, pause it, rename its address,
   approve or remove its custom domains, get a new owner invite/reset link, or delete it (a copy is kept in `data/deleted/`).
 - **Plans & features:** a grid of plans × features. Tick what each plan includes, set the name, price, description and the number of
-  team logins (0 = unlimited). Starts with Core, Advanced and Expert; add or remove plans as you like. Changes apply as soon as you save.
-- **Automations (plan extra):** the `automations` feature gives a business Marketing → Automations (`lib/business-automations.js`): its own rules that email or text clients, or notify the team, checked hourly. On Expert and Trial to start; tick it for other plans in the grid above. Separate from Alpha → Messages → Automations (`lib/automations.js`), which emails businesses.
+  team logins (0 = unlimited). Starts with Core, Advanced and Unlimited; add or remove plans as you like. Changes apply as soon as you save.
+- **Automations (plan extra):** the `automations` feature gives a business Marketing → Automations (`lib/business-automations.js`): its own rules that email or text clients, or notify the team, checked hourly. On Unlimited and Trial to start; tick it for other plans in the grid above. Separate from Alpha → Messages → Automations (`lib/automations.js`), which emails businesses.
 - **Settings:** product name, contact email, whether businesses can sign themselves up on the pricing page (`/pricing`), and
   **Integrations**: the status of email, text messages, AI and Stripe, webhook addresses to copy, test email/text, and your platform fee on card payments.
 - **Settings → SEO** (`lib/seo.js`): each public page's search title and description (with a Google-style preview), Google and Bing verification,
@@ -66,7 +66,7 @@ your platform owner login; that login is separate from any account's logins.
 - **Promotions:** discount codes, the referral program, and the **Founding Supporters** page at `/supporters` (e.g. for Kickstarter backers):
   paste names one per line, give each a reward tier, and turn the page on. It shows only while it's on and has at least one name, with a link in the site's footer.
   Give a supporter an email and the **Code** column emails them a one-time code (template: Founding Supporter code) worth prepaid months of their tier's plan:
-  Core, Advanced and Expert get 12 months of that plan, Founding Crew 36 months of Expert (`lib/supporters.js`). New businesses enter it at sign-up (no card);
+  Core, Advanced and Unlimited get 12 months of that plan, Founding Crew 36 months of Unlimited (`lib/supporters.js`). New businesses enter it at sign-up (no card);
   existing ones under Account and Billing → Have a supporter code? (a live subscription moves to that plan and its next charge moves out). The plan can't be changed while prepaid months run.
 - **Reset to demo data** for an account is under Accounts → Manage (logins and Stripe connection are kept).
 
