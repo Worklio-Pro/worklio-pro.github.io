@@ -912,7 +912,12 @@ a.conn-chip{text-decoration:none}a.conn-chip:hover{text-decoration:underline}
 .mk-btn:hover:not(.soon){background:var(--tint);color:var(--tint-fg)}.mk-btn.soon{color:var(--muted);cursor:default}
 .mk-on{display:inline-flex;align-items:center;gap:6px;margin-top:4px;padding:4px 10px;border-radius:99px;background:var(--ok-bg);color:var(--ok-fg);font-size:13px;font-weight:600}.mk-on::before{content:'✓'}
 .mk-link{font-size:13px;font-weight:600;text-decoration:none}
-.sp-over{color:var(--danger)!important;font-weight:600} /* the caption is over Bluesky's 300 characters */
+.sp-over{color:var(--danger)!important;font-weight:600} /* the caption is over a ticked network's limit */
+/* the TikTok options in the post form */
+.sp-tt{margin:0 0 14px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)}
+.sp-tt h3{display:flex;align-items:center;gap:8px;margin:0 0 10px;font-size:15px}.sp-tt h3 svg{width:22px;height:22px}
+.sp-tt-row{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px 20px}.sp-tt-row label:first-child{flex:0 1 260px;margin:0}
+.sp-chk{display:flex;align-items:center;gap:8px;margin:0 0 10px;font-size:14px;color:var(--text)}.sp-tt p{margin:8px 0 0;font-size:13px}
 .sp-dests{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px}
 .sp-dest{display:flex;align-items:center;gap:10px;padding:10px 14px;border:1px solid var(--line);border-radius:10px;cursor:pointer;margin:0;min-width:220px}
 .sp-dest:has(input:checked){border-color:var(--brand);background:var(--tint)}

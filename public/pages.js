@@ -857,8 +857,21 @@ async function toJpeg(src, max = 1440, maxBytes = 0) {
   while (maxBytes && q > 0.5 && out.length * 0.75 > maxBytes) { q -= 0.08; out = c.toDataURL('image/jpeg', q); } // base64 is 4/3 of the bytes
   return out;
 }
-const SP_NAMES = { facebook: 'Facebook', instagram: 'Instagram', bluesky: 'Bluesky', google: 'Google' };
-const BSKY_TEXT = 300; const BSKY_PHOTOS = 4; const GOOGLE_TEXT = 1500;
+// the networks in the post form: key, name, the account it posts to, and its limits (the server checks the same):
+// text = caption length (Bluesky counts graphemes), needsPhoto / needsText, maxPhotos
+const SP_NETS = [
+  ['facebook', 'Facebook', (R) => R.facebook.name, { text: 63206 }],
+  ['instagram', 'Instagram', (R) => '@' + R.instagram.username, { text: 2200, needsPhoto: true }],
+  ['linkedin', 'LinkedIn', (R) => R.linkedin.name, { text: 3000 }],
+  ['tiktok', 'TikTok', (R) => R.tiktok.name, { text: 4000, needsPhoto: true }],
+  ['threads', 'Threads', (R) => '@' + R.threads.username, { text: 500 }],
+  ['pinterest', 'Pinterest', (R) => R.pinterest.name, { text: 500, needsPhoto: true }],
+  ['bluesky', 'Bluesky', (R) => '@' + R.bluesky.handle, { text: 300, graphemes: true, maxPhotos: 4 }],
+  ['google', 'Google Business Profile', (R) => R.google.title, { text: 1500, needsText: true }],
+];
+const SP_NAMES = Object.fromEntries(SP_NETS.map(([k, n]) => [k, k === 'google' ? 'Google' : n]));
+const SP_LIMITS = Object.fromEntries(SP_NETS.map(([k, , , l]) => [k, l]));
+const MUSIC_TERMS = 'https://www.tiktok.com/legal/page/global/music-usage-confirmation/en';
 const graphemeCount = (t) => (typeof Intl !== 'undefined' && Intl.Segmenter ? [...new Intl.Segmenter('en', { granularity: 'grapheme' }).segment(t)].length : [...t].length);
 // Bluesky: the business's handle and an app password (made in Bluesky's settings), checked by signing in
 A.bskyConnect = () => {
@@ -875,11 +888,7 @@ A.bskyConnect = () => {
 };
 // Marketing → Connect your social accounts: the business connects its own accounts here (the same connections as Account Connections)
 const MK_ICONS = {
-  linkedin: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#0A66C2"/><rect x="12.5" y="20" width="5" height="15" fill="#fff"/><circle cx="15" cy="14.6" r="3" fill="#fff"/><path fill="#fff" d="M22 20h4.8v2.2c.7-1.3 2.4-2.6 5-2.6 5 0 5.9 3.2 5.9 7.4V35h-5v-7.1c0-1.7 0-3.9-2.4-3.9s-2.8 1.9-2.8 3.8V35H22z"/></svg>',
-  tiktok: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#000"/><path fill="#fff" d="M26.5 11h4.3c.3 2.9 2.3 5 5.2 5.3v4.3c-1.9 0-3.7-.6-5.2-1.6v9a7.6 7.6 0 1 1-7.6-7.6l1.1.1v4.4a3.2 3.2 0 1 0 2.2 3.1z"/></svg>',
   youtube: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#FF0000"/><rect x="10" y="14" width="28" height="20" rx="6" fill="#fff"/><path fill="#FF0000" d="M21 19v10l8.5-5z"/></svg>',
-  pinterest: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#E60023"/><path fill="#fff" d="M24.6 11c-7.4 0-11.2 5.3-11.2 9.7 0 2.7 1 5 3.2 5.9.4.1.7 0 .8-.4l.3-1.3c.1-.4.1-.5-.2-.9-.7-.8-1.1-1.8-1.1-3.2 0-4.2 3.1-7.9 8.1-7.9 4.4 0 6.9 2.7 6.9 6.3 0 4.7-2.1 8.8-5.2 8.8-1.7 0-3-1.4-2.6-3.2.5-2.1 1.5-4.3 1.5-5.8 0-1.4-.7-2.5-2.3-2.5-1.8 0-3.2 1.9-3.2 4.3 0 1.6.5 2.6.5 2.6l-2.2 9.1c-.6 2.7-.1 6 0 6.3h.4c.2-.3 2.4-3 3.1-5.8l1.2-4.7c.6 1.2 2.4 2.2 4.2 2.2 5.5 0 9.2-5 9.2-11.7C35.5 15.7 31.3 11 24.6 11z"/></svg>',
-  threads: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#000"/><text x="24" y="32.5" text-anchor="middle" font-family="system-ui,sans-serif" font-size="25" font-weight="700" fill="#fff">@</text></svg>',
   x: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#000"/><path fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" d="M15 14l18 20M33 14L15 34"/></svg>',
   // Google's G on a white tile, built when drawn (CONN_ICONS comes later in this file)
   get google() { return '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3.5" y="3.5" width="41" height="41" rx="10" fill="#fff" stroke="#dadce0"/><g transform="translate(10 10) scale(.583)">' + CONN_ICONS.google.replace(/^<svg[^>]*>/, '').replace(/<\/svg>$/, '') + '</g></svg>'; },
@@ -888,7 +897,7 @@ function marketingConnect(C) {
   const admin = ['owner', 'admin'].includes(role());
   const card = (name, icon, body, on) => `<div class="mk-card${on ? ' on' : ''}"><span class="mk-ic">${icon}</span><strong>${name}</strong>${body}</div>`;
   const soon = '<span class="mk-btn soon">Coming soon</span>';
-  // Facebook and Instagram: the business signs in with its own Page and account
+  // the business signs in with its own account on each network
   const live = (kind, name, x, who) => card(name, CONN_ICONS[kind], x.connected
     ? `<span class="mk-on">Connected</span><small class="muted">${esc(who)}</small>${admin ? `<a class="mk-link" href="/settings/connections#conn-${kind}" data-link>Manage</a>` : ''}`
     : !x.available ? soon
@@ -903,8 +912,8 @@ function marketingConnect(C) {
     ? `<span class="mk-on">Connected</span><small class="muted">@${esc(B.handle)}</small>${admin ? '<a class="mk-link" href="/settings/connections#conn-bluesky" data-link>Manage</a>' : ''}`
     : admin ? '<button type="button" class="mk-btn" data-act="bskyConnect">+ Connect</button>' : '<small class="muted">Ask the account owner or an admin to connect it</small>', B.connected);
   return `<section class="mk-connect"><h2>Connect your social accounts</h2><p class="muted">Pick where you want to publish. You can add or remove networks anytime.</p>
-<div class="mk-grp">Major networks</div><div class="mk-grid">${live('facebook', 'Facebook', C.facebook, C.facebook.name)}${live('instagram', 'Instagram', C.instagram, '@' + C.instagram.username)}${later('LinkedIn', 'linkedin')}${later('TikTok', 'tiktok')}${later('YouTube', 'youtube')}</div>
-<div class="mk-grp">More networks</div><div class="mk-grid">${bsky}${later('Pinterest', 'pinterest')}${later('Threads', 'threads')}${later('X', 'x')}${gbp}</div></section>`;
+<div class="mk-grp">Major networks</div><div class="mk-grid">${live('facebook', 'Facebook', C.facebook, C.facebook.name)}${live('instagram', 'Instagram', C.instagram, '@' + C.instagram.username)}${live('linkedin', 'LinkedIn', C.linkedin, C.linkedin.name)}${live('tiktok', 'TikTok', C.tiktok, C.tiktok.name)}${later('YouTube', 'youtube')}</div>
+<div class="mk-grp">More networks</div><div class="mk-grid">${bsky}${live('pinterest', 'Pinterest', C.pinterest, C.pinterest.name)}${live('threads', 'Threads', C.threads, '@' + C.threads.username)}${later('X', 'x')}${gbp}</div></section>`;
 }
 PAGES['/social-posts'] = {
   title: 'Marketing',
@@ -913,30 +922,33 @@ PAGES['/social-posts'] = {
     connReturnNotice();
     const head = `<div class="mk-hero"><h1>Grow your audience by posting across platforms in minutes</h1><p class="sub">One place for your business’s social media. Create a post once and publish it to every account you connect. Before-and-after photos from your jobs make great posts.</p></div>
 ${marketingConnect(C)}`;
-    if (!R.facebook && !R.instagram && !R.bluesky && !R.google) { main.innerHTML = head; return; }
+    if (!SP_NETS.some(([k]) => R[k])) { main.innerHTML = head; return; }
     if (!spDraft.to) spDraft.to = Object.keys(SP_NAMES).filter((k) => R[k]);
     const dest = (k, name, label) => `<label class="sp-dest ${R[k] ? '' : 'off'}"><input type="checkbox" name="to" value="${k}" ${R[k] ? '' : 'disabled'} ${R[k] && spDraft.to.includes(k) ? 'checked' : ''}>${CONN_ICONS[k]}<span><strong>${name}</strong><small>${R[k] ? esc(label) : 'Not connected'}</small></span></label>`;
     const res = (p, k, name) => { const r = p.results[k]; if (!r) return ''; return r.status === 'posted' ? `<a class="conn-chip on" href="${esc(r.url)}" target="_blank" rel="noopener"><i></i>${name}: view post</a>` : `<span class="conn-chip bad" title="${esc(r.error)}"><i></i>${name}: didn’t post</span>`; };
     main.innerHTML = `${head}
 <form class="card sp-new" id="spForm"><h2>New post</h2>
-<div class="sp-dests">${dest('facebook', 'Facebook', R.facebook && R.facebook.name)}${dest('instagram', 'Instagram', R.instagram && '@' + R.instagram.username)}${R.bluesky ? dest('bluesky', 'Bluesky', '@' + R.bluesky.handle) : ''}${R.google ? dest('google', 'Google Business Profile', R.google.title) : ''}</div>
+<div class="sp-dests">${SP_NETS.filter(([k]) => R[k] || k === 'facebook' || k === 'instagram').map(([k, n, who]) => dest(k, n, R[k] && who(R))).join('')}</div>
+<div class="sp-tt" id="spTt" hidden></div>
 <div class="sp-photos" id="spPhotos"></div>
-<div class="sp-add"><button type="button" class="btn alt sm" data-act="spGallery">Choose from Project Gallery</button><label class="btn alt sm">Upload photos<input type="file" accept="image/*" multiple hidden id="spFile"></label><span class="muted" style="font-size:13px">Up to 10 photos (4 on Bluesky, 1 on Google). The first one is the cover.</span></div>
+<div class="sp-add"><button type="button" class="btn alt sm" data-act="spGallery">Choose from Project Gallery</button><label class="btn alt sm">Upload photos<input type="file" accept="image/*" multiple hidden id="spFile"></label><span class="muted" style="font-size:13px">Up to 10 photos. The first one is the cover; Pinterest and Google use only that one, Bluesky up to 4.</span></div>
 <label>Caption<textarea name="caption" rows="4" maxlength="2200" placeholder="Another pool back to sparkling! Swipe to see the before and after. Call us for a free quote.">${esc(spDraft.caption || '')}</textarea></label>
 <div class="sp-foot"><span class="muted" id="spCount" style="font-size:13px"></span><button class="btn">Post now</button></div></form>
 <div class="card"><h2>Posted</h2>${(R.posts || []).length ? `<div class="sp-list">${R.posts.map((p) => `<div class="sp-row">${p.images[0] ? `<img src="${esc(p.images[0])}" alt="" loading="lazy">` : '<span class="sp-noimg"></span>'}
-<div><p>${p.caption ? esc(p.caption.length > 220 ? p.caption.slice(0, 220) + '…' : p.caption) : '<span class="muted">No caption</span>'}</p><div class="sp-meta"><span class="muted">${fmtDate(p.createdAt.slice(0, 10))}${p.by ? ' · ' + esc(p.by) : ''}${p.images.length > 1 ? ` · ${p.images.length} photos` : ''}</span>${res(p, 'facebook', 'Facebook')}${res(p, 'instagram', 'Instagram')}${res(p, 'bluesky', 'Bluesky')}${res(p, 'google', 'Google')}</div>
+<div><p>${p.caption ? esc(p.caption.length > 220 ? p.caption.slice(0, 220) + '…' : p.caption) : '<span class="muted">No caption</span>'}</p><div class="sp-meta"><span class="muted">${fmtDate(p.createdAt.slice(0, 10))}${p.by ? ' · ' + esc(p.by) : ''}${p.images.length > 1 ? ` · ${p.images.length} photos` : ''}</span>${SP_NETS.map(([k]) => res(p, k, SP_NAMES[k])).join('')}</div>
 ${Object.values(p.results).filter((r) => r.status !== 'posted').map((r) => `<p class="sp-err">${esc(r.error)}</p>`).join('')}</div>
 ${['owner', 'admin'].includes(role()) ? `<button type="button" class="x sp-x" data-act="spRemove" data-id="${p.id}" title="Remove from this list (it stays on the networks it was posted to)" aria-label="Remove from this list">×</button>` : ''}</div>`).join('')}</div>` : '<p class="muted" style="margin:0">Nothing posted yet.</p>'}</div>`;
     const f = $('#spForm'); const cap = f.caption;
-    // the caption limit: the shortest of the ticked networks' (Bluesky 300, Google 1,500, Instagram 2,200)
+    const len = (k, t) => (SP_LIMITS[k].graphemes ? graphemeCount(t) : t.length);
+    // the caption limit: the shortest of the ticked networks'
     const count = () => {
-      const t = spDraft.to; const [max, name] = t.includes('bluesky') ? [BSKY_TEXT, 'Bluesky'] : t.includes('google') ? [GOOGLE_TEXT, 'Google'] : [2200, ''];
-      const n = name === 'Bluesky' ? graphemeCount(cap.value) : cap.value.length; const el = $('#spCount');
-      el.textContent = `${n.toLocaleString('en-US')} / ${max.toLocaleString('en-US')}${name ? ` (${name})` : ''}`; el.classList.toggle('sp-over', n > max); spDraft.caption = cap.value;
+      const k = spDraft.to.filter((x) => SP_LIMITS[x]).sort((a, b) => SP_LIMITS[a].text - SP_LIMITS[b].text)[0];
+      const max = k ? SP_LIMITS[k].text : 2200; const n = k ? len(k, cap.value) : cap.value.length; const el = $('#spCount');
+      el.textContent = `${n.toLocaleString('en-US')} / ${max.toLocaleString('en-US')}${k && spDraft.to.length > 1 ? ` (${SP_NAMES[k]})` : ''}`; el.classList.toggle('sp-over', n > max); spDraft.caption = cap.value;
     };
     cap.addEventListener('input', count); count();
-    $$('input[name=to]', f).forEach((c) => c.addEventListener('change', () => { spDraft.to = $$('input[name=to]:checked', f).map((x) => x.value); count(); }));
+    $$('input[name=to]', f).forEach((c) => c.addEventListener('change', () => { spDraft.to = $$('input[name=to]:checked', f).map((x) => x.value); count(); spTikTok(); }));
+    spTikTok();
     $('#spFile').addEventListener('change', async (e) => {
       for (const file of [...e.target.files]) { if (spDraft.photos.length >= 10) { toast('Up to 10 photos per post', true); break; } try { spDraft.photos.push({ src: await readFileAsDataUrl(file), label: file.name }); } catch (x) { toast('Couldn’t read ' + file.name, true); } }
       e.target.value = ''; drawSpPhotos();
@@ -944,16 +956,21 @@ ${['owner', 'admin'].includes(role()) ? `<button type="button" class="x sp-x" da
     f.addEventListener('submit', async (e) => {
       e.preventDefault(); const btn = $('.sp-foot .btn', f); const to = spDraft.to;
       if (!to.length) return toast('Choose where to post', true);
-      if (to.includes('bluesky') && graphemeCount(cap.value.trim()) > BSKY_TEXT) return toast(`Bluesky posts can be up to ${BSKY_TEXT} characters. Shorten the caption or untick Bluesky.`, true);
-      if (to.includes('google') && cap.value.trim().length > GOOGLE_TEXT) return toast(`Google posts can be up to ${GOOGLE_TEXT.toLocaleString('en-US')} characters. Shorten the caption or untick Google.`, true);
-      if (to.includes('google') && !cap.value.trim()) return toast('Google posts need a caption', true);
-      if (to.includes('bluesky') && spDraft.photos.length > BSKY_PHOTOS) return toast(`Bluesky posts can have up to ${BSKY_PHOTOS} photos. Remove some or untick Bluesky.`, true);
-      if (to.includes('instagram') && !spDraft.photos.length) return toast('Instagram posts need at least one photo', true);
+      const text = cap.value.trim();
+      for (const k of to) {
+        const L = SP_LIMITS[k]; const n = SP_NAMES[k]; if (!L) continue;
+        if (len(k, text) > L.text) return toast(`${n} posts can be up to ${L.text.toLocaleString('en-US')} characters. Shorten the caption or untick ${n}.`, true);
+        if (L.needsPhoto && !spDraft.photos.length) return toast(`${n} posts need at least one photo`, true);
+        if (L.needsText && !text) return toast(`${n} posts need a caption`, true);
+        if (L.maxPhotos && spDraft.photos.length > L.maxPhotos) return toast(`${n} posts can have up to ${L.maxPhotos} photos. Remove some or untick ${n}.`, true);
+      }
+      const tt = to.includes('tiktok') ? spDraft.tiktok || {} : null;
+      if (tt && !tt.privacy) return toast('Choose who can see the TikTok post', true);
       if (!spDraft.photos.length && !cap.value.trim()) return toast('Add a photo or write a caption', true);
       btn.disabled = true; btn.textContent = 'Posting…';
       try {
         const images = []; for (const p of spDraft.photos) images.push(await toJpeg(p.src, 1440, to.includes('bluesky') ? 950000 : 0));
-        const p = await api('POST', '/api/social-posts', { caption: cap.value, images, to });
+        const p = await api('POST', '/api/social-posts', { caption: cap.value, images, to, ...(tt ? { tiktok: tt } : {}) });
         const bad = Object.entries(p.results).filter(([, r]) => r.status !== 'posted');
         if (bad.length) toast(`Didn’t post to ${bad.map(([k]) => SP_NAMES[k]).join(' or ')}: ${bad[0][1].error}`, true); else toast('Posted');
         if (bad.length < Object.keys(p.results).length) spDraft = { photos: [], to: null };
@@ -963,6 +980,23 @@ ${['owner', 'admin'].includes(role()) ? `<button type="button" class="x sp-x" da
     drawSpPhotos();
   },
 };
+const TT_HINT = { SELF_ONLY: 'Until TikTok approves this app, posts can only be private.' };
+async function spTikTok() {
+  const box = $('#spTt'); if (!box) return; const on = spDraft.to.includes('tiktok'); box.hidden = !on; if (!on || box.dataset.loaded) return;
+  box.dataset.loaded = '1'; box.innerHTML = '<p class="muted" style="margin:0">Checking your TikTok account…</p>';
+  let c; try { c = await api('GET', '/api/social-posts/tiktok'); } catch (x) { box.innerHTML = `<p class="sp-err" style="margin:0">${esc(x.message)}</p>`; delete box.dataset.loaded; return; }
+  const t = spDraft.tiktok = spDraft.tiktok || { privacy: '', comments: !c.commentsOff, brand: false };
+  const only = c.privacy.length === 1 && c.privacy[0].id === 'SELF_ONLY';
+  box.innerHTML = `<h3>${CONN_ICONS.tiktok}TikTok · posting as ${esc(c.nickname)}${c.username ? ` <span class="muted">@${esc(c.username)}</span>` : ''}</h3>
+<div class="sp-tt-row"><label>Who can see this post<select name="ttPrivacy"><option value="">Choose…</option>${c.privacy.map((o) => `<option value="${o.id}" ${t.privacy === o.id ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select></label>
+<label class="sp-chk"><input type="checkbox" name="ttComments" ${t.comments && !c.commentsOff ? 'checked' : ''} ${c.commentsOff ? 'disabled' : ''}> Allow comments</label>
+<label class="sp-chk"><input type="checkbox" name="ttBrand" ${t.brand ? 'checked' : ''}> This post promotes my business</label></div>
+${only ? `<p class="muted">${TT_HINT.SELF_ONLY}</p>` : ''}<p class="muted" id="ttBrandNote" ${t.brand ? '' : 'hidden'}>TikTok labels it “Promotional content”.</p>
+<p class="muted">By posting, you agree to TikTok’s <a href="${MUSIC_TERMS}" target="_blank" rel="noopener">Music Usage Confirmation</a>.</p>`;
+  box.querySelector('[name=ttPrivacy]').addEventListener('change', (e) => { t.privacy = e.target.value; });
+  box.querySelector('[name=ttComments]').addEventListener('change', (e) => { t.comments = e.target.checked; });
+  box.querySelector('[name=ttBrand]').addEventListener('change', (e) => { t.brand = e.target.checked; $('#ttBrandNote').hidden = !t.brand; });
+}
 function drawSpPhotos() {
   const box = $('#spPhotos'); if (!box) return;
   box.innerHTML = spDraft.photos.map((p, i) => `<figure><img src="${esc(p.src)}" alt="${esc(p.label)}">${i === 0 ? '<span class="sp-cover">Cover</span>' : ''}<div class="sp-tools">${i ? `<button type="button" data-act="spMove" data-i="${i}" title="Move earlier" aria-label="Move earlier">‹</button>` : ''}<button type="button" data-act="spDrop" data-i="${i}" title="Remove" aria-label="Remove photo">×</button></div></figure>`).join('');
@@ -970,7 +1004,7 @@ function drawSpPhotos() {
 }
 A.spDrop = (d) => { spDraft.photos.splice(+d.i, 1); drawSpPhotos(); };
 A.spMove = (d) => { const i = +d.i; [spDraft.photos[i - 1], spDraft.photos[i]] = [spDraft.photos[i], spDraft.photos[i - 1]]; drawSpPhotos(); };
-A.spRemove = async (d) => { if (!confirm('Remove this post from the list? It stays on Facebook and Instagram.')) return; await api('DELETE', '/api/social-posts/' + d.id); refresh(); };
+A.spRemove = async (d) => { if (!confirm('Remove this post from the list? It stays on the networks it was posted to.')) return; await api('DELETE', '/api/social-posts/' + d.id); refresh(); };
 // pick from the Project Gallery, newest first, grouped by job
 A.spGallery = async () => {
   const mb = modal('Choose photos', '<p class="muted">Loading…</p>', true);
@@ -1318,6 +1352,10 @@ const CONN_ICONS = {
   twilio: '<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="21" fill="#F22F46"/><circle cx="24" cy="24" r="13" fill="none" stroke="#fff" stroke-width="3.2"/><circle cx="19.6" cy="19.6" r="3.1" fill="#fff"/><circle cx="28.4" cy="19.6" r="3.1" fill="#fff"/><circle cx="19.6" cy="28.4" r="3.1" fill="#fff"/><circle cx="28.4" cy="28.4" r="3.1" fill="#fff"/></svg>',
   email: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="var(--brand)"/><rect x="11" y="15" width="26" height="18" rx="2.5" fill="none" stroke="#fff" stroke-width="2.6"/><path d="M12 17l12 9 12-9" fill="none" stroke="#fff" stroke-width="2.6" stroke-linejoin="round"/></svg>',
   bluesky: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#1185FE"/><path fill="#fff" d="M16.5 14.6c2.9 2.2 6 6.6 7.5 9 1.5-2.4 4.6-6.8 7.5-9 2.1-1.6 5.5-2.8 5.5 1.1 0 .8-.4 6.6-.7 7.5-.9 3.3-4.3 4.1-7.3 3.6 5.2.9 6.5 3.8 3.7 6.7-5.4 5.5-7.7-1.4-8.3-3.1l-.4-1.1-.4 1.1c-.6 1.7-2.9 8.6-8.3 3.1-2.8-2.9-1.5-5.8 3.7-6.7-3 .5-6.4-.3-7.3-3.6-.3-.9-.7-6.7-.7-7.5 0-3.9 3.4-2.7 5.5-1.1z"/></svg>',
+  linkedin: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#0A66C2"/><rect x="12.5" y="20" width="5" height="15" fill="#fff"/><circle cx="15" cy="14.6" r="3" fill="#fff"/><path fill="#fff" d="M22 20h4.8v2.2c.7-1.3 2.4-2.6 5-2.6 5 0 5.9 3.2 5.9 7.4V35h-5v-7.1c0-1.7 0-3.9-2.4-3.9s-2.8 1.9-2.8 3.8V35H22z"/></svg>',
+  tiktok: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#000"/><path fill="#fff" d="M26.5 11h4.3c.3 2.9 2.3 5 5.2 5.3v4.3c-1.9 0-3.7-.6-5.2-1.6v9a7.6 7.6 0 1 1-7.6-7.6l1.1.1v4.4a3.2 3.2 0 1 0 2.2 3.1z"/></svg>',
+  pinterest: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#E60023"/><path fill="#fff" d="M24.6 11c-7.4 0-11.2 5.3-11.2 9.7 0 2.7 1 5 3.2 5.9.4.1.7 0 .8-.4l.3-1.3c.1-.4.1-.5-.2-.9-.7-.8-1.1-1.8-1.1-3.2 0-4.2 3.1-7.9 8.1-7.9 4.4 0 6.9 2.7 6.9 6.3 0 4.7-2.1 8.8-5.2 8.8-1.7 0-3-1.4-2.6-3.2.5-2.1 1.5-4.3 1.5-5.8 0-1.4-.7-2.5-2.3-2.5-1.8 0-3.2 1.9-3.2 4.3 0 1.6.5 2.6.5 2.6l-2.2 9.1c-.6 2.7-.1 6 0 6.3h.4c.2-.3 2.4-3 3.1-5.8l1.2-4.7c.6 1.2 2.4 2.2 4.2 2.2 5.5 0 9.2-5 9.2-11.7C35.5 15.7 31.3 11 24.6 11z"/></svg>',
+  threads: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#000"/><text x="24" y="32.5" text-anchor="middle" font-family="system-ui,sans-serif" font-size="25" font-weight="700" fill="#fff">@</text></svg>',
   ai: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#7C3AED"/><path fill="#fff" d="M22 11l2.6 7.4L32 21l-7.4 2.6L22 31l-2.6-7.4L12 21l7.4-2.6zM33 27l1.3 3.7L38 32l-3.7 1.3L33 37l-1.3-3.7L28 32l3.7-1.3z"/></svg>',
 };
 // card payments go to the business's own Stripe account, connected with Stripe Connect (Stripe hosts the sign-up and verification)
@@ -1379,6 +1417,11 @@ async function connectionsPage(main) {
       ...state('facebook', F, F.link ? `<a href="${esc(F.link)}" target="_blank" rel="noopener"><strong>${esc(F.name)}</strong></a>` : `<strong>${esc(F.name)}</strong>`) },
     { id: 'instagram', icon: 'instagram', title: 'Instagram account', desc: `Connect your Instagram account to publish Instagram posts. You’ll need an Instagram professional account: either Business or Creator.${I.connected ? posts : ''}`,
       ...state('instagram', I, `<a href="https://www.instagram.com/${encodeURIComponent(I.username)}" target="_blank" rel="noopener"><strong>@${esc(I.username)}</strong></a>`) },
+    ...[['linkedin', 'LinkedIn page', 'Connect a LinkedIn company page you’re an admin of to publish posts there.', (x) => (x.link ? `<a href="${esc(x.link)}" target="_blank" rel="noopener"><strong>${esc(x.name)}</strong></a>` : `<strong>${esc(x.name)}</strong>`)],
+      ['tiktok', 'TikTok account', 'Connect your TikTok account to publish photo posts. Until TikTok approves this app, posts can only be private.', (x) => `<strong>${esc(x.name)}</strong>`],
+      ['threads', 'Threads account', 'Connect your Threads account to publish posts there.', (x) => `<a href="https://www.threads.net/@${encodeURIComponent(x.username)}" target="_blank" rel="noopener"><strong>@${esc(x.username)}</strong></a>`],
+      ['pinterest', 'Pinterest account', 'Connect your Pinterest account to save your photos as Pins on one of your boards.', (x) => `the board <strong>${esc(x.name)}</strong>${x.username ? ` (@${esc(x.username)})` : ''}`]]
+      .map(([id, title, desc, to]) => ({ id, icon: id, title, desc: desc + (C[id].connected ? posts : ''), ...state(id, C[id], to(C[id])) })),
     { id: 'bluesky', icon: 'bluesky', title: 'Bluesky account', desc: `Connect your Bluesky account with an app password to publish posts there.${B.connected ? posts : ''}`,
       ...(B.connected ? { status: connChip('on', 'Connected'), connectedTo: `Connected to <a href="https://bsky.app/profile/${encodeURIComponent(B.handle)}" target="_blank" rel="noopener"><strong>@${esc(B.handle)}</strong></a>.`,
         button: admin ? '<button type="button" class="btn alt conn-btn" data-act="socialDisconnect" data-kind="bluesky">Disconnect</button>' : '' }
@@ -1397,7 +1440,7 @@ ${admin ? '' : '<p class="muted" style="font-size:13px">Only the account owner o
   connectionsData = C;
 }
 let connectionsData = null;
-const CONN_NAMES = { google: 'Google Business Profile', facebook: 'Facebook Page', instagram: 'Instagram account', bluesky: 'Bluesky account' };
+const CONN_NAMES = { google: 'Google Business Profile', facebook: 'Facebook Page', instagram: 'Instagram account', bluesky: 'Bluesky account', linkedin: 'LinkedIn page', pinterest: 'Pinterest account', threads: 'Threads account', tiktok: 'TikTok account' };
 // back from Google or Facebook's sign-in (lib/platform.js → /oauth/…/callback)
 function connReturnNotice() {
   const q = new URLSearchParams(location.search); const ok = q.get('connected'); const bad = q.get('connect_error'); if (!ok && !bad) return;
@@ -1410,7 +1453,7 @@ A.socialConnect = async (d, el) => {
   try { const { url } = await api('POST', `/api/connections/${d.kind}/start`, d.back ? { back: d.back } : {}); location.href = url; } catch (e) { el.disabled = false; toast(e.message, true); }
 };
 A.socialDisconnect = async (d) => {
-  const why = { google: 'Your reviews will stop showing here, and the Book button comes off your Google profile.', facebook: 'You won’t be able to post to the Page from here.', instagram: 'You won’t be able to post to Instagram from here.', bluesky: 'You won’t be able to post to Bluesky from here. You can also revoke the app password in Bluesky.' }[d.kind];
+  const why = { google: 'Your reviews will stop showing here, and the Book button comes off your Google profile.', facebook: 'You won’t be able to post to the Page from here.', instagram: 'You won’t be able to post to Instagram from here.', bluesky: 'You won’t be able to post to Bluesky from here. You can also revoke the app password in Bluesky.' }[d.kind] || `You won’t be able to post to ${CONN_NAMES[d.kind].replace(/ (page|account)$/, '')} from here.`;
   if (!confirm(`Disconnect your ${CONN_NAMES[d.kind]}? ${why}`)) return;
   try { await api('DELETE', `/api/connections/${d.kind}`); toast(`${CONN_NAMES[d.kind]} disconnected`); refresh(); } catch (e) { toast(e.message, true); }
 };

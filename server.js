@@ -21,6 +21,7 @@ const maintenance = require('./lib/maintenance');
 const stripeLib = require('./lib/stripe');
 const social = require('./lib/social');
 const bluesky = require('./lib/bluesky');
+const networks = require('./lib/networks'); // LinkedIn, Pinterest, Threads and TikTok for Marketing
 const tiktokLib = require('./lib/tiktok'); tiktokLib.init(); // Alpha → Social: scheduled TikTok posts, checked every 30 seconds
 const rolesLib = require('./lib/roles');
 const iconsLib = require('./lib/icons');
@@ -2717,7 +2718,7 @@ app.get('/api/integrations', async (req, res) => {
 
 // ---------- Account Connections: Google Business Profile, Facebook and Instagram (lib/social.js), and Bluesky (lib/bluesky.js) ----------
 // The sign-in returns to the platform address, which calls saveConnection inside this account. Tokens stay in the account's secrets.
-const SOCIAL_KINDS = ['google', 'facebook', 'instagram'];
+const SOCIAL_KINDS = ['google', 'facebook', 'instagram', ...Object.keys(networks.NETWORKS)];
 const connOf = (kind) => (secrets().social || {})[kind] || null;
 function setConnection(kind, conn) {
   const sec = { ...secrets() }; sec.social = { ...(sec.social || {}) }; if (conn) sec.social[kind] = conn; else delete sec.social[kind]; db.secrets = sec; save();
@@ -2736,6 +2737,7 @@ function connectionsView() {
     facebook: { available: social.ready('facebook'), connected: !!f, name: f ? f.name : '', link: f ? f.link : '', choices: f ? f.choices || 1 : 0 },
     instagram: { available: social.ready('instagram'), connected: !!i, username: i ? i.username : '', choices: i ? i.choices || 1 : 0 },
     bluesky: { available: true, connected: !!bs, handle: bs ? bs.handle : '' }, // the business's own handle and app password: nothing for the platform to set up
+    ...Object.fromEntries(Object.keys(networks.NETWORKS).map((k) => { const c = connOf(k); return [k, { available: social.ready(k), connected: !!c, name: c ? c.name || '' : '', username: c ? c.username || '' : '', link: c ? c.link || '' : '', choices: c ? c.choices || 1 : 0 }]; })),
     postsPlan: tenancy.has('socialPosts'),
   };
 }
@@ -2758,19 +2760,21 @@ app.post('/api/connections/:kind/start', (req, res) => {
   const kind = connKind(req, res); if (!kind) return;
   if (!social.ready(kind)) return res.status(503).json({ error: 'This connection isn’t available yet.' });
   const back = (req.body || {}).back === '/social-posts' ? '/social-posts' : ''; // connecting from Marketing returns there
-  res.json({ url: social.startUrl(kind, tenancy.current().id, currentUser(req).id, back) });
+  res.json({ url: (networks.has(kind) ? networks.startUrl : social.startUrl)(kind, tenancy.current().id, currentUser(req).id, back) });
 });
 app.delete('/api/connections/:kind', async (req, res) => {
   const kind = connKind(req, res); if (!kind) return; const c = connOf(kind);
   if (c && kind === 'google') { if (c.bookingLink) await social.googleBookingLink(c, '').catch(() => {}); await social.googleRevoke(c); }
   // Facebook and Instagram share one Facebook sign-in: only give up its access once neither uses it
-  if (c && kind !== 'google') { const other = connOf(kind === 'facebook' ? 'instagram' : 'facebook'); if (!other || other.userToken !== c.userToken) await social.metaRevoke(c); }
+  if (c && networks.has(kind) && networks.NETWORKS[kind].revoke) await networks.NETWORKS[kind].revoke(c);
+  if (c && (kind === 'facebook' || kind === 'instagram')) { const other = connOf(kind === 'facebook' ? 'instagram' : 'facebook'); if (!other || other.userToken !== c.userToken) await social.metaRevoke(c); }
   setConnection(kind, null); res.json(connectionsView());
 });
 // another Business Profile location, Facebook Page or Instagram account the same sign-in manages
 app.get('/api/connections/:kind/choices', async (req, res) => {
   const kind = connKind(req, res); if (!kind) return; const c = connOf(kind); if (!c) return res.status(400).json({ error: 'Connect it first' });
   try {
+    if (networks.has(kind)) { const n = networks.NETWORKS[kind]; const list = n.choices ? await n.choices(c) : []; save(); return res.json(list); } // a LinkedIn page or Pinterest board
     const list = kind === 'google' ? (await social.googleLocations(c)).map((l) => ({ id: l.location, label: l.title, sub: l.address, current: l.location === c.location }))
       : (await social.metaChoices(kind, c)).map((x) => ({ id: x.id, label: x.label, sub: kind === 'instagram' ? x.page.name : '', current: x.id === (kind === 'facebook' ? c.pageId : c.igId) }));
     save(); res.json(list);
@@ -2784,6 +2788,9 @@ app.put('/api/connections/:kind', async (req, res) => {
       const locs = await social.googleLocations(c); const l = locs.find((x) => x.location === b.choice); if (!l) return res.status(400).json({ error: 'Choose one of your Business Profile locations' });
       if (c.bookingLink) await social.googleBookingLink(c, '').catch(() => {}); // the booking button moves with the location
       Object.assign(c, l, { choices: locs.length }); if (c.booking) await social.googleBookingLink(c, bookingUrl());
+    } else if (b.choice && networks.has(kind)) {
+      if (!networks.NETWORKS[kind].choose) return res.status(400).json({ error: 'There’s nothing to choose for this connection' });
+      await networks.NETWORKS[kind].choose(c, String(b.choice));
     } else if (b.choice) {
       const list = await social.metaChoices(kind, c); const x = list.find((y) => y.id === b.choice); if (!x) return res.status(400).json({ error: 'Choose one of the accounts listed' });
       if (kind === 'facebook') Object.assign(c, { pageId: x.page.id, name: x.page.name, link: x.page.link, token: x.page.token, choices: list.length });
@@ -2862,7 +2869,18 @@ app.delete('/api/reviews/reply', async (req, res) => {
 // and are saved in the account's uploads, because Facebook and Instagram fetch them from a public address.
 // Bluesky gets the photos themselves (jpegs); a Google post gets a Book button while the Business Profile's booking button is on
 const POST_TO = { facebook: (c, p) => social.facebookPost(c, p), instagram: (c, p) => social.instagramPost(c, p), bluesky: (c, p) => bluesky.post(c, p),
-  google: (c, p) => social.googlePost(c, { ...p, book: c.booking && tenancy.has('onlineBooking') ? bookingUrl() : '' }) };
+  google: (c, p) => social.googlePost(c, { ...p, book: c.booking && tenancy.has('onlineBooking') ? bookingUrl() : '' }),
+  // LinkedIn uploads the photos itself; a Pin links to the business's website (or its booking page); TikTok fetches the photos from the
+  // <slug>.<root domain> address, the one verified in the TikTok app, with the options picked in the form
+  linkedin: (c, p) => networks.NETWORKS.linkedin.post(c, p),
+  pinterest: (c, p) => networks.NETWORKS.pinterest.post(c, { ...p, link: db.company.website || (tenancy.has('onlineBooking') ? bookingUrl() : baseUrl()) }),
+  threads: (c, p) => networks.NETWORKS.threads.post(c, p),
+  tiktok: (c, p) => networks.NETWORKS.tiktok.post(c, { ...p, images: p.paths.map((u) => tenancy.subdomainUrl(tenancy.current()) + u) }),
+};
+// each network's caption limit, photo limit and whether it needs a photo (Bluesky checks its own in lib/bluesky.js)
+const POST_LIMITS = { facebook: { text: 63206, photos: 10 }, instagram: { text: 2200, photos: 10, needsPhoto: true }, google: { text: social.GOOGLE_POST_MAX, photos: 10, needsText: true },
+  ...Object.fromEntries(Object.entries(networks.NETWORKS).map(([k, n]) => [k, n.limits])) };
+const NET_NAMES = { facebook: 'Facebook', instagram: 'Instagram', google: 'Google', bluesky: 'Bluesky', ...Object.fromEntries(Object.entries(networks.NETWORKS).map(([k, n]) => [k, n.name])) };
 // ---------- the business's own automations (lib/business-automations.js) ----------
 const portalLink = (c) => { if (!c.portalToken) { c.portalToken = token(); save(); } return `${baseUrl()}/client-portal?c=${c.portalToken}`; };
 const bizAuto = require('./lib/business-automations')({ db, save, uid, token, iso, niceDate, money, findClient, tenancy, localNow, withStatus, quoteLink, invoiceLink, portalLink, baseUrl, renderEmail, notify, sendEmail, pushTo, jobCrew, pushTime, reviewRecord, reviewLink });
@@ -2884,16 +2902,27 @@ app.get('/p/automations/:token', (req, res) => { const c = bizAuto.clientByToken
 app.post('/p/automations/:token', (req, res) => { const c = bizAuto.clientByToken(req.params.token); if (!c) return res.status(404).send(shell('Link not found', '<h1>This link isn’t valid</h1>')); bizAuto.setOptOut(c, !req.query.on); res.send(autoUnsubPage(c, req.params.token)); });
 app.get('/api/social-posts', (req, res) => {
   const f = connOf('facebook'); const i = connOf('instagram'); const bs = connOf('bluesky'); const g = connOf('google');
-  res.json({ posts: (db.socialPosts || []).slice(0, 100), facebook: f ? { name: f.name, link: f.link } : null, instagram: i ? { username: i.username } : null, bluesky: bs ? { handle: bs.handle } : null, google: g ? { title: g.title } : null });
+  const net = Object.fromEntries(Object.keys(networks.NETWORKS).map((k) => { const c = connOf(k); return [k, c ? { name: c.name || '', username: c.username || '' } : null]; }));
+  res.json({ posts: (db.socialPosts || []).slice(0, 100), facebook: f ? { name: f.name, link: f.link } : null, instagram: i ? { username: i.username } : null, bluesky: bs ? { handle: bs.handle } : null, google: g ? { title: g.title } : null, ...net });
+});
+// what the TikTok account may post right now: who can see it and whether comments can be on (TikTok asks apps to check before each post)
+app.get('/api/social-posts/tiktok', async (req, res) => {
+  const c = connOf('tiktok'); if (!c) return res.status(400).json({ error: 'Connect TikTok first' });
+  try { const r = await networks.NETWORKS.tiktok.creator(c); save(); res.json(r); } catch (e) { save(); res.status(e.status || 502).json({ error: e.message }); }
 });
 app.post('/api/social-posts', async (req, res) => {
   const b = req.body || {}; const caption = String(b.caption || '').trim();
   const to = Object.keys(POST_TO).filter((k) => (b.to || []).includes(k) && connOf(k));
   if (!to.length) return res.status(400).json({ error: 'Choose where to post' });
-  if (caption.length > 2200) return res.status(400).json({ error: 'Keep the caption under 2,200 characters (Instagram’s limit)' });
   const imgs = Array.isArray(b.images) ? b.images : [];
   if (imgs.length > 10) return res.status(400).json({ error: 'Choose up to 10 photos' });
-  if (!imgs.length && to.includes('instagram')) return res.status(400).json({ error: 'Instagram posts need at least one photo' });
+  for (const k of to) { // before posting anywhere
+    const L = POST_LIMITS[k]; if (!L) continue;
+    if (caption.length > L.text) return res.status(400).json({ error: `${NET_NAMES[k]} posts can be up to ${L.text.toLocaleString('en-US')} characters` });
+    if (L.needsPhoto && !imgs.length) return res.status(400).json({ error: `${NET_NAMES[k]} posts need at least one photo` });
+    if (L.needsText && !caption) return res.status(400).json({ error: `${NET_NAMES[k]} posts need a caption` });
+  }
+  if (to.includes('tiktok') && !(b.tiktok && b.tiktok.privacy)) return res.status(400).json({ error: 'Choose who can see the TikTok post' });
   if (!imgs.length && !caption) return res.status(400).json({ error: 'Add a photo or write a caption' });
   const bufs = [];
   for (const d of imgs) {
@@ -2907,8 +2936,8 @@ app.post('/api/social-posts', async (req, res) => {
   const post = { id: uid(), caption, images, results: {}, createdAt: new Date().toISOString(), by: currentUser(req).name || '' };
   for (const k of to) {
     try {
-      const r = await POST_TO[k](connOf(k), { caption, images: images.map((u) => baseUrl() + u), jpegs: bufs });
-      post.results[k] = { status: 'posted', url: k === 'facebook' ? `https://www.facebook.com/${r.post_id || r.id}` : k === 'bluesky' ? r.url : k === 'google' ? r.searchUrl || connOf('google').mapsUrl || '' : r.permalink || `https://www.instagram.com/${connOf(k).username}` };
+      const r = await POST_TO[k](connOf(k), { caption, images: images.map((u) => baseUrl() + u), paths: images, jpegs: bufs, options: k === 'tiktok' ? b.tiktok : undefined });
+      post.results[k] = { status: 'posted', url: k === 'facebook' ? `https://www.facebook.com/${r.post_id || r.id}` : k === 'bluesky' || networks.has(k) ? r.url : k === 'google' ? r.searchUrl || connOf('google').mapsUrl || '' : r.permalink || `https://www.instagram.com/${connOf(k).username}` };
     } catch (e) { post.results[k] = { status: 'failed', error: e.message }; }
   }
   db.socialPosts = [post, ...(db.socialPosts || [])].slice(0, 500); save();
@@ -3336,7 +3365,7 @@ const platformApp = require('./lib/platform')({
   setCompanyIndustry: (i) => { Object.assign(db.company, i); save(); },
 });
 // which app answers: the platform's (its own domain, or /alpha… while developing) or an account's
-const PLATFORM_PATHS = /^\/(alpha(\/.*)?|platform(\/.*)?|stripe\/go\/[a-z]+|oauth\/(google|meta|tiktok)\/callback|home|features|pricing|signup|sign-in|supporters|industries(\/[a-z-]+)?|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;
+const PLATFORM_PATHS = /^\/(alpha(\/.*)?|platform(\/.*)?|stripe\/go\/[a-z]+|oauth\/(google|meta|tiktok|linkedin|pinterest|threads)\/callback|home|features|pricing|signup|sign-in|supporters|industries(\/[a-z-]+)?|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;
 function dispatch(req, res) {
   // www. → the bare domain, so search engines see one copy of each page (the canonical links name the bare domain). Page loads only: a form or webhook posted to www. still works
   if (!tenancy.devMode && /^(GET|HEAD)$/.test(req.method) && tenancy.hostOnly(req.headers.host) === 'www.' + tenancy.PLATFORM_DOMAIN) { res.writeHead(301, { Location: tenancy.platformUrl() + req.url }); return res.end(); }
