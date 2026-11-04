@@ -29,7 +29,11 @@
   css.textContent = `.ph-in{display:flex;align-items:stretch;gap:6px;width:100%;box-sizing:border-box}
 .ph-in>select.ph-cc{flex:none;width:auto!important;min-width:0;margin:0!important;height:auto;font:inherit}
 .ph-in>input{flex:1 1 auto;width:auto!important;min-width:0;margin:0!important}
-.mf .ph-in>select.ph-cc{padding:2px 18px 2px 0}`;
+.mf .ph-in>select.ph-cc{padding:2px 18px 2px 0}
+.fl>.ph-in{position:static;font-size:inherit;color:inherit;gap:10px;align-items:center}
+.fl .ph-in>input{border:0;padding:0;height:24px;background:transparent;box-shadow:none;outline:0}
+.fl .ph-in>select.ph-cc{border:0;border-right:1px solid var(--line,#e5e7eb);border-radius:0;padding:0 22px 0 0;height:24px;background-color:transparent;box-shadow:none;background-position:right 6px center;color:var(--text,inherit)}`;
+  // inside a floating-label box (.fl, .mf) the label's own span sits above; the picker and number share the line below it
   document.head.appendChild(css);
 
   function enhance(i) {
