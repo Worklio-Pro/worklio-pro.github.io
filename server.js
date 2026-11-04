@@ -3488,6 +3488,7 @@ const tenantStats = (t) => tenancy.run(t, () => {
     lastLoginAt: db.users.map((u) => u.lastLoginAt || '').sort().pop() || null };
 });
 const helpApp = require('./lib/help')({ sendTemplate, normEmail, emails });
+const ideasApp = require('./lib/ideas');
 const legal = require('./lib/legal');
 const platformApp = require('./lib/platform')({
   hashPassword, checkPassword, sha, normEmail, cookies, tooMany, recordFailure, clearFailures: (k) => failures.delete(k),
@@ -3505,7 +3506,7 @@ function dispatch(req, res) {
   const p = req.url.split('?')[0]; const r = tenancy.resolve(req.headers.host);
   // robots.txt, sitemap.xml, and no search results for account apps, client links or Alpha (lib/seo.js)
   if (seo.handle(req, res, tenancy.isHelpHost(req.headers.host) ? 'help' : r.kind === 'platform' ? 'platform' : 'account')) return;
-  if ((r.kind === 'platform' || tenancy.isHelpHost(req.headers.host)) && brandLib.serveIcon(req, res)) return; // the app icon (Settings → Your product); accounts use it too, through their /favicon.ico
+  if ((r.kind === 'platform' || tenancy.isHelpHost(req.headers.host) || tenancy.isIdeasHost(req.headers.host)) && brandLib.serveIcon(req, res)) return; // the app icon (Settings → Your product); accounts use it too, through their /favicon.ico
   if (chat.handle(req, res, { tenant: r.kind === 'tenant' ? r.tenant : null })) return; // the chat button (lib/chat.js), on every address
   // pages and API replies depend on who is logged in: hosting caches (e.g. SiteGround's dynamic cache) must never store or share them
   if (!/\.(js|css|png|jpe?g|gif|webp|svg|ico|woff2?)$/i.test(p)) res.setHeader('Cache-Control', 'private, no-store');
@@ -3515,6 +3516,7 @@ function dispatch(req, res) {
   if (slTo) { res.writeHead(302, { Location: slTo }); return res.end(); }
   if (sl) { res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' }); return res.end(notice('Link not found', 'This link isn’t valid. Check the text you were sent, or contact the business that sent it.')); }
   if (tenancy.isHelpHost(req.headers.host)) return helpApp(req, res);
+  if (tenancy.isIdeasHost(req.headers.host)) return ideasApp(req, res); // the public Roadmap, Feedback and Changelog (lib/ideas.js)
   if (r.kind === 'platform' || p === '/api/site/domain-allowed' || (r.dev && PLATFORM_PATHS.test(p))) return platformApp(req, res);
   app(req, res);
 }
