@@ -24,7 +24,7 @@ const bluesky = require('./lib/bluesky');
 const networks = require('./lib/networks'); // LinkedIn, Pinterest, Threads, TikTok and YouTube for Marketing
 const xposts = require('./lib/xposts'); // X, with the business's own developer app
 const businessPage = require('./lib/business-page'); // the page the business QR code opens
-const changelog = require('./lib/changelog'); // what's new: the top bar's bell and /changelog
+const changelog = require('./lib/changelog'); // what's new: the top bar's bell (the full list is on ideas.<domain>/changelog)
 const tiktokLib = require('./lib/tiktok'); tiktokLib.init(); // Alpha → Social: scheduled TikTok posts, checked every 30 seconds
 const rolesLib = require('./lib/roles');
 const iconsLib = require('./lib/icons');
@@ -2586,9 +2586,9 @@ const bizPage = () => businessPage.view(db.businessPage, db.company);
 const pageBook = () => (tenancy.has('onlineBooking') ? bookingUrl() : '');
 app.use('/card', express.urlencoded({ extended: false }));
 // ?qr=1: a scan of the QR code, counted, and turned away once the scan limit or end date is reached
-// What's new: the bell lists the latest three; See all changes opens the whole list
+// What's new: the bell lists the latest three; See all changes opens ideas.<domain>/changelog
 app.get('/api/changelog', (req, res) => res.json(changelog.latest(Math.min(20, Number(req.query.limit) || 3))));
-app.get('/changelog', (req, res) => res.send(changelog.page(tenancy.platform().settings.productName)));
+app.get('/changelog', (req, res) => res.redirect(301, tenancy.ideasUrl() + '/changelog')); // the page moved to ideas.<domain>, for old links
 app.get('/card', (req, res) => {
   const p = bizPage();
   if (req.query.qr) {
