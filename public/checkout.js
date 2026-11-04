@@ -44,7 +44,7 @@ ${C.plans.map((x) => `<label class="opt"><input type="radio" name="plan" value="
 </div></div></section>
 <aside class="card pad sum" aria-label="Order summary"><h2>Order summary</h2>
 <div id="err">${err ? `<div class="msg err" role="alert">${esc(err)}</div>` : ''}${C.discountNote ? `<div class="msg warn" role="status">${esc(C.discountNote)}</div>` : ''}</div>
-<p class="line"><span>${esc(C.productName)} ${esc(p.name)}${c.regular ? ' <small class="sv">Sale price</small>' : ''}</span><span>${c.regular ? `<s class="was">${money(c.regular)}</s> ` : ''}${money(c.cents)}</span></p>
+<p class="line"><span>${esc(C.productName)} ${esc(p.name)}${c.regular ? ` <small class="sv">${c.saleName ? `${esc(c.saleName)} price` : 'Sale price'}</small>` : ''}</span><span>${c.regular ? `<s class="was">${money(c.regular)}</s> ` : ''}${money(c.cents)}</span></p>
 <p class="line muted"><span>Billed every ${per(c)}</span><span>${p.maxUsers ? `${p.maxUsers} login${p.maxUsers === 1 ? '' : 's'}` : 'Unlimited logins'}</span></p>
 ${D ? `<p class="line disc"><span>Code <strong>${esc(D.code)}</strong> <button type="button" class="linkish" id="rmCode">Remove</button><small>${esc(D.summary)}</small></span><span>−${money(D.off)}</span></p>`
     : `<details class="code"${codeErr ? ' open' : ''}><summary>Have a discount code?</summary><form id="codeForm"><input name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Code" aria-label="Discount code" value="${esc(codeTyped)}"><button class="btn alt">Apply</button></form>${codeErr ? `<div class="msg err" role="alert" style="margin:8px 0 0">${esc(codeErr)}</div>` : ''}</details>`}
