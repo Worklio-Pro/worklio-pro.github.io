@@ -1040,12 +1040,12 @@ PAGES['/clients/edit'] = {
 };
 // Edit client details / Create new client from a quote, job or invoice: the client page shows in its place and, on Save or Cancel,
 // the quote, job or invoice comes back exactly as it was (unsaved changes and all). done(client) gets the saved client.
-function clientOverEditor(c, done) {
+function clientOverEditor(c, done, cancelled) {
   const main = $('#main'); const held = [...main.childNodes]; const y = window.scrollY; const title = document.title;
   const sheet = $('#msheet'); if (sheet) sheet.hidden = true; // a phone edit sheet waits underneath
   const restore = () => { main.replaceChildren(...held); document.title = title; window.scrollTo(0, y); if (sheet) sheet.hidden = false; };
   main.replaceChildren(); window.scrollTo(0, 0); document.title = `${c.id ? 'Edit' : 'New'} client · ${company.name || ''}`;
-  clientEditPage(main, c, { cancel: restore, saved: (saved) => { restore(); done(saved); } });
+  clientEditPage(main, c, { cancel: () => { restore(); if (cancelled) cancelled(); }, saved: (saved) => { restore(); done(saved); } });
 }
 // a client saved from an editor: the editor's own copy and its client picker show the change
 function clientSavedInEditor(saved) {

@@ -157,13 +157,12 @@ function scQuick(p, x, y, editKind) {
   $$('.qc').forEach((el) => el.remove());
   let kind = editKind || 'job'; const edit = !!editKind && p.id;
   const box = document.createElement('div'); box.className = 'qc'; box.setAttribute('role', 'dialog'); box.setAttribute('aria-label', edit ? 'Edit' : 'Add to the schedule');
-  const clientOpts = D.clients.map((c) => `<option value="${esc(c.name)}${c.address ? ' · ' + esc(c.address) : ''}" data-id="${c.id}"></option>`).join('');
   const draw = () => {
     const team = D.staff.filter(staffActive);
     const opened = box._open || {};
     box.innerHTML = `<div class="qc-bar" title="Drag to move"><span class="qc-grip" aria-hidden="true">⠿</span><span class="qc-h">${edit ? `Edit ${kind}` : ''}</span><button type="button" class="qc-x" aria-label="Close">×</button></div>
 ${edit ? '' : `<div class="qc-tabs" role="tablist">${[['job', 'Job'], ['task', 'Task'], ['event', 'Event']].map(([k, l]) => `<button type="button" role="tab" aria-selected="${kind === k}" class="${kind === k ? 'on' : ''}" data-k="${k}">${l}</button>`).join('')}</div>`}
-<form class="qc-f">${kind !== 'event' ? `<input name="client" list="qcClients" placeholder="Search client or address" autocomplete="off" value="${esc(p.clientId ? (byId(D.clients, p.clientId) || {}).name || '' : p.address || '')}" ${kind === 'job' ? 'required' : ''}><datalist id="qcClients">${clientOpts}</datalist>` : ''}
+<form class="qc-f">${kind !== 'event' ? `<div class="qc-cl"><input name="client" role="combobox" aria-expanded="false" aria-autocomplete="list" placeholder="Search client or address" autocomplete="off" value="${esc(p.clientId ? (byId(D.clients, p.clientId) || {}).name || '' : p.address || '')}" ${kind === 'job' ? 'required' : ''}><input type="hidden" name="clientId" value="${esc(p.clientId || '')}"><div class="qc-cl-pop" role="listbox" hidden></div></div>` : ''}
 <input name="title" placeholder="Title" required maxlength="120" value="${esc(p.title || '')}">
 ${opened.notes || p.description || p.details ? `<textarea name="notes" rows="2" placeholder="${kind === 'event' ? 'Details' : 'Instructions'}">${esc(p.description || p.details || '')}</textarea>` : `<button type="button" class="qc-add" data-open="notes">+ ${kind === 'event' ? 'Add Details' : 'Add Instructions'}</button>`}
 ${kind === 'job' ? (opened.item ? '<div class="qc-item"><input name="itemDesc" placeholder="Product or service"><input name="itemQty" type="number" min="0" step="any" value="1" aria-label="Quantity"><input name="itemPrice" type="number" min="0" step="0.01" placeholder="Price" aria-label="Price"></div>' : '<button type="button" class="qc-add" data-open="item">+ Add Line Item</button>') : ''}
@@ -173,6 +172,7 @@ ${kind !== 'event' ? (opened.assign || (p.staffIds || []).length ? `<div class="
 <label class="qc-any"><input type="checkbox" name="anytime" ${p.anytime ? 'checked' : ''}> Anytime</label>
 <div class="qc-foot">${edit ? '<button type="button" class="btn danger" data-qc="delete">Delete</button>' : `<button type="button" class="btn alt" data-qc="more">More Options</button>`}<button class="btn">Save</button></div></form>`;
     const f = $('.qc-f', box);
+    if (f.client) qcClientPick(box, f, () => { keep(); return p; }, draw);
     $$('.qc-tabs button', box).forEach((b) => b.addEventListener('click', () => { keep(); kind = b.dataset.k; draw(); }));
     $$('.qc-add', box).forEach((b) => b.addEventListener('click', () => { keep(); box._open = { ...(box._open || {}), [b.dataset.open]: true }; draw(); const t = $(`[name=${b.dataset.open === 'notes' ? 'notes' : b.dataset.open === 'item' ? 'itemDesc' : 'staff'}]`, box); if (t) t.focus(); }));
     $('.qc-x', box).addEventListener('click', () => box.remove());
@@ -193,7 +193,8 @@ ${kind !== 'event' ? (opened.assign || (p.staffIds || []).length ? `<div class="
     });
   };
   // what's typed carries over when switching tabs or opening a section
-  const read = () => { const f = $('.qc-f', box); const fd = new FormData(f); const typed = String(fd.get('client') || ''); const opt = $$('#qcClients option', box).find((o) => o.value === typed);
+  const read = () => { const f = $('.qc-f', box); const fd = new FormData(f); const typed = String(fd.get('client') || '').trim(); const picked = byId(D.clients, String(fd.get('clientId') || ''));
+    const opt = picked && picked.name === typed ? { dataset: { id: picked.id } } : null;
     const desc = String(fd.get('itemDesc') || '').trim();
     return { clientId: opt ? opt.dataset.id : '', address: opt ? '' : typed, title: String(fd.get('title') || '').trim(), notes: String(fd.get('notes') || ''), date: fd.get('date'), startTime: fd.get('startTime') || '', endTime: fd.get('endTime') || '', anytime: !!fd.get('anytime'), staffIds: fd.getAll('staff'),
       items: desc ? [{ desc, qty: Number(fd.get('itemQty')) || 1, cost: Number(fd.get('itemPrice')) || 0, price: Number(fd.get('itemPrice')) || 0, markup: 0, markupType: 'percent' }] : null }; };
@@ -209,6 +210,48 @@ ${kind !== 'event' ? (opened.assign || (p.staffIds || []).length ? `<div class="
     const end = () => { removeEventListener('pointermove', mv); removeEventListener('pointerup', end); };
     addEventListener('pointermove', mv); addEventListener('pointerup', end);
   });
+}
+// the quick pop-up's client search: matches show right under the box, with New client at the bottom.
+// The list is position:fixed so the pop-up's own scrolling doesn't clip it
+function qcClientPick(box, f, hold, redraw) {
+  const input = f.client; const idIn = f.clientId; const pop = $('.qc-cl-pop', box);
+  let hits = []; let at = -1; const canNew = canDo('clients.edit');
+  const place = () => { const r = input.getBoundingClientRect(); const below = innerHeight - r.bottom - 8; const above = r.top - 8;
+    pop.style.left = r.left + 'px'; pop.style.width = r.width + 'px';
+    if (below >= 200 || below >= above) { pop.style.top = r.bottom + 4 + 'px'; pop.style.bottom = ''; pop.style.maxHeight = Math.max(120, below - 4) + 'px'; }
+    else { pop.style.top = ''; pop.style.bottom = innerHeight - r.top + 4 + 'px'; pop.style.maxHeight = above - 4 + 'px'; } };
+  const draw = () => {
+    const q = input.value.trim().toLowerCase();
+    hits = D.clients.filter((c) => !c.archived && (!q || [c.name, c.company, c.email, c.phone, c.address].some((v) => String(v || '').toLowerCase().includes(q))))
+      .sort((a, b) => a.name.localeCompare(b.name)).slice(0, 50);
+    at = hits.length ? Math.max(0, hits.findIndex((c) => c.id === idIn.value)) : -1;
+    pop.innerHTML = (hits.length ? hits.map((c, i) => `<div class="qc-cl-opt${i === at ? ' on' : ''}" role="option" data-id="${c.id}"><strong>${esc(c.name)}</strong>${c.address || c.company ? `<span>${esc(c.address || c.company)}</span>` : ''}</div>`).join('')
+      : `<div class="qc-cl-none">${D.clients.length ? 'No clients match' : 'No clients yet'}</div>`)
+      + (canNew ? '<button type="button" class="qc-cl-new"><span aria-hidden="true">+</span> New client</button>' : '');
+  };
+  const mark = () => { $$('.qc-cl-opt', pop).forEach((o, i) => o.classList.toggle('on', i === at)); const o = $$('.qc-cl-opt', pop)[at]; if (o) o.scrollIntoView({ block: 'nearest' }); };
+  const open = () => { draw(); pop.hidden = false; place(); input.setAttribute('aria-expanded', 'true'); };
+  const close = () => { pop.hidden = true; input.setAttribute('aria-expanded', 'false'); };
+  const choose = (c) => { idIn.value = c.id; input.value = c.name; close(); };
+  const addNew = () => {
+    const typed = input.value.trim(); const w = typed.split(/\s+/).filter(Boolean); const p = hold(); close(); box.hidden = true;
+    clientOverEditor(w.length && !hits.length ? { firstName: w[0], lastName: w.slice(1).join(' ') } : {},
+      (c) => { clientSavedInEditor(c); p.clientId = c.id; p.address = ''; box.hidden = false; redraw(); const t = $('[name=title]', box); if (t) t.focus(); },
+      () => { box.hidden = false; });
+  };
+  input.addEventListener('focus', open); input.addEventListener('click', () => { if (pop.hidden) open(); });
+  input.addEventListener('input', () => { idIn.value = ''; if (pop.hidden) open(); else { draw(); place(); } });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); if (pop.hidden) return open(); if (!hits.length) return; at = Math.max(0, Math.min(hits.length - 1, at + (e.key === 'ArrowDown' ? 1 : -1))); mark(); }
+    else if (e.key === 'Enter' && !pop.hidden && hits[at]) { e.preventDefault(); choose(hits[at]); }
+    else if (e.key === 'Escape' && !pop.hidden) { e.stopPropagation(); close(); }
+    else if (e.key === 'Tab') close();
+  });
+  pop.addEventListener('mousedown', (e) => e.preventDefault()); // keep focus in the box while choosing
+  pop.addEventListener('click', (e) => { if (e.target.closest('.qc-cl-new')) return addNew(); const o = e.target.closest('.qc-cl-opt'); if (o) choose(byId(D.clients, o.dataset.id)); });
+  input.addEventListener('blur', close);
+  box.addEventListener('scroll', () => { if (!pop.hidden) place(); });
+  $('.qc-bar', box).addEventListener('pointerdown', close); // dragging the pop-up: the list would be left behind
 }
 let jobDraft = null; // More Options: the quick pop-up's job, opened in the full job form
 A.manageStaff = () => navigate('/team');
