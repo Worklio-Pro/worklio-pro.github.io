@@ -153,7 +153,7 @@ const NOT_ON_PHONES = ['settings']; // left off the phone tab bar for everyone (
 window.addEventListener('hashchange', () => { if (POPOUT) return; tab = tabFromHash(); if (tab === 'forum') { FR = null; frSel = ''; } if (D) render(); });
 
 /* ===== accounts ===== */
-const statusChip = (a) => (a.status === 'active' ? `<span class="cstatus active">Active</span>${a.expiresAt ? `<div class="sm">Until ${fmtDate(a.expiresAt)}</div>` : ''}${a.billing && a.billing.status === 'paid' ? `<div class="sm">${a.billing.demo ? 'Demo checkout' : 'Paid by card'}</div>` : a.billing && a.billing.status === 'trial' ? `<div class="sm">Free trial, no card${a.billing.trialCancelled ? ' (cancelled)' : ''}</div>` : ''}`
+const statusChip = (a) => (a.status === 'active' ? `<span class="cstatus active">Active</span>${a.expiresAt ? `<div class="sm">Until ${fmtDate(a.expiresAt)}</div>` : ''}${a.billing && a.billing.prepaid && a.billing.prepaid.active ? `<div class="sm">Prepaid${a.billing.prepaid.card ? `${a.expiresAt ? '' : ` until ${fmtDate(a.billing.prepaid.until)}`}, then card` : ', no card'}</div>` : a.billing && a.billing.status === 'paid' ? `<div class="sm">${a.billing.demo ? 'Demo checkout' : 'Paid by card'}</div>` : a.billing && a.billing.status === 'trial' ? `<div class="sm">Free trial, no card${a.billing.trialCancelled ? ' (cancelled)' : ''}</div>` : ''}`
   + (a.billing && a.billing.discountCode ? `<div class="sm">Code ${esc(a.billing.discountCode)}</div>` : '') : a.status === 'pending' ? '<span class="cstatus">Awaiting payment</span>' : `<span class="cstatus">${{ trial: 'Trial ended', ended: 'Expired', cancelled: 'Cancelled', billing: 'Payment failed' }[a.pauseReason] || 'Paused'}</span>${a.expiredOn ? `<div class="sm">Access ended ${fmtDate(a.expiredOn)}</div>` : a.pauseReason === 'billing' ? '<div class="sm">Waiting for a card update</div>' : a.pauseReason === 'cancelled' ? '<div class="sm">Subscription ended</div>' : ''}`);
 // a trial or test plan (Trial, or any plan hidden from the pricing page): suggest a last day of access two weeks out
 const isTrialPlan = (id) => { const p = D.plans.find((x) => x.id === id); return !!p && (p.id === 'trial' || !!p.hidden); };
@@ -256,6 +256,29 @@ function showLink(title, text, link) {
   $('input', m).select();
 }
 A.copy = (d, el) => { const i = el.parentElement.querySelector('input'); navigator.clipboard.writeText(i.value).then(() => toast('Copied'), () => { i.select(); toast('Press Ctrl+C to copy', true); }); };
+// a prepaid account (Founding Supporter code): its code and months, its last prepaid day (changeable), and ending it early
+const prepaidSection = (a) => { const x = a.billing.prepaid;
+  return `<h3 style="font-size:15px;margin:18px 0 6px">Prepaid</h3><div class="pp-box">
+<p class="sm" style="margin:0 0 6px">Founding Supporter code <strong>${esc(x.code)}</strong>${x.supporter ? ` from ${esc(x.supporter)}${x.tier ? ` (${esc(x.tier)})` : ''}` : ''}: ${x.months} month${x.months === 1 ? '' : 's'} of ${esc(planName(x.planId))}.</p>
+<p class="sm" style="margin:0 0 10px">${x.active ? `Prepaid until <strong>${fmtDate(x.until)}</strong>.` : `The prepaid months ended on ${fmtDate(x.until)}.`} ${x.card ? 'They have a card on file: Stripe charges it the day after the last prepaid day.' : 'No card on file: the account pauses after the last prepaid day unless they add one.'} Their plan is locked while prepaid; you can still change it with Plan above.</p>
+<form id="ppf" class="inline-form"><label>Last prepaid day<input name="until" type="date" min="${ymdLocal(new Date())}" value="${esc(x.until >= ymdLocal(new Date()) ? x.until : '')}" required></label><button class="btn alt">Save date</button></form>
+<p class="muted" style="font-size:13px;margin:-4px 0 10px">${x.card ? 'Moves their next card charge to the day after.' : `It’s also the account’s last day of access${a.status === 'active' ? '' : ': a later date opens the paused account again'}.`}</p>
+<button type="button" class="btn danger sm" data-act="ppEnd" data-id="${a.id}">End prepaid now</button></div>`; };
+A.ppEnd = (d) => {
+  const a = D.accounts.find((x) => x.id === d.id); const x = a.billing.prepaid; const back = () => A.editAccount({ id: a.id });
+  const m = modal(`End ${a.name}’s prepaid months`, `<form id="pef">${x.card
+    ? `<p style="margin-top:0">Their prepaid months stop today and Stripe charges their card for ${esc(planName(a.planId))} <strong>now</strong>, then on the usual schedule.</p>`
+    : `<p style="margin-top:0">Their prepaid months stop today. What happens next?</p>
+<label class="switchline"><input type="radio" name="then" value="trial" checked> <span>A normal free trial until <input type="date" name="trialUntil" min="${ymdLocal(new Date())}" value="${inDays(14)}" style="width:auto;display:inline-block;margin-left:6px"></span></label>
+<label class="switchline"><input type="radio" name="then" value="pause"> <span>Pause the account now. They can choose a plan to open it again.</span></label>`}
+<p class="muted" style="font-size:13px">Their Founding Supporter code stays used. Their data isn’t changed.</p>
+<div class="foot"><button type="button" class="btn alt" data-act="ppBack" data-id="${a.id}">Back</button><button class="btn danger">End prepaid now</button></div></form>`);
+  const f = $('#pef', m);
+  f.addEventListener('submit', async (e) => { e.preventDefault(); const btn = $('.btn.danger', f); btn.disabled = true; const b = Object.fromEntries(new FormData(f));
+    try { await api('POST', `/api/platform/accounts/${a.id}/prepaid`, { action: 'end', then: b.then || 'trial', trialUntil: b.trialUntil }); toast(x.card ? 'Prepaid ended: their card was charged' : b.then === 'pause' ? 'Prepaid ended: the account is paused' : `Prepaid ended: free trial until ${fmtDate(b.trialUntil)}`); await load(); render(); back(); }
+    catch (err) { btn.disabled = false; toast(err.message, true); } });
+};
+A.ppBack = (d) => A.editAccount({ id: d.id });
 A.editAccount = (d) => {
   const a = D.accounts.find((x) => x.id === d.id);
   const m = modal(a.name, `<div class="am-sum"><p class="sm">${a.owner ? `${esc(a.owner.name)} · ${esc(a.owner.email)}${a.owner.active ? '' : ' · <em>invite not accepted</em>'}${a.owner.unconfirmed ? ' · <em>email not confirmed</em>' : ''}` : 'No owner login yet'}</p>
@@ -271,7 +294,7 @@ ${industryFields(a)}
 <div class="foot" style="margin-top:0"><button class="btn">Save</button></div></form>
 <h3 style="font-size:15px;margin:18px 0 6px">Owner login</h3><p class="muted" style="font-size:14px;margin:0 0 8px">${a.owner ? `${esc(a.owner.name)} (${esc(a.owner.email)}). ${a.owner.active ? 'Get a password reset link if they’re locked out.' : 'They haven’t chosen a password yet.'}` : 'No owner login.'}</p>
 ${a.owner ? `<button type="button" class="btn alt sm" data-act="ownerLink" data-id="${a.id}">${a.owner.active ? 'Get password reset link' : 'Get a new invite link'}</button>` : ''}
-${a.isDefault ? '' : `<h3 style="font-size:15px;margin:18px 0 6px">Last day of access</h3><form id="xf" class="inline-form">${expiryField(a.expiresAt)}<button class="btn alt">Save date</button></form>
+${a.billing && a.billing.prepaid ? prepaidSection(a) : a.isDefault ? '' : `<h3 style="font-size:15px;margin:18px 0 6px">Last day of access</h3><form id="xf" class="inline-form">${expiryField(a.expiresAt)}<button class="btn alt">Save date</button></form>
 <p class="muted" style="font-size:13px;margin:-4px 0 0">${a.expiredOn ? `Its access ended on ${fmtDate(a.expiredOn)}. Choose a later date (or clear it), save, then resume the account.` : a.expiresAt ? `The account pauses after ${fmtDate(a.expiresAt)}. Clear the date to keep it open.` : 'No end date: the account stays open.'}</p>`}
 </div><div class="am-col"><h3 style="font-size:15px;margin:18px 0 6px">Custom domains</h3>${a.domains.length ? `<table class="acc">${a.domains.map((x) => `<tr><td><strong>${esc(x.host)}</strong>${x.primary ? ' <span class="pf-chip">Main</span>' : ''}<div class="sm">${x.verified ? 'Connected' : 'Waiting for DNS'}</div></td>
 <td><div class="acts">${x.verified ? `<button type="button" class="btn alt sm" data-act="domain" data-host="${esc(x.host)}" data-v="0">Unapprove</button>` : `<button type="button" class="btn alt sm" data-act="domain" data-host="${esc(x.host)}" data-v="1" title="Approve without waiting for DNS">Approve</button>`}<button type="button" class="btn danger sm" data-act="domain" data-host="${esc(x.host)}" data-rm="1">Remove</button></div></td></tr>`).join('')}</table>`
@@ -286,6 +309,8 @@ ${a.status === 'active' ? '' : a.status === 'pending' ? '<p class="muted" style=
   m.dataset.id = a.id; m.tabIndex = -1; m.focus(); // focus the popup itself, not its first field (the plan menu), so nothing changes by accident
   wirePlanSelects(m, (x) => A.editAccount({ id: x.id }));
   const f = $('#ef', m); wireSlug(f, a.slug); wireIndustry(f);
+  const pf = $('#ppf', m); if (pf) pf.addEventListener('submit', async (e) => { e.preventDefault(); const btn = $('button', pf); btn.disabled = true;
+    try { await api('POST', `/api/platform/accounts/${a.id}/prepaid`, { action: 'until', until: pf.until.value }); toast(`Prepaid until ${fmtDate(pf.until.value)}`); await load(); render(); A.editAccount({ id: a.id }); } catch (x) { btn.disabled = false; toast(x.message, true); } });
   const xf = $('#xf', m); if (xf) xf.addEventListener('submit', async (e) => { e.preventDefault(); try { await api('PUT', `/api/platform/accounts/${a.id}`, { expiresAt: xf.expiresAt.value }); toast(xf.expiresAt.value ? `Last day of access: ${fmtDate(xf.expiresAt.value)}` : 'End date removed'); await load(); render(); A.editAccount({ id: a.id }); } catch (x) { toast(x.message, true); } });
   const sf = $('#saf', m);
   if (sf) sf.addEventListener('submit', async (e) => {
