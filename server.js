@@ -653,19 +653,21 @@ function loginsFor(email) {
   return tenancy.platform().tenants.flatMap((t) => tenancy.run(t, () => db.users.filter((u) => u.email === e)
     .map((user) => ({ t, user, business: db.company.name || t.name, active: !!user.passwordHash && !staffBlocked(user) }))));
 }
-// the central login hands the person to their business's own address with a one-time link (1 minute), which logs them in there
+// the central login hands the person to their business's own address with a one-time link (1 minute), which logs them in there,
+// then opens next: a page in the app (only an address on the same site, starting with one /)
 const handoffs = new Map(); // token hash -> { tenantId, userId, expires }
-function handoffUrl(t, user) {
+function handoffUrl(t, user, next) {
   const tok = crypto.randomBytes(32).toString('hex'); const now = Date.now();
   for (const [k, x] of handoffs) if (x.expires < now) handoffs.delete(k);
-  handoffs.set(sha(tok), { tenantId: t.id, userId: user.id, expires: now + 60e3 });
+  const to = typeof next === 'string' && next.length < 4000 && /^\/(?!\/)[^\s\\]*$/.test(next) ? next : '/';
+  handoffs.set(sha(tok), { tenantId: t.id, userId: user.id, expires: now + 60e3, next: to });
   return `${tenancy.tenantUrl(t)}/login/handoff?token=${tok}`;
 }
 app.get('/login/handoff', (req, res) => {
   const k = sha(String(req.query.token || '')); const x = handoffs.get(k); handoffs.delete(k);
   const user = x && x.expires > Date.now() && x.tenantId === tenancy.current().id && db.users.find((u) => u.id === x.userId);
   if (!user || !user.passwordHash || staffBlocked(user)) return res.redirect('/login');
-  user.lastLoginAt = new Date().toISOString(); startSession(res, user); res.redirect('/');
+  user.lastLoginAt = new Date().toISOString(); startSession(res, user); res.redirect(x.next || '/');
 });
 app.post('/api/auth/reset', (req, res) => {
   const k = sha((req.body && req.body.token) || ''); const t = db.resetTokens[k];
@@ -843,7 +845,7 @@ function accountInfo() {
     slug: t.slug, plan: { id: plan.id, name: plan.name }, features: [...tenancy.featuresOf(t)], lockedPages: tenancy.lockedPages(t), betaPages: tenancy.betaPages(), maxUsers: plan.maxUsers || 0,
     url: tenancy.tenantUrl(t), subdomainUrl: tenancy.subdomainUrl(t), rootDomain: tenancy.ROOT_DOMAIN, serverIp: process.env.SERVER_IP || '',
     domains: (t.domains || []).map(({ host, verified, primary, addedAt, verifiedAt }) => ({ host, verified: !!verified, primary: !!primary, addedAt, verifiedAt: verifiedAt || null })),
-    forum: forum.isOn(), // Alpha → Help Center → Forum → Forum settings can close the forum
+    forum: forum.isOn(), // Alpha → Help Center → Board → Board settings can close the Board
     marketplace: marketplace.isOn(tenancy.platform()), // Alpha → Settings → App Marketplace
     aiDescriptions: tenancy.aiOn('aiDescriptions'), aiRewrite: tenancy.aiOn('aiRewrite'), // Alpha → Settings → Integrations → AI
     navIcons: iconsLib.navIcons(), navOrder: iconsLib.order(), // the menu's icons, order and sections (Alpha → Settings → Menu)
@@ -3179,7 +3181,7 @@ forum.init({
   user: (slug, id) => { const t = tenancy.platform().tenants.find((x) => x.slug === slug); return t ? tenancy.run(t, () => { const u = db.users.find((x) => x.id === id); return u && isAdmin(u) && !staffBlocked(u) ? { name: u.name, email: u.email } : null; }) : null; },
 });
 const forumDo = (fn) => (req, res) => {
-  const u = currentUser(req); if (!isAdmin(u)) return res.status(403).json({ error: 'The forum is for account owners and admins' });
+  const u = currentUser(req); if (!isAdmin(u)) return res.status(403).json({ error: 'The Board is for account owners and admins' });
   const t = tenancy.current(); const who = { t: t.slug, u: u.id, name: u.name, email: u.email, role: u.role, company: db.company.name || t.slug };
   try { res.json(fn(who, req.params, req.body || {})); } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 };

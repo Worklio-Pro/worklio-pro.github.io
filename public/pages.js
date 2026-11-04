@@ -2782,41 +2782,51 @@ ${yt ? `<div class="rf-embed"><iframe src="https://www.youtube-nocookie.com/embe
 };
 A.copyRefLink = () => { const l = $('#main')._refLink; navigator.clipboard.writeText(l).then(() => toast('Referral link copied'), () => prompt('Copy your referral link:', l)); };
 
-/* ===== /forum: owners and admins of every business share issues and feature requests, like them and comment (lib/forum.js).
-   Not a support queue: the team reads it to decide what to improve, and sets each post's status in Alpha → Help Center → Forum. ===== */
-let forumView = { kind: 'all', status: '', sort: 'top', q: '', mine: false };
+/* ===== /forum, called the Board: owners and admins of every business share issues and feature requests, like them and comment (lib/forum.js).
+   Not a support queue: the team reads it to decide what to improve, and sets each post's status in Alpha → Help Center → Board. ===== */
+let forumView = { kind: 'all', category: '', status: '', sort: 'top', q: '', mine: false };
 let FO = null; // the last list or post from the server
 const foAgo = (iso) => { const s = (Date.now() - new Date(iso)) / 1000; if (s < 60) return 'just now'; if (s < 3600) return `${Math.floor(s / 60)} min ago`; if (s < 86400) return `${Math.floor(s / 3600)} h ago`; if (s < 86400 * 7) { const d = Math.floor(s / 86400); return `${d} day${d === 1 ? '' : 's'} ago`; } return fmtDate(String(iso).slice(0, 10)); };
 const foWho = (a) => (a ? (a.team ? `<span class="fo-team">${esc(a.name)}</span>` : `<strong>${esc(a.name)}</strong> · ${esc(a.company)}`) : '');
 const foStatus = (p, S) => `<span class="fo-st fo-st-${p.status}">${esc(S[p.status])}</span>`;
+const foCat = (p) => `<span class="fo-cat">${esc(FO.categories[p.category] || 'Other')}</span>`;
 const foKind = (p, K) => `<span class="fo-kind fo-k-${p.kind}">${esc(K[p.kind])}</span>`;
 const foLike = (n, on, act, attrs) => `<button type="button" class="fo-like ${on ? 'on' : ''}" data-act="${act}" ${attrs} aria-pressed="${on}" title="${on ? 'Unlike' : 'Like'}">${svgIcon('<path d="M7 10v11M2 10h5v11H2zM7 10l4-8a3 3 0 0 1 3 3v4h5.5a2 2 0 0 1 2 2.3l-1.4 8a2 2 0 0 1-2 1.7H7"/>', 16)}<span>${n}</span></button>`;
 const foText = (s) => esc(s).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
 PAGES['/forum'] = {
-  title: 'Forum',
+  title: 'Board',
   async render(main) {
-    if (!isAdminMe()) { main.innerHTML = '<div class="card"><h1>Forum</h1><p class="muted">The forum is for account owners and admins.</p></div>'; return; }
+    if (!isAdminMe()) { main.innerHTML = '<div class="card"><h1>Board</h1><p class="muted">The Board is for account owners and admins.</p></div>'; return; }
     const id = qp('p');
     try { FO = await api('GET', id ? '/api/forum/' + encodeURIComponent(id) : '/api/forum'); }
-    catch (e) { main.innerHTML = `<div class="card"><h1>Forum</h1><p class="muted">${esc(e.message)}</p>${id ? '<p><a href="/forum" data-link>Back to the forum</a></p>' : ''}</div>`; return; }
-    return id ? foPost(main) : foList(main);
+    catch (e) { main.innerHTML = `<div class="card"><h1>Board</h1><p class="muted">${esc(e.message)}</p>${id ? '<p><a href="/forum" data-link>Back to the Board</a></p>' : ''}</div>`; return; }
+    if (id) return foPost(main);
+    foList(main);
+    // from Create Post on ideas.<domain>, after logging in: the new post form, filled in, to check and send
+    if (qp('new')) { const c = qp('cat') || ''; forumView.category = FO.categories[c] ? c : ''; foList(main); foForm({ kind: 'idea', category: forumView.category, title: qp('title') || '', body: qp('body') || '' }); history.replaceState(null, '', '/forum'); }
   },
 };
 function foList(main) {
   const v = forumView; const K = FO.kinds; const S = FO.statuses; const product = (company.account && company.account.productName) || 'Worklio Pro';
   const q = v.q.trim().toLowerCase();
-  const list = FO.posts.filter((p) => (v.kind === 'all' || p.kind === v.kind) && (!v.status || p.status === v.status) && (!v.mine || p.mine) && (!q || (p.title + ' ' + p.excerpt + ' ' + p.author.name + ' ' + (p.author.company || '')).toLowerCase().includes(q)));
+  const list = FO.posts.filter((p) => (v.kind === 'all' || p.kind === v.kind) && (!v.category || p.category === v.category) && (!v.status || p.status === v.status) && (!v.mine || p.mine) && (!q || (p.title + ' ' + p.excerpt + ' ' + p.author.name + ' ' + (p.author.company || '')).toLowerCase().includes(q)));
   const by = { top: (a, b) => b.likes - a.likes || b.comments - a.comments || b.at.localeCompare(a.at), new: (a, b) => b.at.localeCompare(a.at), active: (a, b) => b.lastAt.localeCompare(a.lastAt) }[v.sort];
   list.sort((a, b) => (b.pinned - a.pinned) || by(a, b));
-  const count = (k) => FO.posts.filter((p) => k === 'all' || p.kind === k).length;
-  main.innerHTML = `<div class="head"><div><h1>Forum</h1><p class="sub">Suggest features and report issues. Like the posts that matter to you and join the conversation. The ${esc(product)} team reads everything here to decide what to improve next.</p></div><button class="btn" data-act="foNew">New post</button></div>
+  const count = (k) => FO.posts.filter((p) => (k === 'all' || p.kind === k) && (!v.category || p.category === v.category)).length;
+  const inCat = (k) => FO.posts.filter((p) => p.category === k).length;
+  // no category picked: every category as a card to open; a category picked: its name, with a way back
+  const cats = v.category ? `<p class="fo-back"><a href="/forum" data-act="foCat" data-k="">${svgIcon(ICONS.back, 16)} All categories</a></p><h2 class="fo-cath">${esc(FO.categories[v.category])}</h2>`
+    : `<h2 class="fo-cath">Categories</h2><div class="fo-cats">${Object.entries(FO.categories).map(([k, l]) => `<button type="button" class="fo-catc" data-act="foCat" data-k="${k}"><span>${esc(l)}</span><b>${inCat(k)}</b></button>`).join('')}</div><h2 class="fo-cath">All posts</h2>`;
+  main.innerHTML = `<div class="head"><div><h1>Board</h1><p class="sub">Suggest features and report issues. Like the posts that matter to you and join the conversation. The ${esc(product)} team reads everything here to decide what to improve next.</p></div><button class="btn" data-act="foNew">New post</button></div>
+${cats}
 <div class="fo-bar"><div class="tabs fo-tabs">${[['all', 'All'], ['idea', 'Feature requests'], ['issue', 'Issues']].map(([k, l]) => `<button class="${v.kind === k ? 'on' : ''}" data-act="foKindTab" data-k="${k}">${l} <span class="muted">${count(k)}</span></button>`).join('')}</div>
-<div class="fo-filters"><label class="pill">Status<select data-fv="status"><option value="">Any</option>${Object.entries(S).map(([k, l]) => `<option value="${k}" ${v.status === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+<div class="fo-filters"><label class="pill">Category<select data-fv="category"><option value="">All</option>${Object.entries(FO.categories).map(([k, l]) => `<option value="${k}" ${v.category === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+<label class="pill">Status<select data-fv="status"><option value="">Any</option>${Object.entries(S).map(([k, l]) => `<option value="${k}" ${v.status === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
 <label class="pill">Sort<select data-fv="sort">${[['top', 'Most liked'], ['new', 'Newest'], ['active', 'Recent activity']].map(([k, l]) => `<option value="${k}" ${v.sort === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
 <label class="fo-mine"><input type="checkbox" data-fv="mine" ${v.mine ? 'checked' : ''}> My posts</label>
-<input id="foQ" class="csearch" type="search" placeholder="Search the forum…" value="${esc(v.q)}"></div></div>
+<input id="foQ" class="csearch" type="search" placeholder="Search the Board…" value="${esc(v.q)}"></div></div>
 <div class="fo-list">${list.map((p) => `<div class="card fo-item" data-id="${esc(p.id)}">${foLike(p.likes, p.liked, 'foLike', `data-id="${esc(p.id)}"`)}
-<div class="fo-main"><div class="fo-tags">${p.pinned ? '<span class="fo-pin">📌 Pinned</span>' : ''}${foKind(p, K)}${foStatus(p, S)}${p.locked ? '<span class="fo-lock">🔒 Locked</span>' : ''}</div>
+<div class="fo-main"><div class="fo-tags">${p.pinned ? '<span class="fo-pin">📌 Pinned</span>' : ''}${foKind(p, K)}${foCat(p)}${foStatus(p, S)}${p.locked ? '<span class="fo-lock">🔒 Locked</span>' : ''}</div>
 <a class="fo-title" href="/forum?p=${esc(p.id)}" data-link>${esc(p.title)}</a><p class="fo-ex">${esc(p.excerpt)}${p.excerpt.length >= 220 ? '…' : ''}</p>
 <div class="fo-meta">${foWho(p.author)} · ${foAgo(p.at)} · <a href="/forum?p=${esc(p.id)}" data-link>${p.comments} comment${p.comments === 1 ? '' : 's'}</a></div></div></div>`).join('')
   || `<div class="card empty">${FO.posts.length ? 'No posts match these filters.' : 'No posts yet. Be the first to suggest a feature or report an issue.'}</div>`}</div>`;
@@ -2829,9 +2839,9 @@ function foPost(main) {
   const one = (c) => `<div class="fo-c ${c.author && c.author.team ? 'team' : ''}" id="c-${esc(c.id)}">${c.deleted ? '<p class="muted fo-del">This comment was deleted.</p>' : `<div class="fo-meta">${foWho(c.author)} · ${foAgo(c.at)}</div>
 <div class="fo-body">${foText(c.body)}</div>
 <div class="fo-acts">${foLike(c.likes, c.liked, 'foLikeC', `data-c="${esc(c.id)}"`)}${p.locked ? '' : `<button type="button" class="fo-a" data-act="foReply" data-c="${esc(c.id)}">Reply</button>`}${c.mine ? `<button type="button" class="fo-a" data-act="foDelC" data-c="${esc(c.id)}">Delete</button>` : ''}</div>`}</div>`;
-  main.innerHTML = `<p class="fo-back"><a href="/forum" data-link>${svgIcon(ICONS.back, 16)} Forum</a></p>
+  main.innerHTML = `<p class="fo-back"><a href="/forum" data-link>${svgIcon(ICONS.back, 16)} Board</a></p>
 <div class="card fo-post"><div class="fo-item">${foLike(p.likes, p.liked, 'foLike', `data-id="${esc(p.id)}"`)}<div class="fo-main">
-<div class="fo-tags">${p.pinned ? '<span class="fo-pin">📌 Pinned</span>' : ''}${foKind(p, K)}${foStatus(p, S)}${p.locked ? '<span class="fo-lock">🔒 Locked</span>' : ''}</div>
+<div class="fo-tags">${p.pinned ? '<span class="fo-pin">📌 Pinned</span>' : ''}${foKind(p, K)}${foCat(p)}${foStatus(p, S)}${p.locked ? '<span class="fo-lock">🔒 Locked</span>' : ''}</div>
 <h1 class="fo-h">${esc(p.title)}</h1><div class="fo-meta">${foWho(p.author)} · ${foAgo(p.at)}${p.editedAt ? ' · edited' : ''}</div>
 <div class="fo-body">${foText(p.body)}</div>
 ${p.mine ? `<div class="fo-acts">${p.locked ? '' : '<button type="button" class="fo-a" data-act="foEdit">Edit</button>'}<button type="button" class="fo-a" data-act="foDel">Delete</button></div>` : ''}</div></div></div>
@@ -2847,8 +2857,9 @@ async function foSend(form, parentId) {
   catch (e) { toast(e.message, true); btn.disabled = false; }
 }
 function foForm(p) {
-  const K = FO.kinds; p = p || { kind: 'idea', title: '', body: '' };
+  const K = FO.kinds; p = p || { kind: 'idea', category: forumView.category, title: '', body: '' };
   const mb = modal(p.id ? 'Edit post' : 'New post', `<form class="fo-new"><div class="fo-pick">${Object.entries(K).map(([k, l]) => `<label><input type="radio" name="kind" value="${k}" ${p.kind === k ? 'checked' : ''}><span><strong>${esc(l)}</strong><small class="muted">${k === 'idea' ? 'Something you’d like the app to do' : 'Something that isn’t working right'}</small></span></label>`).join('')}</div>
+<label>Category<select name="category" required><option value="">Choose the part of the app it’s about</option>${Object.entries(FO.categories).map(([k, l]) => `<option value="${k}" ${p.category === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
 <label>Title<input name="title" required maxlength="140" value="${esc(p.title)}" placeholder="${p.kind === 'issue' ? 'e.g. Invoice PDF cuts off long descriptions' : 'e.g. Let clients pick a time on the booking page'}"></label>
 <label>Details<textarea name="body" required rows="7" maxlength="6000" placeholder="What would help, and why? For an issue: what you did, what you expected and what happened.">${esc(p.body)}</textarea></label>
 <p class="muted" style="font-size:13px;margin:-4px 0 12px">Owners and admins of other businesses can see your post, with your first name, last initial and business name.</p>
@@ -2864,6 +2875,7 @@ function foForm(p) {
 A.foNew = () => foForm();
 A.foEdit = () => foForm(FO.post);
 A.foDel = async () => { if (!confirm('Delete your post and its comments?')) return; try { await api('DELETE', '/api/forum/' + encodeURIComponent(FO.post.id)); toast('Post deleted'); navigate('/forum'); } catch (e) { toast(e.message, true); } };
+A.foCat = (d) => { forumView.category = d.k || ''; foList($('#main')); window.scrollTo(0, 0); };
 A.foKindTab = (d) => { forumView.kind = d.k; foList($('#main')); };
 A.foLike = async (d, el) => {
   try { const r = await api('POST', `/api/forum/${encodeURIComponent(d.id)}/like`); el.classList.toggle('on', r.liked); el.setAttribute('aria-pressed', r.liked); $('span', el).textContent = r.likes;

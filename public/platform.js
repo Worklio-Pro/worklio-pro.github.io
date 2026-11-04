@@ -129,7 +129,7 @@ ${D.maintenance && D.maintenance.on ? `<div class="mt-bar" role="status"><strong
   $('#main').dataset.tab = tab; // box title bands are styled per tab (platform.html)
   ({ accounts: accountsView, plans: plansView, discounts: promoView, messages: messagesView, forum: forumView, help: helpView, social: socialView, settings: settingsView })[tab]($('#main'));
 }
-// the top bar: one link per section, opening its first page. Pricing (Plans & features, Promotions) and Help Center (articles, Forum)
+// the top bar: one link per section, opening its first page. Pricing (Plans & features, Promotions) and Help Center (articles, Board)
 // hold more than one page, switched by the tabs under their title. Integrations is part of Settings.
 const NAV = [
   { k: 'accounts', l: 'Accounts', pages: ['accounts'] },
@@ -140,7 +140,7 @@ const NAV = [
   { k: 'settings', l: 'Settings', pages: ['settings'] },
 ];
 const TABS = NAV.flatMap((n) => n.pages);
-// support users (Settings → Alpha team) get Accounts, Messages, Forum and Help Center; the server enforces the same
+// support users (Settings → Alpha team) get Accounts, Messages, Board and Help Center; the server enforces the same
 const isSupport = () => !!(D && D.admin && D.admin.role === 'support');
 const tabsFor = () => (isSupport() ? ['accounts', 'messages', 'forum', 'help'] : TABS);
 const tabFromHash = () => {
@@ -594,13 +594,13 @@ A.icPick = (d) => {
 };
 A.icSet = async (d) => { try { IC = await api('PUT', '/api/platform/nav-icons', { path: d.p, icon: d.k }); closeModal(); toast('Icon changed'); iconsCard($('#iconsCard')); } catch (x) { toast(x.message, true); } };
 A.icReset = async (d) => { try { IC = await api('PUT', '/api/platform/nav-icons', { path: d.p, icon: null }); toast('Back to the default icon'); iconsCard($('#iconsCard')); } catch (x) { toast(x.message, true); } };
-// the Alpha team: you (the owner) and support users, who see only Accounts, Messages, Forum and Help Center
+// the Alpha team: you (the owner) and support users, who see only Accounts, Messages, Board and Help Center
 async function teamCard(box) {
   let T; try { T = await api('GET', '/api/platform/team'); } catch (x) { box.innerHTML = `<h2>Alpha team</h2><p class="muted">${esc(x.message)}</p>`; return; }
   const when = (s) => (s ? new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Never');
   const status = (a) => (a.role === 'owner' ? '<span class="cstatus active">Owner: everything</span>'
     : a.pending ? `<span class="cstatus q-sent">${a.linkExpired ? 'Link expired' : a.lastLoginAt ? 'Reset sent' : 'Invite sent'}</span>${a.linkSentAt ? `<div class="sm">${when(a.linkSentAt)}</div>` : ''}` : '<span class="cstatus">Support</span>');
-  box.innerHTML = `<h2>Alpha team</h2><p class="muted" style="font-size:13px;margin-top:0">Support users log in at this same Alpha address and see only <strong>Accounts</strong>, <strong>Messages</strong> (including Live chat), <strong>Forum</strong> and <strong>Help Center</strong>. They get a welcome email with a link to choose their password.</p>
+  box.innerHTML = `<h2>Alpha team</h2><p class="muted" style="font-size:13px;margin-top:0">Support users log in at this same Alpha address and see only <strong>Accounts</strong>, <strong>Messages</strong> (including Live chat), <strong>Board</strong> and <strong>Help Center</strong>. They get a welcome email with a link to choose their password.</p>
 <div class="tablewrap"><table class="acc"><thead><tr><th>Name</th><th>Access</th><th>Last login</th><th></th></tr></thead><tbody>${T.map((a) => `<tr><td class="nm">${esc(a.name)}${a.id === D.admin.id ? ' <span class="sm">(you)</span>' : ''}<div class="sm">${esc(a.email)}</div></td>
 <td>${status(a)}</td><td class="sm">${when(a.lastLoginAt)}</td>
 <td><div class="acts">${a.role === 'support' ? `<button type="button" class="btn alt sm" data-act="teamLink" data-id="${a.id}" data-name="${esc(a.name)}" data-pending="${a.pending && !a.lastLoginAt ? 1 : ''}">${a.pending && !a.lastLoginAt ? 'Resend invite' : 'Send password reset'}</button><button type="button" class="btn danger sm" data-act="teamRm" data-id="${a.id}" data-name="${esc(a.name)}">Remove</button>` : ''}</div></td></tr>`).join('')}</tbody></table></div>
@@ -614,7 +614,7 @@ function teamLinkResult(r, name) {
 <div class="acts" style="margin-top:12px"><button type="button" class="btn" data-act="closeModal">Done</button></div>`);
 }
 A.teamAdd = () => {
-  const m = modal('Add a support user', `<form id="tmf"><p class="muted" style="margin-top:0">They’ll get a welcome email with a link to activate their login and choose a password. They’ll see Accounts, Messages, Forum and Help Center.</p>
+  const m = modal('Add a support user', `<form id="tmf"><p class="muted" style="margin-top:0">They’ll get a welcome email with a link to activate their login and choose a password. They’ll see Accounts, Messages, Board and Help Center.</p>
 <div class="row"><label>Name<input name="name" required maxlength="100" autocomplete="off"></label><label>Email<input name="email" type="email" required autocomplete="off"></label></div>
 <div class="acts" style="margin-top:12px"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Send invite</button></div></form>`);
   $('#tmf', m).addEventListener('submit', async (e) => {
@@ -1579,8 +1579,8 @@ const hcTopicName = (slug) => (HC.topics.find((t) => t.slug === slug) || {}).tit
 const hcSlugify = (s) => String(s || '').toLowerCase().replace(/\{product\}/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80).replace(/-+$/, '');
 // one part at a time: Articles (with what readers were looking for), Topics, Home page
 let hcTab = 'articles';
-// Help Center's tabs: the articles' three parts (#help) and the Forum (#forum)
-const helpSeg = () => sideNav('Help Center', 'hcTab', [['articles', 'Articles', HC ? HC.comments.length : 0, 'What people were looking for'], ['topics', 'Topics'], ['home', 'Home page'], ['forum', 'Forum', D.forumNew, 'New posts']]
+// Help Center's tabs: the articles' three parts (#help) and the Board (#forum)
+const helpSeg = () => sideNav('Help Center', 'hcTab', [['articles', 'Articles', HC ? HC.comments.length : 0, 'What people were looking for'], ['topics', 'Topics'], ['home', 'Home page'], ['forum', 'Board', D.forumNew, 'New posts']]
   .map(([k, l, n, title]) => [k, l, n || undefined, tab === 'forum' ? k === 'forum' : hcTab === k, title]));
 A.hcTab = (d) => {
   if (d.k === 'forum') { if (tab === 'forum') A.frBack(); else location.hash = 'forum'; return; }
@@ -1761,9 +1761,9 @@ async function boot() {
 }
 boot();
 
-/* ===== Forum (lib/forum.js): issues and feature requests from businesses' owners and admins.
+/* ===== the Board (lib/forum.js): issues and feature requests from businesses' owners and admins.
    Set a post's status (with an optional note, posted as a team reply), pin or lock it, reply as the team, delete posts and comments. ===== */
-let FR = null; let frSel = ''; const frView = { kind: 'all', status: '', sort: 'new', q: '' };
+let FR = null; let frSel = ''; const frView = { kind: 'all', category: '', status: '', sort: 'new', q: '' };
 const frAgo = (iso) => { const s = (Date.now() - new Date(iso)) / 1000; return s < 3600 ? `${Math.max(1, Math.floor(s / 60))} min ago` : s < 86400 ? `${Math.floor(s / 3600)} h ago` : fmtDate(iso); };
 const frWho = (a) => (!a ? '' : a.team ? `<span class="fr-team">${esc(D.settings.productName)} team</span> <span class="muted">(${esc(a.name)})</span>`
   : `<strong>${esc(a.name)}</strong> · ${a.account ? `<a href="${esc(a.account)}" target="_blank" rel="noopener">${esc(a.company)}</a>` : esc(a.company)} · <span class="muted">${esc(a.role)} · <a href="mailto:${esc(a.email)}">${esc(a.email)}</a></span>`);
@@ -1776,25 +1776,26 @@ async function forumView(main) {
 }
 function frList(main) {
   const v = frView; const K = FR.kinds; const S = FR.statuses; const s = FR.settings; const q = v.q.trim().toLowerCase();
-  const list = FR.posts.filter((p) => (v.kind === 'all' || p.kind === v.kind) && (!v.status || p.status === v.status)
+  const list = FR.posts.filter((p) => (v.kind === 'all' || p.kind === v.kind) && (!v.category || p.category === v.category) && (!v.status || p.status === v.status)
     && (!q || [p.title, p.body, p.author.name, p.author.company, p.author.email].join(' ').toLowerCase().includes(q)));
   const by = { new: (a, b) => b.at.localeCompare(a.at), top: (a, b) => b.likes - a.likes || b.at.localeCompare(a.at), active: (a, b) => b.lastAt.localeCompare(a.lastAt), talk: (a, b) => b.comments.length - a.comments.length };
   list.sort(by[v.sort]);
   const n = (f) => FR.posts.filter(f).length;
-  main.innerHTML = `<div class="head"><div><h1>Help Center</h1><p class="sub" style="margin:4px 0 0">Forum: issues and feature requests from businesses’ owners and admins, who can like and comment on each other’s posts. Set a status so everyone sees what’s planned.</p></div>
-${isSupport() ? '' : '<button type="button" class="btn alt" data-act="frSettings">Forum settings</button>'}</div>
+  main.innerHTML = `<div class="head"><div><h1>Help Center</h1><p class="sub" style="margin:4px 0 0">Board: issues and feature requests from businesses’ owners and admins, who can like and comment on each other’s posts. Set a status so everyone sees what’s planned.</p></div>
+${isSupport() ? '' : '<button type="button" class="btn alt" data-act="frSettings">Board settings</button>'}</div>
 ${helpSeg()}
-${s.on ? '' : '<div class="mt-bar" role="status" style="margin:0 0 14px;border-radius:10px"><strong>The forum is closed.</strong> Businesses don’t see it. Open it again in Forum settings.</div>'}
+${s.on ? '' : '<div class="mt-bar" role="status" style="margin:0 0 14px;border-radius:10px"><strong>The Board is closed.</strong> Businesses don’t see it. Open it again in Board settings.</div>'}
 <div class="stats fr-stats"><div class="card"><div class="l">New, not reviewed yet</div><div class="v">${n((p) => p.status === 'open')}</div></div><div class="card"><div class="l">Feature requests</div><div class="v">${n((p) => p.kind === 'idea')}</div></div>
 <div class="card"><div class="l">Issues</div><div class="v">${n((p) => p.kind === 'issue')}</div></div><div class="card"><div class="l">Planned or in progress</div><div class="v">${n((p) => p.status === 'planned' || p.status === 'progress')}</div></div></div>
 <div class="fr-bar"><div class="hc-seg" role="tablist">${[['all', 'All'], ['idea', 'Feature requests'], ['issue', 'Issues']].map(([k, l]) => `<button type="button" class="${v.kind === k ? 'on' : ''}" data-act="frKind" data-k="${k}">${l}</button>`).join('')}</div>
+<select data-frv="category" aria-label="Category"><option value="">Any category</option>${Object.entries(FR.categories).map(([k, l]) => `<option value="${k}" ${v.category === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>
 <select data-frv="status" aria-label="Status"><option value="">Any status</option>${Object.entries(S).map(([k, l]) => `<option value="${k}" ${v.status === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>
 <select data-frv="sort" aria-label="Sort">${[['new', 'Newest'], ['top', 'Most liked'], ['active', 'Recent activity'], ['talk', 'Most comments']].map(([k, l]) => `<option value="${k}" ${v.sort === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
 <input type="search" id="frQ" placeholder="Search posts, people, businesses…" value="${esc(v.q)}"></div>
 <div class="card fr-card">${list.length ? `<table class="hc-table fr-table"><thead><tr><th class="r">Likes</th><th>Post</th><th>Status</th><th class="r">Comments</th><th>Last activity</th></tr></thead><tbody>
 ${list.map((p) => `<tr data-act="frOpen" data-id="${esc(p.id)}"><td class="r"><strong>${p.likes}</strong></td><td><div class="fr-tl">${p.pinned ? '📌 ' : ''}${p.locked ? '🔒 ' : ''}<strong>${esc(p.title)}</strong></div>
-<div class="sm">${frChip('k-' + p.kind, K[p.kind])} ${esc(p.author.name)} · ${esc(p.author.company)} · ${frAgo(p.at)}</div></td><td>${frChip('s-' + p.status, S[p.status])}</td><td class="r">${p.comments.filter((c) => !c.deleted).length}</td><td class="sm">${frAgo(p.lastAt)}</td></tr>`).join('')}</tbody></table>`
-  : `<p class="muted" style="margin:0">${FR.posts.length ? 'No posts match.' : 'No posts yet. Owners and admins open the forum from the Forum button in their app’s top bar.'}</p>`}</div>`;
+<div class="sm">${frChip('k-' + p.kind, K[p.kind])} ${esc(FR.categories[p.category] || 'Other')} · ${esc(p.author.name)} · ${esc(p.author.company)} · ${frAgo(p.at)}</div></td><td>${frChip('s-' + p.status, S[p.status])}</td><td class="r">${p.comments.filter((c) => !c.deleted).length}</td><td class="sm">${frAgo(p.lastAt)}</td></tr>`).join('')}</tbody></table>`
+  : `<p class="muted" style="margin:0">${FR.posts.length ? 'No posts match.' : 'No posts yet. Owners and admins open the Board from the Board button in their app’s top bar.'}</p>`}</div>`;
   sideLayout(main);
   $$('[data-frv]', main).forEach((el) => el.addEventListener('change', () => { frView[el.dataset.frv] = el.value; frList(main); }));
   let t; $('#frQ').addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(() => { frView.q = e.target.value; frList(main); const i = $('#frQ'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }, 250); });
@@ -1805,22 +1806,23 @@ function frPost(main, p) {
 <div class="fr-body">${esc(c.body)}</div><div class="fr-acts"><button type="button" class="link-btn" data-act="frReplyTo" data-c="${esc(c.id)}">Reply</button><button type="button" class="link-btn danger-text" data-act="frDelC" data-c="${esc(c.id)}">Delete</button></div>`}</div>`;
   const top = p.comments.filter((c) => !c.parentId);
   main.innerHTML = `<p style="margin:0 0 10px"><a href="#forum" data-act="frBack">‹ All posts</a></p>
-<div class="fr-grid"><div><div class="card"><div class="fr-tags">${frChip('k-' + p.kind, K[p.kind])} ${frChip('s-' + p.status, S[p.status])}${p.pinned ? ' 📌 Pinned' : ''}${p.locked ? ' 🔒 Locked' : ''}</div>
+<div class="fr-grid"><div><div class="card"><div class="fr-tags">${frChip('k-' + p.kind, K[p.kind])} ${frChip('s-' + p.status, S[p.status])} ${frChip('', FR.categories[p.category] || 'Other')}${p.pinned ? ' 📌 Pinned' : ''}${p.locked ? ' 🔒 Locked' : ''}</div>
 <h2 class="fr-h">${esc(p.title)}</h2><div class="sm">${frWho(p.author)}<br>${new Date(p.at).toLocaleString()}${p.editedAt ? ' · edited' : ''} · 👍 ${p.likes} like${p.likes === 1 ? '' : 's'}</div>
 <div class="fr-body">${esc(p.body)}</div></div>
 <div class="card"><h2>Comments</h2>${top.map((c) => `${one(c)}${p.comments.filter((r) => r.parentId === c.id).map((r) => `<div class="fr-reply">${one(r)}</div>`).join('')}`).join('') || '<p class="muted">No comments yet.</p>'}
-<form id="frReply" class="fr-form"><div class="sm" id="frReplyTo" hidden></div><label>Reply as the ${esc(D.settings.productName)} team<textarea name="body" rows="3" maxlength="4000" required placeholder="Everyone in the forum sees this, with a team badge."></textarea></label>
+<form id="frReply" class="fr-form"><div class="sm" id="frReplyTo" hidden></div><label>Reply as the ${esc(D.settings.productName)} team<textarea name="body" rows="3" maxlength="4000" required placeholder="Everyone on the Board sees this, with a team badge."></textarea></label>
 <input type="hidden" name="parentId"><div style="display:flex;justify-content:flex-end;gap:8px"><button class="btn">Post reply</button></div></form></div></div>
 <div><div class="card"><h2>Manage</h2><form id="frManage"><label>Status<select name="status">${Object.entries(S).map(([k, l]) => `<option value="${k}" ${p.status === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
 <label>Note with the status change (optional)<textarea name="note" rows="3" maxlength="4000" placeholder="e.g. Thanks! This is planned for next month."></textarea></label>
+<label>Category<select name="category">${Object.entries(FR.categories).map(([k, l]) => `<option value="${k}" ${p.category === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
 <label>Type<select name="kind">${Object.entries(K).map(([k, l]) => `<option value="${k}" ${p.kind === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
-<label class="chk"><input type="checkbox" name="pinned" ${p.pinned ? 'checked' : ''}> Pin to the top of the forum</label><label class="chk"><input type="checkbox" name="locked" ${p.locked ? 'checked' : ''}> Lock (no new comments)</label>
+<label class="chk"><input type="checkbox" name="pinned" ${p.pinned ? 'checked' : ''}> Pin to the top of the Board</label><label class="chk"><input type="checkbox" name="locked" ${p.locked ? 'checked' : ''}> Lock (no new comments)</label>
 <button class="btn" style="width:100%;margin-top:6px">Save</button></form>
 <p class="muted" style="font-size:12px">The author gets an email when the status changes${FR.settings.emailReplies ? '' : ' (turned off in Settings)'}. A note is posted as a team reply.</p>
 <button type="button" class="btn danger" style="width:100%" data-act="frDel">Delete post</button></div></div></div>`;
   $('#frManage').addEventListener('submit', async (e) => {
     e.preventDefault(); const f = e.target; const btn = $('button.btn', f); btn.disabled = true;
-    try { const r = await api('PUT', `/api/platform/forum/${encodeURIComponent(p.id)}`, { status: f.status.value, note: f.note.value, kind: f.kind.value, pinned: f.pinned.checked, locked: f.locked.checked }); frPut(r.post); toast('Saved'); render(); }
+    try { const r = await api('PUT', `/api/platform/forum/${encodeURIComponent(p.id)}`, { status: f.status.value, note: f.note.value, kind: f.kind.value, category: f.category.value, pinned: f.pinned.checked, locked: f.locked.checked }); frPut(r.post); toast('Saved'); render(); }
     catch (x) { toast(x.message, true); btn.disabled = false; }
   });
   $('#frReply').addEventListener('submit', async (e) => {
@@ -1842,12 +1844,12 @@ A.frDelC = async (d) => { if (!confirm('Delete this comment? Its replies are del
 A.frDel = async () => { if (!confirm('Delete this post and all its comments? This can’t be undone.')) return; try { FR = await api('DELETE', `/api/platform/forum/${encodeURIComponent(frSel)}`); frSel = ''; toast('Post deleted'); render(); } catch (x) { toast(x.message, true); } };
 A.frSettings = () => {
   const s = FR.settings;
-  const m = modal('Forum settings', `<form><label class="chk"><input type="checkbox" name="on" ${s.on ? 'checked' : ''}> <span><strong>Forum is open</strong><br><span class="muted">Owners and admins see a Forum button in their app’s top bar. Closed, it’s hidden and posts are kept.</span></span></label>
+  const m = modal('Board settings', `<form><label class="chk"><input type="checkbox" name="on" ${s.on ? 'checked' : ''}> <span><strong>Board is open</strong><br><span class="muted">Owners and admins see a Board button in their app’s top bar. Closed, it’s hidden and posts are kept.</span></span></label>
 <label class="chk"><input type="checkbox" name="emailNew" ${s.emailNew ? 'checked' : ''}> <span><strong>Email me about new posts</strong><br><span class="muted">${D.settings.contactEmail ? `Sent to ${esc(D.settings.contactEmail)}` : 'Add a contact email in Settings first'}.</span></span></label>
 <label class="chk"><input type="checkbox" name="emailReplies" ${s.emailReplies ? 'checked' : ''}> <span><strong>Email authors about replies and status changes</strong><br><span class="muted">At most one email per post every 10 minutes.</span></span></label>
 <div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save</button></div></form>`);
   $('form', m).addEventListener('submit', async (e) => {
     e.preventDefault(); const f = e.target;
-    try { FR = await api('PUT', '/api/platform/forum/settings', { on: f.on.checked, emailNew: f.emailNew.checked, emailReplies: f.emailReplies.checked }); closeModal(); toast('Forum settings saved'); render(); } catch (x) { toast(x.message, true); }
+    try { FR = await api('PUT', '/api/platform/forum/settings', { on: f.on.checked, emailNew: f.emailNew.checked, emailReplies: f.emailReplies.checked }); closeModal(); toast('Board settings saved'); render(); } catch (x) { toast(x.message, true); }
   });
 };

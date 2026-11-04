@@ -1527,3 +1527,8 @@ button.mn-x{border:0;padding:0;cursor:pointer}
 .news-foot{display:flex;justify-content:flex-end;padding:10px 16px}
 .menu-list .news-foot a{display:inline;width:auto;padding:0;font-size:13px;color:var(--link)}.menu-list .news-foot a:hover{background:none;text-decoration:underline}
 @media (max-width:760px){.tb-news{position:static}.tb-news .menu-list{position:fixed;left:10px;right:10px;width:auto;top:calc(env(safe-area-inset-top,0px) + 58px)}}
+/* the Board's categories */
+.fo-cath{font-size:17px;margin:4px 0 12px}
+.fo-cats{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin-bottom:24px}
+.fo-catc{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 14px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--text);font:inherit;font-size:15px;font-weight:600;text-align:left;cursor:pointer}
+.fo-catc:hover{border-color:var(--brand)}.fo-catc b{font-size:13px;color:var(--muted)}

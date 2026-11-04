@@ -60,7 +60,7 @@ ${field('password', 'Password* (8+ characters)', 'password', 'autocomplete="new-
 }
 // central: one business opens straight away; several show the list
 async function centralLogin(b) {
-  const r = await post('/api/site/sign-in', b);
+  const r = await post('/api/site/sign-in', { ...b, next: nextUrl() }); // e.g. Create Post on ideas.<domain> opens the Board with the post filled in
   if (r.url) { location.href = r.url; return; }
   signIn = { email: b.email, password: b.password }; state.accounts = r.accounts; show('choose');
 }
@@ -79,7 +79,7 @@ document.addEventListener('click', (e) => {
   const acct = e.target.closest('[data-account]');
   if (acct && signIn) {
     document.querySelectorAll('[data-account]').forEach((x) => { x.disabled = true; }); acct.querySelector('small').textContent = 'Opening…';
-    post('/api/site/sign-in', { ...signIn, account: acct.dataset.account }).then((r) => { location.href = r.url; })
+    post('/api/site/sign-in', { ...signIn, account: acct.dataset.account, next: nextUrl() }).then((r) => { location.href = r.url; })
       .catch((err) => { if (/match|Too many/.test(err.message)) { signIn = null; show('login', { text: err.message }); } else show('choose', { text: err.message }); });
   }
   const eye = e.target.closest('[data-eye]');

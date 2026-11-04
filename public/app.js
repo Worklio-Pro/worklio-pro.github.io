@@ -285,7 +285,7 @@ const settingsFor = () => SETTINGS_NAV.filter(([p]) => memberCan(p) && !planLock
 // pages the search finds besides the menu items, and extra words each page answers to
 const FEATURE_EXTRAS = [['/quotes/new', 'New quote', 'Quotes', 'create estimate'], ['/jobs/new', 'New job', 'Jobs', 'create schedule visit'], ['/invoices/new', 'New invoice', 'Invoices', 'create bill'],
   ['/clients/import', 'Import clients', 'Clients', 'csv upload spreadsheet'], ['/team/new', 'Add team member', 'Settings', 'invite staff employee user'],
-  ['/payments/settings', 'Payment settings', 'Money', 'card online payouts processing rates disputes'], ['/profile', 'My profile', 'Account', 'password photo name email login'], ['/forum', 'Forum', 'Account', 'community ideas suggestions feature requests issues bugs vote']];
+  ['/payments/settings', 'Payment settings', 'Money', 'card online payouts processing rates disputes'], ['/profile', 'My profile', 'Account', 'password photo name email login'], ['/forum', 'Board', 'Account', 'forum categories community ideas suggestions feature requests issues bugs vote']];
 const FEATURE_WORDS = {
   '/business-overview': 'dashboard overview', '/calendar': 'schedule schedules appointments visits tasks events job calendar', '/clients': 'customers contacts',
   '/quotes': 'estimates proposals', '/jobs': 'work orders visits', '/invoices': 'billing', '/payments': 'card online stripe', '/services': 'catalog products price list items',
@@ -306,7 +306,7 @@ function searchFeatures(q) {
 function buildTopbar() {
   // phones: the company logo (or name) on the left
   $('#topbar').innerHTML = `<a href="/" data-link class="tb-logo" title="Home">${company.logo ? `<img src="${esc(company.logo)}" alt="${esc(company.name || 'Home')}">` : `<span>${esc(company.name || 'Home')}</span>`}</a>
-<a class="tb-fb tb-ref" href="/rewards" data-link title="Refer other businesses and earn free months" hidden>${svgIcon(ICONS.gift, 18)}<span>Refer &amp; earn</span></a><a class="tb-fb tb-forum" href="/forum" data-link title="Suggest features and report issues, with other businesses" hidden>${svgIcon(ICONS.forum, 18)}<span>Forum</span></a><button type="button" class="tb-fb" data-act="feedbackForm" title="Send feedback about the app">${svgIcon(ICONS.feedback, 18)}<span>Feedback</span></button>
+<a class="tb-fb tb-ref" href="/rewards" data-link title="Refer other businesses and earn free months" hidden>${svgIcon(ICONS.gift, 18)}<span>Refer &amp; earn</span></a><a class="tb-fb tb-forum" href="/forum" data-link title="Suggest features and report issues, with other businesses" hidden>${svgIcon(ICONS.forum, 18)}<span>Board</span></a><button type="button" class="tb-fb" data-act="feedbackForm" title="Send feedback about the app">${svgIcon(ICONS.feedback, 18)}<span>Feedback</span></button>
 <details class="menu tb-news"><summary class="tb-icon" title="What’s new" aria-label="What’s new">${svgIcon(ICONS.bell)}<span class="tb-dot" hidden></span></summary><div class="menu-list" id="newsMenu"></div></details>
 <button type="button" class="tb-icon" data-act="openHelp" title="Help and support" aria-label="Help and support">${svgIcon(ICONS.help)}</button>
 <details class="menu tb-me" hidden><summary class="tb-avatar" title="Your account" aria-label="Your account"></summary><div class="menu-list" id="meMenu"></div></details>`;
@@ -361,7 +361,7 @@ function renderTopbar(path) {
   const mine = $('.tb-me'); mine.open = false; mine.hidden = !me;
   const bell = $('.tb-news'); bell.open = false; bell.hidden = !me; if (me && !bell.dataset.on) { bell.dataset.on = '1'; bell.addEventListener('toggle', () => { if (bell.open) loadNews().then(showNews); }); loadNews(); }
   $('.tb-ref').hidden = !(referralsOn() && memberCan('/rewards'));
-  const fo = $('.tb-forum'); fo.hidden = !(isAdminMe() && company.account && company.account.forum); fo.classList.toggle('on', path === '/forum'); // owners and admins, while the forum is open
+  const fo = $('.tb-forum'); fo.hidden = !(isAdminMe() && company.account && company.account.forum); fo.classList.toggle('on', path === '/forum'); // owners and admins, while the Board is open
   if (!me) return;
   $('summary', mine).innerHTML = avatarHtml(me, 34);
   $('#meMenu').innerHTML = `<div class="me-head"><a href="/profile" data-link class="me-who${path === '/profile' ? ' on' : ''}" title="My profile">${avatarHtml(me, 40)}<span><strong>${esc(me.name)}</strong><small>${esc(me.email)}</small></span></a>
