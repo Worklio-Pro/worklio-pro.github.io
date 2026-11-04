@@ -407,6 +407,16 @@ function startSession(res, user, { expires = Date.now() + SESSION_DAYS * 864e5, 
   db.sessions[sha(token)] = { userId: user.id, expires, ...(sup ? { support: sup } : {}) }; save();
   res.setHeader('Set-Cookie', `sid=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.round((expires - now) / 1000)}${BASE_URL.startsWith('https') && !plainLocal(res.req) ? '; Secure' : ''}`);
 }
+// ideas.<domain> uses the same login: while someone is logged in at <business>.<domain>, a cookie on the whole domain names the business (nothing secret),
+// so ideas.<domain> knows where to ask for a one-time pass (GET /ideas/sso). Not on custom domains or while developing (no shared parent domain there)
+const IDEAS_HINT = 'wp_acct';
+const addCookie = (res, c) => { const h = res.getHeader('Set-Cookie'); res.setHeader('Set-Cookie', [...(h ? [].concat(h) : []), c]); };
+const onSubdomain = (req) => !tenancy.devMode && tenancy.hostOnly(req.headers.host || '').endsWith('.' + tenancy.hostOnly(tenancy.ROOT_DOMAIN));
+function ideasHint(req, res, on) {
+  if (!onSubdomain(req)) return;
+  const slug = tenancy.current().slug; if (on && cookies(req)[IDEAS_HINT] === slug) return;
+  addCookie(res, `${IDEAS_HINT}=${on ? slug : ''}; Domain=.${tenancy.hostOnly(tenancy.ROOT_DOMAIN)}; Path=/; SameSite=Lax; HttpOnly; Max-Age=${on ? SESSION_DAYS * 86400 : 0}${BASE_URL.startsWith('https') ? '; Secure' : ''}`);
+}
 // plain http to this Mac or the home network (e.g. a phone testing at http://192.168.x.x:3000): browsers drop Secure cookies there, so login would bounce back to the login page
 const plainLocal = (req) => !!req && !req.socket.encrypted && req.headers['x-forwarded-proto'] !== 'https'
   && /^(localhost|[^.]+\.localhost|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)$/.test(tenancy.hostOnly(req.headers.host || ''));
@@ -419,8 +429,9 @@ const recordFailure = (key) => { const f = failures.get(key); failures.set(key, 
 const PUBLIC_API = (req) => req.path === '/api/stripe/webhook' || req.path.startsWith('/api/auth/') || req.path.startsWith('/api/portal/') || (req.method === 'GET' && req.path === '/api/company');
 app.use((req, res, next) => {
   const p = req.path;
+  if (currentUser(req)) ideasHint(req, res, true);
   if (p.startsWith('/api/')) return PUBLIC_API(req) || currentUser(req) ? next() : res.status(401).json({ error: 'Please log in' });
-  if (p === '/login' || p === '/login/handoff' || p === '/manifest.webmanifest' || p === '/support-login' || p === '/client-portal' || p.startsWith('/p/') || p.startsWith('/pay/') || p.startsWith('/refer/') || p === '/book' || p === '/card' || p.startsWith('/card/') || p.startsWith('/uploads/') || /\.(js|css|png|jpe?g|gif|webp|svg|ico)$/i.test(p)) return next();
+  if (p === '/login' || p === '/login/handoff' || p === '/ideas/sso' || p === '/manifest.webmanifest' || p === '/support-login' || p === '/client-portal' || p.startsWith('/p/') || p.startsWith('/pay/') || p.startsWith('/refer/') || p === '/book' || p === '/card' || p.startsWith('/card/') || p.startsWith('/uploads/') || /\.(js|css|png|jpe?g|gif|webp|svg|ico)$/i.test(p)) return next();
   if (currentUser(req)) return next();
   res.redirect('/login' + (p !== '/' ? '?next=' + encodeURIComponent(req.url) : ''));
 });
@@ -624,8 +635,10 @@ app.post('/api/auth/login', (req, res) => {
   failures.delete(key); user.lastLoginAt = new Date().toISOString(); startSession(res, user); res.json(publicUser(user));
 });
 app.post('/api/auth/logout', (req, res) => {
-  delete db.sessions[sha(cookies(req).sid || '')]; save();
-  res.setHeader('Set-Cookie', 'sid=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0'); res.json({ ok: true });
+  const s = db.sessions[sha(cookies(req).sid || '')]; delete db.sessions[sha(cookies(req).sid || '')]; save();
+  res.setHeader('Set-Cookie', 'sid=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0'); ideasHint(req, res, false);
+  if (s) ideasApp.logoutUser(tenancy.current().id, s.userId); // logged out here: logged out on ideas.<domain> too
+  res.json({ ok: true });
 });
 app.get('/api/auth/verify-email', (req, res) => {
   const h = sha(String(req.query.token || '')); const u = db.users.find((x) => x.emailVerify && x.emailVerify.hash === h);
@@ -668,6 +681,16 @@ app.get('/login/handoff', (req, res) => {
   const user = x && x.expires > Date.now() && x.tenantId === tenancy.current().id && db.users.find((u) => u.id === x.userId);
   if (!user || !user.passwordHash || staffBlocked(user)) return res.redirect('/login');
   user.lastLoginAt = new Date().toISOString(); startSession(res, user); res.redirect(x.next || '/');
+});
+// ideas.<domain> asks who is logged in here: back to it with a one-time pass (1 minute), or with none=1 when nobody is
+const ideasPasses = new Map(); // pass hash -> { tenantId, userId, expires }
+app.get('/ideas/sso', (req, res) => {
+  const back = typeof req.query.r === 'string' && /^\/(?!\/)[^\s\\]*$/.test(req.query.r) ? req.query.r : '/';
+  const u = currentUser(req); if (!u || req._support) return res.redirect(`${tenancy.ideasUrl()}/sso?none=1&r=${encodeURIComponent(back)}`);
+  const tok = crypto.randomBytes(32).toString('hex'); const now = Date.now();
+  for (const [k, x] of ideasPasses) if (x.expires < now) ideasPasses.delete(k);
+  ideasPasses.set(sha(tok), { tenantId: tenancy.current().id, userId: u.id, expires: now + 60e3 });
+  res.redirect(`${tenancy.ideasUrl()}/sso?token=${tok}&r=${encodeURIComponent(back)}`);
 });
 app.post('/api/auth/reset', (req, res) => {
   const k = sha((req.body && req.body.token) || ''); const t = db.resetTokens[k];
@@ -3490,7 +3513,19 @@ const tenantStats = (t) => tenancy.run(t, () => {
     lastLoginAt: db.users.map((u) => u.lastLoginAt || '').sort().pop() || null };
 });
 const helpApp = require('./lib/help')({ sendTemplate, normEmail, emails });
-const ideasApp = require('./lib/ideas');
+const ideasApp = require('./lib/ideas')({
+  // a one-time pass from GET /ideas/sso: { tenantId, userId } once, then it's gone
+  claim: (tok) => { const k = sha(String(tok || '')); const x = ideasPasses.get(k); ideasPasses.delete(k); return x && x.expires > Date.now() ? x : null; },
+  // who an ideas.<domain> session is: the login as the Board sees it, or null when it's gone or deactivated
+  actor: (tenantId, userId) => {
+    const t = tenancy.platform().tenants.find((x) => x.id === tenantId); if (!t) return null;
+    return tenancy.run(t, () => {
+      const u = db.users.find((x) => x.id === userId); if (!u || !u.passwordHash || staffBlocked(u)) return null;
+      return { t: t.slug, u: u.id, name: u.name, email: u.email, role: u.role, company: db.company.name || t.slug, admin: isAdmin(u), url: tenancy.tenantUrl(t) };
+    });
+  },
+  sha,
+});
 const legal = require('./lib/legal');
 const platformApp = require('./lib/platform')({
   hashPassword, checkPassword, sha, normEmail, cookies, tooMany, recordFailure, clearFailures: (k) => failures.delete(k),
