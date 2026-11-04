@@ -1509,8 +1509,12 @@ button.mn-x{border:0;padding:0;cursor:pointer}
 .bp-lname{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;min-width:0}.bp-lname svg{width:24px;height:24px;flex:none}
 .bp-addcustom{width:100%;padding:12px;border:1px dashed var(--line);border-radius:10px;background:var(--tint);color:var(--brand);font:inherit;font-weight:600;cursor:pointer;margin-top:4px}
 .bp-foot{display:flex;justify-content:flex-end;gap:10px;margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
-.bp-phone{position:sticky;top:16px;width:300px;height:620px;margin:0 auto;border:12px solid #1f2937;border-radius:44px;overflow:hidden;background:#fff;box-shadow:var(--shadow-sm)}.bp-phone iframe{width:100%;height:100%;border:0;display:block}
-@media(max-width:1180px){.bp-edit{grid-template-columns:170px minmax(0,1fr)}.bp-phone,.bp-qrbox{grid-column:1/-1;position:static}}
+/* the preview phone: an iPhone-style frame (black bezel, titanium edge, Dynamic Island, side buttons) */
+.bp-phone{position:sticky;top:16px;width:300px;height:620px;margin:0 auto;border:10px solid #0b0b0c;border-radius:50px;background:#0b0b0c;box-shadow:0 0 0 2px #8e8e93,0 0 0 3.5px #2c2c2e,0 12px 32px rgba(15,23,42,.25)}
+.bp-phone iframe{width:100%;height:100%;border:0;display:block;border-radius:40px;background:#fff}
+.bp-phone::before{content:"";position:absolute;top:10px;left:50%;transform:translateX(-50%);width:88px;height:26px;border-radius:14px;background:#0b0b0c;z-index:1;pointer-events:none}
+.bp-phone::after{content:"";position:absolute;left:-14.5px;top:96px;width:3px;height:28px;border-radius:2px 0 0 2px;background:#3a3a3c;box-shadow:0 52px 0 0 #3a3a3c,0 104px 0 0 #3a3a3c,308px 72px 0 0 #3a3a3c,308px 100px 0 0 #3a3a3c}
+@media(max-width:1180px){.bp-edit{grid-template-columns:170px minmax(0,1fr)}.bp-phone,.bp-qrbox{grid-column:1/-1;position:static}.bp-phone{position:relative}}
 @media(max-width:760px){.bp-edit{grid-template-columns:minmax(0,1fr)}.bp-nav{flex-direction:row;overflow-x:auto;position:static}.bp-nav button{white-space:nowrap}.bp-two{grid-template-columns:minmax(0,1fr)}.bp-lbox{grid-template-columns:minmax(0,1fr)}.bp-lbox input{border-left:0;border-top:1px solid var(--border)}.bp-lname{padding:8px 12px}}
 /* What's new: the bell in the top bar */
 .tb-news>summary{position:relative}.tb-news[open]>summary{background:var(--surface-2);color:var(--text)}
