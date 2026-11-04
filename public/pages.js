@@ -330,9 +330,9 @@ function withinHours(s, date, start, end) {
   return h.on && start >= h.start && end <= h.end;
 }
 // shared working-hours editor (team member page + My profile + Company Profile): a read view and an edit table toggled by Edit/Done; on phones a row opens a sheet from the bottom instead
-const hoursHtml = (hours, closed = 'Not working') => `<div class="hours-wrap" data-closed="${esc(closed)}"><table class="hours view">${WEEK.map(([k, l]) => `<tr data-act="editHoursRow" data-day="${k}"><td>${l}</td><td>${hours[k].on ? `${fmtTime(hours[k].start)} – ${fmtTime(hours[k].end)}` : `<span class="muted">${closed}</span>`}</td></tr>`).join('')}</table>
+const hoursHtml = (hours, closed = 'Not working', { toggle = true } = {}) => `<div class="hours-wrap" data-closed="${esc(closed)}"><table class="hours view">${WEEK.map(([k, l]) => `<tr data-act="editHoursRow" data-day="${k}"><td>${l}</td><td>${hours[k].on ? `${fmtTime(hours[k].start)} – ${fmtTime(hours[k].end)}` : `<span class="muted">${closed}</span>`}</td></tr>`).join('')}</table>
 <table class="hours edit" hidden>${WEEK.map(([k, l]) => `<tr data-day="${k}"><td><label class="hours-on"><input type="checkbox" ${hours[k].on ? 'checked' : ''}> ${l}</label></td><td><input type="time" class="h-start" value="${hours[k].start}" aria-label="${l} start"></td><td>–</td><td><input type="time" class="h-end" value="${hours[k].end}" aria-label="${l} end"></td></tr>`).join('')}</table>
-<button type="button" class="link-btn" data-act="tmHoursEdit">Edit</button></div>`;
+${toggle ? '<button type="button" class="link-btn" data-act="tmHoursEdit">Edit</button>' : ''}</div>`;
 const readHoursFrom = (root) => Object.fromEntries($$('.hours.edit tr', root).map((r) => [r.dataset.day, { on: $('input[type=checkbox]', r).checked, start: $('.h-start', r).value || '09:00', end: $('.h-end', r).value || '17:00' }]));
 const wireHours = (root) => $$('.hours.edit input[type=checkbox]', root).forEach((c) => { const sync = () => $$('input[type=time]', c.closest('tr')).forEach((i) => { i.disabled = !c.checked; }); c.addEventListener('change', sync); sync(); });
 const badHours = (h) => { const bad = WEEK.find(([k]) => h[k].on && h[k].end <= h[k].start); return bad ? `${bad[1]}: the end time must be after the start time` : ''; };
@@ -419,7 +419,7 @@ A.editHoursRow = (d, el) => {
   const w = el.closest('.hours-wrap'); const edit = (k) => $(`.hours.edit tr[data-day="${k}"]`, w);
   const f = mSheet('Edit hours', `${mField('Day', `<select name="day">${WEEK.map(([k, l]) => `<option value="${k}" ${k === d.day ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}
 <label class="m-chk"><input type="checkbox" name="on"> Open this day</label>${mField('Open time', '<input type="time" name="start">')}${mField('Close time', '<input type="time" name="end">')}
-${mSaveBtn('Done')}<p class="muted ms-note">Tap Save on the page to keep your changes.</p>`);
+${mSaveBtn('Done')}${w.dataset.autosave ? '' : '<p class="muted ms-note">Tap Save on the page to keep your changes.</p>'}`);
   const sync = () => { f.start.disabled = f.end.disabled = !f.on.checked; };
   const load = () => { const r = edit(f.day.value); f.on.checked = $('input[type=checkbox]', r).checked; f.start.value = $('.h-start', r).value; f.end.value = $('.h-end', r).value; sync(); };
   f.day.addEventListener('change', load); f.on.addEventListener('change', sync); load();
@@ -427,7 +427,7 @@ ${mSaveBtn('Done')}<p class="muted ms-note">Tap Save on the page to keep your ch
     e.preventDefault(); if (f.on.checked && (!f.start.value || !f.end.value || f.end.value <= f.start.value)) return toast('The close time must be after the open time', true);
     const r = edit(f.day.value); const c = $('input[type=checkbox]', r); c.checked = f.on.checked; $('.h-start', r).value = f.start.value; $('.h-end', r).value = f.end.value; c.dispatchEvent(new Event('change'));
     $(`.hours.view tr[data-day="${f.day.value}"] td:last-child`, w).innerHTML = f.on.checked ? `${fmtTime(f.start.value)} – ${fmtTime(f.end.value)}` : `<span class="muted">${esc(w.dataset.closed)}</span>`;
-    mClose();
+    mClose(); w.dispatchEvent(new CustomEvent('hourschange', { bubbles: true }));
   });
 };
 A.tmHoursEdit = (d, el) => { const w = el.closest('.hours-wrap'); const editing = $('.hours.edit', w).hidden; $('.hours.edit', w).hidden = !editing; $('.hours.view', w).hidden = editing; el.textContent = editing ? 'Done' : 'Edit'; };
@@ -2209,10 +2209,10 @@ PAGES['/profile'] = {
 ${p.jobTitle ? `<p class="muted">Role: ${esc(p.jobTitle)}. Ask the account owner to change your role or access.</p>` : ''}</div>
 <div class="addr"><input name="street" value="${esc(p.street)}" placeholder="Street address" aria-label="Street address" autocomplete="address-line1"><input name="city" value="${esc(p.city)}" placeholder="City" aria-label="City" autocomplete="address-level2">
 <input name="state" value="${esc(p.state)}" placeholder="State" aria-label="State" autocomplete="address-level1"><div class="addr-row"><input name="zip" value="${esc(p.zip)}" placeholder="ZIP code" aria-label="ZIP code" autocomplete="postal-code"><input name="country" value="${esc(p.country || 'United States')}" placeholder="Country" aria-label="Country" autocomplete="country-name"></div></div></div>
-<div class="foot"><button class="btn">Save profile</button></div></div></form>
-<div class="pf-cols">${p.linked ? `<form class="tmform" id="pfHours"><div class="qcard login-card"><h2>Working hours</h2>
+</div></form>
+<div class="pf-cols">${p.linked ? `<form class="tmform" id="pfHours"><div class="qcard login-card"><div class="qcard-h"><h2>Working hours</h2><button type="button" class="icon-btn pf-hours-edit" data-act="pfHoursEdit" title="Edit working hours" aria-label="Edit working hours">${PENCIL}</button></div>
 <p class="muted">When you're available to work. The office gets a warning if a job is booked outside them.</p>
-${hoursHtml(staffHours(p))}<div class="foot"><button class="btn">Save hours</button></div></div></form>` : ''}
+${pfHoursHtml(staffHours(p))}<div class="foot" hidden><button type="button" class="btn alt" data-act="pfHoursCancel">Cancel</button><button class="btn">Save</button></div></div></form>` : ''}
 <form class="tmform" id="pfPass"><div class="qcard login-card"><h2>Change password</h2><p class="muted">Use at least 8 characters. Changing it signs you out on your other devices.</p>
 <div class="pf-pw"><input type="email" name="username" value="${esc(p.email)}" autocomplete="username" hidden>
 ${pw('currentPassword', 'Current password', 'current-password')}${pw('newPassword', 'New password', 'new-password')}${pw('confirm', 'Confirm new password', 'new-password')}</div>
@@ -2221,21 +2221,42 @@ ${pw('currentPassword', 'Current password', 'current-password')}${pw('newPasswor
     email.addEventListener('input', () => { $('#pfEmailPw').hidden = email.value.trim().toLowerCase() === p.email; });
     $('#pfPhoto').addEventListener('change', async (e) => {
       const f = e.target.files[0]; if (!f) return; if (f.size > 8e6) return toast('Image must be under 8 MB', true);
-      photo = await resizeImage(f, 256); $('.tm-av', info).innerHTML = avatarHtml({ photo }, 72); $('[data-act=pfPhotoRemove]', info).hidden = false;
+      photo = await resizeImage(f, 256); e.target.value = ''; $('.tm-av', info).innerHTML = avatarHtml({ photo }, 72); $('[data-act=pfPhotoRemove]', info).hidden = false; save();
     });
-    info._clearPhoto = () => { photo = ''; $('.tm-av', info).innerHTML = avatarHtml({ ...p, photo: '', name: $('[name=name]', info).value || '?' }, 72); $('[data-act=pfPhotoRemove]', info).hidden = true; };
-    info.addEventListener('submit', async (e) => {
-      e.preventDefault(); const b = Object.fromEntries(new FormData(info)); b.photo = photo;
-      const saved = await api('POST', '/api/auth/profile', b);
-      me = { ...me, name: saved.name, email: saved.email, photo: saved.photo }; toast('Profile saved'); refresh();
-    });
+    info._clearPhoto = () => { photo = ''; $('.tm-av', info).innerHTML = avatarHtml({ ...p, photo: '', name: $('[name=name]', info).value || '?' }, 72); $('[data-act=pfPhotoRemove]', info).hidden = true; save(); };
+    // saves on its own when a field changes or the photo changes (one save at a time; a change made meanwhile saves right after)
+    const body = () => ({ ...Object.fromEntries(new FormData(info)), photo });
+    const key = (b) => JSON.stringify({ ...b, currentPassword: undefined }); // the password box alone (say, filled in by a password manager) isn't a change
+    let last = key(body()); let busy = false; let again = false;
+    async function save() {
+      if (busy) { again = true; return; }
+      const b = body(); if (key(b) === last) return;
+      if (!info.checkValidity()) return info.reportValidity();
+      if (b.email.trim().toLowerCase() !== p.email && !b.currentPassword) { $('[name=currentPassword]', info).focus(); return toast('Enter your current password to change your email', true); }
+      busy = true;
+      try {
+        const saved = await api('POST', '/api/auth/profile', b);
+        p.email = saved.email; $('[name=currentPassword]', info).value = ''; $('#pfEmailPw').hidden = true; last = key(body());
+        me = { ...me, name: saved.name, email: saved.email, photo: saved.photo }; renderTopbar(curPath()); toast('Profile saved');
+      } catch (err) { toast(err.message, true); }
+      busy = false; if (again) { again = false; save(); }
+    }
+    info.addEventListener('change', (e) => { if (e.target.id !== 'pfPhoto') save(); });
+    info.addEventListener('submit', (e) => { e.preventDefault(); save(); });
     const hf = $('#pfHours');
     if (hf) {
+      let hours = staffHours(p);
+      const editing = (on) => { $('.hours.edit', hf).hidden = !on; $('.hours.view', hf).hidden = on; $('.pf-hours-edit', hf).hidden = on; $('.foot', hf).hidden = !on; };
+      const redraw = () => { $('.hours-wrap', hf).outerHTML = pfHoursHtml(hours); wireHours(hf); editing(false); };
+      const saveHours = async () => {
+        const h = readHoursFrom(hf); const bad = badHours(h); if (bad) { toast(bad, true); return false; }
+        try { await api('POST', '/api/auth/hours', { hours: h }); } catch (err) { toast(err.message, true); return false; }
+        hours = h; toast('Working hours saved'); return true;
+      };
       wireHours(hf);
-      hf.addEventListener('submit', async (e) => {
-        e.preventDefault(); const hours = readHoursFrom(hf); const bad = badHours(hours); if (bad) return toast(bad, true);
-        await api('POST', '/api/auth/hours', { hours }); toast('Working hours saved'); refresh();
-      });
+      hf._edit = () => editing(true); hf._cancel = redraw;
+      hf.addEventListener('submit', async (e) => { e.preventDefault(); if (await saveHours()) redraw(); });
+      hf.addEventListener('hourschange', async () => { if (!(await saveHours())) redraw(); }); // phones: Done in the day's sheet saves
     }
     const pass = $('#pfPass');
     pass.addEventListener('submit', async (e) => {
@@ -2249,6 +2270,10 @@ ${pw('currentPassword', 'Current password', 'current-password')}${pw('newPasswor
   },
 };
 A.pfPhotoRemove = (d, el) => el.closest('form')._clearPhoto();
+A.pfHoursEdit = (d, el) => el.closest('form')._edit();
+A.pfHoursCancel = (d, el) => el.closest('form')._cancel();
+// My profile's working hours: edited with the pencil in the card header (phones tap a day), saved without a page Save
+const pfHoursHtml = (hours) => hoursHtml(hours, 'Not working', { toggle: false }).replace('class="hours-wrap"', 'class="hours-wrap" data-autosave="1"');
 A.pfEye = (d, el) => { const i = el.parentElement.querySelector('input'); const showing = i.type === 'text'; i.type = showing ? 'password' : 'text'; el.textContent = showing ? 'Show' : 'Hide'; el.setAttribute('aria-label', showing ? 'Show password' : 'Hide password'); i.focus(); };
 
 /* ===== /payments: payment history, payouts and payment settings ===== */
