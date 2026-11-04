@@ -1614,6 +1614,7 @@ button.mn-x{border:0;padding:0;cursor:pointer}
 .tb-news .tb-dot{top:4px;right:3px}
 .clist .cl-nowrap{white-space:nowrap}
 /* Account and billing → Modify subscription: the popup's steps (pages.js A.billModify) */
+.ms-test{background:#fef3c7;color:#92400e;font-size:12.5px;font-weight:600;text-align:center;padding:7px 12px;border-radius:12px 12px 0 0}
 .modal.ms{max-width:600px}.modal.ms .mh{display:none}.modal.ms .mb{padding:22px 24px 20px}
 .ms-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:16px}
 .ms-x,.ms-back{background:none;border:0;color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;gap:6px;font:inherit;font-size:15px;padding:4px;border-radius:6px}.ms-x:hover,.ms-back:hover{color:var(--text);background:var(--surface-2)}

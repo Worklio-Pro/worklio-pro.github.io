@@ -1042,12 +1042,15 @@ ${step('password', 6, 'Password to confirm', 'They enter their password to cance
 <h2 style="margin-top:22px">Reasons</h2><p class="muted" style="font-size:13px;margin-top:0">What a business picks from, top to bottom. Up to 8.</p>
 <div id="rtReasons">${rtReasons.map(reasonRow).join('')}</div>
 ${rtReasons.length < 8 ? '<button type="button" class="btn alt sm" data-act="rtAdd">+ Add a reason</button>' : ''}
-<div class="savebar"><button type="button" class="btn alt" data-act="rtDefaults">Restore defaults</button><button class="btn">Save cancellation flow</button></div></form>`;
+<div class="savebar"><button type="button" class="btn alt" data-act="rtTest">Test the flow</button><button type="button" class="btn alt" data-act="rtDefaults">Restore defaults</button><button class="btn">Save cancellation flow</button></div></form>`;
   const f = $('#rtf', box); f._read = () => $$('.rt-reason', f).forEach((row) => { const r = rtReasons[row.dataset.i]; $$('[data-k]', row).forEach((i) => { r[i.dataset.k] = i.value; }); });
-  f.addEventListener('submit', async (e) => {
-    e.preventDefault(); f._read(); const ch = (n) => !!f.elements[n].checked; const v = (n) => f.elements[n].value;
-    const body = { sprint: { on: ch('sprint.on') }, tour: { on: ch('tour.on') }, stay: { on: ch('stay.on'), percent: v('stay.percent'), months: v('stay.months') }, extend: { on: ch('extend.on'), days: v('extend.days'), within: v('extend.within') },
+  f._body = () => {
+    f._read(); const ch = (n) => !!f.elements[n].checked; const v = (n) => f.elements[n].value;
+    return { sprint: { on: ch('sprint.on') }, tour: { on: ch('tour.on') }, stay: { on: ch('stay.on'), percent: v('stay.percent'), months: v('stay.months') }, extend: { on: ch('extend.on'), days: v('extend.days'), within: v('extend.within') },
       lose: { on: ch('lose.on') }, feedback: { on: ch('feedback.on'), required: ch('feedback.required') }, gift: { on: ch('gift.on'), percent: v('gift.percent') }, password: { on: ch('password.on') }, yearly: ch('yearly'), reasons: rtReasons };
+  };
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault(); const body = f._body();
     try { RT = await api('PUT', '/api/platform/retention', body); rtReasons = null; toast('Cancellation flow saved'); accountsView($('#main')); } catch (x) { toast(x.message, true); }
   });
 }
@@ -1056,6 +1059,38 @@ A.rtAdd = () => { $('#rtf')._read(); rtReasons.push({ id: '', title: '', text: '
 A.rtRm = (d) => { $('#rtf')._read(); rtReasons.splice(Number(d.i), 1); rtRedraw(); };
 A.rtMove = (d) => { $('#rtf')._read(); const i = Number(d.i); const j = i + Number(d.by); [rtReasons[i], rtReasons[j]] = [rtReasons[j], rtReasons[i]]; rtRedraw(); };
 A.rtDefaults = () => { const x = RT.defaults; rtReasons = structuredClone(x.reasons); const save = RT.config; RT.config = structuredClone(x); cancelFlowView($('#accBody')); RT.config = save; toast('Defaults filled in. Save to use them.'); };
+// Test the flow: the business's popup (public/cancelflow.js) on a sample account, with this page's settings, saved or not. Nothing is logged, charged or emailed
+let rtTestPlans = null; let rtTestLast = { kind: 'trial', days: 3, extended: false, from: 'menu', plan: '' };
+A.rtTest = async () => {
+  const f = $('#rtf'); if (!f.reportValidity()) return;
+  if (!rtTestPlans) { try { rtTestPlans = await api('GET', '/api/platform/retention/test'); } catch (x) { return toast(x.message, true); } }
+  const L = rtTestLast; const paid = rtTestPlans.plans.filter((p) => p.month || p.year);
+  if (!paid.some((p) => p.id === L.plan)) L.plan = (paid[0] || rtTestPlans.plans[0] || {}).id || '';
+  const m = modal('Test the cancellation flow', `<form id="rtt"><p class="muted" style="margin-top:0">Opens the popup a business sees, on a sample account, using the settings on this page, including changes you haven’t saved. Nothing is logged, charged or emailed.</p>
+<div class="row"><label>Account<select name="kind"><option value="trial">On a free trial</option><option value="month">Paying monthly</option><option value="year">Paying yearly</option></select></label>
+<label>Plan<select name="plan">${rtTestPlans.plans.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}${p.month ? ` · $${p.month}/mo` : ''}${p.year ? ` · $${p.year}/yr` : ''}</option>`).join('')}</select></label></div>
+<div class="row rtt-trial"><label>Days left in the trial<input name="days" type="number" min="0" max="365" value="${esc(L.days)}"></label>
+<label class="switchline" style="align-self:end"><input type="checkbox" name="extended" ${L.extended ? 'checked' : ''}> Trial already extended once</label></div>
+<label>Opens from<select name="from"><option value="menu">Modify subscription</option><option value="reasons">The Cancel link</option></select></label>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Start the test</button></div></form>`);
+  const t = $('#rtt', m); t.kind.value = L.kind; t.plan.value = L.plan; t.from.value = L.from;
+  const sync = () => { $('.rtt-trial', t).style.display = t.kind.value === 'trial' ? '' : 'none'; }; t.kind.addEventListener('change', sync); sync();
+  t.addEventListener('submit', (e) => {
+    e.preventDefault(); Object.assign(L, { kind: t.kind.value, plan: t.plan.value, days: Math.max(0, Number(t.days.value) || 0), extended: t.extended.checked, from: t.from.value }); closeModal();
+    const c = f._body(); const n = (x) => Number(x) || 0;
+    const C = { ...c, stay: { ...c.stay, percent: n(c.stay.percent), months: n(c.stay.months) }, extend: { ...c.extend, days: n(c.extend.days), within: n(c.extend.within) }, gift: { ...c.gift, percent: n(c.gift.percent) },
+      reasons: c.reasons.filter((r) => r.title.trim()).map((r, i) => ({ ...r, id: r.id || 'test' + i })) };
+    const day = (k) => new Date(Date.now() + k * 864e5).toISOString().slice(0, 10);
+    const trial = L.kind === 'trial'; const interval = trial ? 'month' : L.kind; const plan = rtTestPlans.plans.find((p) => p.id === L.plan) || rtTestPlans.plans[0] || { id: 'x', name: 'Plan' };
+    const price = plan[interval] || plan.month || plan.year || 0; const per = plan[interval] ? interval : plan.month ? 'month' : 'year';
+    const T = trial ? { endsAt: day(L.days), prepaid: false, cancelled: false } : null;
+    const B = { plan: { id: plan.id, name: plan.name, charge: price ? { cents: Math.round(price * 100), interval: per } : null }, plans: rtTestPlans.plans, interval: per, live: true, card: !trial, trial: T,
+      subscription: trial ? null : { periodEnd: day(18), cancelAtPeriodEnd: false }, productName: rtTestPlans.productName, usage: { clients: 42, quotes: 18, jobs: 63, invoices: 37, logins: 3 },
+      retention: { config: C, extendDays: C.extend.days, extended: L.extended, extendFrom: T ? day(Math.max(0, L.days - C.extend.within)) : null, offer: null, canExtend: !!(trial && C.extend.on && !L.extended && L.days <= C.extend.within) } };
+    cancelFlow(B, { test: true, step: L.from, me: { name: 'Pat Sample', email: 'pat@example.com' }, company: { name: 'Worklio Pro Demo Co' }, api: () => Promise.resolve({}), toast, fmtDate,
+      money: (x) => '$' + Number(x || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), plans: () => toast('In a real run, this opens the plan picker.') });
+  });
+};
 const RT_TONE = { cancelled: 'q-declined', closed: '', stay: 'active', gift: 'active', extended: 'active', sprint: 'q-sent', tour: 'q-sent' };
 let rtFilter = '';
 function cancellationsView(box) {
