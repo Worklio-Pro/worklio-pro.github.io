@@ -1698,13 +1698,7 @@ const AU_STARTERS = {
 async function automationsView(main) {
   if (!AU) { main.innerHTML = '<p class="muted">Loading…</p>'; try { AU = await api('GET', '/api/platform/automations'); } catch (x) { main.innerHTML = `<div class="card">${esc(x.message)}</div>`; return; } }
   const summary = (a) => `${auWhen(a)} · ${auHour(a.hour)} ${(AU_TZ.find((z) => z[0] === a.tz) || [, a.tz])[1]}${a.weekdays ? ', weekdays' : ''} · to the ${a.to === 'admins' ? 'owner and admins' : 'owner'}`;
-  const ruleText = (a) => { const r = a.rules || {}; const out = [];
-    if (r.plans.length) out.push(r.plans.map((p) => (AU.plans.find((x) => x.id === p) || { name: p }).name).join(' or ') + ' plan');
-    if (r.statuses.length) out.push(r.statuses.map((s) => AU.statuses[s]).join(' or '));
-    if ((r.industries || []).length) out.push(r.industries.map((i) => (AU.industries.find((x) => x.slug === i) || { name: i }).name).join(' or '));
-    for (const [k, l] of [['clients', 'clients'], ['jobs', 'jobs'], ['invoices', 'invoices']]) { const lo = r[k + 'Min']; const hi = r[k + 'Max']; if (lo !== '' && hi !== '') out.push(`${lo}–${hi} ${l}`); else if (lo !== '') out.push(`${lo}+ ${l}`); else if (hi !== '') out.push(hi === 0 ? `no ${l}` : `up to ${hi} ${l}`); }
-    if (r.cards !== 'any') out.push(r.cards === 'yes' ? 'card payments set up' : 'no card payments'); if (r.confirmed !== 'any') out.push(r.confirmed === 'yes' ? 'email confirmed' : 'email not confirmed');
-    return out.length ? out.join(' · ') : 'Every account'; };
+  const ruleText = (a) => auRuleText(a.rules);
   main.innerHTML = `<div class="au-top"><div><p class="sub" style="margin:0">Emails to businesses that send themselves, by time and rules. Checked every hour; each account gets each one once per event.${AU.optedOut ? ` ${AU.optedOut} ${AU.optedOut === 1 ? 'person has' : 'people have'} unsubscribed.` : ''}</p></div>
 <div class="acts"><button type="button" class="btn alt" data-act="auRun" title="Check every automation now instead of waiting for the hourly run">Run now</button><button type="button" class="btn" data-act="auNew">New automation</button></div></div>
 <div class="card"><h2>Your automations</h2>${AU.automations.length ? `<div class="au-list">${AU.automations.map((a) => `<div class="au-row ${a.enabled ? '' : 'off'}">
@@ -1725,40 +1719,153 @@ A.auToggle = async (d, el) => {
 A.auDel = async (d) => { const a = AU.automations.find((x) => x.id === d.id); if (!confirm(`Delete “${a.name}”? Its send history stays in the log.`)) return; AU = await api('DELETE', '/api/platform/automations/' + d.id); toast('Automation deleted'); automationsView($('#automations')); };
 A.auNew = (d) => auEditor({ trigger: 'signup', days: 1, hour: 9, tz: 'America/Chicago', to: 'owner', rules: {}, ...(d.k ? structuredClone(AU_STARTERS[d.k]) : { name: '', subject: '', body: '' }) });
 A.auEdit = (d) => auEditor(structuredClone(AU.automations.find((x) => x.id === d.id)));
+// the editor is a visual flow like the business automations (pages.js): trigger → when → who → email on a canvas, the chosen step's settings in the panel on the right
+const AU_IC = {
+  trigger: '<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>',
+  wait: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  who: '<path d="M3 5h18l-7 8v6l-4 2v-8z"/>',
+  email: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
+  preview: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+};
+const auIco = (d, s = 18) => `<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const AU_TRIG = { signup: 'Account signs up', inactive: 'Account goes quiet', expiry: 'Access is ending', paid: 'Account starts paying', date: 'A set date' };
+const auTzName = (z) => (AU_TZ.find((x) => x[0] === z) || [, z])[1];
+// "Basic plan · Active · 0 clients": the rules in a line ('' or null = not set)
+function auRuleText(r = {}) {
+  const out = []; const set = (v) => v !== '' && v != null;
+  if ((r.plans || []).length) out.push(r.plans.map((p) => (AU.plans.find((x) => x.id === p) || { name: p }).name).join(' or ') + ' plan');
+  if ((r.statuses || []).length) out.push(r.statuses.map((s) => AU.statuses[s]).join(' or '));
+  if ((r.industries || []).length) out.push(r.industries.map((i) => (AU.industries.find((x) => x.slug === i) || { name: i }).name).join(' or '));
+  for (const k of ['clients', 'jobs', 'invoices']) { const lo = r[k + 'Min']; const hi = r[k + 'Max']; if (set(lo) && set(hi)) out.push(`${lo}–${hi} ${k}`); else if (set(lo)) out.push(`${lo}+ ${k}`); else if (set(hi)) out.push(Number(hi) === 0 ? `no ${k}` : `up to ${hi} ${k}`); }
+  if (r.cards && r.cards !== 'any') out.push(r.cards === 'yes' ? 'card payments set up' : 'no card payments');
+  if (r.confirmed && r.confirmed !== 'any') out.push(r.confirmed === 'yes' ? 'email confirmed' : 'email not confirmed');
+  return out.length ? out.join(' · ') : 'Every account';
+}
+const AU_BLANK = () => ({ trigger: 'signup', days: 1, hour: 9, tz: 'America/Chicago', to: 'owner', rules: {}, name: '', subject: '', body: '' });
 function auEditor(a) {
-  const r = { plans: [], statuses: [], clientsMin: '', clientsMax: '', jobsMin: '', jobsMax: '', invoicesMin: '', invoicesMax: '', cards: 'any', confirmed: 'any', ...(a.rules || {}) };
+  const main = $('#automations'); if (!main) return;
+  const r = { plans: [], statuses: [], industries: [], clientsMin: '', clientsMax: '', jobsMin: '', jobsMax: '', invoicesMin: '', invoicesMax: '', cards: 'any', confirmed: 'any', ...(a.rules || {}) };
   const opt = (v, cur, l) => `<option value="${v}" ${String(cur) === String(v) ? 'selected' : ''}>${l}</option>`;
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
   const range = (k, l) => `<div class="au-range"><span>${l}</span><input type="number" min="0" name="${k}Min" value="${esc(r[k + 'Min'])}" placeholder="any" aria-label="${l} at least"><span>to</span><input type="number" min="0" name="${k}Max" value="${esc(r[k + 'Max'])}" placeholder="any" aria-label="${l} at most"></div>`;
-  const m = modal(a.id ? `Edit “${a.name}”` : 'New automation', `<form id="auf" class="au-form">
-${a.id ? '' : `<label>Start from<select id="auStart"><option value="">Blank</option>${Object.entries(AU_STARTERS).map(([k, s]) => opt(k, '', s.name)).join('')}</select></label>`}
-<label>Name (only you see it)<input name="name" required maxlength="80" value="${esc(a.name || '')}" placeholder="e.g. Welcome tips"></label>
-<h3 class="au-h">When</h3>
-<div class="row"><label>Trigger<select name="trigger">${Object.entries(AU.triggers).map(([k, l]) => opt(k, a.trigger, k === 'date' ? 'On a date (one time)' : l.replace(/^days /, '').replace(/^./, (c) => c.toUpperCase()))).join('')}</select></label>
-<label class="au-days">Days<input type="number" name="days" min="0" max="3650" value="${esc(a.days ?? 1)}"></label><label class="au-date">Date<input type="date" name="date" value="${esc(a.date || '')}"></label></div>
-<div class="row"><label>Send at<select name="hour">${Array.from({ length: 24 }, (_, i) => opt(i, a.hour ?? 9, auHour(i))).join('')}</select></label><label>Time zone<select name="tz">${AU_TZ.map(([z, l]) => opt(z, a.tz || 'America/Chicago', l)).join('')}</select></label></div>
+  const checks = (name, label, items, on, none) => `<div class="au-checks"><span>${label}</span>${items.map(([v, l]) => `<label><input type="checkbox" name="${name}" value="${esc(v)}" ${on.includes(v) ? 'checked' : ''}> ${esc(l)}</label>`).join('')}<em>${none}</em></div>`;
+  const trigOpts = Object.entries(AU.triggers).map(([k, l]) => `<label class="wf-opt"><input type="radio" name="trigger" value="${k}" ${a.trigger === k ? 'checked' : ''}><span><strong>${esc(AU_TRIG[k] || k)}</strong><small>${esc(k === 'date' ? 'One time, on the day you choose' : cap(l))}</small></span></label>`).join('');
+  main.innerHTML = `<div class="head wf-head"><div class="wf-title"><a class="back" href="#automations" id="auBack">← Automations</a><input class="wf-name" name="name" form="auf" maxlength="80" required placeholder="Name this automation (only you see it)" value="${esc(a.name || '')}" aria-label="Automation name"><p class="sub" id="auState">${a.id ? '' : 'Save it first. You can turn it on after that.'}</p></div><div class="actions">${a.id ? '<button type="button" class="btn alt" id="auDelete">Delete</button><button type="button" class="btn alt" id="auToggle"></button>' : ''}<button class="btn" type="submit" form="auf">Save</button></div></div>
+<form id="auf" class="wf">
+<div class="wf-canvas"><div class="wf-tools"><button type="button" class="btn alt sm" id="auWho">Who gets it?</button><button type="button" class="btn alt sm" id="auTest">Send me a test</button></div><div class="wf-scroll" id="wfScroll"><div class="wf-flow" id="wfFlow"></div></div><div class="wf-zoom" role="group" aria-label="Zoom"><button type="button" data-z="out" title="Zoom out" aria-label="Zoom out">−</button><button type="button" data-z="reset" id="wfZl" title="Back to 100%">100%</button><button type="button" data-z="in" title="Zoom in" aria-label="Zoom in">+</button><button type="button" data-z="fit" title="Fit to screen" aria-label="Fit to screen">${auIco('<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>', 15)}</button></div></div>
+<div class="wf-scrim" id="wfScrim"></div>
+<aside class="wf-panel" id="wfPanel" aria-label="Step settings">
+<div class="wf-ph"><span class="wf-ic" id="wfIc"></span><div class="wf-pt"><small id="wfKind"></small><h3 id="wfTitle"></h3></div><button type="button" class="wf-x" id="wfClose" aria-label="Close">×</button></div>
+<div class="wf-pb" id="wfBody">
+<section data-p="trigger">${a.id ? '' : `<label>Start from a template<select id="auStart"><option value="">Blank</option>${Object.entries(AU_STARTERS).map(([k, s]) => opt(k, '', esc(s.name))).join('')}</select></label>`}<p class="muted wf-lead">What starts this automation.</p>${trigOpts}</section>
+<section data-p="wait"><div class="row"><label class="au-days">Days<input type="number" name="days" min="0" max="3650" value="${esc(a.days ?? 1)}"></label><label class="au-date">Date<input type="date" name="date" value="${esc(a.date || '')}"></label><label>Send at<select name="hour">${Array.from({ length: 24 }, (_, i) => opt(i, a.hour ?? 9, auHour(i))).join('')}</select></label></div>
+<label>Time zone<select name="tz">${AU_TZ.map(([z, l]) => opt(z, a.tz || 'America/Chicago', l)).join('')}</select></label>
 <label class="switchline"><input type="checkbox" name="weekdays" ${a.weekdays ? 'checked' : ''}> Weekdays only (waits for Monday)</label>
 <label class="switchline au-catch"><input type="checkbox" name="catchUp" ${a.catchUp ? 'checked' : ''}> Also send to accounts already past this point when it’s turned on</label>
-<h3 class="au-h">Who</h3>
-<div class="row"><label>Send to<select name="to">${opt('owner', a.to, 'The account owner')}${opt('admins', a.to, 'The owner and admins')}</select></label><div></div></div>
-<div class="au-checks"><span>Plans</span>${AU.plans.map((p) => `<label><input type="checkbox" name="plans" value="${esc(p.id)}" ${r.plans.includes(p.id) ? 'checked' : ''}> ${esc(p.name)}</label>`).join('')}<em>none ticked = all plans</em></div>
-<div class="au-checks"><span>Status</span>${Object.entries(AU.statuses).map(([k, l]) => `<label><input type="checkbox" name="statuses" value="${k}" ${r.statuses.includes(k) ? 'checked' : ''}> ${l}</label>`).join('')}<em>none ticked = any status</em></div>
-<div class="au-checks"><span>Industry</span>${AU.industries.map((i) => `<label><input type="checkbox" name="industries" value="${esc(i.slug)}" ${(r.industries || []).includes(i.slug) ? 'checked' : ''}> ${esc(i.name)}</label>`).join('')}<em>none ticked = any industry</em></div>
+<p class="muted wf-lead" id="auWhen"></p></section>
+<section data-p="who"><label>Send to<select name="to">${opt('owner', a.to, 'The account owner')}${opt('admins', a.to, 'The owner and admins')}</select></label>
+<h4 class="ab-h">Only accounts that match</h4>
+${checks('plans', 'Plans', AU.plans.map((p) => [p.id, p.name]), r.plans, 'none ticked = all plans')}
+${checks('statuses', 'Status', Object.entries(AU.statuses), r.statuses, 'none ticked = any status')}
+${checks('industries', 'Industry', AU.industries.map((i) => [i.slug, i.name]), r.industries || [], 'none ticked = any industry')}
 ${range('clients', 'Clients')}${range('jobs', 'Jobs')}${range('invoices', 'Invoices')}
-<div class="row"><label>Card payments<select name="cards">${opt('any', r.cards, 'Any')}${opt('yes', r.cards, 'Set up')}${opt('no', r.cards, 'Not set up')}</select></label><label>Owner’s email<select name="confirmed">${opt('any', r.confirmed, 'Any')}${opt('yes', r.confirmed, 'Confirmed')}${opt('no', r.confirmed, 'Not confirmed')}</select></label></div>
-<h3 class="au-h">Email</h3>
-<label>Subject<input name="subject" required maxlength="200" value="${esc(a.subject || '')}"></label>
-<label>Message<textarea name="body" rows="10" required>${esc(a.body || '')}</textarea></label>
-<div class="au-vars"><span class="sm">Insert:</span>${['product', ...Object.keys(AU.vars)].map((v) => `<button type="button" class="au-var" data-act="auVar" data-v="${v}" title="${esc(v === 'product' ? 'Your product name' : AU.vars[v])}">{{${v}}}</button>`).join('')}</div>
-<p class="muted" style="font-size:12px;margin:4px 0 10px"><code># </code>starts a heading, <code>**bold**</code>, and a line with just <code>[Button text](link)</code> becomes a button. An unsubscribe link is added at the end.</p>
-<div id="auPreview"></div>
-<div class="acts au-foot"><button type="button" class="btn alt" data-act="auWho">Who gets it?</button><button type="button" class="btn alt" data-act="auTest">Send me a test</button><span style="flex:1"></span><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save</button></div></form>`, { wide: true, sticky: true });
-  const f = $('#auf', m); f.dataset.id = a.id || '';
-  const showWhen = () => { const t = f.trigger.value; $('.au-days', f).hidden = t === 'date'; $('.au-date', f).hidden = t !== 'date'; $('.au-catch', f).hidden = t === 'date'; };
-  f.trigger.addEventListener('change', showWhen); showWhen();
-  const st = $('#auStart', f); if (st) st.addEventListener('change', () => { if (st.value) auEditor({ trigger: 'signup', days: 1, hour: 9, tz: 'America/Chicago', to: 'owner', rules: {}, ...structuredClone(AU_STARTERS[st.value]) }); });
+<div class="row"><label>Card payments<select name="cards">${opt('any', r.cards, 'Any')}${opt('yes', r.cards, 'Set up')}${opt('no', r.cards, 'Not set up')}</select></label><label>Owner’s email<select name="confirmed">${opt('any', r.confirmed, 'Any')}${opt('yes', r.confirmed, 'Confirmed')}${opt('no', r.confirmed, 'Not confirmed')}</select></label></div></section>
+<section data-p="email"><p class="muted wf-lead">Every email has an unsubscribe link at the end.</p><label>Subject<input name="subject" maxlength="200" value="${esc(a.subject || '')}"></label>
+<label>Message<textarea name="body" rows="12">${esc(a.body || '')}</textarea></label>
+<div class="au-vars"><span class="sm">Insert:</span>${['product', ...Object.keys(AU.vars)].map((v) => `<button type="button" class="au-var" data-v="${v}" title="${esc(v === 'product' ? 'Your product name' : AU.vars[v])}">{{${v}}}</button>`).join('')}</div>
+<p class="muted" style="font-size:12px;margin:8px 0 0"><code># </code>starts a heading, <code>**bold**</code>, and a line with just <code>[Button text](link)</code> becomes a button.</p></section>
+<section data-p="preview"><div id="auPreview"></div></section>
+</div>
+<div class="wf-pf"><span></span><button type="button" class="btn wf-done" id="wfDone">Done</button></div>
+</aside></form>`;
+  const f = $('#auf', main); f.dataset.id = a.id || ''; const panel = $('#wfPanel', f); let sel = 'trigger';
+  const val = (k) => f.elements[k].value;
+  const back = () => automationsView(main);
+  $('#auBack', main).addEventListener('click', (e) => { e.preventDefault(); back(); });
+  const miss = () => !val('subject').trim() || !val('body').trim();
+  const node = (id, ic, kind, title, sub, warn) => `<div class="wf-step"><button type="button" class="wf-node ${warn ? 'warn' : ''} ${sel === id ? 'on' : ''}" data-n="${id}"><span class="wf-ic ic-${ic}">${auIco(AU_IC[ic])}</span><span class="wf-nt"><small>${kind}</small><strong>${esc(title)}</strong>${sub ? `<span>${esc(sub)}</span>` : ''}</span>${warn ? `<span class="wf-warn" title="${esc(warn)}">!</span>` : ''}</button></div>`;
+  const draw = () => {
+    const b = auRead(f); const n = Number(b.days) || 0; const at = `at ${auHour(Number(b.hour))} ${auTzName(b.tz)}`;
+    const when = b.trigger === 'date' ? [b.date ? `On ${fmtDate(b.date)}` : 'Choose a date', at, b.date ? '' : 'Choose a date']
+      : [n ? `${n} day${n === 1 ? '' : 's'}, ${at}` : `Same day, ${at}`, (n ? cap(AU.triggers[b.trigger].replace(/^days /, '')) : AU_SAME_DAY[b.trigger]) + (b.weekdays ? ' · weekdays' : ''), ''];
+    $('#wfFlow', f).innerHTML = [
+      node('trigger', 'trigger', 'Trigger', AU_TRIG[b.trigger], b.trigger === 'date' ? 'One time' : cap(AU.triggers[b.trigger].replace(/^days (after|before) /, ''))),
+      node('wait', 'wait', 'When', when[0], when[1], when[2]),
+      node('who', 'who', 'Send to', b.to === 'admins' ? 'The owner and admins' : 'The account owner', auRuleText(b.rules)),
+      node('email', 'email', 'Action', 'Send email', miss() ? 'Write the email' : b.subject.trim(), miss() ? 'Needs a subject and message' : ''),
+    ].join('<i class="wf-line"></i>') + '<i class="wf-line"></i><span class="wf-end">End</span>';
+  };
+  const META = { trigger: ['trigger', 'Trigger', 'When it starts'], wait: ['wait', 'When', 'When it sends'], who: ['who', 'Send to', 'Who gets it'], email: ['email', 'Action', 'Send email'], preview: ['preview', 'Preview', 'Who gets it?'] };
+  const show = (id, open = true) => {
+    sel = id; const [ic, kind, title] = META[id];
+    $$('[data-p]', f).forEach((s) => { s.hidden = s.dataset.p !== id; });
+    $('#wfIc', f).className = `wf-ic ic-${ic}`; $('#wfIc', f).innerHTML = auIco(AU_IC[ic]);
+    $('#wfKind', f).textContent = kind; $('#wfTitle', f).textContent = title; $('#wfBody', f).scrollTop = 0;
+    panel.classList.toggle('open', open); $('#wfScrim', f).classList.toggle('open', open);
+    draw();
+  };
+  const close = () => { panel.classList.remove('open'); $('#wfScrim', f).classList.remove('open'); };
+  const refresh = () => {
+    const t = val('trigger'); $('.au-days', f).hidden = t === 'date'; $('.au-date', f).hidden = t !== 'date'; $('.au-catch', f).hidden = t === 'date';
+    const n = Number(val('days')) || 0;
+    $('#auWhen', f).textContent = t === 'date' ? 'Sends once, on that day.' : n ? `${n} ${n === 1 ? AU.triggers[t].replace('days', 'day') : AU.triggers[t]}.` : `${AU_SAME_DAY[t]}.`;
+    draw();
+  };
+  f.addEventListener('change', (e) => {
+    if (e.target.id === 'auStart') { if (e.target.value) auEditor({ ...AU_BLANK(), ...structuredClone(AU_STARTERS[e.target.value]) }); return; }
+    refresh();
+  });
+  f.addEventListener('input', draw);
+  f.addEventListener('click', (e) => {
+    const n = e.target.closest('[data-n]'); if (n) return show(n.dataset.n);
+    const v = e.target.closest('[data-v]'); if (!v) return;
+    const ta = f.elements.body; const s = ta.selectionStart; const ins = `{{${v.dataset.v}}}`; ta.setRangeText(ins, s, ta.selectionEnd, 'end'); ta.focus(); draw();
+  });
+  [$('#wfClose', f), $('#wfDone', f), $('#wfScrim', f)].forEach((b) => b.addEventListener('click', close));
+  // zoom, for a long flow: the buttons, or ctrl/⌘ + scroll on the canvas
+  const flow = $('#wfFlow', f); let zoom = 1;
+  const setZoom = (z) => { zoom = Math.round(Math.max(0.3, Math.min(1.5, z)) * 100) / 100; flow.style.zoom = zoom; $('#wfZl', f).textContent = `${Math.round(zoom * 100)}%`; };
+  const fit = () => { flow.style.zoom = 1; const sc = $('#wfScroll', f); setZoom(Math.min(1, (sc.clientHeight - 8) / flow.scrollHeight, (sc.clientWidth - 8) / flow.scrollWidth)); };
+  $('.wf-zoom', f).addEventListener('click', (e) => { const b = e.target.closest('[data-z]'); if (!b) return; const z = b.dataset.z; if (z === 'fit') fit(); else setZoom(z === 'reset' ? 1 : zoom + (z === 'in' ? 0.1 : -0.1)); });
+  $('#wfScroll', f).addEventListener('wheel', (e) => { if (!e.ctrlKey && !e.metaKey) return; e.preventDefault(); setZoom(zoom - Math.sign(e.deltaY) * 0.1); }, { passive: false });
+  $('#auWho', f).addEventListener('click', async () => {
+    const box = $('#auPreview', f); box.innerHTML = '<p class="muted">Checking accounts…</p>'; show('preview');
+    try {
+      const L = await api('POST', '/api/platform/automations/preview', auRead(f)); const ready = L.filter((x) => x.ready); const done = L.filter((x) => x.sent); const later = L.filter((x) => !x.ready && !x.sent);
+      box.innerHTML = `<p><strong>${L.length} account${L.length === 1 ? '' : 's'} match</strong></p><p class="muted wf-lead">${ready.length} due now, ${later.length} later or already past, ${done.length} already sent.</p>
+${L.length ? `<ul class="wf-who">${L.slice(0, 50).map((x) => `<li><span>${esc(x.business)} <span class="muted">${esc(x.plan)}</span></span><span class="muted">${x.sent ? 'Sent' : x.ready ? 'Due now' : `Due ${fmtDate(x.due)}`}</span>${x.to.length ? '' : '<small>No one to email</small>'}</li>`).join('')}${L.length > 50 ? `<li class="muted">and ${L.length - 50} more</li>` : ''}</ul>` : ''}`;
+    } catch (x) { box.innerHTML = `<p class="msg err">${esc(x.message)}</p>`; }
+  });
+  $('#auTest', f).addEventListener('click', async (e) => {
+    const el = e.currentTarget; el.disabled = true;
+    try { const r = await api('POST', '/api/platform/automations/test', auRead(f)); toast(r.status === 'sent' ? `Test sent to ${D.admin.email} (filled in with ${r.example})` : `Not sent: ${r.detail || r.status}`, r.status !== 'sent'); } catch (x) { failed(x); }
+    el.disabled = false;
+  });
+  // a save error opens the step it's about
+  const failed = (x) => { toast(x.message, true); const m = x.message; const s = /subject|message/.test(m) ? 'email' : /time zone|date/.test(m) ? 'wait' : ''; if (s) show(s); else if (/name/.test(m)) f.elements.name.focus(); };
+  const save = async () => {
+    AU = await api(a.id ? 'PUT' : 'POST', a.id ? `/api/platform/automations/${a.id}` : '/api/platform/automations', auRead(f));
+    return a.id ? AU.automations.find((x) => x.id === a.id) : AU.automations[AU.automations.length - 1];
+  };
   f.addEventListener('submit', async (e) => {
-    e.preventDefault(); const b = auRead(f);
-    try { AU = await api(a.id ? 'PUT' : 'POST', a.id ? `/api/platform/automations/${a.id}` : '/api/platform/automations', b); closeModal(); toast(a.id ? 'Automation saved' : 'Automation saved. Turn it on when you’re ready.'); automationsView($('#automations')); } catch (x) { toast(x.message, true); }
+    e.preventDefault();
+    try { const saved = await save(); if (a.id) { Object.assign(a, saved); toast('Automation saved'); return; } toast('Saved. Turn it on when you’re ready.'); auEditor(structuredClone(saved)); } catch (x) { failed(x); }
+  });
+  refresh(); show('trigger', false);
+  if (!a.id) return;
+  const showState = () => { $('#auState', main).innerHTML = `<span class="cstatus ${a.enabled ? 'active' : 'q-draft'}">${a.enabled ? 'On' : 'Off'}</span> ${a.sentCount || 0} sent${a.lastSentAt ? ` · last ${fmtDate(a.lastSentAt.slice(0, 10))}` : ''}`; $('#auToggle', main).textContent = a.enabled ? 'Turn off' : 'Turn on'; };
+  showState();
+  $('#auToggle', main).addEventListener('click', async () => {
+    const on = !a.enabled;
+    if (on && !confirm(`Turn on “${val('name') || a.name}”? It starts sending at the next hourly check${f.elements.catchUp.checked ? ', including to accounts already past this point' : ''}.`)) return;
+    try { // turning it on saves first, so what goes live is what's on screen
+      if (on) Object.assign(a, await save());
+      AU = await api('POST', `/api/platform/automations/${a.id}/enable`, { on }); Object.assign(a, AU.automations.find((x) => x.id === a.id)); showState(); toast(on ? 'Automation on' : 'Automation off');
+    } catch (x) { failed(x); }
+  });
+  $('#auDelete', main).addEventListener('click', async () => {
+    if (!confirm(`Delete “${a.name}”? Its send history stays in the log.`)) return;
+    try { AU = await api('DELETE', '/api/platform/automations/' + a.id); toast('Automation deleted'); back(); } catch (x) { toast(x.message, true); }
   });
 }
 function auRead(f) {
@@ -1766,18 +1873,6 @@ function auRead(f) {
   return { id: f.dataset.id || undefined, name: g('name'), trigger: g('trigger'), days: g('days'), date: g('date'), hour: g('hour'), tz: g('tz'), weekdays: !!g('weekdays'), catchUp: !!g('catchUp'), to: g('to'), subject: g('subject'), body: g('body'),
     rules: { plans: fd.getAll('plans'), statuses: fd.getAll('statuses'), industries: fd.getAll('industries'), clientsMin: g('clientsMin'), clientsMax: g('clientsMax'), jobsMin: g('jobsMin'), jobsMax: g('jobsMax'), invoicesMin: g('invoicesMin'), invoicesMax: g('invoicesMax'), cards: g('cards'), confirmed: g('confirmed') } };
 }
-A.auVar = (d) => { const ta = $('#auf [name=body]'); const s = ta.selectionStart; const ins = `{{${d.v}}}`; ta.value = ta.value.slice(0, s) + ins + ta.value.slice(ta.selectionEnd); ta.focus(); ta.selectionStart = ta.selectionEnd = s + ins.length; };
-A.auWho = async () => {
-  const box = $('#auPreview'); box.innerHTML = '<p class="muted">Checking accounts…</p>';
-  try {
-    const L = await api('POST', '/api/platform/automations/preview', auRead($('#auf'))); const ready = L.filter((x) => x.ready); const done = L.filter((x) => x.sent); const later = L.filter((x) => !x.ready && !x.sent);
-    box.innerHTML = `<div class="au-who"><strong>${L.length} account${L.length === 1 ? '' : 's'} match the rules</strong>: ${ready.length} due now, ${later.length} later or already past, ${done.length} already sent.
-${L.length ? `<ul>${L.slice(0, 12).map((x) => `<li>${esc(x.business)} <span class="sm">${esc(x.plan)} · ${x.sent ? 'sent' : x.ready ? 'due now' : `due ${fmtDate(x.due)}`} · ${x.to.length ? esc(x.to.join(', ')) : 'no one to email'}</span></li>`).join('')}${L.length > 12 ? `<li class="sm">and ${L.length - 12} more</li>` : ''}</ul>` : ''}</div>`;
-  } catch (x) { box.innerHTML = `<p class="msg err">${esc(x.message)}</p>`; }
-};
-A.auTest = async (d, el) => {
-  el.disabled = true; try { const r = await api('POST', '/api/platform/automations/test', auRead($('#auf'))); toast(r.status === 'sent' ? `Test sent to ${D.admin.email} (filled in with ${r.example})` : `Not sent: ${r.detail || r.status}`, r.status !== 'sent'); } catch (x) { toast(x.message, true); } el.disabled = false;
-};
 
 /* ===== actions ===== */
 A.closeModal = closeModal;
