@@ -354,19 +354,46 @@ function teamMemberPage(main, s) {
 <input name="state" value="${esc(s.state)}" placeholder="State" aria-label="State"><div class="addr-row"><input name="zip" value="${esc(s.zip)}" placeholder="ZIP code" aria-label="ZIP code"><input name="country" value="${esc(s.country || 'United States')}" placeholder="Country" aria-label="Country"></div></div></div>
 <div class="row tm-extra"><label>Calendar color<input name="color" type="color" value="${esc(s.color || palette[D.staff.length % palette.length])}"></label>
 ${isOwnerMember(s) ? '' : `<label>Status<select name="status"><option value="active">Active</option><option value="deactivated" ${s.status === 'deactivated' ? 'selected' : ''}>Deactivated (hidden from scheduling)</option></select></label>`}</div>
-<hr class="tm-hr"><h2>Schedule</h2><h3>Working hours</h3>
+<hr class="tm-hr"><h2>Schedule</h2>${s.id ? `<div data-hours-root><div class="cs-hours-h"><h3>Working hours</h3>${hoursPencil('working hours')}</div>
 <p class="muted">You'll get a warning when a job is booked outside them.</p>
-${hoursHtml(hours)}</div>
-<div class="foot">${s.id && !isOwnerMember(s) ? `<button type="button" class="btn danger" data-act="delStaff" data-id="${s.id}">Remove team member</button>` : ''}<a class="btn alt" href="/team" data-link>Cancel</a><button class="btn">${s.id ? 'Save' : 'Add team member'}</button></div></form>${s.id ? '<div class="qcard login-card" id="loginCard"><h2>Login access</h2><p class="muted">Loading…</p></div>' : ''}`;
+${autoHoursHtml(hours, 'Not working')}${hoursFoot}</div>` : `<h3>Working hours</h3>
+<p class="muted">You'll get a warning when a job is booked outside them.</p>
+${hoursHtml(hours)}`}</div>
+${s.id ? (isOwnerMember(s) ? '' : `<div class="foot"><button type="button" class="btn danger" data-act="delStaff" data-id="${s.id}">Remove team member</button></div>`)
+    : '<div class="foot"><a class="btn alt" href="/team" data-link>Cancel</a><button class="btn">Add team member</button></div>'}</form>${s.id ? '<div class="qcard login-card" id="loginCard"><h2>Login access</h2><p class="muted">Loading…</p></div>' : ''}`;
   const form = $('form', main); if (s.id) renderLoginCard(s);
-  const readHours = () => readHoursFrom(form); wireHours(form);
+  const readHours = () => readHoursFrom(form); if (!s.id) wireHours(form);
   $('#tmPhoto').addEventListener('change', async (e) => {
     const f = e.target.files[0]; if (!f) return; if (f.size > 8e6) return toast('Image must be under 8 MB', true);
-    photo = await resizeImage(f, 256); $('.tm-av', form).innerHTML = avatarHtml({ photo }, 72); $('[data-act=tmPhotoRemove]', form).hidden = false;
+    photo = await resizeImage(f, 256); e.target.value = ''; $('.tm-av', form).innerHTML = avatarHtml({ photo }, 72); $('[data-act=tmPhotoRemove]', form).hidden = false; if (s.id) saveMember();
   });
-  form._clearPhoto = () => { photo = ''; $('.tm-av', form).innerHTML = avatarHtml({ ...s, photo: '', name: $('[name=name]', form).value || '?' }, 72); $('[data-act=tmPhotoRemove]', form).hidden = true; };
+  form._clearPhoto = () => { photo = ''; $('.tm-av', form).innerHTML = avatarHtml({ ...s, photo: '', name: $('[name=name]', form).value || '?' }, 72); $('[data-act=tmPhotoRemove]', form).hidden = true; if (s.id) saveMember(); };
+  // a team member who's already added saves on their own, like My profile: a field when it changes, the photo when it's uploaded or removed,
+  // the working hours with their pencil. A new one is added with the Add team member button.
+  const body = () => ({ ...Object.fromEntries(new FormData(form)), photo });
+  let last = JSON.stringify(body()); let busy = false; let again = false;
+  async function saveMember() {
+    if (busy) { again = true; return; }
+    const b = body(); if (JSON.stringify(b) === last) return;
+    if (!form.checkValidity()) return form.reportValidity();
+    busy = true;
+    try {
+      const saved = await api('PUT', '/api/staff/' + s.id, b); const emailWas = s.email;
+      Object.assign(s, saved); const k = D.staff.findIndex((x) => x.id === s.id); if (k >= 0) D.staff[k] = { ...D.staff[k], ...saved };
+      $('.tm-title', main).textContent = s.name; last = JSON.stringify(body()); toast('Team member saved');
+      if (s.email !== emailWas) renderLoginCard(s); // the login card offers an invite to the email on file
+    } catch (err) { toast(err.message, true); }
+    busy = false; if (again) { again = false; saveMember(); }
+  }
+  if (s.id) {
+    form.addEventListener('change', (e) => { if (e.target.id !== 'tmPhoto' && !e.target.closest('.hours-wrap')) saveMember(); });
+    wireHoursEditor($('[data-hours-root]', form), hours, 'Not working', async (h) => {
+      const saved = await api('PUT', '/api/staff/' + s.id, { hours: h }); Object.assign(s, saved); const k = D.staff.findIndex((x) => x.id === s.id); if (k >= 0) D.staff[k] = { ...D.staff[k], ...saved };
+      toast('Working hours saved');
+    });
+  }
   form.addEventListener('submit', async (e) => {
-    e.preventDefault();
+    e.preventDefault(); if (s.id) return saveMember();
     const b = Object.fromEntries(new FormData(form)); b.photo = photo; b.hours = readHours();
     const bad = badHours(b.hours); if (bad) return toast(bad, true);
     if (!s.id && String(b.phone || '').replace(/\D/g, '').length < 10) { toast('Enter a mobile number with the area code', true); return $('[name=phone]', form).focus(); }
