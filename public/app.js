@@ -200,8 +200,8 @@ let sideMini = (() => { try { return localStorage.getItem('sideMini') === '1'; }
 const applyMini = () => { const side = $('#side'); side.classList.toggle('mini', sideMini && !$('.side-settings', side)); };
 function fillSide(path) {
   const side = $('#side'); side.innerHTML = sideHtml(path); $('.brand', side).after(searchBox()); applyMini();
-  // the round button on the menu's edge, at the bottom; the Settings column is never collapsed, so there it always collapses
-  const btn = $('#sideMiniBtn'); btn.hidden = false; const mini = side.classList.contains('mini');
+  // the round button on the menu's edge, by Settings; not on the Settings column, which always shows in full
+  const btn = $('#sideMiniBtn'); btn.hidden = !!$('.side-settings', side); const mini = side.classList.contains('mini');
   const l = mini ? 'Expand menu' : 'Collapse menu'; btn.setAttribute('aria-label', l); btn.title = l;
   if (mini) {
     if (sideMini) $$('a.nav-link, .side-set-btn', side).forEach((a) => { a.title = $('.nav-l', a).textContent; }); // names on hover; before the badges are added
@@ -555,8 +555,7 @@ A.openHelp = () => openHelp();
 const sideSwitch = (mode, focus) => { sideMode = mode; fillSide(curPath()); const f = $(focus, $('#side')); if (f) f.focus(); };
 A.openSettings = () => sideSwitch('settings', '.side-back');
 A.sideBack = () => sideSwitch('main', '.side-set-btn');
-// collapsing from the Settings column goes back to the main menu as icons (Settings links have no icons)
-A.sideMini = () => { const settings = !!$('#side .side-settings'); sideMini = settings || !sideMini; if (settings) sideMode = 'main'; try { localStorage.setItem('sideMini', sideMini ? '1' : '0'); } catch (e) { /* this visit only */ } fillSide(curPath()); };
+A.sideMini = () => { sideMini = !sideMini; try { localStorage.setItem('sideMini', sideMini ? '1' : '0'); } catch (e) { /* this visit only */ } fillSide(curPath()); };
 // the QR code drawn the way Settings → Business Page → QR code appearance sets it (plain until it loads, or if it can't)
 let qrLook = null;
 A.businessQr = async () => {
