@@ -1788,7 +1788,7 @@ ${s.on ? '' : '<div class="mt-bar" role="status" style="margin:0 0 14px;border-r
 <div class="stats fr-stats"><div class="card"><div class="l">New, not reviewed yet</div><div class="v">${n((p) => p.status === 'open')}</div></div><div class="card"><div class="l">Feature requests</div><div class="v">${n((p) => p.kind === 'idea')}</div></div>
 <div class="card"><div class="l">Issues</div><div class="v">${n((p) => p.kind === 'issue')}</div></div><div class="card"><div class="l">Planned or in progress</div><div class="v">${n((p) => p.status === 'planned' || p.status === 'progress')}</div></div></div>
 <div class="fr-bar"><div class="hc-seg" role="tablist">${[['all', 'All'], ['idea', 'Feature requests'], ['issue', 'Issues']].map(([k, l]) => `<button type="button" class="${v.kind === k ? 'on' : ''}" data-act="frKind" data-k="${k}">${l}</button>`).join('')}</div>
-<select data-frv="category" aria-label="Category"><option value="">Any category</option>${Object.entries(FR.categories).map(([k, l]) => `<option value="${k}" ${v.category === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>
+<select data-frv="category" aria-label="Board"><option value="">Any board</option>${Object.entries(FR.categories).map(([k, l]) => `<option value="${k}" ${v.category === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>
 <select data-frv="status" aria-label="Status"><option value="">Any status</option>${Object.entries(S).map(([k, l]) => `<option value="${k}" ${v.status === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>
 <select data-frv="sort" aria-label="Sort">${[['new', 'Newest'], ['top', 'Most liked'], ['active', 'Recent activity'], ['talk', 'Most comments']].map(([k, l]) => `<option value="${k}" ${v.sort === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
 <input type="search" id="frQ" placeholder="Search posts, people, businesses…" value="${esc(v.q)}"></div>
@@ -1814,7 +1814,7 @@ function frPost(main, p) {
 <input type="hidden" name="parentId"><div style="display:flex;justify-content:flex-end;gap:8px"><button class="btn">Post reply</button></div></form></div></div>
 <div><div class="card"><h2>Manage</h2><form id="frManage"><label>Status<select name="status">${Object.entries(S).map(([k, l]) => `<option value="${k}" ${p.status === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
 <label>Note with the status change (optional)<textarea name="note" rows="3" maxlength="4000" placeholder="e.g. Thanks! This is planned for next month."></textarea></label>
-<label>Category<select name="category">${Object.entries(FR.categories).map(([k, l]) => `<option value="${k}" ${p.category === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+<label>Board<select name="category">${Object.entries(FR.categories).map(([k, l]) => `<option value="${k}" ${p.category === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
 <label>Type<select name="kind">${Object.entries(K).map(([k, l]) => `<option value="${k}" ${p.kind === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
 <label class="chk"><input type="checkbox" name="pinned" ${p.pinned ? 'checked' : ''}> Pin to the top of the Board</label><label class="chk"><input type="checkbox" name="locked" ${p.locked ? 'checked' : ''}> Lock (no new comments)</label>
 <button class="btn" style="width:100%;margin-top:6px">Save</button></form>

@@ -2815,12 +2815,12 @@ function foList(main) {
   const count = (k) => FO.posts.filter((p) => (k === 'all' || p.kind === k) && (!v.category || p.category === v.category)).length;
   const inCat = (k) => FO.posts.filter((p) => p.category === k).length;
   // no category picked: every category as a card to open; a category picked: its name, with a way back
-  const cats = v.category ? `<p class="fo-back"><a href="/forum" data-act="foCat" data-k="">${svgIcon(ICONS.back, 16)} All categories</a></p><h2 class="fo-cath">${esc(FO.categories[v.category])}</h2>`
-    : `<h2 class="fo-cath">Categories</h2><div class="fo-cats">${Object.entries(FO.categories).map(([k, l]) => `<button type="button" class="fo-catc" data-act="foCat" data-k="${k}"><span>${esc(l)}</span><b>${inCat(k)}</b></button>`).join('')}</div><h2 class="fo-cath">All posts</h2>`;
+  const cats = v.category ? `<p class="fo-back"><a href="/forum" data-act="foCat" data-k="">${svgIcon(ICONS.back, 16)} All boards</a></p><h2 class="fo-cath">${esc(FO.categories[v.category])}</h2>`
+    : `<h2 class="fo-cath">Boards</h2><div class="fo-cats">${Object.entries(FO.categories).map(([k, l]) => `<button type="button" class="fo-catc" data-act="foCat" data-k="${k}"><span>${esc(l)}</span><b>${inCat(k)}</b></button>`).join('')}</div><h2 class="fo-cath">All posts</h2>`;
   main.innerHTML = `<div class="head"><div><h1>Board</h1><p class="sub">Suggest features and report issues. Like the posts that matter to you and join the conversation. The ${esc(product)} team reads everything here to decide what to improve next.</p></div><button class="btn" data-act="foNew">New post</button></div>
 ${cats}
 <div class="fo-bar"><div class="tabs fo-tabs">${[['all', 'All'], ['idea', 'Feature requests'], ['issue', 'Issues']].map(([k, l]) => `<button class="${v.kind === k ? 'on' : ''}" data-act="foKindTab" data-k="${k}">${l} <span class="muted">${count(k)}</span></button>`).join('')}</div>
-<div class="fo-filters"><label class="pill">Category<select data-fv="category"><option value="">All</option>${Object.entries(FO.categories).map(([k, l]) => `<option value="${k}" ${v.category === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+<div class="fo-filters"><label class="pill">Board<select data-fv="category"><option value="">All</option>${Object.entries(FO.categories).map(([k, l]) => `<option value="${k}" ${v.category === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
 <label class="pill">Status<select data-fv="status"><option value="">Any</option>${Object.entries(S).map(([k, l]) => `<option value="${k}" ${v.status === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
 <label class="pill">Sort<select data-fv="sort">${[['top', 'Most liked'], ['new', 'Newest'], ['active', 'Recent activity']].map(([k, l]) => `<option value="${k}" ${v.sort === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
 <label class="fo-mine"><input type="checkbox" data-fv="mine" ${v.mine ? 'checked' : ''}> My posts</label>
@@ -2859,7 +2859,7 @@ async function foSend(form, parentId) {
 function foForm(p) {
   const K = FO.kinds; p = p || { kind: 'idea', category: forumView.category, title: '', body: '' };
   const mb = modal(p.id ? 'Edit post' : 'New post', `<form class="fo-new"><div class="fo-pick">${Object.entries(K).map(([k, l]) => `<label><input type="radio" name="kind" value="${k}" ${p.kind === k ? 'checked' : ''}><span><strong>${esc(l)}</strong><small class="muted">${k === 'idea' ? 'Something you’d like the app to do' : 'Something that isn’t working right'}</small></span></label>`).join('')}</div>
-<label>Category<select name="category" required><option value="">Choose the part of the app it’s about</option>${Object.entries(FO.categories).map(([k, l]) => `<option value="${k}" ${p.category === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+<label>Board<select name="category" required><option value="">Choose the part of the app it’s about</option>${Object.entries(FO.categories).map(([k, l]) => `<option value="${k}" ${p.category === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
 <label>Title<input name="title" required maxlength="140" value="${esc(p.title)}" placeholder="${p.kind === 'issue' ? 'e.g. Invoice PDF cuts off long descriptions' : 'e.g. Let clients pick a time on the booking page'}"></label>
 <label>Details<textarea name="body" required rows="7" maxlength="6000" placeholder="What would help, and why? For an issue: what you did, what you expected and what happened.">${esc(p.body)}</textarea></label>
 <p class="muted" style="font-size:13px;margin:-4px 0 12px">Owners and admins of other businesses can see your post, with your first name, last initial and business name.</p>

@@ -285,7 +285,7 @@ const settingsFor = () => SETTINGS_NAV.filter(([p]) => memberCan(p) && !planLock
 // pages the search finds besides the menu items, and extra words each page answers to
 const FEATURE_EXTRAS = [['/quotes/new', 'New quote', 'Quotes', 'create estimate'], ['/jobs/new', 'New job', 'Jobs', 'create schedule visit'], ['/invoices/new', 'New invoice', 'Invoices', 'create bill'],
   ['/clients/import', 'Import clients', 'Clients', 'csv upload spreadsheet'], ['/team/new', 'Add team member', 'Settings', 'invite staff employee user'],
-  ['/payments/settings', 'Payment settings', 'Money', 'card online payouts processing rates disputes'], ['/profile', 'My profile', 'Account', 'password photo name email login'], ['/forum', 'Board', 'Account', 'forum categories community ideas suggestions feature requests issues bugs vote']];
+  ['/payments/settings', 'Payment settings', 'Money', 'card online payouts processing rates disputes'], ['/profile', 'My profile', 'Account', 'password photo name email login'], ['/forum', 'Board', 'Account', 'forum boards categories community ideas suggestions feature requests issues bugs vote']];
 const FEATURE_WORDS = {
   '/business-overview': 'dashboard overview', '/calendar': 'schedule schedules appointments visits tasks events job calendar', '/clients': 'customers contacts',
   '/quotes': 'estimates proposals', '/jobs': 'work orders visits', '/invoices': 'billing', '/payments': 'card online stripe', '/services': 'catalog products price list items',
@@ -351,8 +351,9 @@ async function loadNews() {
 }
 function showNews() {
   const box = $('#newsMenu'); if (!box) return;
-  box.innerHTML = `<div class="news-h">Latest updates</div>${(news || []).map((u) => `<a class="news-item" href="/changelog#${encodeURIComponent(u.id)}" target="_blank" rel="noopener"><strong><span class="news-tag news-${esc(u.tag)}">${esc(u.label)}</span>${esc(u.title)}</strong><span class="news-sum">${esc(u.summary)}</span></a>`).join('') || '<div class="news-none muted">No updates yet</div>'}
-<div class="news-foot"><a href="/changelog" target="_blank" rel="noopener">See all changes</a></div>`;
+  const log = ((company.account && company.account.ideasUrl) || '') + '/changelog'; // ideas.<domain>/changelog
+  box.innerHTML = `<div class="news-h">Latest updates</div>${(news || []).map((u) => `<a class="news-item" href="${esc(log)}#${encodeURIComponent(u.id)}" target="_blank" rel="noopener"><strong><span class="news-tag news-${esc(u.tag)}">${esc(u.label)}</span>${esc(u.title)}</strong><span class="news-sum">${esc(u.summary)}</span></a>`).join('') || '<div class="news-none muted">No updates yet</div>'}
+<div class="news-foot"><a href="${esc(log)}" target="_blank" rel="noopener">See all changes</a></div>`;
   if (news && news.length) { try { localStorage.setItem('seenUpdate', news[0].id); } catch {} $('.tb-news .tb-dot').hidden = true; }
 }
 function renderTopbar(path) {

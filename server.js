@@ -849,7 +849,7 @@ function accountInfo() {
     marketplace: marketplace.isOn(tenancy.platform()), // Alpha → Settings → App Marketplace
     aiDescriptions: tenancy.aiOn('aiDescriptions'), aiRewrite: tenancy.aiOn('aiRewrite'), // Alpha → Settings → Integrations → AI
     navIcons: iconsLib.navIcons(), navOrder: iconsLib.order(), // the menu's icons, order and sections (Alpha → Settings → Menu)
-    productName: tenancy.platform().settings.productName, product: brandLib.brand(), contactEmail: tenancy.platform().settings.contactEmail, helpUrl: tenancy.helpUrl(), managed: !tenancy.isDefault(),
+    productName: tenancy.platform().settings.productName, product: brandLib.brand(), contactEmail: tenancy.platform().settings.contactEmail, helpUrl: tenancy.helpUrl(), ideasUrl: tenancy.ideasUrl(), managed: !tenancy.isDefault(),
     referrals: referrals.openTo(t), cardReady: !!stripeKey(), // card payments set up (App Settings → Card payments)
     // how: 'embedded' (set up in the app, payout bank changed in the app), 'standard' (own Stripe account), 'server' (the platform's own account), or null
     cardSetupType: secrets().stripeAccountId ? secrets().stripeAccountType || 'standard' : stripeKey() ? 'server' : null, payoutBank: secrets().stripeBank || null,
