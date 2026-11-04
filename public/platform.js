@@ -1789,7 +1789,7 @@ function frList(main) {
   list.sort(by[v.sort]);
   const n = (f) => FR.posts.filter(f).length;
   main.innerHTML = `<div class="head"><div><h1>Help Center</h1><p class="sub" style="margin:4px 0 0">Board: issues and feature requests from businesses’ owners and admins, who can like and comment on each other’s posts. Set a status so everyone sees what’s planned.</p></div>
-${isSupport() ? '' : '<button type="button" class="btn alt" data-act="frSettings">Board settings</button>'}</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn" data-act="frNew">New post</button>${isSupport() ? '' : '<button type="button" class="btn alt" data-act="frSettings">Board settings</button>'}</div></div>
 ${helpSeg()}
 ${s.on ? '' : '<div class="mt-bar" role="status" style="margin:0 0 14px;border-radius:10px"><strong>The Board is closed.</strong> Businesses don’t see it. Open it again in Board settings.</div>'}
 <div class="stats fr-stats"><div class="card"><div class="l">New, not reviewed yet</div><div class="v">${n((p) => p.status === 'open')}</div></div><div class="card"><div class="l">Feature requests</div><div class="v">${n((p) => p.kind === 'idea')}</div></div>
@@ -1849,6 +1849,23 @@ A.frReplyTo = (d) => {
 A.frReplyClear = () => { const f = $('#frReply'); f.parentId.value = ''; $('#frReplyTo').hidden = true; };
 A.frDelC = async (d) => { if (!confirm('Delete this comment? Its replies are deleted too.')) return; try { const r = await api('DELETE', `/api/platform/forum/${encodeURIComponent(frSel)}/comments/${encodeURIComponent(d.c)}`); frPut(r.post); toast('Comment deleted'); render(); } catch (x) { toast(x.message, true); } };
 A.frDel = async () => { if (!confirm('Delete this post and all its comments? This can’t be undone.')) return; try { FR = await api('DELETE', `/api/platform/forum/${encodeURIComponent(frSel)}`); frSel = ''; toast('Post deleted'); render(); } catch (x) { toast(x.message, true); } };
+// a post by the team, e.g. a roadmap item (Planned, In progress or Done feature requests show on the Ideas site's Roadmap)
+A.frNew = () => {
+  const opts = (o, sel) => Object.entries(o).map(([k, l]) => `<option value="${k}" ${k === sel ? 'selected' : ''}>${esc(l)}</option>`).join('');
+  const m = modal('New post', `<form><label>Title<input name="title" maxlength="140" required placeholder="Short, descriptive title"></label>
+<label>Details<textarea name="body" rows="5" maxlength="6000" required placeholder="What it is and why it helps"></textarea></label>
+<label>Type<select name="kind">${opts(FR.kinds, 'idea')}</select></label>
+<label>Board<select name="category" required><option value="">Choose a board</option>${opts(FR.categories, '')}</select></label>
+<label>Status<select name="status">${opts(FR.statuses, 'planned')}</select></label>
+<p class="muted" style="font-size:12px;margin:0">Feature requests that are Planned, In progress or Done show on the Roadmap. It’s posted as the ${esc(D.settings.productName)} team.</p>
+<label class="chk"><input type="checkbox" name="pinned"> Pin to the top of the Board</label>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Post</button></div></form>`);
+  $('form', m).addEventListener('submit', async (e) => {
+    e.preventDefault(); const f = e.target; const btn = $('button.btn:not(.alt)', f); btn.disabled = true;
+    try { const r = await api('POST', '/api/platform/forum', { title: f.title.value, body: f.body.value, kind: f.kind.value, category: f.category.value, status: f.status.value, pinned: f.pinned.checked }); FR.posts.unshift(r.post); closeModal(); toast('Posted'); frSel = r.post.id; render(); window.scrollTo(0, 0); }
+    catch (x) { toast(x.message, true); btn.disabled = false; }
+  });
+};
 A.frSettings = () => {
   const s = FR.settings;
   const m = modal('Board settings', `<form><label class="chk"><input type="checkbox" name="on" ${s.on ? 'checked' : ''}> <span><strong>Board is open</strong><br><span class="muted">Owners and admins post and vote on the Ideas site. Closed, the site shows only the Changelog and posts are kept.</span></span></label>
