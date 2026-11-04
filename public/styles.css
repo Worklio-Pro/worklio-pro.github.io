@@ -1049,6 +1049,25 @@ a.conn-chip{text-decoration:none}a.conn-chip:hover{text-decoration:underline}
 #side .nav-ic svg{width:19px;height:19px}
 #side a.nav-link.on .nav-ic,#side a.nav-link:hover .nav-ic{opacity:1}
 #side .nav-l{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* the collapse button at the right of the logo row; collapsed, the menu is just its icons (names show on hover) */
+.side-mini-btn{display:flex;align-items:center;justify-content:center;flex:none;width:30px;height:30px;margin-left:auto;padding:0;border:0;border-radius:8px;background:none;color:var(--nav-text,#cbd5e1);opacity:.65;cursor:pointer}
+.side-mini-btn:hover{opacity:1;background:var(--nav-hover,#1e3a6e)}
+@media (max-width:900px){.side-mini-btn{display:none}}
+@media (min-width:901px){
+ #side{transition:width .15s}
+ #side.mini{width:68px;padding:16px 8px;overflow-x:hidden}
+ #side.mini .brand{flex-direction:column;gap:10px;padding:6px 0 14px}
+ #side.mini .brand>span{display:none}
+ #side.mini .brand img{width:40px;height:40px}#side.mini .brand img.brand-img{width:44px;height:auto;max-width:44px}
+ #side.mini .side-mini-btn{margin:0;transform:rotate(180deg)}
+ #side.mini a.nav-link,#side.mini .side-set-btn{position:relative;justify-content:center;gap:0;padding:9px 0}
+ #side.mini .nav-l{flex:0 0 0;width:0;font-size:0}
+ #side.mini .side-set-btn>svg:last-child{display:none}
+ #side.mini .nav-n{position:absolute;top:1px;right:3px;min-width:16px;margin:0;padding:0 4px;font-size:10px;line-height:16px}
+ #side.mini .side-div{margin:10px 4px}
+ #side.mini .side-search{width:52px}#side.mini .side-search>svg{left:17px}
+ #side.mini .side-search input{padding:0;color:transparent;cursor:pointer}#side.mini .side-search input::placeholder{color:transparent}
+}
 #side a.nav-link .nav-n,#side a.nav-link .beta-tag{margin-left:0;flex:none}
 /* a page in beta testing: a banner at the top of the page */
 .beta-bar{display:flex;align-items:center;gap:12px;margin:0 0 16px;padding:10px 14px;border-radius:10px;background:var(--warn-bg);color:var(--warn-fg);border:1px solid var(--warn-border);font-size:14px;line-height:1.45}

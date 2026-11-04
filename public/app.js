@@ -195,7 +195,18 @@ function renderSide(path) {
   renderBottomNav(path);
 }
 // the business logo and the search box top both columns; the search box is one element moved between them, so it keeps its handlers
-function fillSide(path) { $('#side').innerHTML = sideHtml(path); $('#side .brand').after(searchBox()); timeOffBadge(); }
+// the main menu can shrink to just its icons (desktop only; remembered in this browser); the Settings column always shows in full
+let sideMini = (() => { try { return localStorage.getItem('sideMini') === '1'; } catch (e) { return false; } })();
+const applyMini = () => { const side = $('#side'); side.classList.toggle('mini', sideMini && !$('.side-settings', side)); };
+function fillSide(path) {
+  const side = $('#side'); side.innerHTML = sideHtml(path); $('.brand', side).after(searchBox()); applyMini();
+  if (!$('.side-settings', side)) {
+    const l = sideMini ? 'Expand menu' : 'Collapse menu';
+    $('.brand', side).insertAdjacentHTML('beforeend', `<button type="button" class="side-mini-btn" data-act="sideMini" aria-label="${l}" title="${l}">${svgIcon(ICONS.collapse, 18)}</button>`);
+    if (sideMini) $$('a.nav-link, .side-set-btn', side).forEach((a) => { a.title = $('.nav-l', a).textContent; }); // names on hover; before the badges are added
+  }
+  timeOffBadge();
+}
 const isOnPage = (p, path) => p === path || (!navPaths.includes(path) && path.startsWith(p + '/'));
 const SIDE_BREAKS = ['Money', 'Marketing']; // a line above these sections; the main menu shows no section names
 function sideHtml(path) {
@@ -257,6 +268,7 @@ const ICONS = {
   eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   gift: '<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5C11 3 12 8 12 8s1-5 4.5-5a2.5 2.5 0 0 1 0 5"/>',
   back: '<path d="m15 18-6-6 6-6"/>',
+  collapse: '<path d="m11 17-5-5 5-5M18 17l-5-5 5-5"/>',
   book: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5V21h16"/>',
   chat: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
@@ -313,6 +325,9 @@ function searchBox() {
       : `<div class="tb-none muted">No features match “${esc(input.value.trim())}”</div>`;
   };
   const mark = () => { $$('a', box).forEach((a, i) => a.classList.toggle('act', i === sel)); input.setAttribute('aria-activedescendant', hits.length ? 'fr' + sel : ''); };
+  // in the icons-only menu the search box is an icon: using it opens the menu out until it's done with
+  input.addEventListener('focus', () => $('#side').classList.remove('mini'));
+  input.addEventListener('blur', () => setTimeout(() => { if (!input.value.trim() && document.activeElement !== input) applyMini(); }, 150));
   input.addEventListener('input', show);
   input.addEventListener('focus', () => { if (input.value.trim()) show(); });
   input.addEventListener('keydown', (e) => {
@@ -320,7 +335,7 @@ function searchBox() {
     else if (e.key === 'Enter' && hits[sel]) { e.preventDefault(); navigate(hits[sel].p); }
     else if (e.key === 'Escape') { e.stopPropagation(); if (input.value) { input.value = ''; show(); } else input.blur(); }
   });
-  document.addEventListener('click', (e) => { if (!e.target.closest('.tb-search')) { box.hidden = true; input.setAttribute('aria-expanded', 'false'); } });
+  document.addEventListener('click', (e) => { if (!e.target.closest('.tb-search')) { box.hidden = true; input.setAttribute('aria-expanded', 'false'); if (document.activeElement !== input) applyMini(); } });
   return searchEl;
 }
 // "/" and the help panel's Search features: on a phone or narrow window the sidebar is a drawer, so open it first
@@ -540,6 +555,7 @@ A.openHelp = () => openHelp();
 const sideSwitch = (mode, focus) => { sideMode = mode; fillSide(curPath()); const f = $(focus, $('#side')); if (f) f.focus(); };
 A.openSettings = () => sideSwitch('settings', '.side-back');
 A.sideBack = () => sideSwitch('main', '.side-set-btn');
+A.sideMini = () => { sideMini = !sideMini; try { localStorage.setItem('sideMini', sideMini ? '1' : '0'); } catch (e) { /* this visit only */ } fillSide(curPath()); const b = $('#side .side-mini-btn'); if (b) b.focus(); };
 // the QR code drawn the way Settings → Business Page → QR code appearance sets it (plain until it loads, or if it can't)
 let qrLook = null;
 A.businessQr = async () => {
