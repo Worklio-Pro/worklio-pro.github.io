@@ -481,12 +481,33 @@ const saveText = (p) => (p.monthly > 0 && p.yearly > 0 ? (p.yearly < p.monthly *
 const narrow = matchMedia('(max-width:760px)');
 narrow.addEventListener('change', () => { if (D && tab === 'plans') render(); });
 let planIx = 0; let detailsOpen = false;
-const planFields = (p, i) => `<label>Name<input class="pn" data-i="${i}" data-k="name" value="${esc(p.name)}" maxlength="40" aria-label="Plan name"></label><div class="pr-pair"><label>Monthly ($)<input type="number" inputmode="decimal" min="0" step="0.01" data-i="${i}" data-k="monthly" value="${p.monthly ?? ''}" placeholder="49" aria-label="Monthly price for ${esc(p.name)}"></label>
-<label>Yearly ($)<input type="number" inputmode="decimal" min="0" step="0.01" data-i="${i}" data-k="yearly" value="${p.yearly ?? ''}" placeholder="490" aria-label="Yearly price for ${esc(p.name)}"></label></div>
+// the sale: sale prices replace the regular ones on new charges (sign-ups, checkout, plan changes) until its last day
+const saleText = (p) => {
+  if (!(p.saleMonthly > 0 || p.saleYearly > 0)) return { t: 'Off', c: '' };
+  const bad = [['saleMonthly', 'monthly'], ['saleYearly', 'yearly']].find(([s, r]) => p[s] > 0 && !(p[r] > 0 && p[s] < p[r]));
+  if (bad) return { t: 'Check prices', c: 'bad', err: p[bad[1]] > 0 ? `The ${bad[1]} sale price must be lower than $${p[bad[1]]}.` : `A ${bad[1]} sale price needs a regular ${bad[1]} price.` };
+  const day = p.saleEnds ? new Date(p.saleEnds + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+  if (p.saleEnds && p.saleEnds < ymdLocal(new Date())) return { t: `Ended ${day}`, c: '' };
+  return { t: day ? `On until ${day}` : 'On now', c: 'on' };
+};
+const saleTag = (p) => { const s = saleText(p); return `<span class="pc-tag ${s.c}">${esc(s.t)}</span>`; };
+const money$ = (p, i, k, ph, l) => `<label>${l}<span class="money"><input type="number" inputmode="decimal" min="0" step="0.01" data-i="${i}" data-k="${k}" value="${p[k] ?? ''}" placeholder="${ph}" aria-label="${l} for ${esc(p.name)}"></span></label>`;
+// one plan's settings, in the same order and spacing in every column: name, price, sale, details, then show/remove
+const planFields = (p, i, used = '', rm = '') => `<div class="pc">
+<input class="pn" data-i="${i}" data-k="name" value="${esc(p.name)}" maxlength="40" aria-label="Plan name" placeholder="Plan name">
+<div class="pc-meta muted">${used}</div>
+<div class="pc-sec"><span>Price</span></div>
+<div class="pr-pair">${money$(p, i, 'monthly', '49', 'Monthly')}${money$(p, i, 'yearly', '490', 'Yearly')}</div>
 <div class="pr-save muted" data-save="${i}">${saveText(p)}</div>
 <label>Label when there’s no price<input data-i="${i}" data-k="priceLabel" value="${esc(p.priceLabel || '')}" maxlength="40" placeholder="Free or Contact us" aria-label="Price label for ${esc(p.name)}"></label>
-<label>Team logins (0 = unlimited)<input type="number" inputmode="numeric" min="0" data-i="${i}" data-k="maxUsers" value="${p.maxUsers || 0}" aria-label="Team logins for ${esc(p.name)}"></label><label>Short description<input data-i="${i}" data-k="description" value="${esc(p.description)}" maxlength="200" aria-label="Description for ${esc(p.name)}"></label>
-<label class="switchline" style="font-size:13px"><input type="checkbox" data-hide="${i}" ${p.hidden ? 'checked' : ''}> Hidden from public</label>`;
+<div class="pc-sec"><span>Sale</span><span data-sale="${i}">${saleTag(p)}</span></div>
+<div class="pr-pair">${money$(p, i, 'saleMonthly', '39', 'Monthly')}${money$(p, i, 'saleYearly', '390', 'Yearly')}</div>
+<div class="pc-err" data-saleerr="${i}">${esc(saleText(p).err || '')}</div>
+<label>Last day <span class="muted">(optional)</span><input type="date" data-i="${i}" data-k="saleEnds" value="${esc(p.saleEnds || '')}" aria-label="Last day of the sale for ${esc(p.name)}"></label>
+<div class="pc-sec"><span>Details</span></div>
+<label>Team logins <span class="muted">(0 = unlimited)</span><input type="number" inputmode="numeric" min="0" data-i="${i}" data-k="maxUsers" value="${p.maxUsers || 0}" aria-label="Team logins for ${esc(p.name)}"></label>
+<label>Short description<textarea rows="3" data-i="${i}" data-k="description" maxlength="200" aria-label="Description for ${esc(p.name)}">${esc(p.description)}</textarea></label>
+<div class="pc-foot"><label class="switchline"><input type="checkbox" data-hide="${i}" ${p.hidden ? 'checked' : ''}> Hide from public</label>${rm}</div></div>`;
 // a feature ticked as Beta shows a "Beta" tag to businesses (pricing page, checkout, their plan and menu)
 const betaTag = (f) => `<span class="beta-tag" data-beta-tag="${f.key}" ${draftBeta.includes(f.key) ? '' : 'hidden'}>Beta</span>`;
 const betaBox = (f) => `<input type="checkbox" data-beta="${f.key}" ${draftBeta.includes(f.key) ? 'checked' : ''} title="Show a Beta tag on this feature to businesses" aria-label="${esc(f.label)} is in beta">`;
@@ -505,7 +526,7 @@ function plansView(main) {
   if (narrow.matches) {
     const i = planIx; const p = P[i];
     main.innerHTML = `${head}<div class="pl-pick" role="tablist">${P.map((x, j) => `<button type="button" role="tab" aria-selected="${j === i}" class="${j === i ? 'on' : ''}" data-act="pickPlan" data-i="${j}">${esc(x.name || 'Untitled')}${x.hidden ? ' <small>hidden</small>' : ''}</button>`).join('')}</div>
-<div class="card pl-card"><details class="pl-det" ${detailsOpen ? 'open' : ''}><summary><span><strong>Plan details</strong><span class="muted">${esc(saveText(p))}</span></span><span class="muted">${usedText(p)}</span></summary><div class="pl-form">${planFields(p, i)}${rmBtn(p, i)}</div></details>
+<div class="card pl-card"><details class="pl-det" ${detailsOpen ? 'open' : ''}><summary><span><strong>Plan details</strong><span class="muted">${esc(saveText(p))}${saleText(p).c === 'on' ? ` · Sale ${esc(saleText(p).t.toLowerCase())}` : ''}</span></span><span class="muted">${usedText(p)}</span></summary><div class="pl-form">${planFields(p, i, '', rmBtn(p, i))}</div></details>
 <div class="pl-feat"><div class="pl-h"><span>Features</span><span class="muted" data-count="${i}">${tickedCount(p)} of ${D.features.length}</span></div>
 <p class="pl-always"><strong>Always included:</strong> ${D.alwaysIncluded.map(esc).join(', ')}</p>
 <div class="pl-cols muted"><span>Beta</span><span>Feature</span></div>
@@ -514,7 +535,7 @@ ${savebar}</div>`;
     $('.pl-det', main).addEventListener('toggle', (e) => { detailsOpen = e.target.open; });
   } else {
     main.innerHTML = `${head}<div class="card" style="padding-bottom:18px"><div class="tablewrap"><table class="matrix"><thead><tr><th class="bcol"><span class="muted" style="font-weight:400;font-size:13px">Beta</span></th><th class="fcol"><span class="muted" style="font-weight:400;font-size:13px">Plan details</span></th>
-${P.map((p, i) => `<th>${planFields(p, i)}<div class="muted" style="font-size:12px">${usedText(p)}</div>${rmBtn(p, i)}</th>`).join('')}</tr></thead>
+${P.map((p, i) => `<th class="pcol">${planFields(p, i, usedText(p), rmBtn(p, i))}</th>`).join('')}</tr></thead>
 <tbody><tr class="grp"><td class="bcol"></td><td class="fcol">Always included</td>${P.map(() => '<td></td>').join('')}</tr>
 ${D.alwaysIncluded.map((l) => `<tr><td class="bcol"></td><td class="fcol"><div class="mx-l">${esc(l)}</div></td>${P.map(() => '<td class="always" aria-label="Included">✓</td>').join('')}</tr>`).join('')}
 ${groups.map((g) => `<tr class="grp"><td class="bcol"></td><td class="fcol">${esc(g)}</td>${P.map(() => '<td></td>').join('')}</tr>` + D.features.filter((f) => f.group === g && P.some((p) => offered(p, f))).map((f) => `<tr><td class="bcol">${betaBox(f)}</td><td class="fcol"><div class="mx-l">${esc(f.label)}${betaTag(f)}</div><div class="mx-d">${esc(f.desc)}</div></td>
@@ -525,10 +546,12 @@ ${savebar}</div>`;
   sideLayout(main);
   // hidden plans stay off the pricing page and checkout; you can still put an account on one
   $$('input[data-hide]', main).forEach((c) => c.addEventListener('change', () => { const p = P[c.dataset.hide]; if (c.checked) p.hidden = true; else delete p.hidden; markDirty(main); }));
-  $$('input[data-k]', main).forEach((i) => i.addEventListener('input', () => {
+  const PRICES = ['monthly', 'yearly', 'saleMonthly', 'saleYearly'];
+  $$('input[data-k], textarea[data-k]', main).forEach((i) => i.addEventListener('input', () => {
     const p = P[i.dataset.i]; const k = i.dataset.k;
-    p[k] = k === 'maxUsers' ? Math.max(0, parseInt(i.value, 10) || 0) : k === 'monthly' || k === 'yearly' ? (Number(i.value) > 0 ? Number(i.value) : null) : i.value;
-    if (k === 'monthly' || k === 'yearly') $(`[data-save="${i.dataset.i}"]`, main).textContent = saveText(p);
+    p[k] = k === 'maxUsers' ? Math.max(0, parseInt(i.value, 10) || 0) : PRICES.includes(k) ? (Number(i.value) > 0 ? Number(i.value) : null) : i.value;
+    if (k === 'saleEnds' && !i.value) delete p.saleEnds;
+    if (PRICES.includes(k) || k === 'saleEnds') { $(`[data-save="${i.dataset.i}"]`, main).textContent = saveText(p); $(`[data-sale="${i.dataset.i}"]`, main).innerHTML = saleTag(p); $(`[data-saleerr="${i.dataset.i}"]`, main).textContent = saleText(p).err || ''; }
     if (k === 'name') { const tabBtn = $(`.pl-pick [data-i="${i.dataset.i}"]`, main); if (tabBtn) tabBtn.firstChild.textContent = i.value || 'Untitled'; }
     markDirty(main);
   }));

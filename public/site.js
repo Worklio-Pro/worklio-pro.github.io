@@ -18,11 +18,15 @@ const slugify = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-')
   const both = S.plans.some((p) => p.monthly) && S.plans.some((p) => p.yearly); const best = Math.max(0, ...S.plans.filter((p) => p.monthly && p.yearly).map((p) => Math.round((1 - p.yearly / (p.monthly * 12)) * 100)));
   let period = S.plans.some((p) => p.monthly) ? 'month' : 'year';
   const amount = (n) => '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 });
+  // a plan on sale (Alpha → Pricing): the sale price for that period, shown with the regular one struck through
+  const onSale = (p, per) => (p.sale && p.sale[per === 'year' ? 'yearly' : 'monthly']) || null;
+  const saleEnds = (p) => (p.sale && p.sale.ends ? ` · ends ${new Date(p.sale.ends + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : '');
   const priceHtml = (p) => {
-    const y = period === 'year' && p.yearly; const v = y ? p.yearly : p.monthly || p.yearly;
-    if (!v) return `<div class="price">${esc(p.priceLabel || p.price || 'Contact us')}</div><div class="per">&nbsp;</div>`;
-    const yearly = y || !p.monthly; const save = p.monthly && p.yearly ? Math.round((1 - p.yearly / (p.monthly * 12)) * 100) : 0;
-    return `<div class="price">${amount(v)}<small>/${yearly ? 'year' : 'month'}</small></div><div class="per">${yearly ? `${amount(Math.round(v / 12 * 100) / 100)}/month, billed yearly${save > 0 ? ` · <strong>save ${save}%</strong>` : ''}` : period === 'year' ? 'Billed monthly only' : p.yearly ? `or ${amount(p.yearly)}/year` : 'Billed monthly'}</div>`;
+    const y = period === 'year' && p.yearly; const reg = y ? p.yearly : p.monthly || p.yearly;
+    if (!reg) return `<div class="price">${esc(p.priceLabel || p.price || 'Contact us')}</div><div class="per">&nbsp;</div>`;
+    const yearly = y || !p.monthly; const s = onSale(p, yearly ? 'year' : 'month'); const v = s || reg;
+    const yr = onSale(p, 'year') || p.yearly; const save = p.monthly && yr ? Math.round((1 - yr / ((onSale(p, 'month') || p.monthly) * 12)) * 100) : 0;
+    return `${s ? `<div class="s-sale">Sale${saleEnds(p)}</div>` : ''}<div class="price">${s ? `<s class="was">${amount(reg)}</s> ` : ''}${amount(v)}<small>/${yearly ? 'year' : 'month'}</small></div><div class="per">${yearly ? `${amount(Math.round(v / 12 * 100) / 100)}/month, billed yearly${save > 0 ? ` · <strong>save ${save}%</strong>` : ''}` : period === 'year' ? 'Billed monthly only' : p.yearly ? `or ${amount(yr)}/year` : 'Billed monthly'}</div>`;
   };
   const drawPlans = () => {
     $('#period').innerHTML = both ? `<div class="s-period" role="radiogroup" aria-label="Billing period">${[['month', 'Monthly'], ['year', `Yearly${best > 0 ? ` <span class="s-save">Save up to ${best}%</span>` : ''}`]].map(([k, l]) => `<button type="button" role="radio" aria-checked="${period === k}" class="${period === k ? 'on' : ''}" data-period="${k}">${l}</button>`).join('')}</div>` : '';
@@ -65,7 +69,7 @@ ${both ? `<label>Billing<select name="interval"><option value="month" ${period =
   const sel = $('[name=plan]', f); const iv = $('[name=interval]', f);
   // the price the server will charge: the chosen period if the plan has it, otherwise the one it offers
   const chosen = () => { const p = S.plans.find((x) => x.id === sel.value); if (!p) return null; const want = iv ? iv.value : 'month';
-    const per = want === 'year' ? (p.yearly ? 'year' : 'month') : (p.monthly ? 'month' : 'year'); const v = per === 'year' ? p.yearly : p.monthly; return v ? { p, v, per } : { p }; };
+    const per = want === 'year' ? (p.yearly ? 'year' : 'month') : (p.monthly ? 'month' : 'year'); const v = onSale(p, per) || (per === 'year' ? p.yearly : p.monthly); return v ? { p, v, per } : { p }; };
   const goLabel = () => { const c = chosen(); return c && c.v ? 'Continue to payment' : 'Create account'; };
   const syncPlan = () => { const c = chosen(); $('.go', f).textContent = goLabel(); $('#payNote').textContent = c && c.v ? `Next you’ll pay ${amount(c.v)} for ${c.p.name}, billed every ${c.per}.` : ''; };
   if (iv) iv.addEventListener('change', () => { if (period !== iv.value) { period = iv.value; drawPlans(); } syncPlan(); });

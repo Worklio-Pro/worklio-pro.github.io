@@ -239,9 +239,25 @@
     .matrix .fcol{text-align:left;position:sticky;left:44px;background:var(--card);z-index:1;min-width:230px;max-width:300px}
     .matrix .bcol input{accent-color:var(--warn)}
     .matrix thead th{vertical-align:top;background:var(--card);min-width:170px}
-    .matrix thead input{height:34px;font-size:14px;margin-bottom:6px;text-align:center}
-    .matrix thead input.pn{font-weight:700;font-size:15px}
-    .matrix thead label{font-size:11px;margin:0 0 2px;text-align:left}
+    .matrix thead th.pcol{width:232px;min-width:232px;max-width:232px;text-align:left;font-weight:400;padding:14px 12px 12px}
+    /* one plan's settings (a column on desktop, the details form on phones): every field the same height, labels above, grouped under small headings */
+    .pc{display:flex;flex-direction:column;gap:8px;text-align:left;text-transform:none;letter-spacing:normal}
+    .pc-err{font-size:12px;color:var(--warn-fg);margin-top:-2px}.pc-err:empty{display:none}
+    .pc-foot>*{white-space:nowrap}.pc-foot .rm-plan{padding:2px 0}
+    .pc input:not(.pn),.pc textarea{font-weight:400}
+    .pc label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin:0}.pc label .muted{font-weight:400}
+    .pc input:not([type=checkbox]),.pc textarea{display:block;width:100%;box-sizing:border-box;height:34px;font-size:14px;margin:4px 0 0;text-align:left;padding:0 10px}
+    .pc textarea{height:auto;min-height:62px;padding:7px 10px;resize:vertical;font-family:inherit;font-size:13px;font-weight:400;line-height:1.35}
+    .pc input.pn{height:38px;font-weight:700;font-size:16px;margin:0}
+    .pc-meta{font-size:12px;margin-top:-4px}.pc-meta:empty{display:none}
+    .pc-sec{display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:6px;padding-top:10px;border-top:1px solid var(--line);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+    .pc-tag{font-size:11px;font-weight:600;letter-spacing:0;text-transform:none;padding:1px 8px;border-radius:99px;background:var(--neutral-bg);color:var(--neutral-fg);white-space:nowrap}
+    .pc-tag.on{background:var(--ok-bg);color:var(--ok-fg)}.pc-tag.bad{background:var(--warn-bg);color:var(--warn-fg);white-space:normal}
+    .money{position:relative;display:block}.money::before{content:"$";position:absolute;left:9px;top:50%;transform:translateY(-50%);margin-top:2px;color:var(--muted);font-size:14px;font-weight:400;pointer-events:none}
+    .pc .money input{padding-left:20px}
+    .pc .pr-save{margin:-2px 0 0;font-size:12px;min-height:16px}
+    .pc-foot{display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:6px;padding-top:10px;border-top:1px solid var(--line)}
+    .pc-foot .switchline{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;color:var(--text);margin:0}.pc-foot .switchline input{margin:0}
     .matrix .grp td{background:var(--surface-2);font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;padding:8px 12px}
     .matrix .grp .bcol,.matrix .grp .fcol{background:var(--surface-2)}
     .matrix .mx-l{font-weight:600;font-size:14px}.matrix .mx-d{font-size:12px;color:var(--muted);font-weight:400;margin-top:2px}
@@ -261,7 +277,7 @@
     .pl-det summary>span:first-child{display:flex;flex-direction:column;gap:2px;font-size:15px}.pl-det summary .muted{font-size:12px}
     .pl-det summary::after{content:"";width:8px;height:8px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg);margin:-4px 4px 0 0;flex:none}
     .pl-det[open] summary::after{transform:rotate(225deg);margin-top:4px}.pl-det[open] summary>span:first-child .muted{display:none}
-    .pl-form{padding:0 16px 14px}.pl-form .pr-pair label,.pl-form>label{margin-bottom:8px}
+    .pl-form{padding:0 16px 14px}
     .pl-h{display:flex;justify-content:space-between;align-items:baseline;font-weight:700;font-size:15px;padding:14px 0 4px}.pl-h .muted{font-weight:400;font-size:13px}
     .pl-always{font-size:12px;color:var(--muted);margin:0 0 6px}
     .pl-grp{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;padding:14px 0 4px}
