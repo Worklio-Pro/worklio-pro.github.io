@@ -168,13 +168,25 @@ const industryFields = (a) => `<label>Industry<select name="industry"><option va
 <label data-other style="${a.industry === 'other' ? '' : 'display:none'}">Their industry<input name="industryOther" maxlength="80" value="${esc(a.industryOther || '')}"></label>`;
 const wireIndustry = (f) => { const s = $('[name=industry]', f); s.addEventListener('change', () => { $('[data-other]', f).style.display = s.value === 'other' ? '' : 'none'; }); };
 let accIndustry = ''; // the accounts list's industry filter: '' = all
+// Accounts' pages: the list of businesses, the Founding Supporters list, and the cancellation flow and its log (support logins: the list only)
+let accTab = 'list';
+const accSeg = () => (isSupport() ? '' : sideNav('Accounts', 'accTab', [['list', 'Accounts'], ['supporters', 'Founding Supporters'], ['cancel', 'Cancellation flow'], ['cancellations', 'Cancellations']].map(([k, l]) => [k, l, undefined, accTab === k])));
+function accountsSub(main) {
+  const T = { supporters: ['Founding Supporters', 'A thank-you page for your Founding Supporters, and codes for their prepaid months.'], cancel: ['Cancellation flow', 'What businesses see when they cancel: the steps, the offers and the reasons.'], cancellations: ['Cancellations', 'Each time a business started cancelling, and how it ended.'] }[accTab];
+  main.innerHTML = `<div class="head"><div><h1>${T[0]}</h1><p class="sub" style="margin:4px 0 0">${T[1]}</p></div></div>${accSeg()}<div id="accBody"></div>`;
+  sideLayout(main); const box = $('#accBody', main);
+  const loadInto = (url, set, view) => { box.innerHTML = '<p class="muted">Loading…</p>'; api('GET', url).then((r) => { set(r); if (tab === 'accounts' && accTab !== 'list') accountsView($('#main')); }).catch((x) => toast(x.message, true)); };
+  if (accTab === 'supporters') return SP ? supportersView(box) : loadInto('/api/platform/supporters', (r) => { SP = r; });
+  return RT ? (accTab === 'cancel' ? cancelFlowView : cancellationsView)(box) : loadInto('/api/platform/retention', (r) => { RT = r; });
+}
 function accountsView(main) {
+  if (accTab !== 'list' && !isSupport()) return accountsSub(main);
   const active = D.accounts.filter((a) => a.status === 'active').length;
   const byPlan = D.plans.map((p) => `${D.accounts.filter((a) => a.planId === p.id).length} ${esc(p.name)}`).join(' · ');
   const count = (k) => D.accounts.filter((a) => (a.industry || 'none') === k).length;
   const top = D.industries.map((i) => [i, count(i.slug)]).filter(([, n]) => n).sort((x, y) => y[1] - x[1]).slice(0, 3).map(([i, n]) => `${n} ${esc(i.name)}`).join(' · ');
   const shown = D.accounts.filter((a) => !accIndustry || (a.industry || 'none') === accIndustry);
-  main.innerHTML = `<div class="head"><div><h1>Accounts</h1><p class="sub" style="margin:4px 0 0">Each business gets its own web address, data and logins.</p></div><button class="btn" data-act="newAccount">New account</button></div>
+  main.innerHTML = `<div class="head"><div><h1>Accounts</h1><p class="sub" style="margin:4px 0 0">Each business gets its own web address, data and logins.</p></div><button class="btn" data-act="newAccount">New account</button></div>${accSeg()}
 ${D.devMode ? `<div class="note">Running locally: accounts open at <code>&lt;address&gt;.${esc(D.rootDomain)}</code> in this browser. Set <code>PLATFORM_DOMAIN</code> (e.g. yourapp.com) on your server to give each account <code>&lt;address&gt;.yourapp.com</code>.</div>` : ''}
 <div class="stats"><div class="card"><div class="l">Accounts</div><div class="v">${D.accounts.length}</div></div><div class="card"><div class="l">Active</div><div class="v">${active}</div></div>
 <div class="card"><div class="l">By plan</div><div style="margin-top:8px;font-size:14px">${byPlan}</div></div><div class="card"><div class="l">Logins across accounts</div><div class="v">${D.accounts.reduce((s, a) => s + a.users, 0)}</div></div>
@@ -189,6 +201,7 @@ ${shown.map((a) => `<tr data-id="${a.id}" tabindex="0" aria-label="Manage ${esc(
 </tr>`).join('') || `<tr><td colspan="4" class="muted">${accIndustry ? 'No accounts in this industry.' : 'No accounts yet.'}</td></tr>`}
 </tbody></table></div></div>
 <div class="card" id="delAccs"><div class="rt-h"><h2>Deleted accounts</h2><button type="button" class="btn alt sm" data-act="delList">Show</button></div><p class="sm muted" style="margin:0">When you delete a business, a copy of its data and files is kept on the server. Erase copies here for good.</p></div>`;
+  if (accSeg()) sideLayout(main);
   wirePlanSelects(main);
   if (delOpen) A.delList();
   $('#accInd', main).addEventListener('change', (e) => { accIndustry = e.target.value; accountsView(main); });
@@ -225,6 +238,7 @@ function wireSlug(form, initial) {
   i.addEventListener('input', () => { i.dataset.touched = '1'; check(); }); return check;
 }
 const A = {};
+A.accTab = (d) => { accTab = d.k; if (d.k === 'cancellations') RT = null; if (tab === 'accounts') accountsView($('#main')); else location.hash = 'accounts'; };
 // deleted accounts: the copies kept on the server (data/deleted) after Delete account; erasing one can't be undone
 let delOpen = false;
 const fmtSize = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} B`);
@@ -923,22 +937,20 @@ let promoTab = 'codes'; let RF = null; // RF: the referral program and its activ
 let SP = null; // SP: the Founding Supporters list (lib/supporters.js)
 function promoView(main) {
   const due = RF ? RF.rewards.filter((w) => w.status === 'to send').length : 0;
-  main.innerHTML = `<div class="head"><div><h1>Pricing</h1><p class="sub" style="margin:4px 0 0">Discount codes for sign-ups, a referral program for the businesses on ${esc(D.settings.productName)}, the Founding Supporters page, and what businesses see when they cancel.</p></div></div>
+  main.innerHTML = `<div class="head"><div><h1>Pricing</h1><p class="sub" style="margin:4px 0 0">Discount codes for sign-ups, and a referral program for the businesses on ${esc(D.settings.productName)}.</p></div></div>
 ${pricingSeg(due)}<div id="promoBody"></div>`;
   sideLayout(main);
   const box = $('#promoBody', main);
   if (promoTab === 'codes') return discountsView(box);
-  if (promoTab === 'cancel' || promoTab === 'cancellations') { if (RT) return (promoTab === 'cancel' ? cancelFlowView : cancellationsView)(box); box.innerHTML = '<p class="muted">Loading…</p>'; api('GET', '/api/platform/retention').then((r) => { RT = r; if (tab === 'discounts') promoView($('#main')); }).catch((x) => toast(x.message, true)); return; }
-  if (promoTab === 'supporters') { if (SP) return supportersView(box); box.innerHTML = '<p class="muted">Loading…</p>'; api('GET', '/api/platform/supporters').then((r) => { SP = r; if (tab === 'discounts' && promoTab === 'supporters') promoView($('#main')); }).catch((x) => toast(x.message, true)); return; }
   if (!RF) { box.innerHTML = '<p class="muted">Loading…</p>'; api('GET', '/api/platform/referrals').then((r) => { RF = r; if (tab === 'discounts') promoView($('#main')); }).catch((x) => toast(x.message, true)); return; }
   (promoTab === 'program' ? referralProgramView : referralActivityView)(box);
 }
 // Pricing's tabs: Plans & features is its own page (#plans); the rest are Promotions (#discounts)
-const pricingSeg = (due = 0) => sideNav('Pricing', 'pricingTab', [['plans', 'Plans & features'], ['codes', 'Discount codes'], ['program', 'Referral program'], ['activity', 'Referral activity'], ['supporters', 'Founding Supporters'], ['cancel', 'Cancellation flow'], ['cancellations', 'Cancellations']]
+const pricingSeg = (due = 0) => sideNav('Pricing', 'pricingTab', [['plans', 'Plans & features'], ['codes', 'Discount codes'], ['program', 'Referral program'], ['activity', 'Referral activity']]
   .map(([k, l]) => [k, l, k === 'activity' && due ? due : undefined, tab === 'plans' ? k === 'plans' : promoTab === k, 'Rewards to send']));
 A.pricingTab = (d) => {
   if (d.k === 'plans') { location.hash = 'plans'; return; }
-  promoTab = d.k; if (d.k === 'cancellations') RT = null; if (tab === 'discounts') promoView($('#main')); else location.hash = 'discounts';
+  promoTab = d.k; if (tab === 'discounts') promoView($('#main')); else location.hash = 'discounts';
 };
 // pick an image file and upload it; resolves to its address (/brand/media-…)
 const pickImage = () => new Promise((resolve) => {
@@ -1036,14 +1048,14 @@ ${rtReasons.length < 8 ? '<button type="button" class="btn alt sm" data-act="rtA
     e.preventDefault(); f._read(); const ch = (n) => !!f.elements[n].checked; const v = (n) => f.elements[n].value;
     const body = { sprint: { on: ch('sprint.on') }, tour: { on: ch('tour.on') }, stay: { on: ch('stay.on'), percent: v('stay.percent'), months: v('stay.months') }, extend: { on: ch('extend.on'), days: v('extend.days'), within: v('extend.within') },
       lose: { on: ch('lose.on') }, feedback: { on: ch('feedback.on'), required: ch('feedback.required') }, gift: { on: ch('gift.on'), percent: v('gift.percent') }, password: { on: ch('password.on') }, yearly: ch('yearly'), reasons: rtReasons };
-    try { RT = await api('PUT', '/api/platform/retention', body); rtReasons = null; toast('Cancellation flow saved'); promoView($('#main')); } catch (x) { toast(x.message, true); }
+    try { RT = await api('PUT', '/api/platform/retention', body); rtReasons = null; toast('Cancellation flow saved'); accountsView($('#main')); } catch (x) { toast(x.message, true); }
   });
 }
-const rtRedraw = () => { const f = $('#rtf'); const keep = {}; $$('input,select', f).forEach((i) => { if (i.name) keep[i.name] = i.type === 'checkbox' ? i.checked : i.value; }); cancelFlowView($('#promoBody')); const g = $('#rtf'); Object.entries(keep).forEach(([k, v]) => { const el = g.elements[k]; if (el) { if (el.type === 'checkbox') el.checked = v; else el.value = v; } }); };
+const rtRedraw = () => { const f = $('#rtf'); const keep = {}; $$('input,select', f).forEach((i) => { if (i.name) keep[i.name] = i.type === 'checkbox' ? i.checked : i.value; }); cancelFlowView($('#accBody')); const g = $('#rtf'); Object.entries(keep).forEach(([k, v]) => { const el = g.elements[k]; if (el) { if (el.type === 'checkbox') el.checked = v; else el.value = v; } }); };
 A.rtAdd = () => { $('#rtf')._read(); rtReasons.push({ id: '', title: '', text: '', offer: 'tour' }); rtRedraw(); };
 A.rtRm = (d) => { $('#rtf')._read(); rtReasons.splice(Number(d.i), 1); rtRedraw(); };
 A.rtMove = (d) => { $('#rtf')._read(); const i = Number(d.i); const j = i + Number(d.by); [rtReasons[i], rtReasons[j]] = [rtReasons[j], rtReasons[i]]; rtRedraw(); };
-A.rtDefaults = () => { const x = RT.defaults; rtReasons = structuredClone(x.reasons); const save = RT.config; RT.config = structuredClone(x); cancelFlowView($('#promoBody')); RT.config = save; toast('Defaults filled in. Save to use them.'); };
+A.rtDefaults = () => { const x = RT.defaults; rtReasons = structuredClone(x.reasons); const save = RT.config; RT.config = structuredClone(x); cancelFlowView($('#accBody')); RT.config = save; toast('Defaults filled in. Save to use them.'); };
 const RT_TONE = { cancelled: 'q-declined', closed: '', stay: 'active', gift: 'active', extended: 'active', sprint: 'q-sent', tour: 'q-sent' };
 let rtFilter = '';
 function cancellationsView(box) {
@@ -1060,7 +1072,7 @@ ${L.map((f) => `<tr><td class="nm">${esc(f.business)}<div class="sm">${esc(f.use
     : `<p class="muted">${RT.flows.length ? 'None match.' : 'No one has started cancelling yet.'}</p>`}</div>`;
   $('#rtFilter', box).addEventListener('change', (e) => { rtFilter = e.target.value; cancellationsView(box); });
 }
-A.rtFlowRm = async (d) => { if (!confirm('Remove this flow from the log?')) return; RT = await api('DELETE', `/api/platform/retention/flows/${d.id}`); promoView($('#main')); };
+A.rtFlowRm = async (d) => { if (!confirm('Remove this flow from the log?')) return; RT = await api('DELETE', `/api/platform/retention/flows/${d.id}`); accountsView($('#main')); };
 /* ===== the Founding Supporters list: a thank-you page at /supporters, and codes for prepaid months by email (lib/supporters.js) ===== */
 // Select a supporter's row to edit them, email their code or remove them.
 const spCodeState = (p) => { const c = p.code;
@@ -1105,7 +1117,7 @@ ${L.map((p) => `<tr data-id="${p.id}" tabindex="0" aria-label="Edit ${esc(p.name
     tr.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target === tr) { e.preventDefault(); A.spOpen({ id: tr.dataset.id }); } });
   });
 }
-const spRedraw = () => supportersView($('#promoBody'));
+const spRedraw = () => supportersView($('#accBody'));
 // one supporter: name, email and tier to edit, their code to email, and Remove
 A.spOpen = (d) => {
   const p = SP.people.find((x) => x.id === d.id); if (!p) return; const redeemed = !!(p.code && p.code.redeemedAt);

@@ -3449,7 +3449,7 @@ app.put('/api/account/billing/details', async (req, res) => {
 });
 // cancel at the end of the paid period (the account keeps working until then), or undo that
 // ---------- Modify subscription (Account and billing): the offers made before cancelling ----------
-// The steps, the offers' terms and the reasons are set in Alpha → Pricing → Cancellation flow (lib/retention.js), which also logs each flow.
+// The steps, the offers' terms and the reasons are set in Alpha → Accounts → Cancellation flow (lib/retention.js), which also logs each flow.
 // One stay discount per account: the stay offer (when the reason leads to it) or the parting gift. On a paid subscription Stripe
 // applies the coupon now; during a free trial it's kept, with the terms of the day, and applied when the card is added.
 function retentionInfo(t) {

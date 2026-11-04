@@ -2915,7 +2915,7 @@ const MS_IC = {
 const msI = (k, size = 20) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${MS_IC[k]}</svg>`;
 A.billModify = (d) => {
   const B = billingData; const T = B.trial; const sub = B.subscription; const ending = sub && sub.cancelAtPeriodEnd; const R = B.retention || {}; const U = B.usage || {};
-  // the steps and offers, as set in Alpha → Pricing → Cancellation flow
+  // the steps and offers, as set in Alpha → Accounts → Cancellation flow
   const C = R.config || { extend: { on: true }, sprint: { on: true }, tour: { on: true }, stay: { on: true, percent: 15, months: 3 }, lose: { on: true }, feedback: { on: true, required: true }, gift: { on: true, percent: 50 }, password: { on: true }, yearly: false, reasons: [] };
   const mb = modal('Modify subscription', ''); const box = mb.parentElement; box.classList.add('ms');
   const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`; const amt = (n) => money(n).replace(/\.00$/, '');
@@ -2930,7 +2930,7 @@ A.billModify = (d) => {
   const canDiscount = !R.offer && B.live && !!B.plan.charge && (B.plan.charge.interval === 'month' || C.yearly) && !B.prepaidUntil && canCancel;
   const S = { pct: C.stay.percent, n: C.stay.months, g: C.gift.percent }; const bills = (w) => (S.n > 1 ? `${w} ${S.n} bills` : `${w} bill`);
   const ctx = { reason: null, feedback: '' }; const hist = []; let step = d && d.step === 'reasons' ? 'reasons' : 'menu'; let more = false;
-  // the log in Alpha → Pricing → Cancellations: the reason, the offer shown, feedback and how it ended
+  // the log in Alpha → Accounts → Cancellations: the reason, the offer shown, feedback and how it ended
   const fid = Array.from(crypto.getRandomValues(new Uint8Array(6)), (x) => x.toString(16).padStart(2, '0')).join(''); let logged = false;
   const log = (b) => api('POST', '/api/account/billing/flow', { flowId: fid, ...b }).catch(() => {});
   new MutationObserver((_, o) => { if (!box.isConnected) { o.disconnect(); if (logged) log({ outcome: 'closed' }); } }).observe(document.body, { childList: true });
