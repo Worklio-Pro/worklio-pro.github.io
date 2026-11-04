@@ -1361,7 +1361,7 @@ ${full ? planCard(c.account) : ''}
 ${full ? `<div class="as-cols"><div class="as-col">${webAddressCard(c.account)}${brandBox}${regionalBox(c)}</div><div class="as-col">${payCard(integ)}${zelleBox}${prefixBox}</div></div>
 <form id="cf"><div class="as-save"><button class="btn">Save changes</button></div></form>` : `<form id="cf" class="cs-form">${companySettingsHtml(c, logoBox)}<div class="cs-foot"><button class="btn">Update settings</button></div></form>`}`;
   $$('.prefix-row input').forEach((i) => i.addEventListener('input', () => { i.nextElementSibling.textContent = 'e.g. ' + i.value.trim() + i.dataset.sample; }));
-  if (!full) { wireHours(main); phoneMask($('#cf input[name=phone]', main)); }
+  if (!full) { wireHours(main); }
   const ind = $('#cf select[name=industry]', main); if (ind) ind.addEventListener('change', () => { $('#cf [data-other]', main).hidden = ind.value !== 'other'; });
   $('#cf').addEventListener('submit', async (e) => {
     e.preventDefault(); const b = Object.fromEntries(new FormData(e.target));
@@ -2205,7 +2205,7 @@ PAGES['/profile'] = {
 <label class="fl"><span>Full name</span><input name="name" required autocomplete="name" value="${esc(p.name)}"></label>
 <label class="fl"><span>Email address (used to log in)</span><input name="email" type="email" required autocomplete="email" value="${esc(p.email)}"></label>
 <div id="pfEmailPw" hidden>${pw('currentPassword', 'Current password (needed to change your email)', 'current-password')}</div>
-<label class="fl"><span>Mobile phone number</span><input name="phone" autocomplete="tel" value="${esc(p.phone)}" placeholder="+17135550100"></label>
+<label class="fl"><span>Mobile phone number</span><input name="phone" type="tel" autocomplete="tel" value="${esc(p.phone)}" placeholder="(123) 456-7890"></label>
 ${p.jobTitle ? `<p class="muted">Role: ${esc(p.jobTitle)}. Ask the account owner to change your role or access.</p>` : ''}</div>
 <div class="addr"><input name="street" value="${esc(p.street)}" placeholder="Street address" aria-label="Street address" autocomplete="address-line1"><input name="city" value="${esc(p.city)}" placeholder="City" aria-label="City" autocomplete="address-level2">
 <input name="state" value="${esc(p.state)}" placeholder="State" aria-label="State" autocomplete="address-level1"><div class="addr-row"><input name="zip" value="${esc(p.zip)}" placeholder="ZIP code" aria-label="ZIP code" autocomplete="postal-code"><input name="country" value="${esc(p.country || 'United States')}" placeholder="Country" aria-label="Country" autocomplete="country-name"></div></div></div>

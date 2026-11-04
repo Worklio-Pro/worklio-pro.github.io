@@ -28,17 +28,6 @@ const fmtUsPhone = (s) => {
   let d = String(s || '').replace(/\D/g, ''); if (d.length === 11 && d[0] === '1') d = d.slice(1); d = d.slice(0, 10);
   return d.length > 6 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : d.length > 3 ? `(${d.slice(0, 3)}) ${d.slice(3)}` : d.length ? `(${d}` : '';
 };
-function phoneMask(input) {
-  if (!input) return;
-  input.value = fmtUsPhone(input.value);
-  input.addEventListener('input', () => {
-    if (/^\s*\+/.test(input.value)) return;
-    const before = input.value.slice(0, input.selectionStart).replace(/\D/g, '').length; // keep the cursor after the same digit
-    input.value = fmtUsPhone(input.value);
-    let pos = 0; for (let n = 0; pos < input.value.length && n < before; pos++) if (/\d/.test(input.value[pos])) n++;
-    input.setSelectionRange(pos, pos);
-  });
-}
 
 async function api(method, url, body) {
   const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
@@ -440,7 +429,7 @@ function supportForm(opts = {}) {
 <label>Subject<input name="subject" maxlength="150" placeholder="A few words about the problem or question"></label>
 <label>Message<textarea name="message" rows="6" maxlength="4000" required placeholder="What happened, what you expected, and the steps to see it"></textarea></label>
 <div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn" type="submit">Send message</button></div></form>`);
-  const form = $('form', body); phoneMask($('[name=phone]', form)); $('[name=message]', form).focus();
+  const form = $('form', body); $('[name=message]', form).focus();
   form.addEventListener('submit', async (e) => {
     e.preventDefault(); const btn = $('[type=submit]', form); btn.disabled = true; btn.textContent = 'Sending…';
     const f = Object.fromEntries(new FormData(form));
