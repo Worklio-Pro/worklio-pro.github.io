@@ -534,7 +534,7 @@ ${groups.map((g) => `<div class="pl-grp">${esc(g)}</div>` + D.features.filter((f
 ${savebar}</div>`;
     $('.pl-det', main).addEventListener('toggle', (e) => { detailsOpen = e.target.open; });
   } else {
-    main.innerHTML = `${head}<div class="card" style="padding-bottom:18px"><div class="tablewrap"><table class="matrix"><thead><tr><th class="bcol"><span class="muted" style="font-weight:400;font-size:13px">Beta</span></th><th class="fcol"><span class="muted" style="font-weight:400;font-size:13px">Plan details</span></th>
+    main.innerHTML = `${head}<div class="card" style="padding-bottom:18px"><div class="tablewrap mx-wrap"><table class="matrix"><thead><tr><th class="bcol mx-corner"><span class="muted">Beta</span></th><th class="fcol mx-corner"><span class="muted">Plan details</span></th>
 ${P.map((p, i) => `<th class="pcol">${planFields(p, i, usedText(p), rmBtn(p, i))}</th>`).join('')}</tr></thead>
 <tbody><tr class="grp"><td class="bcol"></td><td class="fcol">Always included</td>${P.map(() => '<td></td>').join('')}</tr>
 ${D.alwaysIncluded.map((l) => `<tr><td class="bcol"></td><td class="fcol"><div class="mx-l">${esc(l)}</div></td>${P.map(() => '<td class="always" aria-label="Included">✓</td>').join('')}</tr>`).join('')}
@@ -544,6 +544,7 @@ ${P.map((p, i) => (offered(p, f) ? `<td><input type="checkbox" data-i="${i}" dat
 ${savebar}</div>`;
   }
   sideLayout(main);
+  mxScroller(main);
   // hidden plans stay off the pricing page and checkout; you can still put an account on one
   $$('input[data-hide]', main).forEach((c) => c.addEventListener('change', () => { const p = P[c.dataset.hide]; if (c.checked) p.hidden = true; else delete p.hidden; markDirty(main); }));
   const PRICES = ['monthly', 'yearly', 'saleMonthly', 'saleYearly'];
@@ -564,6 +565,14 @@ ${savebar}</div>`;
     const k = c.dataset.beta; const on = new Set(draftBeta); if (c.checked) on.add(k); else on.delete(k);
     draftBeta = D.features.map((f) => f.key).filter((x) => on.has(x)); $(`[data-beta-tag="${k}"]`, main).hidden = !c.checked; markDirty(main);
   }));
+}
+// the plans grid scrolls sideways from a bar pinned to the top of the save bar, so it's always in reach instead of only at the bottom of the table
+function mxScroller(main) {
+  const wrap = $('.mx-wrap', main); const bar = $('.savebar', main); if (!wrap || !bar) return;
+  bar.insertAdjacentHTML('afterbegin', '<div class="mx-hs" aria-hidden="true"><div></div></div>'); const hs = bar.firstElementChild;
+  const size = () => { hs.style.left = `${wrap.getBoundingClientRect().left - bar.getBoundingClientRect().left}px`; hs.style.width = `${wrap.clientWidth}px`; hs.firstElementChild.style.width = `${wrap.scrollWidth}px`; hs.hidden = wrap.scrollWidth <= wrap.clientWidth + 1; };
+  const sync = (from, to) => from.addEventListener('scroll', () => { if (to.scrollLeft !== from.scrollLeft) to.scrollLeft = from.scrollLeft; });
+  sync(wrap, hs); sync(hs, wrap); size(); new ResizeObserver(size).observe(wrap);
 }
 function markDirty(main) {
   const dirty = plansDirty(); const bar = $('.savebar', main);

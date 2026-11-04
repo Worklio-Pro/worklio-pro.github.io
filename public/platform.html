@@ -239,6 +239,11 @@
     .matrix .fcol{text-align:left;position:sticky;left:44px;background:var(--card);z-index:1;min-width:230px;max-width:300px}
     .matrix .bcol input{accent-color:var(--warn)}
     .matrix thead th{vertical-align:top;background:var(--card);min-width:170px}
+    .matrix thead th.mx-corner{vertical-align:bottom;padding-bottom:12px}.mx-corner .muted{font-weight:400;font-size:13px}
+    /* the sideways scroll bar lives on the save bar (always on screen); the table's own one is hidden */
+    .mx-wrap{scrollbar-width:none}.mx-wrap::-webkit-scrollbar{display:none}
+    .mx-hs{position:absolute;bottom:100%;height:14px;overflow-x:auto;overflow-y:hidden;background:var(--card)}.mx-hs>div{height:1px}.mx-hs[hidden]{display:none}
+    .mx-hs::-webkit-scrollbar{height:10px}.mx-hs::-webkit-scrollbar-track{background:var(--surface-2);border-radius:99px}.mx-hs::-webkit-scrollbar-thumb{background:var(--muted);border-radius:99px;border:2px solid var(--surface-2)}
     .matrix thead th.pcol{width:232px;min-width:232px;max-width:232px;text-align:left;font-weight:400;padding:14px 12px 12px}
     /* one plan's settings (a column on desktop, the details form on phones): every field the same height, labels above, grouped under small headings */
     .pc{display:flex;flex-direction:column;gap:8px;text-align:left;text-transform:none;letter-spacing:normal}
