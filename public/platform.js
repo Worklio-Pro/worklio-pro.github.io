@@ -7,7 +7,7 @@ async function api(method, url, body) {
   const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
   const j = await r.json().catch(() => ({}));
   if (r.status === 401 && !url.includes('/login') && !url.includes('/setup')) { boot(); throw new Error('Please log in'); }
-  if (!r.ok) throw new Error(j.error || 'Something went wrong');
+  if (!r.ok) { const e = new Error(j.error || 'Something went wrong'); e.data = j; throw e; } // e.data: the rest of the reply (e.g. sameEmail)
   return j;
 }
 function toast(msg, err) { const t = document.createElement('div'); t.className = 'toast' + (err ? ' err' : ''); t.textContent = msg; $('#toast').appendChild(t); setTimeout(() => t.remove(), err ? 6000 : 3200); }
@@ -269,7 +269,15 @@ A.newAccount = () => {
   f.addEventListener('submit', async (e) => {
     e.preventDefault(); const b = Object.fromEntries(new FormData(f)); b.demo = !!b.demo;
     try {
-      const r = await api('POST', '/api/platform/accounts', b); await load(); render();
+      let r;
+      try { r = await api('POST', '/api/platform/accounts', b); }
+      catch (x) { // the owner's email already has a login at another business: use it anyway?
+        if (!(x.data && x.data.sameEmail) || !confirm(`${x.message}
+
+Create ${b.name} with the same owner email anyway? When they log in with ${b.ownerEmail}, they’ll choose which business to open. Each business has its own password.`)) throw x;
+        r = await api('POST', '/api/platform/accounts', { ...b, sameEmailOk: true });
+      }
+      await load(); render();
       showLink(`${r.account.name} is ready`, r.emailed ? `We emailed ${b.ownerEmail} a link to set their password. You can also send it yourself:` : `Email isn’t set up, so send ${b.ownerEmail} this link to set their password (it works for 7 days):`, r.link);
     } catch (x) { toast(x.message, true); }
   });
