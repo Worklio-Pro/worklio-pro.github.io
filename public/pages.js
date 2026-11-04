@@ -170,7 +170,7 @@ ${kind !== 'event' ? (opened.assign || (p.staffIds || []).length ? `<div class="
 <div class="qc-when"><label class="fl"><span>Start date</span><input type="date" name="date" required value="${esc(p.date || ymd(new Date()))}"></label>
 <div class="qc-times" ${p.anytime ? 'hidden' : ''}><label class="fl"><span>Start</span><input type="time" name="startTime" value="${esc(p.startTime || '09:00')}"></label><label class="fl"><span>End</span><input type="time" name="endTime" value="${esc(p.endTime || '10:00')}"></label></div></div>
 <label class="qc-any"><input type="checkbox" name="anytime" ${p.anytime ? 'checked' : ''}> Anytime</label>
-<div class="qc-foot">${edit ? '<button type="button" class="btn danger" data-qc="delete">Delete</button>' : `<button type="button" class="btn alt" data-qc="more">More Options</button>`}<button class="btn">Save</button></div></form>`;
+<div class="qc-foot${!edit && kind !== 'job' ? ' one' : ''}">${edit ? '<button type="button" class="btn danger" data-qc="delete">Delete</button>' : kind === 'job' ? `<button type="button" class="btn alt" data-qc="more">More Options</button>` : ''}<button class="btn">Save</button></div></form>`;
     const f = $('.qc-f', box);
     if (f.client) qcClientPick(box, f, () => { keep(); return p; }, draw);
     $$('.qc-tabs button', box).forEach((b) => b.addEventListener('click', () => { keep(); kind = b.dataset.k; draw(); }));
