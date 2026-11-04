@@ -1550,3 +1550,4 @@ button.mn-x{border:0;padding:0;cursor:pointer}
 .tb-icon:has(.tb-circle):hover,.tb-news[open]>summary{background:none}
 .tb-icon:hover .tb-circle,.tb-news[open] .tb-circle{box-shadow:0 0 0 3px var(--surface-2)}
 .tb-news .tb-dot{top:4px;right:3px}
+.clist .cl-nowrap{white-space:nowrap}
