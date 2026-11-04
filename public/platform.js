@@ -1057,7 +1057,7 @@ A.discEdit = (d) => {
 <div class="row"><label>Starts (optional)<input name="startsAt" type="date" value="${esc(x.startsAt)}"></label><label>Ends after (optional)<input name="endsAt" type="date" value="${esc(x.endsAt)}"></label></div>
 <label class="switchline"><input type="checkbox" name="onePerEmail" ${x.onePerEmail ? 'checked' : ''}> Once per email address</label>
 <label class="switchline"><input type="checkbox" name="active" ${x.active ? 'checked' : ''}> Active (people can use it now)</label>
-${used ? `<h3 class="hc-h3">Used ${used} time${used === 1 ? '' : 's'}</h3><div class="tablewrap" style="max-height:180px;overflow:auto"><table class="acc">${x.uses.slice().reverse().map((u) => `<tr><td class="nm">${esc(u.business)}</td><td class="sm">${esc(u.email)}</td><td class="sm">${fmtDate(u.at)}</td></tr>`).join('')}</table></div>` : ''}
+${used ? `<h3 class="hc-h3" id="dUsedH">Used ${used} time${used === 1 ? '' : 's'}</h3><div class="tablewrap" style="max-height:180px;overflow:auto"><table class="acc">${x.uses.slice().reverse().map((u) => `<tr><td class="nm">${esc(u.business)}</td><td class="sm">${esc(u.email)}</td><td class="sm">${fmtDate(u.at)}</td><td class="r" style="width:1%"><button type="button" class="icon-x disc-rmuse" data-act="discRmUse" data-t="${esc(u.tenantId)}" data-at="${esc(u.at)}" data-name="${esc(u.business)}" title="Remove this use" aria-label="Remove ${esc(u.business)}’s use">${TRASH_SVG}</button></td></tr>`).join('')}</table></div>` : ''}
 <div class="foot">${d.id ? '<button type="button" class="btn danger" data-act="discDelete" style="margin-right:auto">Delete</button>' : ''}<button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">${d.id ? 'Save' : 'Create code'}</button></div></form>`, { wide: true });
   const f = $('#df', m); m.discId = d.id || '';
   $('[name=type]', f).addEventListener('change', (e) => { const trial = e.target.value === 'trial'; $('#valLbl', f).textContent = e.target.value === 'amount' ? 'Amount off ($)' : 'Percent off (%)';
@@ -1068,6 +1068,19 @@ ${used ? `<h3 class="hc-h3">Used ${used} time${used === 1 ? '' : 's'}</h3><div c
     if (used) { delete b.code; delete b.type; delete b.value; delete b.duration; delete b.months; delete b.trialDays; }
     try { D.discounts = await api(d.id ? 'PUT' : 'POST', d.id ? `/api/platform/discounts/${d.id}` : '/api/platform/discounts', b); closeModal(); toast(d.id ? 'Discount saved' : `${String(b.code).toUpperCase()} created`); render(); } catch (x2) { toast(x2.message, true); }
   });
+};
+const TRASH_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6"/></svg>';
+// take a business off the code's “Used” list: the use is given back; their account and any Stripe discount stay as they are
+A.discRmUse = async (d, el) => {
+  const m = el.closest('.pf-modal'); const id = m.discId; const x = D.discounts.find((y) => y.id === id);
+  if (!confirm(`Remove ${d.name} from ${x.code}’s uses? The use counts toward the limit again${x.onePerEmail ? ', and that email can use the code again' : ''}. Their account isn’t changed.`)) return;
+  el.disabled = true;
+  try {
+    D.discounts = await api('POST', `/api/platform/discounts/${id}/remove-use`, { tenantId: d.t, at: d.at }); const left = (D.discounts.find((y) => y.id === id).uses || []).length;
+    toast(`${d.name}’s use removed`); render();
+    if (!left) { A.discEdit({ id }); return; } // no uses left: the code and discount can be edited again
+    el.closest('tr').remove(); $('#dUsedH', m).textContent = `Used ${left} time${left === 1 ? '' : 's'}`;
+  } catch (x2) { toast(x2.message, true); el.disabled = false; }
 };
 A.discDelete = async (d, el) => {
   const id = el.closest('.pf-modal').discId; const x = D.discounts.find((y) => y.id === id);
