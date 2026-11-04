@@ -187,8 +187,10 @@ ${shown.map((a) => `<tr data-id="${a.id}" tabindex="0" aria-label="Manage ${esc(
 <td><select data-plan="${a.id}" aria-label="Plan for ${esc(a.name)}">${D.plans.map((p) => `<option value="${esc(p.id)}" ${p.id === a.planId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></td>
 <td class="acc-st">${statusChip(a)}${a.support.length ? ` <span class="pf-chip ${a.support.some((r) => r.status === 'granted') ? 'ok' : 'wait'}" title="Support Access">${a.support.some((r) => r.status === 'granted') ? 'Support access' : 'Access requested'}</span>` : ''}</td>
 </tr>`).join('') || `<tr><td colspan="4" class="muted">${accIndustry ? 'No accounts in this industry.' : 'No accounts yet.'}</td></tr>`}
-</tbody></table></div></div>`;
+</tbody></table></div></div>
+<div class="card" id="delAccs"><div class="rt-h"><h2>Deleted accounts</h2><button type="button" class="btn alt sm" data-act="delList">Show</button></div><p class="sm muted" style="margin:0">When you delete a business, a copy of its data and files is kept on the server. Erase copies here for good.</p></div>`;
   wirePlanSelects(main);
+  if (delOpen) A.delList();
   $('#accInd', main).addEventListener('change', (e) => { accIndustry = e.target.value; accountsView(main); });
   // select a row (click, tap, or Enter/Space) to manage the business; its link and plan menu still work on their own.
   // On phones the row shows only the business and its status.
@@ -221,6 +223,28 @@ function wireSlug(form, initial) {
   i.addEventListener('input', () => { i.dataset.touched = '1'; check(); }); return check;
 }
 const A = {};
+// deleted accounts: the copies kept on the server (data/deleted) after Delete account; erasing one can't be undone
+let delOpen = false;
+const fmtSize = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} B`);
+A.delList = async () => {
+  const box = $('#delAccs'); if (!box) return; delOpen = true; let L;
+  try { L = await api('GET', '/api/platform/deleted'); } catch (x) { toast(x.message, true); return; }
+  box.innerHTML = `<div class="rt-h"><h2>Deleted accounts (${L.length})</h2><div class="acts">${L.length > 1 ? '<button type="button" class="btn danger sm" data-act="delPurgeAll">Erase all</button>' : ''}<button type="button" class="btn alt sm" data-act="delHide">Hide</button></div></div>
+<p class="sm muted" style="margin:0 0 10px">Copies of businesses you deleted, with their data and files. Erasing one removes it from the server for good; it can’t be brought back.</p>
+${L.length ? `<div class="tablewrap"><table class="acc"><thead><tr><th>Business</th><th>Owner</th><th>Data</th><th>Deleted</th><th></th></tr></thead><tbody>${L.map((x) => `<tr><td class="nm">${esc(x.business || x.slug)}<div class="sm">${esc(x.slug)}</div></td>
+<td>${x.ownerEmail ? `${esc(x.ownerName)}<div class="sm">${esc(x.ownerEmail)}</div>` : '<span class="muted">—</span>'}</td><td class="sm">${x.logins} login${x.logins === 1 ? '' : 's'} · ${x.clients} clients · ${x.invoices} invoices<div>${fmtSize(x.bytes)}</div></td>
+<td class="sm">${fmtDate(x.deletedAt.slice(0, 10))}</td><td class="r"><button type="button" class="btn danger sm" data-act="delPurge" data-name="${esc(x.name)}" data-label="${esc(x.business || x.slug)}">Erase</button></td></tr>`).join('')}</tbody></table></div>`
+    : '<p class="muted" style="margin:0">No deleted accounts are kept on the server.</p>'}`;
+};
+A.delHide = () => { delOpen = false; accountsView($('#main')); };
+A.delPurge = async (d, el) => {
+  if (!confirm(`Erase ${d.label} for good?\n\nIts copy (data, logins, files) is removed from the server. This can’t be undone.`)) return;
+  el.disabled = true; try { await api('DELETE', `/api/platform/deleted/${encodeURIComponent(d.name)}`); toast(`${d.label} erased`); A.delList(); } catch (x) { el.disabled = false; toast(x.message, true); }
+};
+A.delPurgeAll = async () => {
+  const typed = prompt('Erase every deleted account for good? Their copies are removed from the server and can’t be brought back.\n\nType DELETE to confirm:'); if (typed === null) return;
+  try { const r = await api('POST', '/api/platform/deleted/purge-all', { confirm: typed.trim() }); toast(`${r.erased} deleted account${r.erased === 1 ? '' : 's'} erased`); A.delList(); } catch (x) { toast(x.message, true); }
+};
 // the accounts in the list (with its industry filter) as a spreadsheet: owner contacts by industry, for marketing
 A.accountsCsv = () => {
   const rows = D.accounts.filter((a) => !accIndustry || (a.industry || 'none') === accIndustry);
@@ -361,7 +385,7 @@ A.status = async (d) => {
 };
 A.delAccount = async (d) => {
   const a = D.accounts.find((x) => x.id === d.id);
-  const typed = prompt(`This removes ${a.name} and all its data from the platform (a copy is kept in data/deleted on the server).\n\nType ${a.slug} to confirm:`);
+  const typed = prompt(`This removes ${a.name} and all its data from the platform. A copy is kept on the server until you erase it (Accounts → Deleted accounts).\n\nType ${a.slug} to confirm:`);
   if (typed === null) return;
   try { await api('DELETE', `/api/platform/accounts/${a.id}`, { confirm: typed.trim() }); closeModal(); toast('Account deleted'); await load(); render(); } catch (x) { toast(x.message, true); }
 };
