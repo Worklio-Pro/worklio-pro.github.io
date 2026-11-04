@@ -430,6 +430,27 @@ ${mSaveBtn('Done')}${w.dataset.autosave ? '' : '<p class="muted ms-note">Tap Sav
     mClose(); w.dispatchEvent(new CustomEvent('hourschange', { bubbles: true }));
   });
 };
+// hours that save on their own (My profile, Company Profile): the pencil (hoursPencil) shows the edit table with Cancel / Save (hoursFoot);
+// on phones the pencil is hidden and Done in a day's sheet saves. The pencil, foot and hours sit inside an element with data-hours-root.
+const autoHoursHtml = (hours, closed) => hoursHtml(hours, closed, { toggle: false }).replace('class="hours-wrap"', 'class="hours-wrap" data-autosave="1"');
+const hoursPencil = (what) => `<button type="button" class="icon-btn hours-pen" data-act="hoursEdit" title="Edit ${what}" aria-label="Edit ${what}">${PENCIL}</button>`;
+const hoursFoot = '<div class="foot hours-foot" hidden><button type="button" class="btn alt" data-act="hoursCancel">Cancel</button><button type="button" class="btn" data-act="hoursSave">Save</button></div>';
+// save(hours): stores them (throws on failure)
+function wireHoursEditor(root, hours, closed, save) {
+  const editing = (on) => { $('.hours.edit', root).hidden = !on; $('.hours.view', root).hidden = on; $('.hours-pen', root).hidden = on; $('.hours-foot', root).hidden = !on; };
+  const redraw = () => { $('.hours-wrap', root).outerHTML = autoHoursHtml(hours, closed); wireHours(root); editing(false); };
+  const commit = async () => {
+    const h = readHoursFrom(root); const bad = badHours(h); if (bad) { toast(bad, true); return false; }
+    try { await save(h); } catch (err) { toast(err.message, true); return false; }
+    hours = h; return true;
+  };
+  wireHours(root);
+  root._hoursEdit = () => editing(true); root._hoursCancel = redraw; root._hoursSave = async () => { if (await commit()) redraw(); };
+  root.addEventListener('hourschange', async () => { if (!(await commit())) redraw(); });
+}
+A.hoursEdit = (d, el) => el.closest('[data-hours-root]')._hoursEdit();
+A.hoursCancel = (d, el) => el.closest('[data-hours-root]')._hoursCancel();
+A.hoursSave = (d, el) => el.closest('[data-hours-root]')._hoursSave();
 A.tmHoursEdit = (d, el) => { const w = el.closest('.hours-wrap'); const editing = $('.hours.edit', w).hidden; $('.hours.edit', w).hidden = !editing; $('.hours.view', w).hidden = editing; el.textContent = editing ? 'Done' : 'Edit'; };
 A.tmPhotoRemove = (d, el) => el.closest('form')._clearPhoto();
 PAGES['/team/new'] = { title: 'Add team member', render: (main) => teamMemberPage(main) };
@@ -1322,6 +1343,7 @@ function industryHtml(c) {
   return `<div class="fl-split">${flSelect('Industry', 'industry', [['', 'Choose your industry'], ...L.map((i) => [i.slug, i.name])], c.industry || '')}
 ${fl('Your industry', `<input name="industryOther" maxlength="80" value="${esc(c.industryOther || '')}">`).replace('<label class="fl"', `<label class="fl" data-other ${c.industry === 'other' ? '' : 'hidden'}`)}</div>`;
 }
+const businessHours = (c) => staffHours({ hours: c.hours || { sat: { on: false, start: '09:00', end: '17:00' }, sun: { on: false, start: '09:00', end: '17:00' } } });
 function companySettingsHtml(c, logoBox = '') {
   const hasParts = ['addrStreet1', 'addrStreet2', 'addrCity', 'addrState', 'addrZip'].some((k) => c[k]);
   const v = (k) => esc(c[k] ?? '');
@@ -1334,8 +1356,8 @@ ${industryHtml(c)}
 <div class="fl-split">${fl('City', `<input name="addrCity" value="${v('addrCity')}">`)}${fl('State', `<input name="addrState" value="${v('addrState')}">`)}</div>
 <div class="fl-split">${fl('Zip code', `<input name="addrZip" value="${v('addrZip')}">`)}${flSelect('Country', 'addrCountry', [...new Set([...COUNTRIES, country])].map((x) => [x, x]), country)}</div></div>
 ${switchRow('addressPrivate', 'Keep address private', c.addressPrivate, 'We won’t show your address to clients in the client portal.')}
-<hr class="cs-hr"><h3>Business hours</h3><p class="muted cs-note">Your usual opening times.</p>
-${hoursHtml(staffHours({ hours: c.hours || { sat: { on: false, start: '09:00', end: '17:00' }, sun: { on: false, start: '09:00', end: '17:00' } } }), 'Closed')}
+<hr class="cs-hr"><div data-hours-root><div class="cs-hours-h"><h3>Business hours</h3>${hoursPencil('business hours')}</div><p class="muted cs-note">Your usual opening times.</p>
+${autoHoursHtml(businessHours(c), 'Closed')}${hoursFoot}</div>
 ${switchRow('showHours', 'Show business hours', c.showHours, 'Display your business hours on the client portal.')}</div>
 </div><div class="cs-col">${logoBox}<div class="card cs"><h2>Social media</h2><p class="muted cs-note">Paste a link to your page, or just your handle (like @yourbusiness). Leave any you don’t use blank.</p>
 <div class="cs-soc">${SOCIAL.map(([k, l, ph]) => fl(l, `<input name="social_${k}" value="${esc((c.social || {})[k] || '')}" placeholder="${ph}" autocomplete="off" autocapitalize="off" spellcheck="false">`)).join('')}</div></div>
@@ -1359,13 +1381,28 @@ async function companyPage(main, full) {
   main.innerHTML = `<div class="head"><div><h1>${full ? 'App Settings' : 'Company settings'}</h1>${full ? '<p class="sub">Branding and defaults used on every quote and invoice. Business details, social media and tax settings are on <a href="/settings/company" data-link>Company Profile</a>.</p>' : ''}</div></div>
 ${full ? planCard(c.account) : ''}
 ${full ? `<div class="as-cols"><div class="as-col">${webAddressCard(c.account)}${brandBox}${regionalBox(c)}</div><div class="as-col">${payCard(integ)}${zelleBox}${prefixBox}</div></div>
-<form id="cf"><div class="as-save"><button class="btn">Save changes</button></div></form>` : `<form id="cf" class="cs-form">${companySettingsHtml(c, logoBox)}<div class="cs-foot"><button class="btn">Update settings</button></div></form>`}`;
+<form id="cf"><div class="as-save"><button class="btn">Save changes</button></div></form>` : `<form id="cf" class="cs-form">${companySettingsHtml(c, logoBox)}</form>`}`;
   $$('.prefix-row input').forEach((i) => i.addEventListener('input', () => { i.nextElementSibling.textContent = 'e.g. ' + i.value.trim() + i.dataset.sample; }));
-  if (!full) { wireHours(main); }
   const ind = $('#cf select[name=industry]', main); if (ind) ind.addEventListener('change', () => { $('#cf [data-other]', main).hidden = ind.value !== 'other'; });
-  $('#cf').addEventListener('submit', async (e) => {
+  if (!full) { // Company Profile saves on its own: a field as soon as it changes, the business hours with their pencil
+    const cf = $('#cf'); const key = () => JSON.stringify(Object.fromEntries(new FormData(cf)));
+    let last = key(); let busy = false; let again = false;
+    const saveFields = async () => {
+      if (busy) { again = true; return; }
+      if (key() === last) return;
+      if (!cf.checkValidity()) return cf.reportValidity();
+      const b = Object.fromEntries(new FormData(cf));
+      if (b.industry === 'other' && !String(b.industryOther || '').trim()) { $('[name=industryOther]', cf).focus(); return; } // wait for their own words
+      if ('industry' in b && !b.industry) delete b.industry; // not chosen yet: leave it unset
+      busy = true;
+      try { const saved = await api('PUT', '/api/company', b); company = { ...company, ...saved }; last = key(); toast('Settings saved'); } catch (err) { toast(err.message, true); }
+      busy = false; if (again) { again = false; saveFields(); }
+    };
+    cf.addEventListener('change', (e) => { if (!e.target.closest('.hours-wrap')) saveFields(); });
+    cf.addEventListener('submit', (e) => { e.preventDefault(); saveFields(); });
+    wireHoursEditor($('[data-hours-root]', cf), businessHours(c), 'Closed', async (hours) => { const saved = await api('PUT', '/api/company', { hours }); company = { ...company, ...saved }; toast('Business hours saved'); });
+  } else $('#cf').addEventListener('submit', async (e) => {
     e.preventDefault(); const b = Object.fromEntries(new FormData(e.target));
-    if (!full) { b.hours = readHoursFrom(e.target); const bad = badHours(b.hours); if (bad) return toast(bad, true); }
     if ('industry' in b && !b.industry) delete b.industry; // not chosen yet: leave it unset
     if (!c.accentColor && b.accentColor === c.defaultAccent) delete b.accentColor; // left alone: keeps following the product's color
     await api('PUT', '/api/company', b); toast('Settings saved'); refresh();
@@ -2210,9 +2247,9 @@ ${p.jobTitle ? `<p class="muted">Role: ${esc(p.jobTitle)}. Ask the account owner
 <div class="addr"><input name="street" value="${esc(p.street)}" placeholder="Street address" aria-label="Street address" autocomplete="address-line1"><input name="city" value="${esc(p.city)}" placeholder="City" aria-label="City" autocomplete="address-level2">
 <input name="state" value="${esc(p.state)}" placeholder="State" aria-label="State" autocomplete="address-level1"><div class="addr-row"><input name="zip" value="${esc(p.zip)}" placeholder="ZIP code" aria-label="ZIP code" autocomplete="postal-code"><input name="country" value="${esc(p.country || 'United States')}" placeholder="Country" aria-label="Country" autocomplete="country-name"></div></div></div>
 </div></form>
-<div class="pf-cols">${p.linked ? `<form class="tmform" id="pfHours"><div class="qcard login-card"><div class="qcard-h"><h2>Working hours</h2><button type="button" class="icon-btn pf-hours-edit" data-act="pfHoursEdit" title="Edit working hours" aria-label="Edit working hours">${PENCIL}</button></div>
+<div class="pf-cols">${p.linked ? `<form class="tmform" id="pfHours" data-hours-root><div class="qcard login-card"><div class="qcard-h"><h2>Working hours</h2>${hoursPencil('working hours')}</div>
 <p class="muted">When you're available to work. The office gets a warning if a job is booked outside them.</p>
-${pfHoursHtml(staffHours(p))}<div class="foot" hidden><button type="button" class="btn alt" data-act="pfHoursCancel">Cancel</button><button class="btn">Save</button></div></div></form>` : ''}
+${autoHoursHtml(staffHours(p), 'Not working')}${hoursFoot}</div></form>` : ''}
 <form class="tmform" id="pfPass"><div class="qcard login-card"><h2>Change password</h2><p class="muted">Use at least 8 characters. Changing it signs you out on your other devices.</p>
 <div class="pf-pw"><input type="email" name="username" value="${esc(p.email)}" autocomplete="username" hidden>
 ${pw('currentPassword', 'Current password', 'current-password')}${pw('newPassword', 'New password', 'new-password')}${pw('confirm', 'Confirm new password', 'new-password')}</div>
@@ -2245,18 +2282,8 @@ ${pw('currentPassword', 'Current password', 'current-password')}${pw('newPasswor
     info.addEventListener('submit', (e) => { e.preventDefault(); save(); });
     const hf = $('#pfHours');
     if (hf) {
-      let hours = staffHours(p);
-      const editing = (on) => { $('.hours.edit', hf).hidden = !on; $('.hours.view', hf).hidden = on; $('.pf-hours-edit', hf).hidden = on; $('.foot', hf).hidden = !on; };
-      const redraw = () => { $('.hours-wrap', hf).outerHTML = pfHoursHtml(hours); wireHours(hf); editing(false); };
-      const saveHours = async () => {
-        const h = readHoursFrom(hf); const bad = badHours(h); if (bad) { toast(bad, true); return false; }
-        try { await api('POST', '/api/auth/hours', { hours: h }); } catch (err) { toast(err.message, true); return false; }
-        hours = h; toast('Working hours saved'); return true;
-      };
-      wireHours(hf);
-      hf._edit = () => editing(true); hf._cancel = redraw;
-      hf.addEventListener('submit', async (e) => { e.preventDefault(); if (await saveHours()) redraw(); });
-      hf.addEventListener('hourschange', async () => { if (!(await saveHours())) redraw(); }); // phones: Done in the day's sheet saves
+      wireHoursEditor(hf, staffHours(p), 'Not working', async (hours) => { await api('POST', '/api/auth/hours', { hours }); toast('Working hours saved'); });
+      hf.addEventListener('submit', (e) => { e.preventDefault(); hf._hoursSave(); });
     }
     const pass = $('#pfPass');
     pass.addEventListener('submit', async (e) => {
@@ -2270,10 +2297,6 @@ ${pw('currentPassword', 'Current password', 'current-password')}${pw('newPasswor
   },
 };
 A.pfPhotoRemove = (d, el) => el.closest('form')._clearPhoto();
-A.pfHoursEdit = (d, el) => el.closest('form')._edit();
-A.pfHoursCancel = (d, el) => el.closest('form')._cancel();
-// My profile's working hours: edited with the pencil in the card header (phones tap a day), saved without a page Save
-const pfHoursHtml = (hours) => hoursHtml(hours, 'Not working', { toggle: false }).replace('class="hours-wrap"', 'class="hours-wrap" data-autosave="1"');
 A.pfEye = (d, el) => { const i = el.parentElement.querySelector('input'); const showing = i.type === 'text'; i.type = showing ? 'password' : 'text'; el.textContent = showing ? 'Show' : 'Hide'; el.setAttribute('aria-label', showing ? 'Show password' : 'Hide password'); i.focus(); };
 
 /* ===== /payments: payment history, payouts and payment settings ===== */
