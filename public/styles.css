@@ -27,7 +27,6 @@
 .side-set{margin:8px 0 0;padding:8px 0 0;border-top:1px solid rgba(255,255,255,.08)}
 .side-set-btn{display:flex;align-items:center;gap:12px;width:100%;padding:7px 10px;border:0;border-radius:8px;background:none;color:var(--nav-text,#cbd5e1);font:inherit;text-align:left;cursor:pointer}
 .side-set-btn:hover{background:var(--nav-hover,#1e3a6e)}.side-set-btn:hover .nav-ic{opacity:1}
-.side-set-btn>svg{flex:none;opacity:.7}
 /* the Settings column: Go Back, the title, then its groups with a rule after each name */
 .side-back{display:inline-flex;align-items:center;gap:6px;margin:0 0 14px;padding:8px 12px 8px 8px;border:0;border-radius:8px;background:rgba(255,255,255,.08);color:var(--nav-text,#e2e8f0);font:inherit;font-weight:600;cursor:pointer}
 .side-back:hover{background:var(--nav-hover,#1e3a6e);color:#fff}
@@ -1062,7 +1061,6 @@ a.conn-chip{text-decoration:none}a.conn-chip:hover{text-decoration:underline}
  #side.mini .brand img{width:40px;height:40px}#side.mini .brand img.brand-img{width:44px;height:auto;max-width:44px}
  #side.mini a.nav-link,#side.mini .side-set-btn{position:relative;justify-content:center;gap:0;padding:9px 0}
  #side.mini .nav-l{flex:0 0 0;width:0;font-size:0}
- #side.mini .side-set-btn>svg:last-child{display:none}
  #side.mini .nav-n{position:absolute;top:1px;right:3px;min-width:16px;margin:0;padding:0 4px;font-size:10px;line-height:16px}
  #side.mini .side-div{margin:10px 4px}
  #side.mini .side-search{width:52px}#side.mini .side-search>svg{left:17px}

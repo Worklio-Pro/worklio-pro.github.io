@@ -200,9 +200,10 @@ let sideMini = (() => { try { return localStorage.getItem('sideMini') === '1'; }
 const applyMini = () => { const side = $('#side'); side.classList.toggle('mini', sideMini && !$('.side-settings', side)); };
 function fillSide(path) {
   const side = $('#side'); side.innerHTML = sideHtml(path); $('.brand', side).after(searchBox()); applyMini();
-  const btn = $('#sideMiniBtn'); btn.hidden = !!$('.side-settings', side); // the round button on the menu's edge, by Settings
-  if (!btn.hidden) {
-    const l = sideMini ? 'Expand menu' : 'Collapse menu'; btn.setAttribute('aria-label', l); btn.title = l;
+  // the round button on the menu's edge, at the bottom; the Settings column is never collapsed, so there it always collapses
+  const btn = $('#sideMiniBtn'); btn.hidden = false; const mini = side.classList.contains('mini');
+  const l = mini ? 'Expand menu' : 'Collapse menu'; btn.setAttribute('aria-label', l); btn.title = l;
+  if (mini) {
     if (sideMini) $$('a.nav-link, .side-set-btn', side).forEach((a) => { a.title = $('.nav-l', a).textContent; }); // names on hover; before the badges are added
   }
   timeOffBadge();
@@ -219,7 +220,7 @@ function sideHtml(path) {
         .map(([g, ps]) => `<div class="grp">${g}</div>` + ps.map((p) => `<a href="${p}" data-link class="${isOnPage(p, path) ? 'on' : ''}">${label[p]}</a>`).join('')).join('') + '</div>';
   }
   return `<div class="side-nav">${brand}` +
-    navFor().map(([g, items]) => (SIDE_BREAKS.includes(g) ? '<hr class="side-div">' : '') + items.map(([p, l]) => `<a href="${p}" data-link class="nav-link ${p === path || (!navPaths.includes(path) && path.startsWith(p + '/')) ? 'on' : ''}">${navIcon(p)}<span class="nav-l">${l}</span></a>`).join('')).join('') + `</div>${items.length ? `<div class="side-set"><button type="button" class="side-set-btn" data-act="openSettings"><span class="nav-ic">${svgIcon(ICONS.gear, 19)}</span><span class="nav-l">Settings</span>${svgIcon(ICONS.next, 16)}</button></div>` : ''}`;
+    navFor().map(([g, items]) => (SIDE_BREAKS.includes(g) ? '<hr class="side-div">' : '') + items.map(([p, l]) => `<a href="${p}" data-link class="nav-link ${p === path || (!navPaths.includes(path) && path.startsWith(p + '/')) ? 'on' : ''}">${navIcon(p)}<span class="nav-l">${l}</span></a>`).join('')).join('') + `</div>${items.length ? `<div class="side-set"><button type="button" class="side-set-btn" data-act="openSettings"><span class="nav-ic">${svgIcon(ICONS.gear, 19)}</span><span class="nav-l">Settings</span></button></div>` : ''}`;
 }
 // bottom tab bar (phones): the first four main pages this member can open, then More for the full menu
 const bico = (d) => `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
@@ -554,7 +555,8 @@ A.openHelp = () => openHelp();
 const sideSwitch = (mode, focus) => { sideMode = mode; fillSide(curPath()); const f = $(focus, $('#side')); if (f) f.focus(); };
 A.openSettings = () => sideSwitch('settings', '.side-back');
 A.sideBack = () => sideSwitch('main', '.side-set-btn');
-A.sideMini = () => { sideMini = !sideMini; try { localStorage.setItem('sideMini', sideMini ? '1' : '0'); } catch (e) { /* this visit only */ } fillSide(curPath()); };
+// collapsing from the Settings column goes back to the main menu as icons (Settings links have no icons)
+A.sideMini = () => { const settings = !!$('#side .side-settings'); sideMini = settings || !sideMini; if (settings) sideMode = 'main'; try { localStorage.setItem('sideMini', sideMini ? '1' : '0'); } catch (e) { /* this visit only */ } fillSide(curPath()); };
 // the QR code drawn the way Settings → Business Page → QR code appearance sets it (plain until it loads, or if it can't)
 let qrLook = null;
 A.businessQr = async () => {
