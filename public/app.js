@@ -200,9 +200,9 @@ let sideMini = (() => { try { return localStorage.getItem('sideMini') === '1'; }
 const applyMini = () => { const side = $('#side'); side.classList.toggle('mini', sideMini && !$('.side-settings', side)); };
 function fillSide(path) {
   const side = $('#side'); side.innerHTML = sideHtml(path); $('.brand', side).after(searchBox()); applyMini();
-  if (!$('.side-settings', side)) {
-    const l = sideMini ? 'Expand menu' : 'Collapse menu';
-    $('.brand', side).insertAdjacentHTML('beforeend', `<button type="button" class="side-mini-btn" data-act="sideMini" aria-label="${l}" title="${l}">${svgIcon(ICONS.collapse, 18)}</button>`);
+  const btn = $('#sideMiniBtn'); btn.hidden = !!$('.side-settings', side); // the round button on the menu's edge, by Settings
+  if (!btn.hidden) {
+    const l = sideMini ? 'Expand menu' : 'Collapse menu'; btn.setAttribute('aria-label', l); btn.title = l;
     if (sideMini) $$('a.nav-link, .side-set-btn', side).forEach((a) => { a.title = $('.nav-l', a).textContent; }); // names on hover; before the badges are added
   }
   timeOffBadge();
@@ -268,7 +268,6 @@ const ICONS = {
   eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   gift: '<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5C11 3 12 8 12 8s1-5 4.5-5a2.5 2.5 0 0 1 0 5"/>',
   back: '<path d="m15 18-6-6 6-6"/>',
-  collapse: '<path d="m11 17-5-5 5-5M18 17l-5-5 5-5"/>',
   book: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5V21h16"/>',
   chat: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
@@ -495,7 +494,7 @@ async function render() {
   const main = $('#main');
   const portal = path === '/client-portal' && new URLSearchParams(location.search).get('c');
   try { company = await api('GET', '/api/company'); } catch (e) { /* ignore */ }
-  $('#side').style.display = portal ? 'none' : ''; $('#menuBtn').style.display = portal ? 'none' : ''; $('#bnav').style.display = portal ? 'none' : ''; $('#topbar').style.display = portal ? 'none' : '';
+  $('#side').style.display = portal ? 'none' : ''; $('#sideMiniBtn').style.display = portal ? 'none' : ''; $('#menuBtn').style.display = portal ? 'none' : ''; $('#bnav').style.display = portal ? 'none' : ''; $('#topbar').style.display = portal ? 'none' : '';
   closeHelp();
   main.className = portal ? 'portal' : '';
   showTheme(portal ? 'light' : getTheme()); // clients always see their portal in light mode
@@ -555,7 +554,7 @@ A.openHelp = () => openHelp();
 const sideSwitch = (mode, focus) => { sideMode = mode; fillSide(curPath()); const f = $(focus, $('#side')); if (f) f.focus(); };
 A.openSettings = () => sideSwitch('settings', '.side-back');
 A.sideBack = () => sideSwitch('main', '.side-set-btn');
-A.sideMini = () => { sideMini = !sideMini; try { localStorage.setItem('sideMini', sideMini ? '1' : '0'); } catch (e) { /* this visit only */ } fillSide(curPath()); const b = $('#side .side-mini-btn'); if (b) b.focus(); };
+A.sideMini = () => { sideMini = !sideMini; try { localStorage.setItem('sideMini', sideMini ? '1' : '0'); } catch (e) { /* this visit only */ } fillSide(curPath()); };
 // the QR code drawn the way Settings → Business Page → QR code appearance sets it (plain until it loads, or if it can't)
 let qrLook = null;
 A.businessQr = async () => {
