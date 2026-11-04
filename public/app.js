@@ -274,6 +274,7 @@ const ICONS = {
   feedback: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M12 7v4M12 14h.01"/>',
   shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
   compass: '<circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/>',
+  bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
   forum: '<path d="M17 9a6 6 0 0 0-11.5-2.4A5 5 0 0 0 3 15.3L2 19l3.7-1A6 6 0 0 0 17 9z"/><path d="M14 18.6A6 6 0 0 0 22 13a5 5 0 0 0-2.5-4.3"/>',
 };
 // Refer & Earn shows while the platform's referral program is on
@@ -306,6 +307,7 @@ function buildTopbar() {
   // phones: the company logo (or name) on the left
   $('#topbar').innerHTML = `<a href="/" data-link class="tb-logo" title="Home">${company.logo ? `<img src="${esc(company.logo)}" alt="${esc(company.name || 'Home')}">` : `<span>${esc(company.name || 'Home')}</span>`}</a>
 <a class="tb-fb tb-ref" href="/rewards" data-link title="Refer other businesses and earn free months" hidden>${svgIcon(ICONS.gift, 18)}<span>Refer &amp; earn</span></a><a class="tb-fb tb-forum" href="/forum" data-link title="Suggest features and report issues, with other businesses" hidden>${svgIcon(ICONS.forum, 18)}<span>Forum</span></a><button type="button" class="tb-fb" data-act="feedbackForm" title="Send feedback about the app">${svgIcon(ICONS.feedback, 18)}<span>Feedback</span></button>
+<details class="menu tb-news"><summary class="tb-icon" title="What’s new" aria-label="What’s new">${svgIcon(ICONS.bell)}<span class="tb-dot" hidden></span></summary><div class="menu-list" id="newsMenu"></div></details>
 <button type="button" class="tb-icon" data-act="openHelp" title="Help and support" aria-label="Help and support">${svgIcon(ICONS.help)}</button>
 <details class="menu tb-me" hidden><summary class="tb-avatar" title="Your account" aria-label="Your account"></summary><div class="menu-list" id="meMenu"></div></details>`;
 }
@@ -339,10 +341,25 @@ function focusSearch() {
   if (getComputedStyle(side).position === 'fixed') setTimeout(() => side.classList.add('open')); // after the click that would close the drawer
   $('#featSearch').focus();
 }
+// What's new: the bell lists the latest three updates; a dot shows until the newest one has been seen
+let news = null;
+const seenNews = () => { try { return localStorage.getItem('seenUpdate') || ''; } catch { return ''; } };
+async function loadNews() {
+  if (!news) { try { news = await api('GET', '/api/changelog?limit=3'); } catch { news = []; } }
+  const dot = $('.tb-news .tb-dot'); if (dot) dot.hidden = !news.length || news[0].id === seenNews();
+  return news;
+}
+function showNews() {
+  const box = $('#newsMenu'); if (!box) return;
+  box.innerHTML = `<div class="news-h">Latest updates</div>${(news || []).map((u) => `<a class="news-item" href="/changelog#${encodeURIComponent(u.id)}" target="_blank" rel="noopener"><strong><span class="news-tag news-${esc(u.tag)}">${esc(u.label)}</span>${esc(u.title)}</strong><span class="news-sum">${esc(u.summary)}</span></a>`).join('') || '<div class="news-none muted">No updates yet</div>'}
+<div class="news-foot"><a href="/changelog" target="_blank" rel="noopener">See all changes</a></div>`;
+  if (news && news.length) { try { localStorage.setItem('seenUpdate', news[0].id); } catch {} $('.tb-news .tb-dot').hidden = true; }
+}
 function renderTopbar(path) {
   if (!$('.tb-me')) buildTopbar();
   const input = $('input', searchBox()); input.value = ''; input.blur(); $('#featResults').hidden = true; input.setAttribute('aria-expanded', 'false');
   const mine = $('.tb-me'); mine.open = false; mine.hidden = !me;
+  const bell = $('.tb-news'); bell.open = false; bell.hidden = !me; if (me && !bell.dataset.on) { bell.dataset.on = '1'; bell.addEventListener('toggle', () => { if (bell.open) loadNews().then(showNews); }); loadNews(); }
   $('.tb-ref').hidden = !(referralsOn() && memberCan('/rewards'));
   const fo = $('.tb-forum'); fo.hidden = !(isAdminMe() && company.account && company.account.forum); fo.classList.toggle('on', path === '/forum'); // owners and admins, while the forum is open
   if (!me) return;

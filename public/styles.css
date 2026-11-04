@@ -1512,3 +1512,18 @@ button.mn-x{border:0;padding:0;cursor:pointer}
 .bp-phone{position:sticky;top:16px;width:300px;height:620px;margin:0 auto;border:12px solid #1f2937;border-radius:44px;overflow:hidden;background:#fff;box-shadow:var(--shadow-sm)}.bp-phone iframe{width:100%;height:100%;border:0;display:block}
 @media(max-width:1180px){.bp-edit{grid-template-columns:170px minmax(0,1fr)}.bp-phone,.bp-qrbox{grid-column:1/-1;position:static}}
 @media(max-width:760px){.bp-edit{grid-template-columns:minmax(0,1fr)}.bp-nav{flex-direction:row;overflow-x:auto;position:static}.bp-nav button{white-space:nowrap}.bp-two{grid-template-columns:minmax(0,1fr)}.bp-lbox{grid-template-columns:minmax(0,1fr)}.bp-lbox input{border-left:0;border-top:1px solid var(--border)}.bp-lname{padding:8px 12px}}
+/* What's new: the bell in the top bar */
+.tb-news>summary{position:relative}.tb-news[open]>summary{background:var(--surface-2);color:var(--text)}
+.tb-dot{position:absolute;top:9px;right:9px;width:9px;height:9px;border-radius:50%;background:var(--danger);box-shadow:0 0 0 2px var(--bg,var(--card))}
+.tb-dot[hidden]{display:none}
+.tb-news .menu-list{width:360px;max-width:calc(100vw - 20px);padding:0;overflow:hidden}
+.news-h{text-align:center;font-weight:700;font-size:15px;padding:12px;border-bottom:1px solid var(--line)}
+.menu-list a.news-item{display:block;padding:12px 16px;border-radius:0;border-bottom:1px solid var(--line);white-space:normal}
+.news-item strong{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:15px;line-height:1.35;margin-bottom:4px}
+.news-sum{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:var(--muted);font-size:14px;line-height:1.4}
+.news-tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 6px;border-radius:4px;margin-right:6px;vertical-align:1px;color:#fff}
+.news-new{background:#1f8a4c}.news-improved{background:#2f6fdb}.news-fixed{background:#a86b00}
+.news-none{padding:16px}
+.news-foot{display:flex;justify-content:flex-end;padding:10px 16px}
+.menu-list .news-foot a{display:inline;width:auto;padding:0;font-size:13px;color:var(--link)}.menu-list .news-foot a:hover{background:none;text-decoration:underline}
+@media (max-width:760px){.tb-news{position:static}.tb-news .menu-list{position:fixed;left:10px;right:10px;width:auto;top:calc(env(safe-area-inset-top,0px) + 58px)}}
