@@ -2834,7 +2834,7 @@ app.get('/api/integrations', async (req, res) => {
 
 // ---------- Account Connections: Google Business Profile, Facebook and Instagram (lib/social.js), and Bluesky (lib/bluesky.js) ----------
 // The sign-in returns to the platform address, which calls saveConnection inside this account. Tokens stay in the account's secrets.
-const SOCIAL_KINDS = ['google', 'facebook', 'instagram', ...Object.keys(networks.NETWORKS)];
+const SOCIAL_KINDS = ['google', 'facebook', ...Object.keys(networks.NETWORKS)];
 const connOf = (kind) => (secrets().social || {})[kind] || null;
 function setConnection(kind, conn) {
   const sec = { ...secrets() }; sec.social = { ...(sec.social || {}) }; if (conn) sec.social[kind] = conn; else delete sec.social[kind]; db.secrets = sec; save();
@@ -2846,12 +2846,11 @@ function saveConnection(kind, conn) {
 }
 const bookingUrl = () => `${baseUrl()}/book`;
 function connectionsView() {
-  const g = connOf('google'); const f = connOf('facebook'); const i = connOf('instagram'); const bs = connOf('bluesky'); const x = connOf('x');
+  const g = connOf('google'); const f = connOf('facebook'); const bs = connOf('bluesky'); const x = connOf('x');
   return {
     google: { available: social.ready('google'), connected: !!g, title: g ? g.title : '', address: g ? g.address : '', mapsUrl: g ? g.mapsUrl : '', reviewUrl: g ? g.reviewUrl : '', choices: g ? g.choices || 1 : 0,
       reviews: !!(g && g.reviews !== false), booking: !!(g && g.booking), bookingUrl: bookingUrl(), bookingPlan: tenancy.has('onlineBooking'), reviewsPlan: tenancy.has('reviews') },
     facebook: { available: social.ready('facebook'), connected: !!f, name: f ? f.name : '', link: f ? f.link : '', choices: f ? f.choices || 1 : 0 },
-    instagram: { available: social.ready('instagram'), connected: !!i, username: i ? i.username : '', choices: i ? i.choices || 1 : 0 },
     bluesky: { available: true, connected: !!bs, handle: bs ? bs.handle : '' }, // the business's own handle and app password: nothing for the platform to set up
     x: { available: true, connected: !!x, username: x ? x.username : '', name: x ? x.name : '' }, // the business's own X developer app
     ...Object.fromEntries(Object.keys(networks.NETWORKS).map((k) => { const c = connOf(k); return [k, { available: social.ready(k), connected: !!c, name: c ? c.name || '' : '', username: c ? c.username || '' : '', link: c ? c.link || '' : '', choices: c ? c.choices || 1 : 0 }]; })),
@@ -2888,18 +2887,18 @@ app.post('/api/connections/:kind/start', (req, res) => {
 app.delete('/api/connections/:kind', async (req, res) => {
   const kind = connKind(req, res); if (!kind) return; const c = connOf(kind);
   if (c && kind === 'google') { if (c.bookingLink) await social.googleBookingLink(c, '').catch(() => {}); await social.googleRevoke(c); }
-  // Facebook and Instagram share one Facebook sign-in: only give up its access once neither uses it
   if (c && networks.has(kind) && networks.NETWORKS[kind].revoke) await networks.NETWORKS[kind].revoke(c);
-  if (c && (kind === 'facebook' || kind === 'instagram')) { const other = connOf(kind === 'facebook' ? 'instagram' : 'facebook'); if (!other || other.userToken !== c.userToken) await social.metaRevoke(c); }
+  // Facebook and an Instagram connected the old way (through Facebook) share one Facebook sign-in: only give up its access once neither uses it
+  if (c && c.userToken && (kind === 'facebook' || kind === 'instagram')) { const other = connOf(kind === 'facebook' ? 'instagram' : 'facebook'); if (!other || other.userToken !== c.userToken) await social.metaRevoke(c); }
   setConnection(kind, null); res.json(connectionsView());
 });
-// another Business Profile location, Facebook Page or Instagram account the same sign-in manages
+// another Business Profile location, Facebook Page, LinkedIn page or Pinterest board the same sign-in manages
 app.get('/api/connections/:kind/choices', async (req, res) => {
   const kind = connKind(req, res); if (!kind) return; const c = connOf(kind); if (!c) return res.status(400).json({ error: 'Connect it first' });
   try {
     if (networks.has(kind)) { const n = networks.NETWORKS[kind]; const list = n.choices ? await n.choices(c) : []; save(); return res.json(list); } // a LinkedIn page or Pinterest board
     const list = kind === 'google' ? (await social.googleLocations(c)).map((l) => ({ id: l.location, label: l.title, sub: l.address, current: l.location === c.location }))
-      : (await social.metaChoices(kind, c)).map((x) => ({ id: x.id, label: x.label, sub: kind === 'instagram' ? x.page.name : '', current: x.id === (kind === 'facebook' ? c.pageId : c.igId) }));
+      : (await social.metaChoices(kind, c)).map((x) => ({ id: x.id, label: x.label, sub: '', current: x.id === c.pageId }));
     save(); res.json(list);
   } catch (e) { connFail(res, e); }
 });
@@ -2916,8 +2915,7 @@ app.put('/api/connections/:kind', async (req, res) => {
       await networks.NETWORKS[kind].choose(c, String(b.choice));
     } else if (b.choice) {
       const list = await social.metaChoices(kind, c); const x = list.find((y) => y.id === b.choice); if (!x) return res.status(400).json({ error: 'Choose one of the accounts listed' });
-      if (kind === 'facebook') Object.assign(c, { pageId: x.page.id, name: x.page.name, link: x.page.link, token: x.page.token, choices: list.length });
-      else Object.assign(c, { igId: x.page.ig.id, username: x.page.ig.username, pageId: x.page.id, token: x.page.token, choices: list.length });
+      Object.assign(c, { pageId: x.page.id, name: x.page.name, link: x.page.link, token: x.page.token, choices: list.length });
     }
     if (kind === 'google' && 'reviews' in b) c.reviews = !!b.reviews;
     if (kind === 'google' && 'booking' in b) {
@@ -2992,7 +2990,7 @@ app.delete('/api/reviews/reply', async (req, res) => {
 // Social Posts: project photos to the connected Facebook Page and Instagram account. Photos arrive as JPEGs (the browser converts them)
 // and are saved in the account's uploads, because Facebook and Instagram fetch them from a public address.
 // Bluesky gets the photos themselves (jpegs); a Google post gets a Book button while the Business Profile's booking button is on
-const POST_TO = { facebook: (c, p) => social.facebookPost(c, p), instagram: (c, p) => social.instagramPost(c, p), bluesky: (c, p) => bluesky.post(c, p),
+const POST_TO = { facebook: (c, p) => social.facebookPost(c, p), instagram: (c, p) => networks.NETWORKS.instagram.post(c, p), bluesky: (c, p) => bluesky.post(c, p),
   google: (c, p) => social.googlePost(c, { ...p, book: c.booking && tenancy.has('onlineBooking') ? bookingUrl() : '' }),
   // LinkedIn uploads the photos itself; a Pin links to the business's website (or its booking page); TikTok fetches the photos from the
   // <slug>.<root domain> address, the one verified in the TikTok app, with the options picked in the form
@@ -3005,7 +3003,7 @@ const POST_TO = { facebook: (c, p) => social.facebookPost(c, p), instagram: (c, 
   x: (c, p) => xposts.post(c, p),
 };
 // each network's caption limit, photo limit and whether it needs a photo or video (Bluesky and X check their own in lib/bluesky.js and lib/xposts.js)
-const POST_LIMITS = { facebook: { text: 63206, photos: 10 }, instagram: { text: 2200, photos: 10, needsPhoto: true }, google: { text: social.GOOGLE_POST_MAX, photos: 10, needsText: true },
+const POST_LIMITS = { facebook: { text: 63206, photos: 10 }, google: { text: social.GOOGLE_POST_MAX, photos: 10, needsText: true },
   ...Object.fromEntries(Object.entries(networks.NETWORKS).map(([k, n]) => [k, n.limits])) };
 const NET_NAMES = { facebook: 'Facebook', instagram: 'Instagram', google: 'Google', bluesky: 'Bluesky', x: 'X', ...Object.fromEntries(Object.entries(networks.NETWORKS).map(([k, n]) => [k, n.name])) };
 // ---------- the business's own automations (lib/business-automations.js) ----------
