@@ -925,7 +925,7 @@ function cancelFlowView(box) {
 ${step('sprint', '2a', '5-day setup plan', 'Asks for help getting set up. Sent to Messages → Contact requests for you to follow up.')}
 ${step('tour', '2b', 'Specialist tour', 'Asks for a 1-on-1 call. Sent to Messages → Contact requests.')}
 ${step('stay', '2c', 'Stay discount', 'A percentage off the next bills, applied in Stripe straight away (during a free trial, when they add a card).', num('stay.percent', c.stay.percent, 1, 100, 'Percent off') + num('stay.months', c.stay.months, 1, 24, 'Number of bills'))}
-${step('extend', '2d', 'Trial extension', 'Free trials only, once per account. Also shows on the Modify subscription menu.', num('extend.days', c.extend.days, 1, 60, 'Extra days') + num('extend.after', c.extend.after, 0, 60, 'Available from day'))}
+${step('extend', '2d', 'Trial extension', 'Free trials only (never paid or prepaid accounts), once per account, and only near the end of the trial. Also shows on the Modify subscription menu.', num('extend.days', c.extend.days, 1, 60, 'Extra days') + num('extend.within', c.extend.within, 1, 60, 'Offered when this many days or fewer are left'))}
 ${step('lose', 3, 'What they’ll lose', 'Their clients, quotes, jobs and invoices, and what stops when the account is paused.')}
 ${step('feedback', 4, 'Feedback', 'One thing we could have done better.')}
 <label class="switchline rt-in"><input type="checkbox" name="feedback.required" ${c.feedback.required ? 'checked' : ''}> Feedback is required (otherwise they can skip it)</label>
@@ -940,7 +940,7 @@ ${rtReasons.length < 8 ? '<button type="button" class="btn alt sm" data-act="rtA
   const f = $('#rtf', box); f._read = () => $$('.rt-reason', f).forEach((row) => { const r = rtReasons[row.dataset.i]; $$('[data-k]', row).forEach((i) => { r[i.dataset.k] = i.value; }); });
   f.addEventListener('submit', async (e) => {
     e.preventDefault(); f._read(); const ch = (n) => !!f.elements[n].checked; const v = (n) => f.elements[n].value;
-    const body = { sprint: { on: ch('sprint.on') }, tour: { on: ch('tour.on') }, stay: { on: ch('stay.on'), percent: v('stay.percent'), months: v('stay.months') }, extend: { on: ch('extend.on'), days: v('extend.days'), after: v('extend.after') },
+    const body = { sprint: { on: ch('sprint.on') }, tour: { on: ch('tour.on') }, stay: { on: ch('stay.on'), percent: v('stay.percent'), months: v('stay.months') }, extend: { on: ch('extend.on'), days: v('extend.days'), within: v('extend.within') },
       lose: { on: ch('lose.on') }, feedback: { on: ch('feedback.on'), required: ch('feedback.required') }, gift: { on: ch('gift.on'), percent: v('gift.percent') }, password: { on: ch('password.on') }, yearly: ch('yearly'), reasons: rtReasons };
     try { RT = await api('PUT', '/api/platform/retention', body); rtReasons = null; toast('Cancellation flow saved'); promoView($('#main')); } catch (x) { toast(x.message, true); }
   });

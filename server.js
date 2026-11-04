@@ -3454,7 +3454,8 @@ app.put('/api/account/billing/details', async (req, res) => {
 // applies the coupon now; during a free trial it's kept, with the terms of the day, and applied when the card is added.
 function retentionInfo(t) {
   const C = retention.config(); const b = t.billing || {}; const r = b.retention || {}; const trial = onTrial(t) && !(b.trial && b.trial.prepaid);
-  const start = Date.parse((b.trial && b.trial.startedAt) || t.createdAt || '') || Date.now(); const from = new Date(start + C.extend.after * 864e5);
+  // only a free trial (not a paid or prepaid account), and only when it has C.extend.within days or fewer left (t.expiresAt is its last day)
+  const end = Date.parse((t.expiresAt || '') + 'T00:00:00Z'); const from = new Date((Number.isFinite(end) ? end : Date.now()) - C.extend.within * 864e5);
   return { offer: r.offer || null, pending: !!r.pending, extendDays: C.extend.days, extendFrom: from.toISOString().slice(0, 10),
     canExtend: C.extend.on && trial && !(b.trial && b.trial.extended) && !b.subscriptionId && Date.now() >= from.getTime(), extended: !!(b.trial && b.trial.extended),
     config: (({ extend, sprint, tour, stay, lose, feedback, gift, password, yearly, reasons }) => ({ extend, sprint, tour, stay, lose, feedback, gift, password, yearly, reasons }))(C) };
@@ -3472,7 +3473,8 @@ app.post('/api/account/billing/retain', async (req, res) => {
   if (!ownerOnly(req, res)) return;
   const t = tenancy.current(); const b = t.billing || (t.billing = {}); const u = currentUser(req); const what = String((req.body && req.body.offer) || ''); const C = retention.config();
   if (what === 'extend') {
-    if (!retentionInfo(t).canExtend) return res.status(400).json({ error: b.trial && b.trial.extended ? 'Your trial has already been extended' : 'Your trial can’t be extended yet' });
+    const ri = retentionInfo(t);
+    if (!ri.canExtend) return res.status(400).json({ error: !onTrial(t) || (b.trial && b.trial.prepaid) ? 'Only free trials can be extended' : b.trial.extended ? 'Your trial has already been extended' : `Your trial can be extended from ${niceDate(ri.extendFrom)}, when it has ${C.extend.within} days or fewer left` });
     t.expiresAt = new Date(Date.parse(t.expiresAt) + C.extend.days * 864e5).toISOString().slice(0, 10); b.trial.extended = new Date().toISOString(); delete b.trial.cancelled; tenancy.savePlatform();
     retention.note(t, flowId(req), { outcome: 'extended' });
     tellPlatform(`Trial extended: ${t.name}`, `${u.name} (${u.email}) extended the free trial for ${t.name} by ${C.extend.days} days, to ${niceDate(t.expiresAt)}.`);
