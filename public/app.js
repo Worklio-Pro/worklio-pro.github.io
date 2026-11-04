@@ -54,6 +54,19 @@ function pausedMsg(pz) {
     platform: { title: 'Your account is paused', text: `${product} paused this account. Contact ${contact} to reopen it.`, btn: '' },
   }[pz.reason] || { title: 'Your account is paused', text: `Contact ${contact} to reopen it.`, btn: '' };
 }
+// a paused account: every page is blurred behind a box saying why, except the pages that still work (PAUSED_FREE), so an owner
+// or admin can still choose a plan in Account and billing. Everyone else is told to ask their owner or admin.
+function pausedOverlay(path, portal) {
+  let ov = $('#pausedOv'); const show = !portal && pausedNow() && !(isAdminMe() && PAUSED_FREE.includes(path));
+  document.body.classList.toggle('is-paused', show);
+  [...document.body.children].forEach((el) => { if (el.id !== 'pausedOv' && el.id !== 'toast' && el.tagName !== 'SCRIPT') el.inert = show; }); // nothing behind the box can be clicked or tabbed to
+  if (!show) { if (ov) ov.remove(); return; }
+  if (!ov) { ov = document.createElement('div'); ov.id = 'pausedOv'; ov.className = 'paused-ov'; ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-modal', 'true'); ov.setAttribute('aria-labelledby', 'pausedT'); document.body.appendChild(ov); }
+  const admin = isAdminMe(); const m = admin ? pausedMsg(company.account.paused) : { title: 'Your company’s account is paused', text: `You can’t use ${esc(company.name || 'your company')}’s account right now. Contact your company owner or admin to get it running again.`, btn: '' };
+  ov.innerHTML = `<div class="paused-box"><span class="paused-ic">${svgIcon(ICONS.shield, 26)}</span><h2 id="pausedT">${m.title}</h2><p>${m.text}</p>
+<div class="paused-acts">${m.btn ? `<a class="btn" href="/settings/billing" data-link>${m.btn}</a>` : ''}<button type="button" class="btn alt" data-act="logout">Log out</button></div></div>`;
+  const b = $('.btn', ov); if (b) b.focus();
+}
 function toPlans() {
   if (!isAdminMe()) return;
   closeModal(); if (curPath() !== '/settings/billing') navigate('/settings/billing');
@@ -512,6 +525,7 @@ async function render() {
   else if (!xb.hidden) { const owner = role() === 'owner'; const ce = company.account.contactEmail;
     xb.innerHTML = `<span><strong>${xp.daysLeft < 0 ? 'Your access has ended.' : xp.prepaid ? `Your prepaid months end ${esc(xp.when)}${xp.daysLeft > 1 ? ` (${xp.daysLeft} days left)` : ''}.` : xp.trial ? `Your free trial ends ${esc(xp.when)}${xp.daysLeft > 1 ? ` (${xp.daysLeft} days left)` : ''}.` : `Your access to ${esc(company.account.productName)} ends ${esc(xp.when)}${xp.daysLeft > 1 ? ` (${xp.daysLeft} days left)` : ''}.`}</strong> ${owner ? (xp.trial ? 'Add a card to keep your account.' : 'Choose a plan to keep your account.') : 'Ask your account owner to choose a plan.'}${ce ? ` Questions? <a href="mailto:${esc(ce)}">${esc(ce)}</a>` : ''}</span>${owner && path !== '/settings/billing' ? `<a class="btn sm" href="/settings/billing" data-link>${xp.trial ? 'Add a card' : 'Choose a plan'}</a>` : ''}`; }
   showInstallBar(portal);
+  pausedOverlay(path, portal);
   if (pausedNow() && !portal && !isAdminMe()) { document.title = 'Account paused'; main.innerHTML = `<div class="card paused-card">${svgIcon(ICONS.shield, 28)}<h1>Your company’s account is paused</h1><p class="muted">You can’t use ${esc(company.name || 'your company')}’s account right now. Contact your company owner or admin to get it running again.</p></div>`; return; }
   if (pausedNow() && !portal && isAdminMe() && /\/(new|edit|import)$/.test(path)) { toast('Your account is paused. Choose a plan to make changes again.', true); history.replaceState({}, '', '/settings/billing'); return render(); }
   if (page && !memberCan(path)) { document.title = 'No access'; main.innerHTML = `<div class="card"><h1>You don't have access to this page</h1><p class="muted">Your access level doesn't include this page. Ask the account owner if you need more access.</p><p><a href="/calendar" data-link>Go to the job calendar</a></p></div>`; return; }

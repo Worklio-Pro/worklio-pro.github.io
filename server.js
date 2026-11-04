@@ -3457,7 +3457,7 @@ function retentionInfo(t) {
   // only a free trial (not a paid or prepaid account), and only when it has C.extend.within days or fewer left (t.expiresAt is its last day)
   const end = Date.parse((t.expiresAt || '') + 'T00:00:00Z'); const from = new Date((Number.isFinite(end) ? end : Date.now()) - C.extend.within * 864e5);
   return { offer: r.offer || null, pending: !!r.pending, extendDays: C.extend.days, extendFrom: from.toISOString().slice(0, 10),
-    canExtend: C.extend.on && trial && !(b.trial && b.trial.extended) && !b.subscriptionId && Date.now() >= from.getTime(), extended: !!(b.trial && b.trial.extended),
+    canExtend: C.extend.on && trial && t.status === 'active' && (t.expiresAt || '') >= iso(new Date()) && !(b.trial && b.trial.extended) && !b.subscriptionId && Date.now() >= from.getTime(), // an ended (paused) trial can’t be extended extended: !!(b.trial && b.trial.extended),
     config: (({ extend, sprint, tour, stay, lose, feedback, gift, password, yearly, reasons }) => ({ extend, sprint, tour, stay, lose, feedback, gift, password, yearly, reasons }))(C) };
 }
 const flowId = (req) => String((req.body && req.body.flowId) || '');
@@ -3471,6 +3471,7 @@ app.post('/api/account/billing/flow', (req, res) => {
 });
 app.post('/api/account/billing/retain', async (req, res) => {
   if (!ownerOnly(req, res)) return;
+  if (isPaused()) return res.status(403).json({ error: 'Your account is paused. Choose a plan to make changes again.', paused: true }); // offers are only for an account that’s still running
   const t = tenancy.current(); const b = t.billing || (t.billing = {}); const u = currentUser(req); const what = String((req.body && req.body.offer) || ''); const C = retention.config();
   if (what === 'extend') {
     const ri = retentionInfo(t);
