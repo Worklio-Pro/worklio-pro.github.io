@@ -892,7 +892,7 @@ function abEditor(main, a) {
   const tags = AB.tags.length ? `<div class="ab-checks"><span>Only clients tagged</span>${AB.tags.map((g) => `<label><input type="checkbox" name="tags" value="${esc(g)}" ${(a.tags || []).includes(g) ? 'checked' : ''}> ${esc(g)}</label>`).join('')}</div>` : '';
   main.innerHTML = `<div class="head wf-head"><div class="wf-title"><a class="back" href="/automations" data-link>← Automations</a><input class="wf-name" name="name" form="abf" maxlength="80" required placeholder="Name this automation" value="${esc(a.name)}" aria-label="Automation name"><p class="sub" id="abState">${a.id ? '' : 'Save it first. You can activate it after that.'}</p></div><div class="actions">${a.id ? '<button type="button" class="btn alt" id="abDelete">Delete</button><button type="button" class="btn alt" id="abToggle"></button>' : ''}<button class="btn" type="submit" form="abf">Save</button></div></div>
 <form id="abf" class="wf">
-<div class="wf-canvas"><div class="wf-tools"><button type="button" class="btn alt sm" id="abPreview">Who would get this?</button><button type="button" class="btn alt sm" id="abTest">Email me a test</button></div><div class="wf-flow" id="wfFlow"></div></div>
+<div class="wf-canvas"><div class="wf-tools"><button type="button" class="btn alt sm" id="abPreview">Who would get this?</button><button type="button" class="btn alt sm" id="abTest">Email me a test</button></div><div class="wf-scroll" id="wfScroll"><div class="wf-flow" id="wfFlow"></div></div><div class="wf-zoom" role="group" aria-label="Zoom"><button type="button" data-z="out" title="Zoom out" aria-label="Zoom out">−</button><button type="button" data-z="reset" id="wfZl" title="Back to 100%">100%</button><button type="button" data-z="in" title="Zoom in" aria-label="Zoom in">+</button><button type="button" data-z="fit" title="Fit to screen" aria-label="Fit to screen">${abIco('<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>', 15)}</button></div></div>
 <div class="wf-scrim" id="wfScrim"></div>
 <aside class="wf-panel" id="wfPanel" aria-label="Step settings">
 <div class="wf-ph"><span class="wf-ic" id="wfIc"></span><div class="wf-pt"><small id="wfKind"></small><h3 id="wfTitle"></h3></div><button type="button" class="wf-x" id="wfClose" aria-label="Close">×</button></div>
@@ -964,6 +964,12 @@ function abEditor(main, a) {
     draw();
   };
   const read = () => ({ id: a.id || '', name: f.elements.name.value, trigger: f.elements.trigger.value, days: f.elements.days.value, hour: f.elements.hour.value, tags: chosen('tags'), minAmount: $('#abMinW', f).hidden ? 0 : f.elements.minAmount.value, to: to(), channels: ch, subject: f.elements.subject.value, body: f.elements.body.value, smsBody: f.elements.smsBody.value });
+  // zoom, for a long flow: the buttons, or ctrl/⌘ + scroll on the canvas
+  const flow = $('#wfFlow', f); let zoom = 1;
+  const setZoom = (z) => { zoom = Math.round(Math.max(0.3, Math.min(1.5, z)) * 100) / 100; flow.style.zoom = zoom; $('#wfZl', f).textContent = `${Math.round(zoom * 100)}%`; };
+  const fit = () => { flow.style.zoom = 1; const sc = $('#wfScroll', f); setZoom(Math.min(1, (sc.clientHeight - 8) / flow.scrollHeight, (sc.clientWidth - 8) / flow.scrollWidth)); };
+  $('.wf-zoom', f).addEventListener('click', (e) => { const b = e.target.closest('[data-z]'); if (!b) return; const z = b.dataset.z; if (z === 'fit') fit(); else setZoom(z === 'reset' ? 1 : zoom + (z === 'in' ? 0.1 : -0.1)); });
+  $('#wfScroll', f).addEventListener('wheel', (e) => { if (!e.ctrlKey && !e.metaKey) return; e.preventDefault(); setZoom(zoom - Math.sign(e.deltaY) * 0.1); }, { passive: false });
   f.addEventListener('focusin', (e) => { if (['subject', 'body', 'smsBody'].includes(e.target.name)) last = e.target; });
   f.addEventListener('change', (e) => {
     if (e.target.name === 'to') ch = e.target.value === 'team' ? ['push', 'email'] : ['email'];
