@@ -2915,7 +2915,9 @@ const MS_IC = {
 const msI = (k, size = 20) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${MS_IC[k]}</svg>`;
 A.billModify = (d) => {
   const B = billingData; const T = B.trial; const sub = B.subscription; const ending = sub && sub.cancelAtPeriodEnd; const R = B.retention || {}; const U = B.usage || {};
-  const mb = modal('Modify subscription', ''); mb.parentElement.classList.add('ms');
+  // the steps and offers, as set in Alpha → Pricing → Cancellation flow
+  const C = R.config || { extend: { on: true }, sprint: { on: true }, tour: { on: true }, stay: { on: true, percent: 15, months: 3 }, lose: { on: true }, feedback: { on: true, required: true }, gift: { on: true, percent: 50 }, password: { on: true }, yearly: false, reasons: [] };
+  const mb = modal('Modify subscription', ''); const box = mb.parentElement; box.classList.add('ms');
   const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`; const amt = (n) => money(n).replace(/\.00$/, '');
   const per = B.interval === 'year' ? 'year' : 'month'; const short = per === 'year' ? 'yr' : 'mo';
   const priceOf = (p) => p[per] || p.month || p.year || 0; const mine = B.plans.find((p) => p.id === B.plan.id);
@@ -2924,22 +2926,31 @@ A.billModify = (d) => {
   const up = others.filter((p) => priceOf(p) > cur).sort((a, b) => priceOf(a) - priceOf(b))[0]; const down = others.some((p) => priceOf(p) < cur);
   const canCancel = !!((sub && !ending) || (T && !T.cancelled && !T.prepaid));
   const endsOn = T ? T.endsAt : sub && sub.periodEnd; const first = esc(String((me && me.name) || '').split(/\s+/)[0] || '');
-  // a stay discount: once per account, on a monthly plan, with a paid subscription or a trial that will become one
-  const canDiscount = !R.offer && B.live && !!B.plan.charge && B.plan.charge.interval === 'month' && !B.prepaidUntil && canCancel;
-  const ctx = { reason: '', feedback: '' }; const hist = []; let step = d && d.step === 'reasons' ? 'reasons' : 'menu'; let more = false;
+  // a stay discount: once per account, with a paid subscription or a trial that will become one (monthly billing unless Alpha allows yearly)
+  const canDiscount = !R.offer && B.live && !!B.plan.charge && (B.plan.charge.interval === 'month' || C.yearly) && !B.prepaidUntil && canCancel;
+  const S = { pct: C.stay.percent, n: C.stay.months, g: C.gift.percent }; const bills = (w) => (S.n > 1 ? `${w} ${S.n} bills` : `${w} bill`);
+  const ctx = { reason: null, feedback: '' }; const hist = []; let step = d && d.step === 'reasons' ? 'reasons' : 'menu'; let more = false;
+  // the log in Alpha → Pricing → Cancellations: the reason, the offer shown, feedback and how it ended
+  const fid = Array.from(crypto.getRandomValues(new Uint8Array(6)), (x) => x.toString(16).padStart(2, '0')).join(''); let logged = false;
+  const log = (b) => api('POST', '/api/account/billing/flow', { flowId: fid, ...b }).catch(() => {});
+  new MutationObserver((_, o) => { if (!box.isConnected) { o.disconnect(); if (logged) log({ outcome: 'closed' }); } }).observe(document.body, { childList: true });
   const go = (s) => { hist.push(step); step = s; draw(); }; const back = () => { step = hist.pop() || 'menu'; draw(); };
+  // after the offer: what pauses, feedback, the parting gift, then confirming (each one Alpha can turn off)
+  const seq = [C.lose.on && 'lose', C.feedback.on && 'feedback', C.gift.on && canDiscount && 'gift', 'confirm'].filter(Boolean);
+  const nextAfter = (s) => seq[seq.indexOf(s) + 1] || seq[0];
   const xBtn = `<button type="button" class="ms-x" data-act="closeModal" aria-label="Close">${msI('x', 20)}</button>`;
   const head = () => `<div class="ms-top"><button type="button" class="ms-back" data-ms="back">${msI('back', 18)} Back</button>${xBtn}</div>`;
   const banner = (tone, icon, title, text, extra = '') => `<div class="ms-ban ${tone}"><span class="ms-bi">${msI(icon)}</span><div><strong>${title}</strong>${text ? `<p>${text}</p>` : ''}${extra}</div></div>`;
   const rows = (items, tone = '') => `<div class="ms-rows ${tone}">${items.map(([i, t, s]) => `<div class="ms-row"><span class="ms-ri">${msI(i, 18)}</span><div>${t}${s ? `<small>${s}</small>` : ''}</div></div>`).join('')}</div>`;
-  const cta = (label, act, alt) => `<button type="button" class="btn ms-cta" data-ms="${act}">${label}</button><button type="button" class="ms-skip" data-ms="${alt[1]}">${alt[0]}</button>`;
+  const cta = (label, act, alt) => `<button type="button" class="btn ms-cta" data-ms="${act}">${label}</button><button type="button" class="ms-skip" data-ms="next">${alt}</button>`;
   const opt = (tone, icon, title, text, act, dis) => `<button type="button" class="ms-opt ${tone}${dis ? ' dis' : ''}" ${dis ? 'disabled' : `data-ms="${act}"`}><span class="ms-oi">${msI(icon)}</span><span class="ms-ot"><strong>${title}</strong><small>${text}</small></span><span class="ms-chev">${msI('next', 18)}</span></button>`;
-  // where each reason leads before the cancel steps
-  const offerFor = (r) => (r === 'price' && canDiscount ? 'stay15' : r === 'exploring' && R.canExtend ? 'extend' : r === 'setup' ? 'sprint' : 'tour');
-  const WHY = { setup: 'Struggling to set things up or get results', feature: 'A tool or feature isn’t working as expected', price: 'The price doesn’t fit the budget', exploring: 'Just exploring, not ready to commit' };
-  const ask = async (el, subject, message) => {
+  // the offer a reason leads to; if it isn't available here, the tour (when it's on), otherwise straight on
+  const avail = { sprint: C.sprint.on, tour: C.tour.on, stay: C.stay.on && canDiscount, extend: !!R.canExtend };
+  const offerFor = (r) => (avail[r.offer] ? r.offer : r.offer !== 'none' && avail.tour ? 'tour' : null);
+  const REASON_ICONS = ['frown', 'gear', 'wallet', 'compass', 'msg', 'shield', 'spark', 'list'];
+  const ask = async (el, subject, message, outcome) => {
     el.disabled = true;
-    try { await api('POST', '/api/support', { email: me.email, subject, message, topic: 'Account and billing', page: location.href }); closeModal(); toast('Thanks! We’ll email you within one business day to set it up.'); }
+    try { await api('POST', '/api/support', { email: me.email, subject, message, topic: 'Account and billing', page: location.href }); await log({ outcome }); closeModal(); toast('Thanks! We’ll email you within one business day to set it up.'); }
     catch (err) { toast(err.message, true); el.disabled = false; }
   };
   const V = {
@@ -2947,73 +2958,72 @@ A.billModify = (d) => {
 <h2 class="ms-h">Modify subscription for ${esc(company.name || 'your business')}</h2><p class="ms-sub">Choose how you’d like to update your subscription.</p>
 ${up ? `<div class="ms-opt ms-up${B.prepaidUntil ? ' dis' : ''}"><span class="ms-oi">${msI('rocket')}</span><span class="ms-ot"><strong>Upgrade to ${esc(up.name)}</strong><b class="ms-price">${amt(priceOf(up))} / ${up[per] ? per : up.month ? 'month' : 'year'}</b>${B.prepaidUntil ? `<small>Prepaid until ${fmtDate(B.prepaidUntil)}</small>` : ''}</span>${B.prepaidUntil ? '' : '<button type="button" class="btn" data-ms="plans">Upgrade</button>'}</div>`
     : `<div class="ms-opt ms-up dis"><span class="ms-oi">${msI('rocket')}</span><span class="ms-ot"><strong>Upgrade your current plan</strong><small>You’re already on the top plan</small></span></div>`}
-${T && !T.prepaid ? opt('', 'hourglass', 'Trial extension', R.canExtend ? `Get ${R.extendDays} more days to try everything` : R.extended ? 'Your trial has already been extended' : `You can extend your trial from ${fmtDate(R.extendFrom)}`, 'extend', !R.canExtend) : ''}
+${T && !T.prepaid && C.extend.on ? opt('', 'hourglass', 'Trial extension', R.canExtend ? `Get ${R.extendDays} more days to try everything` : R.extended ? 'Your trial has already been extended' : `You can extend your trial from ${fmtDate(R.extendFrom)}`, 'extend', !R.canExtend) : ''}
 ${more ? opt('warn', 'down', 'Downgrade plan', B.prepaidUntil ? `Prepaid until ${fmtDate(B.prepaidUntil)}` : down ? 'Move to a smaller plan' : 'You are already on the lowest plan', 'plans', !down || !!B.prepaidUntil)
     + opt('bad', 'x', 'Cancel plan', canCancel ? `I still want to cancel my ${T ? 'free trial' : 'subscription'}` : ending ? 'Your subscription is already cancelled' : T && T.cancelled ? 'Your trial is already cancelled' : T && T.prepaid ? `Prepaid until ${fmtDate(T.endsAt)}. Contact us to close the account.` : 'There’s no subscription to cancel', 'reasons', !canCancel) : ''}
 <button type="button" class="ms-more" data-ms="more" aria-expanded="${more}">${more ? 'Collapse' : 'Show more'} <span class="${more ? 'flip' : ''}">${msI('chev', 16)}</span></button>`,
     reasons: () => `<div class="ms-top"><h2 class="ms-h">${first ? `${first}, we’re` : 'We’re'} sorry we haven’t hit the mark yet.</h2>${xBtn}</div>
 <p class="ms-sub">We know it’s frustrating when things don’t work as planned. Before you go, tell us what’s standing in your way and let us help fix it.</p>
-<div class="ms-list">${[['setup', 'frown', 'I’m struggling to set things up or get results.', 'I want to get going, but setting it up is holding me back.'],
-    ['feature', 'gear', 'A tool or feature isn’t working the way I expected.', 'Something isn’t doing what I need for my business.'],
-    ['price', 'wallet', 'The price doesn’t fit my budget right now.', 'I’m not ready for this cost until I see more results.'],
-    ['exploring', 'compass', 'I’m just exploring and not ready to commit.', 'I want more time to decide.']].map(([k, i, t, s]) => opt('', i, t, s, 'why:' + k)).join('')}</div>
+<div class="ms-list">${C.reasons.map((r, i) => opt('', REASON_ICONS[i % REASON_ICONS.length], esc(r.title), esc(r.text || ''), 'why:' + r.id)).join('')}</div>
 <p class="ms-note">${msI('shield', 16)} ${T ? `Your trial ends on ${fmtDate(T.endsAt)}.${B.card ? ' You won’t be charged before then.' : ' Nothing is charged without a card on file.'}` : sub ? `Your next bill is on ${fmtDate(sub.periodEnd)}.` : ''}</p>
 <button type="button" class="ms-stay" data-act="closeModal">${T ? 'Stay on my trial and keep building, no changes made' : 'Keep my subscription, no changes made'}</button>`,
     sprint: () => `${head()}${banner('info', 'cap', 'Let’s get you up and running in 5 days.', 'Not sure it’s for you yet? Follow this short plan with our help and see real results before you decide.')}
 <p class="ms-lbl">What we’ll set up together</p>${rows([['list', 'Add your services and price list.', 'So quotes and invoices fill themselves in.'], ['file', 'Send your first quote.', 'Clients approve it online and you can take a deposit.'],
     ['calendar', 'Schedule jobs for you and your team.', 'Everyone sees their day on their phone.'], ['dollar', 'Get paid online.', 'Turn on card payments so invoices get paid faster.'], ['zap', 'Follow up automatically.', 'Reminders for quotes, visits and overdue invoices.']], 'tint')}
-<div class="ms-stat">${msI('trend', 18)} We’ll email you within one business day to get started.</div>${cta('Start my 5-day setup plan', 'doSprint', ['I don’t need help setting up', 'lose'])}`,
+<div class="ms-stat">${msI('trend', 18)} We’ll email you within one business day to get started.</div>${cta('Start my 5-day setup plan', 'doSprint', 'I don’t need help setting up')}`,
     tour: () => `${head()}${banner('info', 'video', 'Get a personal tour of what matters to you.', 'Not sure where to start? We’ll connect you with a specialist who can show you the features that fit your business in a quick call.')}
 <p class="ms-lbl">What’s included</p>${rows([['check', 'A walkthrough of the app, set up for your business.'], ['check', 'Live Q&amp;A: ask anything.'], ['check', 'Features you might have missed.'], ['gift', 'Help picking the plan that fits your business.']])}
-${cta('Talk to a specialist 1-on-1', 'doTour', ['I don’t need a tour', 'lose'])}`,
+${cta('Talk to a specialist 1-on-1', 'doTour', 'I don’t need a tour')}`,
     extend: () => `${head()}${banner('info', 'hourglass', `Take ${R.extendDays} more days to decide.`, `Your trial ends on ${fmtDate(T.endsAt)}. Extend it once and keep using everything, free, until ${fmtDate(new Date(Date.parse(T.endsAt) + R.extendDays * 864e5).toISOString().slice(0, 10))}.`)}
 <p class="ms-lbl">How it works</p>${rows([['cal', `${R.extendDays} more days added to your trial right away.`], ['card', 'Nothing is charged for the extra days.'], ['spark', 'Keep building with every feature of your plan.']])}
-${cta(`Extend my trial by ${R.extendDays} days`, 'doExtend', ['I don’t need more time', 'lose'])}`,
-    stay15: () => `${head()}${banner('info', 'percent', `Let us invest in your ${T ? 'first' : 'next'} 3 months.`, `Results take time, so we’ll split the cost. Take 15% off your ${T ? 'first' : 'next'} 3 bills so you can focus on growing, not overhead.`, `<span class="ms-pill">${msI('tag', 14)} ${amt(Math.round(cur * 85) / 100)}/${short} instead of ${amt(cur)}</span>`)}
-<p class="ms-lbl">How it works</p>${rows([['percent', `<strong>15% off</strong> your ${T ? 'first' : 'next'} 3 bills, applied automatically.`], ['card', 'No coupon code needed: the discount shows on your bill.'], ['spark', 'Stay and save while you grow your business.']])}
-${cta('Keep my 15% discount', 'doStay15', ['I don’t want a discount', 'lose'])}`,
+${cta(`Extend my trial by ${R.extendDays} days`, 'doExtend', 'I don’t need more time')}`,
+    stay: () => `${head()}${banner('info', 'percent', S.n > 1 ? `Let us invest in your ${T ? 'first' : 'next'} ${S.n} months.` : 'Let us take some of the cost.', `Results take time, so we’ll split the cost. Take ${S.pct}% off your ${bills(T ? 'first' : 'next')} so you can focus on growing, not overhead.`, `<span class="ms-pill">${msI('tag', 14)} ${amt(Math.round(cur * (100 - S.pct)) / 100)}/${short} instead of ${amt(cur)}</span>`)}
+<p class="ms-lbl">How it works</p>${rows([['percent', `<strong>${S.pct}% off</strong> your ${bills(T ? 'first' : 'next')}, applied automatically.`], ['card', 'No coupon code needed: the discount shows on your bill.'], ['spark', 'Stay and save while you grow your business.']])}
+${cta(`Keep my ${S.pct}% discount`, 'doStay', 'I don’t want a discount')}`,
     lose: () => {
       const L = [`Your ${plural(U.clients || 0, 'client')} and their history.`, `${plural(U.quotes || 0, 'quote')}, ${plural(U.jobs || 0, 'job')} and ${plural(U.invoices || 0, 'invoice')}.`, 'Your schedule and calendar.', `Team logins (${U.logins || 1}): nobody can log in.`,
         'Client portal: clients can’t open their quotes or invoices, or pay online.', 'Automations, reminders and follow-ups stop.', 'Review requests and social posts stop.', 'Your business page and online requests.'];
       return `${head()}${banner('bad', 'alert', 'You’ll lose access to everything you’ve built.', `When your ${T ? 'trial' : 'plan'} ends on ${fmtDate(endsOn)}, the account is paused: you and your team can’t log in, and clients can’t open their quotes, invoices or portal. Your data is kept, so you can come back by choosing a plan.`)}
 <div class="ms-lose">${L.map((l, i) => `<div class="ms-li${i >= 4 ? ' extra' : ''}">${msI('x', 16)} <span>${esc(l)}</span></div>`).join('')}<button type="button" class="ms-more sm" data-ms="loseMore">View (${L.length - 4} more) <span>${msI('chev', 14)}</span></button></div>
-<button type="button" class="btn ms-cta" data-act="closeModal">Return to my account ${msI('undo', 16)}</button><button type="button" class="ms-skip" data-ms="feedback">I am sure I want to cancel</button>`;
+<button type="button" class="btn ms-cta" data-act="closeModal">Return to my account ${msI('undo', 16)}</button><button type="button" class="ms-skip" data-ms="next">I am sure I want to cancel</button>`;
     },
     feedback: () => `${head()}${banner('soft', 'msg', 'We value your voice.', `Before you go, could you tell us one thing we could have done better? Your feedback helps us build a better ${esc(B.productName || 'app')} for businesses like yours.`)}
 <textarea class="ms-ta" id="msFb" rows="7" maxlength="500" placeholder="Tell us what we could improve...">${esc(ctx.feedback)}</textarea>
-<button type="button" class="btn ms-cta" data-ms="fbGo" id="msFbGo" ${ctx.feedback.trim() ? '' : 'disabled'}>Submit feedback</button>`,
-    gift: () => `${head()}${banner('info', 'tag', 'Thank you for the feedback. Here’s a parting gift before you go.', `We’d like to offer you 50% off your ${T ? 'first' : 'next'} bill, so you can stay without the full cost.`, `<span class="ms-pill">${msI('tag', 14)} 50% off ${T ? 'first' : 'next'} bill</span>`)}
-<div class="ms-inv"><div class="ms-lbl" style="margin:0 0 10px">Upcoming bill preview</div><s class="muted">${amt(cur)}/${short}</s><div class="ms-big"><span><b>${amt(Math.round(cur * 50) / 100)}</b> /${short}</span><span class="ms-save">Save ${amt(cur - Math.round(cur * 50) / 100)}</span></div>
+<button type="button" class="btn ms-cta" data-ms="fbGo" id="msFbGo" ${ctx.feedback.trim() || !C.feedback.required ? '' : 'disabled'}>Submit feedback</button>${C.feedback.required ? '' : '<button type="button" class="ms-skip" data-ms="next">Skip</button>'}`,
+    gift: () => `${head()}${banner('info', 'tag', `${C.feedback.on ? 'Thank you for the feedback. ' : ''}Here’s a parting gift before you go.`, `We’d like to offer you ${S.g}% off your ${T ? 'first' : 'next'} bill, so you can stay without the full cost.`, `<span class="ms-pill">${msI('tag', 14)} ${S.g}% off ${T ? 'first' : 'next'} bill</span>`)}
+<div class="ms-inv"><div class="ms-lbl" style="margin:0 0 10px">Upcoming bill preview</div><s class="muted">${amt(cur)}/${short}</s><div class="ms-big"><span><b>${amt(Math.round(cur * (100 - S.g)) / 100)}</b> /${short}</span><span class="ms-save">Save ${amt(cur - Math.round(cur * (100 - S.g)) / 100)}</span></div>
 <div class="ms-ok"><i></i> Applied as soon as you claim it, no code needed</div></div>
-<p class="ms-lbl">How it works</p>${rows([['cal', `50% off your ${T ? 'first bill, when your trial ends' : 'next bill'}, applied automatically.`], ['card', 'No coupon code needed: the discount shows on your bill.'], ['spark', 'Stay and save while you grow your business.']])}
-${cta('Claim 50% off &amp; stay', 'doGift', ['No thanks, continue with cancellation', 'confirm'])}`,
-    confirm: () => `${head()}${banner('bad', 'alert', 'Confirm cancellation.', 'Enter your password to confirm cancellation.')}
+<p class="ms-lbl">How it works</p>${rows([['cal', `${S.g}% off your ${T ? 'first bill, when your trial ends' : 'next bill'}, applied automatically.`], ['card', 'No coupon code needed: the discount shows on your bill.'], ['spark', 'Stay and save while you grow your business.']])}
+${cta(`Claim ${S.g}% off &amp; stay`, 'doGift', 'No thanks, continue with cancellation')}`,
+    confirm: () => `${head()}${banner('bad', 'alert', 'Confirm cancellation.', C.password.on ? 'Enter your password to confirm cancellation.' : `Everything keeps working until your ${T ? 'trial' : 'subscription'} ends, and you can change your mind any time before then.`)}
 <div class="ms-warn">${msI('circleAlert', 18)} <span>Your ${T ? 'trial' : 'subscription'} ends on ${fmtDate(endsOn)}. After that, the account is paused${U.logins > 1 ? ' and your team can’t log in' : ''}.</span></div>
-<form id="msPw"><label class="ms-pwl">Password<span class="ms-pw"><input type="password" name="password" required autocomplete="current-password"><button type="button" data-ms="eye" aria-label="Show password">${msI('eye', 18)}</button></span></label>
+<form id="msPw">${C.password.on ? `<label class="ms-pwl">Password<span class="ms-pw"><input type="password" name="password" required autocomplete="current-password"><button type="button" data-ms="eye" aria-label="Show password">${msI('eye', 18)}</button></span></label>` : ''}
 <p class="ms-tos">By confirming, you agree to our <a href="/terms" target="_blank" rel="noopener">terms of service</a>.</p>
 <button class="btn danger ms-cta">Confirm cancellation</button></form>`,
   };
   const draw = () => {
-    mb.innerHTML = V[step](); mb.parentElement.scrollIntoView({ block: 'start' });
-    if (step === 'feedback') { const ta = $('#msFb', mb); ta.focus(); ta.addEventListener('input', () => { ctx.feedback = ta.value; $('#msFbGo', mb).disabled = !ta.value.trim(); }); }
+    mb.innerHTML = V[step](); box.scrollIntoView({ block: 'start' });
+    if (step === 'gift') log({ gift: true });
+    if (step === 'feedback') { const ta = $('#msFb', mb); ta.focus(); ta.addEventListener('input', () => { ctx.feedback = ta.value; $('#msFbGo', mb).disabled = C.feedback.required && !ta.value.trim(); }); }
     if (step === 'confirm') {
-      const f = $('#msPw', mb); f.password.focus();
-      f.addEventListener('submit', (e) => { e.preventDefault(); billGo('/api/account/billing/cancel', { password: f.password.value, reason: [WHY[ctx.reason], ctx.feedback.trim()].filter(Boolean).join(' — ') }, $('.btn.danger', f)); });
+      const f = $('#msPw', mb); if (f.password) f.password.focus();
+      f.addEventListener('submit', (e) => { e.preventDefault(); billGo('/api/account/billing/cancel', { flowId: fid, password: f.password ? f.password.value : '', reason: [ctx.reason && ctx.reason.title, ctx.feedback.trim()].filter(Boolean).join(' — ') }, $('.btn.danger', f)); });
     }
   };
   mb.addEventListener('click', (e) => {
     const b = e.target.closest('[data-ms]'); if (!b) return; const a = b.dataset.ms;
     if (a === 'back') back(); else if (a === 'more') { more = !more; draw(); } else if (a === 'plans') A.billPlans();
-    else if (a.startsWith('why:')) { ctx.reason = a.slice(4); go(offerFor(ctx.reason)); }
-    else if (a === 'loseMore') { const box = b.parentElement; const open = box.classList.toggle('open'); b.innerHTML = `${open ? 'View less' : `View (${$$('.extra', box).length} more)`} <span class="${open ? 'flip' : ''}">${msI('chev', 14)}</span>`; }
-    else if (a === 'fbGo') go(canDiscount ? 'gift' : 'confirm');
+    else if (a.startsWith('why:')) { ctx.reason = C.reasons.find((r) => r.id === a.slice(4)); const o = offerFor(ctx.reason); logged = true; log({ reason: ctx.reason.id, offer: o || 'none' }); go(o || seq[0]); }
+    else if (a === 'next') go(nextAfter(step));
+    else if (a === 'loseMore') { const el = b.parentElement; const open = el.classList.toggle('open'); b.innerHTML = `${open ? 'View less' : `View (${$$('.extra', el).length} more)`} <span class="${open ? 'flip' : ''}">${msI('chev', 14)}</span>`; }
+    else if (a === 'fbGo') { if (logged && ctx.feedback.trim()) log({ feedback: ctx.feedback.trim() }); go(nextAfter('feedback')); }
     else if (a === 'eye') { const i = b.previousElementSibling; const show = i.type === 'password'; i.type = show ? 'text' : 'password'; b.innerHTML = msI(show ? 'eyeOff' : 'eye', 18); b.setAttribute('aria-label', show ? 'Hide password' : 'Show password'); }
-    else if (a === 'doExtend') billGo('/api/account/billing/retain', { offer: 'extend' }, b);
-    else if (a === 'doStay15') billGo('/api/account/billing/retain', { offer: 'stay15' }, b);
-    else if (a === 'doGift') billGo('/api/account/billing/retain', { offer: 'parting50' }, b);
-    else if (a === 'doSprint') ask(b, '5-day setup plan', `${me.name} asked for the 5-day setup plan instead of cancelling${T ? ' their free trial' : ''}.`);
-    else if (a === 'doTour') ask(b, 'Specialist tour', `${me.name} asked for a 1-on-1 tour with a specialist instead of cancelling${T ? ' their free trial' : ''}. Reason given: ${WHY[ctx.reason] || 'none'}.`);
-    else go(a); // 'reasons', 'extend', 'lose', 'feedback', 'confirm'
+    else if (a === 'doExtend') billGo('/api/account/billing/retain', { offer: 'extend', flowId: fid }, b);
+    else if (a === 'doStay') billGo('/api/account/billing/retain', { offer: 'stay', flowId: fid }, b);
+    else if (a === 'doGift') billGo('/api/account/billing/retain', { offer: 'gift', flowId: fid }, b);
+    else if (a === 'doSprint') ask(b, '5-day setup plan', `${me.name} asked for the 5-day setup plan instead of cancelling${T ? ' their free trial' : ''}.`, 'sprint');
+    else if (a === 'doTour') ask(b, 'Specialist tour', `${me.name} asked for a 1-on-1 tour with a specialist instead of cancelling${T ? ' their free trial' : ''}. Reason given: ${(ctx.reason && ctx.reason.title) || 'none'}`, 'tour');
+    else go(a); // 'reasons', 'extend' (from the menu)
   });
   draw();
 };

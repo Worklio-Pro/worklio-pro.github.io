@@ -17,6 +17,7 @@ const brandLib = require('./lib/brand');
 const referrals = require('./lib/referrals');
 const supporters = require('./lib/supporters');
 const discountsLib = require('./lib/discounts');
+const retention = require('./lib/retention');
 const seo = require('./lib/seo');
 const maintenance = require('./lib/maintenance');
 const stripeLib = require('./lib/stripe');
@@ -3365,7 +3366,7 @@ async function subscribeSession(t, u, to, c, { trial = onTrial(t) } = {}) {
     success_url: `${baseUrl()}/settings/billing?checkout={CHECKOUT_SESSION_ID}`, cancel_url: `${baseUrl()}/settings/billing` };
   if (b.customerId) p.customer = b.customerId; else p.customer_email = u.email;
   Object.assign(p, referrals.bankedTrial(t)); // free months earned by referring other businesses
-  if (b.retention && b.retention.pending && RETENTION_OFFERS[b.retention.offer]) p['discounts[0][coupon]'] = await discountsLib.stripeCoupon(stripeLib.platformKey(), RETENTION_OFFERS[b.retention.offer]); // a stay offer claimed during the trial
+  if (b.retention && b.retention.pending && b.retention.coupon) p['discounts[0][coupon]'] = await discountsLib.stripeCoupon(stripeLib.platformKey(), b.retention.coupon); // a stay offer claimed during the trial
   if (trial) {
     const end = Math.max(Math.floor((Date.parse(t.expiresAt) + 864e5) / 1000), Math.ceil(Date.now() / 1000) + 49 * 3600);
     if (!(Number(p['subscription_data[trial_end]']) > end)) p['subscription_data[trial_end]'] = String(end);
@@ -3448,50 +3449,60 @@ app.put('/api/account/billing/details', async (req, res) => {
 });
 // cancel at the end of the paid period (the account keeps working until then), or undo that
 // ---------- Modify subscription (Account and billing): the offers made before cancelling ----------
-// One stay offer per account: 15% off the next 3 bills (the price is the reason) or 50% off the next bill (the parting gift).
-// On a paid subscription Stripe applies the coupon now; during a free trial it's kept and applied when the card is added.
-const RETENTION_OFFERS = { stay15: { id: 'retention-stay15', code: 'STAY15', type: 'percent', value: 15, duration: 'repeating', months: 3 }, parting50: { id: 'retention-parting50', code: 'STAY50', type: 'percent', value: 50, duration: 'once', months: 0 } };
-const TRIAL_EXTEND_DAYS = 7; const TRIAL_EXTEND_AFTER = 5; // a free trial can be extended once, from its 5th day
+// The steps, the offers' terms and the reasons are set in Alpha → Pricing → Cancellation flow (lib/retention.js), which also logs each flow.
+// One stay discount per account: the stay offer (when the reason leads to it) or the parting gift. On a paid subscription Stripe
+// applies the coupon now; during a free trial it's kept, with the terms of the day, and applied when the card is added.
 function retentionInfo(t) {
-  const b = t.billing || {}; const r = b.retention || {}; const trial = onTrial(t) && !(b.trial && b.trial.prepaid);
-  const start = Date.parse((b.trial && b.trial.startedAt) || t.createdAt || '') || Date.now(); const from = new Date(start + TRIAL_EXTEND_AFTER * 864e5);
-  return { offer: r.offer || null, pending: !!r.pending, extendDays: TRIAL_EXTEND_DAYS, extendFrom: from.toISOString().slice(0, 10),
-    canExtend: trial && !(b.trial && b.trial.extended) && !b.subscriptionId && Date.now() >= from.getTime(), extended: !!(b.trial && b.trial.extended) };
+  const C = retention.config(); const b = t.billing || {}; const r = b.retention || {}; const trial = onTrial(t) && !(b.trial && b.trial.prepaid);
+  const start = Date.parse((b.trial && b.trial.startedAt) || t.createdAt || '') || Date.now(); const from = new Date(start + C.extend.after * 864e5);
+  return { offer: r.offer || null, pending: !!r.pending, extendDays: C.extend.days, extendFrom: from.toISOString().slice(0, 10),
+    canExtend: C.extend.on && trial && !(b.trial && b.trial.extended) && !b.subscriptionId && Date.now() >= from.getTime(), extended: !!(b.trial && b.trial.extended),
+    config: (({ extend, sprint, tour, stay, lose, feedback, gift, password, yearly, reasons }) => ({ extend, sprint, tour, stay, lose, feedback, gift, password, yearly, reasons }))(C) };
 }
+const flowId = (req) => String((req.body && req.body.flowId) || '');
+// the popup reports the reason picked, the offer shown, feedback, and a setup plan, tour or closing the popup without cancelling
+app.post('/api/account/billing/flow', (req, res) => {
+  if (!ownerOnly(req, res)) return;
+  const t = tenancy.current(); const u = currentUser(req); const b = req.body || {};
+  if (b.reason) retention.start(t, u, { id: b.flowId, reason: b.reason }, { plan: tenancy.planOf(t).name, trial: onTrial(t) });
+  retention.note(t, b.flowId, { offer: b.offer, gift: b.gift, ...('feedback' in b ? { feedback: b.feedback } : {}), outcome: ['sprint', 'tour', 'closed'].includes(b.outcome) ? b.outcome : '' });
+  res.json({ ok: true });
+});
 app.post('/api/account/billing/retain', async (req, res) => {
   if (!ownerOnly(req, res)) return;
-  const t = tenancy.current(); const b = t.billing || (t.billing = {}); const u = currentUser(req); const what = String((req.body && req.body.offer) || '');
+  const t = tenancy.current(); const b = t.billing || (t.billing = {}); const u = currentUser(req); const what = String((req.body && req.body.offer) || ''); const C = retention.config();
   if (what === 'extend') {
     if (!retentionInfo(t).canExtend) return res.status(400).json({ error: b.trial && b.trial.extended ? 'Your trial has already been extended' : 'Your trial can’t be extended yet' });
-    t.expiresAt = new Date(Date.parse(t.expiresAt) + TRIAL_EXTEND_DAYS * 864e5).toISOString().slice(0, 10); b.trial.extended = new Date().toISOString(); delete b.trial.cancelled; tenancy.savePlatform();
-    tellPlatform(`Trial extended: ${t.name}`, `${u.name} (${u.email}) extended the free trial for ${t.name} by ${TRIAL_EXTEND_DAYS} days, to ${niceDate(t.expiresAt)}.`);
+    t.expiresAt = new Date(Date.parse(t.expiresAt) + C.extend.days * 864e5).toISOString().slice(0, 10); b.trial.extended = new Date().toISOString(); delete b.trial.cancelled; tenancy.savePlatform();
+    retention.note(t, flowId(req), { outcome: 'extended' });
+    tellPlatform(`Trial extended: ${t.name}`, `${u.name} (${u.email}) extended the free trial for ${t.name} by ${C.extend.days} days, to ${niceDate(t.expiresAt)}.`);
     return res.json({ ok: true, message: `Your trial now runs until ${niceDate(t.expiresAt)}` });
   }
-  const o = RETENTION_OFFERS[what]; if (!o) return res.status(400).json({ error: 'Unknown offer' });
+  if (!['stay', 'gift'].includes(what) || !C[what].on) return res.status(400).json({ error: 'That offer isn’t available' });
+  const o = retention.coupon(what);
   if (b.retention && b.retention.offer) return res.status(400).json({ error: 'You’ve already claimed a discount' });
   if (!stripeLib.platformKey()) return res.status(400).json({ error: 'Card payments aren’t set up on this server' });
   const pc = stripeLib.planCharge(tenancy.planOf(t), b.interval); if (!pc) return res.status(400).json({ error: 'Your plan has nothing to discount' });
-  if (pc.interval !== 'month') return res.status(400).json({ error: 'Stay discounts are for monthly billing' });
-  const label = o.duration === 'once' ? `${o.value}% off your next bill` : `${o.value}% off your next ${o.months} bills`;
+  if (pc.interval !== 'month' && !C.yearly) return res.status(400).json({ error: 'Stay discounts are for monthly billing' });
   try {
     const sub = await liveSubscription(b);
     if (sub) await billingCall('POST', `subscriptions/${sub.id}`, { 'discounts[0][coupon]': await discountsLib.stripeCoupon(stripeLib.platformKey(), o), ...(sub.cancel_at_period_end ? { cancel_at_period_end: 'false' } : {}) });
     else if (!onTrial(t)) return res.status(400).json({ error: 'This account doesn’t have a subscription to discount' });
-    b.retention = { offer: what, at: new Date().toISOString(), pending: !sub }; if (!sub && b.trial) delete b.trial.cancelled; if (sub) { delete b.endsAt; delete b.pendingPlanId; }
-    tenancy.savePlatform();
-    tellPlatform(`Stay offer claimed: ${t.name}`, `${u.name} (${u.email}) claimed ${label} on the ${tenancy.planOf(t).name} plan for ${t.name} instead of cancelling.`);
-    res.json({ ok: true, message: sub ? `Done: ${label}` : `Done: ${label}, applied when you add a card` });
+    b.retention = { offer: what, coupon: o, at: new Date().toISOString(), pending: !sub }; if (!sub && b.trial) delete b.trial.cancelled; if (sub) { delete b.endsAt; delete b.pendingPlanId; }
+    tenancy.savePlatform(); retention.note(t, flowId(req), { outcome: what });
+    tellPlatform(`Stay offer claimed: ${t.name}`, `${u.name} (${u.email}) claimed ${o.label} on the ${tenancy.planOf(t).name} plan for ${t.name} instead of cancelling.`);
+    res.json({ ok: true, message: sub ? `Done: ${o.label}` : `Done: ${o.label}, applied when you add a card` });
   } catch (e) { stripeError(res, 'apply the discount', e); }
 });
 app.post('/api/account/billing/cancel', async (req, res) => {
   if (!ownerOnly(req, res)) return;
   const t = tenancy.current(); const b = t.billing || {}; const undo = !!(req.body && req.body.undo); const u = currentUser(req);
-  if (!undo && u.passwordHash) { // cancelling is confirmed with the owner's password (Modify subscription → Cancel plan)
+  if (!undo && u.passwordHash && retention.config().password.on) { // cancelling is confirmed with the owner's password (Modify subscription → Cancel plan; Alpha can turn it off)
     const key = 'pw|' + u.id; if (tooMany(key)) return res.status(429).json({ error: 'Too many attempts. Try again in 15 minutes.' });
     if (!checkPassword(String((req.body && req.body.password) || ''), u)) { recordFailure(key); return res.status(400).json({ error: 'That password is incorrect' }); }
   }
   if (onTrial(t)) { // free trial, no card: it keeps working until the trial's last day, then pauses (undo keeps the trial going)
-    if (undo) delete b.trial.cancelled; else b.trial.cancelled = new Date().toISOString(); tenancy.savePlatform();
+    if (undo) delete b.trial.cancelled; else { b.trial.cancelled = new Date().toISOString(); retention.note(t, flowId(req), { outcome: 'cancelled' }); } tenancy.savePlatform();
     tellPlatform(`${undo ? 'Trial cancellation withdrawn' : 'Trial cancelled'}: ${t.name}`, `${u.name} (${u.email}) ${undo ? 'kept the free trial' : `cancelled the free trial for ${t.name}. It keeps working until ${niceDate(t.expiresAt)}, then it’s paused`}.${!undo && req.body && req.body.reason ? `\n\nReason: ${req.body.reason}` : ''}`);
     return res.json({ ok: true, message: undo ? 'Your free trial continues' : `Your trial is cancelled. You can use ${tenancy.platform().settings.productName} until ${niceDate(t.expiresAt)}.` });
   }
@@ -3499,7 +3510,7 @@ app.post('/api/account/billing/cancel', async (req, res) => {
   try {
     const sub = await liveSubscription(b); if (!sub) return res.status(400).json({ error: 'This account doesn’t have a subscription to cancel. Contact us to close it.' });
     const s = await billingCall('POST', `subscriptions/${sub.id}`, { cancel_at_period_end: undo ? 'false' : 'true', ...(undo ? {} : { 'cancellation_details[comment]': String((req.body && req.body.reason) || '').slice(0, 500) }) });
-    delete b.pendingPlanId; if (undo) delete b.endsAt; else b.endsAt = periodEndOf(s); tenancy.savePlatform();
+    delete b.pendingPlanId; if (undo) delete b.endsAt; else { b.endsAt = periodEndOf(s); retention.note(t, flowId(req), { outcome: 'cancelled' }); } tenancy.savePlatform();
     tellPlatform(`${undo ? 'Cancellation withdrawn' : 'Subscription cancelled'}: ${t.name}`, `${u.name} (${u.email}) ${undo ? 'kept the subscription' : `cancelled the ${tenancy.planOf(t).name} plan for ${t.name}. It keeps working until ${niceDate(b.endsAt)}, then it’s paused`}.${!undo && req.body && req.body.reason ? `\n\nReason: ${req.body.reason}` : ''}`);
     res.json({ ok: true, endsAt: b.endsAt || null });
   } catch (e) { stripeError(res, 'update the subscription', e); }

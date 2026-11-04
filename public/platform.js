@@ -804,21 +804,22 @@ let promoTab = 'codes'; let RF = null; // RF: the referral program and its activ
 let SP = null; // SP: the Founding Supporters list (lib/supporters.js)
 function promoView(main) {
   const due = RF ? RF.rewards.filter((w) => w.status === 'to send').length : 0;
-  main.innerHTML = `<div class="head"><div><h1>Pricing</h1><p class="sub" style="margin:4px 0 0">Discount codes for sign-ups, a referral program for the businesses on ${esc(D.settings.productName)}, and the Founding Supporters page.</p></div></div>
+  main.innerHTML = `<div class="head"><div><h1>Pricing</h1><p class="sub" style="margin:4px 0 0">Discount codes for sign-ups, a referral program for the businesses on ${esc(D.settings.productName)}, the Founding Supporters page, and what businesses see when they cancel.</p></div></div>
 ${pricingSeg(due)}<div id="promoBody"></div>`;
   sideLayout(main);
   const box = $('#promoBody', main);
   if (promoTab === 'codes') return discountsView(box);
+  if (promoTab === 'cancel' || promoTab === 'cancellations') { if (RT) return (promoTab === 'cancel' ? cancelFlowView : cancellationsView)(box); box.innerHTML = '<p class="muted">Loading…</p>'; api('GET', '/api/platform/retention').then((r) => { RT = r; if (tab === 'discounts') promoView($('#main')); }).catch((x) => toast(x.message, true)); return; }
   if (promoTab === 'supporters') { if (SP) return supportersView(box); box.innerHTML = '<p class="muted">Loading…</p>'; api('GET', '/api/platform/supporters').then((r) => { SP = r; if (tab === 'discounts' && promoTab === 'supporters') promoView($('#main')); }).catch((x) => toast(x.message, true)); return; }
   if (!RF) { box.innerHTML = '<p class="muted">Loading…</p>'; api('GET', '/api/platform/referrals').then((r) => { RF = r; if (tab === 'discounts') promoView($('#main')); }).catch((x) => toast(x.message, true)); return; }
   (promoTab === 'program' ? referralProgramView : referralActivityView)(box);
 }
 // Pricing's tabs: Plans & features is its own page (#plans); the rest are Promotions (#discounts)
-const pricingSeg = (due = 0) => sideNav('Pricing', 'pricingTab', [['plans', 'Plans & features'], ['codes', 'Discount codes'], ['program', 'Referral program'], ['activity', 'Referral activity'], ['supporters', 'Founding Supporters']]
+const pricingSeg = (due = 0) => sideNav('Pricing', 'pricingTab', [['plans', 'Plans & features'], ['codes', 'Discount codes'], ['program', 'Referral program'], ['activity', 'Referral activity'], ['supporters', 'Founding Supporters'], ['cancel', 'Cancellation flow'], ['cancellations', 'Cancellations']]
   .map(([k, l]) => [k, l, k === 'activity' && due ? due : undefined, tab === 'plans' ? k === 'plans' : promoTab === k, 'Rewards to send']));
 A.pricingTab = (d) => {
   if (d.k === 'plans') { location.hash = 'plans'; return; }
-  promoTab = d.k; if (tab === 'discounts') promoView($('#main')); else location.hash = 'discounts';
+  promoTab = d.k; if (d.k === 'cancellations') RT = null; if (tab === 'discounts') promoView($('#main')); else location.hash = 'discounts';
 };
 // pick an image file and upload it; resolves to its address (/brand/media-…)
 const pickImage = () => new Promise((resolve) => {
@@ -880,6 +881,67 @@ ${L.map((r) => `<tr><td class="nm">${esc(r.referrer)}</td><td>${esc(r.name || '�
 <td><span class="cstatus ${RF_STATUS[r.status][1]}">${RF_STATUS[r.status][0]}</span>${r.status === 'subscribed' && r.creditMonths ? `<div class="sm">${r.creditMonths} month${r.creditMonths === 1 ? '' : 's'} credited${r.credit === 'banked' ? ' (waiting for a subscription)' : ''}</div>` : ''}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">No referrals yet. Turn the program on in Referral program.</p>'}</div>`;
 }
 A.rwMark = async (d) => { RF = await api('POST', `/api/platform/referrals/rewards/${d.id}`, { status: d.s }); toast(d.s === 'sent' ? 'Marked as sent' : 'Marked as not sent'); promoView($('#main')); };
+/* ===== the cancellation flow (lib/retention.js): its steps, offers and reasons, and the log of each flow ===== */
+// Businesses reach it from Account and billing → Modify subscription → Cancel plan.
+let RT = null; let rtReasons = null; // RT: the settings and the log; rtReasons: the reasons while editing
+const RT_OFFERS = [['sprint', '5-day setup plan'], ['tour', 'Specialist tour'], ['stay', 'Stay discount'], ['extend', 'Trial extension'], ['none', 'No offer']];
+const rtOfferName = (k) => (RT_OFFERS.find(([x]) => x === k) || [, '—'])[1];
+function cancelFlowView(box) {
+  const c = RT.config; if (!rtReasons) rtReasons = structuredClone(c.reasons);
+  const num = (name, v, min, max, label) => `<label>${label}<input name="${name}" type="number" min="${min}" max="${max}" value="${esc(v)}"></label>`;
+  const step = (k, n, title, text, fields = '') => `<div class="rt-step"><span class="rt-n">${n}</span><div class="rt-b"><label class="switchline"><input type="checkbox" name="${k}.on" ${c[k].on ? 'checked' : ''}> <span><strong>${title}</strong></span></label><p class="muted">${text}</p>${fields ? `<div class="row">${fields}</div>` : ''}</div></div>`;
+  const reasonRow = (r, i) => `<div class="rt-reason" data-i="${i}"><div class="row"><label>Reason<input data-k="title" value="${esc(r.title)}" maxlength="120" required></label><label>Offer it leads to<select data-k="offer">${RT_OFFERS.map(([k, l]) => `<option value="${k}" ${r.offer === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label></div>
+<label>Smaller text (optional)<input data-k="text" value="${esc(r.text || '')}" maxlength="200"></label>
+<div class="rt-acts"><button type="button" class="rm-plan" data-act="rtMove" data-i="${i}" data-by="-1" ${i ? '' : 'disabled'}>↑ Up</button><button type="button" class="rm-plan" data-act="rtMove" data-i="${i}" data-by="1" ${i < rtReasons.length - 1 ? '' : 'disabled'}>↓ Down</button><button type="button" class="rm-plan" data-act="rtRm" data-i="${i}" ${rtReasons.length > 1 ? '' : 'disabled'}>Remove</button></div></div>`;
+  box.innerHTML = `<form id="rtf" class="card" style="max-width:860px">
+<h2>The steps</h2><p class="muted" style="font-size:13px;margin-top:0">In the order a business sees them after choosing <strong>Cancel plan</strong>. Turned-off steps are skipped. An offer that isn’t available to a business (a discount on a free plan, or a trial that can’t be extended) falls back to the specialist tour, or skips ahead if the tour is off.</p>
+<div class="rt-step"><span class="rt-n">1</span><div class="rt-b"><strong>Why are you leaving?</strong><p class="muted">The reasons below. Each one leads to an offer.</p></div></div>
+<div class="rt-sub">2 · The offer for their reason</div>
+${step('sprint', '2a', '5-day setup plan', 'Asks for help getting set up. Sent to Messages → Contact requests for you to follow up.')}
+${step('tour', '2b', 'Specialist tour', 'Asks for a 1-on-1 call. Sent to Messages → Contact requests.')}
+${step('stay', '2c', 'Stay discount', 'A percentage off the next bills, applied in Stripe straight away (during a free trial, when they add a card).', num('stay.percent', c.stay.percent, 1, 100, 'Percent off') + num('stay.months', c.stay.months, 1, 24, 'Number of bills'))}
+${step('extend', '2d', 'Trial extension', 'Free trials only, once per account. Also shows on the Modify subscription menu.', num('extend.days', c.extend.days, 1, 60, 'Extra days') + num('extend.after', c.extend.after, 0, 60, 'Available from day'))}
+${step('lose', 3, 'What they’ll lose', 'Their clients, quotes, jobs and invoices, and what stops when the account is paused.')}
+${step('feedback', 4, 'Feedback', 'One thing we could have done better.')}
+<label class="switchline rt-in"><input type="checkbox" name="feedback.required" ${c.feedback.required ? 'checked' : ''}> Feedback is required (otherwise they can skip it)</label>
+${step('gift', 5, 'Parting gift', 'A last discount on the next bill. Skipped if they already claimed a discount.', num('gift.percent', c.gift.percent, 1, 100, 'Percent off'))}
+${step('password', 6, 'Password to confirm', 'They enter their password to cancel. When off, one click on Confirm cancellation does it.')}
+<label class="switchline" style="margin-top:12px"><input type="checkbox" name="yearly" ${c.yearly ? 'checked' : ''}> <span>Offer the discounts on yearly billing too <span class="muted">(otherwise monthly only)</span></span></label>
+<p class="muted" style="font-size:12px;margin:-6px 0 0">Each account can claim one discount, ever. New terms apply to discounts claimed from now on.</p>
+<h2 style="margin-top:22px">Reasons</h2><p class="muted" style="font-size:13px;margin-top:0">What a business picks from, top to bottom. Up to 8.</p>
+<div id="rtReasons">${rtReasons.map(reasonRow).join('')}</div>
+${rtReasons.length < 8 ? '<button type="button" class="btn alt sm" data-act="rtAdd">+ Add a reason</button>' : ''}
+<div class="savebar"><button type="button" class="btn alt" data-act="rtDefaults">Restore defaults</button><button class="btn">Save cancellation flow</button></div></form>`;
+  const f = $('#rtf', box); f._read = () => $$('.rt-reason', f).forEach((row) => { const r = rtReasons[row.dataset.i]; $$('[data-k]', row).forEach((i) => { r[i.dataset.k] = i.value; }); });
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault(); f._read(); const ch = (n) => !!f.elements[n].checked; const v = (n) => f.elements[n].value;
+    const body = { sprint: { on: ch('sprint.on') }, tour: { on: ch('tour.on') }, stay: { on: ch('stay.on'), percent: v('stay.percent'), months: v('stay.months') }, extend: { on: ch('extend.on'), days: v('extend.days'), after: v('extend.after') },
+      lose: { on: ch('lose.on') }, feedback: { on: ch('feedback.on'), required: ch('feedback.required') }, gift: { on: ch('gift.on'), percent: v('gift.percent') }, password: { on: ch('password.on') }, yearly: ch('yearly'), reasons: rtReasons };
+    try { RT = await api('PUT', '/api/platform/retention', body); rtReasons = null; toast('Cancellation flow saved'); promoView($('#main')); } catch (x) { toast(x.message, true); }
+  });
+}
+const rtRedraw = () => { const f = $('#rtf'); const keep = {}; $$('input,select', f).forEach((i) => { if (i.name) keep[i.name] = i.type === 'checkbox' ? i.checked : i.value; }); cancelFlowView($('#promoBody')); const g = $('#rtf'); Object.entries(keep).forEach(([k, v]) => { const el = g.elements[k]; if (el) { if (el.type === 'checkbox') el.checked = v; else el.value = v; } }); };
+A.rtAdd = () => { $('#rtf')._read(); rtReasons.push({ id: '', title: '', text: '', offer: 'tour' }); rtRedraw(); };
+A.rtRm = (d) => { $('#rtf')._read(); rtReasons.splice(Number(d.i), 1); rtRedraw(); };
+A.rtMove = (d) => { $('#rtf')._read(); const i = Number(d.i); const j = i + Number(d.by); [rtReasons[i], rtReasons[j]] = [rtReasons[j], rtReasons[i]]; rtRedraw(); };
+A.rtDefaults = () => { const x = RT.defaults; rtReasons = structuredClone(x.reasons); const save = RT.config; RT.config = structuredClone(x); cancelFlowView($('#promoBody')); RT.config = save; toast('Defaults filled in. Save to use them.'); };
+const RT_TONE = { cancelled: 'q-declined', closed: '', stay: 'active', gift: 'active', extended: 'active', sprint: 'q-sent', tour: 'q-sent' };
+let rtFilter = '';
+function cancellationsView(box) {
+  const S = RT.stats; const L = RT.flows.filter((f) => !rtFilter || (rtFilter === 'open' ? !f.outcome : f.outcome === rtFilter));
+  box.innerHTML = `<div class="stats" style="max-width:960px"><div class="card"><div class="l">Started</div><div class="v">${S.started}</div></div><div class="card"><div class="l">Kept</div><div class="v">${S.kept}</div></div>
+<div class="card"><div class="l">Cancelled</div><div class="v">${S.cancelled}</div></div><div class="card"><div class="l">Kept rate</div><div class="v">${S.keptRate === null ? '—' : S.keptRate + '%'}</div></div></div>
+<div class="card" style="max-width:960px"><h2>By reason</h2><div class="tablewrap"><table class="acc"><thead><tr><th>Reason</th><th>Picked</th><th>Cancelled</th></tr></thead><tbody>${S.byReason.map((r) => `<tr><td>${esc(r.title)}</td><td>${r.count}</td><td>${r.cancelled}</td></tr>`).join('')}</tbody></table></div>
+<p class="muted" style="font-size:12px;margin:10px 0 0">Kept: they took an offer, asked for help, or closed the popup without cancelling. A flow counts once they pick a reason.</p></div>
+<div class="card" style="max-width:960px"><div class="rt-h"><h2>Every flow</h2><select id="rtFilter" aria-label="Show"><option value="">All</option>${S.byOutcome.map((o) => `<option value="${o.k}" ${rtFilter === o.k ? 'selected' : ''}>${esc(o.label)} (${o.count})</option>`).join('')}<option value="open" ${rtFilter === 'open' ? 'selected' : ''}>Didn’t finish (${S.open})</option></select></div>
+${L.length ? `<div class="tablewrap"><table class="acc"><thead><tr><th>Business</th><th>Reason</th><th>Offer shown</th><th>Feedback</th><th>Ended</th><th></th></tr></thead><tbody>
+${L.map((f) => `<tr><td class="nm">${esc(f.business)}<div class="sm">${esc(f.user || '')}${f.plan ? ` · ${esc(f.plan)}` : ''}${f.trial ? ' · trial' : ''}</div><div class="sm">${fmtDate(f.startedAt)}</div></td><td>${esc(f.reasonTitle || '—')}</td>
+<td class="sm">${esc(rtOfferName(f.offer))}${f.giftShown ? '<div>+ parting gift</div>' : ''}</td><td class="sm rt-fb">${f.feedback ? esc(f.feedback) : '<span class="muted">—</span>'}</td>
+<td>${f.outcome ? `<span class="cstatus ${RT_TONE[f.outcome] || ''}">${esc(RT.outcomes[f.outcome])}</span>` : '<span class="cstatus">Didn’t finish</span>'}</td><td><button type="button" class="rm-plan" data-act="rtFlowRm" data-id="${f.id}" title="Remove from the log">Remove</button></td></tr>`).join('')}</tbody></table></div>`
+    : `<p class="muted">${RT.flows.length ? 'None match.' : 'No one has started cancelling yet.'}</p>`}</div>`;
+  $('#rtFilter', box).addEventListener('change', (e) => { rtFilter = e.target.value; cancellationsView(box); });
+}
+A.rtFlowRm = async (d) => { if (!confirm('Remove this flow from the log?')) return; RT = await api('DELETE', `/api/platform/retention/flows/${d.id}`); promoView($('#main')); };
 /* ===== the Founding Supporters list: a thank-you page at /supporters, and codes for prepaid months by email (lib/supporters.js) ===== */
 // Select a supporter's row to edit them, email their code or remove them.
 const spCodeState = (p) => { const c = p.code;
