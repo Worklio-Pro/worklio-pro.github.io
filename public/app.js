@@ -49,7 +49,7 @@ async function api(method, url, body) {
 // a paused account (company.account.paused) is read-only: owners and admins who try to create, change or delete something
 // go to Account and billing to choose a plan; everyone else sees a note to contact their owner or admin instead of the page
 const pausedNow = () => !!(company.account && company.account.paused);
-const PAUSED_FREE = ['/settings/billing', '/profile', '/settings/preferences', '/forum', '/settings/support-access']; // pages that still work as normal
+const PAUSED_FREE = ['/settings/billing', '/profile', '/settings/preferences', '/settings/support-access']; // pages that still work as normal
 const PAUSED_ACTS = /^(new|edit|add|del|delete|rm|remove|save|create|mark|approve|collect|complete|reopen|merge|import|runImport|upload|send|setDeposit|undoDeposit|quoteToJob|jobInvoice|jobRemind|jobRequestOff|requestOff|manageStaff|tm(Invite|Revoke|HoursEdit)|role(Add|Rm|Save|Tick)|disc(Save|Delete)|rev(Edit|Delete)|sp(Drop|Move|Remove)|social(Connect|Disconnect|Choose)|connectStripe|pay(Bank|Disable|StripeRetry)|pdRefund|toDecide|toCancel|bookingSave|primaryDomain|checkDomain|resetTpl|importTemplate|clientDupes)/;
 // what a paused account is told, by why it's paused: most reasons the business fixes itself (choose a plan, or update the card);
 // only an account paused by the platform is told to get in touch. btn: the button's label (Explore plans / Update billing), or '' for none
@@ -274,8 +274,7 @@ const ICONS = {
   feedback: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M12 7v4M12 14h.01"/>',
   shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
   compass: '<circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/>',
-  bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
-  forum: '<path d="M17 9a6 6 0 0 0-11.5-2.4A5 5 0 0 0 3 15.3L2 19l3.7-1A6 6 0 0 0 17 9z"/><path d="M14 18.6A6 6 0 0 0 22 13a5 5 0 0 0-2.5-4.3"/>',
+  megaphone: '<path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>',
 };
 // Refer & Earn shows while the platform's referral program is on
 const referralsOn = () => !!(company.account && company.account.referrals);
@@ -285,7 +284,7 @@ const settingsFor = () => SETTINGS_NAV.filter(([p]) => memberCan(p) && !planLock
 // pages the search finds besides the menu items, and extra words each page answers to
 const FEATURE_EXTRAS = [['/quotes/new', 'New quote', 'Quotes', 'create estimate'], ['/jobs/new', 'New job', 'Jobs', 'create schedule visit'], ['/invoices/new', 'New invoice', 'Invoices', 'create bill'],
   ['/clients/import', 'Import clients', 'Clients', 'csv upload spreadsheet'], ['/team/new', 'Add team member', 'Settings', 'invite staff employee user'],
-  ['/payments/settings', 'Payment settings', 'Money', 'card online payouts processing rates disputes'], ['/profile', 'My profile', 'Account', 'password photo name email login'], ['/forum', 'Board', 'Account', 'forum boards categories community ideas suggestions feature requests issues bugs vote']];
+  ['/payments/settings', 'Payment settings', 'Money', 'card online payouts processing rates disputes'], ['/profile', 'My profile', 'Account', 'password photo name email login']];
 const FEATURE_WORDS = {
   '/business-overview': 'dashboard overview', '/calendar': 'schedule schedules appointments visits tasks events job calendar', '/clients': 'customers contacts',
   '/quotes': 'estimates proposals', '/jobs': 'work orders visits', '/invoices': 'billing', '/payments': 'card online stripe', '/services': 'catalog products price list items',
@@ -294,7 +293,7 @@ const FEATURE_WORDS = {
   '/settings/preferences': 'appearance theme dark mode light system push notifications alerts phone', '/settings': 'number prefixes branding brand color zelle defaults stripe card payments online payments regional time zone date format time format week', '/settings/connections': 'integrations google facebook instagram ai', '/settings/business-page': 'qr code business card digital card link in bio links save contact vcard scan limit expiry', '/marketplace': 'apps integrations connect quickbooks xero accounting home depot lowes supplies materials zapier chatgpt claude ai automation calendar slack gusto payroll', '/settings/billing': 'subscription plan upgrade payment method', '/settings/support-access': 'grant revoke help troubleshoot permission',
 };
 const featureList = () => {
-  const open = (p) => PAGES[p] && memberCan(p) && !planLocked(p) && !planLocked(p.split('/').slice(0, 2).join('/')) && (p !== '/forum' || !!(company.account && company.account.forum));
+  const open = (p) => PAGES[p] && memberCan(p) && !planLocked(p) && !planLocked(p.split('/').slice(0, 2).join('/'));
   return [...navFor().flatMap(([g, items]) => items.map(([p, l]) => [p, l, g])), ...settingsFor().map(([p, l]) => [p, l, 'Settings']), ...FEATURE_EXTRAS.filter(([p]) => open(p))]
     .map(([p, l, g, k]) => ({ p, l, g, words: `${l} ${g} ${k || ''} ${FEATURE_WORDS[p] || ''}`.toLowerCase() }));
 };
@@ -306,9 +305,9 @@ function searchFeatures(q) {
 function buildTopbar() {
   // phones: the company logo (or name) on the left
   $('#topbar').innerHTML = `<a href="/" data-link class="tb-logo" title="Home">${company.logo ? `<img src="${esc(company.logo)}" alt="${esc(company.name || 'Home')}">` : `<span>${esc(company.name || 'Home')}</span>`}</a>
-<a class="tb-fb tb-ref" href="/rewards" data-link title="Refer other businesses and earn free months" hidden>${svgIcon(ICONS.gift, 18)}<span>Refer &amp; earn</span></a><a class="tb-fb tb-forum" href="/forum" data-link title="Suggest features and report issues, with other businesses" hidden>${svgIcon(ICONS.forum, 18)}<span>Board</span></a><button type="button" class="tb-fb" data-act="feedbackForm" title="Send feedback about the app">${svgIcon(ICONS.feedback, 18)}<span>Feedback</span></button>
-<details class="menu tb-news"><summary class="tb-icon" title="What’s new" aria-label="What’s new">${svgIcon(ICONS.bell)}<span class="tb-dot" hidden></span></summary><div class="menu-list" id="newsMenu"></div></details>
-<button type="button" class="tb-icon" data-act="openHelp" title="Help and support" aria-label="Help and support">${svgIcon(ICONS.help)}</button>
+<a class="tb-fb tb-ref" href="/rewards" data-link title="Refer other businesses and earn free months" hidden>${svgIcon(ICONS.gift, 18)}<span>Refer &amp; earn</span></a><button type="button" class="tb-fb" data-act="feedbackForm" title="Send feedback about the app">${svgIcon(ICONS.feedback, 18)}<span>Feedback</span></button>
+<details class="menu tb-news"><summary class="tb-icon" title="What’s new" aria-label="What’s new"><span class="tb-circle">${svgIcon(ICONS.megaphone, 18)}</span><span class="tb-dot" hidden></span></summary><div class="menu-list" id="newsMenu"></div></details>
+<button type="button" class="tb-icon" data-act="openHelp" title="Help and support" aria-label="Help and support"><span class="tb-circle tb-q" aria-hidden="true">?</span></button>
 <details class="menu tb-me" hidden><summary class="tb-avatar" title="Your account" aria-label="Your account"></summary><div class="menu-list" id="meMenu"></div></details>`;
 }
 // the feature search, under the business logo in the sidebar
@@ -362,7 +361,6 @@ function renderTopbar(path) {
   const mine = $('.tb-me'); mine.open = false; mine.hidden = !me;
   const bell = $('.tb-news'); bell.open = false; bell.hidden = !me; if (me && !bell.dataset.on) { bell.dataset.on = '1'; bell.addEventListener('toggle', () => { if (bell.open) loadNews().then(showNews); }); loadNews(); }
   $('.tb-ref').hidden = !(referralsOn() && memberCan('/rewards'));
-  const fo = $('.tb-forum'); fo.hidden = !(isAdminMe() && company.account && company.account.forum); fo.classList.toggle('on', path === '/forum'); // owners and admins, while the Board is open
   if (!me) return;
   $('summary', mine).innerHTML = avatarHtml(me, 34);
   $('#meMenu').innerHTML = `<div class="me-head"><a href="/profile" data-link class="me-who${path === '/profile' ? ' on' : ''}" title="My profile">${avatarHtml(me, 40)}<span><strong>${esc(me.name)}</strong><small>${esc(me.email)}</small></span></a>

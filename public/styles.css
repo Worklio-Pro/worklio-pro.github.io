@@ -1532,3 +1532,9 @@ button.mn-x{border:0;padding:0;cursor:pointer}
 .fo-cats{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin-bottom:24px}
 .fo-catc{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 14px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--text);font:inherit;font-size:15px;font-weight:600;text-align:left;cursor:pointer}
 .fo-catc:hover{border-color:var(--brand)}.fo-catc b{font-size:13px;color:var(--muted)}
+/* What's new and Help: a filled circle the size of the profile picture (34px) */
+.tb-circle{display:flex;align-items:center;justify-content:center;flex:none;width:34px;height:34px;border-radius:50%;background:var(--brand);color:var(--btn-text,#fff);transition:box-shadow .15s}
+.tb-q{font-size:19px;font-weight:800;line-height:1}
+.tb-icon:has(.tb-circle):hover,.tb-news[open]>summary{background:none}
+.tb-icon:hover .tb-circle,.tb-news[open] .tb-circle{box-shadow:0 0 0 3px var(--surface-2)}
+.tb-news .tb-dot{top:4px;right:3px}

@@ -1795,7 +1795,7 @@ ${s.on ? '' : '<div class="mt-bar" role="status" style="margin:0 0 14px;border-r
 <div class="card fr-card">${list.length ? `<table class="hc-table fr-table"><thead><tr><th class="r">Likes</th><th>Post</th><th>Status</th><th class="r">Comments</th><th>Last activity</th></tr></thead><tbody>
 ${list.map((p) => `<tr data-act="frOpen" data-id="${esc(p.id)}"><td class="r"><strong>${p.likes}</strong></td><td><div class="fr-tl">${p.pinned ? '📌 ' : ''}${p.locked ? '🔒 ' : ''}<strong>${esc(p.title)}</strong></div>
 <div class="sm">${frChip('k-' + p.kind, K[p.kind])} ${esc(FR.categories[p.category] || 'Other')} · ${esc(p.author.name)} · ${esc(p.author.company)} · ${frAgo(p.at)}</div></td><td>${frChip('s-' + p.status, S[p.status])}</td><td class="r">${p.comments.filter((c) => !c.deleted).length}</td><td class="sm">${frAgo(p.lastAt)}</td></tr>`).join('')}</tbody></table>`
-  : `<p class="muted" style="margin:0">${FR.posts.length ? 'No posts match.' : 'No posts yet. Owners and admins open the Board from the Board button in their app’s top bar.'}</p>`}</div>`;
+  : `<p class="muted" style="margin:0">${FR.posts.length ? 'No posts match.' : 'No posts yet. Owners and admins post feature requests and vote on the Ideas site (ideas. and your domain).'}</p>`}</div>`;
   sideLayout(main);
   $$('[data-frv]', main).forEach((el) => el.addEventListener('change', () => { frView[el.dataset.frv] = el.value; frList(main); }));
   let t; $('#frQ').addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(() => { frView.q = e.target.value; frList(main); const i = $('#frQ'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }, 250); });
@@ -1844,7 +1844,7 @@ A.frDelC = async (d) => { if (!confirm('Delete this comment? Its replies are del
 A.frDel = async () => { if (!confirm('Delete this post and all its comments? This can’t be undone.')) return; try { FR = await api('DELETE', `/api/platform/forum/${encodeURIComponent(frSel)}`); frSel = ''; toast('Post deleted'); render(); } catch (x) { toast(x.message, true); } };
 A.frSettings = () => {
   const s = FR.settings;
-  const m = modal('Board settings', `<form><label class="chk"><input type="checkbox" name="on" ${s.on ? 'checked' : ''}> <span><strong>Board is open</strong><br><span class="muted">Owners and admins see a Board button in their app’s top bar. Closed, it’s hidden and posts are kept.</span></span></label>
+  const m = modal('Board settings', `<form><label class="chk"><input type="checkbox" name="on" ${s.on ? 'checked' : ''}> <span><strong>Board is open</strong><br><span class="muted">Owners and admins post and vote on the Ideas site. Closed, the site shows only the Changelog and posts are kept.</span></span></label>
 <label class="chk"><input type="checkbox" name="emailNew" ${s.emailNew ? 'checked' : ''}> <span><strong>Email me about new posts</strong><br><span class="muted">${D.settings.contactEmail ? `Sent to ${esc(D.settings.contactEmail)}` : 'Add a contact email in Settings first'}.</span></span></label>
 <label class="chk"><input type="checkbox" name="emailReplies" ${s.emailReplies ? 'checked' : ''}> <span><strong>Email authors about replies and status changes</strong><br><span class="muted">At most one email per post every 10 minutes.</span></span></label>
 <div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save</button></div></form>`);

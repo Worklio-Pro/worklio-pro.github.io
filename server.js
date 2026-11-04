@@ -458,7 +458,7 @@ app.use('/api', (req, res, next) => {
 });
 // a paused account is read-only: anything that creates, changes or deletes is refused, except choosing a plan (owner/admin),
 // logging in and out, your own profile, and asking for help. The app sends owners and admins to Account and billing when it sees `paused`.
-const PAUSED_OK = /^\/api\/(auth\/.*|account\/(billing|support-access)(\/.*)?|support|feedback|forum(\/.*)?|help\/.*|chat\/.*)$/;
+const PAUSED_OK = /^\/api\/(auth\/.*|account\/(billing|support-access)(\/.*)?|support|feedback|help\/.*|chat\/.*)$/;
 const isPaused = () => tenancy.current().status === 'suspended';
 app.use('/api', (req, res, next) => {
   if (req.method === 'GET' || !isPaused() || PAUSED_OK.test(req.path)) return next();
@@ -868,7 +868,6 @@ function accountInfo() {
     slug: t.slug, plan: { id: plan.id, name: plan.name }, features: [...tenancy.featuresOf(t)], lockedPages: tenancy.lockedPages(t), betaPages: tenancy.betaPages(), maxUsers: plan.maxUsers || 0,
     url: tenancy.tenantUrl(t), subdomainUrl: tenancy.subdomainUrl(t), rootDomain: tenancy.ROOT_DOMAIN, serverIp: process.env.SERVER_IP || '',
     domains: (t.domains || []).map(({ host, verified, primary, addedAt, verifiedAt }) => ({ host, verified: !!verified, primary: !!primary, addedAt, verifiedAt: verifiedAt || null })),
-    forum: forum.isOn(), // Alpha → Help Center → Board → Board settings can close the Board
     marketplace: marketplace.isOn(tenancy.platform()), // Alpha → Settings → App Marketplace
     aiDescriptions: tenancy.aiOn('aiDescriptions'), aiRewrite: tenancy.aiOn('aiRewrite'), // Alpha → Settings → Integrations → AI
     navIcons: iconsLib.navIcons(), navOrder: iconsLib.order(), // the menu's icons, order and sections (Alpha → Settings → Menu)
@@ -3196,27 +3195,15 @@ app.post('/api/feedback', async (req, res) => {
   }
   res.json({ ok: true });
 });
-// ---------- Forum (lib/forum.js): owners and admins of every business post issues and feature requests, like and comment ----------
+// ---------- the Board (lib/forum.js): owners and admins of every business post feature requests and vote, on ideas.<domain> (lib/ideas.js) ----------
 forum.init({
   send: (key, to, vars) => sendTemplate(key, to, vars, { server: true }),
   notifyTo: () => tenancy.platform().settings.contactEmail || '',
   // a login who can still use the forum (an owner or admin of that account), for reply emails
   user: (slug, id) => { const t = tenancy.platform().tenants.find((x) => x.slug === slug); return t ? tenancy.run(t, () => { const u = db.users.find((x) => x.id === id); return u && isAdmin(u) && !staffBlocked(u) ? { name: u.name, email: u.email } : null; }) : null; },
 });
-const forumDo = (fn) => (req, res) => {
-  const u = currentUser(req); if (!isAdmin(u)) return res.status(403).json({ error: 'The Board is for account owners and admins' });
-  const t = tenancy.current(); const who = { t: t.slug, u: u.id, name: u.name, email: u.email, role: u.role, company: db.company.name || t.slug };
-  try { res.json(fn(who, req.params, req.body || {})); } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
-};
-app.get('/api/forum', forumDo((who) => forum.list(who)));
-app.post('/api/forum', forumDo((who, p, b) => forum.create(who, b)));
-app.get('/api/forum/:id', forumDo((who, p) => forum.get(p.id, who)));
-app.put('/api/forum/:id', forumDo((who, p, b) => forum.edit(who, p.id, b)));
-app.delete('/api/forum/:id', forumDo((who, p) => forum.remove(who, p.id)));
-app.post('/api/forum/:id/like', forumDo((who, p) => forum.like(who, p.id)));
-app.post('/api/forum/:id/comments', forumDo((who, p, b) => forum.comment(who, p.id, b)));
-app.delete('/api/forum/:id/comments/:cid', forumDo((who, p) => forum.removeComment(who, p.id, p.cid)));
-app.post('/api/forum/:id/comments/:cid/like', forumDo((who, p) => forum.likeComment(who, p.id, p.cid)));
+// the Board's posts are on ideas.<domain> now: old /forum links (and emails) go to its Feedback page
+app.get('/forum', (req, res) => res.redirect(301, tenancy.ideasUrl() + '/feedback'));
 // ---------- Support Access (lib/support.js): any login can grant the platform's support team access for four weeks ----------
 support.setOwnerLookup((t) => tenancy.run(t, () => { const o = db.users.find((u) => u.role === 'owner'); return o && { id: o.id, name: o.name }; }));
 // the console's one-time link: signs the support admin in as the person who granted access, until the grant ends or is revoked

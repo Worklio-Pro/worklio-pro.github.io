@@ -5,9 +5,10 @@ const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 let product = ''; // the product name from the platform console, filled in by /api/help/info
+let ideas = ''; // the Ideas site (ideas.<domain>): {ideas} in an article
 const hcName = () => `${product ? product + ' ' : ''}Help Center`;
 const prod = () => esc(product || 'the app');
-const fill = (s) => String(s).replace(/\{product\}/g, prod());
+const fill = (s) => String(s).replace(/\{product\}/g, prod()).replace(/\{ideas\}/g, esc(ideas || '/'));
 let TOPICS = []; let ARTICLES = []; let POPULAR = []; let SUGGESTED = [];
 const topicOf = (slug) => TOPICS.find((t) => t.slug === slug) || { slug, title: '', desc: '', icon: 'help' };
 const articleOf = (slug) => ARTICLES.find((a) => a.slug === slug);
@@ -198,7 +199,7 @@ $('#year').textContent = new Date().getFullYear();
 $('#main').innerHTML = '<div class="wrap" style="padding:48px 20px;color:var(--muted)">Loading…</div>';
 Promise.all([fetch('/api/help/content').then((r) => r.json()), fetch('/api/help/info').then((r) => r.json()).catch(() => ({}))]).then(([c, i]) => {
   ({ topics: TOPICS, articles: ARTICLES, popular: POPULAR, suggested: SUGGESTED } = c);
-  product = i.productName || product;
+  product = i.productName || product; ideas = i.ideasUrl || ideas;
   $$('.hc-product').forEach((el) => { el.textContent = product; });
   if (i.brand && i.brand.logo) { $('.hc-brand .hc-mark').outerHTML = brandImg(i.brand, 'dark'); if (i.brand.logoHasName) $('.hc-brand .hc-product').hidden = true; } // the logo from the platform console
   $('#appLink').textContent = `Go to ${product}`; $('#appLink').href = i.siteUrl || '/'; $('#siteLink').href = i.siteUrl || '/';
