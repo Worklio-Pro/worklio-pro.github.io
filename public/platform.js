@@ -428,7 +428,7 @@ A.savePlans = async () => {
 window.addEventListener('beforeunload', (e) => { if (D && draftPlans && plansDirty()) e.preventDefault(); });
 
 /* ===== settings ===== */
-const IG_TABS = [['email', 'Email', 'Email'], ['sms', 'Text messages', 'Text messages (Twilio)'], ['stripe', 'Stripe', 'Stripe'], ['google', 'Google', 'Google Business Profile'], ['meta', 'Facebook', 'Facebook (Meta)'], ['instagram', 'Instagram', 'Instagram'], ['tiktok', 'TikTok', 'TikTok'], ['ai', 'AI', 'AI descriptions'], ['marketplace', 'App Marketplace', 'App Marketplace']];
+const IG_TABS = [['email', 'Email', 'Email'], ['sms', 'Text messages', 'Text messages (Twilio)'], ['stripe', 'Stripe', 'Stripe'], ['google', 'Google', 'Google Business Profile'], ['meta', 'Facebook', 'Facebook (Meta)'], ['instagram', 'Instagram', 'Instagram'], ['tiktok', 'TikTok', 'TikTok'], ['ai', 'AI', 'AI'], ['marketplace', 'App Marketplace', 'App Marketplace']];
 let igTab = 'email';
 // Settings shows one box at a time, picked from a grouped list down the left (a dropdown on phones).
 // The Integrations group is one page (setTab 'integrations') showing one service at a time (igTab).
@@ -508,6 +508,9 @@ function seoDraw(box) {
 <div class="row" style="margin-top:12px"><label>Google Search Console verification<input name="googleVerification" value="${esc(S.googleVerification)}" placeholder="Paste the meta tag or its content value" autocomplete="off"></label>
 <label>Bing Webmaster Tools verification<input name="bingVerification" value="${esc(S.bingVerification)}" placeholder="Paste the meta tag or its content value" autocomplete="off"></label></div>
 <p class="muted" style="font-size:13px;margin-top:-4px">After verifying, submit your sitemaps in Search Console and Bing: ${S.sitemaps.map((u) => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(u)}</a>`).join(' and ')}. Robots file: <a href="${esc(S.robots)}" target="_blank" rel="noopener">${esc(S.robots)}</a>.</p>
+<h2 style="margin-top:22px">Retargeting pixels</h2><p class="muted" style="font-size:13px;margin-top:-6px">They run only on the home, pricing, features, industries and supporters pages, and only after a visitor accepts the cookie notice. Saving an ID also updates the Privacy Policy to describe them.</p>
+<div class="row"><label>Meta Pixel ID<input name="metaPixelId" value="${esc(S.metaPixelId)}" placeholder="From Meta Events Manager, like 1234567890123456" autocomplete="off"></label>
+<label>Google tag ID<input name="googleTagId" value="${esc(S.googleTagId)}" placeholder="From Google Ads, like AW-123456789" autocomplete="off"></label></div>
 <h2 style="margin-top:22px">Pages</h2><p class="muted" style="font-size:13px;margin-top:-6px">What Google shows for each page. Keep titles under ${SEO_LIMITS.title} characters and descriptions under ${SEO_LIMITS.description} so they aren’t cut off. Tokens like <code>{product}</code> fill in automatically, so prices and names stay current.</p>
 <div id="seoPages">${S.pages.map(page).join('')}</div>
 <h2 style="margin-top:22px">Sharing</h2>
@@ -525,7 +528,7 @@ function seoDraw(box) {
   $$('.seo-page', f).forEach((row) => { update(row); row.addEventListener('input', () => update(row)); });
   f._update = update;
   f.addEventListener('submit', async (e) => {
-    e.preventDefault(); const b = { indexing: !!f.indexing.checked, googleVerification: f.googleVerification.value, bingVerification: f.bingVerification.value, shareImage: seoDraft.shareImage || '', social: {}, pages: {} };
+    e.preventDefault(); const b = { indexing: !!f.indexing.checked, googleVerification: f.googleVerification.value, bingVerification: f.bingVerification.value, metaPixelId: f.metaPixelId.value, googleTagId: f.googleTagId.value, shareImage: seoDraft.shareImage || '', social: {}, pages: {} };
     $$('[name^="social."]', f).forEach((i) => { b.social[i.name.slice(7)] = i.value; });
     $$('.seo-page', f).forEach((row) => { b.pages[row.dataset.key] = { title: $('[name=title]', row).value, description: $('[name=description]', row).value }; });
     if (!b.indexing && SEO.indexing && !confirm('Hide the whole public site from Google and other search engines? Pages already in results drop out over the next few weeks.')) return;
@@ -1363,7 +1366,13 @@ ${I.mailServer ? `<p class="ig-env">Using your mail server below (${esc(I.mailSe
 ${ig('Text messages (Twilio)', on(I.sms), `<p class="ig-d">Every business’s texts to clients (on plans with text messages), sent from your Twilio number and starting with the business’s name.</p>
 ${env('<code>TWILIO_ACCOUNT_SID</code>, <code>TWILIO_AUTH_TOKEN</code> and <code>TWILIO_FROM</code> (your Twilio number, or a Messaging Service SID starting with MG).')}
 <h4>Send a test</h4>${I.sms ? '<form id="tSms" class="inline-form"><label>Test text to<input name="to" required placeholder="+17135550100"></label><button class="btn alt">Send test text</button></form>' : '<p class="muted ig-p">Set up Twilio first. Until then, texts are recorded in each account’s Notifications Log but not delivered.</p>'}`)}
-${ig('AI descriptions', on(I.ai), `<p class="ig-d">Claude drafts product and service descriptions, for plans with AI descriptions, and writes captions for your posts in Social (Write with AI).</p>${env('<code>ANTHROPIC_API_KEY</code>.')}`)}
+${ig('AI', on(I.ai), `<p class="ig-d">Everything that uses Claude. Turning a switch off takes effect right away, and nothing else changes.</p>
+${[['aiDescriptions', 'Descriptions', 'Write with AI on products and services, and Rewrite on quote, invoice and job lines. Every business, on plans with AI descriptions.', D.settings.aiDescriptions !== false],
+  ['aiRewrite', 'Client messages and contracts', 'Rewrite in the Client message and Contract / Disclaimer boxes on quotes and invoices. Every business, on plans with AI descriptions.', D.settings.aiRewrite !== false],
+  ['aiCaptions', 'Social captions', 'Write with AI on your posts in Social.', D.settings.aiCaptions !== false],
+  ['aiChat', 'Help chat', 'The chat bot answers from your help center. Off, it uses only your saved answers and matching articles. Same setting as in Messages.', I.aiChat]].map(([k, l, n, v]) => `<label class="sw-row"><span>${l}<small class="muted">${n}</small></span><input type="checkbox" class="sw" data-ai="${k}" ${v ? 'checked' : ''}><i></i></label>`).join('')}
+<p class="muted ig-p">With Descriptions and Client messages and contracts both off, AI descriptions also leaves your pricing page and plan lists.</p>
+${env('<code>ANTHROPIC_API_KEY</code>.')}`)}
 ${ig('App Marketplace', on(D.settings.marketplace !== false, 'On', 'Off'), `<p class="ig-d">Settings → App Marketplace in every account: owners and admins browse apps, connect the ones that work today and vote for the rest (see Messages → App requests).</p>
 <label class="switchline"><input type="checkbox" id="mkOn" ${D.settings.marketplace !== false ? 'checked' : ''}> Show the App Marketplace in every account</label>
 <p class="muted ig-p">Turned off, the page is hidden and Home Depot search stops in the product and service form. Google, Facebook, Instagram, Stripe and AI keep working: they’re set up on their own pages.</p>
@@ -1392,6 +1401,14 @@ ${copy(S.billingWebhookUrl, 'Billing webhook URL')}
 ${I.localhost ? '<p class="muted ig-p" style="margin-top:8px">Stripe can’t reach localhost: set <code>BASE_URL</code> (or <code>PLATFORM_DOMAIN</code>) to your public address first.</p>' : ''}</div></div>`)}
 </div>`;
   igTabs(box);
+  $$('[data-ai]', box).forEach((c) => c.addEventListener('change', async () => {
+    const k = c.dataset.ai; c.disabled = true;
+    try {
+      if (k === 'aiChat') await api('PUT', '/api/platform/chat-settings', { ai: c.checked }); else D.settings = await api('PUT', '/api/platform/settings', { [k]: c.checked });
+      toast('Saved');
+    } catch (x) { c.checked = !c.checked; toast(x.message, true); }
+    c.disabled = false;
+  }));
   $('#mkOn', box).addEventListener('change', async (e) => {
     const want = e.target.checked; e.target.disabled = true;
     try { D.settings = await api('PUT', '/api/platform/settings', { marketplace: want }); toast(want ? 'App Marketplace is on' : 'App Marketplace is off in every account'); integrationsCard(box); }
