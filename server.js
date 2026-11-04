@@ -3574,6 +3574,7 @@ const platformApp = require('./lib/platform')({
   hashPassword, checkPassword, sha, normEmail, cookies, tooMany, recordFailure, clearFailures: (k) => failures.delete(k),
   createOwner, ownerLink, sendVerifyEmail, sendPasswordReset, loginsFor, handoffUrl, tenantStats, endSupportSessions, sendEmail, sendTemplate, sendSms, emailProvider: serverEmailProvider, applyStripeSession, syncStripeAccount, resetDemo, saveConnection, setCompanyEmail: (e) => { if (!db.company.email) { db.company.email = e; save(); } }, setCompanyPhone: (p) => { if (p && !db.company.phone) { db.company.phone = p; save(); } },
   setCompanyIndustry: (i) => { Object.assign(db.company, i); save(); },
+  planProduct, // the Stripe product for a plan (Alpha → an account → Subscription → Change plan)
 });
 // which app answers: the platform's (its own domain, or /alpha… while developing) or an account's
 const PLATFORM_PATHS = /^\/(alpha(\/.*)?|platform(\/.*)?|stripe\/go\/[a-z]+|oauth\/(google|meta|tiktok|linkedin|pinterest|threads)\/callback|home|features|pricing|signup|sign-in|supporters|industries(\/[a-z-]+)?|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;

@@ -203,6 +203,8 @@ function wirePlanSelects(root, after) {
   $$('[data-plan]', root).forEach((s) => s.addEventListener('change', async () => {
     const a = D.accounts.find((x) => x.id === s.dataset.plan);
     if (isTrialPlan(s.value) && !a.isDefault) { trialModal(a, s.value); s.value = a.planId; return; }
+    // paying by card: this menu only changes their features; what Stripe charges changes in Subscription → Change plan
+    if (a.billing && a.billing.status === 'paid' && !a.billing.demo && !confirm(`${a.name} pays by card. This menu only changes their features: Stripe keeps charging their current price.\n\nTo change what they pay too, open the business and use Subscription → Change plan.\n\nChange their features to ${planName(s.value)} only?`)) { s.value = a.planId; return; }
     try { await api('PUT', `/api/platform/accounts/${a.id}`, { planId: s.value }); toast(`${a.name} is now on ${planName(s.value)}`); await load(); render(); if (after) after(a); } catch (e) { toast(e.message, true); s.value = a.planId; }
   }));
 }
@@ -311,6 +313,65 @@ A.ppEnd = (d) => {
     catch (err) { btn.disabled = false; toast(err.message, true); } });
 };
 A.ppBack = (d) => A.editAccount({ id: d.id });
+// ---------- Accounts → a business → Subscription: what Stripe bills them, and changing it (lib/platform.js /subscription) ----------
+const SUB_STATUS = { active: ['Active', 'active'], trialing: ['Free time', 'q-sent'], past_due: ['Payment past due', 'q-declined'], unpaid: ['Unpaid', 'q-declined'], incomplete: ['Waiting for first payment', ''], canceled: ['Cancelled', 'q-declined'] };
+const usd = (n) => '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 });
+A.subLoad = async (d) => {
+  const box = $('#subBox'); if (!box) return; box.innerHTML = '<p class="muted sm" style="margin:0">Loading from Stripe…</p>'; let V;
+  try { V = await api('GET', `/api/platform/accounts/${d.id}/subscription`); } catch (x) { box.innerHTML = `<p class="sm" style="color:var(--danger);margin:0">${esc(x.message)}</p>`; return; }
+  const S = V.subscription; const a = D.accounts.find((x) => x.id === d.id); const btn = (act, label, cls = 'alt') => `<button type="button" class="btn ${cls} sm" data-act="subDo" data-id="${d.id}" data-do="${act}">${label}</button>`;
+  if (!V.live) { box.innerHTML = '<p class="muted sm" style="margin:0">Stripe isn’t connected, so there’s no billing to show. Connect it in Settings → Integrations → Stripe.</p>'; return; }
+  const st = S ? (S.paused ? ['Billing paused', 'q-sent'] : S.cancelAtPeriodEnd ? ['Cancels at period end', 'q-declined'] : SUB_STATUS[S.status] || [S.status, '']) : null;
+  box.innerHTML = `${!V.customerId ? '<p class="muted sm" style="margin:0">Not billed by Stripe: no card subscription (a free trial, prepaid months, a demo checkout or a free plan).</p>'
+    : `${S ? `<dl class="sub-dl"><div><dt>Billing</dt><dd>${S.amount != null ? `${usd(S.amount)}/${S.interval}` : '—'} <span class="cstatus ${st[1]}">${esc(st[0])}</span></dd></div>
+<div><dt>${S.cancelAtPeriodEnd ? 'Ends' : S.paused ? 'Billing starts again' : 'Next charge'}</dt><dd>${fmtDate(S.paused ? S.paused.resumesAt : S.trialEnd || S.periodEnd) || '—'}${V.pendingPlan ? `<div class="sm">Then moves to ${esc(planName(V.pendingPlan))}</div>` : ''}</dd></div>
+<div><dt>Card</dt><dd>${V.card ? `${esc(V.card.brand)}${V.card.last4 ? ` •••• ${esc(V.card.last4)}` : ''}${V.card.exp ? ` <span class="sm">exp ${esc(V.card.exp)}</span>` : V.card.email ? ` <span class="sm">${esc(V.card.email)}</span>` : ''}` : '<span class="muted">None on file</span>'}</dd></div>
+<div><dt>Discount</dt><dd>${S.discount ? `${esc(S.discount.name)} <span class="sm">${esc(S.discount.text)}${S.discount.end ? `, until ${fmtDate(S.discount.end)}` : ''}</span>` : '<span class="muted">None</span>'}</dd></div></dl>
+<div class="acts sub-acts">${btn('plan', 'Change plan')}${S.cancelAtPeriodEnd ? btn('undoCancel', 'Undo cancellation') : btn('cancel', 'Cancel…', 'alt')}${S.paused ? btn('resume', 'Resume billing') : btn('pause', 'Pause billing')}${btn('freeTime', 'Give free time')}${S.discount ? btn('removeDiscount', 'Remove discount') : btn('discount', 'Apply discount')}</div>`
+    : '<p class="muted sm" style="margin:0 0 8px">No active subscription in Stripe (it was cancelled or never started).</p>'}
+<h4 class="sub-h">Payments</h4>${V.invoices.length ? `<table class="acc sub-pay">${V.invoices.map((i) => `<tr><td class="sm">${fmtDate(i.date)}</td><td>${usd(i.amount)}</td><td><span class="cstatus ${i.status === 'paid' ? 'active' : i.status === 'open' ? 'q-declined' : ''}">${esc({ paid: 'Paid', open: 'Unpaid', void: 'Void', uncollectible: 'Unpaid' }[i.status] || i.status)}</span>${i.refunded ? `<div class="sm">Refunded ${usd(i.refunded.cents / 100)}</div>` : ''}</td>
+<td class="r"><div class="acts">${i.receiptUrl ? `<a class="btn alt sm" href="${esc(i.receiptUrl)}" target="_blank" rel="noopener">Receipt</a>` : ''}${i.status === 'paid' && i.amount > 0 && (!i.refunded || i.refunded.cents < i.amount * 100) ? `<button type="button" class="btn alt sm" data-act="subDo" data-id="${d.id}" data-do="refund" data-inv="${esc(i.id)}" data-amt="${i.amount - (i.refunded ? i.refunded.cents / 100 : 0)}" data-date="${esc(i.date)}">Refund</button>` : ''}</div></td></tr>`).join('')}</table>` : '<p class="muted sm" style="margin:0">No payments yet.</p>'}
+${V.stripeUrl ? `<p class="sm" style="margin:10px 0 0"><a href="${esc(V.stripeUrl)}" target="_blank" rel="noopener">Open in Stripe${V.mode === 'test' ? ' (test mode)' : ''} ↗</a></p>` : ''}`}
+${V.log.length ? `<details class="sub-log"><summary>Changes made from Alpha (${V.log.length})</summary><ul>${V.log.map((l) => `<li><span class="sm">${fmtDate(l.at.slice(0, 10))} · ${esc(l.by)}</span> ${esc(l.what)}</li>`).join('')}</ul></details>` : ''}`;
+  box._view = V; box._account = a;
+};
+// each change opens a small form; nothing reaches Stripe until it's confirmed there
+A.subDo = (d) => {
+  const box = $('#subBox'); const V = box && box._view; const a = D.accounts.find((x) => x.id === d.id); if (!V) return; const S = V.subscription || {};
+  const back = () => A.editAccount({ id: a.id }); const end = fmtDate(S.periodEnd);
+  const send = async (body, f) => { const b = $('button.btn:not(.alt)', f); if (b) b.disabled = true;
+    try { const r = await api('POST', `/api/platform/accounts/${a.id}/subscription`, body); toast(r.message); await load(); render(); back(); } catch (x) { if (b) b.disabled = false; toast(x.message, true); } };
+  const form = (title, inner, go, label, danger) => { const m = modal(`${title}: ${a.name}`, `<form id="sbf">${inner}<div class="foot"><button type="button" class="btn alt" data-act="ppBack" data-id="${a.id}">Back</button><button class="btn ${danger ? 'danger' : ''}">${label}</button></div></form>`);
+    const f = $('#sbf', m); f.addEventListener('submit', (e) => { e.preventDefault(); const body = go(Object.fromEntries(new FormData(f))); if (body) send(body, f); }); return f; };
+  const plusDays = (n) => inDays(n);
+  if (d.do === 'undoCancel' || d.do === 'resume' || d.do === 'removeDiscount') {
+    const t = { undoCancel: ['Undo cancellation', `The subscription keeps going and Stripe charges the card on ${end} as usual.`], resume: ['Resume billing', 'Stripe starts billing again from the next bill.'], removeDiscount: ['Remove discount', `${S.discount ? esc(S.discount.name) : 'The discount'} stops applying from the next bill.`] }[d.do];
+    return form(t[0], `<p style="margin-top:0">${t[1]}</p>`, () => ({ action: d.do }), t[0]);
+  }
+  if (d.do === 'plan') {
+    const f = form('Change plan', `<div class="row"><label>Plan<select name="planId">${D.plans.map((p) => `<option value="${esc(p.id)}" ${p.id === a.planId ? 'selected' : ''}>${esc(p.name)}${p.price ? ` (${esc(p.price)})` : ''}</option>`).join('')}</select></label>
+<label>Billing<select name="interval"><option value="month" ${S.interval !== 'year' ? 'selected' : ''}>Monthly</option><option value="year" ${S.interval === 'year' ? 'selected' : ''}>Yearly</option></select></label></div>
+<label class="switchline"><input type="radio" name="when" value="now" checked> <span><strong>Now:</strong> Stripe charges or credits the difference for the rest of this period today</span></label>
+<label class="switchline"><input type="radio" name="when" value="next"> <span><strong>From the next bill:</strong> the new plan starts now, the new price on ${end || 'the next bill'}, nothing charged today</span></label>
+<p class="muted" style="font-size:13px">A free plan always starts when the paid period ends (${end || 'at the end of the period'}).</p>`,
+    (b) => (confirm(`Change ${a.name} to ${planName(b.planId)} (${b.interval === 'year' ? 'yearly' : 'monthly'})${b.when === 'now' ? ', charging or crediting the difference now' : ''}?`) ? { action: 'plan', ...b } : null), 'Change plan');
+    return f;
+  }
+  if (d.do === 'cancel') return form('Cancel subscription', `<label class="switchline"><input type="radio" name="when" value="end" checked> <span><strong>At the end of the period</strong> (${end || 'its end date'}): everything keeps working until then, then the account is paused</span></label>
+<label class="switchline"><input type="radio" name="when" value="now"> <span><strong>Now:</strong> the subscription ends today and the account is paused right away. Nothing is refunded (use Refund for that).</span></label>
+<p class="muted" style="font-size:13px">Their data is kept, and they can choose a plan to come back.</p>`, (b) => (confirm(b.when === 'now' ? `Cancel ${a.name}’s subscription now and pause the account?` : `Cancel ${a.name}’s subscription on ${end}?`) ? { action: 'cancel', when: b.when } : null), 'Cancel subscription', true);
+  if (d.do === 'pause') return form('Pause billing', `<p style="margin-top:0">Stripe stops charging until the day you choose. The account stays open the whole time, so this is free time. To lock them out as well, use Pause account under Access.</p>
+<label>Start billing again on<input type="date" name="until" min="${plusDays(1)}" value="${plusDays(30)}" required></label>`, (b) => ({ action: 'pause', until: b.until }), 'Pause billing');
+  if (d.do === 'freeTime') return form('Give free time', `<p style="margin-top:0">Moves their next charge out. The account keeps working, and the subscription carries on after.</p>
+<label>Free days<input type="number" name="days" min="1" max="730" value="30" required></label><p class="muted" style="font-size:13px">Next charge now: ${end || '—'}. 30 days ≈ 1 month, 365 = 1 year.</p>`, (b) => ({ action: 'freeTime', days: b.days }), 'Give free time');
+  if (d.do === 'discount') { const L = (D.discounts || []).filter((x) => x.type !== 'trial');
+    if (!L.length) return toast('Make a discount code first (Pricing → Discount codes)', true);
+    return form('Apply discount', `<label>Discount code<select name="discountId">${L.map((x) => `<option value="${x.id}">${esc(x.code)} · ${esc(x.summary || '')}${x.status && x.status !== 'active' ? ` (${esc(x.status)})` : ''}</option>`).join('')}</select></label>
+<p class="muted" style="font-size:13px">Applies from their next bill. It replaces any discount they have now. The code’s own rules (plans, dates, uses) don’t apply here.</p>`, (b) => ({ action: 'discount', discountId: b.discountId }), 'Apply discount'); }
+  if (d.do === 'refund') return form('Refund', `<p style="margin-top:0">Refund the ${fmtDate(d.date)} payment to their card. The money comes out of your Stripe balance; banks take 5–10 days to show it.</p>
+<label>Amount ($)<input type="number" name="amount" min="0.01" max="${esc(d.amt)}" step="0.01" value="${esc(d.amt)}" required></label><p class="muted" style="font-size:13px">Up to ${usd(Number(d.amt))}. The subscription itself doesn’t change.</p>`,
+  (b) => (confirm(`Refund ${usd(Number(b.amount))} to ${a.name}? This can’t be undone.`) ? { action: 'refund', invoiceId: d.inv, amount: b.amount } : null), 'Refund', true);
+};
 A.editAccount = (d) => {
   const a = D.accounts.find((x) => x.id === d.id);
   const m = modal(a.name, `<div class="am-sum"><p class="sm">${a.owner ? `${esc(a.owner.name)} · ${esc(a.owner.email)}${a.owner.active ? '' : ' · <em>invite not accepted</em>'}${a.owner.unconfirmed ? ' · <em>email not confirmed</em>' : ''}` : 'No owner login yet'}</p>
@@ -328,7 +389,7 @@ ${industryFields(a)}
 ${a.owner ? `<button type="button" class="btn alt sm" data-act="ownerLink" data-id="${a.id}">${a.owner.active ? 'Get password reset link' : 'Get a new invite link'}</button>` : ''}
 ${a.billing && a.billing.prepaid ? prepaidSection(a) : a.isDefault ? '' : `<h3 style="font-size:15px;margin:18px 0 6px">Last day of access</h3><form id="xf" class="inline-form">${expiryField(a.expiresAt)}<button class="btn alt">Save date</button></form>
 <p class="muted" style="font-size:13px;margin:-4px 0 0">${a.expiredOn ? `Its access ended on ${fmtDate(a.expiredOn)}. Choose a later date (or clear it), save, then resume the account.` : a.expiresAt ? `The account pauses after ${fmtDate(a.expiresAt)}. Clear the date to keep it open.` : 'No end date: the account stays open.'}</p>`}
-</div><div class="am-col"><h3 style="font-size:15px;margin:18px 0 6px">Custom domains</h3>${a.domains.length ? `<table class="acc">${a.domains.map((x) => `<tr><td><strong>${esc(x.host)}</strong>${x.primary ? ' <span class="pf-chip">Main</span>' : ''}<div class="sm">${x.verified ? 'Connected' : 'Waiting for DNS'}</div></td>
+</div><div class="am-col">${a.isDefault ? '' : '<h3 style="font-size:15px;margin:18px 0 6px">Subscription</h3><div id="subBox" class="sub-box"></div>'}<h3 style="font-size:15px;margin:18px 0 6px">Custom domains</h3>${a.domains.length ? `<table class="acc">${a.domains.map((x) => `<tr><td><strong>${esc(x.host)}</strong>${x.primary ? ' <span class="pf-chip">Main</span>' : ''}<div class="sm">${x.verified ? 'Connected' : 'Waiting for DNS'}</div></td>
 <td><div class="acts">${x.verified ? `<button type="button" class="btn alt sm" data-act="domain" data-host="${esc(x.host)}" data-v="0">Unapprove</button>` : `<button type="button" class="btn alt sm" data-act="domain" data-host="${esc(x.host)}" data-v="1" title="Approve without waiting for DNS">Approve</button>`}<button type="button" class="btn danger sm" data-act="domain" data-host="${esc(x.host)}" data-rm="1">Remove</button></div></td></tr>`).join('')}</table>`
     : `<p class="muted" style="font-size:14px;margin:0">None. ${D.plans.find((p) => p.id === a.planId)?.features.includes('customDomain') ? 'The owner can add one under App Settings → Web address.' : 'Their plan doesn’t include custom domains.'}</p>`}
 <h3 style="font-size:15px;margin:18px 0 6px">Support access</h3>${supportSection(a)}
@@ -340,6 +401,7 @@ ${a.status === 'active' ? '' : a.status === 'pending' ? '<p class="muted" style=
 <div class="foot"><button type="button" class="btn alt" data-act="closeModal">Close</button></div>`, { wide: true });
   m.dataset.id = a.id; m.tabIndex = -1; m.focus(); // focus the popup itself, not its first field (the plan menu), so nothing changes by accident
   wirePlanSelects(m, (x) => A.editAccount({ id: x.id }));
+  if (!a.isDefault) A.subLoad({ id: a.id }); // from Stripe, after the popup opens
   const f = $('#ef', m); wireSlug(f, a.slug); wireIndustry(f);
   const pf = $('#ppf', m); if (pf) pf.addEventListener('submit', async (e) => { e.preventDefault(); const btn = $('button', pf); btn.disabled = true;
     try { await api('POST', `/api/platform/accounts/${a.id}/prepaid`, { action: 'until', until: pf.until.value }); toast(`Prepaid until ${fmtDate(pf.until.value)}`); await load(); render(); A.editAccount({ id: a.id }); } catch (x) { btn.disabled = false; toast(x.message, true); } });
