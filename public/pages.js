@@ -1672,7 +1672,7 @@ PAGES['/settings/business-page'] = {
   title: 'Business Page',
   async render(main) {
     bpAt = 'info';
-    const V = await api('GET', '/api/business-page'); const P = { ...V.page, links: V.page.links.map((l) => ({ ...l })), qr: { ...V.page.qr, header: { ...V.page.qr.header }, footer: { ...V.page.qr.footer } } }; bp = { page: P, V };
+    const V = await api('GET', '/api/business-page'); const P = { ...V.page, links: bpWithDefaults(V.page.links.map((l) => ({ ...l }))), qr: { ...V.page.qr, header: { ...V.page.qr.header }, footer: { ...V.page.qr.footer } } }; bp = { page: P, V };
     const Q = P.qr; const qrUrl = V.url + '?qr=1';
     // a choice in Shape & form, shown as a small QR code drawn that way
     // zoomed in on what the choice changes: a corner marker, or some dots (the sample code is 21 modules with a 4-module margin)
@@ -1701,7 +1701,7 @@ PAGES['/settings/business-page'] = {
 <div class="bp-colors">${BP_COLORS.map(([k, n]) => `<label>${n}<span class="bp-color"><input name="${k}" maxlength="7" spellcheck="false"><input type="color" data-for="${k}" aria-label="${n}"></span></label>`).join('')}</div>
 ${sw('showLabels', 'Show icon labels', 'Names under the Phone, Email and Website buttons.')}</section>
 <section data-sec="links" hidden><h2>Links</h2><p class="muted bp-note">Add your social media and other pages. For most networks you can enter just your handle, like @yourbusiness.</p>
-<select id="bpAdd" aria-label="Add a link"></select><div id="bpLinks"></div><button type="button" class="bp-addcustom" data-act="bpCustom">+ Add custom link</button></section>
+<div id="bpLinks"></div><select id="bpAdd" aria-label="Add another network"></select><div class="bp-cbox" id="bpCustomBox" hidden></div><button type="button" class="bp-addcustom" id="bpAddCustom" data-act="bpCustom">+ Add custom link</button></section>
 <section data-sec="exchange" hidden><h2>Exchange contact</h2>${sw('exchange', 'Show a contact form', 'People can leave their name, email, phone and a message. Each one comes to you as a new request, and the person is added to your clients.')}</section>
 <section data-sec="usage" hidden><h2>Usage limits</h2><p class="muted bp-note">Control how many times your QR code can be scanned and how long it keeps working. The link itself (${esc(V.url.replace(/^https?:\/\//, ''))}) always works.</p>
 ${sw('scanOn', 'Scan limit', 'The QR code stops working after this many scans.')}<label class="bp-sub">Number of scans<input name="scanMax" type="number" min="1" max="10000000" step="1"></label>
@@ -1745,7 +1745,7 @@ ${admin ? '' : '<p class="muted" style="font-size:13px">Only the account owner o
       BP_COLORS.forEach(([k]) => { P[k] = f.elements[k].value.trim(); });
       P.showLabels = f.showLabels.checked; P.exchange = f.exchange.checked;
       P.scanLimit = { on: f.scanOn.checked, max: +f.scanMax.value || 100 }; P.expiry = { on: f.expOn.checked, date: f.expDate.value };
-      $$('#bpLinks .bp-link').forEach((row, i) => { const l = P.links[i]; l.url = $('[data-f=url]', row).value; if (l.kind === 'custom') l.label = $('[data-f=label]', row).value; });
+      $$('#bpLinks .bp-link').forEach((row, i) => { P.links[i].url = $('[data-f=url]', row).value; });
       bpDraw(); bpPreview();
     };
     // a color picker fills in its hex box, and a valid hex code moves the picker
@@ -1762,7 +1762,7 @@ ${admin ? '' : '<p class="muted" style="font-size:13px">Only the account owner o
     $('#bpAdd').addEventListener('change', (e) => { if (!e.target.value) return; P.links.push({ kind: e.target.value, url: '' }); bpLinks(); const ins = $$('#bpLinks [data-f=url]'); ins[ins.length - 1].focus(); });
     f.addEventListener('submit', async (e) => {
       e.preventDefault(); read(); const btn = $('#bpSave'); btn.disabled = true;
-      try { const r = await api('PUT', '/api/business-page', P); bp.V = r; Object.assign(P, { logo: r.page.logo, cover: r.page.cover, links: r.page.links.map((l) => ({ ...l })) }); Object.assign(Q, { logo: r.page.qr.logo, bgImg: r.page.qr.bgImg }); bpLinks(); bpDraw(); toast('Business page saved'); }
+      try { const r = await api('PUT', '/api/business-page', P); bp.V = r; Object.assign(P, { logo: r.page.logo, cover: r.page.cover, links: bpWithDefaults(r.page.links.map((l) => ({ ...l }))) }); Object.assign(Q, { logo: r.page.qr.logo, bgImg: r.page.qr.bgImg }); bpLinks(); bpDraw(); toast('Business page saved'); }
       catch (x) { toast(x.message, true); } finally { btn.disabled = false; }
     });
     bpLinks(); bpDraw(); bpPreview(); bpGo('info');
@@ -1793,15 +1793,78 @@ function bpDraw() {
   thumb('#bpQrLogo', /^(data:|\/uploads\/)/.test(Q.logo || '') ? Q.logo : ''); thumb('#bpQrBg', Q.bgImg);
   $('#bpQr').innerHTML = qrStyled(bp.V.url + '?qr=1', qrStyleFor(Q, bp.V.companyLogo)) || '<p class="muted">Check the colors: each one needs a hex code like #1A2B3C.</p>';
 }
-// the Links list: one row per link, in the order they show on the page
+// the Links list: one row per link, in the order they show on the page. X, Instagram, Facebook, LinkedIn and YouTube always have a row
+// (an empty one isn't saved); rows move by dragging the dotted handle, like line items on quotes and invoices
+const BP_DEFAULT_LINKS = ['x', 'instagram', 'facebook', 'linkedin', 'youtube'];
+const BP_EXAMPLE = { facebook: 'https://www.facebook.com/yourbusiness', linkedin: 'https://www.linkedin.com/company/yourbusiness', google: 'Link to your Google reviews', yelp: 'https://www.yelp.com/biz/yourbusiness', nextdoor: 'Link to your Nextdoor page' };
+const bpWithDefaults = (links) => [...links, ...BP_DEFAULT_LINKS.filter((k) => !links.some((l) => l.kind === k)).map((kind) => ({ kind, url: '' }))];
+const bpIcon = (k, size = 20) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${(bp.V.icons[k] || bp.V.icons.link).svg}</svg>`;
+const BP_TRASH = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>';
 function bpLinks() {
   const P = bp.page; const N = bp.V.networks; const used = P.links.map((l) => l.kind);
-  $('#bpAdd').innerHTML = `<option value="">Add a link…</option>${Object.entries(N).filter(([k]) => !used.includes(k)).map(([k, n]) => `<option value="${k}">${esc(n.name)}</option>`).join('')}`;
-  $('#bpLinks').innerHTML = P.links.map((l, i) => { const n = N[l.kind];
-    return `<div class="bp-link">${l.kind === 'custom' ? `<input data-f="label" maxlength="40" placeholder="Name, like Our reviews" value="${esc(l.label || '')}">` : `<span class="bp-lname">${CONN_ICONS[l.kind] || ''}${esc(n.name)}</span>`}
-<input data-f="url" maxlength="300" placeholder="${l.kind === 'custom' ? 'https://' : n.handle ? '@yourbusiness or a link' : 'Link to your page'}" value="${esc(l.url || '')}">
-<button type="button" class="btn alt sm" data-act="bpUp" data-i="${i}" ${i ? '' : 'disabled'} title="Move up" aria-label="Move up">↑</button><button type="button" class="btn alt sm" data-act="bpRm" data-i="${i}" title="Remove" aria-label="Remove link">×</button></div>`; }).join('');
+  const more = Object.entries(N).filter(([k]) => !used.includes(k));
+  $('#bpAdd').hidden = !more.length; $('#bpAdd').innerHTML = `<option value="">+ Add another network…</option>${more.map(([k, n]) => `<option value="${k}">${esc(n.name)}</option>`).join('')}`;
+  $('#bpLinks').innerHTML = P.links.map((l, i) => {
+    const custom = l.kind === 'custom'; const name = custom ? l.label : N[l.kind].name;
+    const label = custom ? `<button type="button" class="bp-lname edit" data-act="bpCustom" data-i="${i}" title="Change the name or icon">${bpIcon(l.icon || 'link')}<span>${esc(name)}</span></button>` : `<span class="bp-lname">${bpIcon(l.kind)}<span>${esc(name)}</span></span>`;
+    return `<div class="bp-link" data-i="${i}"><button type="button" class="drag-h bp-drag" aria-label="Drag to reorder (or use the arrow keys)" title="Drag to reorder">${DRAG_DOTS}</button>
+<div class="bp-lbox">${label}<input data-f="url" maxlength="300" aria-label="${esc(name)} link" placeholder="${custom ? 'https://' : esc(BP_EXAMPLE[l.kind] || (N[l.kind].handle ? 'Eg: @yourbusiness' : 'Link to your page'))}" value="${esc(l.url || '')}"></div>
+<button type="button" class="bp-trash" data-act="bpRm" data-i="${i}" title="Remove" aria-label="Remove ${esc(name)}">${BP_TRASH}</button></div>`;
+  }).join('');
 }
+// dragging a row by its handle (mouse or touch), or the arrow keys while the handle has focus; then the links take the rows' new order
+const bpReorder = () => { const old = bp.page.links; bp.page.links = $$('#bpLinks .bp-link').map((r) => old[+r.dataset.i]); bpLinks(); bpPreview(); };
+document.addEventListener('pointerdown', (e) => {
+  const h = e.target.closest('.bp-link .bp-drag'); if (!h || e.button !== 0) return;
+  e.preventDefault(); const row = h.closest('.bp-link'); const list = row.parentElement; const start = row.nextElementSibling;
+  row.classList.add('dragging'); document.body.classList.add('row-drag'); // listened for on the window: moving the row would drop a pointer capture on the handle
+  const move = (ev) => {
+    const next = [...list.children].filter((r) => r !== row).find((r) => { const b = r.getBoundingClientRect(); return ev.clientY < b.top + b.height / 2; });
+    if ((next || null) !== row.nextElementSibling) list.insertBefore(row, next || null);
+  };
+  const end = () => {
+    removeEventListener('pointermove', move); removeEventListener('pointerup', end); removeEventListener('pointercancel', end);
+    row.classList.remove('dragging'); document.body.classList.remove('row-drag');
+    if (row.nextElementSibling !== start) bpReorder();
+  };
+  addEventListener('pointermove', move); addEventListener('pointerup', end); addEventListener('pointercancel', end);
+});
+document.addEventListener('keydown', (e) => {
+  const h = e.target.closest('.bp-link .bp-drag'); if (!h || !['ArrowUp', 'ArrowDown'].includes(e.key)) return;
+  e.preventDefault(); const row = h.closest('.bp-link'); const other = e.key === 'ArrowUp' ? row.previousElementSibling : row.nextElementSibling; if (!other) return;
+  if (e.key === 'ArrowUp') other.before(row); else other.after(row);
+  const at = [...row.parentElement.children].indexOf(row); bpReorder(); $$('#bpLinks .bp-drag')[at].focus();
+});
+A.bpRm = (d) => { bp.page.links.splice(+d.i, 1); bpLinks(); bpPreview(); };
+// + Add custom link, or a custom link's name clicked: its name, address and icon (searchable), saved into the list
+let bpEdit = null; // { i (the link's place, or -1 for a new one), icon }
+A.bpCustom = (d) => {
+  const i = d.i === undefined ? -1 : +d.i; const l = i >= 0 ? bp.page.links[i] : { label: '', url: '', icon: '' }; bpEdit = { i, icon: l.icon || '' };
+  const box = $('#bpCustomBox'); box.hidden = false; $('#bpAddCustom').hidden = true;
+  box.innerHTML = `<div class="bp-two"><label>Name<input id="bpCName" maxlength="40" placeholder="Enter name, like Our menu" value="${esc(l.label)}"></label><label>URL<input id="bpCUrl" maxlength="300" placeholder="Enter URL" value="${esc(l.url)}"></label></div>
+<span class="bp-lbl">Icon</span><button type="button" class="bp-ipick" data-act="bpIconOpen" aria-expanded="false"><span id="bpCIcon"></span><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+<div class="bp-ipop" id="bpIPop" hidden><input type="search" id="bpISearch" placeholder="Search for an icon" aria-label="Search for an icon"><div class="bp-igrid" id="bpIGrid"></div></div>
+<div class="bp-cfoot"><button type="button" class="btn alt" data-act="bpCustomCancel">Cancel</button><button type="button" class="btn" data-act="bpCustomSave" id="bpCSave">Save</button></div>`;
+  const ok = () => { $('#bpCSave').disabled = !$('#bpCName').value.trim() || !$('#bpCUrl').value.trim(); };
+  ['#bpCName', '#bpCUrl'].forEach((s) => { $(s).addEventListener('input', (e) => { e.stopPropagation(); ok(); }); $(s).addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); if (!$('#bpCSave').disabled) A.bpCustomSave(); } }); });
+  $('#bpISearch').addEventListener('input', (e) => { e.stopPropagation(); bpIconGrid(); });
+  $('#bpISearch').addEventListener('keydown', (e) => { if (e.key === 'Enter') e.preventDefault(); });
+  bpIconChosen(); ok(); $('#bpCName').focus();
+};
+function bpIconChosen() { const k = bpEdit.icon; $('#bpCIcon').innerHTML = k ? `${bpIcon(k)}<span>${esc(bp.V.icons[k].name.split(' ')[0])}</span>` : `${bpIcon('website')}<span class="muted">Select an icon (optional)</span>`; }
+function bpIconGrid() {
+  const q = $('#bpISearch').value.trim().toLowerCase();
+  $('#bpIGrid').innerHTML = Object.entries(bp.V.icons).filter(([k, x]) => !q || x.name.toLowerCase().includes(q) || k.includes(q))
+    .map(([k, x]) => `<button type="button" class="bp-ic${k === bpEdit.icon ? ' on' : ''}" data-act="bpIconPick" data-k="${k}" title="${esc(x.name.split(' ')[0])}" aria-label="${esc(x.name.split(' ')[0])}">${bpIcon(k, 22)}</button>`).join('') || '<p class="muted" style="margin:6px">No icons match.</p>';
+}
+A.bpIconOpen = (d, el) => { const pop = $('#bpIPop'); pop.hidden = !pop.hidden; el.setAttribute('aria-expanded', !pop.hidden); if (!pop.hidden) { bpIconGrid(); $('#bpISearch').focus(); } };
+A.bpIconPick = (d) => { bpEdit.icon = bpEdit.icon === d.k ? '' : d.k; $('#bpIPop').hidden = true; bpIconChosen(); };
+A.bpCustomCancel = () => { bpEdit = null; $('#bpCustomBox').hidden = true; $('#bpAddCustom').hidden = false; };
+A.bpCustomSave = () => {
+  const l = { kind: 'custom', label: $('#bpCName').value.trim(), url: $('#bpCUrl').value.trim(), ...(bpEdit.icon ? { icon: bpEdit.icon } : {}) };
+  if (bpEdit.i >= 0) bp.page.links[bpEdit.i] = l; else bp.page.links.push(l);
+  A.bpCustomCancel(); bpLinks(); bpPreview();
+};
 let bpTimer = 0;
 function bpPreview() {
   clearTimeout(bpTimer);
@@ -1823,8 +1886,6 @@ A.bpQrDownload = async () => {
 A.bpQrCopy = async () => { await navigator.clipboard.writeText(bp.V.url); toast('Link copied'); };
 A.bpCover = (d) => { bp.page.cover = d.c; bpDraw(); bpPreview(); };
 A.bpLogo = (d) => { bp.page.logo = d.v === 'company' ? bp.V.companyLogo : ''; bpDraw(); bpPreview(); };
-A.bpCustom = () => { bp.page.links.push({ kind: 'custom', label: '', url: '' }); bpLinks(); const ins = $$('#bpLinks [data-f=label]'); ins[ins.length - 1].focus(); };
-A.bpUp = (d) => { const L = bp.page.links; const i = +d.i; [L[i - 1], L[i]] = [L[i], L[i - 1]]; bpLinks(); bpPreview(); };
 A.bpRm = (d) => { bp.page.links.splice(+d.i, 1); bpLinks(); bpPreview(); };
 A.bpResetScans = async () => {
   if (!confirm('Reset the scan count to 0? If a scan limit is on, the QR code works again until it reaches the limit.')) return;

@@ -2623,7 +2623,7 @@ app.post('/card/exchange', async (req, res) => {
   save(); pushNewRequest('request', c, r); res.send(businessPage.render(p, { book: pageBook(), done: true, values: b }));
 });
 // Settings → Business Page: the page, its address, and how many times the QR code has been scanned
-const pageView = () => ({ page: bizPage(), scans: (db.businessPage && db.businessPage.scans) || 0, url: `${baseUrl()}/card`, companyLogo: db.company.logo || '', covers: businessPage.COVERS, qrLogos: businessPage.QR_LOGOS, qrFonts: businessPage.QR_FONTS, networks: Object.fromEntries(Object.entries(businessPage.NETWORKS).map(([k, [n, h]]) => [k, { name: n, handle: !!h }])) });
+const pageView = () => ({ page: bizPage(), scans: (db.businessPage && db.businessPage.scans) || 0, url: `${baseUrl()}/card`, companyLogo: db.company.logo || '', covers: businessPage.COVERS, icons: Object.fromEntries(Object.entries(businessPage.ICON_NAMES).map(([k, n]) => [k, { name: n, svg: businessPage.ICON[k] }])), qrLogos: businessPage.QR_LOGOS, qrFonts: businessPage.QR_FONTS, networks: Object.fromEntries(Object.entries(businessPage.NETWORKS).map(([k, [n, h]]) => [k, { name: n, handle: !!h }])) });
 app.get('/api/business-page', (req, res) => res.json(pageView()));
 // a new logo or cover arrives as a data URL; it's saved in the account's uploads, and the one it replaces is deleted
 const PAGE_IMG = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/;
