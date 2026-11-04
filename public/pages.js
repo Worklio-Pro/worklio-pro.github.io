@@ -872,64 +872,142 @@ PAGES['/automations/edit'] = {
     abEditor(main, structuredClone(found || AB_STARTERS[qp('k')] || { name: '', trigger: 'quoteSent', days: 3, hour: 9, to: 'client', channels: ['email'], subject: '', body: '', smsBody: '' }));
   },
 };
+// the editor is a visual flow (trigger → wait → who → actions) on a canvas; tapping a step opens its settings in the panel on the right
+const AB_IC = {
+  trigger: '<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>',
+  wait: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  who: '<path d="M3 5h18l-7 8v6l-4 2v-8z"/>',
+  email: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
+  sms: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',
+  push: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  preview: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+};
+const abIco = (d, s = 18) => `<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 function abEditor(main, a) {
   const t = AB.triggers; const groups = { quote: 'Quotes', invoice: 'Invoices', job: 'Jobs', client: 'Clients' };
-  const opts = Object.entries(groups).map(([k, g]) => `<optgroup label="${g}">${Object.entries(t).filter(([, x]) => x.kind === k).map(([id, x]) => `<option value="${id}" ${a.trigger === id ? 'selected' : ''}>${esc(x.label)}</option>`).join('')}</optgroup>`).join('');
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  const trigOpts = Object.entries(groups).map(([k, g]) => `<h5 class="wf-g">${g}</h5>${Object.entries(t).filter(([, x]) => x.kind === k).map(([id, x]) => `<label class="wf-opt"><input type="radio" name="trigger" value="${id}" ${a.trigger === id ? 'checked' : ''}><span><strong>${esc(x.label)}</strong><small>${esc(cap(x.when))}</small></span></label>`).join('')}`).join('');
   const hours = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].map((h) => `<option value="${h}" ${a.hour === h ? 'selected' : ''}>${abHour(h)}</option>`).join('');
   const tags = AB.tags.length ? `<div class="ab-checks"><span>Only clients tagged</span>${AB.tags.map((g) => `<label><input type="checkbox" name="tags" value="${esc(g)}" ${(a.tags || []).includes(g) ? 'checked' : ''}> ${esc(g)}</label>`).join('')}</div>` : '';
-  main.innerHTML = `<div class="head"><div><a class="back" href="/automations" data-link>← Automations</a><h1>${a.id ? esc(a.name) : 'New automation'}</h1>${a.id ? `<p class="sub" id="abState"></p>` : '<p class="sub">Save it first. You can activate it after that.</p>'}</div>${a.id ? '<div class="actions"><button type="button" class="btn" id="abToggle"></button><button type="button" class="btn alt" id="abDelete">Delete</button></div>' : ''}</div>
-<div class="card"><form id="abf">
-<label>Name<input name="name" maxlength="80" required value="${esc(a.name)}"></label>
-<h4 class="ab-h">When</h4><div class="row"><label>Trigger<select name="trigger">${opts}</select></label><label>Days<input name="days" type="number" min="0" max="365" value="${a.days}"></label><label>Send at<select name="hour">${hours}</select></label></div><p class="muted ab-when" id="abWhen"></p>
-<h4 class="ab-h">Only if</h4>${tags}<label id="abMinW">The amount is at least<input name="minAmount" type="number" min="0" step="0.01" value="${a.minAmount || ''}" placeholder="Any amount"></label>
-<h4 class="ab-h">Send to</h4><div class="ab-checks"><label><input type="radio" name="to" value="client" ${a.to !== 'team' ? 'checked' : ''}> The client</label><label><input type="radio" name="to" value="team" ${a.to === 'team' ? 'checked' : ''}> Your team</label></div><div class="ab-checks" id="abCh"></div><p class="muted" id="abNote"></p>
-<div id="abMsg"><h4 class="ab-h">Message</h4><label>Subject<input name="subject" maxlength="200" value="${esc(a.subject)}"></label><label>Message<textarea name="body" rows="8" maxlength="10000">${esc(a.body)}</textarea></label></div>
-<div id="abSms"><h4 class="ab-h">Text message</h4><label>Text<textarea name="smsBody" rows="3" maxlength="480">${esc(a.smsBody)}</textarea></label></div>
-<div class="ab-vars" id="abVars"></div><div class="ab-who" id="abWho" hidden></div>
-<div class="ab-foot"><button type="button" class="btn alt" id="abPreview">Who would get this?</button><button type="button" class="btn alt" id="abTest">Email me a test</button><button class="btn" type="submit">Save</button></div></form></div>`;
-  const f = $('#abf', main); let last = f.elements.body;
+  main.innerHTML = `<div class="head wf-head"><div class="wf-title"><a class="back" href="/automations" data-link>← Automations</a><input class="wf-name" name="name" form="abf" maxlength="80" required placeholder="Name this automation" value="${esc(a.name)}" aria-label="Automation name"><p class="sub" id="abState">${a.id ? '' : 'Save it first. You can activate it after that.'}</p></div><div class="actions">${a.id ? '<button type="button" class="btn alt" id="abDelete">Delete</button><button type="button" class="btn alt" id="abToggle"></button>' : ''}<button class="btn" type="submit" form="abf">Save</button></div></div>
+<form id="abf" class="wf">
+<div class="wf-canvas"><div class="wf-tools"><button type="button" class="btn alt sm" id="abPreview">Who would get this?</button><button type="button" class="btn alt sm" id="abTest">Email me a test</button></div><div class="wf-flow" id="wfFlow"></div></div>
+<div class="wf-scrim" id="wfScrim"></div>
+<aside class="wf-panel" id="wfPanel" aria-label="Step settings">
+<div class="wf-ph"><span class="wf-ic" id="wfIc"></span><div class="wf-pt"><small id="wfKind"></small><h3 id="wfTitle"></h3></div><button type="button" class="wf-x" id="wfClose" aria-label="Close">×</button></div>
+<div class="wf-pb" id="wfBody">
+<section data-p="trigger"><p class="muted wf-lead">What starts this automation.</p>${trigOpts}</section>
+<section data-p="wait"><div class="row"><label>Days<input name="days" type="number" min="0" max="365" value="${a.days}"></label><label>Send at<select name="hour">${hours}</select></label></div><p class="muted ab-when" id="abWhen"></p></section>
+<section data-p="who"><h4 class="ab-h">Send to</h4><div class="ab-checks"><label><input type="radio" name="to" value="client" ${a.to !== 'team' ? 'checked' : ''}> The client</label><label><input type="radio" name="to" value="team" ${a.to === 'team' ? 'checked' : ''}> Your team</label></div><p class="muted" id="abNote"></p><h4 class="ab-h">Only if</h4>${tags}<label id="abMinW">The amount is at least<input name="minAmount" type="number" min="0" step="0.01" value="${a.minAmount || ''}" placeholder="Any amount"></label>${tags ? '' : '<p class="muted wf-lead" id="abNoTags">Tag clients to send this to only some of them.</p>'}</section>
+<section data-p="msg"><p class="muted wf-lead" id="abMsgNote"></p><label><span id="abSubjL">Subject</span><input name="subject" maxlength="200" value="${esc(a.subject)}"></label><label>Message<textarea name="body" rows="10" maxlength="10000">${esc(a.body)}</textarea></label><div class="ab-vars"></div></section>
+<section data-p="sms"><p class="muted wf-lead">Only goes to clients who agreed to texts. “Reply STOP to opt out.” is added if it isn’t there.</p><label>Text<textarea name="smsBody" rows="4" maxlength="480">${esc(a.smsBody)}</textarea></label><div class="ab-vars"></div></section>
+<section data-p="add"><p class="muted wf-lead">Choose what this automation does. You can add more than one.</p><div class="wf-adds" id="abAdd"></div></section>
+<section data-p="preview"><div id="abWho"></div></section>
+</div>
+<div class="wf-pf"><button type="button" class="btn alt wf-rm" id="abRemove">Remove action</button><button type="button" class="btn wf-done" id="wfDone">Done</button></div>
+</aside></form>`;
+  const f = $('#abf', main); const panel = $('#wfPanel', f); let last = f.elements.body;
+  let ch = [...(a.channels || [])]; let sel = 'trigger';
   const chosen = (name) => $$(`[name="${name}"]:checked`, f).map((x) => x.value);
-  const sync = (keep) => {
-    const tr = t[f.elements.trigger.value]; const to = chosen('to')[0]; const was = keep || chosen('ch');
-    $('#abWhen', f).textContent = `${f.elements.days.value || 0} ${tr.when}. Times are in your business’s time zone.`;
-    $('#abMinW', f).hidden = tr.kind === 'client';
-    const list = to === 'team' ? ['push', 'email'] : ['email', ...(tr.sms && AB.sms ? ['sms'] : [])];
-    $('#abCh', f).innerHTML = list.map((c) => `<label><input type="checkbox" name="ch" value="${c}" ${was.includes(c) ? 'checked' : ''}> ${abChannel[c]}</label>`).join('');
-    $('#abNote', f).textContent = to === 'team' ? 'App notifications go to the owner and admins, and to the crew on a job. Email goes to your company email.' : tr.sms ? (AB.sms ? 'Texts only go to clients who agreed to them. Every email has an unsubscribe link.' : 'Every email has an unsubscribe link.') : 'Email only: clients agree to texts about their quotes, invoices and appointments, not promotions. Every email has an unsubscribe link.';
-    syncCh();
-    $('#abVars', f).innerHTML = `<span class="muted">Insert:</span>${Object.entries(AB.vars[f.elements.trigger.value]).map(([k, l]) => `<button type="button" class="ab-var" data-v="${k}" title="${esc(l)}">${esc(l)}</button>`).join('')}`;
+  const tr = () => t[f.elements.trigger.value]; const to = () => f.elements.to.value;
+  const allowed = () => (to() === 'team' ? ['push', 'email'] : ['email', ...(tr().sms && AB.sms ? ['sms'] : [])]);
+  const actTitle = (c) => (c === 'email' ? (to() === 'team' ? 'Email your team' : 'Send email') : c === 'sms' ? 'Send text' : 'App notification');
+  const waitText = () => `${Number(f.elements.days.value) || 0} ${tr().when}`.replace(/^1 days/, '1 day');
+  const miss = (c) => (c === 'sms' ? !f.elements.smsBody.value.trim() : !f.elements.subject.value.trim() || !f.elements.body.value.trim());
+  const sum = (c) => (miss(c) ? 'Write the message' : c === 'sms' ? f.elements.smsBody.value.trim() : f.elements.subject.value.trim());
+  const why = (c) => {
+    if (ch.includes(c)) return 'Already added';
+    if (allowed().includes(c)) return '';
+    if (c === 'push') return 'App notifications go to your team. Change Send to.';
+    return to() === 'team' ? 'Texts go to clients only' : !AB.sms ? 'Text messages aren’t in your plan' : 'Clients agree to texts about their quotes, invoices and appointments, not promotions';
   };
-  const syncCh = () => { const c = chosen('ch'); $('#abMsg', f).hidden = !c.includes('email') && !c.includes('push'); $('#abSms', f).hidden = !c.includes('sms'); };
-  const read = () => ({ id: a.id || '', name: f.elements.name.value, trigger: f.elements.trigger.value, days: f.elements.days.value, hour: f.elements.hour.value, tags: chosen('tags'), minAmount: $('#abMinW', f).hidden ? 0 : f.elements.minAmount.value, to: chosen('to')[0], channels: chosen('ch'), subject: f.elements.subject.value, body: f.elements.body.value, smsBody: f.elements.smsBody.value });
+  const ADDS = { email: ['Send email', () => (to() === 'team' ? 'To your company email' : 'With an unsubscribe link at the bottom')], sms: ['Send text', () => 'A text message to the client’s mobile'], push: ['App notification', () => 'To the owner, admins and the job’s crew'] };
+  const node = (id, ic, kind, title, sub, cls = '') => `<div class="wf-step"><button type="button" class="wf-node ${cls} ${sel === id ? 'on' : ''}" data-n="${id}"><span class="wf-ic ic-${ic}">${abIco(AB_IC[ic])}</span><span class="wf-nt"><small>${kind}</small><strong>${esc(title)}</strong>${sub ? `<span>${esc(sub)}</span>` : ''}</span>${cls === 'warn' ? '<span class="wf-warn" title="Needs a message">!</span>' : ''}</button>${ch.includes(id) ? `<button type="button" class="wf-del" data-del="${id}" aria-label="Remove ${esc(title)}" title="Remove">×</button>` : ''}</div>`;
+  const draw = () => {
+    const x = tr(); const min = Number(f.elements.minAmount.value) || 0; const tg = chosen('tags');
+    const filt = [tg.length ? `Tagged ${tg.join(', ')}` : '', min > 0 && x.kind !== 'client' ? `${money(min)} or more` : ''].filter(Boolean).join(' · ') || (to() === 'team' ? 'Owner, admins and job crew' : 'Every client');
+    $('#wfFlow', f).innerHTML = [
+      node('trigger', 'trigger', 'Trigger', x.label, groups[x.kind]),
+      node('wait', 'wait', 'Wait', `${Number(f.elements.days.value) || 0} day${Number(f.elements.days.value) == 1 ? '' : 's'}, at ${abHour(Number(f.elements.hour.value))}`, cap(x.when.replace(/^days /, ''))),
+      node('who', 'who', 'Send to', to() === 'team' ? 'Your team' : 'The client', filt),
+      ...ch.map((c) => node(c, c, 'Action', actTitle(c), sum(c), miss(c) ? 'warn' : '')),
+    ].join('<i class="wf-line"></i>') + `<i class="wf-line"></i><button type="button" class="wf-plus ${sel === 'add' ? 'on' : ''}" data-n="add" title="Add an action" aria-label="Add an action">${abIco(AB_IC.plus, 16)}</button>${ch.length ? '' : '<span class="wf-hint">Add an action</span>'}<i class="wf-line"></i><span class="wf-end">End</span>`;
+  };
+  const META = { trigger: ['trigger', 'Trigger', 'When it starts'], wait: ['wait', 'Wait', 'When it sends'], who: ['who', 'Send to', 'Who gets it'], add: ['plus', 'Actions', 'Add an action'], preview: ['preview', 'Preview', 'Who would get this?'] };
+  const show = (id, open = true) => {
+    sel = id; const sec = id === 'email' || id === 'push' ? 'msg' : id;
+    const [ic, kind, title] = META[id] || [id, 'Action', actTitle(id)];
+    $$('[data-p]', f).forEach((s) => { s.hidden = s.dataset.p !== sec; });
+    $('#wfIc', f).className = `wf-ic ic-${ic}`; $('#wfIc', f).innerHTML = abIco(AB_IC[ic]);
+    $('#wfKind', f).textContent = kind; $('#wfTitle', f).textContent = title;
+    $('#abRemove', f).hidden = !ch.includes(id);
+    if (sec === 'msg') {
+      $('#abSubjL', f).textContent = id === 'push' && !ch.includes('email') ? 'Title' : 'Subject';
+      $('#abMsgNote', f).textContent = id === 'push' ? `Goes to the owner and admins, and to the crew on a job. Shortened to fit.${ch.includes('email') ? ' Uses the same subject and message as the email.' : ''}` : to() === 'team' ? `Goes to your company email.${ch.includes('push') ? ' The app notification uses this subject and message too.' : ''}` : 'Every email has an unsubscribe link at the bottom.';
+      last = f.elements.body;
+    }
+    if (sec === 'sms') last = f.elements.smsBody;
+    if (sec === 'add') $('#abAdd', f).innerHTML = Object.entries(ADDS).map(([c, [label, desc]]) => { const w = why(c); return `<button type="button" class="wf-add" data-add="${c}" ${w ? 'disabled' : ''}><span class="wf-ic ic-${c}">${abIco(AB_IC[c])}</span><span><strong>${label}</strong><small>${esc(w || desc())}</small></span></button>`; }).join('');
+    $('#wfBody', f).scrollTop = 0;
+    panel.classList.toggle('open', open); $('#wfScrim', f).classList.toggle('open', open);
+    draw();
+  };
+  const close = () => { panel.classList.remove('open'); $('#wfScrim', f).classList.remove('open'); };
+  const refresh = () => {
+    const x = tr();
+    $('#abWhen', f).textContent = `${cap(waitText())}. Times are in your business’s time zone.`;
+    $('#abMinW', f).hidden = x.kind === 'client';
+    $('#abNote', f).textContent = to() === 'team' ? 'App notifications go to the owner and admins, and to the crew on a job. Email goes to your company email.' : x.sms ? (AB.sms ? 'Texts only go to clients who agreed to them. Every email has an unsubscribe link.' : 'Every email has an unsubscribe link.') : 'Email only: clients agree to texts about their quotes, invoices and appointments, not promotions. Every email has an unsubscribe link.';
+    const vars = `<span class="muted">Insert:</span>${Object.entries(AB.vars[f.elements.trigger.value]).map(([k, l]) => `<button type="button" class="ab-var" data-v="${k}" title="${esc(l)}">${esc(l)}</button>`).join('')}`;
+    $$('.ab-vars', f).forEach((v) => { v.innerHTML = vars; });
+    draw();
+  };
+  const read = () => ({ id: a.id || '', name: f.elements.name.value, trigger: f.elements.trigger.value, days: f.elements.days.value, hour: f.elements.hour.value, tags: chosen('tags'), minAmount: $('#abMinW', f).hidden ? 0 : f.elements.minAmount.value, to: to(), channels: ch, subject: f.elements.subject.value, body: f.elements.body.value, smsBody: f.elements.smsBody.value });
   f.addEventListener('focusin', (e) => { if (['subject', 'body', 'smsBody'].includes(e.target.name)) last = e.target; });
-  f.addEventListener('change', (e) => { if (e.target.name === 'trigger' || e.target.name === 'to') sync(e.target.name === 'to' ? (e.target.value === 'team' ? ['push', 'email'] : ['email']) : null); else if (e.target.name === 'ch') syncCh(); });
-  f.addEventListener('input', (e) => { if (e.target.name === 'days') sync(); });
-  f.addEventListener('click', (e) => { const b = e.target.closest('[data-v]'); if (!b) return; const s = last.selectionStart ?? last.value.length; const ins = `{{${b.dataset.v}}}`; last.setRangeText(ins, s, last.selectionEnd ?? s, 'end'); last.focus(); });
+  f.addEventListener('change', (e) => {
+    if (e.target.name === 'to') ch = e.target.value === 'team' ? ['push', 'email'] : ['email'];
+    if (e.target.name === 'trigger') ch = ch.filter((c) => allowed().includes(c));
+    refresh();
+  });
+  f.addEventListener('input', (e) => { if (e.target.name === 'days') refresh(); else if (['subject', 'body', 'smsBody', 'minAmount'].includes(e.target.name)) draw(); });
+  f.addEventListener('click', (e) => {
+    const n = e.target.closest('[data-n]'); if (n) return show(n.dataset.n);
+    const d = e.target.closest('[data-del]'); if (d) { ch = ch.filter((c) => c !== d.dataset.del); return show('add', false); }
+    const ad = e.target.closest('[data-add]'); if (ad) { ch = allowed().filter((c) => ch.includes(c) || c === ad.dataset.add); return show(ad.dataset.add); }
+    const b = e.target.closest('[data-v]'); if (!b) return;
+    const s = last.selectionStart ?? last.value.length; last.setRangeText(`{{${b.dataset.v}}}`, s, last.selectionEnd ?? s, 'end'); last.focus(); draw();
+  });
+  $('#abRemove', f).addEventListener('click', () => { ch = ch.filter((c) => c !== sel); show('add'); });
+  [$('#wfClose', f), $('#wfDone', f), $('#wfScrim', f)].forEach((b) => b.addEventListener('click', close));
   $('#abPreview', f).addEventListener('click', async () => {
-    const box = $('#abWho', f);
-    try { const r = await api('POST', '/api/automations/preview', read()); box.hidden = false;
-      box.innerHTML = r.total ? `<strong>${r.total} in the next 30 days</strong><ul>${r.rows.map((x) => `<li>${esc(x.client)}${x.ref ? ` (${esc(x.ref)})` : ''}, ${esc(new Date(x.due + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }))}${x.skip ? ` <span class="muted">won’t send: ${esc(x.skip)}</span>` : ''}</li>`).join('')}</ul>` : 'Nobody in the next 30 days.';
+    try { const r = await api('POST', '/api/automations/preview', read());
+      $('#abWho', f).innerHTML = r.total ? `<p><strong>${r.total} in the next 30 days</strong></p><ul class="wf-who">${r.rows.map((x) => `<li><span>${esc(x.client)}${x.ref ? ` <span class="muted">${esc(x.ref)}</span>` : ''}</span><span class="muted">${esc(new Date(x.due + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }))}</span>${x.skip ? `<small>Won’t send: ${esc(x.skip)}</small>` : ''}</li>`).join('')}</ul>` : '<p class="muted">Nobody in the next 30 days.</p>';
+      show('preview');
     } catch (x) { toast(x.message, true); }
   });
   $('#abTest', f).addEventListener('click', async () => { try { const r = await api('POST', '/api/automations/test', read()); toast(r.status === 'simulated' ? `Test logged for ${r.to} (no email provider set up)` : `Test sent to ${r.to}`); } catch (x) { toast(x.message, true); } });
+  // a save error opens the step it's about
+  const stepFor = (m) => (/subject and a message/.test(m) ? (ch.includes('email') ? 'email' : 'push') : /text message/.test(m) ? 'sms' : /how to send/.test(m) ? 'add' : /\{\{/.test(m) ? ch.find((c) => c !== 'sms') || 'sms' : /quiet/.test(m) ? 'wait' : /when it should/.test(m) ? 'trigger' : '');
+  const failed = (x) => { toast(x.message, true); const s = stepFor(x.message); if (s) show(s); else if (/name/.test(x.message)) f.elements.name.focus(); };
   f.addEventListener('submit', async (e) => {
     e.preventDefault();
     try {
       const r = await api(a.id ? 'PUT' : 'POST', a.id ? `/api/automations/${a.id}` : '/api/automations', read());
-      if (a.id) { toast('Automation saved'); $('h1', main).textContent = f.elements.name.value.trim(); return; }
+      if (a.id) { a.name = f.elements.name.value.trim(); toast('Automation saved'); return; }
       toast('Saved. Activate it when you’re ready.'); navigate(`/automations/edit?id=${r.automations[r.automations.length - 1].id}`);
-    } catch (x) { toast(x.message, true); }
+    } catch (x) { failed(x); }
   });
-  sync(a.channels);
+  refresh(); show('trigger', false);
   if (!a.id) return;
   const showState = () => { $('#abState', main).innerHTML = `${abBadge(a)} ${a.sentCount || 0} sent`; $('#abToggle', main).textContent = a.enabled ? 'Deactivate' : 'Activate'; };
   showState();
   $('#abToggle', main).addEventListener('click', async () => {
-    try { // activating saves the form first, so what goes live is what's on screen
+    try { // activating saves first, so what goes live is what's on screen
       if (!a.enabled) await api('PUT', `/api/automations/${a.id}`, read());
       const r = await api('POST', `/api/automations/${a.id}`, { on: !a.enabled });
       a.enabled = r.automations.find((x) => x.id === a.id).enabled; showState(); toast(a.enabled ? 'Automation activated' : 'Automation deactivated');
-    } catch (x) { toast(x.message, true); }
+    } catch (x) { failed(x); }
   });
   $('#abDelete', main).addEventListener('click', async () => {
     if (!confirm(`Delete “${a.name}”?`)) return;
