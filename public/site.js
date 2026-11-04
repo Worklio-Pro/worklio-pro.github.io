@@ -10,7 +10,6 @@ const slugify = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-')
   if (S.brand && S.brand.logo) { $('.h-brand').insertAdjacentHTML('afterbegin', brandImg(S.brand)); $('#brand').hidden = S.brand.logoHasName; } // the logo from the platform console
   if (S.home) document.querySelectorAll('[data-home]').forEach((a) => { a.href = S.home + a.dataset.home; });
   const label = Object.fromEntries(S.features.map((f) => [f.key, f.label]));
-  const beta = (f) => (f.beta ? ' <span class="beta-tag" title="In beta testing">Beta</span>' : '');
   // the "Most popular" plan, chosen in Alpha → Settings; automatic: the middle one when there are 3 or more
   const picked = S.plans.findIndex((p) => p.id === S.popularPlan);
   const mid = S.popularPlan === 'none' ? -1 : picked >= 0 ? picked : S.plans.length >= 3 ? Math.floor(S.plans.length / 2) : -1;
@@ -32,7 +31,7 @@ const slugify = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-')
     $('#period').innerHTML = both ? `<div class="s-period" role="radiogroup" aria-label="Billing period">${[['month', 'Monthly'], ['year', `Yearly${best > 0 ? ` <span class="s-save">Save up to ${best}%</span>` : ''}`]].map(([k, l]) => `<button type="button" role="radio" aria-checked="${period === k}" class="${period === k ? 'on' : ''}" data-period="${k}">${l}</button>`).join('')}</div>` : '';
     $('#plans').innerHTML = S.plans.map((p, i) => `<article class="card s-plan ${i === mid ? 'pop' : ''}"><span class="s-tag">${i === mid ? 'Most popular' : ''}</span><h2>${esc(p.name)}</h2>
 ${priceHtml(p)}<p class="desc">${esc(p.description)}</p>
-<ul><li>${p.maxUsers ? `${p.maxUsers} team login${p.maxUsers === 1 ? '' : 's'}` : 'Unlimited team logins'}</li>${S.features.filter((f) => p.features.includes(f.key)).map((f) => `<li><span>${esc(label[f.key])}${beta(f)}</span></li>`).join('')}
+<ul><li>${p.maxUsers ? `${p.maxUsers} team login${p.maxUsers === 1 ? '' : 's'}` : 'Unlimited team logins'}</li>${S.features.filter((f) => p.features.includes(f.key)).map((f) => `<li><span>${esc(label[f.key])}</span></li>`).join('')}
 ${S.alwaysIncluded.map((l) => `<li class="base">${esc(l)}</li>`).join('')}</ul>
 ${S.allowSignups ? `<a class="btn ${i === mid ? '' : 'alt'}" href="#signup" data-plan="${esc(p.id)}">Choose ${esc(p.name)}</a>` : `<button type="button" class="btn ${i === mid ? '' : 'alt'}" data-contact="${esc(p.id)}">Contact us</button>`}</article>`).join('');
   };
