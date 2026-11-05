@@ -2134,11 +2134,11 @@ const QV_STATUS = { draft: ['Draft', 'grey'], sent: ['Awaiting response', 'wait'
 const QV_CSS = `*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f6f5f3;color:#032b3a;font-size:15px}
 .qv{display:flex;min-height:100vh}.qv-side{width:186px;flex:none;background:#fff;border-right:1px solid #e4e1dc;padding:24px 7px;position:sticky;top:0;height:100vh;overflow-y:auto}
 .qv-brand{display:flex;justify-content:center;padding:4px 8px 22px}.qv-brand img{max-width:140px;max-height:100px;object-fit:contain}.qv-mono{width:72px;height:72px;border-radius:16px;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700}
-.qv-co{font-weight:700;font-size:14px;padding:16px 8px 12px}.qv-navs hr{border:0;border-top:1px solid #e4e1dc;margin:8px}
-.qv-new{display:flex;align-items:center;justify-content:center;gap:10px;margin:4px 0 12px;height:40px;border:1px solid #d7d3cc;border-radius:8px;color:var(--brand);font-weight:600;font-size:14px;text-decoration:none}.qv-new:hover{background:#efede9}
-.qv-nav{display:flex;align-items:center;gap:14px;padding:9px 8px;margin:2px 0;border-radius:8px;color:#032b3a;font-size:14px;font-weight:600;text-decoration:none}.qv-nav svg{flex:none}.qv-nav:hover{background:#efede9}.qv-nav.on{background:#e9e6e0}.qv-refer{color:var(--brand)}
-.qv-top{display:none}.qv-wrap{flex:1;min-width:0}.qv-main{padding:16px 16px 48px}
-.qv-grid{display:grid;grid-template-columns:minmax(0,650px) minmax(300px,422px);gap:32px;align-items:start}
+.qv-co{font-weight:700;font-size:14px;padding:16px 8px 12px}.qv-side hr{border:0;border-top:1px solid #e4e1dc;margin:8px}
+.qv-new{display:flex;align-items:center;justify-content:center;gap:10px;margin:0 0 12px;height:40px;border:1px solid #d7d3cc;border-radius:8px;color:var(--brand);font-weight:600;font-size:14px;text-decoration:none}.qv-new:hover{background:#efede9}
+.qv-nav{display:flex;align-items:center;gap:14px;padding:9px 8px;margin:2px 0;border-radius:8px;color:#032b3a;font-size:14px;font-weight:600;text-decoration:none}.qv-nav svg{flex:none}.qv-nav:hover{background:#efede9}.qv-nav.on{background:#e9e6e0}.qv-refer{color:#3a7d1f}
+.qv-top{display:none}.qv-wrap{flex:1;min-width:0}.qv-main{padding:28px 40px 48px}
+.qv-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,422px);gap:32px;align-items:start}
 .qv-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
 .qv-tb{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 16px;border:1px solid #d7d3cc;border-radius:8px;background:#f6f5f3;color:#032b3a;font:inherit;font-size:14px;font-weight:600;text-decoration:none;cursor:pointer}.qv-tb:hover{background:#efede9}
 .qv-docwrap{grid-column:1;grid-row:1}.qv-act{grid-column:2;grid-row:1;margin-top:56px;background:#fff;border:1px solid #e4e1dc;border-radius:8px;padding:16px;display:flex;flex-direction:column;gap:16px}
@@ -2177,7 +2177,7 @@ const QV_CSS = `*{box-sizing:border-box}body{margin:0;font-family:system-ui,-app
  .qv-tot{display:block;margin-top:36px}.qv-tot>div:first-child{display:none}.qv-tot>div:last-child{border:0}.qv-row{padding:14px 0;font-size:15px}
  .qv-pdf-m{display:flex;margin-top:24px}}`;
 function quoteView(q, c, { signed, depositSection, sent }) {
-  const co = db.company; const brand = accentColor() || co.brandColor || '#2563eb';
+  const co = db.company; const brand = accentColor() || brandLib.siteColor('--brand') || DEFAULT_BUTTON; // the same color as the client hub
   const hub = tenancy.has('clientPortal') && c && c.portalToken ? `/client-portal?c=${encodeURIComponent(c.portalToken)}` : '';
   const logo = co.logo ? `<img src="${esc(co.logo)}" alt="${esc(co.name)}">` : `<div class="qv-mono">${esc((co.name || '?').split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase())}</div>`;
   const nav = [[['requests', 'Requests'], ['estimates', 'Estimates'], ['appointments', 'Appointments'], ['invoices', 'Invoices'], ...(tenancy.has('reviews') ? [['reviews', 'Reviews']] : [])], [['wallet', 'Wallet']], [['contact', 'Contact Us']]]
