@@ -330,15 +330,20 @@ function shortLink(url) {
 async function optInText(c) {
   if (!c || !c.smsConsent || !c.phone || !tenancy.has('sms')) return;
   await notify({ clientId: c.id, channel: 'sms', kind: 'optin', refId: c.id, refNumber: '', subject: '',
-    body: `${db.company.name}: You're signed up for texts about your quotes, invoices and appointments. Msg frequency varies. Msg & data rates may apply. Reply HELP for help, STOP to opt out.` });
+    body: `You're signed up for texts about your quotes, invoices and appointments. Msg frequency varies. Msg & data rates may apply. Reply HELP for help, STOP to opt out.` });
   save();
 }
+// clients' texts come from the platform (it's the registered A2P 10DLC sender), on behalf of the business: "Worklio Pro for Brightside Cleaning: …"
+const smsBrand = () => tenancy.platform().settings.productName || 'Worklio Pro';
+const smsSender = () => (db.company.name && db.company.name !== smsBrand() ? `${smsBrand()} for ${db.company.name}` : smsBrand());
+const smsBranded = (body) => { const p = `${smsSender()}: `; return String(body).startsWith(p) ? body : p + body; };
 async function notify({ clientId, channel, kind, refId, refNumber, subject, body, html = '', to = '', attachments = [] }) { // to: an email address other than the client's (texts always go to the client's number)
   const c = findClient(clientId);
   if (channel === 'sms' && !tenancy.has('sms')) return { id: uid(), at: new Date().toISOString(), clientId, channel, kind, status: 'failed', detail: 'Text messages aren’t included in your plan' };
   // texts only go to clients who agreed to them (A2P 10DLC): ticked on their client profile, or on the booking / referral form
   if (channel === 'sms' && !(c && c.smsConsent)) return { id: uid(), at: new Date().toISOString(), clientId, channel, kind, status: 'failed', detail: 'This client hasn’t agreed to receive text messages' };
   const email = channel === 'email' ? to || (c && c.email) : '';
+  if (channel === 'sms') body = smsBranded(body);
   const res = channel === 'email' ? await sendEmail(email, subject, body, { html, attachments }) : await sendSms(c && c.phone, body);
   const entry = { id: uid(), at: new Date().toISOString(), clientId, clientName: c ? c.name : 'Unknown', channel, kind, refId, refNumber, to: channel === 'email' ? email : (c && c.phone), subject: subject || '', body, status: res.status, detail: res.detail };
   db.notifications.unshift(entry);
@@ -1401,11 +1406,10 @@ app.post('/api/photos', (req, res) => {
 // ---------- workflow ----------
 const quoteLink = (q) => `${baseUrl()}/p/quote/${q.token}`;
 const invoiceLink = (inv) => `${baseUrl()}/pay/${inv.token}`;
-// a text written in the Send Text box: the business's message (it has to name the business, so the name goes in front if it's missing),
-// then the link and how to opt out. The box previews the same thing.
+// a text written in the Send Text box: the business's message, then the link and how to opt out. notify() puts "Worklio Pro for <business>:" in front.
+// The box previews the same thing.
 function smsWithLink(message, label, link) {
-  const co = db.company.name || ''; let m = String(message || '').trim().slice(0, 320);
-  if (co && !m.toLowerCase().includes(co.toLowerCase())) m = `${co}: ${m}`;
+  const m = String(message || '').trim().slice(0, 320);
   return `${m}\n\n${label} ${shortLink(link)}\n\nReply STOP to opt out.`;
 }
 
@@ -1499,7 +1503,7 @@ app.post('/api/quotes/:id/send', async (req, res) => {
   for (const ch of channels) {
     if (ch === 'email' && req.body.email) continue;
     results.push(await notify({ clientId: q.clientId, channel: ch, kind: 'quote', refId: q.id, refNumber: q.number,
-      subject: email.subject, html: ch === 'email' ? email.html : '', body: ch === 'email' ? email.body : req.body.message ? smsWithLink(req.body.message, 'View your quote here', link) : `${co}: Quote ${q.number} (${money(q.total)}) is ready: ${shortLink(link)} Reply STOP to opt out.` }));
+      subject: email.subject, html: ch === 'email' ? email.html : '', body: ch === 'email' ? email.body : req.body.message ? smsWithLink(req.body.message, 'View your quote here', link) : `Quote ${q.number} (${money(q.total)}) is ready: ${shortLink(link)} Reply STOP to opt out.` }));
   }
   if (q.status === 'draft') q.status = 'sent'; if (!q.sentAt) q.sentAt = iso(new Date());
   save(); res.json({ quote: q, results });
@@ -1558,7 +1562,7 @@ app.post('/api/invoices/:id/send', async (req, res) => {
   for (const ch of channels) {
     if (ch === 'email' && req.body.email) continue;
     results.push(await notify({ clientId: inv.clientId, channel: ch, kind: 'invoice', refId: inv.id, refNumber: inv.number,
-      subject: email.subject, html: ch === 'email' ? email.html : '', body: ch === 'email' ? email.body : req.body.message ? smsWithLink(req.body.message, 'View and pay your invoice here', link) : `${co}: Invoice ${inv.number} (${money(inv.total)}) due ${inv.dueDate}. Pay online: ${shortLink(link)} Reply STOP to opt out.` }));
+      subject: email.subject, html: ch === 'email' ? email.html : '', body: ch === 'email' ? email.body : req.body.message ? smsWithLink(req.body.message, 'View and pay your invoice here', link) : `Invoice ${inv.number} (${money(inv.total)}) due ${inv.dueDate}. Pay online: ${shortLink(link)} Reply STOP to opt out.` }));
   }
   if (inv.status === 'draft') inv.status = 'sent';
   save(); res.json({ invoice: withStatus(inv), results });
@@ -1722,7 +1726,7 @@ app.post('/api/jobs/:id/remind', async (req, res) => {
   const results = [];
   for (const ch of channels) {
     results.push(await notify({ clientId: j.clientId, channel: ch, kind: 'job', refId: j.id, refNumber: j.number,
-      subject: email.subject, html: ch === 'email' ? email.html : '', body: ch === 'email' ? email.body : `${co}: reminder for "${j.title}" on ${j.date} at ${j.startTime}. Reply STOP to opt out.` }));
+      subject: email.subject, html: ch === 'email' ? email.html : '', body: ch === 'email' ? email.body : `Reminder for "${j.title}" on ${j.date} at ${j.startTime}. Reply STOP to opt out.` }));
   }
   res.json({ results }); save();
 });
@@ -2477,7 +2481,7 @@ app.get('/api/portal/:token', (req, res) => {
   if (!c) return res.status(404).json({ error: 'Invalid portal link' });
   res.json({
     company: { name: db.company.name, logo: db.company.logo, email: db.company.email, phone: db.company.phone, accentColor: accentColor(), address: db.company.addressPrivate ? '' : db.company.address, website: db.company.website, hours: db.company.showHours ? db.company.hours || null : null },
-    client: { id: c.id, name: c.name, email: c.email, phone: c.phone, address: c.address, smsConsent: !!c.smsConsent },
+    client: { id: c.id, name: c.name, email: c.email, phone: c.phone, address: c.address, smsConsent: !!c.smsConsent, smsBrand: smsBrand() },
     referralLink: tenancy.has('referrals') ? referralLink(c) : null,
     reviews: !tenancy.has('reviews') ? null : (db.clientReviews || []).filter((r) => r.clientId === c.id && r.submittedAt).sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
       .map(reviewForClient),
@@ -2501,10 +2505,10 @@ app.use('/refer', express.urlencoded({ extended: false }));
 app.use('/refer', (req, res, next) => (tenancy.has('referrals') ? next() : res.status(404).send(shell('Link not found', '<h1>Link not found</h1><p class="muted">This referral link is no longer valid.</p>'))));
 // the text-message opt-in on the public forms: unticked to start, as carriers require (shown word for word on /sms-consent, lib/legal.js)
 const smsConsentBox = (values) => `<label style="display:flex;gap:10px;align-items:flex-start;margin:0 0 12px;font-size:14px;line-height:1.45;color:#374151"><input type="checkbox" name="smsConsent" value="1"${values.smsConsent ? ' checked' : ''} style="width:auto;margin:3px 0 0;flex:none">
-<span>Text me about my request, quotes, invoices and appointments from ${esc(db.company.name)}. Message frequency varies. Msg &amp; data rates may apply. Reply STOP to opt out, HELP for help. Agreeing isn’t a condition of service. See the <a href="/terms#sms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</span></label>`;
+<span>Text me updates from ${esc(smsBrand())} about my request, quotes, invoices and appointments with ${esc(db.company.name)}. Message frequency varies. Msg &amp; data rates may apply. Reply STOP to opt out, HELP for help. Agreeing isn’t a condition of service. See the <a href="/terms#sms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</span></label>`;
 const smsConsentFrom = (b, phone, source) => (b.smsConsent && phone ? { at: new Date().toISOString(), source } : null);
 // on the thank-you page, so people who ticked the box know what comes next
-const smsSignedUp = (b, phone) => (b.smsConsent && phone ? `<p class="muted">You’re signed up for texts about your request, quotes, invoices and appointments at ${esc(phone)}. You’ll get a text confirming it. Message frequency varies. Msg &amp; data rates may apply. Reply STOP to any text to opt out, HELP for help.</p>` : '');
+const smsSignedUp = (b, phone) => (b.smsConsent && phone ? `<p class="muted">You’re signed up for texts from ${esc(smsBrand())} about your request, quotes, invoices and appointments at ${esc(phone)}. You’ll get a text from ${esc(smsBrand())} confirming it. Message frequency varies. Msg &amp; data rates may apply. Reply STOP to any text to opt out, HELP for help.</p>` : '');
 function referPage(c, { error, values = {} } = {}) {
   const v = (k) => esc(values[k] || '');
   const first = String(c.name || '').trim().split(/\s+/)[0];
