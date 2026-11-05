@@ -2114,11 +2114,108 @@ ${!onlineMethods('quote', q).length && (q.allowZelle === 'off' || !db.company.ze
     }
   }
   const signed = q.signedAt ? `<div style="margin-top:16px;padding:14px 16px;border:1px solid #e5e7eb;border-radius:8px"><strong>✓ Signed${q.signedName ? ` by ${esc(q.signedName)}` : ''}</strong> <span class="muted">· ${esc(niceDate(q.signedAt.slice(0, 10)))}</span>${q.signature ? `<img src="${esc(q.signature.file)}" alt="Signature" style="display:block;max-width:100%;width:320px;margin-top:8px">` : ''}</div>` : '';
-  res.send(shell(`Quote ${q.number}`, `<h1>Quote ${esc(q.number)} <span class="badge">${esc(q.status)}</span></h1><div class="muted">Prepared for ${esc(c?.name)} · ${esc(q.title)}</div>${itemsTable(q)}${q.notes ? `<p style="white-space:pre-wrap">${esc(q.notes)}</p>` : ''}
-${q.disclaimer ? `<div style="margin:16px 0;padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px"><strong>Contract / Disclaimer</strong><p class="muted" style="margin:6px 0 0;white-space:pre-wrap">${esc(q.disclaimer)}</p></div>` : ''}
-${(q.status === 'sent' || q.status === 'draft') && q.depositFee > 0 ? `<div style="background:#eff6ff;padding:14px 16px;border-radius:8px;margin-bottom:16px;border:1px solid #bfdbfe">${q.depositPaidAt ? `<strong>Deposit paid: ${money(q.depositPaidAmount ?? q.depositFee)}</strong><div class="muted" style="margin-top:4px">This quote was updated. After you approve, you'll sign it again.</div>` : `<strong>Deposit required: ${money(q.depositFee)}</strong>${q.depositType === 'percent' ? ` (${q.depositValue}% of the total)` : ''}<div class="muted" style="margin-top:4px">After you approve, you'll sign the quote and pay this deposit online before work begins.</div>`}</div>` : ''}
-${q.status === 'sent' || q.status === 'draft' ? `<form method="post" action="/p/quote/${esc(q.token)}/respond" style="display:flex;gap:8px"><button class="btn" name="r" value="approved">Approve quote</button><button class="btn alt" name="r" value="declined">Decline</button></form>` : ''}${signed}${depositSection}`));
+  res.send(quoteView(q, c, { signed, depositSection, sent: req.query.changes === 'sent' }));
 });
+// ---------- the client's quote page, laid out like the client hub: the hub's menu on the left (behind Menu on phones),
+// the quote in the middle and what to do next on the right (on top on phones, where the quote folds away under Hide Quote) ----------
+const QV_ICON = { // the same icons as the client hub (CP_ICON in public/pages.js)
+  requests: '<path d="M4 13v5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/><path d="M4 13h4l1.5 2.5h5L16 13h4"/><path d="M12 4v7m-3-3 3 3 3-3"/>',
+  estimates: '<circle cx="10" cy="10" r="5"/><path d="m14 14 6 6"/><path d="M8.5 10h3M10 8.5v3"/>',
+  appointments: '<rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4m8-4v4"/>',
+  invoices: '<path d="M6 3h9l4 4v14H6z"/><path d="M14.5 10.5c-.4-.9-1.3-1.5-2.5-1.5-1.4 0-2.5.8-2.5 1.9 0 2.6 5 1.4 5 4 0 1.1-1.1 1.9-2.5 1.9-1.2 0-2.1-.6-2.5-1.5M12 7.5V9m0 8v1.5"/>',
+  reviews: '<path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/>',
+  wallet: '<rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h3"/>',
+  contact: '<path d="M5 4h3.5l1.5 4.5-2 1.5a12 12 0 0 0 6 6l1.5-2 4.5 1.5V19a1.5 1.5 0 0 1-1.5 1.5A16.5 16.5 0 0 1 3.5 5.5 1.5 1.5 0 0 1 5 4z"/>',
+  refer: '<path d="M7 11v9H4v-9zM7 11l4-7c1.4 0 2.3 1 2 2.4L12.5 10H18a2 2 0 0 1 2 2.3l-1.1 6A2 2 0 0 1 17 20H7"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>', menu: '<path d="M4 7h13M4 12h16M4 17h13"/><path d="M17 9l3 3-3 3"/>', back: '<path d="M19 12H5m6-6-6 6 6 6"/>', chev: '<path d="m6 15 6-6 6 6"/>',
+};
+const qvIcon = (k, size = 22) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${QV_ICON[k]}</svg>`;
+const QV_STATUS = { draft: ['Draft', 'grey'], sent: ['Awaiting response', 'wait'], approved: ['Approved', 'ok'], converted: ['Approved', 'ok'], declined: ['Declined', 'no'] };
+const QV_CSS = `*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f6f5f3;color:#032b3a;font-size:15px}
+.qv{display:flex;min-height:100vh}.qv-side{width:186px;flex:none;background:#fff;border-right:1px solid #e4e1dc;padding:24px 7px;position:sticky;top:0;height:100vh;overflow-y:auto}
+.qv-brand{display:flex;justify-content:center;padding:4px 8px 22px}.qv-brand img{max-width:140px;max-height:100px;object-fit:contain}.qv-mono{width:72px;height:72px;border-radius:16px;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700}
+.qv-co{font-weight:700;font-size:14px;padding:16px 8px 12px}.qv-navs hr{border:0;border-top:1px solid #e4e1dc;margin:8px}
+.qv-new{display:flex;align-items:center;justify-content:center;gap:10px;margin:4px 0 12px;height:40px;border:1px solid #d7d3cc;border-radius:8px;color:var(--brand);font-weight:600;font-size:14px;text-decoration:none}.qv-new:hover{background:#efede9}
+.qv-nav{display:flex;align-items:center;gap:14px;padding:9px 8px;margin:2px 0;border-radius:8px;color:#032b3a;font-size:14px;font-weight:600;text-decoration:none}.qv-nav svg{flex:none}.qv-nav:hover{background:#efede9}.qv-nav.on{background:#e9e6e0}.qv-refer{color:var(--brand)}
+.qv-top{display:none}.qv-wrap{flex:1;min-width:0}.qv-main{padding:16px 16px 48px}
+.qv-grid{display:grid;grid-template-columns:minmax(0,650px) minmax(300px,422px);gap:32px;align-items:start}
+.qv-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.qv-tb{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 16px;border:1px solid #d7d3cc;border-radius:8px;background:#f6f5f3;color:#032b3a;font:inherit;font-size:14px;font-weight:600;text-decoration:none;cursor:pointer}.qv-tb:hover{background:#efede9}
+.qv-docwrap{grid-column:1;grid-row:1}.qv-act{grid-column:2;grid-row:1;margin-top:56px;background:#fff;border:1px solid #e4e1dc;border-radius:8px;padding:16px;display:flex;flex-direction:column;gap:16px}
+.qv-doc{background:#fff;border:1px solid #e4e1dc;border-radius:8px}.qv-doc>summary{display:none}.qv-body{padding:32px 32px 40px}
+.qv-hd{display:grid;grid-template-columns:1fr 232px;border-bottom:3px solid #d5dbdf;padding-bottom:12px}
+.qv-hd-l{padding-right:16px}.qv-hd-r{border-left:3px solid #d5dbdf;padding:30px 0 0 24px;display:grid;grid-template-columns:auto 1fr;gap:4px 40px;align-content:start;font-size:14px}
+.qv-no{display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:14px;margin-bottom:6px}.qv-who{font-weight:700;font-size:16px;margin:4px 0 2px}.qv-hd-l>div:not([class]),.qv-ph{display:block;font-size:14px;line-height:1.45}.qv-ph{color:inherit;text-decoration:none}
+.qv-pill{display:inline-flex;align-items:center;gap:7px;padding:3px 10px;border-radius:99px;font-size:12px;white-space:nowrap}.qv-pill::before{content:'';width:8px;height:8px;border-radius:50%;background:currentColor}
+.qv-pill.wait{background:#f6efc4;color:#5f5a1e}.qv-pill.wait::before{background:#c9b23f}.qv-pill.ok{background:#e5f4e3;color:#2c6a1b}.qv-pill.no{background:#fbe9e7;color:#a8321f}.qv-pill.grey{background:#eef0f1;color:#3d4b50}.qv-pill.chg{background:#fdf2dc;color:#8a5a00}
+.qv-items{margin-top:48px}.qv-ih,.qv-it{display:grid;grid-template-columns:minmax(0,1fr) 64px 110px 100px;gap:0 12px}.qv-ih{font-weight:700;font-size:16px;padding-bottom:14px}.qv-ih span:not(:first-child),.qv-n{text-align:right}
+.qv-it{padding:14px 0 18px;border-bottom:1px solid #e4e1dc;font-size:14px}.qv-it strong{display:block;margin-bottom:8px}.qv-it p{margin:0;white-space:pre-line;line-height:1.45;max-width:260px}.qv-l{display:none}
+.qv-tot{display:grid;grid-template-columns:1fr 244px;border-top:3px solid #d5dbdf;margin-top:32px}.qv-tot>div:last-child{border-left:1px solid #d5dbdf;border-bottom:3px solid #d5dbdf}
+.qv-row{display:flex;justify-content:space-between;gap:12px;padding:10px 0 8px 8px;border-bottom:1px solid #e4e1dc;font-size:14px}.qv-row:last-child{border-bottom:0}
+.qv-text{margin-top:20px;font-size:14px;line-height:1.45;white-space:pre-line}
+.qv-btn{display:flex;align-items:center;justify-content:center;width:100%;height:40px;border:1px solid #d7d3cc;border-radius:8px;background:#fff;color:#032b3a;font:inherit;font-size:14px;font-weight:600;cursor:pointer;text-decoration:none}.qv-btn:hover{background:#f6f5f3}
+.qv-btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}.qv-btn.primary:hover{filter:brightness(.94)}.qv-act form{margin:0}
+.qv-chg>summary{list-style:none}.qv-chg>summary::-webkit-details-marker{display:none}.qv-chg[open]>summary{display:none}
+.qv-chg textarea{width:100%;min-height:110px;padding:10px;border:1px solid #d7d3cc;border-radius:8px;font:inherit;font-size:14px;resize:vertical;margin:8px 0 10px}.qv-chg label{font-weight:600;font-size:14px}
+.qv-link{background:none;border:0;padding:0;color:#5b6b70;font:inherit;font-size:13px;text-decoration:underline;cursor:pointer}
+.qv-note{font-size:13px;line-height:1.45;color:#5b6b70;white-space:pre-line}.qv-note strong{color:#032b3a}.qv-msg{padding:12px 14px;border-radius:8px;background:#e5f4e3;color:#2c6a1b;font-size:14px}
+.qv-pdf-m{display:none}.qv-act .btn{background:var(--brand);color:#fff;border:0;border-radius:8px;padding:11px 18px;font:inherit;font-size:15px;font-weight:600;cursor:pointer}.qv-act .btn.alt{background:#fff;color:#032b3a;border:1px solid #d7d3cc}.qv-act .muted{color:#5b6b70;font-size:13px}
+.qv-act input[type=text]{padding:10px;border:1px solid #d7d3cc;border-radius:8px;width:100%;margin:4px 0 10px;font:inherit}.qv-act>div[style]{margin-top:0!important}
+.qv-nav:focus-visible,.qv-btn:focus-visible,.qv-tb:focus-visible,.qv-new:focus-visible,.qv-burger:focus-visible,.qv-doc>summary:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+@media (max-width:900px){
+ .qv{display:block}.qv-side{display:none}.qv-side.open{display:block;position:fixed;inset:73px 0 0;z-index:30;width:auto;height:auto;border-right:0;padding:8px 16px}.qv-side.open .qv-brand,.qv-side.open .qv-co{display:none}
+ .qv-top{display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:31;height:73px;padding:0 16px;background:#fff;box-shadow:0 2px 8px rgba(3,43,58,.08)}
+ .qv-burger{display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px;border:0;background:none;color:#032b3a;font:inherit;font-size:11px;font-weight:600;cursor:pointer}.qv-top img{max-height:40px;max-width:110px}.qv-top .qv-mono{width:40px;height:40px;font-size:16px;border-radius:10px}
+ .qv-main{padding:24px 16px 40px}.qv-grid{display:flex;flex-direction:column;align-items:stretch;gap:16px}.qv-bar{display:none}
+ .qv-act{order:-1;margin:0;padding:0;background:none;border:0}.qv-act .qv-btn{height:48px;font-size:17px}
+ .qv-doc>summary{display:flex;justify-content:space-between;align-items:center;padding:20px;font-weight:700;font-size:17px;cursor:pointer;list-style:none}.qv-doc>summary::-webkit-details-marker{display:none}
+ .qv-doc>summary svg{color:var(--brand);transition:transform .15s}.qv-doc:not([open])>summary svg{transform:rotate(180deg)}.qv-doc[open]>summary{border-bottom:1px solid #e4e1dc}.qv-doc:not([open]) .qv-hide,.qv-doc[open] .qv-show{display:none}
+ .qv-body{padding:20px 20px 28px}.qv-hd{display:block;border-bottom:1px solid #e4e1dc;margin:0 -20px;padding:0 20px 20px}.qv-hd-r{border:0;padding:12px 0 0;grid-template-columns:1fr 1fr;font-size:15px}
+ .qv-no{font-size:15px;color:#5b6b70}.qv-hd-l>div:not([class]),.qv-ph{font-size:15px}.qv-ph{color:var(--brand)}.qv-items{margin-top:8px}.qv-ih{display:none}
+ .qv-it{grid-template-columns:repeat(3,minmax(0,1fr));gap:0;padding:20px 0 0;border-bottom:0}.qv-it-d{grid-column:1/-1;padding-bottom:12px;border-bottom:1px solid #d5dbdf}.qv-it p{max-width:none;font-size:15px}.qv-it strong{font-size:16px}
+ .qv-n{padding:12px 12px 12px 0;border-bottom:1px solid #d5dbdf;font-size:15px}.qv-n+.qv-n{border-left:1px solid #d5dbdf}.qv-l{display:block;font-weight:700;text-transform:uppercase;font-size:14px;margin-bottom:6px}
+ .qv-tot{display:block;margin-top:36px}.qv-tot>div:first-child{display:none}.qv-tot>div:last-child{border:0}.qv-row{padding:14px 0;font-size:15px}
+ .qv-pdf-m{display:flex;margin-top:24px}}`;
+function quoteView(q, c, { signed, depositSection, sent }) {
+  const co = db.company; const brand = accentColor() || co.brandColor || '#2563eb';
+  const hub = tenancy.has('clientPortal') && c && c.portalToken ? `/client-portal?c=${encodeURIComponent(c.portalToken)}` : '';
+  const logo = co.logo ? `<img src="${esc(co.logo)}" alt="${esc(co.name)}">` : `<div class="qv-mono">${esc((co.name || '?').split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase())}</div>`;
+  const nav = [[['requests', 'Requests'], ['estimates', 'Estimates'], ['appointments', 'Appointments'], ['invoices', 'Invoices'], ...(tenancy.has('reviews') ? [['reviews', 'Reviews']] : [])], [['wallet', 'Wallet']], [['contact', 'Contact Us']]]
+    .map((g) => g.map(([k, l]) => `<a class="qv-nav ${k === 'estimates' ? 'on' : ''}" href="${hub}#${k}">${qvIcon(k)}<span>${l}</span></a>`).join('')).join('<hr>')
+    + (tenancy.has('referrals') ? `<hr><a class="qv-nav qv-refer" href="${hub}#refer">${qvIcon('refer')}<span>Refer a Friend</span></a>` : '');
+  const side = hub ? `<aside class="qv-side" id="qvMenu"><div class="qv-brand">${logo}</div><div class="qv-co">${esc(co.name)}</div><a class="qv-new" href="${hub}#new-request">${qvIcon('plus', 18)} New Request</a><nav aria-label="Client hub">${nav}</nav></aside>` : '';
+  const top = `<header class="qv-top">${hub ? `<button type="button" class="qv-burger" aria-expanded="false" aria-controls="qvMenu" onclick="var o=document.getElementById('qvMenu').classList.toggle('open');this.setAttribute('aria-expanded',o)">${qvIcon('menu', 30)}Menu</button>` : '<span></span>'}${logo}</header>`;
+  const open = q.status === 'sent' || q.status === 'draft'; const chg = open && q.changesRequestedAt && (q.changeRequests || []).length;
+  const [label, tone] = chg ? ['Changes requested', 'chg'] : QV_STATUS[q.status] || [q.status, 'grey'];
+  const addr = q.address || (c && c.address) || '';
+  const taxName = Number(q.taxRate) === Number(co.taxRate) && co.taxName ? co.taxName : 'Tax';
+  const row = (l, v) => `<div class="qv-row"><span>${l}</span><span>${v}</span></div>`;
+  const totals = row('Subtotal', money(q.subtotal)) + (q.discount > 0 ? row(`Discount${q.discountType === 'percent' ? ` (${q.discountValue}%)` : ''}`, '−' + money(q.discount)) : '')
+    + (Number(q.taxRate) ? row(`${esc(taxName)} (${q.taxRate}%)`, money(q.tax)) : '') + row('Total', money(q.total))
+    + (q.depositFee > 0 ? row(`Deposit${q.depositType === 'percent' ? ` (${q.depositValue}%)` : ''}`, money(q.depositFee)) : '');
+  const items = (q.items || []).map((i) => `<div class="qv-it"><div class="qv-it-d"><strong>${esc(i.desc)}</strong>${i.details ? `<p>${esc(i.details)}</p>` : ''}</div>
+<div class="qv-n"><span class="qv-l">Qty.</span>${esc(String(i.qty))}</div><div class="qv-n"><span class="qv-l">Unit price</span>${money(i.price)}</div><div class="qv-n"><span class="qv-l">Total</span>${money(i.qty * i.price)}</div></div>`).join('');
+  const depositNote = open && q.depositFee > 0 ? `<div class="qv-note">${q.depositPaidAt ? `<strong>Deposit paid: ${money(q.depositPaidAmount ?? q.depositFee)}.</strong> This estimate was updated. After you approve, you’ll sign it again.` : `<strong>Deposit: ${money(q.depositFee)}${q.depositType === 'percent' ? ` (${q.depositValue}% of the total)` : ''}.</strong> After you approve, you’ll sign the estimate and pay this deposit before work begins.`}</div>` : '';
+  const actions = open ? `${sent ? '<div class="qv-msg" role="status">Thanks! We got your changes and will send you an updated estimate.</div>' : ''}
+<form method="post" action="/p/quote/${esc(q.token)}/respond"><button class="qv-btn primary" name="r" value="approved">Approve</button></form>
+<details class="qv-chg"><summary class="qv-btn">Request Changes</summary><form method="post" action="/p/quote/${esc(q.token)}/changes">
+<label for="qvChg">What would you like changed?</label><textarea id="qvChg" name="message" required maxlength="2000"></textarea><button class="qv-btn primary">Send to ${esc(co.name)}</button></form></details>
+${chg ? `<div class="qv-note">You asked for changes on ${esc(niceDate(q.changesRequestedAt.slice(0, 10)))}: “${esc(q.changeRequests[q.changeRequests.length - 1].text)}”</div>` : ''}${depositNote}
+<form method="post" action="/p/quote/${esc(q.token)}/respond" onsubmit="return confirm('Decline this estimate?')" style="display:flex;justify-content:center"><button class="qv-link" name="r" value="declined">Decline this estimate</button></form>` : '';
+  const act = actions + signed + depositSection; const pdf = `/p/quote/${esc(q.token)}/pdf`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Estimate ${esc(q.number)} · ${esc(co.name)}</title><link rel="icon" href="/favicon.ico">
+<style>:root{--brand:${esc(brand)}}${QV_CSS}</style></head><body><div class="qv">${side}<div class="qv-wrap">${top}<main class="qv-main">
+<div class="qv-grid"><div class="qv-docwrap"><div class="qv-bar">${hub ? `<a class="qv-tb" href="${hub}#estimates">${qvIcon('back', 18)} Back</a>` : '<span></span>'}<a class="qv-tb" href="${pdf}">Download PDF</a></div>
+<details class="qv-doc" open><summary><span><span class="qv-hide">Hide Quote</span><span class="qv-show">Show Quote</span></span>${qvIcon('chev', 22)}</summary><div class="qv-body">
+<div class="qv-hd"><div class="qv-hd-l"><div class="qv-no"><span>Estimate #${esc(q.number)}</span><span class="qv-pill ${tone}">${esc(label)}</span></div>
+<div class="qv-who">${esc((c && c.name) || '')}</div>${addr ? `<div>${esc(addr)}</div>` : ''}${c && c.phone ? `<a class="qv-ph" href="tel:${esc(c.phone)}">${esc(c.phone)}</a>` : ''}</div>
+<div class="qv-hd-r"><span>Sent on</span><span>${esc(niceDate(q.sentAt || String(q.createdAt || '').slice(0, 10)))}</span></div></div>
+<div class="qv-items"><div class="qv-ih"><span>Product / Service</span><span>Qty.</span><span>Unit Price</span><span>Total</span></div>${items}</div>
+<div class="qv-tot"><div></div><div>${totals}</div></div>
+${q.notes ? `<div class="qv-text">${esc(q.notes)}</div>` : ''}${q.disclaimer ? `<div class="qv-text">${esc(q.disclaimer)}</div>` : ''}
+<a class="qv-btn qv-pdf-m" href="${pdf}">Download PDF</a></div></details></div>
+${act.trim() ? `<div class="qv-act">${act}</div>` : ''}</div></main></div></div><script src="/phone.js?v=2" defer></script></body></html>`;
+}
 // the client signs by drawing (finger, stylus or mouse) or by typing their name, which is written out in a script font; posted as a PNG data URL
 function quoteSignBox(q) {
   const tab = 'flex:1;padding:8px;border:0;font-size:15px;cursor:pointer;background:transparent;color:#374151';
@@ -2399,6 +2496,23 @@ app.put('/api/reviews/questions', (req, res) => {
 app.put('/api/reviews/settings', (req, res) => {
   const s = reviewSettings(); for (const k of Object.keys(s)) if (req.body && k in req.body) s[k] = !!req.body[k];
   db.reviewSettings = s; save(); res.json(s);
+});
+app.get('/p/quote/:token/pdf', (req, res) => {
+  const q = db.quotes.find((x) => x.token === req.params.token); if (!q) return res.status(404).send('Not found');
+  res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Content-Disposition', `attachment; filename="${pdfName('quote', q)}"`); res.end(docPdf('quote', q));
+});
+// Request Changes: the client says what they'd like changed and the business is emailed; the quote stays open to approve once it's updated
+app.post('/p/quote/:token/changes', (req, res) => {
+  const q = db.quotes.find((x) => x.token === req.params.token); if (!q) return res.status(404).send('Not found');
+  const text = String((req.body && req.body.message) || '').trim().slice(0, 2000);
+  if (!text || !['sent', 'draft'].includes(q.status)) return res.redirect(`/p/quote/${q.token}`);
+  q.changeRequests = [...(q.changeRequests || []), { at: new Date().toISOString(), text }].slice(-20); q.changesRequestedAt = q.changeRequests[q.changeRequests.length - 1].at; save();
+  const c = findClient(q.clientId); const who = c ? c.name : 'A client'; const what = `quote ${q.number}${q.title ? ` (${q.title})` : ''}`;
+  if (db.company.email) {
+    const subject = `${who} asked for changes to ${what}`; const body = `${who} asked for changes to ${what}:\n\n${text}\n\nUpdate the quote and send it again: ${baseUrl()}/quotes/edit?id=${q.id}`;
+    sendEmail(db.company.email, subject, body).then((sent) => { db.notifications.unshift({ id: uid(), at: q.changesRequestedAt, clientId: q.clientId, clientName: c ? c.name : '', channel: 'email', kind: 'quote-status', refId: q.id, refNumber: q.number, to: db.company.email, subject, body, status: sent.status, detail: sent.detail }); save(); }).catch(() => {});
+  }
+  res.redirect(`/p/quote/${q.token}?changes=sent`);
 });
 app.post('/p/quote/:token/respond', (req, res) => {
   const q = db.quotes.find((x) => x.token === req.params.token);
