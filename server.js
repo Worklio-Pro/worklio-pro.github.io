@@ -2052,13 +2052,15 @@ app.get('/pay/:token', (req, res) => {
     ? `<form method="post" action="/pay/${esc(inv.token)}/checkout"><button class="btn">${payButtonLabel(methods, due)}</button></form>${methods.length > 1 ? '<p class="muted">Card or bank account (ACH)</p>' : ''}`
     : '';
   const zelle = on('allowZelle') ? zelleBox(due, `Invoice ${inv.number}`, `/pay/${inv.token}/zelle-sent`, inv.zelleSentAt) : '';
+  const preview = !!currentUser(req); const payOff = (html) => (preview ? previewOff(html, 'opacity:.55') : html);
+  const previewNote = preview ? `<p style="margin:12px 0;padding:12px 16px;border-radius:10px;background:#fdf2dc;color:#6b4a00;font-size:14px">${PREVIEW_NOTE}</p>` : '';
   res.send(shell(`Invoice ${inv.number}`, `<h1>Invoice ${esc(inv.number)} <span class="badge ${st === 'paid' ? 'paid' : ''}">${esc(st === 'overdue' ? 'past due' : st)}</span></h1>
 ${st === 'overdue' && on('showLateStamp') ? '<div style="display:inline-block;margin:8px 0;padding:4px 14px;border:2px solid #dc2626;color:#dc2626;border-radius:6px;font-weight:800;letter-spacing:.08em;transform:rotate(-2deg)">PAST DUE</div>' : ''}
 ${db.company.taxIdNumber ? `<div class="muted">${esc(db.company.taxIdName || 'Tax ID')}: ${esc(db.company.taxIdNumber)}</div>` : ''}<div class="muted">Billed to ${esc(c?.name)}${inv.subject ? ` · ${esc(inv.subject)}` : ''} · Issued ${esc(niceDate(inv.issueDate))} · Due ${inv.dueDate && inv.dueDate <= inv.issueDate ? 'upon receipt' : esc(niceDate(inv.dueDate))}</div>
 ${itemsTable(x, { qty: on('showQty'), unit: on('showUnit'), line: on('showLineTotals'), invoice: true })}
 ${on('showAccountBalance') && st !== 'paid' && account > 0 ? `<p class="muted" style="text-align:right">Account balance (all open invoices): <strong>${money(account)}</strong></p>` : ''}
 ${inv.notes ? `<p style="white-space:pre-wrap">${esc(inv.notes)}</p>` : ''}
-${st === 'paid' ? `<p>Paid on ${esc(niceDate(inv.paidAt))}. Thank you!</p>${reviewPrompt(inv)}` : card + zelle + (!card && !zelle ? `<p class="muted">Please contact ${esc(db.company.name)} at ${esc(db.company.phone || db.company.email)} to arrange payment.</p>` : '')}
+${previewNote}${st === 'paid' ? `<p>Paid on ${esc(niceDate(inv.paidAt))}. Thank you!</p>${reviewPrompt(inv, preview)}` : payOff(card + zelle) + (!card && !zelle ? `<p class="muted">Please contact ${esc(db.company.name)} at ${esc(db.company.phone || db.company.email)} to arrange payment.</p>` : '')}
 ${inv.disclaimer ? `<div style="margin:16px 0;padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px;white-space:pre-wrap" class="muted">${esc(inv.disclaimer)}</div>` : `<p class="muted">${esc(db.company.invoiceFooter)}</p>`}`));
 });
 app.use('/pay', express.urlencoded({ extended: false }));
@@ -2114,7 +2116,7 @@ ${!onlineMethods('quote', q).length && (q.allowZelle === 'off' || !db.company.ze
     }
   }
   const signed = q.signedAt ? `<div style="margin-top:16px;padding:14px 16px;border:1px solid #e5e7eb;border-radius:8px"><strong>✓ Signed${q.signedName ? ` by ${esc(q.signedName)}` : ''}</strong> <span class="muted">· ${esc(niceDate(q.signedAt.slice(0, 10)))}</span>${q.signature ? `<img src="${esc(q.signature.file)}" alt="Signature" style="display:block;max-width:100%;width:320px;margin-top:8px">` : ''}</div>` : '';
-  res.send(quoteView(q, c, { signed, depositSection, sent: req.query.changes === 'sent' }));
+  res.send(quoteView(q, c, { signed, depositSection, sent: req.query.changes === 'sent', preview: !!currentUser(req) && req.query.collect !== '1', business: !!currentUser(req) }));
 });
 // ---------- the client's quote page, laid out like the client hub: the hub's menu on the left (behind Menu on phones),
 // the quote in the middle and what to do next on the right (on top on phones, where the quote folds away under Hide Quote) ----------
@@ -2158,7 +2160,8 @@ const QV_CSS = `*{box-sizing:border-box}body{margin:0;font-family:system-ui,-app
 .qv-chg>summary{list-style:none}.qv-chg>summary::-webkit-details-marker{display:none}.qv-chg[open]>summary{display:none}
 .qv-chg textarea{width:100%;min-height:110px;padding:10px;border:1px solid #d7d3cc;border-radius:8px;font:inherit;font-size:14px;resize:vertical;margin:8px 0 10px}.qv-chg label{font-weight:600;font-size:14px}
 .qv-link{background:none;border:0;padding:0;color:#5b6b70;font:inherit;font-size:13px;text-decoration:underline;cursor:pointer}
-.qv-note{font-size:13px;line-height:1.45;color:#5b6b70;white-space:pre-line}.qv-note strong{color:#032b3a}.qv-msg{padding:12px 14px;border-radius:8px;background:#e5f4e3;color:#2c6a1b;font-size:14px}
+.qv-note{font-size:13px;line-height:1.45;color:#5b6b70;white-space:pre-line}.qv-note strong{color:#032b3a}.qv-msg{padding:12px 14px;border-radius:8px;background:#e5f4e3;color:#2c6a1b;font-size:14px}.qv-preview{padding:12px 14px;border-radius:8px;background:#fdf2dc;color:#6b4a00;font-size:14px;line-height:1.45}
+.preview-off .qv-btn,.preview-off .qv-link,.preview-off .btn,.preview-off summary{opacity:.5;cursor:not-allowed;pointer-events:none}
 .qv-pdf-m{display:none}.qv-act .btn{background:var(--brand);color:#fff;border:0;border-radius:8px;padding:11px 18px;font:inherit;font-size:15px;font-weight:600;cursor:pointer}.qv-act .btn.alt{background:#fff;color:#032b3a;border:1px solid #d7d3cc}.qv-act .muted{color:#5b6b70;font-size:13px}
 .qv-act input[type=text]{padding:10px;border:1px solid #d7d3cc;border-radius:8px;width:100%;margin:4px 0 10px;font:inherit}.qv-act>div[style]{margin-top:0!important}
 .qv-nav:focus-visible,.qv-btn:focus-visible,.qv-tb:focus-visible,.qv-new:focus-visible,.qv-burger:focus-visible,.qv-doc>summary:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
@@ -2176,14 +2179,14 @@ const QV_CSS = `*{box-sizing:border-box}body{margin:0;font-family:system-ui,-app
  .qv-n{padding:12px 12px 12px 0;border-bottom:1px solid #d5dbdf;font-size:15px}.qv-n+.qv-n{border-left:1px solid #d5dbdf}.qv-l{display:block;font-weight:700;text-transform:uppercase;font-size:14px;margin-bottom:6px}
  .qv-tot{display:block;margin-top:36px}.qv-tot>div:first-child{display:none}.qv-tot>div:last-child{border:0}.qv-row{padding:14px 0;font-size:15px}
  .qv-pdf-m{display:flex;margin-top:24px}}`;
-function quoteView(q, c, { signed, depositSection, sent }) {
+function quoteView(q, c, { signed, depositSection, sent, preview, business }) {
   const co = db.company; const brand = accentColor() || brandLib.siteColor('--brand') || DEFAULT_BUTTON; // the same color as the client hub
   const hub = tenancy.has('clientPortal') && c && c.portalToken ? `/client-portal?c=${encodeURIComponent(c.portalToken)}` : '';
   const logo = co.logo ? `<img src="${esc(co.logo)}" alt="${esc(co.name)}">` : `<div class="qv-mono">${esc((co.name || '?').split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase())}</div>`;
   const nav = [[['requests', 'Requests'], ['estimates', 'Estimates'], ['appointments', 'Appointments'], ['invoices', 'Invoices'], ...(tenancy.has('reviews') ? [['reviews', 'Reviews']] : [])], [['wallet', 'Wallet']], [['contact', 'Contact Us']]]
     .map((g) => g.map(([k, l]) => `<a class="qv-nav ${k === 'estimates' ? 'on' : ''}" href="${hub}#${k}">${qvIcon(k)}<span>${l}</span></a>`).join('')).join('<hr>')
     + (tenancy.has('referrals') ? `<hr><a class="qv-nav qv-refer" href="${hub}#refer">${qvIcon('refer')}<span>Refer a Friend</span></a>` : '');
-  const side = hub ? `<aside class="qv-side" id="qvMenu"><div class="qv-brand">${logo}</div><div class="qv-co">${esc(co.name)}</div><a class="qv-new" href="${hub}#new-request">${qvIcon('plus', 18)} New Request</a><nav aria-label="Client hub">${nav}</nav></aside>` : '';
+  const side = hub ? `<aside class="qv-side" id="qvMenu"><div class="qv-brand">${logo}</div><div class="qv-co">${esc(co.name)}</div>${business ? `<span class="qv-new" style="opacity:.5;cursor:not-allowed" title="Only your client can send a request">${qvIcon('plus', 18)} New Request</span>` : `<a class="qv-new" href="${hub}#new-request">${qvIcon('plus', 18)} New Request</a>`}<nav aria-label="Client hub">${nav}</nav></aside>` : '';
   const top = `<header class="qv-top">${hub ? `<button type="button" class="qv-burger" aria-expanded="false" aria-controls="qvMenu" onclick="var o=document.getElementById('qvMenu').classList.toggle('open');this.setAttribute('aria-expanded',o)">${qvIcon('menu', 30)}Menu</button>` : '<span></span>'}${logo}</header>`;
   const open = q.status === 'sent' || q.status === 'draft'; const chg = open && q.changesRequestedAt && (q.changeRequests || []).length;
   const [label, tone] = chg ? ['Changes requested', 'chg'] : QV_STATUS[q.status] || [q.status, 'grey'];
@@ -2202,7 +2205,7 @@ function quoteView(q, c, { signed, depositSection, sent }) {
 <label for="qvChg">What would you like changed?</label><textarea id="qvChg" name="message" required maxlength="2000"></textarea><button class="qv-btn primary">Send to ${esc(co.name)}</button></form></details>
 ${chg ? `<div class="qv-note">You asked for changes on ${esc(niceDate(q.changesRequestedAt.slice(0, 10)))}: “${esc(q.changeRequests[q.changeRequests.length - 1].text)}”</div>` : ''}${depositNote}
 <form method="post" action="/p/quote/${esc(q.token)}/respond" onsubmit="return confirm('Decline this estimate?')" style="display:flex;justify-content:center"><button class="qv-link" name="r" value="declined">Decline this estimate</button></form>` : '';
-  const act = actions + signed + depositSection; const pdf = `/p/quote/${esc(q.token)}/pdf`;
+  const act = preview && (actions + depositSection).trim() ? `<div class="qv-preview">${PREVIEW_NOTE}</div>${previewOff(actions + depositSection, 'display:flex;flex-direction:column;gap:16px')}${signed}` : actions + signed + depositSection; const pdf = `/p/quote/${esc(q.token)}/pdf`;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Estimate ${esc(q.number)} · ${esc(co.name)}</title><link rel="icon" href="/favicon.ico">
 <style>:root{--brand:${esc(brand)}}${QV_CSS}</style></head><body><div class="qv">${side}<div class="qv-wrap">${top}<main class="qv-main">
 <div class="qv-grid"><div class="qv-docwrap"><div class="qv-bar">${hub ? `<a class="qv-tb" href="${hub}#estimates">${qvIcon('back', 18)} Back</a>` : '<span></span>'}<a class="qv-tb" href="${pdf}">Download PDF</a></div>
@@ -2290,9 +2293,14 @@ function askForReview(kind, doc) {
     .then((n) => { if (n.status === 'failed') delete r.emailedAt; save(); }).catch(() => {}); // a failed email can be asked again next time
 }
 // the paid invoice page's button, so clients without an email address (and those who come back to pay) can leave one too
-function reviewPrompt(inv) {
+// the business previewing a client's quote or invoice page sees the client's buttons greyed out (they'd act for the client otherwise);
+// the quote editor's Collect Signature opens the quote page with ?collect=1 so the client can approve and sign on the business's device
+const PREVIEW_NOTE = 'You’re previewing as the business, so these buttons are turned off. Your client can use them.';
+const previewOff = (html, style = '') => (html.trim() ? `<fieldset disabled class="preview-off" onclick="event.preventDefault()" style="border:0;margin:0;padding:0;min-width:0;${style}">${html}</fieldset>` : '');
+function reviewPrompt(inv, preview) {
   if (!tenancy.has('reviews') || !reviewSettings().afterInvoice) return '';
   const refs = reviewRefs('invoice', inv); if (clientReviews().some((x) => refs.includes(x.refId) && x.submittedAt)) return '';
+  if (preview) return '<p><span class="btn" style="display:inline-block;opacity:.5;cursor:not-allowed" title="Only your client can leave a review">Leave a review</span></p>';
   return `<p><a class="btn" style="display:inline-block;text-decoration:none" href="/p/review/${esc(reviewRecord('invoice', inv).token)}">Leave a review</a></p>`;
 }
 function tellBusinessReview(r, edited) {
@@ -2816,6 +2824,7 @@ app.post('/api/business-page/preview', (req, res) => {
 app.post('/api/portal/:token/requests', async (req, res) => {
   const c = db.clients.find((x) => x.portalToken === req.params.token);
   if (!c) return res.status(404).json({ error: 'Invalid portal link' });
+  if (currentUser(req)) return res.status(403).json({ error: 'You’re logged in to the business account, so you can’t send a request for your client.' });
   db.requests = db.requests || [];
   const b = req.body || {}; const clip = (v, n) => String(v || '').trim().slice(0, n);
   const title = clip(b.title, 120); if (!title) return res.status(400).json({ error: 'Tell us what you need done' });

@@ -2007,7 +2007,7 @@ ${canJob ? b('quoteToJob', 'job', 'Convert to Job') : ''}${job ? `<a class="mi" 
 <hr class="mi-sep"><div class="mi-h">Send as…</div>${b('sendDoc', 'email', 'Email', 'data-ch="email"')}${planHas('sms') && c.phone && c.smsConsent ? b('sendDoc', 'text', 'Text Message', 'data-ch="text"') : ''}
 ${marks ? `<hr class="mi-sep"><div class="mi-h">Mark as…</div>${marks}` : ''}
 <hr class="mi-sep"><a class="mi" href="/p/quote/${d.token}" target="_blank">${QM.eye}Preview as Client</a>
-${d.signedAt ? '' : `<a class="mi" href="/p/quote/${d.token}" target="_blank" title="Opens the client’s quote page, where they approve and sign">${QM.sign}Collect Signature</a>`}
+${d.signedAt ? '' : `<a class="mi" href="/p/quote/${d.token}?collect=1" target="_blank" title="Opens the client’s quote page, where they approve and sign">${QM.sign}Collect Signature</a>`}
 <a class="mi" href="/api/quotes/${d.id}/pdf" target="_blank">${QM.pdf}Print or Save PDF</a>
 ${b('delDoc', 'trash', 'Delete')}</div></details>`;
 }

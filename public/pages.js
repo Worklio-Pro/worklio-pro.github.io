@@ -1350,7 +1350,9 @@ function renderPortal(main, tok, p) {
   const upcoming = p.jobs.filter((j) => j.status === 'scheduled' && j.date >= today).sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime));
   const past = p.jobs.filter((j) => !upcoming.includes(j));
   const co = p.company;
-  const newReqBtn = `<button type="button" class="cp-btn" data-cp="new-request">${cpIcon('plus', 18)} New Request</button>`;
+  // logged in to the business, New Request shows greyed out: only the client sends requests (the server refuses too)
+  const reqOff = p.reviewsViewOnly ? ' disabled title="Only your client can send a request. You’re previewing as the business."' : '';
+  const newReqBtn = `<button type="button" class="cp-btn" data-cp="new-request"${reqOff}>${cpIcon('plus', 18)} New Request</button>`;
   const row = (title, sub, right) => `<div class="cp-item"><div class="cp-item-main"><strong>${title}</strong>${sub.filter(Boolean).map((x) => `<div class="cp-sub">${x}</div>`).join('')}</div><div class="cp-item-side">${right}</div></div>`;
   const head = (title, action = '') => `<div class="cp-head"><h1>${title}</h1>${action}</div>`;
   // the review form opens on one finished job or invoice; its questions are the ones the business set for that module
@@ -1437,10 +1439,10 @@ ${co.hours ? `<h3 class="cp-sec">Business hours</h3><table class="cp-hours">${WE
 <a class="cp-out wide" href="https://outlook.live.com/mail/0/deeplink/compose?${q({ subject, body })}" target="_blank" rel="noopener">Outlook</a>
 <a class="cp-out wide" href="https://mail.google.com/mail/?${q({ view: 'cm', fs: '1', su: subject, body })}" target="_blank" rel="noopener">Gmail</a></div>`; },
   };
-  const nav = (cur) => `<button type="button" class="cp-newreq" data-cp="new-request">${cpIcon('plus', 18)} New Request</button>` + CP_NAV.map((grp) => grp.filter(([k]) => k !== 'reviews' || p.reviews).map(([k, l]) => `<button type="button" class="cp-nav ${cur === k || (cur === 'new-request' && k === 'requests') ? 'on' : ''}" data-cp="${k}">${cpIcon(k)}<span>${l}</span></button>`).join('')).join('<hr>')
+  const nav = (cur) => `<button type="button" class="cp-newreq" data-cp="new-request"${reqOff}>${cpIcon('plus', 18)} New Request</button>` + CP_NAV.map((grp) => grp.filter(([k]) => k !== 'reviews' || p.reviews).map(([k, l]) => `<button type="button" class="cp-nav ${cur === k || (cur === 'new-request' && k === 'requests') ? 'on' : ''}" data-cp="${k}">${cpIcon(k)}<span>${l}</span></button>`).join('')).join('<hr>')
     + (p.referralLink ? `<hr><button type="button" class="cp-nav cp-refer ${cur === 'refer' ? 'on' : ''}" data-cp="refer">${cpIcon('refer')}<span>Refer a Friend</span></button>` : '');
   const show = (section) => {
-    if (!views[section] || (section === 'refer' && !p.referralLink) || (section === 'reviews' && !p.reviews)) section = 'requests';
+    if (!views[section] || (section === 'new-request' && p.reviewsViewOnly) || (section === 'refer' && !p.referralLink) || (section === 'reviews' && !p.reviews)) section = 'requests';
     $('.cp-navs', main).innerHTML = nav(section); $('.cp-main', main).innerHTML = views[section]();
     if (location.hash.slice(1) !== section) history.replaceState({}, '', location.pathname + location.search + '#' + section);
     const f = $('#cpReq', main);
