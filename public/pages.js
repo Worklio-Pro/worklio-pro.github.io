@@ -1539,7 +1539,7 @@ async function companyPage(main, full) {
   main.innerHTML = `<div class="head"><div><h1>${full ? 'App Settings' : 'Company settings'}</h1>${full ? '<p class="sub">Branding and defaults used on every quote and invoice. Business details, social media and tax settings are on <a href="/settings/company" data-link>Company Profile</a>.</p>' : ''}</div></div>
 ${full ? planCard(c.account) : ''}
 ${full ? `<div class="as-cols"><div class="as-col">${webAddressCard(c.account)}${brandBox}${regionalBox(c)}</div><div class="as-col">${payCard(integ)}${zelleBox}${prefixBox}</div></div>
-<form id="cf"><div class="as-save"><button class="btn">Save changes</button></div></form>` : `<form id="cf" class="cs-form">${companySettingsHtml(c, logoBox)}</form>`}`;
+<form id="cf"></form>` :`<form id="cf" class="cs-form">${companySettingsHtml(c, logoBox)}</form>`}`;
   $$('.prefix-row input').forEach((i) => i.addEventListener('input', () => { i.nextElementSibling.textContent = 'e.g. ' + i.value.trim() + i.dataset.sample; }));
   const ind = $('#cf select[name=industry]', main); if (ind) ind.addEventListener('change', () => { $('#cf [data-other]', main).hidden = ind.value !== 'other'; });
   if (!full) { // Company Profile saves on its own: a field as soon as it changes, the business hours with their pencil
@@ -1559,12 +1559,25 @@ ${full ? `<div class="as-cols"><div class="as-col">${webAddressCard(c.account)}$
     cf.addEventListener('change', (e) => { if (!e.target.closest('.hours-wrap')) saveFields(); });
     cf.addEventListener('submit', (e) => { e.preventDefault(); saveFields(); });
     wireHoursEditor($('[data-hours-root]', cf), businessHours(c), 'Closed', async (hours) => { const saved = await api('PUT', '/api/company', { hours }); company = { ...company, ...saved }; toast('Business hours saved'); });
-  } else $('#cf').addEventListener('submit', async (e) => {
-    e.preventDefault(); const b = Object.fromEntries(new FormData(e.target));
-    if ('industry' in b && !b.industry) delete b.industry; // not chosen yet: leave it unset
-    if (!c.accentColor && b.accentColor === c.defaultAccent) delete b.accentColor; // left alone: keeps following the product's color
-    await api('PUT', '/api/company', b); toast('Settings saved'); refresh();
-  });
+  } else { // App Settings saves on its own too: a field as soon as it changes (its fields sit outside the form and say form="cf")
+    const cf = $('#cf'); const key = () => JSON.stringify(Object.fromEntries(new FormData(cf)));
+    let last = key(); let busy = false; let again = false;
+    const saveFields = async () => {
+      if (busy) { again = true; return; }
+      if (key() === last) return;
+      const bad = [...cf.elements].find((el) => el.willValidate && !el.checkValidity()); if (bad) return bad.reportValidity();
+      const b = Object.fromEntries(new FormData(cf));
+      if (!company.accentColor && b.accentColor === company.defaultAccent) delete b.accentColor; // left alone: keeps following the product's color
+      const accentSet = !!b.accentColor && !company.accentColor; // first custom accent: re-render to show its Reset link
+      busy = true;
+      try { const saved = await api('PUT', '/api/company', b); company = { ...company, ...saved }; last = key(); toast('Settings saved'); if (accentSet) { busy = false; return refresh(); } } catch (err) { toast(err.message, true); }
+      busy = false; if (again) { again = false; saveFields(); }
+    };
+    [...cf.elements].forEach((el) => {
+      el.addEventListener('change', saveFields);
+      if (el.tagName === 'INPUT') el.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); saveFields(); } });
+    });
+  }
   A.resetAccent = async () => { try { await api('PUT', '/api/company', { accentColor: '' }); toast('Accent color reset'); refresh(); } catch (err) { toast(err.message, true); } };
   A.removeLogo = async () => {
     if (!confirm('Delete your logo? It will be removed from quotes, invoices and the client portal.')) return;
