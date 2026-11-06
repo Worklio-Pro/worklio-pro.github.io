@@ -483,6 +483,8 @@ const isMemberReq = (req) => { const u = currentUser(req); return !!u && !can(u,
 // what a team member may see/change on a job: no prices, totals or line items
 const MONEY_KEYS = ['items', 'subtotal', 'discount', 'discountType', 'discountValue', 'tax', 'total', 'taxRate', 'depositType', 'depositValue', 'depositFee'];
 const jobForMember = (j) => Object.fromEntries(Object.entries(j).filter(([k]) => !MONEY_KEYS.includes(k)));
+// the portal link opens the client's quotes and invoices with prices, so only logins that can see prices get it (hides Log in as Client)
+const clientForMember = (c) => { const { portalToken, ...rest } = c; return rest; };
 const MEMBER_JOB_FIELDS = ['title', 'clientId', 'address', 'propertyId', 'date', 'startTime', 'endTime', 'anytime', 'staffIds', 'status', 'description', 'internalNotes'];
 
 // ---------- team logins (owner/admin only; the /api guard above blocks members) ----------
@@ -1150,6 +1152,7 @@ app.get('/api/:col', (req, res, next) => {
   const col = req.params.col;
   if (!COLLECTIONS.includes(col)) return next();
   if (col === 'jobs' && isMemberReq(req)) return res.json(db.jobs.map(jobForMember));
+  if (col === 'clients' && isMemberReq(req)) return res.json(db.clients.map(clientForMember));
   res.json(col === 'invoices' ? db.invoices.map(withStatus) : db[col]);
 });
 
@@ -1213,7 +1216,7 @@ app.post('/api/:col', (req, res, next) => {
   if (col === 'expenses') doc.amount = Number(b.amount) || 0;
   if (col === 'services') { doc.price = Number(b.price) || 0; homeDepot.clean(doc); }
   db[col].push(doc); save(); if (col === 'clients') optInText(doc).catch(() => {}); if (col === 'jobs') pushScheduleChange(null, doc, currentUser(req));
-  res.status(201).json(col === 'invoices' ? withStatus(doc) : col === 'jobs' && isMemberReq(req) ? jobForMember(doc) : doc);
+  res.status(201).json(col === 'invoices' ? withStatus(doc) : col === 'jobs' && isMemberReq(req) ? jobForMember(doc) : col === 'clients' && isMemberReq(req) ? clientForMember(doc) : doc);
 });
 
 // update
@@ -1259,7 +1262,7 @@ app.put('/api/:col/:id', (req, res, next) => {
   if (col === 'quotes' && was.signature && !doc.signature) removeSignatureFile(was);
   if (col === 'jobs' && doc.status === 'completed' && was.status !== 'completed') doc.completedAt = iso(new Date()); // the "job completed" automations count from this
   db[col][i] = doc; save(); if (col === 'clients' && doc.smsConsent && !was.smsConsent) optInText(doc).catch(() => {}); if (col === 'jobs') { pushScheduleChange(was, doc, currentUser(req)); if (doc.status === 'completed' && was.status !== 'completed') askForReview('job', doc); }
-  res.json(col === 'invoices' ? withStatus(doc) : col === 'jobs' && isMemberReq(req) ? jobForMember(doc) : doc);
+  res.json(col === 'invoices' ? withStatus(doc) : col === 'jobs' && isMemberReq(req) ? jobForMember(doc) : col === 'clients' && isMemberReq(req) ? clientForMember(doc) : doc);
 });
 
 app.delete('/api/:col/:id', (req, res, next) => {
