@@ -3998,6 +3998,12 @@ function dispatch(req, res) {
   if (!/\.(js|css|png|jpe?g|gif|webp|svg|ico|woff2?)$/i.test(p)) res.setHeader('Cache-Control', 'private, no-store');
   else if (/\.(js|css)$/i.test(p)) res.setHeader('Cache-Control', 'no-cache'); // the app's code: always check for a newer version, so a deploy shows up right away
   if (legal.kindOf(p)) { res.setHeader('Content-Type', 'text/html; charset=utf-8'); return res.end(legal.page(legal.kindOf(p))); } // Terms + Privacy: the same on every address
+  // Intuit's "Disconnect URL": where QuickBooks sends someone who disconnects the app from inside QuickBooks. The token is revoked on their side, so the next sync asks the account to reconnect
+  if (/^\/oauth\/quickbooks\/disconnect(ed)?\/?$/.test(p)) {
+    const name = tenancy.platform().settings.productName || 'Worklio Pro';
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    return res.end(notice('QuickBooks disconnected', `QuickBooks is no longer connected to ${esc(name)}, and nothing more will be sent to it. Clients, invoices and payments already sent stay in QuickBooks.<br><br>To connect again, sign in to ${esc(name)} and go to Settings → QuickBooks &amp; Xero.<br><br><a href="${tenancy.platformUrl()}/sign-in">Sign in to ${esc(name)}</a>`));
+  }
   const sl = /^\/s\/([a-z0-9]{7})$/.exec(p); const slTo = sl && shortLinks()[sl[1]]; // a short link from a text
   if (slTo) { res.writeHead(302, { Location: slTo }); return res.end(); }
   if (sl) { res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' }); return res.end(notice('Link not found', 'This link isn’t valid. Check the text you were sent, or contact the business that sent it.')); }
