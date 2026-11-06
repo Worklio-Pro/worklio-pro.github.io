@@ -754,8 +754,12 @@ A.icMove = (d) => {
 A.icResetOrder = async () => { if (!confirm('Put the menu back in its original order and sections? Icons you chose stay.')) return; try { IC = await api('PUT', '/api/platform/nav-order', { reset: true }); iconsCard($('#iconsCard'), true); toast('Menu order reset'); } catch (x) { toast(x.message, true); } };
 A.icPick = (d) => {
   const l = IC.links.find((x) => x.path === d.p);
-  const m = modal(`Icon for ${l.label}`, `<div class="ic-grid">${IC.library.map((i) => `<button type="button" class="ic-opt ${i.key === l.icon ? 'on' : ''}" data-act="icSet" data-p="${esc(l.path)}" data-k="${i.key}" title="${esc(i.label)}">${icSvg(i.d, 24)}<span>${esc(i.label)}${i.key === l.default ? ' (default)' : ''}</span></button>`).join('')}</div>
+  const m = modal(`Icon for ${l.label}`, `<input type="search" class="ic-find" placeholder="Search ${IC.library.length} icons" aria-label="Search icons" style="width:100%;margin-bottom:10px">
+<div class="ic-grid">${IC.library.map((i) => `<button type="button" class="ic-opt ${i.key === l.icon ? 'on' : ''}" data-act="icSet" data-p="${esc(l.path)}" data-k="${i.key}" data-s="${esc((i.label + ' ' + i.key).toLowerCase())}" title="${esc(i.label)}">${icSvg(i.d, 24)}<span>${esc(i.label)}${i.key === l.default ? ' (default)' : ''}</span></button>`).join('')}</div>
+<p class="muted ic-none" style="font-size:13px" hidden>No icons match.</p>
 <div class="acts" style="margin-top:12px"><button type="button" class="btn alt" data-act="closeModal">Cancel</button></div>`, { wide: true });
+  // the search box narrows the grid by name as you type
+  $('.ic-find', m).addEventListener('input', (e) => { const q = e.target.value.trim().toLowerCase(); let n = 0; $$('.ic-opt', m).forEach((b) => { const show = !q || b.dataset.s.includes(q); b.hidden = !show; if (show) n++; }); $('.ic-none', m).hidden = n > 0; });
   return m;
 };
 A.icSet = async (d) => { try { IC = await api('PUT', '/api/platform/nav-icons', { path: d.p, icon: d.k }); closeModal(); toast('Icon changed'); iconsCard($('#iconsCard')); } catch (x) { toast(x.message, true); } };
