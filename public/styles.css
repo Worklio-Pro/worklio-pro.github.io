@@ -1690,3 +1690,14 @@ label.bk-auto input{width:auto;margin:0}
 .ts-rates{display:grid;gap:10px}.ts-rates label{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0}.ts-rate{display:inline-flex;align-items:center;gap:6px}.ts-rate input{width:110px}
 .clock-badge{color:var(--ok,#15803d)}
 @media (max-width:640px){.ts-btn{width:100%}.ts-clock>div{width:100%}}
+/* recurring jobs: Repeats on the job form's Scheduled visit card */
+.rj{margin:4px 0 14px;padding:12px;border:1px solid var(--line);border-radius:10px}
+.rj-f{display:flex;align-items:center;gap:10px;margin:0;font-weight:600}.rj-f select{width:auto;min-width:170px;margin:0}
+.rj-more{margin-top:10px}.rj-row{display:flex;flex-wrap:wrap;gap:10px 20px}
+.rj-every,.rj-end{display:flex;align-items:center;gap:8px;margin:0}.rj-every input,.rj-end input[type=number]{width:72px;margin:0}.rj-end select{width:auto;margin:0}.rj-end input[type=date]{width:auto;margin:0}
+.rj-days{display:flex;gap:6px;margin-top:10px}.rj-days label{margin:0;cursor:pointer}.rj-days input{position:absolute;opacity:0;pointer-events:none}
+.rj-days span{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;border:1px solid var(--line);font-size:13px;font-weight:600}
+.rj-days input:checked+span{background:var(--brand);border-color:var(--brand);color:var(--btn-text,#fff)}.rj-days input:focus-visible+span{outline:2px solid var(--brand);outline-offset:2px}
+.rj-month{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:10px}.rj-month label{display:flex;align-items:center;gap:6px;margin:0}.rj-month input{margin:0}
+.rj-sum{margin:10px 0 0;font-size:13px}.rj-ico{color:var(--muted);font-weight:700}
+.rj [hidden]{display:none!important}

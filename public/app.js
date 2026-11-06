@@ -2597,7 +2597,7 @@ A.mJobMore = (x) => {
 ${edit ? `<button type="button" data-act="jobRemind" data-id="${j.id}">${planHas('sms') && byId(D.clients, j.clientId)?.smsConsent ? 'Text' : 'Email'} reminder to client</button>` : ''}
 ${planHas('invoices') ? `<button type="button" class="need-invoices" data-act="jobInvoice" data-id="${j.id}">Create invoice</button>` : ''}
 ${planHas('timeOff') && me && me.staffId && (j.staffIds || []).includes(me.staffId) && j.date >= ymd(new Date()) ? `<button type="button" data-act="jobRequestOff" data-id="${j.id}">Request off for this job</button>` : ''}
-<a href="/calendar" data-link>Open calendar</a>${edit ? `<a href="/jobs/edit?id=${j.id}&full=1" data-link>Edit everything at once</a><button type="button" class="danger-text" data-act="delJob" data-id="${j.id}">Delete job</button>` : ''}</div>`);
+<a href="/calendar" data-link>Open calendar</a>${edit ? `${j.repeat && j.repeat.next && planHas('recurringJobs') ? `<button type="button" data-act="stopRepeat" data-id="${j.id}">Stop repeating after this visit</button>` : ''}<a href="/jobs/edit?id=${j.id}&full=1" data-link>Edit everything at once</a><button type="button" class="danger-text" data-act="delJob" data-id="${j.id}">Delete job</button>` : ''}</div>`);
   f.addEventListener('click', (e) => { if (e.target.closest('a, button[data-act]')) mClose(true); });
 };
 function mobileJobPage(j) {
@@ -2625,7 +2625,7 @@ ${tap('jobDetails', `<span class="md-h">Job #${esc(j.number)} for ${esc(c.name |
 ${c.phone || c.email ? `<div class="md-contact">${c.phone ? `<a href="tel:${esc(c.phone)}">${CHEV('M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z')}Call</a>` : ''}${c.phone ? `<a href="sms:${esc(c.phone)}">${CHEV('M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z')}Text</a>` : ''}${c.email ? `<a href="mailto:${esc(c.email)}">${CHEV('M4 4h16v16H4zM4 6l8 7 8-7')}Email</a>` : ''}${j.address || c.address ? `<a href="https://maps.google.com/?q=${encodeURIComponent(j.address || c.address)}" target="_blank" rel="noopener">${CHEV('M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12zM12 11.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z')}Map</a>` : ''}</div>` : ''}
 <div class="md-acts">${acts.filter(Boolean).join('')}<button type="button" class="btn alt md-more" data-act="mJobMore" data-id="${j.id}" aria-label="More actions">⋯</button></div>
 <div class="md-tabs" role="tablist"><button type="button" role="tab" class="on" aria-selected="true" data-act="mTab" data-k="doc">Job</button><button type="button" role="tab" aria-selected="false" data-act="mTab" data-k="notes">Notes</button></div>
-<div class="md-pane" data-pane="doc">${tap('visit', `<span class="md-sh">Scheduled visit${ARROW}</span><span class="md-text">${esc(visitText(j))}</span>`, 'md-sec')}
+<div class="md-pane" data-pane="doc">${tap('visit', `<span class="md-sh">Scheduled visit${ARROW}</span><span class="md-text">${esc(visitText(j))}</span>${j.repeat ? `<span class="md-text muted">↻ ${repeatLine(j)}</span>` : ''}`, 'md-sec')}
 ${tap('team', `<span class="md-sh">Assigned team${ARROW}</span>${team.length ? `<span class="md-team">${team.map((s) => `<span>${avatarHtml(s, 28)}${esc(s.name)}</span>`).join('')}</span>` : `<span class="md-text muted">${edit ? 'Assign team members' : 'No one assigned'}</span>`}`, 'md-sec')}
 ${textSec('instructions', 'Instructions', j.description, 'Add instructions for the team')}
 ${prices ? `<section class="md-block"><h2 class="md-sh">Product / Service</h2><div class="md-lh"><strong>Line items</strong>${edit ? `<button type="button" class="md-plus" data-act="mEdit" data-kind="job" data-id="${j.id}" data-sec="item" data-i="" aria-label="Add line item">${CHEV('M12 5v14M5 12h14')}</button>` : ''}</div>${items || '<p class="muted md-empty">No line items yet.</p>'}</section>
@@ -2856,7 +2856,7 @@ function jobMore(j) {
   return `<details class="menu more-menu"><summary class="btn alt"><span class="more-dots" aria-hidden="true">•••</span> More</summary><div class="menu-list">
 ${planHas('invoices') ? b('jobInvoice', 'invoice', 'Create Invoice', 'need-invoices') : ''}${!planHas('signatures') ? '' : b('collectSignature', 'sign', j.signature ? 'Collect Another Signature' : 'Collect Signature')}
 <div class="need-jobs-edit"><hr class="mi-sep"><div class="mi-h">Send as…</div>${b('jobRemind', sms ? 'text' : 'email', `${sms ? 'Text' : 'Email'} Reminder`)}</div>
-<hr class="mi-sep">${off ? b('jobRequestOff', 'calendar', 'Request Off for This Job') : ''}<a class="mi" href="/calendar" data-link>${QM.calendar}Open Calendar</a>
+<hr class="mi-sep">${j.repeat && j.repeat.next && planHas('recurringJobs') ? b('stopRepeat', 'calendar', 'Stop Repeating After This Visit', 'need-jobs-edit') : ''}${off ? b('jobRequestOff', 'calendar', 'Request Off for This Job') : ''}<a class="mi" href="/calendar" data-link>${QM.calendar}Open Calendar</a>
 ${b('delJob', 'trash', 'Delete', 'need-jobs-edit')}</div></details>`;
 }
 function jobViewPage(j) {
@@ -2872,6 +2872,7 @@ ${c.phone || c.email ? `<div class="vclient-c">${c.phone ? `<a href="tel:${esc(c
 ${canDo('jobs.prices') ? `<div class="qcard"><div class="qcard-h"><h2>Product / Service</h2>${editBtn('job', j, 'items')}</div>${(d.items || []).length ? viewItems(d) + `<div class="vtotals">${viewTotals(d)}${q && q.depositFee > 0 ? vt('Required deposit', money(q.depositFee))
     + (q.depositPaidAt ? vt(payLink('q-' + q.id, 'Deposit collected', q.depositPaidAt), '−' + money(paid)) : '') + vt('Outstanding deposit', money(Math.max(0, round2(q.depositFee - paid)))) : ''}</div>` : '<p class="muted" style="margin:0">No line items</p>'}</div>` : ''}
 <div class="qcard"><div class="qcard-h"><h2>Scheduled Visit</h2>${editBtn('job', j, 'visit')}</div><dl class="qmeta vvisit"><dt>When</dt><dd>${esc(visitText(j))}</dd>
+${j.repeat ? `<dt>Repeats</dt><dd><span>${repeatLine(j)}</span></dd>` : ''}
 <dt>Team</dt><dd>${team.length ? `<span class="vteam">${team.map((t) => `<span>${avatarHtml(t, 24)}${esc(t.name)}</span>`).join('')}</span>` : none('Nobody assigned yet')}</dd>
 <dt>Instructions</dt><dd>${j.description ? `<p class="vtext">${esc(j.description)}</p>` : none('None')}</dd></dl></div>
 ${j.signature ? sigCard(j) : ''}${jobBilling(j, jobInvoices(j))}</div>
@@ -2882,6 +2883,96 @@ const jobBilling = (j, invs) => `<div class="qcard need-jobs-prices"><div class=
 ${!j.id ? '<p class="muted">Save the job first, then create invoices from it.</p>' : invs.length ? `<div class="tablewrap"><table class="mini"><tr><th>Invoice</th><th>Due date</th><th>Status</th><th>Subject</th><th class="r">Total</th><th class="r">Balance</th></tr>
 ${invs.map((i) => `<tr><td><a href="/invoices/view?id=${i.id}" data-link>${esc(i.number)}</a></td><td>${fmtDate(i.dueDate)}</td><td>${iBadge(i.displayStatus)}</td><td>${esc(invSubject(i))}</td><td class="r">${money(i.total)}</td><td class="r">${money(invBalance(i))}</td></tr>`).join('')}</table></div>`
     : '<p class="muted">No invoices yet. Create one when the work is done.</p>'}</div>`;
+/* ===== recurring jobs (a plan feature): the Repeats settings on the job form, and how a repeat reads ===== */
+const WDAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const ordinal = (n) => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th');
+const nthOf = (date) => { const n = Math.ceil(parseD(date).getDate() / 7); return n >= 5 ? -1 : n; }; // which weekday of its month a date is; the 5th one repeats as "the last" (-1)
+const isLastWeekday = (date) => { const d = parseD(date); return d.getDate() + 7 > new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate(); };
+const nthWeekday = (date, nth = nthOf(date)) => `${nth === -1 ? 'last' : ordinal(nth)} ${WDAY[parseD(date).getDay()]}`;
+function repeatText(r, start) {
+  if (!r) return ''; const unit = { day: 'day', week: 'week', month: 'month' }[r.freq];
+  let t = r.every > 1 ? `Every ${r.every} ${unit}s` : `Every ${unit}`;
+  if (r.freq === 'week') { const ds = r.days || []; t += ' on ' + (ds.join() === '1,2,3,4,5' ? 'weekdays' : ds.map((d) => WDAY[d].slice(0, 3)).join(', ')); }
+  if (r.freq === 'month' && start) t += r.monthBy === 'weekday' ? ` on the ${nthWeekday(start, r.nth || nthOf(start))}` : ` on the ${ordinal(parseD(start).getDate())}`;
+  return t + (r.end === 'count' ? `, ${r.count} visits` : r.end === 'until' ? `, until ${fmtDate(r.until)}` : '');
+}
+// the rule as the form shows it on this visit: "after N visits" counts from this one
+const repeatFromHere = (j) => { const R = j.repeat; if (!R) return null; const r = { ...R.rule }; if (r.end === 'count') r.count = Math.max(2, r.count - R.index + 1); return r; };
+const repeatCard = (j, date) => {
+  if (!planHas('recurringJobs') || j.status === 'cancelled') return '';
+  const r = repeatFromHere(j) || { freq: '', every: 1, end: 'never' }; const dow = parseD(date).getDay();
+  return `<div class="rj"><label class="rj-f">Repeats<select name="rpFreq">${[['', 'Doesn’t repeat'], ['day', 'Daily'], ['week', 'Weekly'], ['month', 'Monthly']].map(([k, l]) => `<option value="${k}" ${r.freq === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+<div class="rj-more" ${r.freq ? '' : 'hidden'}><div class="rj-row"><label class="rj-every">Every<input type="number" name="rpEvery" min="1" max="365" value="${esc(r.every || 1)}"><span class="rj-unit"></span></label>
+<label class="rj-end">Ends<select name="rpEnd">${[['never', 'Never'], ['count', 'After'], ['until', 'On']].map(([k, l]) => `<option value="${k}" ${r.end === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+<input type="number" name="rpCount" min="2" max="500" value="${esc(r.count || 10)}" aria-label="Number of visits"><span class="rj-cl">visits</span><input type="date" name="rpUntil" value="${esc(r.until || ymd(addDays(parseD(date), 90)))}" aria-label="Last day"></label></div>
+<div class="rj-days" role="group" aria-label="Days of the week">${WDAY.map((w, i) => `<label title="${w}"><input type="checkbox" name="rpDay" value="${i}" ${(r.days || [dow]).includes(i) ? 'checked' : ''}><span>${w[0]}</span></label>`).join('')}</div>
+<div class="rj-month"><label><input type="radio" name="rpBy" value="date" ${r.monthBy !== 'weekday' ? 'checked' : ''}><span class="rj-bydate"></span></label><label><input type="radio" name="rpBy" value="weekday" ${r.monthBy === 'weekday' && r.nth !== -1 ? 'checked' : ''}><span class="rj-byday"></span></label><label class="rj-bylast"><input type="radio" name="rpBy" value="last" ${r.monthBy === 'weekday' && r.nth === -1 ? 'checked' : ''}><span></span></label></div>
+<p class="muted rj-sum"></p></div></div>`;
+};
+// the form's Repeats settings as a rule (null: doesn't repeat)
+function readRepeat(form) {
+  const f = $('[name=rpFreq]', form); if (!f || !f.value) return null; const v = (n) => $(`[name=${n}]`, form).value;
+  const r = { freq: f.value, every: Math.max(1, Math.floor(Number(v('rpEvery')) || 1)), end: v('rpEnd') };
+  if (r.freq === 'week') { r.days = $$('[name=rpDay]:checked', form).map((x) => Number(x.value)); if (!r.days.length) r.days = [parseD($('[name=date]', form).value).getDay()]; }
+  if (r.freq === 'month') { const by = ($('[name=rpBy]:checked', form) || {}).value; r.monthBy = by === 'weekday' || by === 'last' ? 'weekday' : 'date'; if (r.monthBy === 'weekday') r.nth = by === 'last' ? -1 : nthOf($('[name=date]', form).value || ymd(new Date())); }
+  if (r.end === 'count') r.count = Math.floor(Number(v('rpCount')) || 0); if (r.end === 'until') r.until = v('rpUntil');
+  return r;
+}
+function wireRepeat(form) {
+  const box = $('.rj', form); if (!box) return;
+  let lastDow = parseD($('[name=date]', form).value || ymd(new Date())).getDay();
+  const draw = () => {
+    const date = $('[name=date]', form).value || ymd(new Date()); const r = readRepeat(form); const freq = r ? r.freq : '';
+    $('.rj-more', box).hidden = !freq; if (!freq) return;
+    $('.rj-unit', box).textContent = { day: 'days', week: 'weeks', month: 'months' }[freq].slice(0, r.every === 1 ? -1 : undefined);
+    $('.rj-days', box).hidden = freq !== 'week'; $('.rj-month', box).hidden = freq !== 'month';
+    $('.rj-bydate', box).textContent = `On the ${ordinal(parseD(date).getDate())}`; const n = nthOf(date); $('.rj-byday', box).textContent = `On the ${nthWeekday(date, n)}`;
+    const last = $('.rj-bylast', box); last.hidden = !(n !== -1 && isLastWeekday(date)); $('span', last).textContent = `On the ${nthWeekday(date, -1)}`; // the 4th that's also the last: either
+    if (last.hidden && $('input', last).checked) $('[name=rpBy][value=weekday]', box).checked = true;
+    $('[name=rpCount]', box).hidden = $('.rj-cl', box).hidden = r.end !== 'count'; $('[name=rpUntil]', box).hidden = r.end !== 'until';
+    $('.rj-sum', box).textContent = `${repeatText(r, date)}, starting ${fmtDate(date)}.`;
+  };
+  form.addEventListener('input', (e) => { if (e.target.name === 'date') { // a weekly repeat on the old weekday moves to the new one
+    const dow = parseD(e.target.value || ymd(new Date())).getDay(); const on = $$('[name=rpDay]:checked', form).map((x) => Number(x.value));
+    if (on.length === 1 && on[0] === lastDow) $$('[name=rpDay]', form).forEach((x) => { x.checked = Number(x.value) === dow; }); lastDow = dow; }
+  if (/^(rp|date$)/.test(e.target.name)) draw(); });
+  form.addEventListener('change', (e) => { if (/^rp/.test(e.target.name)) draw(); });
+  draw();
+}
+// a repeating job's visit was edited: save for this visit only, or this and the following ones (null: cancelled)
+const askVisitScope = () => new Promise((done) => {
+  const mb = modal('Save a repeating job', `<p style="margin-top:0">This job repeats. Which visits should these changes apply to?</p>
+<div class="foot"><button type="button" class="btn alt" data-s="">Cancel</button><button type="button" class="btn alt" data-s="one">This visit only</button><button type="button" class="btn" data-s="following">This and following visits</button></div>`);
+  mb.addEventListener('click', (e) => { const b = e.target.closest('[data-s]'); if (!b) return; closeModal(); done(b.dataset.s || null); });
+});
+// which of the fields a repeat copies to later visits this save changes
+const SERIES_KEYS = ['title', 'clientId', 'address', 'startTime', 'endTime', 'anytime', 'staffIds', 'description', 'items', 'taxRate', 'discountType', 'discountValue'];
+const seriesNorm = (k, v) => JSON.stringify(k === 'items' ? (v || []).map((i) => [i.desc || '', Number(i.qty) || 0, Number(i.price) || 0, i.details || '']) : k === 'staffIds' ? [...(v || [])].sort() : k === 'anytime' ? !!v : ['taxRate', 'discountValue'].includes(k) ? Number(v) || 0 : String(v ?? ''));
+const seriesChanges = (j, body) => SERIES_KEYS.filter((k) => k in body && (k !== 'items' || canDo('jobs.prices')) && seriesNorm(k, j[k]) !== seriesNorm(k, body[k]));
+const ruleKey = (r) => (r ? JSON.stringify(Object.keys(r).filter((k) => r[k] !== undefined && !(k === 'count' && r.end !== 'count') && !(k === 'until' && r.end !== 'until')).sort().map((k) => [k, r[k]])) : 'null');
+const sameRule = (a, b) => ruleKey(a) === ruleKey(b);
+// save a job and its Repeats settings
+async function saveJobWithRepeat(j, body, rule) {
+  if (!j.id) { const saved = await api('POST', '/api/jobs', body); let note = '';
+    if (rule) { try { const r = await api('POST', `/api/jobs/${saved.id}/repeat`, { rule }); note = r.created ? ` · ${r.created} more visit${r.created === 1 ? '' : 's'} scheduled` : ''; } catch (e) { toast(`Job saved, but it doesn’t repeat yet: ${e.message}`, true); return saved; } }
+    toast('Job saved' + note); return saved; }
+  const was = repeatFromHere(j); const ruleChanged = planHas('recurringJobs') && $('[name=rpFreq]') && !sameRule(was, rule);
+  const changed = j.seriesId ? seriesChanges(j, body) : []; let scope = 'one';
+  if (j.seriesId && changed.length && !ruleChanged) { scope = await askVisitScope(); if (!scope) return null; }
+  if (ruleChanged && !rule && !confirm('Stop repeating after this visit? Later visits nobody has worked on yet are removed. Visits with invoices, hours, photos or notes stay.')) return null;
+  const moved = j.seriesId && scope === 'following' && body.date && body.date !== j.date; // moving the series: the following visits follow the new date
+  const saved = await api('PUT', `/api/jobs/${j.id}${scope === 'following' && changed.length ? '?following=' + changed.join(',') : ''}`, body); let note = scope === 'following' && saved.following ? ` · ${saved.following} later visit${saved.following === 1 ? '' : 's'} updated` : '';
+  if (ruleChanged && !rule) { const r = await api('DELETE', `/api/jobs/${j.id}/repeat`); note = ` · stopped repeating${r.removed ? `, ${r.removed} later visit${r.removed === 1 ? '' : 's'} removed` : ''}`; }
+  else if (rule && (ruleChanged || moved)) { const r = await api('POST', `/api/jobs/${j.id}/repeat`, { rule }); note = ` · ${r.created} later visit${r.created === 1 ? '' : 's'} scheduled${r.kept ? ` (${r.kept} with work on them kept as they were)` : ''}`; }
+  toast('Job saved' + note); return saved;
+}
+A.stopRepeat = async (d) => {
+  if (!confirm('Stop repeating after this visit? Later visits nobody has worked on yet are removed. Visits with invoices, hours, photos or notes stay.')) return;
+  const r = await api('DELETE', `/api/jobs/${d.id}/repeat`); toast(`Stopped repeating${r.removed ? ` · ${r.removed} later visit${r.removed === 1 ? '' : 's'} removed` : ''}${r.kept ? ` · ${r.kept} kept` : ''}`); refresh();
+};
+// how a repeating visit reads on the job page
+const repeatLine = (j) => { const R = j.repeat; if (!R) return ''; return `${esc(repeatText(R.rule, R.start))} · Visit ${R.index}${R.rule.end === 'count' ? ` of ${R.rule.count}` : ''}${R.next ? ` · Next: <a href="/jobs/edit?id=${esc(R.next.id)}" data-link>${fmtDate(R.next.date)}</a>` : R.ended ? ' · Last visit' : ''}`; };
+const RP_ICON = '<span class="rj-ico" title="Repeats" aria-label="Repeats">↻</span>';
 function jobPage(main, job, preset) {
   const j = job || {}; const p = preset || {};
   const q = byId(D.quotes, j.quoteId); const st = j.id ? jobStatus(j) : 'upcoming';
@@ -2907,6 +2998,7 @@ ${!canDo('jobs.prices') ? '' : itemsCard(items, '<div class="jdeposit"></div>', 
 <div class="qcard"><h2>Scheduled visit</h2><div class="row3"><label>Date<input type="date" name="date" required value="${esc(j.date || p.date || ymd(new Date()))}"></label>
 <label>Start<input type="time" name="startTime" value="${esc(j.startTime || '09:00')}"></label><label>End<input type="time" name="endTime" value="${esc(j.endTime || '11:00')}"></label></div>
 <label class="switchline"><input type="checkbox" name="anytime" ${j.anytime ? 'checked' : ''}> Anytime that day (no set time)</label>
+${repeatCard(j, j.date || p.date || ymd(new Date()))}
 <div class="muted qlabel">Assigned team</div><div class="team-pick">${team.map((s) => `<label><input type="checkbox" name="staff" value="${s.id}" ${(j.staffIds || []).includes(s.id) ? 'checked' : ''}>${avatarHtml(s, 24)}${esc(s.name)}</label>`).join('') || '<span class="muted">Add team members on Manage Team first</span>'}</div>
 <label>Instructions<textarea name="description" rows="3" placeholder="What the team needs to know for this visit">${esc(j.description || '')}</textarea></label></div>
 ${j.id && j.signature ? sigCard(j) : ''}
@@ -2927,15 +3019,15 @@ ${jobBilling(j, invs)}</div>
 ${paid ? `<div class="crow-line"><span>Deposit collected <span class="muted">· ${fmtDate(q.depositPaidAt)}</span></span><span>−${money(paid)}</span></div>` : ''}
 <div class="crow-line"><strong>Outstanding deposit</strong><strong>${money(Math.max(0, q.depositFee - paid))}</strong></div>`;
   };
-  wireItems(form); contact();
+  wireItems(form); contact(); wireRepeat(form);
   if (!canDo('jobs.edit')) $$('input, select, textarea', form).forEach((el) => { el.disabled = true; }); // view only without “Create, edit and delete jobs”
   form.addEventListener('change', (e) => { if (e.target.name === 'clientId') contact(); });
   form.addEventListener('submit', async (e) => {
     e.preventDefault(); const fd = new FormData(form);
     const body = { title: fd.get('title'), clientId: fd.get('clientId'), status: fd.get('status'), address: fd.get('address') || (byId(D.clients, fd.get('clientId')) || {}).address || '', propertyId: fd.get('propertyId') || '', date: fd.get('date'), startTime: fd.get('startTime'), endTime: fd.get('endTime'), anytime: !!fd.get('anytime'), description: fd.get('description'), staffIds: fd.getAll('staff'), internalNotes: fd.get('internalNotes'), taxRate: fd.get('taxRate'), discountType: fd.get('discountType'), discountValue: fd.get('discountValue'), items: readItems(form).filter((i) => i.desc) };
     if (!jobScheduleOk(j.id, body)) return;
-    const saved = j.id ? await api('PUT', '/api/jobs/' + j.id, body) : await api('POST', '/api/jobs', body);
-    toast('Job saved'); if (j.id) refresh(); else navigate('/jobs/edit?id=' + saved.id);
+    const btn = e.submitter; if (btn) btn.disabled = true;
+    try { const saved = await saveJobWithRepeat(j, body, readRepeat(form)); if (!saved) return; if (j.id) refresh(); else navigate('/jobs/edit?id=' + saved.id); } catch (x) { toast(x.message, true); } finally { if (btn) btn.disabled = false; }
   });
 }
 /* ===== client signature on a job: any team member can collect it (job page ⋯ More → Collect signature); managers / admins can remove it ===== */
@@ -3085,7 +3177,7 @@ PAGES['/jobs'] = {
 <label class="pill">Team member<select data-jv="staff"><option value="">All</option>${D.staff.map((s) => `<option value="${s.id}" ${v.staff === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>
 <input id="jq" class="csearch" type="search" placeholder="Search jobs…" value="${esc(v.q)}"></div>
 <div class="card ctable"><div class="tablewrap"><table><tr>${th('client', 'Client')}${th('number', 'Job number')}<th>Property</th>${th('schedule', 'Schedule')}${th('status', 'Status')}${th('total', 'Total', 'r money')}</tr>
-${list.map((j) => { const st = jobStatus(j); const t = jobTotal(j); return `<tr class="crow" data-id="${j.id}"><td><strong>${esc(cname(j))}</strong></td><td>${esc(j.number)}${j.title ? `<div>${esc(j.title)}</div>` : ''}</td><td>${esc(j.address || (byId(D.clients, j.clientId) || {}).address || '')}</td>
+${list.map((j) => { const st = jobStatus(j); const t = jobTotal(j); return `<tr class="crow" data-id="${j.id}"><td><strong>${esc(cname(j))}</strong></td><td>${esc(j.number)}${j.seriesId ? ' ' + RP_ICON : ''}${j.title ? `<div>${esc(j.title)}</div>` : ''}</td><td>${esc(j.address || (byId(D.clients, j.clientId) || {}).address || '')}</td>
 <td>${j.status === 'completed' ? '<div class="sched-done">Completed</div>' : ''}${fmtDate(j.date)}${j.status !== 'completed' ? `<div class="muted">${esc(fmtTime(j.startTime))} – ${esc(fmtTime(j.endTime))}</div>` : ''}${team(j) ? `<div class="muted">${esc(team(j))}</div>` : ''}</td>
 <td><span class="cstatus ${J_CLASS[st]}">${J_STATUS[st]}</span></td><td class="r money"><strong>${t === null ? '<span class="muted">—</span>' : money(t)}</strong></td></tr>`; }).join('') || `<tr><td colspan="6" class="empty">${D.jobs.length ? 'No jobs match these filters' : 'No jobs yet'}</td></tr>`}</table></div></div>`;
     $$('[data-jv]').forEach((s) => s.addEventListener('change', (e) => { jobView[e.target.dataset.jv] = e.target.value; refresh(); }));

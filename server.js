@@ -622,6 +622,112 @@ app.post('/api/time/approve', manageTime((req, res, u, b) => {
   save(); res.json({ approved: n });
 }));
 
+// ---------- Recurring jobs (a plan feature) ----------
+// A job repeats on a rule: every N days, every N weeks on chosen weekdays, or every N months (on the same date, or the same weekday, e.g.
+// the 2nd Tuesday or the last Friday). Each visit is an ordinary job (its own number, team, time, invoices, timesheet hours) linked by seriesId,
+// so the calendar, client portal, reminders and reports work unchanged. Visits are made ahead (2 months for daily, 6 for weekly, 12 for
+// monthly) and the hourly tick tops them up while the series runs. Deleting one visit skips it; it doesn't come back.
+// db.jobSeries: { id, rule: { freq: day|week|month, every, days (weekly, 0 = Sunday), monthBy (monthly: date|weekday), end: never|count|until, count, until },
+//   start (first visit's date), through (latest visit made), made (visits made), template (job fields copied to new visits), ended, createdAt, createdBy }
+const SERIES_FIELDS = ['title', 'clientId', 'address', 'propertyId', 'startTime', 'endTime', 'anytime', 'staffIds', 'description', 'items', 'taxRate', 'discountType', 'discountValue'];
+const seriesList = () => (db.jobSeries = db.jobSeries || []);
+const findSeries = (id) => id && seriesList().find((s) => s.id === id);
+const pickSeries = (j, keys = SERIES_FIELDS) => Object.fromEntries(keys.filter((k) => j[k] !== undefined).map((k) => [k, structuredClone(j[k])]));
+const repeatBad = (m) => Object.assign(new Error(m), { status: 400 });
+const dayUTC = (s) => { const [y, m, d] = String(s).split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)); };
+const ymdUTC = (y, m, d) => new Date(Date.UTC(y, m, d)).toISOString().slice(0, 10);
+const addDaysYmd = (s, n) => { const d = dayUTC(s); return ymdUTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + n); };
+function cleanRepeatRule(r, start) {
+  r = r || {}; const freq = r.freq; if (!['day', 'week', 'month'].includes(freq)) throw repeatBad('Choose how often the job repeats');
+  const max = { day: 365, week: 52, month: 24 }[freq]; const every = Math.floor(Number(r.every) || 1);
+  if (every < 1 || every > max) throw repeatBad(`Repeat every 1 to ${max} ${freq}s`);
+  const out = { freq, every };
+  if (freq === 'week') { const days = [...new Set((Array.isArray(r.days) ? r.days : []).map(Number).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))].sort(); out.days = days.length ? days : [dayUTC(start).getUTCDay()]; }
+  if (freq === 'month') { out.monthBy = r.monthBy === 'weekday' ? 'weekday' : 'date'; const n = Math.ceil(dayUTC(start).getUTCDate() / 7); if (out.monthBy === 'weekday') out.nth = Number(r.nth) === -1 || n >= 5 ? -1 : n; } // nth: which weekday of the month (-1 the last)
+  out.end = ['count', 'until'].includes(r.end) ? r.end : 'never';
+  if (out.end === 'count') { out.count = Math.floor(Number(r.count)); if (!(out.count >= 2 && out.count <= 500)) throw repeatBad('A repeating job ends after 2 to 500 visits'); }
+  if (out.end === 'until') { out.until = String(r.until || ''); if (!/^\d{4}-\d{2}-\d{2}$/.test(out.until) || isNaN(dayUTC(out.until))) throw repeatBad('Choose the date the job stops repeating'); if (out.until <= start) throw repeatBad('The end date has to be after the first visit'); if (out.until > addDaysYmd(start, 5 * 366)) throw repeatBad('Repeat for 5 years at most'); }
+  return out;
+}
+// the series' dates in order, from its first visit
+function* repeatDates(rule, start) {
+  const s = dayUTC(start); const Y = s.getUTCFullYear(); const M = s.getUTCMonth(); const D0 = s.getUTCDate();
+  for (let k = 0; k < 20000; k++) {
+    if (rule.freq === 'day') yield ymdUTC(Y, M, D0 + k * rule.every);
+    else if (rule.freq === 'week') { if (k % rule.every) continue; const sun = D0 - s.getUTCDay() + k * 7; for (const d of rule.days) { const v = ymdUTC(Y, M, sun + d); if (v >= start) yield v; } }
+    else {
+      if (k % rule.every) continue; const last = new Date(Date.UTC(Y, M + k + 1, 0)).getUTCDate();
+      if (rule.monthBy !== 'weekday') { yield ymdUTC(Y, M + k, Math.min(D0, last)); continue; }
+      const nth = rule.nth || Math.ceil(D0 / 7); const off = (s.getUTCDay() - new Date(Date.UTC(Y, M + k, 1)).getUTCDay() + 7) % 7; // the 5th one is "the last" (not every month has one)
+      yield ymdUTC(Y, M + k, nth === -1 || nth >= 5 ? 1 + off + 7 * Math.floor((last - 1 - off) / 7) : 1 + off + (nth - 1) * 7);
+    }
+  }
+}
+// make the visits that are due up to the horizon; returns how many were made
+function fillSeries(s) {
+  if (s.ended) return 0; const today = localNow().date; const horizon = addDaysYmd(today > s.through ? today : s.through, { day: 62, week: 183, month: 366 }[s.rule.freq]); let n = 0;
+  for (const d of repeatDates(s.rule, s.start)) {
+    if (d <= s.through) continue;
+    if ((s.rule.end === 'until' && d > s.rule.until) || (s.rule.end === 'count' && s.made >= s.rule.count)) { s.ended = true; break; }
+    if (d > horizon || n >= 200) break;
+    if (db.jobs.some((x) => x.seriesId === s.id && x.date === d)) { s.made++; s.through = d; continue; } // a visit kept from before a change of rule is already on that day
+    const job = { ...structuredClone(s.template), id: uid(), number: nextNumber('jobs'), date: d, status: 'scheduled', seriesId: s.id, createdAt: iso(new Date()) };
+    if (Array.isArray(job.items) && job.items.length) computeTotals(job);
+    db.jobs.push(job); s.made++; s.through = d; n++;
+  }
+  return n;
+}
+// a visit nobody has worked on yet: changing or stopping the repeat removes it (visits with invoices, hours, a signature, notes or photos stay)
+const untouchedVisit = (j) => j.status === 'scheduled' && !j.signature && !(j.noteEntries || []).length && !db.invoices.some((i) => i.jobId === j.id) && !timeList().some((e) => e.jobId === j.id) && !(db.photos || []).some((p) => p.jobId === j.id);
+function dropFollowing(j) {
+  const later = db.jobs.filter((x) => x.seriesId === j.seriesId && x.id !== j.id && x.date > j.date); const gone = new Set(later.filter(untouchedVisit).map((x) => x.id));
+  db.jobs = db.jobs.filter((x) => !gone.has(x.id)); return { removed: gone.size, kept: later.length - gone.size };
+}
+const forgetEmptySeries = (id) => { if (id && !db.jobs.some((x) => x.seriesId === id)) db.jobSeries = seriesList().filter((s) => s.id !== id); };
+// what the job pages show: the rule, and where this visit falls in the series
+function repeatInfo(j) {
+  const s = findSeries(j.seriesId); if (!s) return null; const all = db.jobs.filter((x) => x.seriesId === s.id).sort((a, b) => a.date.localeCompare(b.date));
+  const next = all.find((x) => x.date > j.date && x.status === 'scheduled');
+  return { rule: s.rule, start: s.start, ended: !!s.ended, index: all.findIndex((x) => x.id === j.id) + 1, visits: all.length, next: next ? { id: next.id, date: next.date } : null };
+}
+const withRepeat = (j) => (j && j.seriesId ? { ...j, repeat: repeatInfo(j) } : j);
+// start repeating from this job, or change the repeat from this visit on (following visits nobody has worked on are made again on the new rule)
+app.post('/api/jobs/:id/repeat', (req, res) => {
+  const j = db.jobs.find((x) => x.id === req.params.id); if (!j) return res.status(404).json({ error: 'Job not found' });
+  if (j.status === 'cancelled') return res.status(400).json({ error: 'A cancelled job can’t repeat' }); if (!j.date) return res.status(400).json({ error: 'Give the job a date first' });
+  let rule; try { rule = cleanRepeatRule((req.body || {}).rule, j.date); } catch (e) { return res.status(e.status || 500).json({ error: e.message }); }
+  let removed = 0; let kept = 0; const old = findSeries(j.seriesId);
+  if (old) { ({ removed, kept } = dropFollowing(j)); delete old.rule.count; Object.assign(old.rule, { end: 'until', until: addDaysYmd(j.date, -1) }); old.ended = true; }
+  const s = { id: uid(), rule, start: j.date, through: j.date, made: 1, template: pickSeries(j), ended: false, createdAt: new Date().toISOString(), createdBy: (currentUser(req) || {}).name || '' };
+  seriesList().push(s); if (old) db.jobs.forEach((x) => { if (x.seriesId === old.id && x.date > j.date) x.seriesId = s.id; }); j.seriesId = s.id; if (old) forgetEmptySeries(old.id); // visits kept (they have work on them) go on with the new repeat
+  const created = fillSeries(s); save(); res.json({ created, removed, kept, job: withRepeat(j) });
+});
+// stop repeating after this visit: following visits nobody has worked on are removed
+app.delete('/api/jobs/:id/repeat', (req, res) => {
+  const j = db.jobs.find((x) => x.id === req.params.id); if (!j) return res.status(404).json({ error: 'Job not found' }); const s = findSeries(j.seriesId);
+  if (!s) return res.status(400).json({ error: 'This job doesn’t repeat' });
+  const r = dropFollowing(j); delete s.rule.count; Object.assign(s.rule, { end: 'until', until: j.date }); s.ended = true; save(); res.json(r);
+});
+// job edits saved for "this and following visits" (?following=title,staffIds…: the fields that changed): they change on later scheduled visits,
+// and on visits made from now on; other fields a later visit was given on its own stay
+function applyToFollowing(doc, upd, list) {
+  const s = findSeries(doc.seriesId); if (!s) return 0; const want = String(list || '').split(','); const keys = SERIES_FIELDS.filter((k) => k in upd && want.includes(k)); if (!keys.length) return 0;
+  Object.assign(s.template, pickSeries(doc, keys)); let n = 0;
+  for (const o of db.jobs) if (o.seriesId === s.id && o.id !== doc.id && o.date > doc.date && o.status === 'scheduled') { Object.assign(o, pickSeries(doc, keys)); if (Array.isArray(o.items) && o.items.length) computeTotals(o); n++; }
+  return n;
+}
+// hourly: top up running series (a series whose client was deleted stops)
+function extendSeries() {
+  for (const t of tenancy.platform().tenants) {
+    if (t.status !== 'active') continue;
+    tenancy.run(t, () => {
+      if (!tenancy.has('recurringJobs') || !(db.jobSeries || []).some((s) => !s.ended)) return; let n = 0;
+      for (const s of db.jobSeries) if (!s.ended) { if (!findClient(s.template.clientId)) { s.ended = true; n++; } else n += fillSeries(s); }
+      if (n) save();
+    });
+  }
+}
+
 // Roles & Permissions (owner/admin): the catalog, the roles, and how many logins have each; saving replaces the whole list
 const rolesView = () => ({ custom: customRolesOn(), catalog: rolesLib.catalog(), roles: teamRoles().map((r) => ({ ...r, users: db.users.filter((u) => u.role !== 'owner' && u.role !== 'admin' && roleKey(u) === r.id).length })), admins: db.users.filter((u) => u.role === 'admin').length });
 app.get('/api/roles', (req, res) => res.json(rolesView()));
@@ -1236,7 +1342,7 @@ Plain text only: no markdown, no quotes around it, no heading and no comments ab
 app.get('/api/:col', (req, res, next) => {
   const col = req.params.col;
   if (!COLLECTIONS.includes(col)) return next();
-  if (col === 'jobs' && isMemberReq(req)) return res.json(db.jobs.map(jobForMember));
+  if (col === 'jobs') return res.json(db.jobs.map((j) => withRepeat(isMemberReq(req) ? jobForMember(j) : j)));
   if (col === 'clients' && isMemberReq(req)) return res.json(db.clients.map(clientForMember));
   res.json(col === 'invoices' ? db.invoices.map(withStatus) : db[col]);
 });
@@ -1269,7 +1375,7 @@ function customNumber(col, raw, id) {
 app.post('/api/:col', (req, res, next) => {
   const col = req.params.col;
   if (!COLLECTIONS.includes(col) || col === 'photos') return next();
-  let b = req.body || {}; delete b.noteEntries; // notes only through /notes
+  let b = req.body || {}; delete b.noteEntries; delete b.seriesId; delete b.repeat; // notes only through /notes; repeats only through /repeat
   if (col === 'jobs' && isMemberReq(req)) b = Object.fromEntries(Object.entries(b).filter(([k]) => MEMBER_JOB_FIELDS.includes(k)));
   if (col === 'staff') { // a new team member needs a name, an email and a mobile number
     const name = String(b.name || '').trim(); const email = String(b.email || '').trim(); const phone = String(b.phone || '').replace(/\D/g, '');
@@ -1310,7 +1416,7 @@ app.put('/api/:col/:id', (req, res, next) => {
   if (!COLLECTIONS.includes(col)) return next();
   const i = db[col].findIndex((x) => x.id === req.params.id);
   if (i < 0) return res.status(404).json({ error: 'Not found' });
-  const protectedKeys = ['id', 'number', 'token', 'portalToken', 'createdAt'];
+  const protectedKeys = ['id', 'number', 'token', 'portalToken', 'createdAt', 'seriesId', 'repeat'];
   let upd = { ...req.body }; protectedKeys.forEach((k) => delete upd[k]); delete upd.noteEntries; // notes change only through /notes
   if (col === 'invoices') { delete upd.signedAt; delete upd.signedName; delete upd.signature; } // signatures only through /signature
   (PAYMENT_FIELDS[col] || []).forEach((k) => delete upd[k]);
@@ -1346,8 +1452,9 @@ app.put('/api/:col/:id', (req, res, next) => {
   if (col === 'services') { doc.price = Number(doc.price) || 0; homeDepot.clean(doc); }
   if (col === 'quotes' && was.signature && !doc.signature) removeSignatureFile(was);
   if (col === 'jobs' && doc.status === 'completed' && was.status !== 'completed') doc.completedAt = iso(new Date()); // the "job completed" automations count from this
+  const following = col === 'jobs' && req.query.following && doc.seriesId && tenancy.has('recurringJobs') ? applyToFollowing(doc, upd, req.query.following) : 0; // Save → "This and following visits"
   db[col][i] = doc; save(); if (col === 'clients' && doc.smsConsent && !was.smsConsent) optInText(doc).catch(() => {}); if (col === 'jobs') { pushScheduleChange(was, doc, currentUser(req)); if (doc.status === 'completed' && was.status !== 'completed') askForReview('job', doc); }
-  res.json(col === 'invoices' ? withStatus(doc) : col === 'jobs' && isMemberReq(req) ? jobForMember(doc) : col === 'clients' && isMemberReq(req) ? clientForMember(doc) : doc);
+  res.json(col === 'invoices' ? withStatus(doc) : col === 'jobs' ? { ...withRepeat(isMemberReq(req) ? jobForMember(doc) : doc), ...(following ? { following } : {}) } : col === 'clients' && isMemberReq(req) ? clientForMember(doc) : doc);
 });
 
 app.delete('/api/:col/:id', (req, res, next) => {
@@ -1356,7 +1463,7 @@ app.delete('/api/:col/:id', (req, res, next) => {
   const i = db[col].findIndex((x) => x.id === req.params.id);
   if (i < 0) return res.status(404).json({ error: 'Not found' });
   if (col === 'staff' && isOwnerStaff(db.staff[i])) return res.status(400).json({ error: 'The account owner can’t be removed from the team' });
-  const [removed] = db[col].splice(i, 1); if (col === 'jobs') pushScheduleChange(removed, null, currentUser(req));
+  const [removed] = db[col].splice(i, 1); if (col === 'jobs') { pushScheduleChange(removed, null, currentUser(req)); forgetEmptySeries(removed.seriesId); } // deleting a repeating job's visit skips it; with none left, the repeat ends
   if (col === 'staff') db.users.filter((u) => u.staffId === removed.id && u.role !== 'owner').forEach(removeUser);
   if (col === 'staff') (db.timeOff || []).filter((r) => r.staffId === removed.id && (r.status === 'pending' || (r.status === 'approved' && r.to >= iso(new Date())))).forEach((r) => { r.status = 'canceled'; r.canceledBy = 'Removed from the team'; }); // nothing left waiting for someone who's gone
   if (col === 'photos' && removed.file) fs.rmSync(path.join(uploadDir(), path.basename(removed.file)), { force: true });
@@ -4108,6 +4215,7 @@ if (rpp > 0) { // same for the platform console login: node server.js --reset-pl
 }
 setTimeout(remindExpiring, 10e3); setInterval(remindExpiring, 3600e3); // reminder emails before an account's last day of access
 setTimeout(() => bizAuto.runAll().catch((e) => console.error('automations:', e.message)), 30e3); setInterval(() => bizAuto.runAll().catch((e) => console.error('automations:', e.message)), 3600e3); // checks every automation hourly
+setTimeout(extendSeries, 25e3); setInterval(extendSeries, 3600e3); // recurring jobs: make visits as the months go by
 setTimeout(pushOverviews, 20e3); setInterval(pushOverviews, 15 * 60e3); // the morning's Today's work overview notifications
 setTimeout(() => syncAllBooks().catch(() => {}), 45e3); setInterval(() => syncAllBooks().catch(() => {}), 15 * 60e3); // QuickBooks & Xero: send what's new
 require('http').createServer(dispatch).listen(PORT, () => {
