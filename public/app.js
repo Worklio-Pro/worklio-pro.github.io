@@ -297,7 +297,7 @@ const marketplaceOn = () => !(company.account && company.account.marketplace ===
 const settingsFor = () => SETTINGS_NAV.filter(([p]) => memberCan(p) && !planLocked(p) && (p !== '/rewards' || referralsOn()) && (p !== '/marketplace' || marketplaceOn()));
 // pages the search finds besides the menu items, and extra words each page answers to
 const FEATURE_EXTRAS = [['/quotes/new', 'New quote', 'Quotes', 'create estimate'], ['/jobs/new', 'New job', 'Jobs', 'create schedule visit'], ['/invoices/new', 'New invoice', 'Invoices', 'create bill'],
-  ['/clients/import', 'Import clients', 'Clients', 'csv upload spreadsheet'], ['/team/new', 'Add team member', 'Settings', 'invite staff employee user'],
+  ['/clients/import', 'Import clients', 'Clients', 'csv upload spreadsheet'], ['/services/import', 'Import products & services', 'Products & Services', 'csv upload spreadsheet price list catalog'],['/team/new', 'Add team member', 'Settings', 'invite staff employee user'],
   ['/payments/settings', 'Payment settings', 'Money', 'card online payouts processing rates disputes'], ['/profile', 'My profile', 'Account', 'password photo name email login']];
 const FEATURE_WORDS = {
   '/business-overview': 'dashboard overview', '/calendar': 'schedule schedules appointments visits tasks events job calendar', '/clients': 'customers contacts',

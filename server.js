@@ -1112,6 +1112,20 @@ async function aiWrite(res, what, input, key, request) {
     res.status(502).json({ error: 'Couldn\u2019t reach the AI service. Check your internet connection.' });
   }
 }
+// bulk import into Products & services (rows are parsed and column-matched in the browser on /services/import)
+app.post('/api/services/import', (req, res) => {
+  const rows = Array.isArray(req.body && req.body.services) ? req.body.services : [];
+  if (rows.length > 5000) return res.status(400).json({ error: 'Import up to 5,000 items at a time' });
+  const str = (v, max) => String(v ?? '').trim().slice(0, max);
+  let added = 0;
+  for (const r of rows) {
+    const name = str(r.name, 200); if (!name) continue;
+    const price = Math.max(0, Math.round((Number(String(r.price ?? '').replace(/[^0-9.-]/g, '')) || 0) * 100) / 100);
+    db.services.push({ id: uid(), name, type: r.type === 'product' ? 'product' : 'service', description: str(r.description, 5000), price, unit: str(r.unit, 40) });
+    added++;
+  }
+  save(); res.json({ added });
+});
 app.post('/api/services/describe', async (req, res) => {
   const name = String(req.body.name || '').trim().slice(0, 200);
   const kind = req.body.type === 'product' ? 'product' : 'service';

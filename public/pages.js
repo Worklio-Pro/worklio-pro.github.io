@@ -554,7 +554,7 @@ PAGES['/services'] = {
     const th = (k, label, cls = '') => `<th class="${cls}"><button class="th-btn" data-act="svcSort" data-k="${k}">${label} <span class="sort ${v.sort === k ? 'on' : ''}">${v.sort === k ? (v.dir > 0 ? '▲' : '▼') : '⇅'}</span></button></th>`;
     main.innerHTML = `<div class="head"><div><h1>Products &amp; services</h1><p class="sub">Add and update your products and services to stay organized when creating quotes, jobs and invoices.</p></div></div>
 <div class="cfilters"><div class="search-x"><input id="sq" type="search" placeholder="Search" value="${esc(v.q)}" aria-label="Search products and services"><button type="button" class="icon-btn" data-act="svcClear" aria-label="Clear search" ${v.q ? '' : 'hidden'}>✕</button></div>
-<button class="btn" data-act="newService" style="margin-left:auto">+ Add Item</button></div>
+<a class="btn alt" href="/services/import" data-link style="margin-left:auto">Import</a><button class="btn" data-act="newService">+ Add Item</button></div>
 <div class="card ctable"><div class="tablewrap"><table><tr>${th('name', 'Name')}<th>Description</th>${th('type', 'Type')}${th('price', 'Price', 'r')}</tr>
 ${list.map((s) => `<tr class="crow" data-id="${s.id}"><td><strong>${esc(s.name)}</strong></td><td>${esc(s.description)}</td><td>${svcType(s)}</td><td class="r" style="white-space:nowrap">${money(s.price)}<span class="muted"> / ${esc(s.unit || (s.type === 'product' ? 'each' : 'job'))}</span></td></tr>`).join('')
   || `<tr><td colspan="4" class="empty">${D.services.length ? 'Nothing matches your search' : 'No products or services yet. Add your first one.'}</td></tr>`}</table></div></div>`;
@@ -623,6 +623,62 @@ async function hdPicker(mb) {
 }
 A.newService = () => serviceForm(); A.editService = (d) => serviceForm(byId(D.services, d.id));
 A.delService = async (d) => { if (!confirm('Delete this item? Quotes and invoices that already use it keep their lines.')) return; await api('DELETE', '/api/services/' + d.id); closeModal(); refresh(); };
+
+/* ===== /services/import: products and services from a CSV (parseCsv is under /clients/import) ===== */
+const SVC_FIELDS = [['', "Don't import"], ['name', 'Name'], ['description', 'Description'], ['type', 'Type (product or service)'], ['price', 'Price'], ['unit', 'Unit'], ['active', 'Active (no = skip)']];
+const SVC_GUESS = [['price', /price|rate|cost|amount/], ['description', /desc|details/], ['type', /^(type|category|kind|item type)$/], ['unit', /^(unit|uom|unit of measure)$/], ['active', /^(active|enabled|status)$/], ['name', /^(name|item|product|service|(item|product|service) ?name|title)$/]];
+let svcImport = null;
+const svcRow = (row, map) => { const v = {}; map.forEach((f, i) => { if (f && (row[i] || '').trim()) v[f] = row[i].trim(); });
+  return { name: v.name || '', description: v.description || '', type: /product|material|part|goods/i.test(v.type || '') ? 'product' : 'service', price: Number(String(v.price || '').replace(/[^0-9.-]/g, '')) || 0, unit: v.unit || '', inactive: /^(false|no|n|0|inactive|archived)$/i.test(v.active || '') }; };
+function svcImportPlan() {
+  const norm = (x) => String(x || '').trim().toLowerCase(); const seen = new Set(D.services.map((s) => norm(s.name)));
+  return svcImport.rows.map((r) => { const c = svcRow(r, svcImport.map);
+    const status = !c.name ? 'noname' : c.inactive ? 'inactive' : seen.has(norm(c.name)) ? 'dupe' : 'new'; if (c.name && !c.inactive) seen.add(norm(c.name)); return { c, status }; });
+}
+PAGES['/services/import'] = {
+  title: 'Import products & services',
+  async render(main) {
+    svcImport = null;
+    main.innerHTML = `<div class="head"><div><a href="/services" data-link class="back">← Products &amp; services</a><h1>Import products &amp; services</h1><p class="sub">Add your price list at once from a spreadsheet or another app's export.</p></div></div>
+<div class="card"><h2>1. Choose a CSV file</h2><p class="muted" style="margin-top:0">Save your list as <strong>CSV</strong>. The first row should be column names, such as Name, Description, Type and Price. <a href="#" data-act="svcImportTemplate">Download a sample file</a></p>
+<input type="file" id="svcFile" accept=".csv,.txt,text/csv" style="width:auto"></div><div id="svcStep"></div>`;
+    $('#svcFile').addEventListener('change', async (e) => {
+      const f = e.target.files[0]; if (!f) return;
+      if (/\.(xlsx?|numbers)$/i.test(f.name)) return toast('Save the spreadsheet as CSV first, then choose the .csv file', true);
+      const rows = parseCsv(await f.text());
+      if (rows.length < 2) return toast('No items found. The file needs a header row and at least one item row.', true);
+      const headers = rows[0]; const width = Math.max(...rows.map((r) => r.length)); while (headers.length < width) headers.push('Column ' + (headers.length + 1));
+      const map = headers.map(() => ''); SVC_GUESS.forEach(([field, re]) => { const i = headers.findIndex((h, k) => !map[k] && re.test(h.trim().toLowerCase())); if (i >= 0 && !map.includes(field)) map[i] = field; });
+      svcImport = { fileName: f.name, headers, rows: rows.slice(1), map, skipDupes: true }; svcImportStep();
+    });
+  },
+};
+function svcImportStep() {
+  const s = svcImport; const plan = svcImportPlan(); const n = (st) => plan.filter((p) => p.status === st).length;
+  const take = plan.filter((p) => p.status === 'new' || (p.status === 'dupe' && !s.skipDupes));
+  const tag = { new: '<span class="badge approved">new</span>', dupe: `<span class="badge ${s.skipDupes ? 'draft' : 'sent'}">${s.skipDupes ? 'already in list, skip' : 'duplicate'}</span>`, noname: '<span class="badge declined">no name, skip</span>', inactive: '<span class="badge draft">inactive, skip</span>' };
+  $('#svcStep').innerHTML = `<div class="card"><h2>2. Match the columns</h2><p class="muted" style="margin-top:0">We matched the columns in <strong>${esc(s.fileName)}</strong> automatically. Check them and change any that are wrong.</p>
+<div class="tablewrap"><table class="map-tbl"><tr><th>Column in your file</th><th>Example</th><th style="width:220px">Import as</th></tr>
+${s.headers.map((h, i) => `<tr><td><strong>${esc(h)}</strong></td><td class="muted">${esc((s.rows.find((r) => (r[i] || '').trim()) || [])[i] || '')}</td><td><select data-smap="${i}">${SVC_FIELDS.map(([v, l]) => `<option value="${v}" ${s.map[i] === v ? 'selected' : ''}>${l}</option>`).join('')}</select></td></tr>`).join('')}</table></div>
+${s.map.includes('name') ? '' : '<div class="notice" style="margin-top:12px">Choose which column holds the item name.</div>'}</div>
+<div class="card"><h2>3. Review and import</h2>
+<p><strong>${plan.length}</strong> rows: <strong>${n('new')}</strong> new, <strong>${n('dupe')}</strong> already in your list or repeated in the file${n('inactive') ? `, <strong>${n('inactive')}</strong> inactive (skipped)` : ''}${n('noname') ? `, <strong>${n('noname')}</strong> without a name (skipped)` : ''}.</p>
+<div class="chk"><label><input type="checkbox" id="svcSkip" ${s.skipDupes ? 'checked' : ''}> Skip items already in my list (same name)</label></div>
+<div class="tablewrap"><table><tr><th>Name</th><th>Type</th><th>Description</th><th class="r">Price</th><th></th></tr>
+${plan.slice(0, 100).map((p) => `<tr><td>${esc(p.c.name) || '<span class="muted">—</span>'}</td><td>${p.c.type === 'product' ? 'Product' : 'Service'}</td><td>${esc(p.c.description)}</td><td class="r">${money(p.c.price)}${p.c.unit ? `<span class="muted"> / ${esc(p.c.unit)}</span>` : ''}</td><td>${tag[p.status]}</td></tr>`).join('')}</table></div>
+${plan.length > 100 ? `<p class="muted">Showing the first 100 of ${plan.length} rows.</p>` : ''}
+<div class="foot"><a class="btn alt" href="/services" data-link>Cancel</a><button class="btn" data-act="runSvcImport" ${take.length ? '' : 'disabled'}>Import ${take.length} item${take.length === 1 ? '' : 's'}</button></div></div>`;
+  $$('[data-smap]').forEach((sel) => sel.addEventListener('change', (e) => { s.map[Number(e.target.dataset.smap)] = e.target.value; svcImportStep(); }));
+  $('#svcSkip').addEventListener('change', (e) => { s.skipDupes = e.target.checked; svcImportStep(); });
+}
+A.runSvcImport = async (d, el) => {
+  const s = svcImport; if (!s) return;
+  const services = svcImportPlan().filter((p) => p.status === 'new' || (p.status === 'dupe' && !s.skipDupes)).map(({ c }) => ({ name: c.name, description: c.description, type: c.type, price: c.price, unit: c.unit }));
+  el.disabled = true; el.textContent = 'Importing…';
+  try { const r = await api('POST', '/api/services/import', { services }); toast(`Imported ${r.added} item${r.added === 1 ? '' : 's'}`); navigate('/services'); }
+  catch (err) { el.disabled = false; el.textContent = `Import ${services.length} items`; throw err; }
+};
+A.svcImportTemplate = () => downloadCsv('products-services-sample.csv', [['Name', 'Description', 'Type', 'Price', 'Unit'], ['Service call', 'Diagnose the problem on site', 'Service', '89', 'visit'], ['Outlet cover', 'White duplex wall plate', 'Product', '4.50', 'each']]);
 
 /* ===== /expenses ===== */
 let expJob = '';
