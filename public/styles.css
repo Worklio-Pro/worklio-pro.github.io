@@ -1149,7 +1149,7 @@ a.conn-chip{text-decoration:none}a.conn-chip:hover{text-decoration:underline}
 .fo-tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}.fo-tags>span{font-size:12px;font-weight:600;padding:2px 8px;border-radius:99px;background:var(--bg);color:var(--muted)}
 .fo-k-idea{color:#6d28d9!important;background:#ede9fe!important}.fo-k-issue{color:#b45309!important;background:#fef3c7!important}
 .fo-st-open{color:#1d4ed8!important;background:#dbeafe!important}.fo-st-review{color:#0e7490!important;background:#cffafe!important}.fo-st-planned{color:#7c2d12!important;background:#ffedd5!important}
-.fo-st-progress{color:#a16207!important;background:#fef9c3!important}.fo-st-done{color:#15803d!important;background:#dcfce7!important}.fo-st-declined{color:#475569!important;background:#e2e8f0!important}
+.fo-st-progress{color:#a16207!important;background:#fef9c3!important}.fo-st-beta{color:#0f766e!important;background:#ccfbf1!important}.fo-st-done{color:#15803d!important;background:#dcfce7!important}.fo-st-declined{color:#475569!important;background:#e2e8f0!important}
 .fo-title{display:block;font-size:17px;font-weight:700;color:var(--text);text-decoration:none;margin-bottom:4px}.fo-title:hover{color:var(--link)}
 .fo-ex{margin:0 0 8px;color:var(--muted);font-size:14px;overflow-wrap:anywhere}.fo-meta{font-size:13px;color:var(--muted)}.fo-meta strong{color:var(--text)}
 .fo-team{display:inline-block;font-weight:700;color:#fff;background:var(--brand);padding:1px 8px;border-radius:99px;font-size:12px}

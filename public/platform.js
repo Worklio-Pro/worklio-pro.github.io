@@ -2172,7 +2172,7 @@ function frList(main) {
 ${helpSeg()}
 ${s.on ? '' : '<div class="mt-bar" role="status" style="margin:0 0 14px;border-radius:10px"><strong>The Board is closed.</strong> Businesses don’t see it. Open it again in Board settings.</div>'}
 <div class="stats fr-stats"><div class="card"><div class="l">New, not reviewed yet</div><div class="v">${n((p) => p.status === 'open')}</div></div><div class="card"><div class="l">Feature requests</div><div class="v">${n((p) => p.kind === 'idea')}</div></div>
-<div class="card"><div class="l">Issues</div><div class="v">${n((p) => p.kind === 'issue')}</div></div><div class="card"><div class="l">Planned or in progress</div><div class="v">${n((p) => p.status === 'planned' || p.status === 'progress')}</div></div></div>
+<div class="card"><div class="l">Issues</div><div class="v">${n((p) => p.kind === 'issue')}</div></div><div class="card"><div class="l">Planned, in progress or beta</div><div class="v">${n((p) => ['planned', 'progress', 'beta'].includes(p.status))}</div></div></div>
 <div class="fr-bar"><div class="hc-seg" role="tablist">${[['all', 'All'], ['idea', 'Feature requests'], ['issue', 'Issues']].map(([k, l]) => `<button type="button" class="${v.kind === k ? 'on' : ''}" data-act="frKind" data-k="${k}">${l}</button>`).join('')}</div>
 <select data-frv="category" aria-label="Board"><option value="">Any board</option>${Object.entries(FR.categories).map(([k, l]) => `<option value="${k}" ${v.category === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>
 <select data-frv="status" aria-label="Status"><option value="">Any status</option>${Object.entries(S).map(([k, l]) => `<option value="${k}" ${v.status === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>
@@ -2228,7 +2228,7 @@ A.frReplyTo = (d) => {
 A.frReplyClear = () => { const f = $('#frReply'); f.parentId.value = ''; $('#frReplyTo').hidden = true; };
 A.frDelC = async (d) => { if (!confirm('Delete this comment? Its replies are deleted too.')) return; try { const r = await api('DELETE', `/api/platform/forum/${encodeURIComponent(frSel)}/comments/${encodeURIComponent(d.c)}`); frPut(r.post); toast('Comment deleted'); render(); } catch (x) { toast(x.message, true); } };
 A.frDel = async () => { if (!confirm('Delete this post and all its comments? This can’t be undone.')) return; try { FR = await api('DELETE', `/api/platform/forum/${encodeURIComponent(frSel)}`); frSel = ''; toast('Post deleted'); render(); } catch (x) { toast(x.message, true); } };
-// a post by the team, e.g. a roadmap item (Planned, In progress or Done feature requests show on the Ideas site's Roadmap)
+// a post by the team, e.g. a roadmap item (Planned, In progress, Beta or Done feature requests show on the Ideas site's Roadmap)
 A.frNew = () => {
   const opts = (o, sel) => Object.entries(o).map(([k, l]) => `<option value="${k}" ${k === sel ? 'selected' : ''}>${esc(l)}</option>`).join('');
   const m = modal('New post', `<form><label>Title<input name="title" maxlength="140" required placeholder="Short, descriptive title"></label>
@@ -2236,7 +2236,7 @@ A.frNew = () => {
 <label>Type<select name="kind">${opts(FR.kinds, 'idea')}</select></label>
 <label>Board<select name="category" required><option value="">Choose a board</option>${opts(FR.categories, '')}</select></label>
 <label>Status<select name="status">${opts(FR.statuses, 'planned')}</select></label>
-<p class="muted" style="font-size:12px;margin:0">Feature requests that are Planned, In progress or Done show on the Roadmap. It’s posted as the ${esc(D.settings.productName)} team.</p>
+<p class="muted" style="font-size:12px;margin:0">Feature requests that are Planned, In progress, Beta or Done show on the Roadmap. It’s posted as the ${esc(D.settings.productName)} team.</p>
 <label class="chk"><input type="checkbox" name="pinned"> Pin to the top of the Board</label>
 <div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Post</button></div></form>`);
   $('form', m).addEventListener('submit', async (e) => {
