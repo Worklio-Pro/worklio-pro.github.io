@@ -736,14 +736,14 @@ PAGES['/reviews'] = {
 A.revSource = (d) => { revState.source = d.s; PAGES['/reviews'].render($('#main')); };
 const crvRef = (r) => { const what = `${r.kind === 'job' ? 'Job' : 'Invoice'} ${esc(r.refNumber || '')}`; const can = r.kind === 'job' ? canDo('jobs.view') : canDo('invoices'); return (can ? `<a href="/${r.kind === 'job' ? 'jobs/edit' : 'invoices/view'}?id=${r.refId}" data-link>${what}</a>` : what) + (r.title ? ` · ${esc(r.title)}` : ''); };
 const clientReviewCard = (r) => `<article class="card rv crv" data-id="${esc(r.id)}"><header><span class="rv-ini">${esc((r.clientName[0] || '?').toUpperCase())}</span><div><strong>${r.clientId && canDo('clients.view') ? `<a href="/clients/view?id=${r.clientId}" data-link>${esc(r.clientName)}</a>` : esc(r.clientName)}</strong><div>${starRow(r.stars)} <span class="muted">${fmtDate(r.submittedAt.slice(0, 10))}${r.editedAt ? ` · Edited by the client ${fmtDate(r.editedAt.slice(0, 10))}` : ''}</span></div></div></header>
-${(r.answers || []).map((a) => `<div class="rv-ans"><strong>${esc(a.question)}</strong><div>${a.type === 'stars' ? starRow(a.answer) : esc(a.answer)}</div></div>`).join('')}${r.comment ? `<p class="rv-text">${esc(r.comment)}</p>` : (r.answers || []).length ? '' : '<p class="muted rv-text">A rating with no comment.</p>'}${(r.media || []).length ? rvMediaHtml(r.media) : ''}<p class="muted rv-for">${crvRef(r)}</p>${r.reply ? `<div class="rv-reply"><div class="rv-reply-h"><strong>Your reply</strong><span class="muted">${fmtDate(r.reply.updatedAt.slice(0, 10))}</span></div><p>${esc(r.reply.comment)}</p><div class="rv-acts"><button type="button" class="link-btn" data-act="crvEdit">Edit</button><button type="button" class="link-btn danger" data-act="crvDelete">Delete</button></div></div>` : '<div class="rv-acts"><button type="button" class="btn alt sm" data-act="crvEdit">Reply</button></div>'}</article>`;
+${(r.answers || []).map((a) => `<div class="rv-ans"><strong>${esc(a.question)}</strong><div>${a.type === 'stars' ? starRow(a.answer) : esc(a.answer)}</div></div>`).join('')}${r.comment ? `<p class="rv-text">${esc(r.comment)}</p>` : (r.answers || []).length ? '' : '<p class="muted rv-text">A rating with no comment.</p>'}${(r.media || []).length ? rvMediaHtml(r.media) : ''}<p class="muted rv-for">${crvRef(r)}</p>${r.reply ? `<div class="rv-reply"><div class="rv-reply-h"><strong>Your reply</strong><span class="muted">${fmtDate(r.reply.updatedAt.slice(0, 10))}</span></div><p>${esc(r.reply.comment)}</p><div class="rv-acts"><button type="button" class="link-btn" data-act="crvEdit">Edit</button><button type="button" class="link-btn danger" data-act="crvDelete">Delete</button></div></div>` : '<div class="rv-acts"><button type="button" class="btn alt" data-act="crvEdit">Reply</button></div>'}</article>`;
 const crvOf = (el) => { const card = el.closest('.crv'); return { card, r: revState.clients.find((x) => x.id === card.dataset.id) }; };
 const crvRedraw = (card, r) => { card.outerHTML = clientReviewCard(r); };
 A.crvEdit = (d, el) => {
   const { card, r } = crvOf(el); const box = $('.rv-reply', card) || $('.rv-acts', card);
   const f = document.createElement('form'); f.className = 'rv-form';
   f.innerHTML = `<label>Your reply<textarea name="comment" rows="4" maxlength="2000" required placeholder="Thank ${esc(r.clientName.split(' ')[0])} for the review">${esc(r.reply ? r.reply.comment : '')}</textarea></label>
-<p class="muted" style="font-size:12px;margin:0 0 8px">The client sees your reply${r.reply ? '' : ' and gets an email with it'}. You can’t change their review.</p><div class="rv-acts"><button type="button" class="btn alt sm" data-act="crvCancel">Cancel</button><button class="btn sm">${r.reply ? 'Save reply' : 'Send reply'}</button></div>`;
+<p class="muted" style="font-size:12px;margin:0 0 8px">The client sees your reply${r.reply ? '' : ' and gets an email with it'}. You can’t change their review.</p><div class="rv-acts"><button type="button" class="btn alt" data-act="crvCancel">Cancel</button><button class="btn">${r.reply ? 'Save reply' : 'Send reply'}</button></div>`;
   box.replaceWith(f); $('textarea', f).focus();
   f.addEventListener('submit', async (e) => {
     e.preventDefault(); const btn = $('button.btn:not(.alt)', f); btn.disabled = true;
@@ -761,7 +761,7 @@ async function renderClientReviews(box) {
   box.innerHTML = `<div class="card rv-sum"><div class="rv-avg"><strong>${R.average.toFixed(1)}</strong>${starRow(R.average, 20)}<span class="muted">${R.total} review${R.total === 1 ? '' : 's'}${R.waiting ? `, ${R.waiting} waiting` : ''}</span></div>
 <div class="rv-ask"><h3>Ask clients automatically</h3><p class="muted">Clients with an email address get a private review link. A job and its invoice count as one request, and a client is asked at most once every ${R.gapDays} days.</p>
 ${sw('afterJob', 'When a job is completed', 'The email goes out as soon as the job is marked complete')}${sw('afterInvoice', 'When an invoice is paid', 'Also adds a Leave a review button to the paid invoice page')}${sw('notifyEmail', 'Email me new reviews', `Sent to ${esc(company.email || 'your company email')}`)}</div></div>
-<div class="card"><h2>Your questions</h2><p class="muted">Clients see these on the review form, after the star rating. Choose which modules ask each one.</p><div id="rvQs"></div><div class="rv-acts"><button type="button" class="btn alt sm" data-act="rvqAdd">Add question</button><button type="button" class="btn sm" data-act="rvqSave">Save questions</button></div></div>
+<div class="card"><h2>Your questions</h2><p class="muted">Clients see these on the review form, after the star rating. Choose which modules ask each one.</p><div id="rvQs"></div><div class="rv-acts"><button type="button" class="btn alt" data-act="rvqAdd">Add question</button><button type="button" class="btn" data-act="rvqSave">Save questions</button></div></div>
 ${R.reviews.length ? R.reviews.map(clientReviewCard).join('') : '<div class="card"><p class="muted" style="margin:0">No client reviews yet. They’ll show here as clients answer.</p></div>'}`;
   drawReviewQuestions();
   box.addEventListener('change', async (e) => {
@@ -795,7 +795,7 @@ ${['owner', 'admin'].includes(role()) ? '<a class="btn" href="/settings/connecti
     main.innerHTML = `
 <div class="card rv-sum"><div class="rv-avg"><strong>${(R.average || 0).toFixed(1)}</strong>${starRow(R.average || 0, 20)}<span class="muted">${R.total || 0} review${R.total === 1 ? '' : 's'} on Google</span></div>
 <div class="rv-ask"><h3>Ask for reviews</h3><p class="muted">Send happy clients this link. It opens Google’s review form for ${esc(R.title || 'your business')}.</p>
-${R.reviewUrl ? `<div class="copy-row"><input readonly value="${esc(R.reviewUrl)}" onclick="this.select()" aria-label="Review link"><button type="button" class="btn alt sm" data-act="copyInput">Copy</button></div>` : '<p class="muted">Google hasn’t given a review link for this profile yet.</p>'}
+${R.reviewUrl ? `<div class="copy-row"><input readonly value="${esc(R.reviewUrl)}" onclick="this.select()" aria-label="Review link"><button type="button" class="btn alt" data-act="copyInput">Copy</button></div>` : '<p class="muted">Google hasn’t given a review link for this profile yet.</p>'}
 ${R.mapsUrl ? `<p style="margin:10px 0 0;font-size:13px"><a href="${esc(R.mapsUrl)}" target="_blank" rel="noopener">See your profile on Google Maps</a></p>` : ''}</div></div>
 <div class="tabs rv-tabs" role="tablist">${[['all', 'All'], ['open', `Needs a reply${noReply ? ` (${noReply})` : ''}`], ['replied', 'Replied']].map(([k, l]) => `<button type="button" role="tab" class="${revState.filter === k ? 'on' : ''}" data-act="revFilter" data-f="${k}">${l}</button>`).join('')}</div>
 <div id="rvList"></div>`;
@@ -810,7 +810,7 @@ function drawReviews() {
 ${r.comment ? `<p class="rv-text">${esc(r.comment)}</p>` : '<p class="muted rv-text">A rating with no comment.</p>'}
 ${r.reply ? `<div class="rv-reply"><div class="rv-reply-h"><strong>Your reply</strong><span class="muted">${fmtDate(String(r.reply.updatedAt || '').slice(0, 10))}</span></div><p>${esc(r.reply.comment)}</p>
 ${canReply ? '<div class="rv-acts"><button type="button" class="link-btn" data-act="revEdit">Edit</button><button type="button" class="link-btn danger" data-act="revDelete">Delete</button></div>' : ''}</div>`
-    : canReply ? '<div class="rv-acts"><button type="button" class="btn alt sm" data-act="revEdit">Reply</button></div>' : ''}
+    : canReply ? '<div class="rv-acts"><button type="button" class="btn alt" data-act="revEdit">Reply</button></div>' : ''}
 </article>`).join('') : `<div class="card"><p class="muted" style="margin:0">${f === 'open' ? 'Every review has a reply. Nice work.' : f === 'replied' ? 'No replies yet.' : 'No reviews yet. Share your review link with happy clients.'}</p></div>`)
     + (revState.next ? '<div style="text-align:center;margin:12px 0"><button type="button" class="btn alt" data-act="revMore">Show more reviews</button></div>' : '');
 }
@@ -824,7 +824,7 @@ A.revEdit = (d, el) => {
   const { card, r } = revOf(el); const box = $('.rv-reply', card) || $('.rv-acts', card);
   const f = document.createElement('form'); f.className = 'rv-form';
   f.innerHTML = `<label>Your reply<textarea name="comment" rows="4" maxlength="4000" required placeholder="Thank ${esc(r.reviewer.split(' ')[0])} for the review">${esc(r.reply ? r.reply.comment : '')}</textarea></label>
-<p class="muted" style="font-size:12px;margin:0 0 8px">Your reply shows publicly on Google.</p><div class="rv-acts"><button type="button" class="btn alt sm" data-act="revCancel">Cancel</button><button class="btn sm">${r.reply ? 'Save reply' : 'Post reply'}</button></div>`;
+<p class="muted" style="font-size:12px;margin:0 0 8px">Your reply shows publicly on Google.</p><div class="rv-acts"><button type="button" class="btn alt" data-act="revCancel">Cancel</button><button class="btn">${r.reply ? 'Save reply' : 'Post reply'}</button></div>`;
   box.replaceWith(f); $('textarea', f).focus();
   f.addEventListener('submit', async (e) => {
     e.preventDefault(); const btn = $('button.btn:not(.alt)', f); btn.disabled = true;
