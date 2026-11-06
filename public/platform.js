@@ -1750,7 +1750,7 @@ ${form('tiktok', T, 'Client key', 'e.g. sbaw1234abcd5678', 'Client secret')}${I.
 function soonGroup(I, ig, on) {
   const L = I.socialSoon || []; const n = L.filter((x) => x.soon).length;
   const keys = (x) => (x.keys === null ? 'Businesses use their own account' : x.keys ? 'Keys saved' : 'No keys yet: businesses see Coming soon anyway');
-  return ig('Coming soon', on(!n, 'All open', `${n} coming soon`), `<p class="ig-d">Turn one on to show <strong>Coming soon</strong> in place of Connect on every business’s Marketing and Account Connections pages, for example while LinkedIn reviews your app. Your own (default) account still sees Connect, so you can test it first. Businesses already connected stay connected.</p>
+  return ig('Coming soon', on(!n, 'All open', `${n} coming soon`), `<p class="ig-d">Turn one on to show <strong>Coming soon</strong> in place of Connect on every business’s Marketing and Account Connections pages, for example while LinkedIn reviews your app. Your own account sees it too: turn the switch off to test a network. Businesses already connected stay connected.</p>
 ${L.map((x) => `<label class="switchline"><input type="checkbox" data-soon="${esc(x.kind)}" ${x.soon ? 'checked' : ''}> <span><strong>${esc(x.name)}</strong> <small class="muted">${keys(x)}</small></span></label>`).join('')}`);
 }
 A.rmOauthApp = async (d) => {
