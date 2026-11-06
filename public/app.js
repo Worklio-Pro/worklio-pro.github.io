@@ -132,6 +132,8 @@ async function loadAll() {
   const out = {}; names.forEach((n, i) => { out[n] = res[i]; });
   // time off (a plan feature): approved time off for the schedule and job warnings; requests waiting for whoever approves
   out.timeOff = []; out.timeOffWaiting = 0;
+  // time tracking (a plan feature): whether this login is on the clock, for the job page's Clock in / Clock out
+  out.clock = null; if (planHas('timesheets')) out.clock = await api('GET', '/api/time/status').catch(() => null);
   if (planHas('timeOff')) { const T = await api('GET', '/api/time-off').catch(() => null); if (T) { out.timeOff = T.requests.filter((r) => r.status === 'approved'); out.timeOffWaiting = T.approver ? T.requests.filter((r) => r.status === 'pending' && !r.mine).length : 0; } }
   return out;
 }
@@ -144,7 +146,7 @@ const clientOptions = (sel) => `<option value="">Select client…</option>` + D.
 /* ===== router ===== */
 const PAGES = {};
 const NAV = [
-  ['Operations', [['/business-overview', 'Home'], ['/calendar', 'Calendar'], ['/clients', 'Clients'], ['/quotes', 'Quotes'], ['/jobs', 'Jobs'], ['/invoices', 'Invoices']]],
+  ['Operations', [['/business-overview', 'Home'], ['/calendar', 'Calendar'], ['/clients', 'Clients'], ['/quotes', 'Quotes'], ['/jobs', 'Jobs'], ['/timesheets', 'Timesheets'], ['/invoices', 'Invoices']]],
   ['Money', [['/payments', 'Payments'], ['/services', 'Products & Services'], ['/expenses', 'Expenses'], ['/reports', 'Financial Reports'], ['/tax-summary', 'Tax Summary']]],
   ['Marketing', [['/reviews', 'Reviews'], ['/social-posts', 'Marketing'], ['/automations', 'Automations']]],
   ['Records', [['/project-gallery', 'Project Gallery'], ['/notifications', 'Notifications Log']]],
@@ -248,6 +250,7 @@ const BNAV = [
 // sidebar icons: the phone tab bar's where it has one, so both match; the rest drawn in the same style
 const NAV_ICONS = {
   ...Object.fromEntries(BNAV.map(([p, , d]) => [p, d])),
+  '/timesheets': '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   '/requests': '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/><path d="M10 14l4 4M14 14l-4 4"/>',
   '/payments': '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/>',
   '/services': '<path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="8" cy="8" r="1.5"/>',
@@ -301,7 +304,7 @@ const FEATURE_EXTRAS = [['/quotes/new', 'New quote', 'Quotes', 'create estimate'
   ['/payments/settings', 'Payment settings', 'Money', 'card online payouts processing rates disputes'], ['/profile', 'My profile', 'Account', 'password photo name email login']];
 const FEATURE_WORDS = {
   '/business-overview': 'dashboard overview', '/calendar': 'schedule schedules appointments visits tasks events job calendar', '/clients': 'customers contacts',
-  '/quotes': 'estimates proposals', '/jobs': 'work orders visits', '/invoices': 'billing', '/payments': 'card online stripe', '/services': 'catalog products price list items',
+  '/quotes': 'estimates proposals', '/jobs': 'work orders visits', '/timesheets': 'time tracking clock in out hours payroll timecard labor', '/invoices': 'billing', '/payments': 'card online stripe', '/services': 'catalog products price list items',
   '/expenses': 'costs receipts spending', '/reports': 'revenue profit charts', '/tax-summary': 'sales tax', '/project-gallery': 'photos pictures', '/reviews': 'client google reviews ratings stars reply feedback', '/automations': 'automatic follow up reminder rules workflow messages overdue', '/social-posts': 'facebook instagram social media post marketing', '/notifications': 'emails texts sms sent messages log',
   '/requests': 'time off day off vacation sick leave request approve', '/settings/roles': 'roles permissions access manager technician what team can see do', '/settings/company': 'business details logo address phone social media facebook instagram tiktok tax', '/team': 'staff employees users access roles technicians', '/settings/emails': 'templates text messages sms reminders',
   '/settings/preferences': 'appearance theme dark mode light system push notifications alerts phone', '/settings': 'number prefixes branding brand color zelle defaults stripe card payments online payments regional time zone date format time format week', '/settings/connections': 'integrations google facebook instagram ai', '/settings/accounting': 'quickbooks xero accounting bookkeeping books sync accountant', '/settings/business-page': 'qr code business card digital card link in bio links save contact vcard scan limit expiry', '/marketplace': 'apps integrations connect quickbooks xero accounting home depot lowes supplies materials zapier chatgpt claude ai automation calendar slack gusto payroll', '/settings/billing': 'subscription plan upgrade payment method', '/settings/support-access': 'grant revoke help troubleshoot permission',
@@ -2606,7 +2609,7 @@ function mobileJobPage(j) {
   const tapRow = (sec, l, v) => tap(sec, `<span>${l}</span><span class="md-v">${v}</span>`, 'md-tr');
   const textSec = (sec, title, text, empty) => tap(sec, `<span class="md-sh">${title}${ARROW}</span>${text ? `<span class="md-text">${esc(text)}</span>` : `<span class="md-text muted">${edit ? empty : 'None'}</span>`}`, 'md-sec');
   const btn = (act, label, cls = '') => `<button type="button" class="btn ${cls}" data-act="${act}" data-id="${j.id}">${label}</button>`;
-  const acts = [omwBtn(j), ...(edit ? [j.status === 'scheduled' ? btn('completeJob', 'Mark Complete') : btn('reopenJob', 'Reopen', 'alt'), st === 'invoice' && planHas('invoices') ? btn('jobInvoice', 'Create Invoice', 'need-invoices') : ''] : [])];
+  const acts = [clockBtn(j), omwBtn(j), ...(edit ? [j.status === 'scheduled' ? btn('completeJob', 'Mark Complete') : btn('reopenJob', 'Reopen', 'alt'), st === 'invoice' && planHas('invoices') ? btn('jobInvoice', 'Create Invoice', 'need-invoices') : ''] : [])];
   const team = (j.staffIds || []).map((id) => byId(D.staff, id)).filter(Boolean);
   const items = (d.items || []).map((it, i) => tap('item', `<strong>${esc(it.desc)}</strong>${it.details ? `<span class="md-det">${esc(it.details)}</span>` : ''}<span class="md-qp"><span>${esc(it.qty)} × ${money(it.price)}</span><span>${money(round2(it.qty * it.price))}</span></span>`, 'md-item', `data-i="${i}"`)).join('');
   const paid = q ? depositPaid(q) : 0;
@@ -2616,7 +2619,7 @@ function mobileJobPage(j) {
     + (q && q.depositFee > 0 ? mRow('Required deposit', money(q.depositFee)) + (q.depositPaidAt ? mRow(payLink('q-' + q.id, 'Deposit collected', q.depositPaidAt), '−' + money(paid)) : '') + mRow('Outstanding deposit', money(Math.max(0, round2(q.depositFee - paid)))) : '') : '';
   const sig = j.signature;
   return `<div class="mdoc mjob"><a href="/jobs" data-link class="md-back" aria-label="Back to jobs">${CHEV('M15 18l-6-6 6-6')}</a>
-<div class="md-st"><span class="cstatus ${J_CLASS[st]}">${J_STATUS[st]}</span>${sig ? '<span class="vsign">✓ Signed</span>' : ''}${omwBadge(j)}</div>
+<div class="md-st"><span class="cstatus ${J_CLASS[st]}">${J_STATUS[st]}</span>${sig ? '<span class="vsign">✓ Signed</span>' : ''}${omwBadge(j)}${clockBadge(j)}</div>
 ${tap('jobDetails', `<span class="md-h">Job #${esc(j.number)} for ${esc(c.name || 'no client')}${prices && jobTotal(j) !== null ? ` for ${money(jobTotal(j))}` : ''}</span>${j.title ? `<span class="md-sub">${esc(j.title)}</span>` : ''}
 <span class="md-addr">${esc(j.address || c.address || '')}</span>`, 'md-head')}
 ${c.phone || c.email ? `<div class="md-contact">${c.phone ? `<a href="tel:${esc(c.phone)}">${CHEV('M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z')}Call</a>` : ''}${c.phone ? `<a href="sms:${esc(c.phone)}">${CHEV('M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z')}Text</a>` : ''}${c.email ? `<a href="mailto:${esc(c.email)}">${CHEV('M4 4h16v16H4zM4 6l8 7 8-7')}Email</a>` : ''}${j.address || c.address ? `<a href="https://maps.google.com/?q=${encodeURIComponent(j.address || c.address)}" target="_blank" rel="noopener">${CHEV('M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12zM12 11.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z')}Map</a>` : ''}</div>` : ''}
@@ -2828,6 +2831,21 @@ function jobConflicts(job) { return D.jobs.filter((j) => j.id !== job.id && j.st
    section (editSection builds the job form behind it). New jobs, and /jobs/edit?full=1, use the whole form. ===== */
 // On my way: for the team on the job (and anyone who edits jobs), while it's still to do and has a client
 const canOnMyWay = (j) => j.status === 'scheduled' && !!j.clientId && ((me && me.staffId && (j.staffIds || []).includes(me.staffId)) || canDo('jobs.edit'));
+// Clock in / Clock out on a job: for the team on it while it's to do (or anyone who edits jobs), when this login has a timesheet
+const canClockJob = (j) => planHas('timesheets') && D.clock && D.clock.canClock && j.status === 'scheduled' && ((me && me.staffId && (j.staffIds || []).includes(me.staffId)) || canDo('jobs.edit'));
+const onThisJob = (j) => !!(D.clock && D.clock.open && D.clock.open.jobId === j.id);
+const clockBtn = (j, cls = 'btn alt') => (onThisJob(j) ? `<button type="button" class="${cls} clock-on" data-act="clockOut">Clock Out</button>` : canClockJob(j) ? `<button type="button" class="${cls}" data-act="clockIn" data-id="${j.id}">Clock In</button>` : '');
+const clockSince = (start) => { const m = Math.max(0, Math.floor((Date.now() - new Date(start)) / 6e4)); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`; };
+const clockBadge = (j) => (onThisJob(j) ? `<span class="vsign clock-badge" title="You clocked in at ${esc(fmtTime(new Date(D.clock.open.start).toTimeString().slice(0, 5)))}">⏱ On the clock · ${clockSince(D.clock.open.start)}</span>` : '');
+A.clockIn = async (d) => {
+  $$('details.menu[open]').forEach((x) => { x.open = false; });
+  const was = D.clock && D.clock.open; const j = d.id ? byId(D.jobs, d.id) : null;
+  if (was && !confirm(`You’re on the clock ${was.job ? `on ${was.job.number} ${was.job.title}` : 'without a job'}. Clock out of that and in on ${j ? `${j.number} ${j.title || ''}` : 'no job'}?`)) return;
+  try { const r = await api('POST', '/api/time/clock-in', { jobId: d.id || '' }); D.clock = { ...D.clock, open: r.open }; toast(j ? `Clocked in on ${j.number}` : 'Clocked in'); refresh(); } catch (x) { toast(x.message, true); }
+};
+A.clockOut = async () => {
+  try { const r = await api('POST', '/api/time/clock-out', {}); D.clock = { ...D.clock, open: null }; toast(`Clocked out: ${r.entry.hours.toFixed(2)} h`); refresh(); } catch (x) { toast(x.message, true); }
+};
 const omwBtn = (j, cls = 'btn alt') => (canOnMyWay(j) ? `<button type="button" class="${cls}" data-act="onMyWay" data-id="${j.id}">On My Way</button>` : '');
 // the On the way badge: sent today
 const omwBadge = (j) => (j.onMyWay && j.status === 'scheduled' && ymd(new Date(j.onMyWay.at)) === ymd(new Date()) ? `<span class="vsign" title="${esc(j.onMyWay.name)} sent On my way">➜ On the way · ${esc(fmtTime(new Date(j.onMyWay.at).toTimeString().slice(0, 5)))}</span>` : '');
@@ -2845,8 +2863,8 @@ function jobViewPage(j) {
   const d = jobDoc(j); const c = byId(D.clients, j.clientId) || {}; const q = byId(D.quotes, j.quoteId); const st = jobStatus(j);
   const team = (j.staffIds || []).map((id) => byId(D.staff, id)).filter(Boolean); const paid = q ? depositPaid(q) : 0;
   const none = (t) => `<span class="muted">${t}</span>`;
-  return `<div class="qview jview"><div class="qpage"><div class="qmain"><div class="qtop"><div class="qtop-l"><a href="/jobs" data-link class="back">← Jobs</a><span class="cstatus ${J_CLASS[st]}">${J_STATUS[st]}</span>${j.signature ? '<span class="vsign">✓ Signed</span>' : ''}${omwBadge(j)}</div>
-<div class="actions">${jobMore(j)}${omwBtn(j)}${j.status === 'scheduled' ? `<button type="button" class="btn need-jobs-edit" data-act="completeJob" data-id="${j.id}">Mark Complete</button>` : `<button type="button" class="btn alt need-jobs-edit" data-act="reopenJob" data-id="${j.id}">↺ Reopen Job</button>`}</div></div>
+  return `<div class="qview jview"><div class="qpage"><div class="qmain"><div class="qtop"><div class="qtop-l"><a href="/jobs" data-link class="back">← Jobs</a><span class="cstatus ${J_CLASS[st]}">${J_STATUS[st]}</span>${j.signature ? '<span class="vsign">✓ Signed</span>' : ''}${omwBadge(j)}${clockBadge(j)}</div>
+<div class="actions">${jobMore(j)}${clockBtn(j)}${omwBtn(j)}${j.status === 'scheduled' ? `<button type="button" class="btn need-jobs-edit" data-act="completeJob" data-id="${j.id}">Mark Complete</button>` : `<button type="button" class="btn alt need-jobs-edit" data-act="reopenJob" data-id="${j.id}">↺ Reopen Job</button>`}</div></div>
 <div class="vhead"><div class="vtitle-row"><h1 class="vtitle">${esc(j.title || 'Untitled job')}</h1>${editBtn('job', j, 'top')}</div>
 <div class="qhead"><div class="qclient"><div class="vclient"><span>${esc(c.name || 'No client')}</span>${c.id ? clientMenu(c) : ''}</div><div class="muted qlabel">Property address</div><div class="qaddr">${esc(j.address || c.address || '') || none('No address on file')}</div>
 ${c.phone || c.email ? `<div class="vclient-c">${c.phone ? `<a href="tel:${esc(c.phone)}">${esc(fmtUsPhone(c.phone))}</a>` : ''}${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ''}</div>` : ''}</div>

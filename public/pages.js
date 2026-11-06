@@ -683,6 +683,93 @@ A.svcImportTemplate = () => downloadCsv('products-services-sample.csv', [['Name'
 /* ===== /expenses ===== */
 let expJob = '';
 const CATS = ['Materials', 'Subcontractor', 'Fuel', 'Equipment', 'Software', 'Insurance', 'Other'];
+/* ===== Timesheets (plan feature "timesheets"): clock in and out, a week of time per person, approval and payroll export.
+   Everyone sees their own time; the owner, admins and anyone who edits jobs see everyone's, fix entries and approve them.
+   Pay rates and labor cost: the owner and admins only (the server leaves them out for anyone else). ===== */
+let tsWeek = ''; let tsWho = ''; let TS = null;
+const tsMonday = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); x.setDate(x.getDate() - dayInWeek(x)); return x; };
+const tsAdd = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const tsClock = (iso) => fmtTime(new Date(iso).toTimeString().slice(0, 5));
+const tsH = (h) => (Math.round(h * 100) / 100).toFixed(2);
+const tsLocal = (iso) => { const d = new Date(iso); return `${ymd(d)}T${d.toTimeString().slice(0, 5)}`; }; // for datetime-local inputs
+const OVERTIME_H = 40; // hours in a week before overtime
+PAGES['/timesheets'] = {
+  title: 'Timesheets',
+  async render(main) {
+    const start = tsWeek ? new Date(tsWeek + 'T00:00') : tsMonday(new Date()); const end = tsAdd(start, 7);
+    TS = await api('GET', `/api/time?from=${encodeURIComponent(start.toISOString())}&to=${encodeURIComponent(end.toISOString())}`);
+    D.clock = { ...(D.clock || {}), canClock: TS.canClock, open: TS.open };
+    const M = TS.manager; const people = [...new Map(TS.entries.map((e) => [e.staffId, e.person])).entries()];
+    const list = TS.entries.filter((e) => !tsWho || e.staffId === tsWho);
+    const byPerson = {}; for (const e of list) (byPerson[e.staffId] = byPerson[e.staffId] || { name: e.person, color: e.color, entries: [] }).entries.push(e);
+    const total = list.reduce((s, e) => s + e.hours, 0); const waiting = list.filter((e) => e.end && !e.approvedAt);
+    const over = Object.values(byPerson).reduce((s, p) => s + Math.max(0, p.entries.reduce((t, e) => t + e.hours, 0) - OVERTIME_H), 0);
+    const cost = TS.admin ? list.reduce((s, e) => s + e.hours * (e.rate || 0), 0) : 0;
+    const range = `${fmtDate(ymd(start))} – ${fmtDate(ymd(tsAdd(end, -1)))}`; const thisWeek = ymd(start) === ymd(tsMonday(new Date()));
+    // my clock: on the clock (with Clock out), or Clock in on one of my jobs that's still to do, or no job
+    const mine = D.jobs.filter((j) => j.status === 'scheduled' && (j.staffIds || []).includes(me && me.staffId)).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    const o = TS.open;
+    const clockCard = !TS.canClock ? '' : `<div class="card ts-clock ${o ? 'on' : ''}">${o ? `<div><div class="ts-big">⏱ On the clock · ${clockSince(o.start)}</div><div class="muted">Since ${tsClock(o.start)}${o.job ? ` on <a href="/jobs/edit?id=${esc(o.job.id)}" data-link>${esc(o.job.number)} ${esc(o.job.title)}</a>` : ', no job'}</div></div>
+<button type="button" class="btn ts-btn" data-act="clockOut">Clock Out</button>` : `<div><div class="ts-big">You’re off the clock</div><label class="ts-job">Job<select id="tsJob"><option value="">No job (shop time, travel…)</option>${mine.map((j) => `<option value="${j.id}">${esc(j.number)} · ${esc(j.title || '')}${j.date ? ' · ' + esc(fmtDate(j.date)) : ''}</option>`).join('')}</select></label></div>
+<button type="button" class="btn ts-btn" data-act="tsClockIn">Clock In</button>`}</div>`;
+    const row = (e) => `<tr class="${e.end ? '' : 'ts-live'}"><td>${esc(fmtDate(ymd(new Date(e.start))))}</td><td>${e.job ? `<a href="/jobs/edit?id=${esc(e.job.id)}" data-link>${esc(e.job.number)}</a> ${esc(e.job.title)}` : e.jobId ? '<span class="muted">Deleted job</span>' : '<span class="muted">No job</span>'}${e.note ? `<div class="muted sm">${esc(e.note)}</div>` : ''}</td>
+<td>${tsClock(e.start)}</td><td>${e.end ? tsClock(e.end) : '<span class="cstatus q-converted">On the clock</span>'}</td><td class="r">${tsH(e.hours)}${e.hours > 12 ? ' <span title="Over 12 hours: check it wasn’t left running">⚠️</span>' : ''}</td>
+${TS.admin ? `<td class="r">${e.rate ? money(e.hours * e.rate) : '<span class="muted">—</span>'}</td>` : ''}<td>${e.approvedAt ? `<span class="cstatus active" title="Approved by ${esc(e.approvedBy)}">Approved</span>` : e.end ? '<span class="cstatus q-sent">Waiting</span>' : ''}</td>
+${M ? `<td class="actions">${e.end && !e.approvedAt ? `<button type="button" class="btn alt sm" data-act="tsApprove" data-ids="${e.id}">Approve</button>` : ''}<button type="button" class="btn alt sm" data-act="tsEdit" data-id="${e.id}">Edit</button></td>` : ''}</tr>`;
+    const person = ([id, p]) => { const h = p.entries.reduce((s, e) => s + e.hours, 0); const w = p.entries.filter((e) => e.end && !e.approvedAt);
+      return `<div class="card ts-person"><div class="ts-ph"><h2><span class="to-dot" style="background:${esc(p.color || '#64748b')}"></span>${esc(p.name)}</h2><div class="ts-pt"><strong>${tsH(h)} h</strong>${h > OVERTIME_H ? ` <span class="cstatus q-declined" title="Over ${OVERTIME_H} hours this week">${tsH(h - OVERTIME_H)} h overtime</span>` : ''}
+${M && w.length ? `<button type="button" class="btn sm" data-act="tsApprove" data-ids="${w.map((e) => e.id).join(',')}">Approve ${w.length}</button>` : ''}</div></div>
+<div class="tablewrap"><table><tr><th>Day</th><th>Job</th><th>In</th><th>Out</th><th class="r">Hours</th>${TS.admin ? '<th class="r">Cost</th>' : ''}<th>Status</th>${M ? '<th></th>' : ''}</tr>${p.entries.map(row).join('')}</table></div></div>`; };
+    main.innerHTML = `<div class="head"><div><h1>Timesheets</h1><p class="sub">${M ? 'Your team’s hours, clocked in and out on jobs. Check them, fix what’s wrong and approve them for payroll.' : 'Clock in and out, and see your hours.'}${TS.admin ? ' Hours on a job count as labor cost in Financial Reports → Job profit.' : ''}</p></div>
+<div class="ts-acts">${TS.admin ? '<button type="button" class="btn alt" data-act="tsRates">Pay rates</button>' : ''}${M ? '<button type="button" class="btn alt" data-act="tsCsv">Export CSV</button><button type="button" class="btn" data-act="tsEdit">Add time</button>' : ''}</div></div>
+${clockCard}
+<div class="ts-bar"><div class="ts-week"><button type="button" class="btn alt sm" data-act="tsWeekGo" data-n="-7" aria-label="Previous week">‹</button><strong>${range}</strong><button type="button" class="btn alt sm" data-act="tsWeekGo" data-n="7" aria-label="Next week">›</button>${thisWeek ? '' : '<button type="button" class="link-btn" data-act="tsWeekGo" data-n="0">This week</button>'}</div>
+${M && people.length > 1 ? `<label class="ts-who"><span class="sr">Team member</span><select id="tsWho"><option value="">Everyone</option>${people.map(([id, n]) => `<option value="${esc(id)}" ${tsWho === id ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label>` : ''}</div>
+<div class="grid ${TS.admin ? 'g4' : 'g3'}">${stat('Hours', tsH(total), M ? `${Object.keys(byPerson).length} ${Object.keys(byPerson).length === 1 ? 'person' : 'people'}` : 'This week')}${stat('Overtime', tsH(over), `Over ${OVERTIME_H} h a week`)}${stat('Waiting for approval', waiting.length, waiting.length && M ? `<button type="button" class="link-btn" data-act="tsApprove" data-ids="${waiting.map((e) => e.id).join(',')}">Approve all</button>` : 'Entries')}${TS.admin ? stat('Labor cost', money(cost), Object.keys(TS.rates || {}).length ? 'At each person’s pay rate' : '<button type="button" class="link-btn" data-act="tsRates">Set pay rates</button>') : ''}</div>
+${Object.entries(byPerson).map(person).join('') || `<div class="card"><p class="muted" style="margin:0">No time ${tsWho ? 'for this person ' : ''}this week.${TS.canClock ? ' Clock in above, or from a job’s page.' : ''}</p></div>`}`;
+    const who = $('#tsWho'); if (who) who.addEventListener('change', (e) => { tsWho = e.target.value; refresh(); });
+  },
+};
+A.tsWeekGo = (d) => { const n = Number(d.n); tsWeek = n ? ymd(tsAdd(tsWeek ? new Date(tsWeek + 'T00:00') : tsMonday(new Date()), n)) : ''; refresh(); };
+A.tsClockIn = () => A.clockIn({ id: ($('#tsJob') || {}).value || '' });
+A.tsApprove = async (d) => { try { const r = await api('POST', '/api/time/approve', { ids: String(d.ids).split(',') }); toast(`Approved ${r.approved} ${r.approved === 1 ? 'entry' : 'entries'}`); refresh(); } catch (x) { toast(x.message, true); } };
+A.tsCsv = () => {
+  const rows = TS.entries.filter((e) => e.end && (!tsWho || e.staffId === tsWho));
+  downloadCsv(`timesheets-${tsWeek || ymd(tsMonday(new Date()))}.csv`, [['Team member', 'Date', 'Clock in', 'Clock out', 'Hours', 'Job', 'Job title', 'Note', 'Approved', 'Approved by', ...(TS.admin ? ['Pay rate', 'Cost'] : [])],
+    ...rows.map((e) => [e.person, ymd(new Date(e.start)), tsClock(e.start), tsClock(e.end), tsH(e.hours), e.job ? e.job.number : '', e.job ? e.job.title : '', e.note || '', e.approvedAt ? 'Yes' : 'No', e.approvedBy || '', ...(TS.admin ? [e.rate || '', e.rate ? (e.hours * e.rate).toFixed(2) : ''] : [])])]);
+};
+// add or fix an entry (managers)
+A.tsEdit = (d) => {
+  const e = d.id ? TS.entries.find((x) => x.id === d.id) : null; const now = new Date();
+  const jobs = D.jobs.filter((j) => j.status !== 'cancelled').sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  const m = modal(e ? `Edit ${e.person}’s time` : 'Add time', `<form id="tsf"><label>Team member<select name="staffId" required ${e ? 'disabled' : ''}><option value="">Choose…</option>${D.staff.filter((s) => s.status !== 'deactivated' || (e && e.staffId === s.id)).map((s) => `<option value="${s.id}" ${(e ? e.staffId : tsWho) === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>
+<label>Job<select name="jobId"><option value="">No job</option>${jobs.map((j) => `<option value="${j.id}" ${e && e.jobId === j.id ? 'selected' : ''}>${esc(j.number)} · ${esc(j.title || '')}</option>`).join('')}</select></label>
+<div class="row"><label>Clock in<input type="datetime-local" name="start" required value="${esc(e ? tsLocal(e.start) : `${ymd(now)}T08:00`)}"></label><label>Clock out<input type="datetime-local" name="end" ${e && !e.end ? '' : 'required'} value="${esc(e ? (e.end ? tsLocal(e.end) : '') : `${ymd(now)}T16:00`)}"></label></div>
+<label>Note<input name="note" maxlength="500" value="${esc(e ? e.note || '' : '')}" placeholder="e.g. Forgot to clock out"></label>
+${e && e.approvedAt ? '<p class="notice">This entry is approved. Saving a change sends it back for approval.</p>' : ''}
+<div class="foot">${e ? '<button type="button" class="btn alt danger-text" data-act="tsDel" style="margin-right:auto">Delete</button>' : ''}<button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save</button></div></form>`);
+  const f = $('#tsf', m.closest('.modal') || document);
+  A.tsDel = async () => { if (!confirm('Delete this time entry?')) return; try { await api('DELETE', '/api/time/' + e.id); closeModal(); toast('Entry deleted'); refresh(); } catch (x) { toast(x.message, true); } };
+  f.addEventListener('submit', async (ev) => {
+    ev.preventDefault(); const b = $('button.btn:not(.alt)', f); b.disabled = true;
+    const body = { jobId: f.jobId.value, start: new Date(f.start.value).toISOString(), end: f.end.value ? new Date(f.end.value).toISOString() : null, note: f.note.value };
+    try { if (e) await api('PUT', '/api/time/' + e.id, body); else await api('POST', '/api/time', { ...body, staffId: f.staffId.value }); closeModal(); toast('Saved'); refresh(); }
+    catch (x) { b.disabled = false; toast(x.message, true); }
+  });
+};
+// pay rates (owner and admins): dollars an hour, for labor cost
+A.tsRates = () => {
+  const r = TS.rates || {};
+  const m = modal('Pay rates', `<form id="tsr"><p class="muted" style="margin-top:0">What each person costs you an hour. Only the owner and admins see these. They turn hours on a job into labor cost in Job profit.</p>
+<div class="ts-rates">${D.staff.filter((s) => s.status !== 'deactivated').map((s) => `<label><span>${esc(s.name)}</span><span class="ts-rate"><span>$</span><input type="number" name="${s.id}" min="0" max="10000" step="0.01" value="${r[s.id] || ''}" placeholder="0.00"><span class="muted">/h</span></span></label>`).join('')}</div>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save</button></div></form>`);
+  const f = $('#tsr', m.closest('.modal') || document);
+  f.addEventListener('submit', async (ev) => {
+    ev.preventDefault(); const rates = { ...r }; $$('input', f).forEach((i) => { rates[i.name] = i.value; });
+    try { await api('PUT', '/api/time/rates', { rates }); closeModal(); toast('Pay rates saved'); refresh(); } catch (x) { toast(x.message, true); }
+  });
+};
+
 PAGES['/expenses'] = {
   title: 'Expense Tracker',
   async render(main) {
@@ -756,11 +843,11 @@ ${r.byMonth.length > 1 ? `<div class="card" style="margin-top:16px"><h2>Net prof
     const [from, to] = rptDates(); const r = await api('GET', `/api/reports/jobs?from=${from}&to=${to}`); const J = r.jobs;
     const rev = J.reduce((s, j) => s + j.revenue, 0); const cost = J.reduce((s, j) => s + j.costs, 0); const losing = J.filter((j) => j.profit < 0).length;
     main.innerHTML = rptHead('What each job brought in against what it cost.', true) + rptRangeBar(false) + `
-<div class="grid g4">${stat('Jobs', J.length, 'With invoices or expenses')}${stat('Invoiced', money(rev), 'Before sales tax')}${stat('Job costs', money(cost), 'Expenses logged to jobs')}${stat('Profit', signed(rev - cost), `Margin ${rev ? Math.round((rev - cost) / rev * 1000) / 10 + '%' : '—'}${losing ? ` · ${losing} at a loss` : ''}`)}</div>
-<div class="card" style="margin-top:16px"><div class="tablewrap"><table><tr><th>Job</th><th>Client</th><th>Date</th><th class="r">Invoiced</th><th class="r">Costs</th><th class="r">Profit</th><th class="r">Margin</th></tr>
-${J.map((j) => `<tr><td><a href="/jobs/edit?id=${esc(j.id)}" data-link>${esc(j.number)}</a> ${esc(j.title)}</td><td>${esc(j.client)}</td><td>${fmtDate(j.date)}</td><td class="r">${money(j.revenue)}</td><td class="r">${money(j.costs)}</td><td class="r">${signed(j.profit)}</td><td class="r">${marginTxt(j.margin)}</td></tr>`).join('') || '<tr><td colspan="7" class="empty">No jobs with invoices or expenses in these dates</td></tr>'}</table></div>
-<p class="muted">Jobs count by their scheduled date. Invoiced is every invoice for the job except drafts, after discounts. Costs are the expenses linked to the job in Expenses.</p></div>`;
-    A.rptCsv = () => downloadCsv(`job-profit-${from}-to-${to}.csv`, [['Job', 'Title', 'Client', 'Date', 'Status', 'Invoiced', 'Costs', 'Profit', 'Margin %'], ...J.map((j) => [j.number, j.title, j.client, j.date, j.status, j.revenue, j.costs, j.profit, j.margin ?? ''])]);
+<div class="grid g4">${stat('Jobs', J.length, 'With invoices or expenses')}${stat('Invoiced', money(rev), 'Before sales tax')}${stat('Job costs', money(cost), planHas('timesheets') ? `${money(J.reduce((s, j) => s + (j.labor || 0), 0))} of it labor` : 'Expenses logged to jobs')}${stat('Profit', signed(rev - cost), `Margin ${rev ? Math.round((rev - cost) / rev * 1000) / 10 + '%' : '—'}${losing ? ` · ${losing} at a loss` : ''}`)}</div>
+<div class="card" style="margin-top:16px"><div class="tablewrap"><table><tr><th>Job</th><th>Client</th><th>Date</th><th class="r">Invoiced</th><th class="r">Expenses</th>${planHas('timesheets') ? '<th class="r">Labor</th>' : ''}<th class="r">Profit</th><th class="r">Margin</th></tr>
+${J.map((j) => `<tr><td><a href="/jobs/edit?id=${esc(j.id)}" data-link>${esc(j.number)}</a> ${esc(j.title)}</td><td>${esc(j.client)}</td><td>${fmtDate(j.date)}</td><td class="r">${money(j.revenue)}</td><td class="r">${money(j.expenses ?? j.costs)}</td>${planHas('timesheets') ? `<td class="r">${money(j.labor || 0)}</td>` : ''}<td class="r">${signed(j.profit)}</td><td class="r">${marginTxt(j.margin)}</td></tr>`).join('') || `<tr><td colspan="${planHas('timesheets') ? 8 : 7}" class="empty">No jobs with invoices or costs in these dates</td></tr>`}</table></div>
+<p class="muted">Jobs count by their scheduled date. Invoiced is every invoice for the job except drafts, after discounts. Expenses are the ones linked to the job in Expenses.${planHas('timesheets') ? ' Labor is the time logged to the job in Timesheets, at each person’s pay rate (set by the owner or an admin in Timesheets → Pay rates).' : ''}</p></div>`;
+    A.rptCsv = () => downloadCsv(`job-profit-${from}-to-${to}.csv`, [['Job', 'Title', 'Client', 'Date', 'Status', 'Invoiced', 'Expenses', 'Labor', 'Costs', 'Profit', 'Margin %'], ...J.map((j) => [j.number, j.title, j.client, j.date, j.status, j.revenue, j.expenses ?? j.costs, j.labor || 0, j.costs, j.profit, j.margin ?? ''])]);
   },
   async aging(main) {
     const r = await api('GET', '/api/reports/aging'); const L = { current: 'Not yet due', d1_30: '1–30 days', d31_60: '31–60 days', d61_90: '61–90 days', d90: 'Over 90 days' };

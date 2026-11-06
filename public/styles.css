@@ -1680,3 +1680,13 @@ tr.pl-net td{font-weight:700;font-size:16px;border-top:2px solid var(--text)}
 .bk-cats select{width:100%}
 label.bk-auto{display:flex;flex-direction:row;align-items:center;gap:8px;margin:16px 0 12px}
 label.bk-auto input{width:auto;margin:0}
+/* Timesheets (pages.js): the clock card, the week bar, one card per person */
+.ts-acts{display:flex;gap:8px;flex-wrap:wrap}
+.ts-clock{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:16px}.ts-clock.on{border-left:4px solid var(--ok,#15803d)}
+.ts-big{font-size:18px;font-weight:700;margin-bottom:4px}.ts-job{margin:6px 0 0;max-width:420px}.ts-btn{min-width:140px;min-height:48px;font-size:16px}
+.ts-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 16px}.ts-week{display:flex;align-items:center;gap:10px}.ts-who select{min-width:200px}
+.ts-person{margin-top:16px}.ts-ph{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}.ts-ph h2{margin:0;display:flex;align-items:center;gap:8px}.ts-pt{display:flex;align-items:center;gap:10px}
+.ts-live td{background:color-mix(in srgb,var(--ok,#15803d) 7%,transparent)}
+.ts-rates{display:grid;gap:10px}.ts-rates label{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0}.ts-rate{display:inline-flex;align-items:center;gap:6px}.ts-rate input{width:110px}
+.clock-badge{color:var(--ok,#15803d)}
+@media (max-width:640px){.ts-btn{width:100%}.ts-clock>div{width:100%}}

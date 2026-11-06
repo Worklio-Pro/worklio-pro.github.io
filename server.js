@@ -552,6 +552,76 @@ app.post('/api/time-off/:id/cancel', (req, res) => {
   r.status = 'canceled'; r.canceledBy = u.name; save(); res.json(timeOffRow(r, u));
 });
 
+// ---------- Time tracking & timesheets (a plan feature) ----------
+// Every team member clocks in and out (on a job, or without one for shop time, travel and the like). The owner, admins and anyone who can
+// edit jobs see everyone's time, add and fix entries, and approve them for payroll. Pay rates are kept apart from the team list (which every
+// login can read) and only the owner and admins see or set them; they turn hours on a job into labor cost in Financial reports → Job profit.
+// db.timeEntries: { id, staffId, jobId, start, end (null while on the clock), note, approvedAt, approvedBy, createdAt, editedBy }
+const canManageTime = (u) => isAdmin(u) || can(u, 'jobs.edit');
+const timeList = () => (db.timeEntries = db.timeEntries || []);
+const payRates = () => (db.payRates = db.payRates || {});
+const openEntry = (staffId) => staffId && timeList().find((e) => e.staffId === staffId && !e.end);
+const entryHours = (e) => Math.max(0, ((e.end ? new Date(e.end) : new Date()) - new Date(e.start)) / 36e5);
+const timeRow = (e, u) => { const j = e.jobId && db.jobs.find((x) => x.id === e.jobId); const s = db.staff.find((x) => x.id === e.staffId);
+  return { ...e, person: s ? s.name : 'Former team member', color: s ? s.color : '', job: j ? { id: j.id, number: j.number, title: j.title || '' } : null, hours: Math.round(entryHours(e) * 100) / 100,
+    ...(isAdmin(u) ? { rate: Number(payRates()[e.staffId]) || 0 } : {}) }; };
+const timeWhen = (v, label) => { const d = new Date(v); if (!v || isNaN(d)) throw Object.assign(new Error(`Enter the ${label} time`), { status: 400 }); return d.toISOString(); };
+// labor cost per job from time logged to it, at each person's pay rate (Job profit report)
+const laborByJob = () => { const r = payRates(); const out = {}; for (const e of timeList()) if (e.jobId && e.end && r[e.staffId]) out[e.jobId] = (out[e.jobId] || 0) + entryHours(e) * Number(r[e.staffId]); return out; };
+app.get('/api/time/status', (req, res) => { const u = currentUser(req); const e = openEntry(u.staffId); res.json({ canClock: !!db.staff.find((s) => s.id === u.staffId), open: e ? timeRow(e, u) : null }); });
+app.get('/api/time', (req, res) => {
+  const u = currentUser(req); const manager = canManageTime(u);
+  const from = req.query.from ? new Date(req.query.from) : new Date(Date.now() - 7 * 864e5); const to = req.query.to ? new Date(req.query.to) : new Date();
+  // entries that overlap the range; team members get only their own
+  const list = timeList().filter((e) => (manager || e.staffId === u.staffId) && new Date(e.start) < to && (!e.end || new Date(e.end) > from)).sort((a, b) => a.start.localeCompare(b.start));
+  res.json({ manager, admin: isAdmin(u), staffId: u.staffId || null, canClock: !!db.staff.find((s) => s.id === u.staffId), open: openEntry(u.staffId) ? timeRow(openEntry(u.staffId), u) : null,
+    entries: list.slice(0, 3000).map((e) => timeRow(e, u)), ...(isAdmin(u) ? { rates: payRates() } : {}) });
+});
+// clock in, on a job or not; clocking in again while on the clock switches: the open entry ends now and a new one starts
+app.post('/api/time/clock-in', (req, res) => {
+  const u = currentUser(req); if (!db.staff.find((s) => s.id === u.staffId)) return res.status(400).json({ error: 'Your login isn’t linked to a team member, so there’s no timesheet to clock in on' });
+  const jobId = String((req.body || {}).jobId || ''); const j = jobId && db.jobs.find((x) => x.id === jobId); if (jobId && !j) return res.status(404).json({ error: 'Job not found' });
+  if (j && !canManageTime(u) && !(j.staffIds || []).includes(u.staffId)) return res.status(403).json({ error: 'You can only clock in on jobs you’re assigned to' });
+  const now = new Date().toISOString(); const was = openEntry(u.staffId);
+  if (was && (was.jobId || '') === jobId) return res.json({ open: timeRow(was, u) });
+  if (was) was.end = now;
+  const e = { id: uid(), staffId: u.staffId, jobId, start: now, end: null, note: '', approvedAt: null, approvedBy: '', createdAt: now }; timeList().push(e); save();
+  res.status(201).json({ open: timeRow(e, u), switched: was ? timeRow(was, u) : null });
+});
+app.post('/api/time/clock-out', (req, res) => {
+  const u = currentUser(req); const e = openEntry(u.staffId); if (!e) return res.status(400).json({ error: 'You’re not clocked in' });
+  e.end = new Date().toISOString(); const note = String((req.body || {}).note || '').trim().slice(0, 500); if (note) e.note = note; save(); res.json({ entry: timeRow(e, u) });
+});
+// managers: add, fix and remove anyone's entries; a change to an approved entry needs approving again
+const manageTime = (fn) => (req, res) => { const u = currentUser(req); if (!canManageTime(u)) return res.status(403).json({ error: 'Only managers can change timesheets' }); try { fn(req, res, u, req.body || {}); } catch (e) { res.status(e.status || 500).json({ error: e.message }); } };
+const fillEntry = (e, b, u) => {
+  if (b.staffId !== undefined) { if (!db.staff.find((s) => s.id === b.staffId)) throw Object.assign(new Error('Choose a team member'), { status: 400 }); e.staffId = b.staffId; }
+  if (b.jobId !== undefined) { if (b.jobId && !db.jobs.find((x) => x.id === b.jobId)) throw Object.assign(new Error('Job not found'), { status: 404 }); e.jobId = b.jobId || ''; }
+  if (b.start !== undefined) e.start = timeWhen(b.start, 'start');
+  if (b.end !== undefined) e.end = b.end ? timeWhen(b.end, 'end') : null;
+  if (b.note !== undefined) e.note = String(b.note || '').trim().slice(0, 500);
+  if (e.end && e.end <= e.start) throw Object.assign(new Error('The end time has to be after the start time'), { status: 400 });
+  if (entryHours(e) > 24) throw Object.assign(new Error('An entry can’t be longer than 24 hours. Split it into one entry per day.'), { status: 400 });
+  if (!e.end && timeList().some((x) => x !== e && x.staffId === e.staffId && !x.end)) throw Object.assign(new Error('This person is already on the clock. Give this entry an end time.'), { status: 400 });
+  e.approvedAt = null; e.approvedBy = ''; e.editedBy = u.name;
+};
+app.post('/api/time', manageTime((req, res, u, b) => { const e = { id: uid(), staffId: '', jobId: '', start: '', end: null, note: '', createdAt: new Date().toISOString() }; if (!b.staffId) b.staffId = ''; fillEntry(e, { jobId: '', ...b }, u); timeList().push(e); save(); res.status(201).json(timeRow(e, u)); }));
+// pay rates (owner and admins): dollars an hour per team member
+app.put('/api/time/rates', (req, res) => {
+  const u = currentUser(req); if (!isAdmin(u)) return res.status(403).json({ error: 'Only the owner and admins can set pay rates' });
+  const r = (req.body || {}).rates || {}; const out = {};
+  for (const s of db.staff) { const v = Number(r[s.id]); if (r[s.id] !== undefined && r[s.id] !== '' && (!isFinite(v) || v < 0 || v > 10000)) return res.status(400).json({ error: `Enter ${s.name}’s pay rate in dollars an hour` }); if (v > 0) out[s.id] = Math.round(v * 100) / 100; }
+  db.payRates = out; save(); res.json({ rates: out });
+});
+app.put('/api/time/:id', manageTime((req, res, u, b) => { const e = timeList().find((x) => x.id === req.params.id); if (!e) return res.status(404).json({ error: 'Entry not found' }); const was = { ...e }; try { fillEntry(e, b, u); } catch (x) { Object.assign(e, was); throw x; } save(); res.json(timeRow(e, u)); }));
+app.delete('/api/time/:id', manageTime((req, res) => { const i = timeList().findIndex((x) => x.id === req.params.id); if (i < 0) return res.status(404).json({ error: 'Entry not found' }); timeList().splice(i, 1); save(); res.json({ ok: true }); }));
+// approve finished entries for payroll (ids from the page: the week, one person's week, or one entry)
+app.post('/api/time/approve', manageTime((req, res, u, b) => {
+  const ids = new Set(Array.isArray(b.ids) ? b.ids : []); const now = new Date().toISOString(); let n = 0;
+  for (const e of timeList()) if (ids.has(e.id) && e.end && !e.approvedAt) { e.approvedAt = now; e.approvedBy = u.name; n++; }
+  save(); res.json({ approved: n });
+}));
+
 // Roles & Permissions (owner/admin): the catalog, the roles, and how many logins have each; saving replaces the whole list
 const rolesView = () => ({ custom: customRolesOn(), catalog: rolesLib.catalog(), roles: teamRoles().map((r) => ({ ...r, users: db.users.filter((u) => u.role !== 'owner' && u.role !== 'admin' && roleKey(u) === r.id).length })), admins: db.users.filter((u) => u.role === 'admin').length });
 app.get('/api/roles', (req, res) => res.json(rolesView()));
@@ -2966,12 +3036,14 @@ function profitLoss(from, to, basis) {
 }
 // each job's invoiced amount (before tax) against the expenses logged to it
 function jobProfit(from, to) {
+  const labor = laborByJob(); // hours logged to each job (Timesheets) at each person's pay rate
   return db.jobs.filter((j) => inRange(j.date || j.createdAt, from, to)).map((j) => {
     const invs = db.invoices.filter((i) => i.jobId === j.id && i.status !== 'draft');
     const revenue = round2(invs.reduce((s, i) => s + (Number(i.subtotal) || 0) - (Number(i.discount) || 0), 0));
-    const costs = round2(db.expenses.filter((e) => e.jobId === j.id).reduce((s, e) => s + (Number(e.amount) || 0), 0));
+    const expenses = round2(db.expenses.filter((e) => e.jobId === j.id).reduce((s, e) => s + (Number(e.amount) || 0), 0));
+    const laborCost = round2(labor[j.id] || 0); const costs = round2(expenses + laborCost);
     const profit = round2(revenue - costs);
-    return { id: j.id, number: j.number, title: j.title, client: (findClient(j.clientId) || {}).name || '', date: String(j.date || j.createdAt || '').slice(0, 10), status: j.status, invoices: invs.length, revenue, costs, profit, margin: revenue ? Math.round(profit / revenue * 1000) / 10 : null };
+    return { id: j.id, number: j.number, title: j.title, client: (findClient(j.clientId) || {}).name || '', date: String(j.date || j.createdAt || '').slice(0, 10), status: j.status, invoices: invs.length, revenue, expenses, labor: laborCost, costs, profit, margin: revenue ? Math.round(profit / revenue * 1000) / 10 : null };
   }).filter((j) => j.revenue || j.costs).sort((a, b) => b.date.localeCompare(a.date));
 }
 // unpaid invoices by how long past due, as of today
