@@ -594,7 +594,7 @@ A.savePlans = async () => {
 window.addEventListener('beforeunload', (e) => { if (D && draftPlans && plansDirty()) e.preventDefault(); });
 
 /* ===== settings ===== */
-const IG_TABS = [['email', 'Email', 'Email'], ['sms', 'Text messages', 'Text messages (Twilio)'], ['stripe', 'Stripe', 'Stripe'], ['google', 'Google', 'Google Business Profile'], ['meta', 'Facebook', 'Facebook (Meta)'], ['instagram', 'Instagram', 'Instagram'], ['tiktok', 'TikTok', 'TikTok'], ['soon', 'Coming soon', 'Coming soon'], ['ai', 'AI', 'AI'], ['marketplace', 'App Marketplace', 'App Marketplace']];
+const IG_TABS = [['email', 'Email', 'Email'], ['sms', 'Text messages', 'Text messages (Twilio)'], ['stripe', 'Stripe', 'Stripe'], ['google', 'Google', 'Google Business Profile'], ['meta', 'Facebook', 'Facebook (Meta)'], ['instagram', 'Instagram', 'Instagram'], ['tiktok', 'TikTok', 'TikTok'], ['quickbooks', 'QuickBooks', 'QuickBooks Online'], ['xero', 'Xero', 'Xero'], ['soon', 'Coming soon', 'Coming soon'], ['ai', 'AI', 'AI'], ['marketplace', 'App Marketplace', 'App Marketplace']];
 let igTab = 'email';
 // Settings shows one box at a time, picked from a grouped list down the left (a dropdown on phones).
 // The Integrations group is one page (setTab 'integrations') showing one service at a time (igTab).
@@ -1703,7 +1703,8 @@ ${I.localhost ? '<p class="muted ig-p" style="margin-top:8px">Stripe can’t rea
     try { await api('PUT', '/api/platform/social-soon/' + c.dataset.soon, { soon: c.checked }); toast(c.checked ? 'Businesses now see Coming soon' : 'Businesses can connect now'); integrationsCard(box); } catch (x) { c.checked = !c.checked; toast(x.message, true); }
   }));
   $$('.oa-form', box).forEach((f) => f.addEventListener('submit', async (e) => {
-    e.preventDefault(); try { await api('PUT', '/api/platform/oauth-apps/' + f.dataset.p, Object.fromEntries(new FormData(f))); toast(f.dataset.p === 'tiktok' ? 'Saved. Connect your account in Social.' : 'Saved. Businesses can connect now.'); integrationsCard(box); } catch (x) { toast(x.message, true); }
+    e.preventDefault(); const body = Object.fromEntries(new FormData(f)); if (f.elements.sandbox) body.sandbox = f.elements.sandbox.checked; // QuickBooks: development (sandbox) keys
+    try { await api('PUT', '/api/platform/oauth-apps/' + f.dataset.p, body); toast(f.dataset.p === 'tiktok' ? 'Saved. Connect your account in Social.' : 'Saved. Businesses can connect now.'); integrationsCard(box); } catch (x) { toast(x.message, true); }
   }));
   $('#feeForm', box).addEventListener('submit', async (e) => {
     e.preventDefault(); try { await api('PUT', '/api/platform/settings', Object.fromEntries(new FormData(e.target))); await load(); toast('Platform fee saved'); } catch (x) { toast(x.message, true); }
@@ -1748,7 +1749,26 @@ ${form('instagram', IN, 'Instagram app ID', '1234567890123456', 'Instagram app s
 ${copy(T.redirectUri, 'TikTok redirect URI')}
 <ol class="ig-steps" start="3"><li>Under URL properties, verify your domain. TikTok downloads your posts’ videos and photos from it.</li>
 <li>Paste the app’s Client key and Client secret here. While testing, use the Sandbox keys; switch to the Production keys once TikTok approves the app. Or set <code>TIKTOK_CLIENT_KEY</code> and <code>TIKTOK_CLIENT_SECRET</code> in <code>.env</code>.</li></ol>
-${form('tiktok', T, 'Client key', 'e.g. sbaw1234abcd5678', 'Client secret')}${I.localhost ? '<p class="muted ig-p">TikTok only sends people back to a public address: set <code>BASE_URL</code> (or <code>PLATFORM_DOMAIN</code>) first.</p>' : ''}`);
+${form('tiktok', T, 'Client key', 'e.g. sbaw1234abcd5678', 'Client secret')}${I.localhost ? '<p class="muted ig-p">TikTok only sends people back to a public address: set <code>BASE_URL</code> (or <code>PLATFORM_DOMAIN</code>) first.</p>' : ''}`)
+  + booksGroups(I, ig, on, copy, form, n);
+}
+// Settings → QuickBooks & Xero (lib/accounting.js): the Intuit and Xero apps businesses connect their books through
+function booksGroups(I, ig, on, copy, form, n) {
+  const Q = I.social.quickbooks || {}; const X = I.social.xero || {};
+  const qbForm = form('quickbooks', Q, 'Client ID', 'e.g. ABcd12EF…', 'Client secret').replace('<div class="acts"', `<label class="switchline" style="margin:4px 0 10px"><input type="checkbox" name="sandbox" ${Q.sandbox ? 'checked' : ''}> <span><strong>Development keys</strong> <small class="muted">Connects to QuickBooks sandbox companies only</small></span></label><div class="acts"`);
+  return ig('QuickBooks Online', on(Q.id && Q.secret, Q.sandbox ? 'Ready (sandbox)' : 'Ready', 'Not set up'), `<p class="ig-d">Businesses connect their QuickBooks Online company in Settings → QuickBooks &amp; Xero. Their clients, invoices, payments and expenses are sent to it every 15 minutes. ${n('', Q.connected || 0)}.</p>
+<ol class="ig-steps"><li>On the <a href="https://developer.intuit.com/app/developer/dashboard" target="_blank" rel="noopener">Intuit Developer</a> portal, create an app for <strong>QuickBooks Online and Payments</strong> with the <code>com.intuit.quickbooks.accounting</code> scope.</li>
+<li>Under Keys &amp; credentials (Development first, then Production), add this <strong>Redirect URI</strong>:</li></ol>
+${copy(Q.redirectUri, 'QuickBooks redirect URI')}
+<ol class="ig-steps" start="3"><li>Paste the Client ID and Client secret here. With Development keys, tick <strong>Development keys</strong> and connect a sandbox company to test.</li>
+<li>For Production keys, Intuit asks for your app’s privacy policy and terms links, and an app assessment questionnaire, before real companies can connect. Or set <code>QUICKBOOKS_CLIENT_ID</code>, <code>QUICKBOOKS_CLIENT_SECRET</code> (and <code>QUICKBOOKS_ENV=sandbox</code>) in <code>.env</code>.</li></ol>
+${qbForm}${I.localhost ? '<p class="muted ig-p">Production keys only send people back to a public address: set <code>BASE_URL</code> (or <code>PLATFORM_DOMAIN</code>) first.</p>' : ''}`)
+  + ig('Xero', on(X.id && X.secret, 'Ready', 'Not set up'), `<p class="ig-d">Businesses connect their Xero organisation in Settings → QuickBooks &amp; Xero. Their clients, invoices, payments and expenses are sent to it every 15 minutes. ${n('', X.connected || 0)}.</p>
+<ol class="ig-steps"><li>On <a href="https://developer.xero.com/app/manage" target="_blank" rel="noopener">Xero Developer</a>, create a <strong>Web app</strong> and add this <strong>Redirect URI</strong>:</li></ol>
+${copy(X.redirectUri, 'Xero redirect URI')}
+<ol class="ig-steps" start="2"><li>Generate a Client secret, then paste the Client ID and secret here. Or set <code>XERO_CLIENT_ID</code> and <code>XERO_CLIENT_SECRET</code> in <code>.env</code>.</li>
+<li>An uncertified app can connect up to 25 organisations. Past that, apply to become a Xero App Partner.</li></ol>
+${form('xero', X, 'Client ID', 'e.g. 1A2B3C4D…', 'Client secret')}`);
 }
 // Coming soon (lib/social.js): networks businesses see as Coming soon even with the keys saved, e.g. while an app waits on approval
 function soonGroup(I, ig, on) {

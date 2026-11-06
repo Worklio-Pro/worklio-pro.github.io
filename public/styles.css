@@ -1665,3 +1665,18 @@ button.mn-x{border:0;padding:0;cursor:pointer}
 .paused-box h2{margin:0 0 8px;font-size:20px;line-height:1.3}.paused-box p{margin:0 0 20px;color:var(--muted);font-size:15px;line-height:1.5}
 .paused-acts{display:flex;flex-direction:column;gap:8px}.paused-acts .btn{display:block;width:100%;padding:11px;font-size:15px;text-align:center;box-sizing:border-box}
 body.is-paused{overflow:hidden}
+/* Financial Reports: date range bar and the profit & loss table */
+.rpt-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.rpt-bar select,.rpt-bar input[type=date]{width:auto}
+.rpt-bar .tabs{margin:0 0 0 auto}
+table.pl th{background:none;font-size:14px;padding-top:16px}
+tr.pl-sum td{font-weight:600;border-top:1px solid var(--border)}
+tr.pl-net td{font-weight:700;font-size:16px;border-top:2px solid var(--text)}
+@media (max-width:640px){.rpt-bar .tabs{margin-left:0}}
+/* Settings → QuickBooks & Xero */
+.bk-h{font-size:15px;margin:18px 0 6px}
+.bk-cats{margin:12px 0}
+.bk-cats summary{cursor:pointer;font-weight:600;margin-bottom:8px}
+.bk-cats select{width:100%}
+label.bk-auto{display:flex;flex-direction:row;align-items:center;gap:8px;margin:16px 0 12px}
+label.bk-auto input{width:auto;margin:0}

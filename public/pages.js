@@ -710,12 +710,80 @@ A.newExpense = () => expenseForm(); A.editExpense = (d) => expenseForm(byId(D.ex
 A.delExpense = async (d) => { if (!confirm('Delete this expense?')) return; await api('DELETE', '/api/expenses/' + d.id); closeModal(); refresh(); };
 
 /* ===== /reports ===== */
+// tabs: the overview, then accounting-style reports for a date range (profit & loss, job profit) and unpaid invoices by age
+const RPT_TABS = [['overview', 'Overview'], ['pl', 'Profit & loss'], ['jobs', 'Job profit'], ['aging', 'Unpaid invoices']];
+const RPT_RANGES = [['thisMonth', 'This month'], ['lastMonth', 'Last month'], ['thisQuarter', 'This quarter'], ['lastQuarter', 'Last quarter'], ['thisYear', 'This year'], ['lastYear', 'Last year'], ['last12', 'Last 12 months'], ['custom', 'Custom dates']];
+const rpt = { tab: 'overview', range: 'thisYear', from: '', to: '', basis: 'cash' };
+try { Object.assign(rpt, JSON.parse(localStorage.getItem('rptView') || '{}')); } catch (e) { /* no saved view */ }
+const rptSave = () => { try { localStorage.setItem('rptView', JSON.stringify(rpt)); } catch (e) { /* storage blocked */ } };
+function rptDates() {
+  const n = new Date(); const y = n.getFullYear(); const m = n.getMonth(); const q = Math.floor(m / 3) * 3; const d = (yy, mm, dd) => ymd(new Date(yy, mm, dd));
+  switch (rpt.range) {
+    case 'thisMonth': return [d(y, m, 1), d(y, m + 1, 0)];
+    case 'lastMonth': return [d(y, m - 1, 1), d(y, m, 0)];
+    case 'thisQuarter': return [d(y, q, 1), d(y, q + 3, 0)];
+    case 'lastQuarter': return [d(y, q - 3, 1), d(y, q, 0)];
+    case 'lastYear': return [d(y - 1, 0, 1), d(y - 1, 11, 31)];
+    case 'last12': return [d(y, m - 11, 1), d(y, m + 1, 0)];
+    case 'custom': return [rpt.from || d(y, 0, 1), rpt.to || ymd(n)];
+    default: return [d(y, 0, 1), d(y, 11, 31)];
+  }
+}
+const rptRangeBar = (withBasis) => { const [from, to] = rptDates(); return `<div class="rpt-bar noprint"><select data-rpt="range" aria-label="Dates">${RPT_RANGES.map(([k, l]) => `<option value="${k}" ${rpt.range === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+${rpt.range === 'custom' ? `<input type="date" data-rpt="from" value="${from}" aria-label="From"><span class="muted">to</span><input type="date" data-rpt="to" value="${to}" aria-label="To">` : `<span class="muted">${fmtDate(from)} – ${fmtDate(to)}</span>`}
+${withBasis ? `<div class="tabs rpt-basis" role="group" aria-label="Accounting method">${[['cash', 'Cash basis'], ['accrual', 'Accrual basis']].map(([k, l]) => `<button type="button" class="${rpt.basis === k ? 'on' : ''}" data-act="rptBasis" data-b="${k}">${l}</button>`).join('')}</div>` : ''}</div>`; };
+A.rptTab = (d) => { rpt.tab = d.t; rptSave(); refresh(); };
+A.rptBasis = (d) => { rpt.basis = d.b; rptSave(); refresh(); };
+const rptHead = (sub, csv) => `<div class="head"><div><h1>Financial Reports</h1><p class="sub">${sub}</p></div><div class="actions noprint">${csv ? '<button class="btn alt" data-act="rptCsv">Export CSV</button>' : ''}<button class="btn alt" onclick="window.print()">Print</button></div></div>
+<div class="tabs noprint" role="tablist">${RPT_TABS.map(([k, l]) => `<button type="button" role="tab" aria-selected="${rpt.tab === k}" class="${rpt.tab === k ? 'on' : ''}" data-act="rptTab" data-t="${k}">${l}</button>`).join('')}</div>`;
+const signed = (n) => `<span class="${n < 0 ? 'neg' : ''}">${n < 0 ? '−' + money(-n) : money(n)}</span>`;
+const marginTxt = (m) => (m === null || m === undefined ? '—' : m + '%');
+const RPT = {
+  async pl(main) {
+    const [from, to] = rptDates(); const r = await api('GET', `/api/reports/profit-loss?from=${from}&to=${to}&basis=${rpt.basis}`);
+    const rows = (list) => list.map((x) => `<tr><td style="padding-left:24px">${esc(x.name)}</td><td class="r">${money(x.amount)}</td></tr>`).join('');
+    main.innerHTML = rptHead('Income minus expenses for the dates you choose.', true) + rptRangeBar(true) + `
+<div class="grid g4">${stat('Income', money(r.totalIncome), r.basis === 'cash' ? 'Payments received, before sales tax' : 'Invoiced, before sales tax')}${stat('Expenses', money(r.totalExpenses))}${stat('Net profit', signed(r.net), 'Margin ' + marginTxt(r.margin))}${stat('Sales tax collected', money(r.taxCollected), 'Owed to the state, not income')}</div>
+${r.byMonth.length > 1 ? `<div class="card" style="margin-top:16px"><h2>Net profit by month</h2>${bars(r.byMonth.map((m) => Math.max(0, m.net)), r.byMonth.map((m) => monthLabel(m.month)), (v) => (v ? '$' + Math.round(v) : ''))}${r.byMonth.some((m) => m.net < 0) ? `<p class="muted">Months with a loss: ${r.byMonth.filter((m) => m.net < 0).map((m) => `${monthLabel(m.month)} (${'−' + money(-m.net)})`).join(', ')}</p>` : ''}</div>` : ''}
+<div class="card" style="margin-top:16px"><h2>Profit and loss</h2><div class="tablewrap"><table class="pl">
+<tr><th>Income</th><th class="r"></th></tr>${rows(r.income) || '<tr><td colspan="2" class="empty">No income in these dates</td></tr>'}<tr class="pl-sum"><td>Total income</td><td class="r">${money(r.totalIncome)}</td></tr>
+<tr><th>Expenses</th><th class="r"></th></tr>${rows(r.expenses) || '<tr><td colspan="2" class="empty">No expenses in these dates</td></tr>'}<tr class="pl-sum"><td>Total expenses</td><td class="r">${money(r.totalExpenses)}</td></tr>
+<tr class="pl-net"><td>Net profit</td><td class="r">${signed(r.net)}</td></tr></table></div>
+<p class="muted">${r.basis === 'cash' ? 'Cash basis: income counts on the day it’s paid (deposits included, refunds taken off). Each payment is split across the invoice’s lines.' : 'Accrual basis: income counts on the invoice date, whether or not it’s been paid. Drafts are left out.'} Expenses count on their date. Labor isn’t included unless you log it as an expense.</p></div>`;
+    A.rptCsv = () => downloadCsv(`profit-loss-${from}-to-${to}.csv`, [['Profit and loss', `${from} to ${to}`, r.basis === 'cash' ? 'Cash basis' : 'Accrual basis'], [], ['Income', ''], ...r.income.map((x) => [x.name, x.amount]), ['Total income', r.totalIncome], [], ['Expenses', ''], ...r.expenses.map((x) => [x.name, x.amount]), ['Total expenses', r.totalExpenses], [], ['Net profit', r.net], ['Sales tax collected (not income)', r.taxCollected]]);
+  },
+  async jobs(main) {
+    const [from, to] = rptDates(); const r = await api('GET', `/api/reports/jobs?from=${from}&to=${to}`); const J = r.jobs;
+    const rev = J.reduce((s, j) => s + j.revenue, 0); const cost = J.reduce((s, j) => s + j.costs, 0); const losing = J.filter((j) => j.profit < 0).length;
+    main.innerHTML = rptHead('What each job brought in against what it cost.', true) + rptRangeBar(false) + `
+<div class="grid g4">${stat('Jobs', J.length, 'With invoices or expenses')}${stat('Invoiced', money(rev), 'Before sales tax')}${stat('Job costs', money(cost), 'Expenses logged to jobs')}${stat('Profit', signed(rev - cost), `Margin ${rev ? Math.round((rev - cost) / rev * 1000) / 10 + '%' : '—'}${losing ? ` · ${losing} at a loss` : ''}`)}</div>
+<div class="card" style="margin-top:16px"><div class="tablewrap"><table><tr><th>Job</th><th>Client</th><th>Date</th><th class="r">Invoiced</th><th class="r">Costs</th><th class="r">Profit</th><th class="r">Margin</th></tr>
+${J.map((j) => `<tr><td><a href="/jobs/edit?id=${esc(j.id)}" data-link>${esc(j.number)}</a> ${esc(j.title)}</td><td>${esc(j.client)}</td><td>${fmtDate(j.date)}</td><td class="r">${money(j.revenue)}</td><td class="r">${money(j.costs)}</td><td class="r">${signed(j.profit)}</td><td class="r">${marginTxt(j.margin)}</td></tr>`).join('') || '<tr><td colspan="7" class="empty">No jobs with invoices or expenses in these dates</td></tr>'}</table></div>
+<p class="muted">Jobs count by their scheduled date. Invoiced is every invoice for the job except drafts, after discounts. Costs are the expenses linked to the job in Expenses.</p></div>`;
+    A.rptCsv = () => downloadCsv(`job-profit-${from}-to-${to}.csv`, [['Job', 'Title', 'Client', 'Date', 'Status', 'Invoiced', 'Costs', 'Profit', 'Margin %'], ...J.map((j) => [j.number, j.title, j.client, j.date, j.status, j.revenue, j.costs, j.profit, j.margin ?? ''])]);
+  },
+  async aging(main) {
+    const r = await api('GET', '/api/reports/aging'); const L = { current: 'Not yet due', d1_30: '1–30 days', d31_60: '31–60 days', d61_90: '61–90 days', d90: 'Over 90 days' };
+    main.innerHTML = rptHead(`What clients owe you, by how long it’s been past due. As of ${fmtDate(r.asOf)}.`, true) + `
+<div class="grid g4">${stat('Total owed', money(r.totals.total), r.invoices.length + ' invoices')}${stat('Not yet due', money(r.totals.current))}${stat('Past due', money(r.totals.total - r.totals.current))}${stat('Over 90 days', money(r.totals.d90))}</div>
+<div class="card" style="margin-top:16px"><h2>By client</h2><div class="tablewrap"><table><tr><th>Client</th>${r.buckets.map((b) => `<th class="r">${L[b]}</th>`).join('')}<th class="r">Total</th></tr>
+${r.clients.map((c) => `<tr><td><a href="/clients/view?id=${esc(c.clientId)}" data-link>${esc(c.client)}</a></td>${r.buckets.map((b) => `<td class="r">${c[b] ? money(c[b]) : '<span class="muted">—</span>'}</td>`).join('')}<td class="r"><strong>${money(c.total)}</strong></td></tr>`).join('') || `<tr><td colspan="${r.buckets.length + 2}" class="empty">Nothing owed. Every sent invoice is paid.</td></tr>`}
+${r.clients.length ? `<tr class="pl-sum"><td>Total</td>${r.buckets.map((b) => `<td class="r">${money(r.totals[b])}</td>`).join('')}<td class="r">${money(r.totals.total)}</td></tr>` : ''}</table></div></div>
+${r.invoices.length ? `<div class="card"><h2>Invoices</h2><div class="tablewrap"><table><tr><th>Invoice</th><th>Client</th><th>Due</th><th class="r">Days past due</th><th class="r">Balance</th></tr>${r.invoices.map((i) => `<tr><td><a href="/invoices/view?id=${esc(i.id)}" data-link>${esc(i.number)}</a></td><td>${esc(i.client)}</td><td>${i.dueDate ? fmtDate(i.dueDate) : '—'}</td><td class="r">${i.daysOverdue || '<span class="muted">Not due</span>'}</td><td class="r">${money(i.balance)}</td></tr>`).join('')}</table></div></div>` : ''}`;
+    A.rptCsv = () => downloadCsv(`unpaid-invoices-${r.asOf}.csv`, [['Invoice', 'Client', 'Issued', 'Due', 'Days past due', 'Balance', 'Invoice total'], ...r.invoices.map((i) => [i.number, i.client, i.issueDate, i.dueDate, i.daysOverdue, i.balance, i.total])]);
+  },
+};
 PAGES['/reports'] = {
   title: 'Financial Reports',
   async render(main) {
+    if (RPT[rpt.tab]) {
+      await RPT[rpt.tab](main);
+      $$('[data-rpt]', main).forEach((el) => el.addEventListener('change', (e) => { const k = e.target.dataset.rpt; if (k === 'range' && e.target.value === 'custom') { [rpt.from, rpt.to] = rptDates(); } rpt[k] = e.target.value; rptSave(); refresh(); }));
+      return;
+    }
     const r = await api('GET', '/api/reports'); const labels = r.revenueByMonth.map((m) => monthLabel(m.month));
     const totalAll = r.paidTotal + r.pendingTotal || 1; const maxSvc = Math.max(...r.popularServices.map((s) => s.count), 1);
-    main.innerHTML = `<div class="head"><div><h1>Financial Reports</h1><p class="sub">Revenue, invoice status and your most popular services.</p></div><button class="btn alt noprint" onclick="window.print()">Print</button></div>
+    main.innerHTML = `${rptHead('Revenue, invoice status and your most popular services.')}
 <div class="grid g4">${stat('Revenue this month', money(r.thisMonthRevenue))}${stat('Paid invoices', money(r.paidTotal), r.paidCount + ' invoices')}${stat('Pending invoices', money(r.pendingTotal), r.pendingCount + ' invoices · ' + money(r.overdueTotal) + ' overdue')}${stat('Expenses logged', money(r.totalExpenses), 'Net of paid revenue: ' + money(r.paidTotal - r.totalExpenses))}</div>
 <div class="grid g2" style="margin-top:16px"><div class="card"><h2>Total monthly revenue (last 12 months)</h2>${bars(r.revenueByMonth.map((m) => m.revenue), labels, (v) => (v ? '$' + Math.round(v) : ''))}</div>
 <div class="card"><h2>Paid vs pending</h2><p>Paid <strong>${money(r.paidTotal)}</strong></p><div class="meter"><i style="width:${(r.paidTotal / totalAll) * 100}%"></i></div><p style="margin-top:14px">Pending <strong>${money(r.pendingTotal)}</strong></p><div class="meter"><i style="width:${(r.pendingTotal / totalAll) * 100}%;background:var(--warn)"></i></div><p class="muted" style="margin-top:14px">Drafts are excluded. Pending includes sent and overdue invoices.</p></div></div>
@@ -1778,7 +1846,7 @@ ${admin ? '' : '<p class="muted" style="font-size:13px">Only the account owner o
   connectionsData = C;
 }
 let connectionsData = null;
-const CONN_NAMES = { google: 'Google Business Profile', facebook: 'Facebook Page', instagram: 'Instagram account', bluesky: 'Bluesky account', linkedin: 'LinkedIn page', pinterest: 'Pinterest account', threads: 'Threads account', tiktok: 'TikTok account', youtube: 'YouTube channel', x: 'X account' };
+const CONN_NAMES = { google: 'Google Business Profile', facebook: 'Facebook Page', instagram: 'Instagram account', bluesky: 'Bluesky account', linkedin: 'LinkedIn page', pinterest: 'Pinterest account', threads: 'Threads account', tiktok: 'TikTok account', youtube: 'YouTube channel', x: 'X account', quickbooks: 'QuickBooks', xero: 'Xero' };
 // back from Google or Facebook's sign-in (lib/platform.js → /oauth/…/callback)
 function connReturnNotice() {
   const q = new URLSearchParams(location.search); const ok = q.get('connected'); const bad = q.get('connect_error'); if (!ok && !bad) return;
@@ -1900,6 +1968,75 @@ PAGES['/settings/card-payments'] = {
 PAGES['/settings/company'] = { title: 'Company Profile', render: (m) => companyPage(m, false) };
 PAGES['/settings'] = { title: 'App Settings', render: (m) => companyPage(m, true) };
 PAGES['/settings/connections'] = { title: 'Account Connections', render: connectionsPage };
+
+/* ===== /settings/accounting: QuickBooks Online and Xero (server.js → accounting sync, lib/accounting.js) =====
+   Connect one, choose the accounts things go to and the date to start from, then turn on sending. One way: Worklio → the books. */
+const BOOKS_LOGO = { quickbooks: ['qb', '#2CA01C'], xero: ['x', '#13B5EA'] };
+const booksLogo = (k) => `<span class="mkt-logo mono" style="background:${BOOKS_LOGO[k][1]};color:#fff">${BOOKS_LOGO[k][0]}</span>`;
+let BK = null; let bkOpts = null; let bkPoll = null;
+const bkWhen = (s) => (s ? new Date(s).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'never');
+const bkSelect = (name, label, list, val, hint, blank = 'Choose…') => `<label>${label}<select name="${name}"><option value="">${blank}</option>${(list || []).map((o) => `<option value="${esc(o.id)}" ${String(val) === String(o.id) ? 'selected' : ''}>${esc(o.name)}</option>`).join('')}</select>${hint ? `<span class="muted">${hint}</span>` : ''}</label>`;
+async function booksPage(main) {
+  clearTimeout(bkPoll); connReturnNotice();
+  BK = await api('GET', '/api/accounting'); const admin = ['owner', 'admin'].includes(role());
+  const head = `<div class="head"><div><h1>QuickBooks &amp; Xero</h1><p class="sub">Send your clients, invoices, payments and expenses to your accounting software automatically, so your books stay up to date without typing anything twice.</p></div></div>`;
+  if (!BK.connected) {
+    bkOpts = null;
+    main.innerHTML = head + `<div class="conn-list">${BK.providers.map((p) => `<section class="card conn" id="conn-${p.id}"><div class="conn-top"><div class="conn-ic">${booksLogo(p.id)}</div><div class="conn-main"><h2>${esc(p.name)}</h2>${p.available ? connChip('off', 'Not connected') : connChip('off', 'Coming soon')}</div></div>
+<div class="conn-main"><p>${p.id === 'quickbooks' ? 'Sign in to QuickBooks and choose your company. Clients become customers, and invoices, payments and expenses are recorded in QuickBooks.' : 'Sign in to Xero and choose your organisation. Clients become contacts, and invoices, payments and expenses are recorded in Xero.'}</p></div>
+${admin && p.available ? `<div class="conn-act"><button type="button" class="btn alt conn-btn" data-act="booksConnect" data-kind="${p.id}">Connect</button></div>` : ''}</section>`).join('')}</div>
+<div class="card"><h2>How it works</h2><ul class="mkt-does"><li>You choose a start date. Only invoices and expenses from that day on are sent, so nothing you’ve already entered by hand is duplicated.</li><li>Every 15 minutes, new and edited invoices go over, then the payments on them, then your expenses.</li><li>It’s one way: changes you make in QuickBooks or Xero don’t come back here.</li></ul></div>
+${admin ? '' : '<p class="muted" style="font-size:13px">Only the account owner or an admin can connect accounting software.</p>'}`;
+    return;
+  }
+  const S = BK.settings; const qb = BK.connected === 'quickbooks'; const W = BK.waiting; const waiting = W.invoices + W.payments + W.expenses;
+  const last = BK.lastResult; const status = BK.syncing ? connChip('wait', 'Sending…') : BK.needsReconnect ? connChip('off', 'Sign in again') : BK.auto ? connChip('on', 'On') : connChip('off', 'Off');
+  main.innerHTML = head + `
+<section class="card conn wide"><div class="conn-top"><div class="conn-ic">${booksLogo(BK.connected)}</div><div class="conn-main"><h2>${esc(BK.name)}</h2>${status}</div></div>
+<div class="conn-main"><p class="conn-to">Connected to <strong>${esc(BK.company)}</strong>${qb && BK.sandbox ? ' <span class="badge draft">Sandbox</span>' : ''}.</p>
+${BK.needsReconnect ? `<p class="note">${esc(BK.name)} signed you out, so nothing is being sent. Connect again to pick up where it left off.</p>` : ''}
+<p>${BK.auto ? 'New and changed records are sent every 15 minutes.' : 'Sending is off. Choose your accounts below, then turn it on.'} Last sent ${bkWhen(BK.lastSyncAt)}${last && !BK.syncing ? ` (${last.sent} sent${last.failed ? `, ${last.failed} couldn’t be sent` : ''}${last.more ? ', more to go' : ''})` : ''}.</p></div>
+${admin ? `<div class="conn-act">${BK.needsReconnect ? `<button type="button" class="btn conn-btn" data-act="booksConnect" data-kind="${BK.connected}">Connect again</button>` : `<button type="button" class="btn alt conn-btn" data-act="booksSync" ${BK.syncing ? 'disabled' : ''}>${BK.syncing ? 'Sending…' : 'Sync now'}</button>`}<button type="button" class="btn alt conn-btn" data-act="booksDisconnect">Disconnect</button></div>` : ''}</section>
+<div class="grid g4">${stat('Invoices sent', BK.sent.invoices, W.invoices ? `${W.invoices} waiting` : 'All sent')}${stat('Payments sent', BK.sent.payments, W.payments ? `${W.payments} waiting` : 'All sent')}${stat('Expenses sent', BK.sent.expenses, W.expenses ? `${W.expenses} waiting` : 'All sent')}${stat(qb ? 'Customers' : 'Contacts', BK.sent.clients, 'Added with their invoices')}</div>
+${BK.errors.length ? `<div class="card" style="margin-top:16px"><h2>Couldn’t be sent (${BK.errors.length})</h2><p class="muted" style="margin-top:0">Fix the problem (usually a setting below, or the record in ${esc(BK.name)}), then choose <strong>Sync now</strong>.</p><div class="tablewrap"><table><tr><th>Record</th><th>Problem</th><th>When</th></tr>${BK.errors.map((e) => `<tr><td>${esc(e.label)}</td><td>${esc(e.msg)}</td><td>${bkWhen(e.at)}</td></tr>`).join('')}</table></div></div>` : ''}
+<form class="card" id="bkForm" style="margin-top:16px"><h2>Settings</h2><div id="bkFields"><p class="muted">Loading your ${qb ? 'QuickBooks' : 'Xero'} accounts…</p></div></form>
+<div class="card"><h2>Recent activity</h2>${BK.log.length ? `<div class="tablewrap"><table><tr><th>When</th><th>Record</th><th>Result</th></tr>${BK.log.map((l) => `<tr><td>${bkWhen(l.at)}</td><td>${esc(l.label)}</td><td>${l.ok ? connChip('on', 'Sent') : `${connChip('off', 'Failed')} <span class="muted">${esc(l.msg)}</span>`}</td></tr>`).join('')}</table></div>` : '<p class="muted">Nothing sent yet.</p>'}
+<p class="muted" style="margin-bottom:0">Not sent: drafts, refunds, deleted invoices and expenses, and anything dated before your start date. Record those in ${esc(BK.name)} yourself.${qb ? '' : ' Xero won’t let a paid invoice be edited, so change those in Xero.'}</p></div>`;
+  if (BK.syncing) bkPoll = setTimeout(() => { if (curPath() === '/settings/accounting') booksPage(main); }, 3000);
+  if (!admin) { $('#bkFields').innerHTML = '<p class="muted">Only the account owner or an admin can change these settings.</p>'; return; }
+  try { bkOpts = bkOpts || await api('GET', '/api/accounting/options'); } catch (e) { $('#bkFields').innerHTML = `<p class="note">Couldn’t load your accounts: ${esc(e.message)}</p>`; return; }
+  const O = bkOpts; const D = O.defaults || {}; const v = (k) => S[k] || D[k] || '';
+  $('#bkFields').innerHTML = `<label>Send records dated from<input type="date" name="startDate" value="${esc(BK.startDate)}" required><span class="muted">Invoices and expenses before this date aren’t sent. Pick the day after your books were last brought up to date.</span></label>
+<h3 class="bk-h">Invoices and payments</h3><div class="row">${qb ? bkSelect('itemId', 'Product/service for invoice lines', O.items, v('itemId'), 'Each line keeps its own description and price. The product/service decides the income account.')
+    : bkSelect('salesAccount', 'Sales account for invoice lines', O.salesAccounts, v('salesAccount'))}
+${qb ? bkSelect('depositAccount', 'Deposit payments to', O.depositAccounts, v('depositAccount'), 'Undeposited Funds lets you group payments into bank deposits in QuickBooks.')
+    : bkSelect('depositAccount', 'Payments go to', O.depositAccounts, v('depositAccount'), 'The bank account client payments land in.')}</div>
+${qb ? '<p class="muted">Sales tax: each invoice is marked taxable when it has tax, with the tax total from here. QuickBooks’ automated sales tax may adjust it.</p>' : `<div class="row">${bkSelect('taxType', 'Tax rate for taxed invoices', O.taxRates, v('taxType'), 'The tax amount on each invoice is kept exactly as it is here.')}</div>`}
+<h3 class="bk-h">Expenses</h3><div class="row">${bkSelect('bankAccount', 'Paid from', O.bankAccounts, v('bankAccount'), qb ? 'A bank or credit card account.' : 'A bank account.')}${bkSelect('expenseAccount', 'Expense account', O.expenseAccounts, v('expenseAccount'), 'Used for any category not matched below.')}</div>
+${BK.categories.length ? `<details class="bk-cats"${Object.keys(BK.categoryAccounts).length ? ' open' : ''}><summary>Match expense categories to accounts</summary><div class="tablewrap"><table><tr><th>Category</th><th>${esc(BK.name)} account</th></tr>${BK.categories.map((c) => `<tr><td>${esc(c)}</td><td><select data-cat="${esc(c)}" aria-label="Account for ${esc(c)}"><option value="">Expense account above</option>${O.expenseAccounts.map((a) => `<option value="${esc(a.id)}" ${BK.categoryAccounts[c] === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></td></tr>`).join('')}</table></div></details>` : ''}
+<label class="bk-auto"><input type="checkbox" name="auto" ${BK.auto ? 'checked' : ''}> <span><strong>Send automatically</strong> <span class="muted">every 15 minutes</span></span></label>
+<div class="acts" style="justify-content:flex-start;gap:8px"><button class="btn">Save</button>${BK.sent.invoices + BK.sent.expenses ? '<button type="button" class="btn alt" data-act="booksReset">Send everything again…</button>' : ''}</div>`;
+  $('#bkForm').onsubmit = async (e) => {
+    e.preventDefault(); const f = e.target; const val = (n) => (f.elements[n] ? f.elements[n].value : '');
+    const settings = Object.fromEntries(['itemId', 'salesAccount', 'taxType', 'depositAccount', 'bankAccount', 'expenseAccount'].map((k) => [k, val(k)]));
+    const auto = f.elements.auto.checked;
+    if (auto) { const need = qb ? [['itemId', 'the product/service for invoice lines']] : [['salesAccount', 'the sales account'], ['depositAccount', 'the account payments go to']];
+      const miss = need.find(([k]) => !settings[k]); if (miss) return toast(`Choose ${miss[1]} before turning on sending`, true); }
+    const categoryAccounts = Object.fromEntries($$('[data-cat]', f).map((s) => [s.dataset.cat, s.value]));
+    try { BK = await api('PUT', '/api/accounting', { startDate: val('startDate'), settings, categoryAccounts, auto }); toast(auto ? 'Saved. Sending starts within 15 minutes, or choose Sync now.' : 'Saved'); booksPage(main); } catch (x) { toast(x.message, true); }
+  };
+}
+PAGES['/settings/accounting'] = { title: 'QuickBooks & Xero', render: booksPage };
+A.booksConnect = async (d) => { try { const r = await api('POST', `/api/accounting/${d.kind}/start`); location.href = r.url; } catch (x) { toast(x.message, true); } };
+A.booksSync = async () => { try { await api('POST', '/api/accounting/sync'); booksPage($('#main')); } catch (x) { toast(x.message, true); } };
+A.booksDisconnect = async () => {
+  if (!confirm(`Disconnect ${BK.name}? Nothing more is sent. What’s already in ${BK.name} stays there.`)) return;
+  try { await api('DELETE', '/api/accounting'); toast(`${BK.name} disconnected`); booksPage($('#main')); } catch (x) { toast(x.message, true); }
+};
+A.booksReset = async () => {
+  if (!confirm(`Send everything from the start date again? Only do this if you deleted what was sent from ${BK.name}, or you’ll get duplicates.`)) return;
+  try { await api('POST', '/api/accounting/reset'); toast('Everything from the start date will be sent again'); booksPage($('#main')); } catch (x) { toast(x.message, true); }
+};
 
 /* ===== /settings/business-page: the page the business QR code opens (lib/business-page.js), with a phone preview ===== */
 // two tabs, each with its sections; Next goes through them in order, from Business details on to QR code appearance

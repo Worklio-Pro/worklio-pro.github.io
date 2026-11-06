@@ -24,6 +24,7 @@ const stripeLib = require('./lib/stripe');
 const social = require('./lib/social');
 const bluesky = require('./lib/bluesky');
 const networks = require('./lib/networks'); // LinkedIn, Pinterest, Threads, TikTok and YouTube for Marketing
+const accounting = require('./lib/accounting'); // QuickBooks Online and Xero (Settings → QuickBooks & Xero)
 const xposts = require('./lib/xposts'); // X, with the business's own developer app
 const businessPage = require('./lib/business-page'); // the page the business QR code opens
 const changelog = require('./lib/changelog'); // what's new: the top bar's bell (the full list is on ideas.<domain>/changelog)
@@ -2913,6 +2914,90 @@ app.get('/api/reports', (req, res) => {
   });
 });
 
+// ---------- Financial Reports → Profit & loss, Job profit, Unpaid invoices (accounting-style reports) ----------
+const validDay = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
+const inRange = (d, from, to) => { const k = String(d || '').slice(0, 10); return !!k && k >= from && k <= to; };
+// a quote's or invoice's lines, net of its discount and before sales tax: what was sold, for income by service
+function netLines(doc) {
+  const sub = Number(doc.subtotal) || 0; const f = sub ? (sub - (Number(doc.discount) || 0)) / sub : 0;
+  return (doc.items || []).map((i) => ({ name: i.desc || 'Other', amount: (Number(i.qty) || 0) * (Number(i.price) || 0) * f }));
+}
+// share of a payment that is income (the rest is sales tax collected for the state)
+const preTaxShare = (doc) => (Number(doc.total) > 0 ? Math.max(0, Math.min(1, (doc.total - (Number(doc.tax) || 0)) / doc.total)) : 1);
+// every amount of money in (and refunds out), dated: invoice payments, invoices marked paid before payments were itemized, quote deposits
+function cashMoves() {
+  const out = [];
+  const add = (doc, kind, date, amount) => { if (date && amount) out.push({ doc, kind, date: String(date).slice(0, 10), amount: round2(amount) }); };
+  const refunds = (doc, kind, list) => (list || []).filter((r) => r.status !== 'failed' && r.status !== 'canceled').forEach((r) => add(doc, kind, r.at, -(Number(r.amount) || 0)));
+  for (const inv of db.invoices) {
+    if ((inv.payments || []).length) inv.payments.forEach((p) => { add(inv, 'invoice', p.date, Number(p.amount) || 0); refunds(inv, 'invoice', p.refunds); });
+    else if (inv.status === 'paid' && inv.paidAt) add(inv, 'invoice', inv.paidAt, Number(inv.paidAmount || inv.total) || 0);
+  }
+  for (const q of db.quotes) if (q.depositPaidAt) { add(q, 'quote', q.depositPaidAt, Number(q.depositPaidAmount ?? q.depositFee) || 0); refunds(q, 'quote', q.depositRefunds); }
+  return out;
+}
+function profitLoss(from, to, basis) {
+  const income = {}; let tax = 0; const months = {};
+  const month = (d) => months[d.slice(0, 7)] || (months[d.slice(0, 7)] = { month: d.slice(0, 7), income: 0, expenses: 0 });
+  const addIncome = (name, amt, d) => { income[name] = (income[name] || 0) + amt; month(d).income += amt; };
+  if (basis === 'accrual') { // income when invoiced
+    for (const inv of db.invoices) {
+      const d = String(inv.issueDate || inv.createdAt || '').slice(0, 10);
+      if (inv.status === 'draft' || !inRange(d, from, to)) continue;
+      netLines(inv).forEach((l) => addIncome(l.name, l.amount, d)); tax += Number(inv.tax) || 0;
+    }
+  } else { // income when paid: each payment split across the lines it paid for, sales tax taken out
+    for (const m of cashMoves()) {
+      if (!inRange(m.date, from, to)) continue;
+      const share = preTaxShare(m.doc); const lines = netLines(m.doc); const base = lines.reduce((s, l) => s + l.amount, 0);
+      const net = m.amount * share; tax += m.amount - net;
+      if (m.kind === 'quote') addIncome('Deposits received', net, m.date);
+      else if (!base) addIncome('Other income', net, m.date);
+      else lines.forEach((l) => addIncome(l.name, net * l.amount / base, m.date));
+    }
+  }
+  const exp = {};
+  for (const e of db.expenses) { const d = String(e.date || '').slice(0, 10); if (!inRange(d, from, to)) continue; const c = e.category || 'Other'; exp[c] = (exp[c] || 0) + (Number(e.amount) || 0); month(d).expenses += Number(e.amount) || 0; }
+  const list = (o) => Object.entries(o).map(([name, amount]) => ({ name, amount: round2(amount) })).filter((x) => x.amount).sort((a, b) => b.amount - a.amount);
+  const incomeList = list(income); const expList = list(exp);
+  const totalIncome = round2(incomeList.reduce((s, x) => s + x.amount, 0)); const totalExpenses = round2(expList.reduce((s, x) => s + x.amount, 0));
+  return { basis, from, to, income: incomeList, expenses: expList, totalIncome, totalExpenses, net: round2(totalIncome - totalExpenses), margin: totalIncome ? Math.round((totalIncome - totalExpenses) / totalIncome * 1000) / 10 : null, taxCollected: round2(tax),
+    byMonth: Object.values(months).sort((a, b) => a.month.localeCompare(b.month)).map((m) => ({ month: m.month, income: round2(m.income), expenses: round2(m.expenses), net: round2(m.income - m.expenses) })) };
+}
+// each job's invoiced amount (before tax) against the expenses logged to it
+function jobProfit(from, to) {
+  return db.jobs.filter((j) => inRange(j.date || j.createdAt, from, to)).map((j) => {
+    const invs = db.invoices.filter((i) => i.jobId === j.id && i.status !== 'draft');
+    const revenue = round2(invs.reduce((s, i) => s + (Number(i.subtotal) || 0) - (Number(i.discount) || 0), 0));
+    const costs = round2(db.expenses.filter((e) => e.jobId === j.id).reduce((s, e) => s + (Number(e.amount) || 0), 0));
+    const profit = round2(revenue - costs);
+    return { id: j.id, number: j.number, title: j.title, client: (findClient(j.clientId) || {}).name || '', date: String(j.date || j.createdAt || '').slice(0, 10), status: j.status, invoices: invs.length, revenue, costs, profit, margin: revenue ? Math.round(profit / revenue * 1000) / 10 : null };
+  }).filter((j) => j.revenue || j.costs).sort((a, b) => b.date.localeCompare(a.date));
+}
+// unpaid invoices by how long past due, as of today
+function receivablesAging() {
+  const today = iso(new Date()); const BUCKETS = ['current', 'd1_30', 'd31_60', 'd61_90', 'd90']; const zero = () => Object.fromEntries(BUCKETS.map((b) => [b, 0]));
+  const bucket = (days) => (days <= 0 ? 'current' : days <= 30 ? 'd1_30' : days <= 60 ? 'd31_60' : days <= 90 ? 'd61_90' : 'd90');
+  const invoices = []; const byClient = {}; const totals = zero();
+  for (const inv of db.invoices) {
+    if (inv.status === 'draft' || inv.status === 'paid') continue;
+    const { balanceDue } = invoiceCredits(inv); if (balanceDue <= 0) continue;
+    const days = inv.dueDate ? Math.floor((Date.parse(today) - Date.parse(inv.dueDate)) / 864e5) : 0; const b = bucket(days);
+    const c = findClient(inv.clientId) || {}; const row = byClient[inv.clientId] || (byClient[inv.clientId] = { clientId: inv.clientId, client: c.name || 'Unknown client', ...zero(), total: 0 });
+    row[b] += balanceDue; row.total += balanceDue; totals[b] += balanceDue;
+    invoices.push({ id: inv.id, number: inv.number, client: c.name || '', issueDate: inv.issueDate, dueDate: inv.dueDate, daysOverdue: Math.max(0, days), bucket: b, balance: balanceDue, total: inv.total });
+  }
+  const r2 = (o) => { BUCKETS.concat('total').forEach((k) => { if (k in o) o[k] = round2(o[k]); }); return o; };
+  return { asOf: today, buckets: BUCKETS, totals: r2({ ...totals, total: BUCKETS.reduce((s, b) => s + totals[b], 0) }), clients: Object.values(byClient).map(r2).sort((a, b) => b.total - a.total), invoices: invoices.sort((a, b) => b.daysOverdue - a.daysOverdue) };
+}
+const reportRange = (req) => {
+  const today = iso(new Date()); const from = validDay(req.query.from) ? req.query.from : `${today.slice(0, 4)}-01-01`; const to = validDay(req.query.to) ? req.query.to : today;
+  return from <= to ? [from, to] : [to, from];
+};
+app.get('/api/reports/profit-loss', (req, res) => { const [from, to] = reportRange(req); res.json(profitLoss(from, to, req.query.basis === 'accrual' ? 'accrual' : 'cash')); });
+app.get('/api/reports/jobs', (req, res) => { const [from, to] = reportRange(req); res.json({ from, to, jobs: jobProfit(from, to) }); });
+app.get('/api/reports/aging', (req, res) => res.json(receivablesAging()));
+
 app.get('/api/tax-summary', (req, res) => {
   const year = String(req.query.year || new Date().getFullYear());
   const paid = db.invoices.filter((i) => i.status === 'paid' && String(i.paidAt).startsWith(year));
@@ -3098,8 +3183,157 @@ app.put('/api/connections/:kind', async (req, res) => {
   } catch (e) { connFail(res, e); }
 });
 
+// ---------- Settings → QuickBooks & Xero (lib/accounting.js): clients, invoices, payments and expenses sent to the business's books ----------
+// One way, Worklio → QuickBooks Online or Xero, every 15 minutes once turned on (and with Sync now). db.accounting holds the settings and
+// what's been sent (map: our id → their id, plus a fingerprint so an edited invoice or expense is sent again); the tokens stay in the secrets.
+// Only records dated on or after the start date are sent, so books already kept by hand don't get duplicates.
+const books = () => db.accounting || null;
+const booksConn = () => secrets().accounting || null;
+const hashOf = (o) => crypto.createHash('sha1').update(JSON.stringify(o)).digest('hex').slice(0, 16);
+const booksDay = (s) => String(s || '').slice(0, 10);
+const BOOKS_MAP = () => ({ clients: {}, invoices: {}, payments: {}, expenses: {} });
+function saveAccounting(kind, conn) {
+  const old = books(); const remoteId = conn.realmId || conn.tenantId; const now = new Date().toISOString();
+  const keep = old && old.provider === kind && old.remoteId === remoteId; // the same company again: keep what was already sent
+  db.accounting = keep ? { ...old, company: conn.company, needsReconnect: false } : { provider: kind, remoteId, company: conn.company, connectedAt: now, startDate: iso(new Date()).slice(0, 8) + '01', settings: {}, categoryAccounts: {}, auto: false, map: BOOKS_MAP(), errors: {}, log: [] };
+  db.secrets = { ...secrets(), accounting: conn }; save();
+  const t = tenancy.current(); t.accounting = kind; tenancy.savePlatform(); // Alpha shows how many businesses use each
+}
+// what's been paid on an invoice, as payments for the books: the quote deposit credited to it, then each payment less its refunds
+function booksPayments(inv) {
+  const cr = invoiceCredits(inv, true); const out = [];
+  if (cr.depositApplied > 0) out.push({ key: 'dep-' + inv.id, amount: cr.depositApplied, date: cr.depositAppliedAt, reference: `Deposit, quote ${cr.depositQuote}`.slice(0, 21), note: `Deposit paid on quote ${cr.depositQuote} (Worklio Pro)` });
+  if ((inv.payments || []).length) {
+    for (const p of inv.payments) { const amount = round2((Number(p.amount) || 0) - refundedOf(p.refunds)); if (amount > 0 && !/^demo/.test(p.method || '')) out.push({ key: p.id, amount, date: p.date, reference: p.reference || '', note: `${p.method || 'Payment'} (Worklio Pro)` }); }
+  } else if (inv.status === 'paid' && inv.paidAt && !/^demo/.test(inv.paymentMethod || '')) {
+    const amount = round2(Math.min(Number(inv.paidAmount || inv.total) || 0, (inv.total || 0) - cr.depositApplied)); if (amount > 0) out.push({ key: 'i-' + inv.id, amount, date: inv.paidAt, reference: '', note: `${inv.paymentMethod || 'Payment'} (Worklio Pro)` });
+  }
+  return out;
+}
+const booksInvoiceHash = (inv) => hashOf([inv.number, inv.clientId, inv.issueDate, inv.dueDate, inv.items, inv.discount, inv.tax, inv.total, inv.notes]);
+const booksExpenseHash = (e) => hashOf([e.date, e.amount, e.category, e.vendor, e.description, e.jobId]);
+const booksInvoicesDue = (B) => db.invoices.filter((inv) => inv.status !== 'draft' && booksDay(inv.issueDate || inv.createdAt) >= (B.startDate || '') && (B.map.invoices[inv.id] || {}).h !== booksInvoiceHash(inv));
+const booksExpensesDue = (B) => db.expenses.filter((e) => booksDay(e.date) >= (B.startDate || '') && (B.map.expenses[e.id] || {}).h !== booksExpenseHash(e));
+// payments waiting: only on invoices already in the books (an invoice waiting goes first, then its payments)
+const booksPaymentsDue = (B) => db.invoices.filter((inv) => B.map.invoices[inv.id]).flatMap((inv) => booksPayments(inv).filter((p) => !B.map.payments[p.key]).map((p) => ({ inv, p })));
+const booksRunning = new Set(); // accounts syncing right now
+// retry: Sync now tries everything again; the automatic run leaves a record that failed in the last 6 hours, unchanged, for later
+async function syncBooks({ limit = 150, retry = false } = {}) {
+  const B = books(); const conn = booksConn(); const P = B && accounting.PROVIDERS[B.provider];
+  if (!B || !conn || !P) throw Object.assign(new Error('Connect QuickBooks or Xero first'), { status: 400 });
+  const tid = tenancy.current().id; if (booksRunning.has(tid)) return { busy: true };
+  booksRunning.add(tid);
+  B.map = { ...BOOKS_MAP(), ...(B.map || {}) }; B.errors = B.errors || {}; B.log = B.log || []; const map = B.map;
+  let sent = 0; let failed = 0; let stop = null; let options = null; const now = () => new Date().toISOString();
+  const pace = () => new Promise((r) => setTimeout(r, P.pace));
+  const full = () => stop || sent + failed >= limit;
+  const log = (kind, label, ok, msg) => { B.log.unshift({ at: now(), kind, label, ok, msg: msg || '' }); if (B.log.length > 100) B.log.length = 100; };
+  const skip = (key, h) => { const e = B.errors[key]; return !retry && e && e.h === h && Date.now() - Date.parse(e.at) < 6 * 3600e3; };
+  const attempt = async (key, h, kind, label, fn) => {
+    try { await fn(); delete B.errors[key]; sent++; log(kind, label, true); } catch (e) {
+      failed++; B.errors[key] = { kind, label, msg: String(e.message || 'Something went wrong').slice(0, 500), at: now(), h }; log(kind, label, false, e.message);
+      if (e.reconnect || e.busy || e.status === 502) stop = e; // no point going on: signed out, rate-limited or the service is down
+    }
+    await pace(); if (sent % 10 === 0) save();
+  };
+  const customer = async (clientId) => {
+    const c = findClient(clientId); if (!c) throw new Error('The client on this invoice was deleted');
+    const h = hashOf([c.name, c.company, c.email, c.phone, c.address]); const m = map.clients[c.id];
+    if (m && m.h === h) return m.rid;
+    const rid = await P.customer(conn, c, m && m.rid); await pace(); map.clients[c.id] = { rid, h }; return rid;
+  };
+  try {
+    for (const inv of booksInvoicesDue(B)) {
+      if (full()) break; const h = booksInvoiceHash(inv); const key = 'inv:' + inv.id; if (skip(key, h)) continue; const m = map.invoices[inv.id];
+      await attempt(key, h, 'invoice', `Invoice ${inv.number}`, async () => { P.checkInvoice(B.settings || {}, inv); const customerId = await customer(inv.clientId); map.invoices[inv.id] = { rid: await P.invoice(conn, inv, { settings: B.settings || {}, customerId }, m && m.rid), h }; });
+    }
+    for (const { inv, p } of booksPaymentsDue(B)) {
+      if (full()) break; const key = 'pay:' + p.key; const h = hashOf([p.amount, p.date]); if (skip(key, h)) continue;
+      await attempt(key, h, 'payment', `${money(p.amount)} paid on invoice ${inv.number}`, async () => { const customerId = await customer(inv.clientId); map.payments[p.key] = { rid: await P.payment(conn, p, { settings: B.settings || {}, customerId, invoiceId: map.invoices[inv.id].rid }), invoiceId: inv.id }; });
+    }
+    for (const e of booksExpensesDue(B)) {
+      if (full()) break; const h = booksExpenseHash(e); const key = 'exp:' + e.id; if (skip(key, h)) continue; const m = map.expenses[e.id]; const job = e.jobId && db.jobs.find((j) => j.id === e.jobId);
+      await attempt(key, h, 'expense', `${e.category || 'Expense'} ${money(e.amount)}${e.vendor ? ` · ${e.vendor}` : ''}`, async () => {
+        if (!options) options = await P.options(conn);
+        map.expenses[e.id] = { rid: await P.expense(conn, e, { settings: B.settings || {}, options, categoryAccount: (B.categoryAccounts || {})[e.category] || '', job: job ? job.number : '' }, m && m.rid), h };
+      });
+    }
+  } finally {
+    B.lastSyncAt = now(); B.lastResult = { sent, failed, stopped: stop ? stop.message : '', more: !stop && sent + failed >= limit };
+    if (stop && stop.reconnect) B.needsReconnect = true;
+    save(); booksRunning.delete(tid);
+  }
+  return B.lastResult;
+}
+function booksView() {
+  const B = books(); const conn = booksConn();
+  const providers = Object.entries(accounting.PROVIDERS).map(([id, p]) => ({ id, name: p.name, available: social.available(id) }));
+  const base = { plan: tenancy.has('accounting'), providers, sandbox: social.apps().quickbooks.sandbox };
+  if (!B || !conn) return { ...base, connected: null };
+  const map = { ...BOOKS_MAP(), ...(B.map || {}) }; const BB = { ...B, map };
+  return { ...base, connected: B.provider, name: accounting.PROVIDERS[B.provider].name, company: B.company, connectedAt: B.connectedAt, startDate: B.startDate, settings: B.settings || {}, categoryAccounts: B.categoryAccounts || {}, auto: !!B.auto,
+    lastSyncAt: B.lastSyncAt || null, lastResult: B.lastResult || null, needsReconnect: !!B.needsReconnect, syncing: booksRunning.has(tenancy.current().id),
+    sent: { clients: Object.keys(map.clients).length, invoices: Object.keys(map.invoices).length, payments: Object.keys(map.payments).length, expenses: Object.keys(map.expenses).length },
+    waiting: { invoices: booksInvoicesDue(BB).length, payments: booksPaymentsDue(BB).length, expenses: booksExpensesDue(BB).length },
+    errors: Object.values(B.errors || {}).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 50).map(({ h, ...e }) => e), log: (B.log || []).slice(0, 30),
+    categories: [...new Set(db.expenses.map((e) => e.category).filter(Boolean))].sort() };
+}
+const booksAdmin = (req, res) => { if (isAdmin(currentUser(req))) return true; res.status(403).json({ error: 'Only the account owner or an admin can manage QuickBooks and Xero' }); return false; };
+app.get('/api/accounting', (req, res) => res.json(booksView()));
+app.post('/api/accounting/:kind/start', (req, res) => {
+  if (!booksAdmin(req, res)) return; const kind = req.params.kind;
+  if (!accounting.has(kind)) return res.status(404).json({ error: 'Unknown connection' });
+  if (!social.available(kind)) return res.status(503).json({ error: 'This connection isn’t available yet.' });
+  const B = books(); if (B && booksConn() && B.provider !== kind) return res.status(400).json({ error: `Disconnect ${accounting.PROVIDERS[B.provider].name} first` });
+  res.json({ url: accounting.startUrl(kind, tenancy.current().id, currentUser(req).id) });
+});
+// the accounts, products and tax rates in the connected books, for the settings
+app.get('/api/accounting/options', async (req, res) => {
+  if (!booksAdmin(req, res)) return; const B = books(); const conn = booksConn(); if (!B || !conn) return res.status(400).json({ error: 'Connect QuickBooks or Xero first' });
+  try { const o = await accounting.PROVIDERS[B.provider].options(conn); save(); res.json(o); } catch (e) { if (e.reconnect) { B.needsReconnect = true; } save(); res.status(e.status || 502).json({ error: e.message }); }
+});
+app.put('/api/accounting', (req, res) => {
+  if (!booksAdmin(req, res)) return; const B = books(); if (!B || !booksConn()) return res.status(400).json({ error: 'Connect QuickBooks or Xero first' });
+  const b = req.body || {}; const str = (v) => String(v || '').trim().slice(0, 100);
+  if ('startDate' in b) { if (!/^\d{4}-\d{2}-\d{2}$/.test(String(b.startDate))) return res.status(400).json({ error: 'Choose the date to start sending from' }); B.startDate = b.startDate; }
+  if (b.settings && typeof b.settings === 'object') B.settings = Object.fromEntries(['itemId', 'salesAccount', 'taxType', 'depositAccount', 'bankAccount', 'expenseAccount'].map((k) => [k, str(k in b.settings ? b.settings[k] : (B.settings || {})[k])]));
+  if (b.categoryAccounts && typeof b.categoryAccounts === 'object') B.categoryAccounts = Object.fromEntries(Object.entries(b.categoryAccounts).slice(0, 200).map(([k, v]) => [String(k).slice(0, 100), str(v)]).filter(([, v]) => v));
+  if ('auto' in b) B.auto = b.auto === true;
+  save(); res.json(booksView());
+});
+app.post('/api/accounting/sync', async (req, res) => {
+  if (!booksAdmin(req, res)) return; const B = books();
+  if (!B || !booksConn()) return res.status(400).json({ error: 'Connect QuickBooks or Xero first' });
+  if (!social.available(B.provider)) return res.status(503).json({ error: `${accounting.PROVIDERS[B.provider].name} isn’t available right now` });
+  B.needsReconnect = false; // runs in the background (Xero allows 60 calls a minute): the page checks back until it's done
+  syncBooks({ retry: true }).catch((e) => console.error('accounting sync:', e.message)); res.json(booksView());
+});
+// clear what was sent, so everything from the start date goes again (e.g. after deleting it in the books)
+app.post('/api/accounting/reset', (req, res) => {
+  if (!booksAdmin(req, res)) return; const B = books(); if (!B) return res.status(400).json({ error: 'Connect QuickBooks or Xero first' });
+  B.map = BOOKS_MAP(); B.errors = {}; save(); res.json(booksView());
+});
+app.delete('/api/accounting', async (req, res) => {
+  if (!booksAdmin(req, res)) return; const B = books(); const conn = booksConn();
+  if (B && conn) await accounting.PROVIDERS[B.provider].revoke(conn);
+  const sec = { ...secrets() }; delete sec.accounting; db.secrets = sec; if (B) B.auto = false; save(); // what was sent stays, in case the same company connects again
+  const t = tenancy.current(); delete t.accounting; tenancy.savePlatform(); res.json(booksView());
+});
+// every 15 minutes: each account with sync turned on sends what's new, one account at a time
+let booksTick = false;
+async function syncAllBooks() {
+  if (booksTick) return; booksTick = true;
+  try {
+    for (const t of tenancy.platform().tenants.filter((x) => x.accounting && x.status === 'active')) {
+      await tenancy.run(t, async () => { const B = books(); if (!B || !B.auto || B.needsReconnect || !booksConn() || !tenancy.has('accounting') || !social.available(B.provider)) return; await syncBooks({ limit: 100 }); })
+        .catch((e) => console.error('accounting sync:', t.slug, e.message));
+    }
+  } finally { booksTick = false; }
+}
+
 // ---------- App Marketplace (lib/marketplace.js): apps that connect today, and "I want this" for the ones on the way ----------
 function liveAppState(a) {
+  if (accounting.has(a.id)) { const B = books(); return { planOk: tenancy.has('accounting'), available: social.available(a.id), connected: !!(B && B.provider === a.id && booksConn()) }; }
   const planOk = !a.feature || tenancy.has(a.feature);
   if (SOCIAL_KINDS.includes(a.id)) return { planOk, available: social.available(a.id), connected: !!connOf(a.id) };
   if (a.id === 'bluesky' || a.id === 'x') return { planOk, available: social.available(a.id), connected: !!connOf(a.id) }; // the business's own app password or X app: nothing for the platform to set up
@@ -3742,12 +3976,12 @@ const ideasApp = require('./lib/ideas')({
 const legal = require('./lib/legal');
 const platformApp = require('./lib/platform')({
   hashPassword, checkPassword, sha, normEmail, cookies, tooMany, recordFailure, clearFailures: (k) => failures.delete(k),
-  createOwner, ownerLink, sendVerifyEmail, sendPasswordReset, loginsFor, handoffUrl, tenantStats, endSupportSessions, sendEmail, sendTemplate, sendSms, emailProvider: serverEmailProvider, applyStripeSession, syncStripeAccount, resetDemo, saveConnection, setCompanyEmail: (e) => { if (!db.company.email) { db.company.email = e; save(); } }, setCompanyPhone: (p) => { if (p && !db.company.phone) { db.company.phone = p; save(); } },
+  createOwner, ownerLink, sendVerifyEmail, sendPasswordReset, loginsFor, handoffUrl, tenantStats, endSupportSessions, sendEmail, sendTemplate, sendSms, emailProvider: serverEmailProvider, applyStripeSession, syncStripeAccount, resetDemo, saveConnection, saveAccounting, setCompanyEmail: (e) => { if (!db.company.email) { db.company.email = e; save(); } }, setCompanyPhone: (p) => { if (p && !db.company.phone) { db.company.phone = p; save(); } },
   setCompanyIndustry: (i) => { Object.assign(db.company, i); save(); },
   planProduct, // the Stripe product for a plan (Alpha → an account → Subscription → Change plan)
 });
 // which app answers: the platform's (its own domain, or /alpha… while developing) or an account's
-const PLATFORM_PATHS = /^\/(alpha(\/.*)?|platform(\/.*)?|stripe\/go\/[a-z]+|oauth\/(google|meta|tiktok|linkedin|pinterest|threads)\/callback|home|features|pricing|signup|sign-in|supporters|industries(\/[a-z-]+)?|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;
+const PLATFORM_PATHS = /^\/(alpha(\/.*)?|platform(\/.*)?|stripe\/go\/[a-z]+|oauth\/(google|meta|tiktok|linkedin|pinterest|threads|quickbooks|xero)\/callback|home|features|pricing|signup|sign-in|supporters|industries(\/[a-z-]+)?|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;
 function dispatch(req, res) {
   // www. → the bare domain, so search engines see one copy of each page (the canonical links name the bare domain). Page loads only: a form or webhook posted to www. still works
   if (!tenancy.devMode && /^(GET|HEAD)$/.test(req.method) && tenancy.hostOnly(req.headers.host) === 'www.' + tenancy.PLATFORM_DOMAIN) { res.writeHead(301, { Location: tenancy.platformUrl() + req.url }); return res.end(); }
@@ -3794,6 +4028,7 @@ if (rpp > 0) { // same for the platform console login: node server.js --reset-pl
 setTimeout(remindExpiring, 10e3); setInterval(remindExpiring, 3600e3); // reminder emails before an account's last day of access
 setTimeout(() => bizAuto.runAll().catch((e) => console.error('automations:', e.message)), 30e3); setInterval(() => bizAuto.runAll().catch((e) => console.error('automations:', e.message)), 3600e3); // checks every automation hourly
 setTimeout(pushOverviews, 20e3); setInterval(pushOverviews, 15 * 60e3); // the morning's Today's work overview notifications
+setTimeout(() => syncAllBooks().catch(() => {}), 45e3); setInterval(() => syncAllBooks().catch(() => {}), 15 * 60e3); // QuickBooks & Xero: send what's new
 require('http').createServer(dispatch).listen(PORT, () => {
   console.log(`App running at ${BASE_URL}`);
   console.log(tenancy.devMode ? `Alpha console: ${BASE_URL}/alpha (set PLATFORM_DOMAIN to host accounts on their own addresses)` : `Platform: ${tenancy.platformUrl()}  ·  accounts at <address>.${tenancy.PLATFORM_DOMAIN}`);
