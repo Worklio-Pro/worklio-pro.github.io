@@ -146,7 +146,7 @@ const tabsFor = () => (isSupport() ? ['accounts', 'messages', 'forum', 'help'] :
 const tabFromHash = () => {
   let h = location.hash.slice(1); if (h === 'pricing') h = 'plans';
   if (h === 'automations' && !isSupport()) { msgTab = 'automations'; return 'messages'; }
-  if (h === 'compare') { frCompare = true; return 'forum'; } // #compare: Help Center → Comparison
+  if (h === 'compare' && !isSupport()) { frCompare = true; return 'forum'; } // #compare: Help Center → Comparison (owner only)
   if (h === 'integrations' && !isSupport()) { setTab = 'integrations'; return 'settings'; } // Integrations moved into Settings; old links still land there
   return tabsFor().includes(h) ? h : 'accounts';
 };
@@ -2027,7 +2027,7 @@ const hcSlugify = (s) => String(s || '').toLowerCase().replace(/\{product\}/g, '
 // one part at a time: Articles (with what readers were looking for), Topics, Home page
 let hcTab = 'articles';
 // Help Center's tabs: the articles' three parts (#help) and the Board (#forum)
-const helpSeg = () => sideNav('Help Center', 'hcTab', [['articles', 'Articles', HC ? HC.comments.length : 0, 'What people were looking for'], ['topics', 'Topics'], ['home', 'Home page'], ['forum', 'Board', D.forumNew, 'New posts'], ['compare', 'Comparison']]
+const helpSeg = () => sideNav('Help Center', 'hcTab', [['articles', 'Articles', HC ? HC.comments.length : 0, 'What people were looking for'], ['topics', 'Topics'], ['home', 'Home page'], ['forum', 'Board', D.forumNew, 'New posts'], ...(isSupport() ? [] : [['compare', 'Comparison']])]
   .map(([k, l, n, title]) => [k, l, n || undefined, tab === 'forum' ? k === (frCompare && !frSel ? 'compare' : 'forum') : hcTab === k, title]));
 A.hcTab = (d) => {
   if (d.k === 'forum' || d.k === 'compare') { frCompare = d.k === 'compare'; frSel = ''; if (tab === 'forum') render(); else location.hash = 'forum'; return; }
@@ -2283,55 +2283,18 @@ A.frOpen = (d) => { frSel = d.id; render(); window.scrollTo(0, 0); };
 A.frBack = () => { frSel = ''; render(); }; // back to where the post was opened from: the Board's list or the Comparison
 
 /* ===== Comparison: Worklio Pro against Jobber, Housecall Pro, Workiz and ServiceTitan.
-   Competitors' columns are fixed here (edit CMP_ROWS when they change). Worklio's column comes live from the Board:
-   a row with a Board title shows that post's status, so changing a status in the Board updates this page. ===== */
-let frCompare = false; let cmpGaps = false;
-const CMP_COLS = [['Jobber', '~$49–$499/mo'], ['Housecall Pro', '~$79–$329/mo'], ['Workiz', 'Quote only'], ['ServiceTitan', 'Quote only']];
-// [group] or [feature, note, Board post title (or '' when Worklio already has it), Jobber, Housecall Pro, Workiz, ServiceTitan]
-// y included · p partly or higher plans · a paid add-on · n not offered
-const CMP_ROWS = [
-  ['Sales & billing'],
-  ['Quotes with online approval and signature', 'Clients approve and sign online, with deposits', '', 'y', 'y', 'y', 'y'],
-  ['Online card payments', '', '', 'y', 'y', 'y', 'y'],
-  ['Good / Better / Best quote options', 'Packaged options the client picks from', 'Good / Better / Best quote options', 'p', 'y', 'p', 'y'],
-  ['Customer financing', 'Clients pay over time for bigger jobs', 'Customer financing', 'y', 'y', 'y', 'y'],
-  ['Batch invoicing & late fees', '', 'Batch invoicing & late fees', 'y', 'y', 'p', 'y'],
-  ['Tap to Pay on phone', 'Card payments with no reader', 'Tap to Pay on phone', 'y', 'y', 'y', 'y'],
-  ['Service plans & memberships', 'Recurring billing with scheduled visits', 'Service plans & memberships', 'p', 'y', 'p', 'y'],
-  ['Scheduling & the field'],
-  ['On My Way texts', 'Arrival time sent to the client', 'On My Way texts', 'y', 'y', 'y', 'y'],
-  ['Recurring jobs', 'Weekly, monthly or custom repeats', 'Recurring jobs', 'y', 'y', 'y', 'y'],
-  ['Time tracking & timesheets', 'Clock in/out, approval, payroll export', 'Time tracking & timesheets', 'y', 'y', 'y', 'y'],
-  ['Dispatch map & route optimization', '', 'Dispatch map & route optimization', 'p', 'p', 'y', 'y'],
-  ['Job checklists & custom forms', '', 'Job checklists & custom forms', 'y', 'y', 'y', 'y'],
-  ['Inventory & purchase orders', '', 'Inventory & purchase orders', 'n', 'n', 'p', 'y'],
-  ['Equipment history per property', '', 'Equipment history per property', 'n', 'p', 'n', 'y'],
-  ['Clients & communication'],
-  ['Client portal', 'Visits, quotes, invoices and requests', '', 'y', 'y', 'y', 'y'],
-  ['Online booking', '', '', 'y', 'y', 'y', 'a'],
-  ['Booking widget for your website', '', 'Booking widget for your website', 'y', 'y', 'y', 'a'],
-  ['Two-way texting inbox', '', 'Two-way texting inbox', 'p', 'y', 'a', 'y'],
-  ['Missed-call text-back / AI receptionist', '', 'Missed-call text-back', 'a', 'a', 'a', 'a'],
-  ['Marketing'],
-  ['Review requests & Google reviews', '', '', 'a', 'y', 'y', 'a'],
-  ['Social media posting', 'Facebook, Instagram, TikTok, LinkedIn and more', '', 'n', 'n', 'n', 'n'],
-  ['Email marketing campaigns', '', 'Email marketing campaigns', 'a', 'a', 'p', 'a'],
-  ['AI writing assistant', '', '', 'y', 'y', 'y', 'y'],
-  ['Money, team & integrations'],
-  ['Job profit report', 'Revenue against costs per job', 'Job profit report', 'p', 'p', 'y', 'y'],
-  ['QuickBooks Online sync', '', 'QuickBooks & Xero sync', 'y', 'p', 'y', 'y'],
-  ['Xero sync', '', 'QuickBooks & Xero sync', 'y', 'n', 'n', 'n'],
-  ['Custom roles & permissions', '', '', 'p', 'p', 'y', 'y'],
-  ['Commissions for team members', '', 'Commissions for team members', 'n', 'p', 'y', 'y'],
-  ['Zapier & public API', '', 'Zapier & public API', 'y', 'p', 'y', 'y'],
-  ['Multiple locations', '', 'Multiple locations', 'n', 'p', 'p', 'y'],
-];
+   Owner only: the rows come from GET /api/platform/compare (lib/compare.js), which support logins can't call, and support logins don't get the menu item.
+   Worklio's column comes live from the Board: a row with a Board title shows that post's status, so changing a status in the Board updates this page. ===== */
+let frCompare = false; let cmpGaps = false; let CMP = null;
 const CMP_MARK = { y: ['yes', 'Included'], p: ['part', 'Partly'], a: ['addon', 'Add-on'], n: ['no', 'No'] };
 // Worklio's status for a row: 'have' when it isn't on the Board, else the Board post's status (null when that post was deleted or renamed)
 const cmpPost = (title) => title && FR.posts.find((p) => p.title.trim().toLowerCase() === title.toLowerCase());
 const cmpUs = (r) => { if (!r[2]) return { s: 'have', l: 'Included' }; const p = cmpPost(r[2]); return p ? { s: p.status, l: FR.statuses[p.status], id: p.id } : { s: 'missing', l: 'Not on the Board' }; };
 const CMP_GAP = ['open', 'review', 'planned', 'progress', 'beta', 'declined', 'missing'];
-function compareView(main) {
+async function compareView(main) {
+  if (isSupport()) { frCompare = false; return frList(main); }
+  if (!CMP) { try { CMP = await api('GET', '/api/platform/compare'); } catch (e) { main.innerHTML = `<div class="head"><h1>Help Center</h1></div>${helpSeg()}<p class="muted">${esc(e.message)}</p>`; sideLayout(main); return; } }
+  const CMP_ROWS = CMP.rows; const CMP_COLS = CMP.cols;
   const feats = CMP_ROWS.filter((r) => r.length > 1).map((r) => ({ r, us: cmpUs(r) }));
   const pick = (ss) => [...new Set(feats.filter((f) => ss.includes(f.us.s)).map((f) => f.us.id ? f.r[2] : f.r[0]))];
   const box = (h, list, none) => `<div class="card cmp-box"><h3>${h}</h3>${list.length ? `<ul>${list.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : `<p class="muted" style="margin:0">${none}</p>`}</div>`;
