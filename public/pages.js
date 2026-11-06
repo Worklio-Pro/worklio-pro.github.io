@@ -1104,11 +1104,11 @@ function marketingConnect(C) {
   const B = C.bluesky || {};
   const bsky = card('Bluesky', CONN_ICONS.bluesky, B.connected
     ? `<span class="mk-on">Connected</span><small class="muted">@${esc(B.handle)}</small>${admin ? '<a class="mk-link" href="/settings/connections#conn-bluesky" data-link>Manage</a>' : ''}`
-    : admin ? '<button type="button" class="mk-btn" data-act="bskyConnect">+ Connect</button>' : '<small class="muted">Ask the account owner or an admin to connect it</small>', B.connected);
+    : B.available === false ? soon : admin ? '<button type="button" class="mk-btn" data-act="bskyConnect">+ Connect</button>' : ask, B.connected);
   const X = C.x || {};
   const xCard = card('X', CONN_ICONS.x, X.connected
     ? `<span class="mk-on">Connected</span><small class="muted">@${esc(X.username)}</small>${admin ? '<a class="mk-link" href="/settings/connections#conn-x" data-link>Manage</a>' : ''}`
-    : admin ? '<button type="button" class="mk-btn" data-act="xConnect">+ Connect</button>' : ask, X.connected);
+    : X.available === false ? soon : admin ? '<button type="button" class="mk-btn" data-act="xConnect">+ Connect</button>' : ask, X.connected);
   return `<section class="mk-connect"><h2>Connect your social accounts</h2><p class="muted">Pick where you want to publish. You can add or remove networks anytime.</p>
 <div class="mk-grp">Major networks</div><div class="mk-grid">${live('facebook', 'Facebook', (x) => x.name)}${live('instagram', 'Instagram', (x) => '@' + x.username)}${live('linkedin', 'LinkedIn', (x) => x.name)}${live('tiktok', 'TikTok', (x) => x.name)}${live('youtube', 'YouTube', (x) => x.name)}</div>
 <div class="mk-grp">More networks</div><div class="mk-grid">${bsky}${live('pinterest', 'Pinterest', (x) => x.name)}${live('threads', 'Threads', (x) => '@' + x.username)}${xCard}${gbp}</div></section>`;
@@ -1664,7 +1664,7 @@ async function connectionsPage(main) {
   const connect = (id) => ({ status: connChip('off', 'Not connected'), button: admin ? `<button type="button" class="btn alt conn-btn" data-act="socialConnect" data-kind="${id}">Connect</button>` : '' });
   const connected = (id, to, n) => ({ status: connChip('on', 'Connected'), connectedTo: `Connected to ${to}.${admin && n > 1 ? ` <button type="button" class="link-btn" data-act="socialChoose" data-kind="${id}">Change</button>` : ''}`,
     button: admin ? `<button type="button" class="btn alt conn-btn" data-act="socialDisconnect" data-kind="${id}">Disconnect</button>` : '' });
-  const state = (id, x, to) => (!x.available ? soon : x.connected ? connected(id, to, x.choices) : connect(id));
+  const state = (id, x, to) => (x.connected ? connected(id, to, x.choices) : !x.available ? soon : connect(id)); // already connected: still shown, so it can be disconnected
   const G = C.google; const F = C.facebook; const I = C.instagram; const B = C.bluesky || {};
   // Google's features, each managed on its own (Jobber-style sub-rows)
   const sub = (title, desc, chip, btn) => `<div class="conn-sub"><div><h3>${title} ${chip}</h3><p>${desc}</p></div>${btn}</div>`;
@@ -1689,11 +1689,11 @@ async function connectionsPage(main) {
     { id: 'bluesky', icon: 'bluesky', title: 'Bluesky account', desc: `Connect your Bluesky account with an app password to publish posts there.${B.connected ? posts : ''}`,
       ...(B.connected ? { status: connChip('on', 'Connected'), connectedTo: `Connected to <a href="https://bsky.app/profile/${encodeURIComponent(B.handle)}" target="_blank" rel="noopener"><strong>@${esc(B.handle)}</strong></a>.`,
         button: admin ? '<button type="button" class="btn alt conn-btn" data-act="socialDisconnect" data-kind="bluesky">Disconnect</button>' : '' }
-        : { status: connChip('off', 'Not connected'), button: admin ? '<button type="button" class="btn alt conn-btn" data-act="bskyConnect">Connect</button>' : '' }) },
+        : B.available === false ? soon : { status: connChip('off', 'Not connected'), button: admin ? '<button type="button" class="btn alt conn-btn" data-act="bskyConnect">Connect</button>' : '' }) },
     { id: 'x', icon: 'x', title: 'X account', desc: `Connect your X account with your own X developer app to publish posts there. X bills your developer account for each post.${C.x && C.x.connected ? posts : ''}`,
       ...(C.x && C.x.connected ? { status: connChip('on', 'Connected'), connectedTo: `Connected to <a href="https://x.com/${encodeURIComponent(C.x.username)}" target="_blank" rel="noopener"><strong>@${esc(C.x.username)}</strong></a>.`,
         button: admin ? '<button type="button" class="btn alt conn-btn" data-act="socialDisconnect" data-kind="x">Disconnect</button>' : '' }
-        : { status: connChip('off', 'Not connected'), button: admin ? '<button type="button" class="btn alt conn-btn" data-act="xConnect">Connect</button>' : '' }) },
+        : C.x && C.x.available === false ? soon : { status: connChip('off', 'Not connected'), button: admin ? '<button type="button" class="btn alt conn-btn" data-act="xConnect">Connect</button>' : '' }) },
     ...(aiOn() ? [{ id: 'ai', icon: 'ai', feature: 'ai', title: 'AI descriptions', button: '', body: '', status: integ.ai ? connChip('on', 'On') : connChip('off', 'Not available yet'),
       desc: `“Write with AI” drafts product and service descriptions from their name.` }] : []),
   ];

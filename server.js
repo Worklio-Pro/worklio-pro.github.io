@@ -2977,12 +2977,12 @@ const bookingUrl = () => `${baseUrl()}/book`;
 function connectionsView() {
   const g = connOf('google'); const f = connOf('facebook'); const bs = connOf('bluesky'); const x = connOf('x');
   return {
-    google: { available: social.ready('google'), connected: !!g, title: g ? g.title : '', address: g ? g.address : '', mapsUrl: g ? g.mapsUrl : '', reviewUrl: g ? g.reviewUrl : '', choices: g ? g.choices || 1 : 0,
+    google: { available: social.available('google'), connected: !!g, title: g ? g.title : '', address: g ? g.address : '', mapsUrl: g ? g.mapsUrl : '', reviewUrl: g ? g.reviewUrl : '', choices: g ? g.choices || 1 : 0,
       reviews: !!(g && g.reviews !== false), booking: !!(g && g.booking), bookingUrl: bookingUrl(), bookingPlan: tenancy.has('onlineBooking'), reviewsPlan: tenancy.has('reviews') },
-    facebook: { available: social.ready('facebook'), connected: !!f, name: f ? f.name : '', link: f ? f.link : '', choices: f ? f.choices || 1 : 0 },
-    bluesky: { available: true, connected: !!bs, handle: bs ? bs.handle : '' }, // the business's own handle and app password: nothing for the platform to set up
-    x: { available: true, connected: !!x, username: x ? x.username : '', name: x ? x.name : '' }, // the business's own X developer app
-    ...Object.fromEntries(Object.keys(networks.NETWORKS).map((k) => { const c = connOf(k); return [k, { available: social.ready(k), connected: !!c, name: c ? c.name || '' : '', username: c ? c.username || '' : '', link: c ? c.link || '' : '', choices: c ? c.choices || 1 : 0 }]; })),
+    facebook: { available: social.available('facebook'), connected: !!f, name: f ? f.name : '', link: f ? f.link : '', choices: f ? f.choices || 1 : 0 },
+    bluesky: { available: social.available('bluesky'), connected: !!bs, handle: bs ? bs.handle : '' }, // the business's own handle and app password: nothing for the platform to set up
+    x: { available: social.available('x'), connected: !!x, username: x ? x.username : '', name: x ? x.name : '' }, // the business's own X developer app
+    ...Object.fromEntries(Object.keys(networks.NETWORKS).map((k) => { const c = connOf(k); return [k, { available: social.available(k), connected: !!c, name: c ? c.name || '' : '', username: c ? c.username || '' : '', link: c ? c.link || '' : '', choices: c ? c.choices || 1 : 0 }]; })),
     postsPlan: tenancy.has('socialPosts'),
   };
 }
@@ -2997,19 +2997,19 @@ app.get('/api/connections', (req, res) => res.json(connectionsView()));
 // Bluesky: the handle and an app password, checked by signing in before they're saved
 const adminOnly = (req, res) => { if (isAdmin(currentUser(req))) return true; res.status(403).json({ error: 'Only the account owner or an admin can manage connections' }); return false; };
 app.post('/api/connections/bluesky', async (req, res) => {
-  if (!adminOnly(req, res)) return; const b = req.body || {};
+  if (!adminOnly(req, res)) return; if (!social.available('bluesky')) return res.status(503).json({ error: 'This connection isn’t available yet.' }); const b = req.body || {};
   try { setConnection('bluesky', await bluesky.connect(b.handle, b.appPassword)); res.json(connectionsView()); } catch (e) { res.status(e.status || 502).json({ error: e.message }); }
 });
 app.delete('/api/connections/bluesky', (req, res) => { if (!adminOnly(req, res)) return; setConnection('bluesky', null); res.json(connectionsView()); }); // the business can also revoke the app password in Bluesky
 // X: the keys from the business's own X developer app, checked with X before they're saved
 app.post('/api/connections/x', async (req, res) => {
-  if (!adminOnly(req, res)) return;
+  if (!adminOnly(req, res)) return; if (!social.available('x')) return res.status(503).json({ error: 'This connection isn’t available yet.' });
   try { setConnection('x', await xposts.connect(req.body || {})); res.json(connectionsView()); } catch (e) { res.status(e.status || 502).json({ error: e.message }); }
 });
 app.delete('/api/connections/x', (req, res) => { if (!adminOnly(req, res)) return; setConnection('x', null); res.json(connectionsView()); }); // the business can also regenerate the keys in its X app
 app.post('/api/connections/:kind/start', (req, res) => {
   const kind = connKind(req, res); if (!kind) return;
-  if (!social.ready(kind)) return res.status(503).json({ error: 'This connection isn’t available yet.' });
+  if (!social.available(kind)) return res.status(503).json({ error: 'This connection isn’t available yet.' });
   const back = (req.body || {}).back === '/social-posts' ? '/social-posts' : ''; // connecting from Marketing returns there
   res.json({ url: (networks.has(kind) ? networks.startUrl : social.startUrl)(kind, tenancy.current().id, currentUser(req).id, back) });
 });
@@ -3058,8 +3058,8 @@ app.put('/api/connections/:kind', async (req, res) => {
 // ---------- App Marketplace (lib/marketplace.js): apps that connect today, and "I want this" for the ones on the way ----------
 function liveAppState(a) {
   const planOk = !a.feature || tenancy.has(a.feature);
-  if (SOCIAL_KINDS.includes(a.id)) return { planOk, available: social.ready(a.id), connected: !!connOf(a.id) };
-  if (a.id === 'bluesky' || a.id === 'x') return { planOk, available: true, connected: !!connOf(a.id) }; // the business's own app password or X app: nothing for the platform to set up
+  if (SOCIAL_KINDS.includes(a.id)) return { planOk, available: social.available(a.id), connected: !!connOf(a.id) };
+  if (a.id === 'bluesky' || a.id === 'x') return { planOk, available: social.available(a.id), connected: !!connOf(a.id) }; // the business's own app password or X app: nothing for the platform to set up
   if (a.id === 'stripe') { const s = secrets(); const on = !!stripeKey() && (!!s.stripeChargesEnabled || !!s.stripeSecretKey || (tenancy.isDefault() && !!process.env.STRIPE_SECRET_KEY)); return { planOk, available: on || !!stripeLib.platformKey(), connected: on }; }
   if (a.id === 'homedepot') return { planOk, available: homeDepot.ready(), connected: !!hdSettings().on };
   if (a.id === 'claude') { const on = !!process.env.ANTHROPIC_API_KEY; return { planOk, available: on, connected: on }; }

@@ -594,7 +594,7 @@ A.savePlans = async () => {
 window.addEventListener('beforeunload', (e) => { if (D && draftPlans && plansDirty()) e.preventDefault(); });
 
 /* ===== settings ===== */
-const IG_TABS = [['email', 'Email', 'Email'], ['sms', 'Text messages', 'Text messages (Twilio)'], ['stripe', 'Stripe', 'Stripe'], ['google', 'Google', 'Google Business Profile'], ['meta', 'Facebook', 'Facebook (Meta)'], ['instagram', 'Instagram', 'Instagram'], ['tiktok', 'TikTok', 'TikTok'], ['ai', 'AI', 'AI'], ['marketplace', 'App Marketplace', 'App Marketplace']];
+const IG_TABS = [['email', 'Email', 'Email'], ['sms', 'Text messages', 'Text messages (Twilio)'], ['stripe', 'Stripe', 'Stripe'], ['google', 'Google', 'Google Business Profile'], ['meta', 'Facebook', 'Facebook (Meta)'], ['instagram', 'Instagram', 'Instagram'], ['tiktok', 'TikTok', 'TikTok'], ['soon', 'Coming soon', 'Coming soon'], ['ai', 'AI', 'AI'], ['marketplace', 'App Marketplace', 'App Marketplace']];
 let igTab = 'email';
 // Settings shows one box at a time, picked from a grouped list down the left (a dropdown on phones).
 // The Integrations group is one page (setTab 'integrations') showing one service at a time (igTab).
@@ -1651,7 +1651,7 @@ ${ig('App Marketplace', on(D.settings.marketplace !== false, 'On', 'Off'), `<p c
 <label class="switchline"><input type="checkbox" id="mkOn" ${D.settings.marketplace !== false ? 'checked' : ''}> Show the App Marketplace in every account</label>
 <p class="muted ig-p">Turned off, the page is hidden and Home Depot search stops in the product and service form. Google, Facebook, Instagram, Stripe and AI keep working: they’re set up on their own pages.</p>
 <h4>Home Depot prices ${on(I.homeDepot)}</h4><p class="muted ig-p">Businesses that turn on The Home Depot can search Home Depot products and prices from the product and service form. Home Depot has no public API, so searches go through <a href="https://serpapi.com/home-depot-search-api" target="_blank" rel="noopener">SerpApi</a>: each new search uses one SerpApi credit (repeat searches within an hour are free), up to 60 an hour per business.</p>${env('<code>SERPAPI_API_KEY</code> (from your SerpApi dashboard).')}`)}
-</div><div class="ig-col">${socialGroups(I, ig, on, copy)}</div></div>
+</div><div class="ig-col">${socialGroups(I, ig, on, copy)}${soonGroup(I, ig, on)}</div></div>
 <div class="ig-wide">${ig('Stripe', S.key ? `${on(true)} <span class="cstatus ${S.mode === 'live' ? 'active' : 'q-sent'}">${S.mode === 'live' ? 'Live' : 'Test mode'}</span>` : on(false), `<div class="ig-2"><div><p class="ig-d">Your Stripe account: plan payments when businesses sign up, and “Connect with Stripe” for businesses’ card payments from their clients.</p>
 ${S.keyVar ? `<p class="ig-env">Using <code>${S.keyVar}</code> from <code>.env</code>.</p>` : env('<code>BILLING_STRIPE_SECRET_KEY</code> (or <code>STRIPE_SECRET_KEY</code>).')}
 ${S.key ? '' : '<div class="note">Without a Stripe key, sign-up checkout and businesses’ invoice pay pages run demo payments that charge nobody, and businesses can’t connect Stripe.</div>'}
@@ -1695,6 +1695,9 @@ ${I.localhost ? '<p class="muted ig-p" style="margin-top:8px">Stripe can’t rea
     e.preventDefault(); const b = Object.fromEntries(new FormData(e.target)); if (!b.stripePublishableKey) delete b.stripePublishableKey;
     try { await api('PUT', '/api/platform/settings', b); await load(); toast('Card payment setup saved'); integrationsCard(box); } catch (x) { toast(x.message, true); }
   });
+  $$('input[data-soon]', box).forEach((c) => c.addEventListener('change', async () => {
+    try { await api('PUT', '/api/platform/social-soon/' + c.dataset.soon, { soon: c.checked }); toast(c.checked ? 'Businesses now see Coming soon' : 'Businesses can connect now'); integrationsCard(box); } catch (x) { c.checked = !c.checked; toast(x.message, true); }
+  }));
   $$('.oa-form', box).forEach((f) => f.addEventListener('submit', async (e) => {
     e.preventDefault(); try { await api('PUT', '/api/platform/oauth-apps/' + f.dataset.p, Object.fromEntries(new FormData(f))); toast(f.dataset.p === 'tiktok' ? 'Saved. Connect your account in Social.' : 'Saved. Businesses can connect now.'); integrationsCard(box); } catch (x) { toast(x.message, true); }
   }));
@@ -1742,6 +1745,13 @@ ${copy(T.redirectUri, 'TikTok redirect URI')}
 <ol class="ig-steps" start="3"><li>Under URL properties, verify your domain. TikTok downloads your posts’ videos and photos from it.</li>
 <li>Paste the app’s Client key and Client secret here. While testing, use the Sandbox keys; switch to the Production keys once TikTok approves the app. Or set <code>TIKTOK_CLIENT_KEY</code> and <code>TIKTOK_CLIENT_SECRET</code> in <code>.env</code>.</li></ol>
 ${form('tiktok', T, 'Client key', 'e.g. sbaw1234abcd5678', 'Client secret')}${I.localhost ? '<p class="muted ig-p">TikTok only sends people back to a public address: set <code>BASE_URL</code> (or <code>PLATFORM_DOMAIN</code>) first.</p>' : ''}`);
+}
+// Coming soon (lib/social.js): networks businesses see as Coming soon even with the keys saved, e.g. while an app waits on approval
+function soonGroup(I, ig, on) {
+  const L = I.socialSoon || []; const n = L.filter((x) => x.soon).length;
+  const keys = (x) => (x.keys === null ? 'Businesses use their own account' : x.keys ? 'Keys saved' : 'No keys yet: businesses see Coming soon anyway');
+  return ig('Coming soon', on(!n, 'All open', `${n} coming soon`), `<p class="ig-d">Turn one on to show <strong>Coming soon</strong> in place of Connect on every business’s Marketing and Account Connections pages, for example while LinkedIn reviews your app. Your own (default) account still sees Connect, so you can test it first. Businesses already connected stay connected.</p>
+${L.map((x) => `<label class="switchline"><input type="checkbox" data-soon="${esc(x.kind)}" ${x.soon ? 'checked' : ''}> <span><strong>${esc(x.name)}</strong> <small class="muted">${keys(x)}</small></span></label>`).join('')}`);
 }
 A.rmOauthApp = async (d) => {
   if (!confirm('Remove these keys? Businesses won’t be able to connect, and connected ones stop working until you add keys again.')) return;
