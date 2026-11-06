@@ -3607,6 +3607,7 @@ forum.init({
   // a login who can still use the forum (an owner or admin of that account), for reply emails
   user: (slug, id) => { const t = tenancy.platform().tenants.find((x) => x.slug === slug); return t ? tenancy.run(t, () => { const u = db.users.find((x) => x.id === id); return u && isAdmin(u) && !staffBlocked(u) ? { name: u.name, email: u.email } : null; }) : null; },
 });
+forum.seedRoadmap(); // once: the team's roadmap posts (lib/forum.js)
 // the Board's posts are on ideas.<domain> now: old /forum links (and emails) go to its Feedback page
 app.get('/forum', (req, res) => res.redirect(301, tenancy.ideasUrl() + '/feedback'));
 // ---------- Support Access (lib/support.js): any login can grant the platform's support team access for four weeks ----------
