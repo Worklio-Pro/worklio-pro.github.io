@@ -1450,6 +1450,12 @@ const EMAIL_TEMPLATES = {
     body: '# Appointment reminder\n\nHello {{client_name}},\n\nThis is a reminder of your appointment with us:\n\n> **{{job_title}}**\n> {{date}} at {{time}}\n> {{address}}\n\nNeed to change it? Just reply to this email.\n\n{{company_name}}',
     vars: { client_name: 'Client name', company_name: 'Your business name', company_email: 'Your business email', job_number: 'Job number', job_title: 'Job title', date: 'Appointment date', time: 'Start time', address: 'Job address' },
   },
+  onMyWay: {
+    label: 'On my way', description: 'Sent when a team member taps On my way on a job, to clients who don’t get texts.',
+    subject: '{{staff_name}} is on the way',
+    body: '# We\x27re on the way\n\nHello {{client_name}},\n\n{{staff_name}} from {{company_name}} is heading to you now and should arrive in about **{{eta}}** (around {{arrival_time}}).\n\n> **{{job_title}}**\n> {{address}}\n\nSee you soon,\n{{company_name}}',
+    vars: { client_name: 'Client name', company_name: 'Your business name', company_email: 'Your business email', staff_name: 'Team member on the way', eta: 'Minutes until they arrive', arrival_time: 'About when they arrive', job_number: 'Job number', job_title: 'Job title', address: 'Job address' },
+  },
   receipt: {
     label: 'Payment receipt', description: 'Sent when a client pays online, if you turned on email receipts in App Settings.',
     subject: 'Receipt from {{company_name}}',
@@ -1746,6 +1752,26 @@ app.post('/api/jobs/:id/remind', async (req, res) => {
       subject: email.subject, html: ch === 'email' ? email.html : '', body: ch === 'email' ? email.body : `Reminder for "${j.title}" on ${j.date} at ${j.startTime}. Reply STOP to opt out.` }));
   }
   res.json({ results }); save();
+});
+// On my way: the team member heading to the job tells the client when they'll arrive (text if the client agreed to texts and the plan has them, else email).
+// Anyone assigned to the job can send it (technicians only have See jobs), and anyone who can edit jobs
+const ETA_CHOICES = [5, 10, 15, 20, 30, 45, 60, 90, 120];
+app.post('/api/jobs/:id/on-my-way', async (req, res) => {
+  const j = db.jobs.find((x) => x.id === req.params.id); if (!j) return res.status(404).json({ error: 'Job not found' });
+  const u = currentUser(req);
+  if (!(u && ((j.staffIds || []).includes(u.staffId) || can(u, 'jobs.edit')))) return res.status(403).json({ error: 'Only the team on this job can send On my way' });
+  if (['completed', 'cancelled'].includes(j.status)) return res.status(400).json({ error: 'This job is already ' + j.status });
+  const c = findClient(j.clientId); if (!c) return res.status(400).json({ error: 'This job has no client' });
+  const eta = ETA_CHOICES.includes(Number(req.body.eta)) ? Number(req.body.eta) : 30;
+  const st = (db.staff || []).find((x) => x.id === u.staffId); const who = String((st && st.name) || u.name || 'Our team').trim();
+  const first = who.split(/\s+/)[0];
+  const arrive = new Date(Date.now() + eta * 60e3).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: db.company.timeFormat !== '24' });
+  const ch = tenancy.has('sms') && c.smsConsent && c.phone ? 'sms' : 'email';
+  const email = renderEmail('onMyWay', { client_name: c.name || '', company_name: db.company.name, staff_name: who, eta: `${eta} minutes`, arrival_time: arrive, job_number: j.number, job_title: j.title || '', address: j.address || c.address || '' });
+  const r = await notify({ clientId: c.id, channel: ch, kind: 'job', refId: j.id, refNumber: j.number, subject: email.subject, html: ch === 'email' ? email.html : '',
+    body: ch === 'email' ? email.body : `${first} is on the way and should arrive in about ${eta} minutes (around ${arrive}). Reply STOP to opt out.` });
+  if (r.status !== 'failed') j.onMyWay = { at: new Date().toISOString(), staffId: u.staffId || null, name: who, eta, channel: ch };
+  save(); res.json({ result: r, job: j });
 });
 
 // ---------- public payment + quote pages ----------

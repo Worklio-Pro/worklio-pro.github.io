@@ -2606,7 +2606,7 @@ function mobileJobPage(j) {
   const tapRow = (sec, l, v) => tap(sec, `<span>${l}</span><span class="md-v">${v}</span>`, 'md-tr');
   const textSec = (sec, title, text, empty) => tap(sec, `<span class="md-sh">${title}${ARROW}</span>${text ? `<span class="md-text">${esc(text)}</span>` : `<span class="md-text muted">${edit ? empty : 'None'}</span>`}`, 'md-sec');
   const btn = (act, label, cls = '') => `<button type="button" class="btn ${cls}" data-act="${act}" data-id="${j.id}">${label}</button>`;
-  const acts = edit ? [j.status === 'scheduled' ? btn('completeJob', 'Mark Complete') : btn('reopenJob', 'Reopen', 'alt'), st === 'invoice' && planHas('invoices') ? btn('jobInvoice', 'Create Invoice', 'need-invoices') : ''] : [];
+  const acts = [omwBtn(j), ...(edit ? [j.status === 'scheduled' ? btn('completeJob', 'Mark Complete') : btn('reopenJob', 'Reopen', 'alt'), st === 'invoice' && planHas('invoices') ? btn('jobInvoice', 'Create Invoice', 'need-invoices') : ''] : [])];
   const team = (j.staffIds || []).map((id) => byId(D.staff, id)).filter(Boolean);
   const items = (d.items || []).map((it, i) => tap('item', `<strong>${esc(it.desc)}</strong>${it.details ? `<span class="md-det">${esc(it.details)}</span>` : ''}<span class="md-qp"><span>${esc(it.qty)} × ${money(it.price)}</span><span>${money(round2(it.qty * it.price))}</span></span>`, 'md-item', `data-i="${i}"`)).join('');
   const paid = q ? depositPaid(q) : 0;
@@ -2616,7 +2616,7 @@ function mobileJobPage(j) {
     + (q && q.depositFee > 0 ? mRow('Required deposit', money(q.depositFee)) + (q.depositPaidAt ? mRow(payLink('q-' + q.id, 'Deposit collected', q.depositPaidAt), '−' + money(paid)) : '') + mRow('Outstanding deposit', money(Math.max(0, round2(q.depositFee - paid)))) : '') : '';
   const sig = j.signature;
   return `<div class="mdoc mjob"><a href="/jobs" data-link class="md-back" aria-label="Back to jobs">${CHEV('M15 18l-6-6 6-6')}</a>
-<div class="md-st"><span class="cstatus ${J_CLASS[st]}">${J_STATUS[st]}</span>${sig ? '<span class="vsign">✓ Signed</span>' : ''}</div>
+<div class="md-st"><span class="cstatus ${J_CLASS[st]}">${J_STATUS[st]}</span>${sig ? '<span class="vsign">✓ Signed</span>' : ''}${omwBadge(j)}</div>
 ${tap('jobDetails', `<span class="md-h">Job #${esc(j.number)} for ${esc(c.name || 'no client')}${prices && jobTotal(j) !== null ? ` for ${money(jobTotal(j))}` : ''}</span>${j.title ? `<span class="md-sub">${esc(j.title)}</span>` : ''}
 <span class="md-addr">${esc(j.address || c.address || '')}</span>`, 'md-head')}
 ${c.phone || c.email ? `<div class="md-contact">${c.phone ? `<a href="tel:${esc(c.phone)}">${CHEV('M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z')}Call</a>` : ''}${c.phone ? `<a href="sms:${esc(c.phone)}">${CHEV('M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z')}Text</a>` : ''}${c.email ? `<a href="mailto:${esc(c.email)}">${CHEV('M4 4h16v16H4zM4 6l8 7 8-7')}Email</a>` : ''}${j.address || c.address ? `<a href="https://maps.google.com/?q=${encodeURIComponent(j.address || c.address)}" target="_blank" rel="noopener">${CHEV('M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12zM12 11.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z')}Map</a>` : ''}</div>` : ''}
@@ -2826,6 +2826,11 @@ function jobConflicts(job) { return D.jobs.filter((j) => j.id !== job.id && j.st
 /* ===== job page (layout modeled on Jobber's job page) at /jobs/new and /jobs/edit?id=… ===== */
 /* ===== the job page at /jobs/edit (computers): read-only like the quote and invoice pages; a section's pencil edits just that
    section (editSection builds the job form behind it). New jobs, and /jobs/edit?full=1, use the whole form. ===== */
+// On my way: for the team on the job (and anyone who edits jobs), while it's still to do and has a client
+const canOnMyWay = (j) => j.status === 'scheduled' && !!j.clientId && ((me && me.staffId && (j.staffIds || []).includes(me.staffId)) || canDo('jobs.edit'));
+const omwBtn = (j, cls = 'btn alt') => (canOnMyWay(j) ? `<button type="button" class="${cls}" data-act="onMyWay" data-id="${j.id}">On My Way</button>` : '');
+// the On the way badge: sent today
+const omwBadge = (j) => (j.onMyWay && j.status === 'scheduled' && ymd(new Date(j.onMyWay.at)) === ymd(new Date()) ? `<span class="vsign" title="${esc(j.onMyWay.name)} sent On my way">➜ On the way · ${esc(fmtTime(new Date(j.onMyWay.at).toTimeString().slice(0, 5)))}</span>` : '');
 function jobMore(j) {
   const b = (act, icon, label, cls = '') => `<button type="button" class="mi ${cls}" data-act="${act}" data-id="${j.id}">${QM[icon]}${label}</button>`;
   const sms = planHas('sms') && byId(D.clients, j.clientId)?.smsConsent;
@@ -2840,8 +2845,8 @@ function jobViewPage(j) {
   const d = jobDoc(j); const c = byId(D.clients, j.clientId) || {}; const q = byId(D.quotes, j.quoteId); const st = jobStatus(j);
   const team = (j.staffIds || []).map((id) => byId(D.staff, id)).filter(Boolean); const paid = q ? depositPaid(q) : 0;
   const none = (t) => `<span class="muted">${t}</span>`;
-  return `<div class="qview jview"><div class="qpage"><div class="qmain"><div class="qtop"><div class="qtop-l"><a href="/jobs" data-link class="back">← Jobs</a><span class="cstatus ${J_CLASS[st]}">${J_STATUS[st]}</span>${j.signature ? '<span class="vsign">✓ Signed</span>' : ''}</div>
-<div class="actions">${jobMore(j)}${j.status === 'scheduled' ? `<button type="button" class="btn need-jobs-edit" data-act="completeJob" data-id="${j.id}">Mark Complete</button>` : `<button type="button" class="btn alt need-jobs-edit" data-act="reopenJob" data-id="${j.id}">↺ Reopen Job</button>`}</div></div>
+  return `<div class="qview jview"><div class="qpage"><div class="qmain"><div class="qtop"><div class="qtop-l"><a href="/jobs" data-link class="back">← Jobs</a><span class="cstatus ${J_CLASS[st]}">${J_STATUS[st]}</span>${j.signature ? '<span class="vsign">✓ Signed</span>' : ''}${omwBadge(j)}</div>
+<div class="actions">${jobMore(j)}${omwBtn(j)}${j.status === 'scheduled' ? `<button type="button" class="btn need-jobs-edit" data-act="completeJob" data-id="${j.id}">Mark Complete</button>` : `<button type="button" class="btn alt need-jobs-edit" data-act="reopenJob" data-id="${j.id}">↺ Reopen Job</button>`}</div></div>
 <div class="vhead"><div class="vtitle-row"><h1 class="vtitle">${esc(j.title || 'Untitled job')}</h1>${editBtn('job', j, 'top')}</div>
 <div class="qhead"><div class="qclient"><div class="vclient"><span>${esc(c.name || 'No client')}</span>${c.id ? clientMenu(c) : ''}</div><div class="muted qlabel">Property address</div><div class="qaddr">${esc(j.address || c.address || '') || none('No address on file')}</div>
 ${c.phone || c.email ? `<div class="vclient-c">${c.phone ? `<a href="tel:${esc(c.phone)}">${esc(fmtUsPhone(c.phone))}</a>` : ''}${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ''}</div>` : ''}</div>
@@ -3076,3 +3081,24 @@ A.jobSort = (d) => { jobView.dir = jobView.sort === d.k ? -jobView.dir : (['clie
 A.exportJobs = () => downloadCsv('jobs.csv', [['Job', 'Title', 'Client', 'Company', 'Property', 'Date', 'Start', 'End', 'Team', 'Status', 'Total'],
   ...D.jobs.map((j) => { const c = byId(D.clients, j.clientId) || {}; return [j.number, j.title, c.name || '', c.company || '', j.address || '', j.date, j.startTime, j.endTime, (j.staffIds || []).map((id) => (byId(D.staff, id) || {}).name).filter(Boolean).join('; '), J_STATUS[jobStatus(j)], jobTotal(j) ?? '']; })]);
 A.completeJob = async (d) => { await api('PUT', '/api/jobs/' + d.id, { status: 'completed' }); closeModal(); toast('Job completed. Create an invoice from the job when ready.'); refresh(); };
+// On my way: pick about how long until you arrive; the server texts the client (if they agreed to texts) or emails them
+A.onMyWay = (d) => {
+  $$('details.menu[open]').forEach((x) => { x.open = false; });
+  const j = byId(D.jobs, d.id); const c = byId(D.clients, j.clientId) || {}; const sms = planHas('sms') && c.smsConsent && c.phone;
+  const opts = [5, 10, 15, 20, 30, 45, 60, 90, 120].map((n) => `<option value="${n}" ${n === 20 ? 'selected' : ''}>${n < 60 ? n + ' minutes' : n === 60 ? '1 hour' : n === 90 ? '1½ hours' : '2 hours'}</option>`).join('');
+  const at = (x) => fmtTime(new Date(x).toTimeString().slice(0, 5));
+  const m = modal('On my way', `<form id="omwf"><p style="margin-top:0">Let <strong>${esc(c.name || 'the client')}</strong> know you’re heading to ${esc(j.title || 'the job')}.</p>
+<label>Arriving in about<select name="eta">${opts}</select></label>
+<p class="muted">${sms ? 'Sends a text to ' + esc(fmtUsPhone(c.phone)) : c.email ? 'Sends an email to ' + esc(c.email) + (planHas('sms') && c.phone && !c.smsConsent ? ' (they haven’t agreed to texts)' : '') : 'This client has no email address, and no phone number that takes texts.'}</p>
+${j.onMyWay ? `<p class="notice">${esc(j.onMyWay.name)} already sent this ${ymd(new Date(j.onMyWay.at)) === ymd(new Date()) ? 'today' : 'on ' + esc(fmtDate(ymd(new Date(j.onMyWay.at))))} at ${esc(at(j.onMyWay.at))}.</p>` : ''}
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn" ${sms || c.email ? '' : 'disabled'}>Send</button></div></form>`);
+  const f = $('#omwf', m);
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault(); const b = $('button.btn:not(.alt)', f); b.disabled = true;
+    try {
+      const r = await api('POST', '/api/jobs/' + j.id + '/on-my-way', { eta: Number(f.eta.value) }); const x = r.result;
+      if (x.status === 'failed') { b.disabled = false; return toast(x.detail || 'Couldn’t send it', true); }
+      Object.assign(j, r.job); closeModal(); toast(x.status === 'simulated' ? 'Logged (no message provider connected)' : `${x.channel === 'sms' ? 'Text' : 'Email'} sent: the client knows you’re on the way`); refresh();
+    } catch (err) { b.disabled = false; toast(err.message, true); }
+  });
+};
