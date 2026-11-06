@@ -2778,12 +2778,12 @@ PAGES['/settings/billing'] = {
       : sub ? `${B.prepaidUntil ? `<p>Prepaid with your Founding Supporter code until <strong>${fmtDate(B.prepaidUntil)}</strong>.</p>` : ''}<p>You will be charged <strong>${money(sub.amount)} USD</strong> for your ${per(sub.interval)} ${esc(B.plan.name)} subscription on ${fmtDate(sub.periodEnd)}, and every ${sub.interval} after that. Plus taxes where applicable.</p>${sub.status === 'past_due' ? '<p class="bill-warn">Your last payment didn’t go through. Update your card and we’ll retry it right away.</p>' : ''}`
       : B.demo ? '<p class="muted">Your account was started with a demo checkout, so nothing is charged. Pick a plan to start a paid subscription.</p>'
       : !B.plan.charge ? `<p>You’re on the ${esc(B.plan.name)} plan${B.plan.price ? ` (${esc(B.plan.price)})` : ''}. There’s nothing to pay.</p>`
-      : `<p class="muted">Your ${esc(B.plan.name)} plan isn’t billed automatically yet. Choose it under Change plan to set up automatic payments.</p>`;
+      : `<p class="muted">Your ${esc(B.plan.name)} plan isn’t billed automatically yet. Choose it under Modify subscription to set up automatic payments.</p>`;
     const inv = billingAll ? B.invoices : B.invoices.slice(0, 6);
     const paused = B.paused ? explorePlans(B) : '';
     if (B.paused && !B.isOwner) { main.innerHTML = `<div class="head"><h1>Account and billing</h1></div>${paused}`; return; } // an admin choosing a plan for a paused account
     main.innerHTML = `<div class="head"><h1>Account and billing</h1></div>${paused}
-<div class="card bill-ov"><div class="bill-h"><h2>Account overview</h2><div class="actions">${B.managed && !B.prepaidUntil ? '<button type="button" class="btn" data-act="billPlans">Change plan</button>' : ''}${B.live && B.managed ? `<button type="button" class="btn alt" data-act="billCard">${B.card ? 'Update card' : 'Add card'}</button>` : ''}</div></div>
+<div class="card bill-ov"><div class="bill-h"><h2>Account overview</h2><div class="actions">${B.live && B.managed ? `<button type="button" class="btn alt" data-act="billCard">${B.card ? 'Update card' : 'Add card'}</button>` : ''}</div></div>
 <dl class="bill-dl"><div><dt>Active since</dt><dd>${B.activeSince ? fmtDate(B.activeSince) : '—'}</dd></div><div><dt>Account status</dt><dd>${esc(statusText)}</dd></div>
 <div><dt>Current plan</dt><dd>${esc(B.plan.name)}${B.plan.charge ? ` <span class="muted">(${B.plan.charge.interval === 'year' ? 'yearly' : 'monthly'}, ${money(B.plan.charge.cents / 100).replace(/\.00$/, '')}/${B.plan.charge.interval})</span>` : B.plan.price ? ` <span class="muted">(${esc(B.plan.price)})</span>` : ''}</dd></div></dl></div>
 <div class="bill-grid">
