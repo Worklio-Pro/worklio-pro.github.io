@@ -1126,7 +1126,7 @@ ${marketingConnect(C)}`;
     const res = (p, k, name) => { const r = p.results[k]; if (!r) return ''; return r.status === 'posted' ? `<a class="conn-chip on" href="${esc(r.url)}" target="_blank" rel="noopener"><i></i>${name}: view post</a>` : `<span class="conn-chip bad" title="${esc(r.error)}"><i></i>${name}: didn’t post</span>`; };
     main.innerHTML = `${head}
 <form class="card sp-new" id="spForm"><h2>New post</h2>
-<div class="sp-dests">${SP_NETS.filter(([k]) => R[k] || k === 'facebook' || k === 'instagram').map(([k, n, who]) => dest(k, n, R[k] && who(R))).join('')}</div>
+<div class="sp-dests">${SP_NETS.filter(([k]) => R[k]).map(([k, n, who]) => dest(k, n, R[k] && who(R))).join('')}</div>
 <div class="sp-tt" id="spTt" hidden></div>
 <div class="sp-tt" id="spYt" hidden></div>
 <div class="sp-photos" id="spPhotos"></div>
