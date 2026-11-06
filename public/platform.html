@@ -102,7 +102,12 @@
     .set-pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 18px;align-items:start}.set-pair .card{margin-bottom:18px}.set-pair .lg-grid{grid-template-columns:1fr 1fr}
     @media (max-width:900px){.set-pair{grid-template-columns:minmax(0,1fr)}}.set-one>.card,.set-one .set-form>.card{margin-bottom:18px}.set-one [hidden]{display:none!important}
     .ig-tabbed{max-width:1000px}.ig-tabbed .ig-grid{display:block}.ig-tabbed .ig-col,.ig-tabbed .ig-wide{display:contents}.ig-tabbed section.ig[hidden]{display:none}
-    .ig-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--line);margin-right:7px;vertical-align:1px}.ig-dot.on{background:var(--ok)}
+    .ig-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;margin-bottom:18px}.ig-cards[hidden]{display:none}
+    .ig-card{display:flex;flex-direction:column;align-items:flex-start;gap:10px;min-height:168px;padding:16px;text-align:left;font:inherit;color:var(--text);background:var(--card);border:1px solid var(--line);border-radius:12px;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+    .ig-card:hover{border-color:var(--brand);box-shadow:var(--shadow-sm)}.ig-card:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+    .ig-card-ic svg{width:40px;height:40px;display:block}.ig-card-t{display:flex;flex-direction:column;gap:4px;flex:1}.ig-card-t strong{font-size:15px}.ig-card-t small{color:var(--muted);font-size:13px;line-height:1.4}
+    .ig-back{background:none;border:0;padding:0;margin:0 0 14px;font:inherit;font-weight:600;color:var(--brand);cursor:pointer}.ig-back:hover{text-decoration:underline}
+    @media (max-width:640px){.ig-cards{grid-template-columns:minmax(0,1fr)}.ig-card{min-height:0;flex-direction:row;align-items:center;flex-wrap:wrap}.ig-card-t{min-width:0;flex:1 1 60%}}
     .hc-one{max-width:900px}.hc-one>.card{margin-bottom:18px}#main [data-hc][hidden]{display:none}
     .ic-wrap{display:grid;grid-template-columns:minmax(0,1fr) 230px;gap:24px;align-items:start}@media (max-width:820px){.ic-wrap{grid-template-columns:1fr}.ic-preview{display:none}}
     .ic-grp{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:14px 0 4px}.ic-grp:first-child{margin-top:0}
@@ -386,6 +391,6 @@
   <script src="/hc-editor.js?v=2"></script>
   <script src="/brand.js?v=1"></script>
   <script src="/cancelflow.js?v=1"></script>
-  <script src="/platform.js?v=90"></script>
+  <script src="/platform.js?v=91"></script>
 </body>
 </html>

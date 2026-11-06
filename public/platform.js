@@ -594,19 +594,47 @@ A.savePlans = async () => {
 window.addEventListener('beforeunload', (e) => { if (D && draftPlans && plansDirty()) e.preventDefault(); });
 
 /* ===== settings ===== */
-const IG_TABS = [['email', 'Email', 'Email'], ['sms', 'Text messages', 'Text messages (Twilio)'], ['stripe', 'Stripe', 'Stripe'], ['google', 'Google', 'Google Business Profile'], ['meta', 'Facebook', 'Facebook (Meta)'], ['instagram', 'Instagram', 'Instagram'], ['tiktok', 'TikTok', 'TikTok'], ['quickbooks', 'QuickBooks', 'QuickBooks Online'], ['xero', 'Xero', 'Xero'], ['soon', 'Coming soon', 'Coming soon'], ['ai', 'AI', 'AI'], ['marketplace', 'App Marketplace', 'App Marketplace']];
-let igTab = 'email';
+// Settings → Integrations: a card per service ([key, name, section title, what it's for]); a card opens that service's settings
+const IG_TABS = [
+  ['email', 'Email', 'Email', 'Quotes, invoices, reminders and password resets for every business'],
+  ['sms', 'Text messages', 'Text messages (Twilio)', 'Every business’s texts to clients, from your Twilio number'],
+  ['stripe', 'Stripe', 'Stripe', 'Plan payments at sign-up and businesses’ card payments'],
+  ['google', 'Google', 'Google Business Profile', 'Google reviews, posts and online booking on Google'],
+  ['meta', 'Facebook', 'Facebook (Meta)', 'Businesses connect their Facebook Page and post to it'],
+  ['instagram', 'Instagram', 'Instagram', 'Businesses connect Instagram with Instagram Login'],
+  ['tiktok', 'TikTok', 'TikTok', 'Your own TikTok account, and businesses’ posts'],
+  ['quickbooks', 'QuickBooks', 'QuickBooks Online', 'Businesses send clients, invoices and payments to their books'],
+  ['xero', 'Xero', 'Xero', 'Businesses send clients, invoices and payments to their books'],
+  ['soon', 'Coming soon', 'Coming soon', 'Show Coming soon in place of Connect, network by network'],
+  ['ai', 'AI', 'AI', 'Write with AI, Rewrite, social captions and the help chat'],
+  ['marketplace', 'App Marketplace', 'App Marketplace', 'The App Marketplace in every account, and Home Depot prices'],
+];
+const IG_ICONS = {
+  email: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="var(--brand)"/><rect x="11" y="15" width="26" height="18" rx="2.5" fill="none" stroke="#fff" stroke-width="2.6"/><path d="M12 17l12 9 12-9" fill="none" stroke="#fff" stroke-width="2.6" stroke-linejoin="round"/></svg>',
+  sms: '<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="21" fill="#F22F46"/><circle cx="24" cy="24" r="13" fill="none" stroke="#fff" stroke-width="3.2"/><circle cx="19.6" cy="19.6" r="3.1" fill="#fff"/><circle cx="28.4" cy="19.6" r="3.1" fill="#fff"/><circle cx="19.6" cy="28.4" r="3.1" fill="#fff"/><circle cx="28.4" cy="28.4" r="3.1" fill="#fff"/></svg>',
+  stripe: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#635BFF"/><path fill="#fff" d="M22.4 19.6c0-1.2 1-1.7 2.6-1.7 2.3 0 5.2.7 7.5 1.9v-7c-2.5-1-5-1.4-7.5-1.4-6.1 0-10.2 3.2-10.2 8.6 0 8.4 11.5 7 11.5 10.7 0 1.4-1.2 1.9-2.9 1.9-2.5 0-5.7-1-8.3-2.4v7.1c2.8 1.2 5.6 1.7 8.3 1.7 6.3 0 10.6-3.1 10.6-8.6 0-9-11.6-7.4-11.6-10.8z"/></svg>',
+  google: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3.5" y="3.5" width="41" height="41" rx="10" fill="#fff" stroke="#dadce0"/><g transform="translate(10 10) scale(.583)">' + '<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.6-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.6-.4-3.5z"/></svg>'.replace(/^<svg[^>]*>/, '').replace(/<\/svg>$/, '') + '</g></svg>',
+  meta: '<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="22" fill="#1877F2"/><path fill="#fff" d="M26.6 46V30.2h5.3l.8-6.2h-6.1v-3.9c0-1.8.5-3 3.1-3H33v-5.5c-.6-.1-2.5-.3-4.7-.3-4.6 0-7.8 2.8-7.8 8V24h-5.2v6.2h5.2V46z"/></svg>',
+  instagram: '<svg viewBox="0 0 48 48" aria-hidden="true"><defs><radialGradient id="igg" cx="30%" cy="107%" r="150%"><stop offset="0" stop-color="#fdf497"/><stop offset=".05" stop-color="#fdf497"/><stop offset=".45" stop-color="#fd5949"/><stop offset=".6" stop-color="#d6249f"/><stop offset=".9" stop-color="#285AEB"/></radialGradient></defs><rect x="3" y="3" width="42" height="42" rx="11" fill="url(#igg)"/><rect x="12" y="12" width="24" height="24" rx="7" fill="none" stroke="#fff" stroke-width="3"/><circle cx="24" cy="24" r="5.5" fill="none" stroke="#fff" stroke-width="3"/><circle cx="31" cy="17" r="1.8" fill="#fff"/></svg>',
+  tiktok: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#000"/><path fill="#fff" d="M26.5 11h4.3c.3 2.9 2.3 5 5.2 5.3v4.3c-1.9 0-3.7-.6-5.2-1.6v9a7.6 7.6 0 1 1-7.6-7.6l1.1.1v4.4a3.2 3.2 0 1 0 2.2 3.1z"/></svg>',
+  ai: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#7C3AED"/><path fill="#fff" d="M22 11l2.6 7.4L32 21l-7.4 2.6L22 31l-2.6-7.4L12 21l7.4-2.6zM33 27l1.3 3.7L38 32l-3.7 1.3L33 37l-1.3-3.7L28 32l3.7-1.3z"/></svg>',
+  quickbooks: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#2CA01C"/><text x="24" y="30.5" text-anchor="middle" font-family="system-ui,sans-serif" font-size="18" font-weight="700" fill="#fff">qb</text></svg>',
+  xero: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#13B5EA"/><text x="24" y="30.5" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="#fff">xero</text></svg>',
+  soon: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#64748b"/><g fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="24" r="11"/><path d="M24 17v7l5 3"/></g></svg>',
+  marketplace: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#7c3aed"/><g fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="14" y="14" width="8" height="8" rx="1.5"/><rect x="26" y="14" width="8" height="8" rx="1.5"/><rect x="14" y="26" width="8" height="8" rx="1.5"/><rect x="26" y="26" width="8" height="8" rx="1.5"/></g></svg>',
+};
+let igTab = ''; // '' shows the cards
 // Settings shows one box at a time, picked from a grouped list down the left (a dropdown on phones).
-// The Integrations group is one page (setTab 'integrations') showing one service at a time (igTab).
+// Integrations is one page (setTab 'integrations'): a grid of cards, or one service's settings (igTab) with a link back to the cards.
+// Links elsewhere open a service directly with data-k="integrations:<service>".
 const SET_GROUPS = [
   ['Product', [['product', 'Your product'], ['colors', 'Website colors'], ['icons', 'Menu'], ['seo', 'SEO'], ['terms', 'Terms and privacy']]],
   ['Team & access', [['team', 'Alpha team'], ['expiry', 'Access end dates'], ['reserved', 'Reserved addresses']]],
-  ['Integrations', IG_TABS.map(([k, l]) => ['integrations:' + k, l])],
-  ['System', [['maintenance', 'Maintenance mode']]],
+  ['System', [['integrations', 'Integrations'], ['maintenance', 'Maintenance mode']]],
 ];
 let setTab = 'product';
-const setKey = () => (setTab === 'integrations' ? 'integrations:' + igTab : setTab);
-A.setTab = (d) => { const [k, ig] = d.k.split(':'); setTab = k; if (ig) igTab = ig; settingsView($('#main')); };
+const setKey = () => setTab;
+A.setTab = (d) => { const [k, ig] = d.k.split(':'); setTab = k; igTab = ig || ''; settingsView($('#main')); if (ig) window.scrollTo(0, 0); };
 A.goMaint = () => { setTab = 'maintenance'; if (tab === 'settings') settingsView($('#main')); else location.hash = 'settings'; }; // the maintenance banner's link
 function settingsView(main) {
   const s = D.settings; const site = `${location.origin}/pricing`;
@@ -614,9 +642,9 @@ function settingsView(main) {
   const extra = (k) => (k === 'maintenance' && D.maintenance && D.maintenance.on ? ' <span class="msg-n mt-on">On</span>' : '');
   main.innerHTML = `<div class="head"><div><h1>Settings</h1></div></div>
 <label class="set-pick"><span class="sr">Settings page</span><select>${SET_GROUPS.map(([g, items]) => `<optgroup label="${g}">${items.map(([k, l]) => `<option value="${k}" ${k === setKey() ? 'selected' : ''}>${l}</option>`).join('')}</optgroup>`).join('')}</select></label>
-<div class="set-layout"><nav class="set-nav" aria-label="Settings">${SET_GROUPS.map(([g, items]) => `<div class="set-nav-g">${g}</div>${items.map(([k, l]) => `<button type="button" class="${k === setKey() ? 'on' : ''}" ${k === setKey() ? 'aria-current="page"' : ''} data-act="setTab" data-k="${k}">${k.startsWith('integrations:') ? `<i class="ig-dot" data-ig-dot="${k.slice(13)}"></i>` : ''}${l}${extra(k)}</button>`).join('')}`).join('')}</nav>
+<div class="set-layout"><nav class="set-nav" aria-label="Settings">${SET_GROUPS.map(([g, items]) => `<div class="set-nav-g">${g}</div>${items.map(([k, l]) => `<button type="button" class="${k === setKey() ? 'on' : ''}" ${k === setKey() ? 'aria-current="page"' : ''} data-act="setTab" data-k="${k}">${l}${extra(k)}</button>`).join('')}`).join('')}</nav>
 <div class="set-grid set-one"><div class="card" id="mtCard" data-set="maintenance"></div>
-<div data-set="integrations"><p class="muted" style="margin:0 0 14px">Integrations are shared by every account. Keys in the <code>.env</code> file next to <code>server.js</code> need a restart after changing; secrets are never shown here.</p><div id="integ" class="ig-tabbed"><p class="muted">Checking…</p></div></div>
+<div data-set="integrations"><div id="igBack" hidden><button type="button" class="ig-back" data-act="setTab" data-k="integrations">← All integrations</button></div><p class="muted ig-intro" style="margin:0 0 14px">Integrations are shared by every account. Keys in the <code>.env</code> file next to <code>server.js</code> need a restart after changing; secrets are never shown here.</p><div id="integ" class="ig-tabbed"><p class="muted">Checking…</p></div></div>
 <form id="sf" class="set-form"><div class="card" data-set="product"><h2>Your product</h2>
 <div class="row"><label>Product name<input name="productName" value="${esc(s.productName)}" required maxlength="60"></label><label>Contact email<input name="contactEmail" type="email" value="${esc(s.contactEmail)}" placeholder="sales@yourapp.com"></label></div>
 <p class="muted" style="font-size:13px;margin-top:-4px">The product name appears on the pricing page and in account emails. Accounts see the contact email when they want to change plans, and new sign-ups are reported to it.</p>
@@ -797,14 +825,22 @@ A.teamLink = async (d) => {
   try { const r = await api('POST', `/api/platform/team/${d.id}/link`, {}); teamCard($('#teamCard')); teamLinkResult(r, d.name); } catch (x) { toast(x.message, true); }
 };
 A.teamRm = async (d) => { if (!confirm(`Remove ${d.name}? They’re logged out right away and can’t log in to Alpha anymore.`)) return; try { await api('DELETE', '/api/platform/team/' + d.id); toast(`${d.name} removed`); teamCard($('#teamCard')); } catch (x) { toast(x.message, true); } };
-// Settings → Integrations: one service at a time, picked from the Settings list; its dot shows whether the service is set up
+// Settings → Integrations: the cards (igTab '') or one service's section, with ← All integrations above it.
+// Each card's status is the first status chip in that service's section (e.g. Connected, Not set up, On)
 function igTabs(box) {
-  const secs = $$('section.ig', box);
-  IG_TABS.forEach(([k, , title]) => {
+  const secs = $$('section.ig', box); const cards = [];
+  IG_TABS.forEach(([k, name, title, desc]) => {
     const sec = secs.find((s) => $('h3', s).textContent === title); if (!sec) return;
-    sec.dataset.ig = k; sec.hidden = k !== igTab; const ok = !!$('.ig-h .cstatus.active', sec);
-    const dot = $(`[data-ig-dot="${k}"]`); if (dot) { dot.classList.toggle('on', ok); dot.title = ok ? 'Set up' : 'Not set up'; }
+    sec.dataset.ig = k; sec.hidden = k !== igTab;
+    const chip = $('.ig-h .cstatus', sec); const ok = !!(chip && chip.classList.contains('active'));
+    const label = chip ? chip.textContent.replace(/\s*\(.*\)$/, '') : 'Not set up'; // "Connected (hello@…)" → "Connected"
+    cards.push(`<button type="button" class="ig-card" data-act="setTab" data-k="integrations:${k}"><span class="ig-card-ic">${IG_ICONS[k] || ''}</span>
+<span class="ig-card-t"><strong>${esc(name)}</strong><small>${esc(desc)}</small></span><span class="cstatus ${ok ? 'active' : ''}">${esc(label)}</span></button>`);
   });
+  if (igTab && !secs.some((s) => !s.hidden)) igTab = ''; // an unknown service: show the cards
+  let grid = $('.ig-cards', box); if (!grid) { grid = document.createElement('div'); grid.className = 'ig-cards'; box.prepend(grid); }
+  grid.innerHTML = cards.join(''); grid.hidden = !!igTab;
+  const wrap = box.closest('[data-set="integrations"]'); if (wrap) { $('#igBack', wrap).hidden = !igTab; $('.ig-intro', wrap).hidden = !!igTab; }
 }
 /* ===== social: the platform's own TikTok account (lib/tiktok.js). Connect it, then post a video or photos now, at a set time,
    or to TikTok drafts, and follow each post's status. The post form follows TikTok's posting rules: it shows the account it posts to,
