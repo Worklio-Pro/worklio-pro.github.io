@@ -459,7 +459,7 @@ app.use('/api', (req, res, next) => {
   next();
 });
 app.use('/api', (req, res, next) => {
-  const u = currentUser(req); if (!u || isAdmin(u)) return next();
+  const u = currentUser(req); if (!u || isAdmin(u) || PUBLIC_API(req)) return next(); // client-facing routes (portal etc.) work for any login, as they do with no login
   if (rolesLib.allows(rolesLib.routesFor(teamRoles(), roleKey(u)), req.method, req.path)) return next();
   res.status(403).json({ error: 'Your access level doesn’t include this. Ask the account owner.' });
 });
