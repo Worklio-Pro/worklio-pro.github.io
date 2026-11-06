@@ -146,6 +146,7 @@ const tabsFor = () => (isSupport() ? ['accounts', 'messages', 'forum', 'help'] :
 const tabFromHash = () => {
   let h = location.hash.slice(1); if (h === 'pricing') h = 'plans';
   if (h === 'automations' && !isSupport()) { msgTab = 'automations'; return 'messages'; }
+  if (h === 'compare') { frCompare = true; return 'forum'; } // #compare: Help Center → Comparison
   if (h === 'integrations' && !isSupport()) { setTab = 'integrations'; return 'settings'; } // Integrations moved into Settings; old links still land there
   return tabsFor().includes(h) ? h : 'accounts';
 };
@@ -2026,10 +2027,10 @@ const hcSlugify = (s) => String(s || '').toLowerCase().replace(/\{product\}/g, '
 // one part at a time: Articles (with what readers were looking for), Topics, Home page
 let hcTab = 'articles';
 // Help Center's tabs: the articles' three parts (#help) and the Board (#forum)
-const helpSeg = () => sideNav('Help Center', 'hcTab', [['articles', 'Articles', HC ? HC.comments.length : 0, 'What people were looking for'], ['topics', 'Topics'], ['home', 'Home page'], ['forum', 'Board', D.forumNew, 'New posts']]
-  .map(([k, l, n, title]) => [k, l, n || undefined, tab === 'forum' ? k === 'forum' : hcTab === k, title]));
+const helpSeg = () => sideNav('Help Center', 'hcTab', [['articles', 'Articles', HC ? HC.comments.length : 0, 'What people were looking for'], ['topics', 'Topics'], ['home', 'Home page'], ['forum', 'Board', D.forumNew, 'New posts'], ['compare', 'Comparison']]
+  .map(([k, l, n, title]) => [k, l, n || undefined, tab === 'forum' ? k === (frCompare && !frSel ? 'compare' : 'forum') : hcTab === k, title]));
 A.hcTab = (d) => {
-  if (d.k === 'forum') { if (tab === 'forum') A.frBack(); else location.hash = 'forum'; return; }
+  if (d.k === 'forum' || d.k === 'compare') { frCompare = d.k === 'compare'; frSel = ''; if (tab === 'forum') render(); else location.hash = 'forum'; return; }
   hcTab = d.k; if (tab === 'help') helpView($('#main')); else location.hash = 'help';
 };
 async function helpView(main) {
@@ -2218,7 +2219,7 @@ async function forumView(main) {
   if (!FR) { main.innerHTML = `<div class="head"><h1>Help Center</h1></div>${helpSeg()}<p class="muted">Loading…</p>`; sideLayout(main); try { FR = await api('GET', '/api/platform/forum'); } catch (e) { main.innerHTML = `<div class="head"><h1>Help Center</h1></div>${helpSeg()}<p class="muted">${esc(e.message)}</p>`; sideLayout(main); return; } }
   D.forumNew = FR.posts.filter((p) => p.status === 'open').length;
   const p = frSel && FR.posts.find((x) => x.id === frSel); if (!p) frSel = '';
-  return p ? frPost(main, p) : frList(main);
+  return p ? frPost(main, p) : frCompare ? compareView(main) : frList(main);
 }
 function frList(main) {
   const v = frView; const K = FR.kinds; const S = FR.statuses; const s = FR.settings; const q = v.q.trim().toLowerCase();
@@ -2251,7 +2252,7 @@ function frPost(main, p) {
   const one = (c) => `<div class="fr-c ${c.author && c.author.team ? 'team' : ''}">${c.deleted ? '<p class="muted" style="margin:0;font-style:italic">Deleted by its author</p>' : `<div class="sm">${frWho(c.author)} · ${frAgo(c.at)}${c.likes ? ` · 👍 ${c.likes}` : ''}</div>
 <div class="fr-body">${esc(c.body)}</div><div class="fr-acts"><button type="button" class="link-btn" data-act="frReplyTo" data-c="${esc(c.id)}">Reply</button><button type="button" class="link-btn danger-text" data-act="frDelC" data-c="${esc(c.id)}">Delete</button></div>`}</div>`;
   const top = p.comments.filter((c) => !c.parentId);
-  main.innerHTML = `<p style="margin:0 0 10px"><a href="#forum" data-act="frBack">‹ All posts</a></p>
+  main.innerHTML = `<p style="margin:0 0 10px"><a href="#forum" data-act="frBack">‹ ${frCompare ? 'Comparison' : 'All posts'}</a></p>
 <div class="fr-grid"><div><div class="card"><div class="fr-tags">${frChip('k-' + p.kind, K[p.kind])} ${frChip('s-' + p.status, S[p.status])} ${frChip('', FR.categories[p.category] || 'Other')}${p.pinned ? ' 📌 Pinned' : ''}${p.locked ? ' 🔒 Locked' : ''}</div>
 <h2 class="fr-h">${esc(p.title)}</h2><div class="sm">${frWho(p.author)}<br>${new Date(p.at).toLocaleString()}${p.editedAt ? ' · edited' : ''} · 👍 ${p.likes} like${p.likes === 1 ? '' : 's'}</div>
 <div class="fr-body">${esc(p.body)}</div></div>
@@ -2279,7 +2280,80 @@ function frPost(main, p) {
 }
 const frPut = (post) => { const i = FR.posts.findIndex((x) => x.id === post.id); if (i >= 0) FR.posts[i] = post; };
 A.frOpen = (d) => { frSel = d.id; render(); window.scrollTo(0, 0); };
-A.frBack = () => { frSel = ''; render(); };
+A.frBack = () => { frSel = ''; render(); }; // back to where the post was opened from: the Board's list or the Comparison
+
+/* ===== Comparison: Worklio Pro against Jobber, Housecall Pro, Workiz and ServiceTitan.
+   Competitors' columns are fixed here (edit CMP_ROWS when they change). Worklio's column comes live from the Board:
+   a row with a Board title shows that post's status, so changing a status in the Board updates this page. ===== */
+let frCompare = false; let cmpGaps = false;
+const CMP_COLS = [['Jobber', '~$49–$499/mo'], ['Housecall Pro', '~$79–$329/mo'], ['Workiz', 'Quote only'], ['ServiceTitan', 'Quote only']];
+// [group] or [feature, note, Board post title (or '' when Worklio already has it), Jobber, Housecall Pro, Workiz, ServiceTitan]
+// y included · p partly or higher plans · a paid add-on · n not offered
+const CMP_ROWS = [
+  ['Sales & billing'],
+  ['Quotes with online approval and signature', 'Clients approve and sign online, with deposits', '', 'y', 'y', 'y', 'y'],
+  ['Online card payments', '', '', 'y', 'y', 'y', 'y'],
+  ['Good / Better / Best quote options', 'Packaged options the client picks from', 'Good / Better / Best quote options', 'p', 'y', 'p', 'y'],
+  ['Customer financing', 'Clients pay over time for bigger jobs', 'Customer financing', 'y', 'y', 'y', 'y'],
+  ['Batch invoicing & late fees', '', 'Batch invoicing & late fees', 'y', 'y', 'p', 'y'],
+  ['Tap to Pay on phone', 'Card payments with no reader', 'Tap to Pay on phone', 'y', 'y', 'y', 'y'],
+  ['Service plans & memberships', 'Recurring billing with scheduled visits', 'Service plans & memberships', 'p', 'y', 'p', 'y'],
+  ['Scheduling & the field'],
+  ['On My Way texts', 'Arrival time sent to the client', 'On My Way texts', 'y', 'y', 'y', 'y'],
+  ['Recurring jobs', 'Weekly, monthly or custom repeats', 'Recurring jobs', 'y', 'y', 'y', 'y'],
+  ['Time tracking & timesheets', 'Clock in/out, approval, payroll export', 'Time tracking & timesheets', 'y', 'y', 'y', 'y'],
+  ['Dispatch map & route optimization', '', 'Dispatch map & route optimization', 'p', 'p', 'y', 'y'],
+  ['Job checklists & custom forms', '', 'Job checklists & custom forms', 'y', 'y', 'y', 'y'],
+  ['Inventory & purchase orders', '', 'Inventory & purchase orders', 'n', 'n', 'p', 'y'],
+  ['Equipment history per property', '', 'Equipment history per property', 'n', 'p', 'n', 'y'],
+  ['Clients & communication'],
+  ['Client portal', 'Visits, quotes, invoices and requests', '', 'y', 'y', 'y', 'y'],
+  ['Online booking', '', '', 'y', 'y', 'y', 'a'],
+  ['Booking widget for your website', '', 'Booking widget for your website', 'y', 'y', 'y', 'a'],
+  ['Two-way texting inbox', '', 'Two-way texting inbox', 'p', 'y', 'a', 'y'],
+  ['Missed-call text-back / AI receptionist', '', 'Missed-call text-back', 'a', 'a', 'a', 'a'],
+  ['Marketing'],
+  ['Review requests & Google reviews', '', '', 'a', 'y', 'y', 'a'],
+  ['Social media posting', 'Facebook, Instagram, TikTok, LinkedIn and more', '', 'n', 'n', 'n', 'n'],
+  ['Email marketing campaigns', '', 'Email marketing campaigns', 'a', 'a', 'p', 'a'],
+  ['AI writing assistant', '', '', 'y', 'y', 'y', 'y'],
+  ['Money, team & integrations'],
+  ['Job profit report', 'Revenue against costs per job', 'Job profit report', 'p', 'p', 'y', 'y'],
+  ['QuickBooks Online sync', '', 'QuickBooks & Xero sync', 'y', 'p', 'y', 'y'],
+  ['Xero sync', '', 'QuickBooks & Xero sync', 'y', 'n', 'n', 'n'],
+  ['Custom roles & permissions', '', '', 'p', 'p', 'y', 'y'],
+  ['Commissions for team members', '', 'Commissions for team members', 'n', 'p', 'y', 'y'],
+  ['Zapier & public API', '', 'Zapier & public API', 'y', 'p', 'y', 'y'],
+  ['Multiple locations', '', 'Multiple locations', 'n', 'p', 'p', 'y'],
+];
+const CMP_MARK = { y: ['yes', 'Included'], p: ['part', 'Partly'], a: ['addon', 'Add-on'], n: ['no', 'No'] };
+// Worklio's status for a row: 'have' when it isn't on the Board, else the Board post's status (null when that post was deleted or renamed)
+const cmpPost = (title) => title && FR.posts.find((p) => p.title.trim().toLowerCase() === title.toLowerCase());
+const cmpUs = (r) => { if (!r[2]) return { s: 'have', l: 'Included' }; const p = cmpPost(r[2]); return p ? { s: p.status, l: FR.statuses[p.status], id: p.id } : { s: 'missing', l: 'Not on the Board' }; };
+const CMP_GAP = ['open', 'review', 'planned', 'progress', 'beta', 'declined', 'missing'];
+function compareView(main) {
+  const feats = CMP_ROWS.filter((r) => r.length > 1).map((r) => ({ r, us: cmpUs(r) }));
+  const pick = (ss) => [...new Set(feats.filter((f) => ss.includes(f.us.s)).map((f) => f.us.id ? f.r[2] : f.r[0]))];
+  const box = (h, list, none) => `<div class="card cmp-box"><h3>${h}</h3>${list.length ? `<ul>${list.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : `<p class="muted" style="margin:0">${none}</p>`}</div>`;
+  const out = []; let group = null;
+  for (const r of CMP_ROWS) {
+    if (r.length === 1) { group = `<tr class="cmp-g"><td colspan="${CMP_COLS.length + 2}">${esc(r[0])}</td></tr>`; continue; }
+    const us = cmpUs(r); if (cmpGaps && !CMP_GAP.includes(us.s)) continue;
+    if (group) { out.push(group); group = null; }
+    const usCell = us.id ? `<button type="button" class="link-btn" data-act="frOpen" data-id="${esc(us.id)}" title="Open the Board post">${frChip('s-' + us.s, us.l)}</button>` : frChip(us.s === 'have' ? 's-done' : 's-missing', us.l);
+    out.push(`<tr><td class="cmp-f"><strong>${esc(r[0])}</strong>${r[1] ? `<small>${esc(r[1])}</small>` : ''}</td><td class="cmp-us">${usCell}</td>${r.slice(3).map((k) => `<td><span class="cmp-m ${CMP_MARK[k][0]}"><i></i>${CMP_MARK[k][1]}</span></td>`).join('')}</tr>`);
+  }
+  main.innerHTML = `<div class="head"><div><h1>Help Center</h1><p class="sub" style="margin:4px 0 0">Comparison: ${esc(D.settings.productName)} against the main competitors. The ${esc(D.settings.productName)} column shows each feature’s status on the Board, so it updates when you change a post’s status. Click a status to open its post.</p></div></div>
+${helpSeg()}
+<div class="cmp-boxes">${box('Shipped', pick(['done']), 'Nothing marked Done on the Board yet.')}${box('In progress or beta', pick(['progress', 'beta']), 'Nothing in progress right now.')}${box('Planned', pick(['planned']), 'Nothing planned.')}</div>
+<div class="cmp-bar"><div class="cmp-legend">${Object.values(CMP_MARK).map(([c, l]) => `<span class="cmp-m ${c}"><i></i>${l === 'Partly' ? 'Partly / higher plans' : l === 'Add-on' ? 'Paid add-on' : l === 'No' ? 'Not offered' : l}</span>`).join('')}</div>
+<div class="hc-seg" role="group" aria-label="Rows to show"><button type="button" class="${cmpGaps ? '' : 'on'}" data-act="cmpGaps" data-k="">All features</button><button type="button" class="${cmpGaps ? 'on' : ''}" data-act="cmpGaps" data-k="1">Our gaps only</button></div></div>
+<div class="card cmp-card"><div class="cmp-scroll"><table class="cmp-table"><thead><tr><th class="cmp-f">Feature</th><th class="cmp-us">${esc(D.settings.productName)}</th>${CMP_COLS.map(([n, p]) => `<th>${esc(n)}<small>${esc(p)}</small></th>`).join('')}</tr></thead>
+<tbody>${out.join('') || `<tr><td colspan="${CMP_COLS.length + 2}" class="muted">No gaps: every feature is included or done.</td></tr>`}</tbody></table></div></div>
+<p class="sm muted" style="max-width:80ch">Competitor features and prices come from vendor sites and 2026 reviews, and change often; check <a href="https://www.getjobber.com/pricing/" target="_blank" rel="noopener">Jobber</a>, <a href="https://www.housecallpro.com/pricing/" target="_blank" rel="noopener">Housecall Pro</a>, <a href="https://www.workiz.com/pricing-plans/" target="_blank" rel="noopener">Workiz</a> and <a href="https://www.servicetitan.com/pricing" target="_blank" rel="noopener">ServiceTitan</a> before quoting any of it publicly. “Not on the Board” means the post this row follows was deleted or renamed.</p>`;
+  sideLayout(main);
+}
+A.cmpGaps = (d) => { cmpGaps = !!d.k; render(); };
 A.frKind = (d) => { frView.kind = d.k; frList($('#main')); };
 A.frReplyTo = (d) => {
   const p = FR.posts.find((x) => x.id === frSel); const c = p.comments.find((x) => x.id === d.c); const f = $('#frReply');

@@ -333,6 +333,20 @@
     .fr-card{padding:0;overflow:auto}.fr-card>p{padding:18px}.fr-table{width:100%}.fr-table td,.fr-table th{padding:10px 14px}.fr-table tbody tr{cursor:pointer}.fr-table tbody tr:hover{background:var(--surface-2)}.fr-tl{margin-bottom:3px}.fr-table .sm,.fr-grid div.sm{font-size:13px;color:var(--muted)}
     .fr-chip{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:99px;background:var(--neutral-bg);color:var(--neutral-fg)}.fr-chip.k-idea{background:#ede9fe;color:#6d28d9}.fr-chip.k-issue{background:#fef3c7;color:#b45309}
     .fr-chip.s-open{background:#dbeafe;color:#1d4ed8}.fr-chip.s-review{background:#cffafe;color:#0e7490}.fr-chip.s-planned{background:#ffedd5;color:#7c2d12}.fr-chip.s-progress{background:#fef9c3;color:#a16207}.fr-chip.s-done{background:#dcfce7;color:#15803d}
+    .fr-chip.s-beta{background:#fef3c7;color:#b45309}.fr-chip.s-declined,.fr-chip.s-missing{background:var(--neutral-bg);color:var(--neutral-fg)}
+    /* Help Center → Comparison: summary boxes, then the feature table with the Worklio column highlighted */
+    .cmp-boxes{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:0 0 14px}.cmp-box{margin:0}.cmp-box h3{margin:0 0 8px;font-size:15px}.cmp-box ul{margin:0;padding-left:18px;display:grid;gap:4px;font-size:14px}
+    .cmp-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin:0 0 12px}.cmp-legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px}
+    .cmp-card{padding:0;overflow:hidden}.cmp-scroll{overflow-x:auto}.cmp-table{border-collapse:separate;border-spacing:0;width:100%;min-width:780px}
+    .cmp-table th,.cmp-table td{padding:10px 12px;text-align:center;border-bottom:1px solid var(--line);vertical-align:middle}.cmp-table thead th{font-size:14px}.cmp-table thead th small{display:block;font-weight:400;font-size:11.5px;color:var(--muted)}
+    .cmp-table .cmp-f{text-align:left;position:sticky;left:0;background:var(--card);z-index:1;min-width:230px}.cmp-table .cmp-f small{display:block;color:var(--muted);font-size:12.5px;margin-top:2px}.cmp-table td.cmp-f strong{font-weight:600}
+    .cmp-table .cmp-us{background:color-mix(in srgb,var(--brand) 9%,transparent)}.cmp-table tbody tr:last-child td{border-bottom:0}.cmp-us .link-btn{padding:0}
+    .cmp-g td{text-align:left;background:var(--neutral-bg);font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:7px 12px}
+    .cmp-m{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;white-space:nowrap}.cmp-m i{width:10px;height:10px;border-radius:50%;flex:none}
+    .cmp-m.yes{color:#15803d}.cmp-m.yes i{background:#15803d}.cmp-m.part{color:#a16207}.cmp-m.part i{background:linear-gradient(90deg,#a16207 50%,transparent 50%);border:1.5px solid #a16207}
+    .cmp-m.addon{color:#7c3aed}.cmp-m.addon i{border:1.5px dashed #7c3aed}.cmp-m.no{color:var(--muted)}.cmp-m.no i{border:1.5px solid var(--muted)}
+    @media (prefers-color-scheme:dark){:root:not([data-theme=light]) .cmp-m.yes{color:#4ade80}:root:not([data-theme=light]) .cmp-m.yes i{background:#4ade80}:root:not([data-theme=light]) .cmp-m.part{color:#facc15}:root:not([data-theme=light]) .cmp-m.addon{color:#c4b5fd}}
+    :root[data-theme=dark] .cmp-m.yes{color:#4ade80}:root[data-theme=dark] .cmp-m.yes i{background:#4ade80}:root[data-theme=dark] .cmp-m.part{color:#facc15}:root[data-theme=dark] .cmp-m.addon{color:#c4b5fd}
     .fr-grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;align-items:start}.fr-grid .card{margin:0 0 16px}.fr-h{font-size:20px;margin:8px 0 6px}.fr-body{white-space:pre-wrap;overflow-wrap:anywhere;margin:10px 0 6px;line-height:1.55}
     .fr-c{padding:12px 0;border-top:1px solid var(--line)}.fr-c.team{border-left:3px solid var(--brand);padding-left:12px}.fr-reply{margin-left:24px;padding-left:12px;border-left:2px solid var(--line)}.fr-reply .fr-c{border-top:0;padding-top:4px}
     .fr-acts{display:flex;gap:14px;justify-content:flex-start}.fr-acts button{width:auto;flex:none;margin:0}.fr-grid h2+.fr-c{border-top:0;padding-top:0}.fr-acts .danger-text{color:var(--danger)}.fr-team{display:inline-block;font-weight:700;color:#fff;background:var(--brand);padding:1px 8px;border-radius:99px;font-size:12px}
@@ -391,6 +405,6 @@
   <script src="/hc-editor.js?v=2"></script>
   <script src="/brand.js?v=1"></script>
   <script src="/cancelflow.js?v=1"></script>
-  <script src="/platform.js?v=91"></script>
+  <script src="/platform.js?v=92"></script>
 </body>
 </html>
