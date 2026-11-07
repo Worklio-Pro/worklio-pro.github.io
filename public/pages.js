@@ -46,11 +46,11 @@ ${o.productivity.map((p) => `<tr><td><span style="display:inline-block;width:9px
    Click an empty time to add a Job, Task or Event there; drag anything to another day or time to move it. ===== */
 const SC_START = 6; const SC_END = 21; const SC_HOUR = 48; // the grid runs 6 AM to 9 PM, 48px per hour
 let scState = { anchor: new Date(), view: innerWidth < 700 ? 'day' : 'week', hidden: [] };
-try { const saved = JSON.parse(localStorage.getItem('sched') || '{}'); if (saved.view) scState.view = innerWidth < 700 ? 'day' : saved.view; if (saved.hidden) scState.hidden = saved.hidden; } catch (e) { /* private mode */ }
+try { const saved = JSON.parse(localStorage.getItem('sched') || '{}'); if (saved.view) scState.view = innerWidth < 700 && saved.view === 'week' ? 'day' : saved.view; if (saved.hidden) scState.hidden = saved.hidden; } catch (e) { /* private mode */ }
 const scSave = () => { try { localStorage.setItem('sched', JSON.stringify({ view: scState.view, hidden: scState.hidden })); } catch (e) { /* private mode */ } };
 const scMin = (t) => { const [h, m] = String(t || '0:0').split(':').map(Number); return h * 60 + (m || 0); };
 const scTime = (min) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
-const scDays = () => (scState.view === 'day' ? [new Date(scState.anchor.getFullYear(), scState.anchor.getMonth(), scState.anchor.getDate())] : Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(scState.anchor), i)));
+const scDays = () => (scState.view !== 'week' ? [new Date(scState.anchor.getFullYear(), scState.anchor.getMonth(), scState.anchor.getDate())] : Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(scState.anchor), i)));
 // everything on one day: jobs, tasks and events, filtered by the team calendars shown
 function scItems(day) {
   const shownStaff = (ids) => { const list = ids || []; return list.length ? list.some((id) => !scState.hidden.includes(id)) : !scState.hidden.includes('none'); };
@@ -73,6 +73,10 @@ PAGES['/calendar'] = {
   title: 'Calendar',
   async render(main) {
     const days = scDays(); const today = ymd(new Date()); const edit = canDo('jobs.edit');
+    const views = `<div class="sc-views">${[['day', 'Day'], ['week', 'Week'], ...(planHas('dispatchMap') ? [['map', 'Map']] : [])].map(([k, l]) => `<button type="button" class="${scState.view === k ? 'on' : ''}" data-act="scView" data-v="${k}">${l}</button>`).join('')}</div>`;
+    if (scState.view === 'map' && !planHas('dispatchMap')) scState.view = 'day';
+    if (scState.view === 'map') return scMapRender(main, edit, `<div class="sc-bar"><button type="button" class="btn alt sm" data-act="scToday">Today</button><button type="button" class="btn alt sm sc-arrow" data-act="scStep" data-n="-1" aria-label="Previous day">‹</button><button type="button" class="btn alt sm sc-arrow" data-act="scStep" data-n="1" aria-label="Next day">›</button>
+<h1 class="sc-range">${esc(scState.anchor.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }))}</h1><span style="flex:1"></span>${views}</div>`);
     const a = scState.anchor; const first = new Date(a.getFullYear(), a.getMonth(), 1); const gridStart = startOfWeek(first);
     const range = scState.view === 'day' ? a.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
       : `${days[0].toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}–${days[0].getMonth() === days[6].getMonth() ? days[6].getDate() : days[6].toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}, ${days[6].getFullYear()}`;
@@ -90,7 +94,7 @@ PAGES['/calendar'] = {
 <aside class="sc-side">${mini}<div class="sc-team"><h3>Team calendars</h3>${team.map(([id, n, c]) => `<label><input type="checkbox" data-act="scTeam" data-id="${esc(id)}" ${scState.hidden.includes(id) ? '' : 'checked'} style="accent-color:${esc(c)}"> ${esc(n)}</label>`).join('')}</div>
 ${edit ? '<p class="muted sc-tip">Click a time to add a job, task or event. Drag anything to move it.</p>' : ''}</aside>
 <section class="sc-main"><div class="sc-bar"><button type="button" class="btn alt sm" data-act="scToday">Today</button><button type="button" class="btn alt sm sc-arrow" data-act="scStep" data-n="-1" aria-label="Previous">‹</button><button type="button" class="btn alt sm sc-arrow" data-act="scStep" data-n="1" aria-label="Next">›</button>
-<h1 class="sc-range">${esc(range)}</h1><span style="flex:1"></span><div class="sc-views">${[['day', 'Day'], ['week', 'Week']].map(([k, l]) => `<button type="button" class="${scState.view === k ? 'on' : ''}" data-act="scView" data-v="${k}">${l}</button>`).join('')}</div></div>
+<h1 class="sc-range">${esc(range)}</h1><span style="flex:1"></span>${views}</div>
 <div class="sc-grid" style="--days:${days.length}">
 <div class="sc-head"><div class="sc-gut">${esc(Intl.DateTimeFormat().resolvedOptions().timeZone.split('/').pop().replace('_', ' '))}</div>${days.map((d) => `<div class="sc-dh${ymd(d) === today ? ' today' : ''}"><span>${d.toLocaleDateString('en-US', { weekday: 'short' })}</span><b>${d.getDate()}</b></div>`).join('')}</div>
 <div class="sc-head sc-anyrow"><div class="sc-gut">Anytime</div>${week.map(lane).join('')}</div>
@@ -102,7 +106,7 @@ ${edit ? '<p class="muted sc-tip">Click a time to add a job, task or event. Drag
 };
 A.scView = (d) => { scState.view = d.v; scSave(); refresh(); };
 A.scToday = () => { scState.anchor = new Date(); refresh(); };
-A.scStep = (d) => { scState.anchor = addDays(scState.anchor, Number(d.n) * (scState.view === 'day' ? 1 : 7)); refresh(); };
+A.scStep = (d) => { scState.anchor = addDays(scState.anchor, Number(d.n) * (scState.view === 'week' ? 7 : 1)); refresh(); };
 A.scMonth = (d) => { const a = scState.anchor; scState.anchor = new Date(a.getFullYear(), a.getMonth() + Number(d.n), 1); refresh(); };
 A.scGo = (d) => { scState.anchor = parseD(d.d); refresh(); };
 A.scTeam = (d, el) => { scState.hidden = el.checked ? scState.hidden.filter((x) => x !== d.id) : [...new Set([...scState.hidden, d.id])]; scSave(); refresh(); };
@@ -146,6 +150,108 @@ function scWire(main, edit) {
   });
 }
 let scDragged = false;
+
+/* ===== Calendar → Map (dispatch map): one day's jobs on a map, numbered in each team member's color in visiting order, with a line for each
+   person's route from the business address. The list beside it groups visits by person: drag a visit onto someone to assign it (or use
+   Assign to in its pin), and Best order puts a person's visits in the shortest driving order with new times. Plan feature: dispatchMap. ===== */
+let dmLeaflet = null; let dmMap = null; let dmToken = 0; let dmPins = {};
+const loadLeaflet = () => dmLeaflet || (dmLeaflet = new Promise((ok, no) => {
+  const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css'; document.head.appendChild(l);
+  const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
+  s.onload = () => ok(window.L); s.onerror = () => { dmLeaflet = null; no(new Error('The map couldn’t load. Check your connection and try again.')); }; document.head.appendChild(s);
+}));
+const dmMin = (j) => (j.anytime || !j.startTime ? 1440 : scMin(j.startTime));
+const dmWhen = (j) => (j.anytime || !j.startTime ? 'Anytime' : `${fmtTime(j.startTime)}–${fmtTime(j.endTime)}`);
+// Google Maps directions through a person's stops in order, starting from where the phone is (Google allows 9 stops between)
+const dmDirections = (stops) => { const a = stops.map((j) => j.address).filter(Boolean).slice(0, 10); if (!a.length) return '';
+  return `https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=${encodeURIComponent(a[a.length - 1])}${a.length > 1 ? '&waypoints=' + encodeURIComponent(a.slice(0, -1).join('|')) : ''}`; };
+async function scMapRender(main, edit, bar) {
+  const token = ++dmToken; const date = ymd(scState.anchor);
+  main.innerHTML = `<div class="dm">${bar}<div class="dm-body"><aside class="dm-list" id="dmList"><p class="muted">Loading…</p></aside><div class="dm-map" id="dmMap" role="region" aria-label="Map of the day’s jobs"></div></div></div>`;
+  let data; let L;
+  try { [data, L] = await Promise.all([api('GET', '/api/dispatch?date=' + date), loadLeaflet()]); } catch (x) { if (token === dmToken) $('#dmList').innerHTML = `<p class="danger-text">${esc(x.message)}</p>`; return; }
+  if (token !== dmToken || !$('#dmMap')) return; // moved to another day or page while loading
+  const team = D.staff.filter(staffActive);
+  const groups = [{ id: '', name: 'Unassigned', color: '#64748b' }, ...team.map((s) => ({ id: s.id, name: s.name, color: s.color || '#0f766e', s }))]
+    .map((g) => ({ ...g, jobs: data.jobs.filter((j) => (g.id ? j.staffIds.includes(g.id) : !j.staffIds.filter((x) => byId(D.staff, x)).length)).sort((a, b) => dmMin(a) - dmMin(b)) }))
+    .filter((g) => g.id || g.jobs.length);
+  const owner = {}; groups.forEach((g) => g.jobs.forEach((j, i) => { if (!owner[j.id]) owner[j.id] = { g, n: i + 1 }; })); // a visit with two people shows in the first one's color
+  const item = (g, j, i) => `<li class="dm-job${j.status === 'completed' ? ' done' : ''}" data-id="${j.id}" data-g="${esc(g.id)}" ${edit ? 'draggable="true"' : ''}>
+<span class="dm-n" style="--c:${esc(g.color)}">${i + 1}</span><span class="dm-t"><span class="dm-when">${esc(dmWhen(j))}${j.status === 'completed' ? ' · Completed' : ''}</span>
+<strong>${esc(j.title || 'Job #' + j.number)}</strong><span class="muted">${esc([j.client, j.address].filter(Boolean).join(' · ') || 'No address')}</span>${j.address && j.lat === undefined ? `<span class="dm-warn">${j.unplaced ? 'Address not found on the map' : 'Finding on the map…'}</span>` : ''}</span></li>`;
+  const movable = (g) => g.jobs.filter((j) => j.status !== 'completed' && j.lat !== undefined).length;
+  $('#dmList').innerHTML = `${data.base && data.base.lat === undefined ? `<p class="dm-note">${data.pending ? 'Finding your business address on the map…' : 'Your business address (Settings → Company Profile) couldn’t be found on the map, so routes start at the first visit.'}</p>` : !data.base ? '<p class="dm-note">Add your business address in Settings → Company Profile so routes start there.</p>' : ''}
+${data.pending ? `<p class="dm-note">Finding ${data.pending} address${data.pending === 1 ? '' : 'es'} on the map…</p>` : ''}
+${!data.jobs.length ? `<p class="muted dm-empty">No jobs on ${esc(fmtDate(date))}.</p>` : ''}
+${groups.map((g) => `<section class="dm-g" data-g="${esc(g.id)}"><div class="dm-gh"><span class="dm-dot" style="background:${esc(g.color)}"></span><strong>${esc(g.name)}</strong><span class="muted">${g.jobs.length ? `${g.jobs.length} visit${g.jobs.length === 1 ? '' : 's'}` : 'No visits'}</span>
+<span class="dm-acts">${g.jobs.some((j) => j.address) ? `<a class="btn alt sm" href="${esc(dmDirections(g.jobs.filter((j) => j.status !== 'completed')) || dmDirections(g.jobs))}" target="_blank" rel="noopener" title="Driving directions through these visits in Google Maps">Directions</a>` : ''}${edit && movable(g) > 1 ? `<button type="button" class="btn sm" data-act="dmOptimize" data-g="${esc(g.id)}">Best order</button>` : ''}</span></div>
+${g.jobs.length ? `<ol class="dm-jobs">${g.jobs.map((j, i) => item(g, j, i)).join('')}</ol>` : edit ? '<div class="dm-drop muted">Drag a visit here to assign it</div>' : ''}</section>`).join('')}
+${edit && data.jobs.length ? '<p class="muted dm-tip">Drag a visit onto someone to assign it to them.</p>' : ''}`;
+  // the map
+  if (dmMap) { dmMap.remove(); dmMap = null; }
+  dmMap = L.map('dmMap', { scrollWheelZoom: true }); dmPins = {};
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(dmMap);
+  const pts = [];
+  const home = data.base && data.base.lat !== undefined ? [data.base.lat, data.base.lng] : null;
+  if (home) { pts.push(home); L.marker(home, { icon: L.divIcon({ className: 'dm-home', html: '<span title="Your business">⌂</span>', iconSize: [28, 28], iconAnchor: [14, 14] }), zIndexOffset: -100 }).addTo(dmMap).bindPopup(`<strong>${esc(company.name || 'Your business')}</strong><br>${esc(data.base.address)}`); }
+  for (const g of groups) {
+    const line = g.jobs.filter((j) => j.lat !== undefined).map((j) => [j.lat, j.lng]);
+    if (g.id && line.length) L.polyline(home ? [home, ...line] : line, { color: g.color, weight: 3, opacity: 0.75, dashArray: '6 6' }).addTo(dmMap);
+  }
+  for (const j of data.jobs) {
+    if (j.lat === undefined) continue; const { g, n } = owner[j.id]; pts.push([j.lat, j.lng]);
+    const others = j.staffIds.map((x) => byId(D.staff, x)).filter(Boolean);
+    const m = L.marker([j.lat, j.lng], { icon: L.divIcon({ className: 'dm-pin' + (j.status === 'completed' ? ' done' : ''), html: `<span style="--c:${esc(g.color)}">${n}</span>`, iconSize: [28, 28], iconAnchor: [14, 14] }), title: j.title }).addTo(dmMap);
+    m.bindPopup(`<div class="dm-pop"><span class="muted">${esc(dmWhen(j))}</span><strong>${esc(j.title || 'Job #' + j.number)}</strong><span>${esc(j.client)}</span><span class="muted">${esc(j.address)}</span>
+<span class="muted">${others.length ? esc(others.map((s) => s.name).join(', ')) : 'Unassigned'}</span>
+${edit && j.status !== 'completed' ? `<label class="dm-assign">Assign to <select data-id="${j.id}"><option value="">Unassigned</option>${team.map((s) => `<option value="${s.id}" ${j.staffIds[0] === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>` : ''}
+<a href="/jobs/edit?id=${j.id}" data-dm-open="${j.id}">Open job #${esc(String(j.number))} ›</a></div>`);
+    dmPins[j.id] = m;
+  }
+  if (pts.length) dmMap.fitBounds(pts, { padding: [40, 40], maxZoom: 14 }); else dmMap.setView([39.5, -98.35], 4);
+  dmMap.on('popupopen', (e) => { const el = e.popup.getElement(); const sel = $('select', el); const open = $('[data-dm-open]', el);
+    if (open) open.addEventListener('click', (ev) => { ev.preventDefault(); navigate('/jobs/edit?id=' + open.dataset.dmOpen); });
+    if (sel) sel.addEventListener('change', () => dmAssign(sel.dataset.id, null, sel.value)); });
+  setTimeout(() => dmMap && dmMap.invalidateSize(), 0);
+  // clicking a visit in the list shows its pin; dragging assigns it
+  $$('.dm-job', main).forEach((li) => {
+    li.addEventListener('click', () => { const m = dmPins[li.dataset.id]; if (!m) return; dmMap.setView(m.getLatLng(), Math.max(dmMap.getZoom(), 13)); m.openPopup(); if (innerWidth < 900) $('#dmMap').scrollIntoView({ behavior: 'smooth', block: 'center' }); });
+    if (edit) li.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/plain', JSON.stringify({ id: li.dataset.id, from: li.dataset.g })); e.dataTransfer.effectAllowed = 'move'; li.classList.add('dm-dragging'); });
+    li.addEventListener('dragend', () => li.classList.remove('dm-dragging'));
+  });
+  if (edit) $$('.dm-g', main).forEach((sec) => {
+    sec.addEventListener('dragover', (e) => { e.preventDefault(); sec.classList.add('dm-over'); });
+    sec.addEventListener('dragleave', (e) => { if (!sec.contains(e.relatedTarget)) sec.classList.remove('dm-over'); });
+    sec.addEventListener('drop', (e) => { e.preventDefault(); sec.classList.remove('dm-over'); let d; try { d = JSON.parse(e.dataTransfer.getData('text/plain')); } catch (x) { return; } if (d.from !== sec.dataset.g) dmAssign(d.id, d.from, sec.dataset.g); });
+  });
+  if (data.pending) setTimeout(() => { if (token === dmToken && curPath() === '/calendar' && scState.view === 'map') scMapRender(main, edit, bar); }, 1500); // more addresses are being looked up
+}
+// moves a visit from one person to another (from: null replaces the whole team, as the pin's Assign to does)
+async function dmAssign(id, from, to) {
+  const j = byId(D.jobs, id); if (!j) return;
+  const now = (j.staffIds || []).filter((x) => byId(D.staff, x));
+  const ids = from === null ? (to ? [to] : []) : to ? [...new Set(now.map((x) => (x === from ? to : x)).concat(from ? [] : [to]))] : now.filter((x) => x !== from);
+  try { await api('PUT', '/api/jobs/' + id, { staffIds: ids }); const s = byId(D.staff, to); toast(s ? `Assigned to ${s.name}` : 'Unassigned'); refresh(); } catch (x) { toast(x.message, true); }
+}
+// Best order: shows the new order and times first; Save sets them
+A.dmOptimize = async (d) => {
+  const date = ymd(scState.anchor); const who = d.g ? (byId(D.staff, d.g) || {}).name : 'Unassigned visits';
+  const show = async (start) => {
+    let r; try { r = await api('POST', '/api/dispatch/optimize', { date, staffId: d.g, start }); } catch (x) { return toast(x.message, true); }
+    const first = r.order[0] ? r.order[0].startTime : '08:00'; const shared = r.order.filter((o) => o.shared.length);
+    const b = modal(`Best order for ${who}`, `<p class="sub">${esc(fmtDate(date))} · about <strong>${r.miles} mi</strong> and ${r.driveMinutes >= 60 ? `${Math.floor(r.driveMinutes / 60)} h ${r.driveMinutes % 60 ? (r.driveMinutes % 60) + ' min' : ''}` : r.driveMinutes + ' min'} of driving${r.before > r.miles + 0.2 ? `, ${(r.before - r.miles).toFixed(1)} mi less than now` : r.before ? ' (the same as now)' : ''}.${r.base ? ' Starts from your business address.' : ''}</p>
+<label class="fl dm-start"><span>First visit starts at</span><input type="time" name="start" value="${esc(first)}"></label>
+<ol class="dm-plan">${r.order.map((o) => `<li><span class="dm-when">${esc(fmtTime(o.startTime))}–${esc(fmtTime(o.endTime))}</span><strong>${esc(o.title || 'Job #' + o.number)}</strong><span class="muted">${esc(o.address)}</span><span class="muted dm-drive">${o.drive ? `${o.drive} min drive · ${o.miles} mi` : ''}</span></li>`).join('')}</ol>
+${shared.length ? `<p class="dm-note">${shared.map((o) => `${esc(o.title || 'Job #' + o.number)} is also on ${esc(o.shared.join(' and '))}’s route; its time changes for them too.`).join(' ')}</p>` : ''}
+${r.unplaced.length ? `<p class="muted">Not on the map, left as they are: ${r.unplaced.map((o) => esc(o.title || 'Job #' + o.number)).join(', ')}.</p>` : ''}
+<p class="muted" style="font-size:12px">Drive times are estimates from straight-line distance. Completed visits aren’t moved.</p>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button type="button" class="btn" id="dmSave">Save these times</button></div>`);
+    $('[name=start]', b).addEventListener('change', (e) => { if (/^\d{2}:\d{2}$/.test(e.target.value)) show(e.target.value); });
+    $('#dmSave', b).addEventListener('click', async (e) => { e.target.disabled = true;
+      try { await api('POST', '/api/dispatch/optimize', { date, staffId: d.g, start: $('[name=start]', b).value, apply: true }); closeModal(); toast(`${r.order.length} visits put in the best order`); refresh(); } catch (x) { e.target.disabled = false; toast(x.message, true); } });
+  };
+  show();
+};
 // open what was clicked: a job opens its page; a task or event opens in the quick pop-up to edit
 function scOpen(kind, id, x, y) {
   if (kind === 'job') return navigate('/jobs/edit?id=' + id);

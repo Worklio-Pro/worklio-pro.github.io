@@ -824,6 +824,103 @@ app.post('/api/memberships/:id/cancel', (req, res) => {
   save(); res.json({ membership: membershipRow(m), removed });
 });
 
+// Dispatch map (Calendar → Map): where a day's jobs are, and the shortest order for each person to visit them.
+// Addresses become map points through the US Census geocoder (free, no key), then OpenStreetMap's Nominatim for anything it can't place
+// (at most one request a second, as its rules ask). Results are kept per account in db.geo, so an address is looked up once.
+// Distances are straight-line miles times 1.3 for roads, at an average 30 mph: estimates, not turn-by-turn driving times.
+const geoKey = (a) => String(a || '').trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 300);
+let nominatimNext = 0; // the next moment Nominatim may be asked (shared by every account on this server)
+async function geocodeAddress(addr) {
+  const q = String(addr || '').trim(); if (!q) return null;
+  try {
+    const r = await fetch('https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?benchmark=Public_AR_Current&format=json&address=' + encodeURIComponent(q), { signal: AbortSignal.timeout(6000) });
+    if (r.ok) { const m = (((await r.json()).result || {}).addressMatches || [])[0]; if (m && m.coordinates) return { lat: +m.coordinates.y, lng: +m.coordinates.x }; }
+  } catch (e) { /* try the next one */ }
+  try {
+    const wait = nominatimNext - Date.now(); nominatimNext = Math.max(Date.now(), nominatimNext) + 1100;
+    if (wait > 0) await new Promise((ok) => setTimeout(ok, wait));
+    const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(q), { headers: { 'User-Agent': 'WorklioPro/1.0 (dispatch map)' }, signal: AbortSignal.timeout(6000) });
+    if (r.ok) { const m = (await r.json())[0]; if (m) return { lat: +m.lat, lng: +m.lon }; }
+    else return undefined; // busy or refused: try again later
+  } catch (e) { return undefined; }
+  return null; // neither could place it
+}
+// looks up addresses not seen before (within a time budget, so the page isn't held up); misses are retried after a week
+async function placeAddresses(list, budgetMs = 7000) {
+  db.geo = db.geo || {}; const t0 = Date.now(); let changed = false; const todo = [];
+  for (const a of new Set(list.map(geoKey).filter(Boolean))) { const g = db.geo[a]; if (!g || (g.miss && Date.now() - Date.parse(g.at) > 7 * 864e5)) todo.push(a); }
+  for (const a of todo) {
+    if (Date.now() - t0 > budgetMs) break;
+    const p = await geocodeAddress(a); if (p === undefined) continue;
+    db.geo[a] = p && isFinite(p.lat) && isFinite(p.lng) ? { lat: +p.lat.toFixed(6), lng: +p.lng.toFixed(6), at: new Date().toISOString() } : { miss: true, at: new Date().toISOString() }; changed = true;
+  }
+  if (changed) save();
+  return todo.filter((a) => !db.geo[a]).length; // still waiting
+}
+const placeOf = (addr) => { const g = (db.geo || {})[geoKey(addr)]; return g && !g.miss ? { lat: g.lat, lng: g.lng } : null; };
+const jobAddress = (j) => String(j.address || (findClient(j.clientId) || {}).address || '').trim();
+const roadMiles = (a, b) => { const R = 3958.8; const r = (x) => (x * Math.PI) / 180; const dLat = r(b.lat - a.lat); const dLng = r(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(dLng / 2) ** 2; return 2 * R * Math.asin(Math.min(1, Math.sqrt(h))) * 1.3; };
+const driveMin = (miles) => (miles < 0.1 ? 0 : Math.max(5, Math.ceil((miles / 30) * 60 / 5) * 5)); // 30 mph, to the next 5 minutes
+const routeMiles = (base, pts) => pts.reduce((s, p, i) => s + roadMiles(i ? pts[i - 1] : base || p, p), 0);
+// the visiting order with the fewest miles: nearest next stop, then 2-opt swaps until nothing improves (exact for a day's few stops is not needed)
+function shortestOrder(base, pts) {
+  if (pts.length < 2) return pts.slice();
+  const left = pts.slice(); const order = []; let at = base || left[0];
+  while (left.length) { let k = 0; left.forEach((p, i) => { if (roadMiles(at, p) < roadMiles(at, left[k])) k = i; }); at = left.splice(k, 1)[0]; order.push(at); }
+  for (let better = true, n = 0; better && n < 50; n++) {
+    better = false;
+    for (let i = 0; i < order.length - 1; i++) for (let j = i + 1; j < order.length; j++) {
+      const flip = [...order.slice(0, i), ...order.slice(i, j + 1).reverse(), ...order.slice(j + 1)];
+      if (routeMiles(base, flip) < routeMiles(base, order) - 0.01) { order.splice(0, order.length, ...flip); better = true; }
+    }
+  }
+  return order;
+}
+const dayJobs = (date) => db.jobs.filter((j) => j.date === date && j.status !== 'cancelled');
+app.get('/api/dispatch', async (req, res) => {
+  const date = String(req.query.date || ''); if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'Choose a day' });
+  const jobs = dayJobs(date); const base = String(db.company.address || '').trim();
+  const pending = await placeAddresses([base, ...jobs.map(jobAddress)]);
+  res.json({ date, pending, base: base ? { address: base, ...(placeOf(base) || {}) } : null,
+    jobs: jobs.map((j) => { const c = findClient(j.clientId) || {}; const addr = jobAddress(j);
+      return { id: j.id, number: j.number, title: j.title, client: c.company || c.name || '', address: addr, startTime: j.startTime, endTime: j.endTime, anytime: !!j.anytime,
+        staffIds: j.staffIds || [], status: j.status, seriesId: j.seriesId || '', ...(placeOf(addr) || {}), unplaced: !!addr && !placeOf(addr) && !!(db.geo || {})[geoKey(addr)] }; }) });
+});
+// a person's best order for the day, and new times: the day starts at `start` (or their first visit), each visit keeps its length
+// (anytime visits take an hour) and the drive between stops is added. With apply: true the times are saved.
+app.post('/api/dispatch/optimize', async (req, res) => {
+  const b = req.body || {}; const date = String(b.date || ''); if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'Choose a day' });
+  const sid = String(b.staffId || ''); if (sid && !db.staff.some((s) => s.id === sid)) return res.status(404).json({ error: 'Team member not found' });
+  const mine = dayJobs(date).filter((j) => (sid ? (j.staffIds || []).includes(sid) : !(j.staffIds || []).length) && j.status !== 'completed');
+  const baseAddr = String(db.company.address || '').trim(); await placeAddresses([baseAddr, ...mine.map(jobAddress)]);
+  const base = placeOf(baseAddr); const placed = mine.filter((j) => placeOf(jobAddress(j))); const rest = mine.filter((j) => !placeOf(jobAddress(j)));
+  if (placed.length < 2) return res.status(400).json({ error: placed.length ? 'There’s only one visit on the map to put in order' : 'None of these visits has an address on the map' });
+  const mins = (t) => { const [h, m] = String(t || '').split(':').map(Number); return h * 60 + (m || 0); };
+  const hhmm = (m) => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  const len = (j) => (j.anytime || !j.startTime || !j.endTime ? 60 : Math.max(15, mins(j.endTime) - mins(j.startTime)));
+  const timed = mine.filter((j) => !j.anytime && j.startTime);
+  const first = /^\d{2}:\d{2}$/.test(b.start || '') ? mins(b.start) : timed.length ? Math.min(...timed.map((j) => mins(j.startTime))) : 8 * 60;
+  const pts = placed.map((j) => ({ j, ...placeOf(jobAddress(j)) }));
+  const nowOrder = [...pts].sort((x, y) => (x.j.anytime ? 1440 : mins(x.j.startTime)) - (y.j.anytime ? 1440 : mins(y.j.startTime)));
+  const order = shortestOrder(base, pts);
+  let t = first; let prev = base; const out = [];
+  order.forEach((p, i) => { // the first visit starts the day (the drive there comes before it); each later one starts after the drive from the last
+    const miles = prev ? roadMiles(prev, p) : 0; const drive = prev ? driveMin(miles) : 0; if (i) t += drive;
+    const start = Math.min(t, 23 * 60); const end = Math.min(start + len(p.j), 23 * 60 + 59);
+    out.push({ id: p.j.id, number: p.j.number, title: p.j.title, address: jobAddress(p.j), startTime: hhmm(start), endTime: hhmm(end), miles: +miles.toFixed(1), drive,
+      shared: (p.j.staffIds || []).filter((x) => x !== sid).map((x) => (db.staff.find((st) => st.id === x) || {}).name).filter(Boolean) });
+    t = end; prev = p;
+  });
+  const result = { order: out, unplaced: rest.map((j) => ({ id: j.id, number: j.number, title: j.title })), miles: +routeMiles(base, order).toFixed(1), before: +routeMiles(base, nowOrder).toFixed(1),
+    driveMinutes: out.reduce((n, o) => n + o.drive, 0), base: baseAddr };
+  if (b.apply) {
+    for (const o of out) { const j = db.jobs.find((x) => x.id === o.id); if (j) Object.assign(j, { startTime: o.startTime, endTime: o.endTime, anytime: false }); }
+    save(); result.applied = true;
+  }
+  res.json(result);
+});
+
 // Roles & Permissions (owner/admin): the catalog, the roles, and how many logins have each; saving replaces the whole list
 const rolesView = () => ({ custom: customRolesOn(), catalog: rolesLib.catalog(), roles: teamRoles().map((r) => ({ ...r, users: db.users.filter((u) => u.role !== 'owner' && u.role !== 'admin' && roleKey(u) === r.id).length })), admins: db.users.filter((u) => u.role === 'admin').length });
 app.get('/api/roles', (req, res) => res.json(rolesView()));
