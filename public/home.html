@@ -10,7 +10,7 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="stylesheet" href="/styles.css?v=53">
   <link rel="stylesheet" href="/theme.css">
-  <link rel="stylesheet" href="/home.css?v=11">
+  <link rel="stylesheet" href="/home.css?v=13">
   <link rel="stylesheet" href="/trial.css?v=1">
 </head>
 <body>
@@ -35,7 +35,24 @@
         <div class="h-ctas"><a class="btn" href="/pricing" data-trial>Start your free 30-day trial</a><a class="btn alt" href="#features">Explore features</a></div>
         <ul class="h-ticks"><li>Free for 30 days</li><li>No credit card needed</li><li>Works on any phone</li></ul>
       </div>
-      <div class="h-art"><img src="/img/home/hero.svg" alt="A technician with a tablet next to a service van outside a client's house, with job and payment notifications" width="640" height="500"></div>
+      <!-- a 24-second looping tour of the real app (home.css, "hero tour"): quote approved → on the calendar → done on site → paid -->
+      <div class="h-art">
+        <div class="tour" role="img" aria-label="A short tour of the app: a client approves a quote, the job goes on the calendar, the technician marks it complete on their phone, and the client pays the invoice by card">
+          <div class="tour-scene s1"><div class="f-browser tour-win"><div class="f-bar"><i></i><i></i><i></i></div>
+            <div class="tour-view"><img src="/img/features/approval.webp" alt="" width="1640" height="1400" fetchpriority="high"><span class="tour-tap"></span></div></div>
+            <span class="tour-toast">✓ Quote approved</span></div>
+          <div class="tour-scene s2"><div class="f-browser tour-win"><div class="f-bar"><i></i><i></i><i></i></div>
+            <div class="tour-view"><img src="/img/features/calendar.webp" alt="" width="2880" height="1800" decoding="async"></div></div>
+            <span class="tour-toast">✓ On the crew’s calendar</span></div>
+          <div class="tour-scene s3"><div class="f-phone tour-phone"><div class="tour-view"><img src="/img/features/mobile.webp" alt="" width="780" height="1688" decoding="async"><span class="tour-tap"></span></div></div>
+            <span class="tour-toast">✓ Job complete</span></div>
+          <div class="tour-scene s4"><div class="f-browser tour-win"><div class="f-bar"><i></i><i></i><i></i></div>
+            <div class="tour-view"><img src="/img/features/payments.webp" alt="" width="1640" height="1520" decoding="async"><span class="tour-tap"></span></div></div>
+            <span class="tour-toast">✓ Paid $562.90</span></div>
+          <ol class="tour-steps" aria-hidden="true"><li>Quote</li><li>Schedule</li><li>Do the work</li><li>Get paid</li></ol>
+        </div>
+        <button type="button" class="tour-pause" aria-pressed="false">Pause tour</button>
+      </div>
     </div></section>
 
     <section class="h-trades" aria-label="Who it's for"><div class="h-wrap">
@@ -188,6 +205,11 @@
   <script src="/menu.js?v=3"></script>
   <script>
     document.getElementById('yr').textContent = new Date().getFullYear();
+    // the hero tour's pause button (moving content longer than 5 seconds needs one)
+    document.querySelectorAll('.tour-pause').forEach((b) => b.addEventListener('click', () => {
+      const on = b.getAttribute('aria-pressed') !== 'true'; b.setAttribute('aria-pressed', on); b.textContent = on ? 'Play tour' : 'Pause tour';
+      b.previousElementSibling.classList.toggle('paused', on);
+    }));
     // the product name and logo set in the platform console
     fetch('/api/site').then((r) => r.json()).then((s) => {
       if (!s || !s.productName) return;

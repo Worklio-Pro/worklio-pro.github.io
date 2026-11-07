@@ -213,3 +213,36 @@ a.h-feat{display:block;color:inherit;text-decoration:none;transition:border-colo
 .h-art.f-shot{margin:0;padding:28px 24px}.h-art.f-shot img{cursor:default;border-radius:0}.h-art .f-phone img{border-radius:34px}
 .h-art.f-phone-wrap .f-phone{width:min(250px,100%)}
 @media (max-width:640px){.h-art.f-shot{padding:18px 14px}}
+
+/* hero tour (home): four real app screens, 6 seconds each, looping. Each scene fades in, pans across its screenshot (--x, --y0 → --y1, as a share of
+   the image), shows a tap on the key button (--tx, --ty in the view) and a confirmation. Hover or the Pause button stops it; reduced motion shows the first scene still */
+.tour{position:relative;aspect-ratio:32/27;border-radius:28px;overflow:hidden;background:linear-gradient(160deg,var(--info-bg),var(--tint) 60%,var(--ok-bg));--t:24s}
+.tour-scene{position:absolute;inset:0 0 54px;display:grid;place-items:center;padding:6% 7% 0;opacity:0;animation:tour-scene var(--t) infinite}
+.tour .s2{animation-delay:6s}.tour .s3{animation-delay:12s}.tour .s4{animation-delay:18s}
+.tour-win{width:100%;background:#fff}
+.tour-view{position:relative;overflow:hidden;aspect-ratio:1.35;background:#f3f4f6}
+.tour-view img{position:absolute;left:0;top:0;width:var(--w);max-width:none;height:auto;transform:translate(var(--x),var(--y0));animation:tour-pan var(--t) infinite;animation-delay:inherit}
+.tour-scene .tour-view,.tour-scene .tour-win,.tour-scene .tour-phone{animation-delay:inherit}
+.s1 .tour-view img{--w:117%;--x:-7.3%;--y0:-5.7%;--y1:-21.4%}.s1 .tour-tap{--tx:14.6%;--ty:74%}
+.s2 .tour-view img{--w:163%;--x:-36.5%;--y0:-8.8%;--y1:-14%}
+.s4 .tour-view img{--w:118%;--x:-6.7%;--y0:-5.3%;--y1:-21.7%}.s4 .tour-tap{--tx:18.2%;--ty:47%}
+.tour-phone{height:100%;aspect-ratio:390/844;width:auto;padding:7px;border-radius:30px}
+.tour-phone .tour-view{aspect-ratio:auto;height:100%;border-radius:24px}
+.tour-phone .tour-view img{width:100%;transform:none;animation:none}.s3 .tour-tap{--tx:41.5%;--ty:44.5%}
+.tour-tap{position:absolute;left:var(--tx);top:var(--ty);width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;background:rgba(37,99,235,.35);border:2px solid rgba(37,99,235,.8);opacity:0;animation:tour-tap var(--t) infinite;animation-delay:inherit}
+.tour-toast{position:absolute;left:50%;bottom:10px;transform:translate(-50%,8px);white-space:nowrap;padding:9px 16px;border-radius:99px;background:#0f172a;color:#fff;font-weight:700;font-size:15px;box-shadow:0 10px 30px -10px rgba(15,23,42,.6);opacity:0;animation:tour-toast var(--t) infinite;animation-delay:inherit}
+.tour-steps{position:absolute;left:0;right:0;bottom:12px;display:flex;justify-content:center;gap:6px;margin:0;padding:0 10px;list-style:none;counter-reset:ts}
+.tour-steps li{counter-increment:ts;padding:6px 11px;border-radius:99px;font-size:13px;font-weight:700;color:var(--muted);background:var(--card);white-space:nowrap;animation:tour-step var(--t) infinite}
+.tour-steps li::before{content:counter(ts) '  '}
+.tour-steps li:nth-child(2){animation-delay:6s}.tour-steps li:nth-child(3){animation-delay:12s}.tour-steps li:nth-child(4){animation-delay:18s}
+@keyframes tour-scene{0%{opacity:0}2%{opacity:1}24%{opacity:1}26.5%{opacity:0}100%{opacity:0}}
+@keyframes tour-pan{0%,4%{transform:translate(var(--x),var(--y0))}15%,100%{transform:translate(var(--x),var(--y1))}}
+@keyframes tour-tap{0%,16%{opacity:0;transform:scale(.5)}17%{opacity:1;transform:scale(.7)}20%{opacity:0;transform:scale(1.5)}100%{opacity:0}}
+@keyframes tour-toast{0%,18%{opacity:0;transform:translate(-50%,8px)}19.5%,24%{opacity:1;transform:translate(-50%,0)}26%,100%{opacity:0;transform:translate(-50%,0)}}
+@keyframes tour-step{0%{background:var(--card);color:var(--muted)}2%,24%{background:var(--brand);color:#fff}26.5%,100%{background:var(--card);color:var(--muted)}}
+.tour:hover *,.tour.paused *{animation-play-state:paused!important}
+.tour-pause{display:block;margin:8px auto 0;padding:4px 10px;border:0;background:none;color:var(--muted);font:inherit;font-size:13px;text-decoration:underline;cursor:pointer}
+@media (max-width:640px){.tour{aspect-ratio:1/1.02;border-radius:20px}.tour-scene{padding:5% 4% 0}.tour-steps li{padding:5px 8px;font-size:12px}.tour-toast{font-size:14px}}
+@media (prefers-reduced-motion:reduce){.tour *{animation:none!important}.tour .s1{opacity:1}.tour .s1 .tour-toast{opacity:1;transform:translate(-50%,0)}.tour-steps li:first-child{background:var(--brand);color:#fff}.tour-pause{display:none}}
+.h-art .tour img{border-radius:0}.h-hero .tour img{display:block}
+@media (max-width:640px){.tour-steps{gap:4px;padding:0 6px}.tour-steps li{padding:5px 7px;font-size:11.5px}}
