@@ -2126,6 +2126,10 @@ const mField = (label, input) => `<label class="mf"><span>${label}</span>${input
 let mUnsign = '';
 async function mSave(kind, d, patch, msg) {
   if (d._fromQuote) patch = { items: d.items, taxRate: d.taxRate, discountType: d.discountType, discountValue: d.discountValue, ...patch };
+  if (kind === 'job' && d.seriesId) { // a repeating job's visit: this visit only, or this and the following ones
+    if (!(await saveJobWithRepeat(d, patch, repeatFromHere(d), null, msg || 'Saved'))) { const b = $('#msheet .ms-save'); if (b) b.disabled = false; return; }
+    mClose(); return refresh();
+  }
   await api('PUT', `/api/${kind}s/${d.id}`, { ...patch, ...(mUnsign === d.id ? { removeSignature: true } : {}) });
   mClose(); toast(msg || 'Saved'); return refresh();
 }
@@ -2452,9 +2456,9 @@ function mobileNew(kind, main, preset) {
   main.innerHTML = `<div class="mdoc mnew"><div class="mn-top"><a href="/${kind}s" data-link class="mn-x" aria-label="Close">${X_ICO}</a><h1>New ${kind}</h1><span></span></div>
 <form class="mnew-f" novalidate><h2 class="mn-sh">Service for</h2><div class="mn-who"></div><h2 class="mn-sh">Overview</h2>
 ${mField(kind === 'invoice' ? 'Subject' : 'Title', `<input name="${kind === 'invoice' ? 'subject' : 'title'}" maxlength="120" placeholder="${q ? 'e.g. Backyard cleanup' : job ? 'e.g. Streamer Install' : 'e.g. Camera System Install'}">`)}
-${job ? mField('Date', `<input type="date" name="date" value="${esc(preset.date || ymd(new Date()))}">`) : ''}
+${job ? mField('Date', `<input type="date" name="date" value="${esc(preset.date || ymd(new Date()))}">`) + repeatCard({}, preset.date || ymd(new Date())) : ''}
 <button class="btn ms-save">Save</button><p class="muted mn-next">${job ? 'You’ll set the time and team next.' : 'You’ll add line items next.'}</p></form></div>`;
-  const f = $('form', main); const who = $('.mn-who', f);
+  const f = $('form', main); const who = $('.mn-who', f); if (job) wireRepeat(f);
   const draw = () => {
     if (client) {
       const ps = clientProps(client);
@@ -2501,7 +2505,7 @@ ${newOk ? `<div class="mn-row">${ic.contact}<div class="mn-stack"><input name="f
       const where = { address: prop ? propAddr(prop) : client.address || '', propertyId: prop ? prop.id : '', ...(prop && prop.taxRate != null && prop.taxRate !== '' ? { taxRate: Number(prop.taxRate) } : {}) };
       const b = { clientId: client.id, [kind === 'invoice' ? 'subject' : 'title']: v(kind === 'invoice' ? 'subject' : 'title') };
       if (job) {
-        const saved = await api('POST', '/api/jobs', { ...b, date: v('date'), startTime: '09:00', endTime: '11:00', status: 'scheduled', staffIds: [], ...where });
+        const saved = await saveJobWithRepeat({}, { ...b, date: v('date'), startTime: '09:00', endTime: '11:00', status: 'scheduled', staffIds: [], ...where }, readRepeat(f), f); // with its Repeats settings
         return navigate('/jobs/edit?id=' + saved.id);
       }
       const saved = await api('POST', `/api/${kind}s`, { ...b, ...where, items: [], disclaimer: q ? company.quoteDisclaimer ?? DEFAULT_DISCLAIMER : company.invoiceDisclaimer ?? '', ...(q ? {} : { paymentTerms: client.paymentTerms || '0', dueDate: ymd(addDays(new Date(), Number(client.paymentTerms) || 0)) }) });
@@ -2571,12 +2575,15 @@ ${mField('Status', `<select name="status">${[['scheduled', 'Scheduled'], ['compl
   visit(kind, j) {
     const f = mSheet('Scheduled visit', `${mField('Date', `<input type="date" name="date" value="${esc(j.date || ymd(new Date()))}">`)}
 <div class="m-two">${mField('Start', `<input type="time" name="startTime" value="${esc(j.startTime || '09:00')}">`)}${mField('End', `<input type="time" name="endTime" value="${esc(j.endTime || '11:00')}">`)}</div>
-<label class="m-chk"><input type="checkbox" name="anytime" ${j.anytime ? 'checked' : ''}> Anytime that day (no set time)</label>`, { full: true, foot: mSaveBtn() });
-    onSubmit(f, (fd) => {
+<label class="m-chk"><input type="checkbox" name="anytime" ${j.anytime ? 'checked' : ''}> Anytime that day (no set time)</label>${repeatCard(j, j.date || ymd(new Date()))}`, { full: true, foot: mSaveBtn() });
+    wireRepeat(f);
+    onSubmit(f, async (fd) => {
       const b = { date: fd.get('date'), startTime: fd.get('startTime'), endTime: fd.get('endTime'), anytime: !!fd.get('anytime') };
       if (!b.date) throw new Error('Choose a date');
-      if (!jobScheduleOk(j.id, { ...j, ...b })) { const s = $('.ms-save', f); if (s) s.disabled = false; return; }
-      return mSave(kind, j, b, 'Visit saved');
+      const s = $('.ms-save', f);
+      if (!jobScheduleOk(j.id, { ...j, ...b })) { if (s) s.disabled = false; return; }
+      if (!(await saveJobWithRepeat(j, b, readRepeat(f), f, 'Visit saved'))) { if (s) s.disabled = false; return; } // with its Repeats settings
+      mClose(); return refresh();
     });
   },
   team(kind, j) {
@@ -2951,12 +2958,12 @@ const seriesNorm = (k, v) => JSON.stringify(k === 'items' ? (v || []).map((i) =>
 const seriesChanges = (j, body) => SERIES_KEYS.filter((k) => k in body && (k !== 'items' || canDo('jobs.prices')) && seriesNorm(k, j[k]) !== seriesNorm(k, body[k]));
 const ruleKey = (r) => (r ? JSON.stringify(Object.keys(r).filter((k) => r[k] !== undefined && !(k === 'count' && r.end !== 'count') && !(k === 'until' && r.end !== 'until')).sort().map((k) => [k, r[k]])) : 'null');
 const sameRule = (a, b) => ruleKey(a) === ruleKey(b);
-// save a job and its Repeats settings
-async function saveJobWithRepeat(j, body, rule) {
+// save a job and its Repeats settings (form: where the Repeats settings are; none: this save doesn't change the repeat)
+async function saveJobWithRepeat(j, body, rule, form = document, msg = 'Job saved') {
   if (!j.id) { const saved = await api('POST', '/api/jobs', body); let note = '';
     if (rule) { try { const r = await api('POST', `/api/jobs/${saved.id}/repeat`, { rule }); note = r.created ? ` · ${r.created} more visit${r.created === 1 ? '' : 's'} scheduled` : ''; } catch (e) { toast(`Job saved, but it doesn’t repeat yet: ${e.message}`, true); return saved; } }
-    toast('Job saved' + note); return saved; }
-  const was = repeatFromHere(j); const ruleChanged = planHas('recurringJobs') && $('[name=rpFreq]') && !sameRule(was, rule);
+    toast(msg + note); return saved; }
+  const was = repeatFromHere(j); const ruleChanged = !!(planHas('recurringJobs') && form && $('[name=rpFreq]', form) && !sameRule(was, rule));
   const changed = j.seriesId ? seriesChanges(j, body) : []; let scope = 'one';
   if (j.seriesId && changed.length && !ruleChanged) { scope = await askVisitScope(); if (!scope) return null; }
   if (ruleChanged && !rule && !confirm('Stop repeating after this visit? Later visits nobody has worked on yet are removed. Visits with invoices, hours, photos or notes stay.')) return null;
@@ -2964,7 +2971,7 @@ async function saveJobWithRepeat(j, body, rule) {
   const saved = await api('PUT', `/api/jobs/${j.id}${scope === 'following' && changed.length ? '?following=' + changed.join(',') : ''}`, body); let note = scope === 'following' && saved.following ? ` · ${saved.following} later visit${saved.following === 1 ? '' : 's'} updated` : '';
   if (ruleChanged && !rule) { const r = await api('DELETE', `/api/jobs/${j.id}/repeat`); note = ` · stopped repeating${r.removed ? `, ${r.removed} later visit${r.removed === 1 ? '' : 's'} removed` : ''}`; }
   else if (rule && (ruleChanged || moved)) { const r = await api('POST', `/api/jobs/${j.id}/repeat`, { rule }); note = ` · ${r.created} later visit${r.created === 1 ? '' : 's'} scheduled${r.kept ? ` (${r.kept} with work on them kept as they were)` : ''}`; }
-  toast('Job saved' + note); return saved;
+  toast(msg + note); return saved;
 }
 A.stopRepeat = async (d) => {
   if (!confirm('Stop repeating after this visit? Later visits nobody has worked on yet are removed. Visits with invoices, hours, photos or notes stay.')) return;
