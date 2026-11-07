@@ -4184,7 +4184,7 @@ app.post('/api/account/billing/plan', async (req, res) => {
         'items[0][price_data][unit_amount]': String(c.cents), 'items[0][price_data][recurring][interval]': c.interval, proration_behavior: 'always_invoice', payment_behavior: 'error_if_incomplete',
         cancel_at_period_end: 'false', 'metadata[planId]': to.id, ...(await seatParams(sub, to, c.interval, extra)) });
       const plus = sc ? `, plus ${money(sc.cents / 100)} each ${sc.interval} for each of your ${extra} extra login${extra === 1 ? '' : 's'}` : '';
-      t.planId = to.id; delete b.pendingPlanId; delete b.endsAt; b.subscriptionStatus = s2.status;
+      t.planId = to.id; delete b.pendingPlanId; delete b.endsAt; b.subscriptionStatus = s2.status; if (c.regular) tenancy.lockSale(t, to.id, stripeLib.saleLock(to)); // switched at a sale price: kept for good
       return switched(c.interval !== nowInterval ? `You’re now on ${label}. Your unused time is credited and the new ${c.interval}ly price of ${money(c.cents / 100)}${plus} is charged now; it renews every ${c.interval}.`
         : `You’re now on ${label}. Any difference for the rest of this billing period is charged or credited now, and you’ll pay ${money(c.cents / 100)} each ${c.interval}${plus} from your next bill.`);
     }
@@ -4220,6 +4220,7 @@ async function subscribeSession(t, u, to, c, { trial = onTrial(t) } = {}) {
   if (sc) Object.assign(p, { 'line_items[1][quantity]': String(extra), 'line_items[1][price_data][currency]': 'usd', 'line_items[1][price_data][product]': await seatProduct(),
     'line_items[1][price_data][unit_amount]': String(sc.cents), 'line_items[1][price_data][recurring][interval]': sc.interval });
   if (b.customerId) p.customer = b.customerId; else p.customer_email = u.email;
+  Object.assign(p, stripeLib.saleLockMeta(to)); // a sale price is kept for good once this goes through (billing/return, or the webhook)
   Object.assign(p, referrals.bankedTrial(t)); // free months earned by referring other businesses
   if (b.retention && b.retention.pending && b.retention.coupon) p['discounts[0][coupon]'] = await discountsLib.stripeCoupon(stripeLib.platformKey(), b.retention.coupon); // a stay offer claimed during the trial
   if (trial) {
@@ -4240,7 +4241,7 @@ app.post('/api/account/billing/return', async (req, res) => {
     if (s.mode === 'subscription') {
       const to = tenancy.platform().plans.find((p) => p.id === s.metadata.planId);
       if (to && s.subscription && b.subscriptionId !== s.subscription) {
-        const from = tenancy.planOf(t); t.planId = to.id;
+        const from = tenancy.planOf(t); t.planId = to.id; tenancy.lockSale(t, to.id, s.metadata);
         delete t.expiresAt; // paid for a plan: no end date
         Object.assign(b, { customerId: s.customer, subscriptionId: s.subscription, status: 'paid', subscriptionStatus: 'active', interval: s.metadata.interval === 'year' ? 'year' : 'month' }); delete b.pendingPlanId; delete b.endsAt; delete b.demo;
         if (canReopen(t)) { tenancy.resume(t); delete b.trial; } delete b.pausedForBilling;
