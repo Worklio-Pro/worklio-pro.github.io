@@ -4121,7 +4121,7 @@ app.post('/api/account/billing/redeem', async (req, res) => {
   if (!ck) return res.status(400).json({ error: 'That isn’t a supporter code. Discount codes are used when you sign up or choose a plan.' });
   if (ck.error) return res.status(400).json({ error: ck.error });
   const to = ck.plan;
-  const bp = supporters.backerPlan(to.id === t.planId ? tenancy.planOf(t) : to); // the plan as a backer gets it: their price and logins (Advanced: 10)
+  const bp = supporters.backerPlan(to.id === t.planId ? tenancy.planOf(t) : to, ck.p.tier); // the plan as a backer gets it: their price and logins (Advanced: 10)
   if (bp.maxUsers > 0 && db.users.length > bp.maxUsers && !canBuyExtra(t, bp)) { const extra = db.users.length - bp.maxUsers;
     return res.status(400).json({ error: `This code is for ${to.name}, which includes ${logins(bp.maxUsers)}, and you have ${db.users.length}. Remove login access for ${extra} team member${extra === 1 ? '' : 's'} first (Manage team → open a team member → Remove login access), then redeem it.` }); }
   try {
