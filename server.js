@@ -629,7 +629,7 @@ app.post('/api/time/approve', manageTime((req, res, u, b) => {
 // monthly) and the hourly tick tops them up while the series runs. Deleting one visit skips it; it doesn't come back.
 // db.jobSeries: { id, rule: { freq: day|week|month, every, days (weekly, 0 = Sunday), monthBy (monthly: date|weekday), end: never|count|until, count, until },
 //   start (first visit's date), through (latest visit made), made (visits made), template (job fields copied to new visits), ended, createdAt, createdBy }
-const SERIES_FIELDS = ['title', 'clientId', 'address', 'propertyId', 'startTime', 'endTime', 'anytime', 'staffIds', 'description', 'items', 'taxRate', 'discountType', 'discountValue'];
+const SERIES_FIELDS = ['title', 'clientId', 'address', 'propertyId', 'startTime', 'endTime', 'anytime', 'staffIds', 'description', 'items', 'taxRate', 'discountType', 'discountValue', 'membershipId'];
 const seriesList = () => (db.jobSeries = db.jobSeries || []);
 const findSeries = (id) => id && seriesList().find((s) => s.id === id);
 const pickSeries = (j, keys = SERIES_FIELDS) => Object.fromEntries(keys.filter((k) => j[k] !== undefined).map((k) => [k, structuredClone(j[k])]));
@@ -721,12 +721,108 @@ function extendSeries() {
   for (const t of tenancy.platform().tenants) {
     if (t.status !== 'active') continue;
     tenancy.run(t, () => {
-      if (!tenancy.has('recurringJobs') || !(db.jobSeries || []).some((s) => !s.ended)) return; let n = 0;
+      if (!(tenancy.has('recurringJobs') || tenancy.has('servicePlans')) || !(db.jobSeries || []).some((s) => !s.ended)) return; let n = 0; // service plans' visits are repeating jobs too
       for (const s of db.jobSeries) if (!s.ended) { if (!findClient(s.template.clientId)) { s.ended = true; n++; } else n += fillSeries(s); }
       if (n) save();
     });
   }
 }
+
+// ---------- Service plans & memberships (a plan feature) ----------
+// A service plan is what the business sells on repeat: a price billed every month, quarter or year, the visits it includes (e.g. 2 tune-ups a
+// year) and a member discount on other work. A client on a plan is a membership: its visits are a repeating job series (Recurring jobs), and an
+// invoice is made at the start of each billing period (emailed with the pay link when Auto-send is on). Members' new quotes and invoices get
+// the plan's discount. Canceling stops the billing and removes upcoming visits nobody has worked on.
+// db.servicePlans: { id, name, description, price, interval: month|quarter|year, visitsPerYear, visitTitle, visitHours, discount, taxable, archived, createdAt }
+// db.memberships: { id, clientId, planId, name, price, interval, visitsPerYear, discount, taxable (copied from the plan when they joined), start,
+//   nextBill, bills (invoices made), autoSend, seriesId, status: active|canceled, createdAt, createdBy, canceledAt, canceledBy }
+const PLAN_MONTHS = { month: 1, quarter: 3, year: 12 };
+const VISITS_PER_YEAR = [0, 1, 2, 3, 4, 6, 12];
+const svcPlans = () => (db.servicePlans = db.servicePlans || []);
+const memberships = () => (db.memberships = db.memberships || []);
+const addMonthsYmd = (s, n) => { const d = dayUTC(s); const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + n + 1, 0)).getUTCDate(); return ymdUTC(d.getUTCFullYear(), d.getUTCMonth() + n, Math.min(d.getUTCDate(), last)); };
+const ymdOk = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || '')) && !isNaN(dayUTC(s));
+function cleanPlan(b) {
+  const name = String(b.name || '').trim().slice(0, 80); if (!name) throw repeatBad('Give the plan a name');
+  const price = Math.round(Number(b.price) * 100) / 100; if (!isFinite(price) || price < 0 || price > 100000) throw repeatBad('Enter the plan’s price');
+  const interval = PLAN_MONTHS[b.interval] ? b.interval : 'month'; const visitsPerYear = VISITS_PER_YEAR.includes(Number(b.visitsPerYear)) ? Number(b.visitsPerYear) : 0;
+  const visitHours = Math.min(12, Math.max(0.5, Number(b.visitHours) || 2)); const discount = Math.min(100, Math.max(0, Math.round((Number(b.discount) || 0) * 100) / 100));
+  return { name, description: String(b.description || '').trim().slice(0, 1000), price, interval, visitsPerYear, visitTitle: String(b.visitTitle || '').trim().slice(0, 120), visitHours, discount, taxable: !!b.taxable, archived: !!b.archived };
+}
+// the biggest discount among a client's active plans (0 without the feature or a plan)
+const memberDiscount = (clientId) => (tenancy.has('servicePlans') ? Math.max(0, ...memberships().filter((m) => m.clientId === clientId && m.status === 'active').map((m) => Number(m.discount) || 0)) : 0);
+const applyMemberDiscount = (doc) => { if (Number(doc.discountValue) > 0 || doc.membershipId) return; const pct = memberDiscount(doc.clientId); if (pct) { doc.discountType = 'percent'; doc.discountValue = pct; doc.memberDiscount = true; } };
+const nextVisit = (m) => { const today = localNow().date; return m.seriesId ? db.jobs.filter((j) => j.seriesId === m.seriesId && j.status === 'scheduled' && j.date >= today).sort((a, b) => a.date.localeCompare(b.date))[0] : null; };
+const membershipRow = (m) => { const c = findClient(m.clientId); const v = nextVisit(m); const invs = db.invoices.filter((i) => i.membershipId === m.id);
+  return { ...m, client: c ? c.name : 'Deleted client', nextVisit: v ? { id: v.id, date: v.date } : null, invoices: invs.length, unpaid: round2(invs.filter((i) => i.status !== 'draft').reduce((s, i) => s + invoiceCredits(i).balanceDue, 0)) }; };
+const monthly = (m) => (Number(m.price) || 0) / PLAN_MONTHS[m.interval];
+// make the invoices that are due (one per billing period), and email them when the membership says so
+function billMembership(m) {
+  const today = localNow().date; const made = [];
+  while (m.status === 'active' && m.nextBill && m.nextBill <= today && made.length < 12) {
+    const c = findClient(m.clientId); if (!c) { m.status = 'canceled'; m.canceledAt = new Date().toISOString(); m.canceledBy = 'Client deleted'; break; }
+    const from = m.nextBill; const to = addDaysYmd(addMonthsYmd(m.start, (m.bills + 1) * PLAN_MONTHS[m.interval]), -1);
+    const terms = Number(c.paymentTerms) || 0;
+    const inv = computeTotals({ id: uid(), number: nextNumber('invoices'), clientId: c.id, membershipId: m.id, subject: `${m.name} service plan`, status: 'draft', issueDate: from, dueDate: addDaysYmd(from, terms), paymentTerms: String(terms),
+      paidAt: null, token: token(), createdAt: iso(new Date()), notes: '', disclaimer: db.company.invoiceDisclaimer ?? '', taxRate: m.taxable ? db.company.taxRate : 0, discountType: 'flat', discountValue: 0,
+      items: [{ desc: `${m.name} service plan`, details: `${niceDate(from)} – ${niceDate(to)}`, qty: 1, cost: m.price, markup: 0, markupType: 'percent', price: m.price }] });
+    db.invoices.push(inv); made.push(inv); m.bills++; m.nextBill = addMonthsYmd(m.start, m.bills * PLAN_MONTHS[m.interval]);
+    if (m.autoSend && c.email) { inv.status = 'sent'; const email = renderEmail('invoice', docVars('invoice', inv));
+      notify({ clientId: c.id, channel: 'email', kind: 'invoice', refId: inv.id, refNumber: inv.number, subject: email.subject, html: email.html, body: email.body }).catch((e) => console.error('service plan invoice email:', e.message)); }
+  }
+  return made;
+}
+// hourly: bill the memberships that are due
+function billMemberships() {
+  for (const t of tenancy.platform().tenants) {
+    if (t.status !== 'active') continue;
+    tenancy.run(t, () => { if (!tenancy.has('servicePlans') || !(db.memberships || []).some((m) => m.status === 'active')) return; let n = 0; for (const m of db.memberships) n += billMembership(m).length; if (n) save(); });
+  }
+}
+const planView = () => ({ plans: svcPlans().map((p) => ({ ...p, members: memberships().filter((m) => m.planId === p.id && m.status === 'active').length })),
+  memberships: memberships().map(membershipRow).sort((a, b) => (a.status === b.status ? a.client.localeCompare(b.client) : a.status === 'active' ? -1 : 1)),
+  mrr: round2(memberships().filter((m) => m.status === 'active').reduce((s, m) => s + monthly(m), 0)) });
+const planRoute = (fn) => (req, res) => { try { fn(req, res, req.body || {}); } catch (e) { res.status(e.status || 500).json({ error: e.message }); } };
+app.get('/api/service-plans', (req, res) => res.json(planView()));
+app.post('/api/service-plans', planRoute((req, res, b) => { const p = { id: uid(), ...cleanPlan(b), createdAt: new Date().toISOString() }; svcPlans().push(p); save(); res.status(201).json(p); }));
+// a plan's changes apply to clients who join from now on; current members keep the price and terms they joined with
+app.put('/api/service-plans/:id', planRoute((req, res, b) => { const p = svcPlans().find((x) => x.id === req.params.id); if (!p) return res.status(404).json({ error: 'Plan not found' }); Object.assign(p, cleanPlan({ ...p, ...b })); save(); res.json(p); }));
+app.delete('/api/service-plans/:id', (req, res) => {
+  const i = svcPlans().findIndex((x) => x.id === req.params.id); if (i < 0) return res.status(404).json({ error: 'Plan not found' });
+  if (memberships().some((m) => m.planId === req.params.id)) return res.status(400).json({ error: 'Clients have been on this plan, so it can’t be deleted. Archive it instead: nobody new can join it.' });
+  svcPlans().splice(i, 1); save(); res.json({ ok: true });
+});
+// put a client on a plan: their first bill (on the start date, or now when that's today or earlier) and their visits from the first visit date
+app.post('/api/memberships', planRoute((req, res, b) => {
+  const c = findClient(b.clientId); if (!c) return res.status(400).json({ error: 'Choose a client' });
+  const p = svcPlans().find((x) => x.id === b.planId && !x.archived); if (!p) return res.status(400).json({ error: 'Choose a service plan' });
+  const today = localNow().date; const start = ymdOk(b.start) ? b.start : today;
+  const m = { id: uid(), clientId: c.id, planId: p.id, name: p.name, price: p.price, interval: p.interval, visitsPerYear: p.visitsPerYear, discount: p.discount, taxable: p.taxable, start, nextBill: start, bills: 0,
+    autoSend: b.autoSend !== false && !!c.email, seriesId: '', status: 'active', createdAt: new Date().toISOString(), createdBy: (currentUser(req) || {}).name || '' };
+  let visits = 0;
+  if (p.visitsPerYear) {
+    const date = ymdOk(b.firstVisit) ? b.firstVisit : start; const st = /^\d{2}:\d{2}$/.test(b.startTime || '') ? b.startTime : '09:00';
+    const endMin = Math.min(23 * 60 + 59, Number(st.slice(0, 2)) * 60 + Number(st.slice(3)) + Math.round(p.visitHours * 60)); const et = `${String(Math.floor(endMin / 60)).padStart(2, '0')}:${String(endMin % 60).padStart(2, '0')}`;
+    const prop = (c.properties || []).find((x) => x.id === b.propertyId);
+    const j = { id: uid(), number: nextNumber('jobs'), clientId: c.id, title: p.visitTitle || `${p.name} visit`, description: `Included in the ${p.name} service plan`, date, startTime: st, endTime: et,
+      staffIds: (Array.isArray(b.staffIds) ? b.staffIds : []).filter((s) => db.staff.some((x) => x.id === s)), status: 'scheduled', address: String(b.address || c.address || ''), propertyId: prop ? prop.id : '', membershipId: m.id, createdAt: iso(new Date()) };
+    db.jobs.push(j);
+    const rule = cleanRepeatRule({ freq: 'month', every: 12 / p.visitsPerYear, monthBy: 'date', end: 'never' }, date);
+    const s = { id: uid(), rule, start: date, through: date, made: 1, template: pickSeries(j), ended: false, createdAt: new Date().toISOString(), createdBy: m.createdBy };
+    seriesList().push(s); j.seriesId = s.id; m.seriesId = s.id; visits = 1 + fillSeries(s);
+  }
+  memberships().push(m); const bills = billMembership(m); save();
+  res.status(201).json({ membership: membershipRow(m), visits, invoices: bills.map((i) => ({ id: i.id, number: i.number, status: i.status })) });
+}));
+app.put('/api/memberships/:id', planRoute((req, res, b) => { const m = memberships().find((x) => x.id === req.params.id); if (!m) return res.status(404).json({ error: 'Membership not found' }); if (b.autoSend !== undefined) m.autoSend = !!b.autoSend; save(); res.json(membershipRow(m)); }));
+// cancel: no more bills; upcoming visits nobody has worked on are removed (invoices already made stay)
+app.post('/api/memberships/:id/cancel', (req, res) => {
+  const m = memberships().find((x) => x.id === req.params.id); if (!m) return res.status(404).json({ error: 'Membership not found' }); if (m.status !== 'active') return res.status(400).json({ error: 'This membership is already canceled' });
+  const today = localNow().date; m.status = 'canceled'; m.canceledAt = new Date().toISOString(); m.canceledBy = (currentUser(req) || {}).name || '';
+  const s = findSeries(m.seriesId); let removed = 0;
+  if (s) { const gone = new Set(db.jobs.filter((j) => j.seriesId === s.id && j.date > today && untouchedVisit(j)).map((j) => j.id)); removed = gone.size; db.jobs = db.jobs.filter((j) => !gone.has(j.id)); delete s.rule.count; Object.assign(s.rule, { end: 'until', until: today }); s.ended = true; forgetEmptySeries(s.id); }
+  save(); res.json({ membership: membershipRow(m), removed });
+});
 
 // Roles & Permissions (owner/admin): the catalog, the roles, and how many logins have each; saving replaces the whole list
 const rolesView = () => ({ custom: customRolesOn(), catalog: rolesLib.catalog(), roles: teamRoles().map((r) => ({ ...r, users: db.users.filter((u) => u.role !== 'owner' && u.role !== 'admin' && roleKey(u) === r.id).length })), admins: db.users.filter((u) => u.role === 'admin').length });
@@ -1375,7 +1471,7 @@ function customNumber(col, raw, id) {
 app.post('/api/:col', (req, res, next) => {
   const col = req.params.col;
   if (!COLLECTIONS.includes(col) || col === 'photos') return next();
-  let b = req.body || {}; delete b.noteEntries; delete b.seriesId; delete b.repeat; // notes only through /notes; repeats only through /repeat
+  let b = req.body || {}; delete b.noteEntries; delete b.seriesId; delete b.repeat; delete b.membershipId; delete b.memberDiscount; // notes only through /notes; repeats only through /repeat; service plans make their own
   if (col === 'jobs' && isMemberReq(req)) b = Object.fromEntries(Object.entries(b).filter(([k]) => MEMBER_JOB_FIELDS.includes(k)));
   if (col === 'staff') { // a new team member needs a name, an email and a mobile number
     const name = String(b.name || '').trim(); const email = String(b.email || '').trim(); const phone = String(b.phone || '').replace(/\D/g, '');
@@ -1390,13 +1486,13 @@ app.post('/api/:col', (req, res, next) => {
   if (col === 'clients') { doc.portalToken = token(); doc.smsConsent = b.smsConsent ? { at: new Date().toISOString(), source: 'business' } : null; }
   if (col === 'quotes') {
     doc.number = doc.number || nextNumber('quotes'); doc.status = b.status || 'draft'; doc.token = token();
-    if (b.taxRate === undefined) doc.taxRate = db.company.taxRate; computeTotals(doc);
+    if (b.taxRate === undefined) doc.taxRate = db.company.taxRate; applyMemberDiscount(doc); computeTotals(doc); // a service plan member's discount
   }
   if (col === 'invoices') {
     doc.number = doc.number || nextNumber('invoices'); doc.status = b.status || 'draft'; doc.token = token(); doc.paidAt = null;
     doc.issueDate = b.issueDate || iso(new Date());
     doc.dueDate = b.dueDate || doc.issueDate; // default terms: due upon receipt
-    if (b.taxRate === undefined) doc.taxRate = db.company.taxRate; computeTotals(doc);
+    if (b.taxRate === undefined) doc.taxRate = db.company.taxRate; applyMemberDiscount(doc); computeTotals(doc); // a service plan member's discount
   }
   if (col === 'jobs') {
     delete doc.signature;
@@ -1416,7 +1512,7 @@ app.put('/api/:col/:id', (req, res, next) => {
   if (!COLLECTIONS.includes(col)) return next();
   const i = db[col].findIndex((x) => x.id === req.params.id);
   if (i < 0) return res.status(404).json({ error: 'Not found' });
-  const protectedKeys = ['id', 'number', 'token', 'portalToken', 'createdAt', 'seriesId', 'repeat'];
+  const protectedKeys = ['id', 'number', 'token', 'portalToken', 'createdAt', 'seriesId', 'repeat', 'membershipId'];
   let upd = { ...req.body }; protectedKeys.forEach((k) => delete upd[k]); delete upd.noteEntries; // notes change only through /notes
   if (col === 'invoices') { delete upd.signedAt; delete upd.signedName; delete upd.signature; } // signatures only through /signature
   (PAYMENT_FIELDS[col] || []).forEach((k) => delete upd[k]);
@@ -1749,6 +1845,7 @@ app.post('/api/jobs/:id/create-invoice', (req, res) => {
   const q = j.quoteId && db.quotes.find((x) => x.id === j.quoteId);
   const items = j.items && j.items.length ? j.items : q ? q.items : [{ desc: j.title, qty: 1, price: 0 }]; // the job's own lines win
   const inv = computeTotals({ id: uid(), number: nextNumber('invoices'), clientId: j.clientId, jobId: j.id, subject: j.title, status: 'draft', issueDate: iso(new Date()), dueDate: iso(new Date()), paymentTerms: '0', paidAt: null, token: token(), createdAt: iso(new Date()), notes: '', items: items.map((i) => ({ ...i })), taxRate: j.items && j.items.length ? j.taxRate : q ? q.taxRate : db.company.taxRate, ...(() => { const src = j.items && j.items.length ? j : q || {}; return { discountType: src.discountType, discountValue: src.discountValue }; })() });
+  applyMemberDiscount(inv); computeTotals(inv); // a service plan member's discount, when the job had none
   db.invoices.push(inv); save(); res.status(201).json(withStatus(inv));
 });
 
@@ -4215,6 +4312,7 @@ if (rpp > 0) { // same for the platform console login: node server.js --reset-pl
 }
 setTimeout(remindExpiring, 10e3); setInterval(remindExpiring, 3600e3); // reminder emails before an account's last day of access
 setTimeout(() => bizAuto.runAll().catch((e) => console.error('automations:', e.message)), 30e3); setInterval(() => bizAuto.runAll().catch((e) => console.error('automations:', e.message)), 3600e3); // checks every automation hourly
+setTimeout(billMemberships, 35e3); setInterval(billMemberships, 3600e3); // service plans: each billing period's invoice
 setTimeout(extendSeries, 25e3); setInterval(extendSeries, 3600e3); // recurring jobs: make visits as the months go by
 setTimeout(pushOverviews, 20e3); setInterval(pushOverviews, 15 * 60e3); // the morning's Today's work overview notifications
 setTimeout(() => syncAllBooks().catch(() => {}), 45e3); setInterval(() => syncAllBooks().catch(() => {}), 15 * 60e3); // QuickBooks & Xero: send what's new

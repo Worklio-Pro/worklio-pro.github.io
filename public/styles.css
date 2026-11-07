@@ -1701,3 +1701,12 @@ label.bk-auto input{width:auto;margin:0}
 .rj-month{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:10px}.rj-month label{display:flex;align-items:center;gap:6px;margin:0}.rj-month input{margin:0}
 .rj-sum{margin:10px 0 0;font-size:13px}.rj-ico{color:var(--muted);font-weight:700}
 .rj [hidden]{display:none!important}
+/* service plans */
+.sp-plans{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}
+.sp-plan{display:flex;flex-direction:column;gap:8px;margin:0}.sp-ph{display:flex;justify-content:space-between;align-items:center;gap:8px}.sp-ph h3{margin:0}
+.sp-price{font-size:22px;font-weight:700}.sp-desc{margin:0}.sp-facts{margin:0;padding-left:18px;font-size:14px}.sp-facts li{margin:2px 0}
+.sp-pf{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:auto;padding-top:8px;border-top:1px solid var(--line)}
+.sp-arch{opacity:.75}.sp-h{margin:24px 0 12px}.sp-mh{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px}.sp-mh h2{margin:0}
+.sp-owe{color:var(--danger,#dc2626);font-weight:600}.sp-archd{margin-top:16px}.sp-archd summary{cursor:pointer;margin-bottom:12px}
+.sp-form .sp-tax{align-self:end}.sp-form [hidden]{display:none!important}
+.cv-sp{padding:8px 0;border-top:1px solid var(--line)}.cv-sp:first-child{border-top:0;padding-top:0}.cv-sp .link-btn{margin-top:4px;font-size:13px}

@@ -3273,3 +3273,88 @@ ${yt ? `<div class="rf-embed"><iframe src="https://www.youtube-nocookie.com/embe
 };
 A.copyRefLink = () => { const l = $('#main')._refLink; navigator.clipboard.writeText(l).then(() => toast('Referral link copied'), () => prompt('Copy your referral link:', l)); };
 
+
+/* ===== Service plans & memberships (a plan feature): plans the business sells on repeat, and the clients on them ===== */
+let SP = { plans: [], memberships: [], mrr: 0 }; let spShow = 'active';
+const SP_EVERY = { month: 'month', quarter: 'quarter', year: 'year' };
+const spPrice = (x) => `${money(x.price)} / ${SP_EVERY[x.interval]}`;
+const spVisits = (n) => (!n ? 'No visits included' : n === 12 ? '1 visit a month' : `${n} visit${n === 1 ? '' : 's'} a year`);
+PAGES['/service-plans'] = {
+  title: 'Service Plans',
+  async render(main) {
+    SP = await api('GET', '/api/service-plans');
+    const active = SP.memberships.filter((m) => m.status === 'active'); const soon = ymd(addDays(new Date(), 30));
+    const due = active.filter((m) => m.nextBill <= soon); const list = SP.memberships.filter((m) => spShow === 'all' || m.status === 'active');
+    const plans = SP.plans.filter((p) => !p.archived); const archived = SP.plans.filter((p) => p.archived);
+    const planCard = (p) => `<div class="card sp-plan${p.archived ? ' sp-arch' : ''}"><div class="sp-ph"><h3>${esc(p.name)}</h3><button type="button" class="btn alt sm" data-act="spPlan" data-id="${p.id}">Edit</button></div>
+<div class="sp-price">${spPrice(p)}</div>${p.description ? `<p class="muted sp-desc">${esc(p.description)}</p>` : ''}
+<ul class="sp-facts"><li>${spVisits(p.visitsPerYear)}</li><li>${p.discount ? `${p.discount}% off other work for members` : 'No member discount'}</li><li>${p.taxable ? 'Sales tax added' : 'No sales tax'}</li></ul>
+<div class="sp-pf"><span class="muted">${p.members} active member${p.members === 1 ? '' : 's'}</span>${p.archived ? '<span class="cstatus q-draft">Archived</span>' : `<button type="button" class="link-btn" data-act="spJoin" data-plan="${p.id}">+ Add a client</button>`}</div></div>`;
+    const row = (m) => `<tr><td><a href="/clients/view?id=${esc(m.clientId)}" data-link><strong>${esc(m.client)}</strong></a></td><td>${esc(m.name)}<div class="muted sm">${spPrice(m)}</div></td>
+<td>${fmtDate(m.start)}</td><td>${m.status === 'active' ? fmtDate(m.nextBill) : '<span class="muted">—</span>'}</td>
+<td>${m.nextVisit ? `<a href="/jobs/edit?id=${esc(m.nextVisit.id)}" data-link>${fmtDate(m.nextVisit.date)}</a>` : '<span class="muted">—</span>'}</td>
+<td class="r">${m.unpaid ? `<span class="sp-owe">${money(m.unpaid)}</span>` : money(0)}</td>
+<td>${m.status === 'active' ? `<span class="cstatus active">Active</span>${m.autoSend ? '' : '<div class="muted sm">Invoices not emailed automatically</div>'}` : `<span class="cstatus q-draft" title="${esc(m.canceledBy ? 'By ' + m.canceledBy : '')}">Canceled ${m.canceledAt ? fmtDate(m.canceledAt.slice(0, 10)) : ''}</span>`}</td>
+<td class="actions">${m.status === 'active' ? `<details class="menu"><summary class="btn alt sm" aria-label="Membership options">•••</summary><div class="menu-list"><button type="button" data-act="spAuto" data-id="${m.id}">${m.autoSend ? 'Stop emailing invoices' : 'Email invoices automatically'}</button><button type="button" class="danger-text" data-act="spCancel" data-id="${m.id}">Cancel membership</button></div></details>` : ''}</td></tr>`;
+    main.innerHTML = `<div class="head"><div><h1>Service Plans</h1><p class="sub">Plans your clients pay for on repeat, with visits included. Each billing period an invoice is made for every member, and their visits are scheduled ahead as repeating jobs.</p></div>
+<div class="ts-acts"><button type="button" class="btn alt" data-act="spPlan">New plan</button>${plans.length ? '<button type="button" class="btn" data-act="spJoin">Add a client</button>' : ''}</div></div>
+<div class="grid g3">${stat('Active members', active.length, `${plans.length} plan${plans.length === 1 ? '' : 's'}`)}${stat('Monthly recurring revenue', money(SP.mrr), `${money(SP.mrr * 12)} a year`)}${stat('Billing in the next 30 days', due.length, due.length ? money(due.reduce((s, m) => s + m.price, 0)) : 'Nothing due')}</div>
+<div class="card"><div class="sp-mh"><h2>Members</h2>${SP.memberships.length > active.length ? `<label class="ts-who"><select id="spShow" aria-label="Show"><option value="active">Active</option><option value="all" ${spShow === 'all' ? 'selected' : ''}>Active and canceled</option></select></label>` : ''}</div>
+${list.length ? `<div class="tablewrap"><table><tr><th>Client</th><th>Plan</th><th>Since</th><th>Next bill</th><th>Next visit</th><th class="r">Unpaid</th><th>Status</th><th></th></tr>${list.map(row).join('')}</table></div>`
+    : `<p class="muted" style="margin:0">${plans.length ? 'No clients on a plan yet. Add one with Add a client, or from a client’s page.' : 'Make a plan first (New plan), then add clients to it.'}</p>`}</div>
+<h2 class="sp-h">Plans</h2><div class="sp-plans">${plans.map(planCard).join('') || '<div class="card"><p class="muted" style="margin:0">No plans yet. A plan is a price billed every month, quarter or year, with the visits it includes, like “Comfort Club: $19/month, 2 tune-ups a year, 15% off repairs”.</p><p style="margin:12px 0 0"><button type="button" class="btn" data-act="spPlan">New plan</button></p></div>'}</div>
+${archived.length ? `<details class="sp-archd"><summary class="muted">Archived plans (${archived.length})</summary><div class="sp-plans">${archived.map(planCard).join('')}</div></details>` : ''}`;
+    const sh = $('#spShow'); if (sh) sh.addEventListener('change', (e) => { spShow = e.target.value; refresh(); });
+  },
+};
+// a plan: new or edited (changes apply to clients who join from now on)
+A.spPlan = (d) => {
+  const p = (d && d.id && SP.plans.find((x) => x.id === d.id)) || { interval: 'month', visitsPerYear: 2, visitHours: 1, discount: 0 };
+  const mb = modal(p.id ? 'Edit plan' : 'New service plan', `<form class="sp-form"><label>Name<input name="name" required maxlength="80" value="${esc(p.name || '')}" placeholder="e.g. Comfort Club"></label>
+<label>What’s included<textarea name="description" rows="2" maxlength="1000" placeholder="e.g. Two tune-ups a year and priority scheduling">${esc(p.description || '')}</textarea></label>
+<div class="row"><label>Price ($)<input name="price" type="number" step="0.01" min="0" required value="${p.price ?? ''}"></label><label>Billed every<select name="interval">${Object.keys(SP_EVERY).map((k) => `<option value="${k}" ${p.interval === k ? 'selected' : ''}>${SP_EVERY[k]}</option>`).join('')}</select></label></div>
+<div class="row"><label>Visits included<select name="visitsPerYear">${[0, 1, 2, 3, 4, 6, 12].map((n) => `<option value="${n}" ${Number(p.visitsPerYear) === n ? 'selected' : ''}>${spVisits(n)}</option>`).join('')}</select></label><label>Each visit takes (hours)<input name="visitHours" type="number" step="0.5" min="0.5" max="12" value="${esc(p.visitHours ?? 1)}"></label></div>
+<label>Visit title<input name="visitTitle" maxlength="120" value="${esc(p.visitTitle || '')}" placeholder="${esc((p.name || 'Plan') + ' visit')}"></label>
+<div class="row"><label>Member discount (%)<input name="discount" type="number" step="0.5" min="0" max="100" value="${esc(p.discount ?? 0)}"><span class="muted sm">Taken off members’ new quotes and invoices automatically</span></label>
+<label class="switchline sp-tax"><input type="checkbox" name="taxable" ${p.taxable ? 'checked' : ''}> Add sales tax to the plan’s invoices</label></div>
+${p.id ? `<p class="muted sm" style="margin:0">Changes apply to clients who join from now on.${p.members ? ` The ${p.members} current member${p.members === 1 ? ' keeps' : 's keep'} the price and terms they joined with.` : ''}</p>` : ''}
+<div class="foot">${p.id ? `<button type="button" class="btn alt" data-act="spArchive" data-id="${p.id}">${p.archived ? 'Unarchive' : 'Archive'}</button>${p.members ? '' : `<button type="button" class="btn danger" data-act="spDelPlan" data-id="${p.id}">Delete</button>`}` : ''}<button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save plan</button></div></form>`);
+  $('form', mb).addEventListener('submit', async (e) => {
+    e.preventDefault(); const b = Object.fromEntries(new FormData(e.target)); b.taxable = !!b.taxable; b.archived = !!p.archived;
+    try { p.id ? await api('PUT', '/api/service-plans/' + p.id, b) : await api('POST', '/api/service-plans', b); closeModal(); toast('Plan saved'); refresh(); } catch (x) { toast(x.message, true); }
+  });
+};
+A.spArchive = async (d) => { const p = SP.plans.find((x) => x.id === d.id); try { await api('PUT', '/api/service-plans/' + p.id, { archived: !p.archived }); closeModal(); toast(p.archived ? 'Plan unarchived' : 'Plan archived: nobody new can join it'); refresh(); } catch (x) { toast(x.message, true); } };
+A.spDelPlan = async (d) => { if (!confirm('Delete this plan?')) return; try { await api('DELETE', '/api/service-plans/' + d.id); closeModal(); toast('Plan deleted'); refresh(); } catch (x) { toast(x.message, true); } };
+// put a client on a plan (from Service Plans, or a client's page)
+A.spJoin = async (d) => {
+  SP = await api('GET', '/api/service-plans');
+  const plans = SP.plans.filter((p) => !p.archived); if (!plans.length) return toast('Make a plan first on Service Plans', true);
+  const today = ymd(new Date()); const team = D.staff.filter((s) => s.status !== 'deactivated');
+  const mb = modal('Add a client to a plan', `<form class="sp-form"><label>Client<select name="clientId" required>${clientOptions(d.client || '')}</select></label>
+<label>Plan<select name="planId" required>${plans.map((p) => `<option value="${p.id}" ${d.plan === p.id ? 'selected' : ''}>${esc(p.name)} · ${spPrice(p)}</option>`).join('')}</select></label>
+<div class="row"><label>Starts<input type="date" name="start" required value="${today}"><span class="muted sm">The first invoice is made on this day</span></label><label class="sp-v">First visit<input type="date" name="firstVisit" value="${today}"></label></div>
+<div class="sp-v"><div class="row"><label>Visit time<input type="time" name="startTime" value="09:00"></label><span></span></div>
+<div class="muted qlabel">Team for the visits</div><div class="team-pick">${team.map((s) => `<label><input type="checkbox" name="staff" value="${s.id}">${avatarHtml(s, 24)}${esc(s.name)}</label>`).join('') || '<span class="muted">Add team members on Manage Team first</span>'}</div></div>
+<label class="switchline"><input type="checkbox" name="autoSend" checked> Email each invoice to the client automatically, with the pay link</label>
+<p class="muted sm sp-sum" style="margin:0"></p>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Add to plan</button></div></form>`, true);
+  const f = $('form', mb);
+  const draw = () => { const p = plans.find((x) => x.id === f.planId.value); $$('.sp-v', f).forEach((el) => { el.hidden = !p.visitsPerYear; });
+    const c = byId(D.clients, f.clientId.value); f.autoSend.disabled = !!c && !c.email; if (c && !c.email) f.autoSend.checked = false;
+    $('.sp-sum', f).textContent = `${spPrice(p)} from ${fmtDate(f.start.value || today)}${p.visitsPerYear ? `, ${spVisits(p.visitsPerYear).toLowerCase()} from ${fmtDate(f.firstVisit.value || f.start.value || today)}` : ''}${p.discount ? `, ${p.discount}% off other work` : ''}.${c && !c.email ? ' This client has no email address, so send their invoices yourself.' : ''}`; };
+  f.addEventListener('change', (e) => { if (e.target.name === 'start' && f.firstVisit.value < e.target.value) f.firstVisit.value = e.target.value; draw(); }); draw();
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault(); const fd = new FormData(f); const btn = $('.foot .btn:not(.alt)', f); btn.disabled = true;
+    try {
+      const r = await api('POST', '/api/memberships', { clientId: fd.get('clientId'), planId: fd.get('planId'), start: fd.get('start'), firstVisit: fd.get('firstVisit'), startTime: fd.get('startTime'), staffIds: fd.getAll('staff'), autoSend: !!fd.get('autoSend') });
+      closeModal(); toast(`Added to ${r.membership.name}${r.visits ? ` · ${r.visits} visit${r.visits === 1 ? '' : 's'} scheduled` : ''}${r.invoices.length ? ` · invoice ${r.invoices.map((i) => i.number).join(', ')} ${r.invoices[0].status === 'sent' ? 'emailed' : 'made'}` : ''}`); refresh();
+    } catch (x) { toast(x.message, true); btn.disabled = false; }
+  });
+};
+A.spAuto = async (d) => { const m = SP.memberships.find((x) => x.id === d.id); try { await api('PUT', '/api/memberships/' + m.id, { autoSend: !m.autoSend }); toast(m.autoSend ? 'Invoices won’t be emailed automatically' : 'Invoices will be emailed automatically'); refresh(); } catch (x) { toast(x.message, true); } };
+A.spCancel = async (d) => {
+  const m = SP.memberships.find((x) => x.id === d.id) || {};
+  if (!confirm(`Cancel ${m.client || 'this client'}’s ${m.name || ''} plan? No more invoices are made, and upcoming plan visits nobody has worked on are removed. Invoices already made stay.`)) return;
+  try { const r = await api('POST', `/api/memberships/${d.id}/cancel`); toast(`Membership canceled${r.removed ? ` · ${r.removed} upcoming visit${r.removed === 1 ? '' : 's'} removed` : ''}`); refresh(); } catch (x) { toast(x.message, true); }
+};

@@ -146,7 +146,7 @@ const clientOptions = (sel) => `<option value="">Select client…</option>` + D.
 /* ===== router ===== */
 const PAGES = {};
 const NAV = [
-  ['Operations', [['/business-overview', 'Home'], ['/calendar', 'Calendar'], ['/clients', 'Clients'], ['/quotes', 'Quotes'], ['/jobs', 'Jobs'], ['/timesheets', 'Timesheets'], ['/invoices', 'Invoices']]],
+  ['Operations', [['/business-overview', 'Home'], ['/calendar', 'Calendar'], ['/clients', 'Clients'], ['/quotes', 'Quotes'], ['/jobs', 'Jobs'], ['/timesheets', 'Timesheets'], ['/service-plans', 'Service Plans'], ['/invoices', 'Invoices']]],
   ['Money', [['/payments', 'Payments'], ['/services', 'Products & Services'], ['/expenses', 'Expenses'], ['/reports', 'Financial Reports'], ['/tax-summary', 'Tax Summary']]],
   ['Marketing', [['/reviews', 'Reviews'], ['/social-posts', 'Marketing'], ['/automations', 'Automations']]],
   ['Records', [['/project-gallery', 'Project Gallery'], ['/notifications', 'Notifications Log']]],
@@ -251,6 +251,7 @@ const BNAV = [
 const NAV_ICONS = {
   ...Object.fromEntries(BNAV.map(([p, , d]) => [p, d])),
   '/timesheets': '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  '/service-plans': '<path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/>',
   '/requests': '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/><path d="M10 14l4 4M14 14l-4 4"/>',
   '/payments': '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/>',
   '/services': '<path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="8" cy="8" r="1.5"/>',
@@ -304,7 +305,7 @@ const FEATURE_EXTRAS = [['/quotes/new', 'New quote', 'Quotes', 'create estimate'
   ['/payments/settings', 'Payment settings', 'Money', 'card online payouts processing rates disputes'], ['/profile', 'My profile', 'Account', 'password photo name email login']];
 const FEATURE_WORDS = {
   '/business-overview': 'dashboard overview', '/calendar': 'schedule schedules appointments visits tasks events job calendar', '/clients': 'customers contacts',
-  '/quotes': 'estimates proposals', '/jobs': 'work orders visits', '/timesheets': 'time tracking clock in out hours payroll timecard labor', '/invoices': 'billing', '/payments': 'card online stripe', '/services': 'catalog products price list items',
+  '/quotes': 'estimates proposals', '/jobs': 'work orders visits', '/timesheets': 'time tracking clock in out hours payroll timecard labor', '/service-plans': 'memberships maintenance agreements contracts recurring billing subscriptions club', '/invoices': 'billing', '/payments': 'card online stripe', '/services': 'catalog products price list items',
   '/expenses': 'costs receipts spending', '/reports': 'revenue profit charts', '/tax-summary': 'sales tax', '/project-gallery': 'photos pictures', '/reviews': 'client google reviews ratings stars reply feedback', '/automations': 'automatic follow up reminder rules workflow messages overdue', '/social-posts': 'facebook instagram social media post marketing', '/notifications': 'emails texts sms sent messages log',
   '/requests': 'time off day off vacation sick leave request approve', '/settings/roles': 'roles permissions access manager technician what team can see do', '/settings/company': 'business details logo address phone social media facebook instagram tiktok tax', '/team': 'staff employees users access roles technicians', '/settings/emails': 'templates text messages sms reminders',
   '/settings/preferences': 'appearance theme dark mode light system push notifications alerts phone', '/settings': 'number prefixes branding brand color zelle defaults stripe card payments online payments regional time zone date format time format week', '/settings/connections': 'integrations google facebook instagram ai', '/settings/accounting': 'quickbooks xero accounting bookkeeping books sync accountant', '/settings/business-page': 'qr code business card digital card link in bio links save contact vcard scan limit expiry', '/marketplace': 'apps integrations connect quickbooks xero accounting home depot lowes supplies materials zapier chatgpt claude ai automation calendar slack gusto payroll', '/settings/billing': 'subscription plan upgrade payment method', '/settings/support-access': 'grant revoke help troubleshoot permission',
@@ -1354,7 +1355,8 @@ PAGES['/clients/view'] = {
     if (!c) { main.innerHTML = '<div class="card"><h1>Client not found</h1><p><a href="/clients" data-link>Back to Clients</a></p></div>'; return; }
     if (cvState.id !== c.id) cvState = { id: c.id, tab: 'info', types: [], status: 'all', prop: '', propQ: '', sType: 'all', sStatus: 'all', edit: '' };
     const v = cvState; const CI = cvIcons(); const edit = canDo('clients.edit'); const today = ymd(new Date());
-    const [reqs, notifs] = await Promise.all([api('GET', `/api/clients/${c.id}/requests`).catch(() => []), canDo('notifications') ? api('GET', '/api/notifications').catch(() => null) : null]);
+    const [reqs, notifs, plansV] = await Promise.all([api('GET', `/api/clients/${c.id}/requests`).catch(() => []), canDo('notifications') ? api('GET', '/api/notifications').catch(() => null) : null, planHas('servicePlans') && canDo('servicePlans') ? api('GET', '/api/service-plans').catch(() => null) : null]);
+    if (plansV) SP = plansV; const members = plansV ? plansV.memberships.filter((m) => m.clientId === c.id && m.status === 'active') : null;
     const msgs = notifs && notifs.filter((n) => n.clientId === c.id); window.__notifs = notifs || [];
     const invoices = D.invoices.filter((x) => x.clientId === c.id);
     const active = (clientInfo()[c.id] || {}).active;
@@ -1405,6 +1407,7 @@ ${canCreateWork() ? createMenu('<summary class="btn">+ Create</summary>') : ''}<
 ${v.tab === 'comms' ? comms : info}</div>
 <aside class="cv-side">
 ${card('Overview', `<div class="cv-ov"><strong class="money">${money(lifetime)}</strong><span class="muted">Lifetime value</span></div><div class="cv-ov"><strong class="money">${money(balance)}</strong><span class="muted">Current balance</span></div>`, '', 'need-invoices cvs-overview')}
+${members ? card('Service plan', members.map((m) => `<div class="cv-sp"><strong>${esc(m.name)}</strong> <span class="muted">${spPrice(m)}</span><div class="muted sm">Since ${fmtDate(m.start)} · next bill ${fmtDate(m.nextBill)}${m.nextVisit ? ` · next visit <a href="/jobs/edit?id=${esc(m.nextVisit.id)}" data-link>${fmtDate(m.nextVisit.date)}</a>` : ''}${m.discount ? ` · ${m.discount}% off other work` : ''}</div><button type="button" class="link-btn danger-text" data-act="spCancel" data-id="${m.id}">Cancel membership</button></div>`).join('') || '<p class="muted" style="margin:0">Not on a service plan</p>', plus('spJoin', 'Add to a service plan', ` data-client="${c.id}"`), 'cvs-plan') : ''}
 ${card('Tags', `${tags.length ? `<div class="cv-tags">${tags.map((t) => `<span class="tag">${esc(t)}${edit ? `<button type="button" data-act="cvTagDel" data-t="${esc(t)}" aria-label="Remove tag ${esc(t)}">×</button>` : ''}</span>`).join('')}</div>` : '<p class="muted" style="margin:0">This client has no tags</p>'}
 ${v.edit === 'tag' ? '<form class="cv-tagf"><input name="tag" placeholder="New tag" required autocomplete="off"><button class="btn sm">Add</button></form>' : ''}`, edit ? plus('cvEdit', 'Add a tag', ' data-k="tag"') : '', 'cvs-tags')}
 <section class="cv-card cvs-last"><button type="button" class="cv-last" data-act="cvTab" data-t="comms"><div class="cv-ch"><h2>Last communication</h2>${CI.chev}</div>${last ? `<div class="muted">${esc(fmtStamp(last.at))}</div><div class="cv-clip">${esc(last.subject || last.kind)}</div>` : `<p class="muted" style="margin:0">${msgs ? 'No emails or texts yet' : 'See the Communication tab'}</p>`}</button></section>
@@ -3139,7 +3142,7 @@ const jobInvoices = (j) => D.invoices.filter((i) => i.jobId === j.id);
 function jobStatus(j) {
   const today = ymd(new Date());
   if (j.status === 'cancelled') return 'cancelled';
-  if (j.status === 'completed') return jobInvoices(j).length ? 'archived' : 'invoice';
+  if (j.status === 'completed') return jobInvoices(j).length || j.membershipId ? 'archived' : 'invoice'; // a service plan's visits are billed by the plan
   return j.date < today ? 'late' : j.date === today ? 'today' : 'upcoming';
 }
 // value of a job: its invoices, or the quote it came from when not invoiced yet
