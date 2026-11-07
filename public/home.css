@@ -195,3 +195,16 @@ body{background:var(--card)}
 a.h-feat{display:block;color:inherit;text-decoration:none;transition:border-color .15s,transform .15s}a.h-feat:hover{border-color:var(--brand);transform:translateY(-2px)}
 .f-row>*{min-width:0}.m-ui{overflow-x:auto}
 @media (max-width:640px){.m-ui{padding:14px;font-size:13px}.m-table th,.m-table td{padding:7px 3px}.m-stats b{font-size:17px}}
+
+/* readability: on the public pages, secondary text is a darker gray in light mode (#475569, 7:1 on white and the hero tint; #64748b was 4.3:1 on the tint).
+   A color set in Alpha → Settings → Site colors (/theme.css) still wins */
+:root{--muted:#475569}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--muted:#94a3b8}}
+:root[data-theme=dark]{--muted:#94a3b8}
+/* a free-trial button beside the section links, and the reassurance line under the closing one */
+.f-all{display:flex;flex-wrap:wrap;justify-content:center;gap:12px}
+.h-cta .h-cta-note{margin:16px 0 0;font-size:15px;opacity:.9}
+.h-cta .h-cta-note a{color:#fff;text-decoration:underline}
+/* the text-message notice sits below the closing call to action, quieter than the sections above it */
+.h-sms{padding:48px 0 8px}.h-sms .h-sec-head{margin-bottom:24px}.h-sms .h-sec-head h2{font-size:clamp(22px,2.6vw,28px)}.h-sms .h-sec-head p{font-size:16px}
+@media (max-width:640px){.f-all .btn{flex:1 1 100%;justify-content:center}}
