@@ -4129,8 +4129,9 @@ app.post('/api/account/billing/redeem', async (req, res) => {
       const item = planItem(sub); const end = Math.max(sub.trial_end || 0, sub.current_period_end || item.current_period_end || 0, Math.floor(Date.now() / 1000)); // the next charge, as referral credit does
       const next = new Date(end * 1000); next.setUTCMonth(next.getUTCMonth() + ck.months);
       const p = { trial_end: String(Math.floor(next.getTime() / 1000)), proration_behavior: 'none', cancel_at_period_end: 'false', 'metadata[planId]': to.id };
-      const c = stripeLib.planCharge(to, (item.price.recurring && item.price.recurring.interval) || b.interval);
-      if (c && t.planId !== to.id) Object.assign(p, { 'items[0][id]': item.id, 'items[0][price_data][currency]': 'usd', 'items[0][price_data][product]': await planProduct(to), 'items[0][price_data][unit_amount]': String(c.cents), 'items[0][price_data][recurring][interval]': c.interval }, await seatParams(sub, to, c.interval, extraCount(to)));
+      // after the prepaid months they pay the Founding Supporter price (or less, if this account is already locked lower)
+      const c = stripeLib.planCharge(supporters.backerPlan(to.id === t.planId ? tenancy.planOf(t) : to), (item.price.recurring && item.price.recurring.interval) || b.interval);
+      if (c && (t.planId !== to.id || !(item.price.unit_amount <= c.cents))) Object.assign(p, { 'items[0][id]': item.id, 'items[0][price_data][currency]': 'usd', 'items[0][price_data][product]': await planProduct(to), 'items[0][price_data][unit_amount]': String(c.cents), 'items[0][price_data][recurring][interval]': c.interval }, await seatParams(sub, to, c.interval, extraCount(to)));
       await billingCall('POST', `subscriptions/${sub.id}`, p);
       t.planId = to.id; delete b.pendingPlanId; delete b.endsAt; until = iso(new Date(next.getTime() - 864e5));
       message = `You’re on ${to.name}, prepaid until ${niceDate(until)}. Your next charge${c ? ` of ${money(c.cents / 100)}` : ''} is on ${niceDate(iso(next))}.`;
