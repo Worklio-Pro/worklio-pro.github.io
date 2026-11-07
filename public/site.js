@@ -3,6 +3,51 @@
 const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const slugify = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32).replace(/-+$/, '');
+// features added in the last release, tagged "New" on the plans and in the table (take keys out once they're no longer news)
+const NEW = new Set(['recurringJobs', 'servicePlans', 'dispatchMap', 'timesheets', 'accounting', 'automations']);
+
+// "How we compare": our entry and team plans against two well-known competitors' list prices.
+// Their prices: monthly billing, from each company's public pricing page. Check them and update CHECKED when they change.
+const CHECKED = 'November 2026';
+const RIVALS = [
+  { name: 'Jobber', entry: 49, entryNote: '1 user', team: 199, teamNote: 'Grow plan, about 10 users' },
+  { name: 'Housecall Pro', entry: 79, entryNote: '1 user', team: 329, teamNote: 'MAX plan, about 8 users' },
+];
+function drawCompare(S, amount) {
+  const paid = S.plans.filter((p) => p.monthly).sort((a, b) => a.monthly - b.monthly); if (!paid.length) return;
+  const priceOf = (p) => (p.sale && p.sale.monthly) || p.monthly;
+  const entry = paid[0];
+  const team = paid.find((p) => p !== entry && (!p.maxUsers || p.maxUsers >= 5)) || paid[paid.length - 1]; // the first plan for a crew
+  const logins = (p) => (!p.maxUsers ? 'unlimited logins' : p.maxUsers === 1 ? '1 login' : `up to ${p.maxUsers} logins`);
+  const yr = (m) => amount(m * 12);
+  const ourYear = priceOf(team) * 12;
+  const label = Object.fromEntries(S.features.map((f) => [f.key, f.label]));
+  const gets = S.features.filter((f) => team.features.includes(f.key));
+  const el = $('#compare'); el.hidden = false;
+  el.innerHTML = `<div class="v-head"><span class="v-kick">How we compare</span><h2>The same tools, for a fraction of the price</h2><p>What a small crew pays each month for field service software, at list prices.</p></div>
+<div class="v-scroll"><table class="v-tbl"><thead><tr><th scope="col"></th><th scope="col" class="us">${esc(S.productName)}</th>${RIVALS.map((r) => `<th scope="col">${esc(r.name)}</th>`).join('')}</tr></thead><tbody>
+<tr><td>Starting price</td><td class="us"><b>${amount(priceOf(entry))}/mo</b><small>${esc(entry.name)}, ${logins(entry)}</small></td>${RIVALS.map((r) => `<td>${amount(r.entry)}/mo<small>${esc(r.entryNote)}</small></td>`).join('')}</tr>
+<tr><td>Plan for a growing crew</td><td class="us"><b>${amount(priceOf(team))}/mo</b><small>${esc(team.name)}, ${logins(team)}</small></td>${RIVALS.map((r) => `<td>${amount(r.team)}/mo<small>${esc(r.teamNote)}</small></td>`).join('')}</tr>
+<tr><td>That plan for a year</td><td class="us"><b>${yr(priceOf(team))}</b></td>${RIVALS.map((r) => `<td>${yr(r.team)}</td>`).join('')}</tr>
+<tr><td>You keep each year with ${esc(S.productName)}</td><td class="us">—</td>${RIVALS.map((r) => { const d = r.team * 12 - ourYear; return `<td class="save">${d > 0 ? amount(d) : '—'}</td>`; }).join('')}</tr>
+</tbody></table></div>
+<p class="v-note">Competitor prices are their monthly list prices as published on their own pricing pages, checked ${CHECKED}; user counts vary by plan and add-ons cost extra. Prices and features change, so check their sites for the latest. Jobber and Housecall Pro are trademarks of their owners; ${esc(S.productName)} is not affiliated with them.</p>
+<div class="v-gets"><h3>Everything on ${esc(team.name)} for ${amount(priceOf(team))}/month</h3><ul>${gets.map((f) => `<li class="${NEW.has(f.key) ? 'nw' : ''}">${esc(label[f.key])}${NEW.has(f.key) ? ' · New' : ''}</li>`).join('')}${S.alwaysIncluded.map((l) => `<li>${esc(l)}</li>`).join('')}</ul></div>`;
+}
+
+// every feature, plan by plan, in the catalog's groups
+function drawMatrix(S) {
+  const plans = S.plans; if (!plans.length) return;
+  const groups = [...new Set(S.features.map((f) => f.group))];
+  const cell = (on) => (on ? '<td class="y" aria-label="Included">✓</td>' : '<td class="no" aria-label="Not included">—</td>');
+  const el = $('#matrix'); el.hidden = false;
+  el.innerHTML = `<div class="v-head"><span class="v-kick">Compare plans</span><h2>Everything in each plan</h2></div>
+<div class="v-scroll"><table class="v-tbl"><thead><tr><th scope="col">Feature</th>${plans.map((p) => `<th scope="col">${esc(p.name)}</th>`).join('')}</tr></thead><tbody>
+<tr><td>Team logins</td>${plans.map((p) => `<td>${p.maxUsers ? p.maxUsers : 'Unlimited'}</td>`).join('')}</tr>
+${groups.map((g) => `<tr class="grp"><td colspan="${plans.length + 1}">${esc(g)}</td></tr>${S.features.filter((f) => f.group === g).map((f) => `<tr><td>${esc(f.label)}${NEW.has(f.key) ? ' <span class="v-tag">New</span>' : ''}${f.beta ? ' <span class="v-tag b">Beta</span>' : ''}</td>${plans.map((p) => cell(p.features.includes(f.key))).join('')}</tr>`).join('')}`).join('')}
+<tr class="grp"><td colspan="${plans.length + 1}">In every plan</td></tr>${S.alwaysIncluded.map((l) => `<tr><td>${esc(l)}</td>${plans.map(() => cell(true)).join('')}</tr>`).join('')}
+</tbody></table></div>`;
+}
 
 (async () => {
   const S = await (await fetch('/api/site')).json();
@@ -31,11 +76,12 @@ const slugify = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-')
     $('#period').innerHTML = both ? `<div class="s-period" role="radiogroup" aria-label="Billing period">${[['month', 'Monthly'], ['year', `Yearly${best > 0 ? ` <span class="s-save">Save up to ${best}%</span>` : ''}`]].map(([k, l]) => `<button type="button" role="radio" aria-checked="${period === k}" class="${period === k ? 'on' : ''}" data-period="${k}">${l}</button>`).join('')}</div>` : '';
     $('#plans').innerHTML = S.plans.map((p, i) => `<article class="card s-plan ${i === mid ? 'pop' : ''}"><span class="s-tag">${i === mid ? 'Most popular' : ''}</span><h2>${esc(p.name)}</h2>
 ${priceHtml(p)}<p class="desc">${esc(p.description)}</p>
-<ul><li>${p.maxUsers ? `${p.maxUsers} team login${p.maxUsers === 1 ? '' : 's'}` : 'Unlimited team logins'}</li>${S.features.filter((f) => p.features.includes(f.key)).map((f) => `<li><span>${esc(label[f.key])}</span></li>`).join('')}
+<ul><li>${p.maxUsers ? `${p.maxUsers} team login${p.maxUsers === 1 ? '' : 's'}` : 'Unlimited team logins'}</li>${S.features.filter((f) => p.features.includes(f.key)).map((f) => `<li><span>${esc(label[f.key])}</span>${NEW.has(f.key) ? '<span class="nw">New</span>' : ''}</li>`).join('')}
 ${S.alwaysIncluded.map((l) => `<li class="base">${esc(l)}</li>`).join('')}</ul>
 ${S.allowSignups ? `<a class="btn ${i === mid ? '' : 'alt'}" href="#signup" data-plan="${esc(p.id)}">Choose ${esc(p.name)}</a>` : `<button type="button" class="btn ${i === mid ? '' : 'alt'}" data-contact="${esc(p.id)}">Contact us</button>`}</article>`).join('');
   };
-  drawPlans();
+  drawPlans(); drawCompare(S, amount); drawMatrix(S);
+  if (location.hash === '#compare' || location.hash === '#matrix') { const el = $(location.hash); if (el) el.scrollIntoView(); } // the sections draw after the page loads, so jump again
   document.addEventListener('click', (e) => { const b = e.target.closest('[data-period]'); if (!b) return; period = b.dataset.period; drawPlans(); const sel = $('#sf [name=interval]'); if (sel) { sel.value = period; sel.dispatchEvent(new Event('change')); } });
   $('#foot').innerHTML = 'Questions? <a href="#contact" data-contact="">Contact us</a> · <a href="/terms">Terms of Service</a> · <a href="/privacy">Privacy Policy</a>'; if (window.cookieChoicesLink) window.cookieChoicesLink();
   document.addEventListener('click', (e) => { const b = e.target.closest('[data-contact]'); if (b) { e.preventDefault(); openContact(S, b.dataset.contact); } });

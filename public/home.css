@@ -160,3 +160,38 @@ body{background:var(--card)}
   .f-shot{padding:16px 12px;border-radius:18px}.f-browser{border-radius:10px}
 }
 .f-all{text-align:center;margin:56px 0 0}.f-all .btn{display:inline-flex;align-items:center;min-height:48px;padding:0 22px;font-size:16px;font-weight:700;border-radius:10px}
+/* new-feature sections: small HTML pictures of the app (no screenshot needed), "New" badges and the value section */
+.f-new{display:inline-block;margin-left:8px;padding:2px 9px;border-radius:99px;background:var(--ok-bg);color:var(--ok-fg);font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;vertical-align:middle}
+.m-ui{background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:14px;box-shadow:0 24px 60px -24px rgba(15,23,42,.35),0 2px 6px rgba(15,23,42,.06);padding:18px 20px;font-size:14px;line-height:1.4}
+.m-ui h4{margin:0 0 4px;font-size:16px;display:flex;justify-content:space-between;align-items:center;gap:10px}
+.m-sub{color:var(--muted);font-size:13px;margin:0 0 12px}
+.m-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
+.m-row b{font-weight:700}.m-row span{color:var(--muted)}
+.m-pill{flex:none;font-size:12px;font-weight:700;padding:2px 9px;border-radius:99px;background:var(--ok-bg);color:var(--ok-fg)}
+.m-pill.i{background:var(--info-bg);color:var(--info-fg)}.m-pill.w{background:var(--warn-bg);color:var(--warn-fg)}.m-pill.v{background:var(--violet-bg);color:var(--violet-fg)}
+.m-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:0 0 14px}
+.m-stats div{background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:10px}
+.m-stats b{display:block;font-size:20px;font-variant-numeric:tabular-nums}.m-stats span{font-size:12px;color:var(--muted)}
+.m-table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.m-table th{text-align:left;font-size:12px;color:var(--muted);font-weight:600;padding:6px 4px;border-bottom:1px solid var(--line)}
+.m-table td{padding:9px 4px;border-bottom:1px solid var(--line)}.m-table td.n,.m-table th.n{text-align:right}
+.m-table .ot{color:var(--warn-fg);font-weight:700}.m-table .pos{color:var(--ok-fg);font-weight:700}
+.m-flow{display:grid;gap:8px}
+.m-step{display:flex;gap:12px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)}
+.m-step i{flex:none;width:30px;height:30px;border-radius:8px;display:grid;place-items:center;font-style:normal;font-weight:800;background:var(--tint);color:var(--tint-fg)}
+.m-step small{display:block;color:var(--muted)}
+.m-arrow{text-align:center;color:var(--muted);line-height:1}
+.m-map{display:block;width:100%;height:auto;border-radius:10px;background:var(--surface-2);border:1px solid var(--line)}
+.m-legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:10px;font-size:13px}
+.m-legend span{display:flex;align-items:center;gap:6px}.m-legend i{width:10px;height:10px;border-radius:50%}
+/* "why us" value cards (home, features) */
+.v-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+.v-card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px}
+.v-card b{display:block;font-size:30px;letter-spacing:-.02em;color:var(--brand);margin-bottom:6px}
+.v-card h3{margin:0 0 6px;font-size:17px}.v-card p{margin:0;color:var(--muted);font-size:15px;line-height:1.55}
+/* industry pages: the newer tools, in that trade's words */
+.i-new{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}
+.i-new .h-feat h3 .f-new{margin-left:6px}
+a.h-feat{display:block;color:inherit;text-decoration:none;transition:border-color .15s,transform .15s}a.h-feat:hover{border-color:var(--brand);transform:translateY(-2px)}
+.f-row>*{min-width:0}.m-ui{overflow-x:auto}
+@media (max-width:640px){.m-ui{padding:14px;font-size:13px}.m-table th,.m-table td{padding:7px 3px}.m-stats b{font-size:17px}}

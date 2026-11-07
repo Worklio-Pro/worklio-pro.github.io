@@ -42,6 +42,32 @@
     .c-hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
     .c-done{text-align:center;padding:12px 0}.c-done h3{margin:8px 0 4px}.c-ok{width:48px;height:48px;margin:0 auto;border-radius:50%;background:var(--ok);color:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700}
     .su-modal{max-width:520px}.su-modal .mh{align-items:flex-start}.su-modal .mh h3{margin:0}
+    .s-plan li .nw{flex:none;margin-left:auto;align-self:center;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;padding:1px 7px;border-radius:99px;background:var(--ok-bg);color:var(--ok-fg)}
+    .v-sec{max-width:1120px;margin:0 auto;padding:24px 16px 40px;scroll-margin-top:72px}
+    .v-head{text-align:center;max-width:720px;margin:0 auto 24px}.v-head h2{font-size:clamp(24px,3.6vw,34px);line-height:1.15;margin:0 0 10px;letter-spacing:-.01em}.v-head p{margin:0;color:var(--muted);font-size:16px}
+    .v-kick{display:block;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--brand);margin-bottom:8px}
+    .v-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:14px;background:var(--card)}
+    .v-tbl{width:100%;border-collapse:collapse;font-size:15px;min-width:560px}
+    .v-tbl th,.v-tbl td{padding:12px 14px;border-bottom:1px solid var(--line);text-align:center;vertical-align:middle}
+    .v-tbl tr:last-child td{border-bottom:0}
+    .v-tbl th:first-child,.v-tbl td:first-child{text-align:left}
+    .v-tbl thead th{font-size:15px;background:var(--surface-2)}
+    .v-tbl .us{background:color-mix(in srgb,var(--brand) 7%,var(--card))}.v-tbl thead .us{background:var(--brand);color:#fff}
+    .v-tbl td small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+    .v-tbl .save{color:var(--ok-fg);font-weight:800}
+    .v-tbl .grp td{background:var(--surface-2);font-weight:700;font-size:13px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+    .v-tbl .y{color:var(--ok);font-weight:800}.v-tbl .no{color:var(--muted)}
+    .v-tag{display:inline-block;vertical-align:middle;margin-left:4px;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;padding:1px 7px;border-radius:99px;background:var(--ok-bg);color:var(--ok-fg)}.v-tag.b{background:var(--info-bg);color:var(--info-fg)}
+    .v-note{color:var(--muted);font-size:12.5px;margin:10px 4px 0;line-height:1.5}
+    .v-gets{margin-top:20px;padding:20px;border:2px solid var(--brand);border-radius:14px;background:var(--card)}
+    .v-gets h3{margin:0 0 12px;font-size:18px}
+    .v-gets ul{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:8px}
+    .v-gets li{padding:5px 12px;border-radius:99px;background:var(--surface-2);border:1px solid var(--line);font-size:14px}
+    .v-gets li.nw{background:var(--ok-bg);color:var(--ok-fg);border-color:transparent;font-weight:600}
+    .v-faq{max-width:760px;margin:0 auto;display:grid;gap:10px}
+    .v-faq details{border:1px solid var(--line);border-radius:12px;background:var(--card);padding:14px 18px}
+    .v-faq summary{cursor:pointer;font-weight:700;font-size:16px}.v-faq p{margin:10px 0 0;color:var(--muted);line-height:1.55}
+    @media (max-width:560px){.v-tbl th,.v-tbl td{padding:10px 8px;font-size:14px}}
     .ref-banner{max-width:760px;margin:0 auto 20px;padding:12px 18px;border-radius:12px;background:var(--ok-bg);color:var(--ok-fg);text-align:center;font-size:15px}
   </style>
 </head>
@@ -57,14 +83,26 @@
     <button type="button" class="h-burger" aria-expanded="false" aria-controls="h-panel" aria-label="Open menu"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
     <div class="h-scrim" aria-hidden="true"></div>
   </div></header>
-  <section class="s-hero"><h1>Run your service business from one place</h1><p>Quotes, scheduling, invoices and payments for you, your team and your clients.</p></section>
+  <section class="s-hero"><h1>Run your service business from one place</h1><p>Quotes, scheduling, recurring jobs, service plans, a dispatch map, timesheets, invoices and payments for you, your team and your clients, with no per-seat fees.</p></section>
   <div id="period"></div>
   <section class="s-plans" id="plans" aria-label="Plans"><p class="muted" style="text-align:center">Loading…</p></section>
+  <section class="v-sec" id="compare" hidden></section>
+  <section class="v-sec" id="matrix" hidden></section>
+  <section class="v-sec" id="pfaq">
+    <div class="v-head"><h2>Pricing questions</h2></div>
+    <div class="v-faq">
+      <details><summary>Do I pay extra for each team member?</summary><p>No. Each plan includes the team logins shown on it, all for one monthly or yearly price. Need more people? Move up a plan instead of paying per seat.</p></details>
+      <details><summary>Which plan has recurring jobs, service plans and the dispatch map?</summary><p>Recurring jobs are in every plan. Service plans &amp; memberships, the dispatch map with route optimization, time tracking &amp; timesheets, job profit and QuickBooks &amp; Xero sync are on Advanced and Unlimited. Automations, AI writing help, custom roles and your own domain are on Unlimited.</p></details>
+      <details><summary>Are there fees on card payments?</summary><p>Card payments go through your own Stripe account, so Stripe’s standard processing fees apply and payouts go straight to your bank. Zelle payments have no fee from us.</p></details>
+      <details><summary>Can I change plans later?</summary><p>Yes. Move up or down from Account &amp; Billing in the app as your business grows.</p></details>
+      <details><summary>Is there a contract?</summary><p>No long-term contract. Plans are billed monthly, or yearly at a lower price, and you can cancel anytime in Account &amp; Billing.</p></details>
+    </div>
+  </section>
   <div id="signup" hidden></div>
   <footer class="s-foot" id="foot"></footer>
   <script src="/brand.js?v=1"></script>
   <script src="/menu.js?v=3"></script>
-  <script src="/site.js?v=18"></script>
+  <script src="/site.js?v=19"></script>
   <script src="/phone.js?v=2" defer></script>
   <script src="/trial.js?v=6"></script>
   <script src="/chat.js?v=6" data-where="site" defer></script>
