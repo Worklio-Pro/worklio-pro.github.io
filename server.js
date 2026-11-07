@@ -1017,12 +1017,18 @@ const accessOf = (u) => { const rk = roleKey(u); const routes = rolesLib.routesF
 // the app tour (public/tour.js) starts by itself once for logins made since it launched; finishing or skipping it marks it seen
 const TOUR_SINCE = '2026-10-26';
 const tourNew = (u, req) => !req._support && !u.tourAt && String(u.createdAt || '') >= TOUR_SINCE;
+// the Founding Supporter thank-you popup (public/app.js) shows once, for the owner, after a code is claimed
+app.post('/api/account/supporter-thanks', (req, res) => {
+  const u = currentUser(req); if (!u) return res.status(401).json({ error: 'Please log in' });
+  if (u.role === 'owner' && !req._support) supporters.thanksSeen(tenancy.current());
+  res.json({ ok: true });
+});
 app.post('/api/auth/tour', (req, res) => {
   const u = currentUser(req); if (!u) return res.status(401).json({ error: 'Please log in' });
   if (!req._support && !u.tourAt) { u.tourAt = iso(new Date()); save(); }
   res.json({ ok: true });
 });
-app.get('/api/auth/me', (req, res) => (currentUser(req) ? res.json({ ...publicUser(currentUser(req)), ...accessOf(currentUser(req)), tourNew: tourNew(currentUser(req), req), ...(req._support ? { support: { adminName: req._support.adminName, expires: req._support.expires } } : {}) }) : res.status(401).json({ error: 'Please log in' })));
+app.get('/api/auth/me', (req, res) => (currentUser(req) ? res.json({ ...publicUser(currentUser(req)), ...accessOf(currentUser(req)), tourNew: tourNew(currentUser(req), req), supporterThanks: currentUser(req).role === 'owner' && !req._support ? supporters.thanks(tenancy.current()) : null, ...(req._support ? { support: { adminName: req._support.adminName, expires: req._support.expires } } : {}) }) : res.status(401).json({ error: 'Please log in' })));
 app.post('/api/auth/setup', (req, res) => { // first run only: create the owner account
   if (db.users.length) return res.status(403).json({ error: 'An account already exists. Log in instead.' });
   const { name, email, password } = req.body || {};
@@ -4143,6 +4149,7 @@ app.post('/api/account/billing/redeem', async (req, res) => {
       message = `You’re on ${to.name}, prepaid until ${niceDate(until)}. No card needed until then; add one before that date to keep your account after it.`;
     }
     supporters.redeemed(t, ck, until); // saves
+    supporters.sendThanks(t, u.email, u.name, (k, to, v) => sendTemplate(k, to, v, { server: true })).catch(() => {}); // the thank-you email with the good news
     tellPlatform(`Supporter code redeemed: ${t.name}`, `${u.name} (${u.email}) redeemed ${ck.p.name}’s Founding Supporter code ${ck.p.code.code} on ${t.name}: ${ck.months} months of ${to.name}, prepaid until ${niceDate(until)}.`);
     res.json({ ok: true, message });
   } catch (e) { stripeError(res, 'redeem the code', e); }

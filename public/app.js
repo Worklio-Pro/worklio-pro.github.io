@@ -122,6 +122,19 @@ function modal(title, html, wide) {
   document.body.appendChild(o); return $('.mb', o);
 }
 function closeModal() { const o = $('#overlay'); if (o) o.remove(); }
+// the thank-you popup after a Founding Supporter code is claimed (me.supporterThanks, from /api/auth/me): shown once, then the app tour if it's due
+function supporterThanks() {
+  const i = me.supporterThanks; me.supporterThanks = null; api('POST', '/api/account/supporter-thanks', {}).catch(() => {});
+  const product = (company.account && company.account.productName) || 'Worklio Pro';
+  const b = modal(`Thank you for backing ${product}!`, `<p>Your supporter code is in: <strong>${esc(i.months)} months of ${esc(i.plan)}</strong>, prepaid until <strong>${esc(i.until)}</strong>. No card needed until then.</p>
+<div class="sup-good"><strong>Good news: your price is locked in.</strong>
+<p>When your prepaid months end, you keep the Founding Supporter price of <strong>${esc(i.after || 'the price you have today')}</strong>${i.regular ? ` instead of the regular ${esc(i.regular)}` : ''}, for as long as you stay on ${esc(i.plan)}.</p>
+${i.logins ? `<p>Your plan also keeps <strong>${esc(i.logins.yours)} team logins</strong> for good (${esc(i.plan)} normally includes ${esc(i.logins.usual)}).</p>` : ''}
+${i.crew ? '<p>As a Founding Crew backer, we’ll be in touch to set up your account for you and book your team’s 1-hour training call.</p>' : ''}</div>
+<p class="muted">We’ve emailed you a copy. Thank you for believing in us early.</p>
+<div class="actions"><button type="button" class="btn" id="supThanksGo">Let’s go</button></div>`);
+  $('#supThanksGo', b).addEventListener('click', () => { closeModal(); if (me && me.tourNew && typeof startTour === 'function') startTour(); });
+}
 
 /* ===== state + data ===== */
 let D = {}; let company = {};
@@ -538,7 +551,8 @@ async function render() {
   document.title = `${page.title} · ${company.name || (company.account && company.account.productName) || 'Worklio Pro'}`;
   try { D = portal ? {} : await loadAll(); timeOffBadge(); await page.render(main); if (betaPage(path)) main.insertAdjacentHTML('afterbegin', BETA_BAR); }
   catch (e) { main.innerHTML = `<div class="card"><h2>Something went wrong</h2><p>${esc(e.message)}</p></div>`; }
-  if (!portal && me && me.tourNew && !pausedNow() && typeof startTour === 'function') startTour(); // a new login's first visit (public/tour.js)
+  if (!portal && me && me.supporterThanks && !pausedNow()) supporterThanks(); // just claimed a Founding Supporter code: the good news first, the tour after
+  else if (!portal && me && me.tourNew && !pausedNow() && typeof startTour === 'function') startTour(); // a new login's first visit (public/tour.js)
 }
 window.addEventListener('popstate', render);
 
