@@ -4121,8 +4121,9 @@ app.post('/api/account/billing/redeem', async (req, res) => {
   if (!ck) return res.status(400).json({ error: 'That isn’t a supporter code. Discount codes are used when you sign up or choose a plan.' });
   if (ck.error) return res.status(400).json({ error: ck.error });
   const to = ck.plan;
-  if (to.maxUsers > 0 && db.users.length > to.maxUsers) { const extra = db.users.length - to.maxUsers;
-    return res.status(400).json({ error: `This code is for ${to.name}, which includes ${logins(to.maxUsers)}, and you have ${db.users.length}. Remove login access for ${extra} team member${extra === 1 ? '' : 's'} first (Manage team → open a team member → Remove login access), then redeem it.` }); }
+  const bp = supporters.backerPlan(to.id === t.planId ? tenancy.planOf(t) : to); // the plan as a backer gets it: their price and logins (Advanced: 10)
+  if (bp.maxUsers > 0 && db.users.length > bp.maxUsers && !canBuyExtra(t, bp)) { const extra = db.users.length - bp.maxUsers;
+    return res.status(400).json({ error: `This code is for ${to.name}, which includes ${logins(bp.maxUsers)}, and you have ${db.users.length}. Remove login access for ${extra} team member${extra === 1 ? '' : 's'} first (Manage team → open a team member → Remove login access), then redeem it.` }); }
   try {
     const sub = stripeLib.platformKey() ? await liveSubscription(b) : null; let until; let message;
     if (sub) {
@@ -4130,8 +4131,9 @@ app.post('/api/account/billing/redeem', async (req, res) => {
       const next = new Date(end * 1000); next.setUTCMonth(next.getUTCMonth() + ck.months);
       const p = { trial_end: String(Math.floor(next.getTime() / 1000)), proration_behavior: 'none', cancel_at_period_end: 'false', 'metadata[planId]': to.id };
       // after the prepaid months they pay the Founding Supporter price (or less, if this account is already locked lower)
-      const c = stripeLib.planCharge(supporters.backerPlan(to.id === t.planId ? tenancy.planOf(t) : to), (item.price.recurring && item.price.recurring.interval) || b.interval);
-      if (c && (t.planId !== to.id || !(item.price.unit_amount <= c.cents))) Object.assign(p, { 'items[0][id]': item.id, 'items[0][price_data][currency]': 'usd', 'items[0][price_data][product]': await planProduct(to), 'items[0][price_data][unit_amount]': String(c.cents), 'items[0][price_data][recurring][interval]': c.interval }, await seatParams(sub, to, c.interval, extraCount(to)));
+      const c = stripeLib.planCharge(bp, (item.price.recurring && item.price.recurring.interval) || b.interval);
+      if (c && t.planId === to.id && item.price.unit_amount > 0 && item.price.unit_amount < c.cents) c.cents = item.price.unit_amount; // already paying less: never raised
+      if (c) Object.assign(p, { 'items[0][id]': item.id, 'items[0][price_data][currency]': 'usd', 'items[0][price_data][product]': await planProduct(to), 'items[0][price_data][unit_amount]': String(c.cents), 'items[0][price_data][recurring][interval]': c.interval }, await seatParams(sub, bp, c.interval, extraCount(bp))); // extra logins only past the backer's included ones
       await billingCall('POST', `subscriptions/${sub.id}`, p);
       t.planId = to.id; delete b.pendingPlanId; delete b.endsAt; until = iso(new Date(next.getTime() - 864e5));
       message = `You’re on ${to.name}, prepaid until ${niceDate(until)}. Your next charge${c ? ` of ${money(c.cents / 100)}` : ''} is on ${niceDate(iso(next))}.`;
