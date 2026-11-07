@@ -10,15 +10,17 @@ const NEW = new Set(['recurringJobs', 'servicePlans', 'dispatchMap', 'timesheets
 // Their prices: monthly billing, from each company's public pricing page. Check them and update CHECKED when they change.
 const CHECKED = 'November 2026';
 const RIVALS = [
-  { name: 'Jobber', entry: 49, entryNote: '1 user', team: 199, teamNote: 'Grow plan, about 10 users' },
-  { name: 'Housecall Pro', entry: 79, entryNote: '1 user', team: 329, teamNote: 'MAX plan, about 8 users' },
+  { name: 'Jobber', entry: 49, entryNote: '1 user', team: 199, teamNote: 'Connect plan, 5 users', extra: 29, crew10: 299, crew10Note: 'Connect plan, 10 users' },
+  { name: 'Housecall Pro', entry: 79, entryNote: '1 user', team: 189, teamNote: 'Essentials plan, 5 users', extra: 35, extraNote: 'on MAX', crew10: 399, crew10Note: 'MAX plan, 8 users + 2 extra' },
 ];
 function drawCompare(S, amount) {
   const paid = S.plans.filter((p) => p.monthly).sort((a, b) => a.monthly - b.monthly); if (!paid.length) return;
   const priceOf = (p) => (p.sale && p.sale.monthly) || p.monthly;
   const entry = paid[0];
   const team = paid.find((p) => p !== entry && (!p.maxUsers || p.maxUsers >= 5)) || paid[paid.length - 1]; // the first plan for a crew
-  const logins = (p) => (!p.maxUsers ? 'unlimited logins' : p.maxUsers === 1 ? '1 login' : `up to ${p.maxUsers} logins`);
+  const logins = (p) => (!p.maxUsers ? 'unlimited logins' : p.maxUsers === 1 ? '1 login' : p.extraUser ? `${p.maxUsers} logins included` : `up to ${p.maxUsers} logins`);
+  // a crew of 10: the cheapest plan that fits 10 logins, counting extra logins
+  const for10 = paid.map((p) => ({ p, m: !p.maxUsers || p.maxUsers >= 10 ? priceOf(p) : p.extraUser ? priceOf(p) + (10 - p.maxUsers) * p.extraUser : null })).filter((x) => x.m).sort((a, b) => a.m - b.m)[0];
   const yr = (m) => amount(m * 12);
   const ourYear = priceOf(team) * 12;
   const label = Object.fromEntries(S.features.map((f) => [f.key, f.label]));
@@ -28,6 +30,8 @@ function drawCompare(S, amount) {
 <div class="v-scroll"><table class="v-tbl"><thead><tr><th scope="col"></th><th scope="col" class="us">${esc(S.productName)}</th>${RIVALS.map((r) => `<th scope="col">${esc(r.name)}</th>`).join('')}</tr></thead><tbody>
 <tr><td>Starting price</td><td class="us"><b>${amount(priceOf(entry))}/mo</b><small>${esc(entry.name)}, ${logins(entry)}</small></td>${RIVALS.map((r) => `<td>${amount(r.entry)}/mo<small>${esc(r.entryNote)}</small></td>`).join('')}</tr>
 <tr><td>Plan for a growing crew</td><td class="us"><b>${amount(priceOf(team))}/mo</b><small>${esc(team.name)}, ${logins(team)}</small></td>${RIVALS.map((r) => `<td>${amount(r.team)}/mo<small>${esc(r.teamNote)}</small></td>`).join('')}</tr>
+${team.extraUser ? `<tr><td>Each extra user</td><td class="us"><b>${amount(team.extraUser)}/mo</b><small>${esc(team.name)}</small></td>${RIVALS.map((r) => `<td>${amount(r.extra)}/mo${r.extraNote ? `<small>${esc(r.extraNote)}</small>` : ''}</td>`).join('')}</tr>` : ''}
+${for10 ? `<tr><td>A crew of 10</td><td class="us"><b>${amount(for10.m)}/mo</b><small>${esc(for10.p.name)}${for10.p.maxUsers && for10.p.maxUsers < 10 ? `, ${10 - for10.p.maxUsers} extra logins` : ''}</small></td>${RIVALS.map((r) => `<td>${amount(r.crew10)}/mo<small>${esc(r.crew10Note)}</small></td>`).join('')}</tr>` : ''}
 <tr><td>That plan for a year</td><td class="us"><b>${yr(priceOf(team))}</b></td>${RIVALS.map((r) => `<td>${yr(r.team)}</td>`).join('')}</tr>
 <tr><td>You keep each year with ${esc(S.productName)}</td><td class="us">—</td>${RIVALS.map((r) => { const d = r.team * 12 - ourYear; return `<td class="save">${d > 0 ? amount(d) : '—'}</td>`; }).join('')}</tr>
 </tbody></table></div>
@@ -36,14 +40,15 @@ function drawCompare(S, amount) {
 }
 
 // every feature, plan by plan, in the catalog's groups
-function drawMatrix(S) {
+function drawMatrix(S, amount) {
   const plans = S.plans; if (!plans.length) return;
   const groups = [...new Set(S.features.map((f) => f.group))];
   const cell = (on) => (on ? '<td class="y" aria-label="Included">✓</td>' : '<td class="no" aria-label="Not included">—</td>');
   const el = $('#matrix'); el.hidden = false;
   el.innerHTML = `<div class="v-head"><span class="v-kick">Compare plans</span><h2>Everything in each plan</h2></div>
 <div class="v-scroll"><table class="v-tbl"><thead><tr><th scope="col">Feature</th>${plans.map((p) => `<th scope="col">${esc(p.name)}</th>`).join('')}</tr></thead><tbody>
-<tr><td>Team logins</td>${plans.map((p) => `<td>${p.maxUsers ? p.maxUsers : 'Unlimited'}</td>`).join('')}</tr>
+<tr><td>Team logins</td>${plans.map((p) => `<td>${p.maxUsers ? `${p.maxUsers}${p.extraUser ? `<small>then ${amount(p.extraUser)}/mo each</small>` : ''}` : 'Unlimited'}</td>`).join('')}</tr>
+<tr><td>Text messages a month</td>${plans.map((p) => `<td>${!p.features.includes('sms') ? '—' : p.smsLimit ? p.smsLimit.toLocaleString('en-US') : 'Unlimited'}</td>`).join('')}</tr>
 ${groups.map((g) => `<tr class="grp"><td colspan="${plans.length + 1}">${esc(g)}</td></tr>${S.features.filter((f) => f.group === g).map((f) => `<tr><td>${esc(f.label)}${NEW.has(f.key) ? ' <span class="v-tag">New</span>' : ''}${f.beta ? ' <span class="v-tag b">Beta</span>' : ''}</td>${plans.map((p) => cell(p.features.includes(f.key))).join('')}</tr>`).join('')}`).join('')}
 <tr class="grp"><td colspan="${plans.length + 1}">In every plan</td></tr>${S.alwaysIncluded.map((l) => `<tr><td>${esc(l)}</td>${plans.map(() => cell(true)).join('')}</tr>`).join('')}
 </tbody></table></div>`;
@@ -76,11 +81,11 @@ ${groups.map((g) => `<tr class="grp"><td colspan="${plans.length + 1}">${esc(g)}
     $('#period').innerHTML = both ? `<div class="s-period" role="radiogroup" aria-label="Billing period">${[['month', 'Monthly'], ['year', `Yearly${best > 0 ? ` <span class="s-save">Save up to ${best}%</span>` : ''}`]].map(([k, l]) => `<button type="button" role="radio" aria-checked="${period === k}" class="${period === k ? 'on' : ''}" data-period="${k}">${l}</button>`).join('')}</div>` : '';
     $('#plans').innerHTML = S.plans.map((p, i) => `<article class="card s-plan ${i === mid ? 'pop' : ''}"><span class="s-tag">${i === mid ? 'Most popular' : ''}</span><h2>${esc(p.name)}</h2>
 ${priceHtml(p)}<p class="desc">${esc(p.description)}</p>
-<ul><li>${p.maxUsers ? `${p.maxUsers} team login${p.maxUsers === 1 ? '' : 's'}` : 'Unlimited team logins'}</li>${S.features.filter((f) => p.features.includes(f.key)).map((f) => `<li><span>${esc(label[f.key])}</span>${NEW.has(f.key) ? '<span class="nw">New</span>' : ''}</li>`).join('')}
+<ul><li>${p.maxUsers ? `${p.maxUsers} team login${p.maxUsers === 1 ? '' : 's'}${p.extraUser ? `, then ${amount(p.extraUser)}/month each` : ''}` : 'Unlimited team logins'}</li>${S.features.filter((f) => p.features.includes(f.key)).map((f) => `<li><span>${esc(label[f.key])}</span>${NEW.has(f.key) ? '<span class="nw">New</span>' : ''}</li>`).join('')}
 ${S.alwaysIncluded.map((l) => `<li class="base">${esc(l)}</li>`).join('')}</ul>
 ${S.allowSignups ? `<a class="btn ${i === mid ? '' : 'alt'}" href="#signup" data-plan="${esc(p.id)}">Choose ${esc(p.name)}</a>` : `<button type="button" class="btn ${i === mid ? '' : 'alt'}" data-contact="${esc(p.id)}">Contact us</button>`}</article>`).join('');
   };
-  drawPlans(); drawCompare(S, amount); drawMatrix(S);
+  drawPlans(); drawCompare(S, amount); drawMatrix(S, amount);
   if (location.hash === '#compare' || location.hash === '#matrix') { const el = $(location.hash); if (el) el.scrollIntoView(); } // the sections draw after the page loads, so jump again
   document.addEventListener('click', (e) => { const b = e.target.closest('[data-period]'); if (!b) return; period = b.dataset.period; drawPlans(); const sel = $('#sf [name=interval]'); if (sel) { sel.value = period; sel.dispatchEvent(new Event('change')); } });
   $('#foot').innerHTML = 'Questions? <a href="#contact" data-contact="">Contact us</a> · <a href="/terms">Terms of Service</a> · <a href="/privacy">Privacy Policy</a>'; if (window.cookieChoicesLink) window.cookieChoicesLink();

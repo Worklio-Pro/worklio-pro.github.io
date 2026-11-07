@@ -301,10 +301,27 @@ function toE164(phone) {
   if (digits.length === 11 && digits.startsWith('1')) return '+' + digits;
   return digits ? '+' + digits : '';
 }
+// texts a month: each plan's smsLimit (0 = no limit) caps what an account sends through the platform's Twilio number.
+// db.smsUsage = { month: 'YYYY-MM', sent, warned }; the owner is emailed once a month when the limit is reached.
+const smsMonth = () => new Date().toISOString().slice(0, 7);
+function smsUsage() {
+  const plan = tenancy.planOf(tenancy.current()); const u = db.smsUsage && db.smsUsage.month === smsMonth() ? db.smsUsage : { month: smsMonth(), sent: 0 };
+  return { sent: u.sent || 0, limit: Number(plan.smsLimit) || 0, plan: plan.name };
+}
+function smsAtLimit() {
+  const u = smsUsage(); if (!u.limit || u.sent < u.limit) return null;
+  if (db.smsUsage.warned !== smsMonth()) { // tell the owner once a month
+    db.smsUsage.warned = smsMonth(); save();
+    const o = db.users.find((x) => x.role === 'owner'); const t = tenancy.current();
+    if (o && o.email) sendTemplate('accountActivity', o.email, { title: 'You’ve used this month’s text messages', message: `${db.company.name || t.name} has sent ${u.limit.toLocaleString('en-US')} text messages this month, which is what the ${u.plan} plan includes. Texts to clients won’t go out until the 1st; emails still do. To send more now, change your plan in Account and billing.`, link: `${baseUrl()}/settings/billing` }, { server: true }).catch(() => {});
+  }
+  return { status: 'failed', detail: `This month’s ${u.limit.toLocaleString('en-US')} texts on the ${u.plan} plan are used. Texts start again on the 1st, or change plan in Account and billing.` };
+}
 async function sendSms(to, body, { server = false } = {}) {
   if (!to) return { status: 'failed', detail: 'Client has no phone number' };
   const { sid, token: auth, from } = envTwilio() || {};
   if (sid && auth && from) {
+    if (!server) { const full = smsAtLimit(); if (full) return full; }
     try {
       // TWILIO_FROM can be a Twilio phone number or a Messaging Service SID (starts with MG)
       const params = { To: toE164(to), Body: body, ...(from.startsWith('MG') ? { MessagingServiceSid: from } : { From: toE164(from) }) };
@@ -314,6 +331,7 @@ async function sendSms(to, body, { server = false } = {}) {
         body: new URLSearchParams(params),
       });
       const j = await r.json().catch(() => ({}));
+      if (r.ok && !server) { const m = smsMonth(); if (!db.smsUsage || db.smsUsage.month !== m) db.smsUsage = { month: m, sent: 0, warned: (db.smsUsage || {}).warned || '' }; db.smsUsage.sent++; save(); }
       return r.ok ? { status: 'sent', detail: `Twilio ${j.sid || ''}`.trim() } : { status: 'failed', detail: `Twilio ${r.status}${j.code ? ' (error ' + j.code + ')' : ''}: ${j.message || 'request rejected'}` };
     } catch (e) { return { status: 'failed', detail: e.message }; }
   }
@@ -930,9 +948,11 @@ app.put('/api/roles', (req, res) => {
 });
 // the login cap: the current plan's, or a scheduled downgrade's if that's lower (so logins can't be added after booking one)
 const logins = (n) => `${n} login${n === 1 ? '' : 's'}`;
+// A plan with extra logins (extraUser in Alpha → Plans) has no cap while the account can be billed for them; see syncSeats.
 function loginLimit() {
   const t = tenancy.current(); const pending = t.billing && t.billing.pendingPlanId && tenancy.platform().plans.find((p) => p.id === t.billing.pendingPlanId);
-  const caps = [tenancy.planOf(t), pending].filter((p) => p && p.maxUsers > 0).sort((a, b) => a.maxUsers - b.maxUsers);
+  const cur = tenancy.planOf(t);
+  const caps = [canBuyExtra(t, cur) ? null : cur, pending].filter((p) => p && p.maxUsers > 0).sort((a, b) => a.maxUsers - b.maxUsers);
   return caps[0] ? { max: caps[0].maxUsers, name: caps[0].name } : null;
 }
 app.post('/api/users/invite', async (req, res) => { // invite (or re-invite) a team member; returns the link so it can also be shared by hand
@@ -944,12 +964,18 @@ app.post('/api/users/invite', async (req, res) => { // invite (or re-invite) a t
   if (user && user.passwordHash) return res.status(400).json({ error: 'They already have a login' });
   const lim = loginLimit();
   if (lim && !user && db.users.length >= lim.max) return res.status(403).json({ error: `Your ${lim.name} plan includes ${logins(lim.max)}. Upgrade to add more of your team.`, upgrade: 'users' });
+  const t = tenancy.current(); const cur = tenancy.planOf(t); const addsExtra = !user && canBuyExtra(t, cur) && db.users.length >= cur.maxUsers;
+  if (addsExtra && !req.body.confirmExtra) { // say what it costs first; the app asks, then sends confirmExtra
+    const c = stripeLib.seatCharge(cur, (t.billing && t.billing.interval) || 'month'); const n = db.users.length + 1 - cur.maxUsers;
+    return res.status(409).json({ error: `Your ${cur.name} plan includes ${logins(cur.maxUsers)}.`, confirmExtra: { plan: cur.name, included: cur.maxUsers, extra: n, cents: c.cents, interval: c.interval, trial: onTrial(t), billed: !!stripeLib.platformKey() } });
+  }
   if (!user) { user = { id: uid(), createdAt: iso(new Date()) }; db.users.push(user); }
   Object.assign(user, { name: st.name, email, role, staffId: st.id, invitedAt: iso(new Date()), invitedBy: currentUser(req).id });
   for (const [k, t] of Object.entries(db.resetTokens)) if (t.userId === user.id) delete db.resetTokens[k]; // old invite links stop working
   const tok = crypto.randomBytes(32).toString('hex'); db.resetTokens[sha(tok)] = { userId: user.id, expires: Date.now() + INVITE_DAYS * 864e5, invite: true }; save();
   const link = `${baseUrl()}/login?invite=${tok}`;
   const sent = await sendTemplate('teamInvite', email, { name: st.name, inviter: currentUser(req).name, business: db.company.name, link, days: String(INVITE_DAYS) });
+  if (addsExtra) seatsChanged();
   res.json({ user: userRow(user), link, emailed: sent.status === 'sent', detail: sent.detail });
 });
 app.put('/api/users/:id', (req, res) => {
@@ -962,6 +988,7 @@ function removeUser(u) {
   db.users = db.users.filter((x) => x.id !== u.id);
   for (const [k, s] of Object.entries(db.sessions)) if (s.userId === u.id) delete db.sessions[k]; // signs them out right away
   for (const [k, t] of Object.entries(db.resetTokens)) if (t.userId === u.id) delete db.resetTokens[k];
+  seatsChanged(); // one fewer extra login to pay for
 }
 app.delete('/api/users/:id', (req, res) => {
   const u = db.users.find((x) => x.id === req.params.id); if (!u) return res.status(404).json({ error: 'Not found' });
@@ -1244,7 +1271,7 @@ const pausedInfo = (t) => { const reason = tenancy.pauseReason(t); if (!reason) 
 function accountInfo() {
   const t = tenancy.current(); const plan = tenancy.planOf(t);
   return {
-    slug: t.slug, plan: { id: plan.id, name: plan.name }, features: [...tenancy.featuresOf(t)], lockedPages: tenancy.lockedPages(t), betaPages: tenancy.betaPages(), maxUsers: plan.maxUsers || 0,
+    slug: t.slug, plan: { id: plan.id, name: plan.name }, features: [...tenancy.featuresOf(t)], lockedPages: tenancy.lockedPages(t), betaPages: tenancy.betaPages(), maxUsers: plan.maxUsers || 0, extraUser: plan.maxUsers > 0 && plan.extraUser ? plan.extraUser : null,
     url: tenancy.tenantUrl(t), subdomainUrl: tenancy.subdomainUrl(t), rootDomain: tenancy.ROOT_DOMAIN, serverIp: process.env.SERVER_IP || '',
     domains: (t.domains || []).map(({ host, verified, primary, addedAt, verifiedAt }) => ({ host, verified: !!verified, primary: !!primary, addedAt, verifiedAt: verifiedAt || null })),
     marketplace: marketplace.isOn(tenancy.platform()), // Alpha → Settings → App Marketplace
@@ -3891,12 +3918,13 @@ const unix = (t) => (t ? iso(new Date(t * 1000)) : null);
 app.get('/api/account/billing', async (req, res) => {
   if (!planChooser(req, res)) return;
   const t = tenancy.current(); const P = tenancy.platform(); const plan = tenancy.planOf(t); const b = t.billing || {}; let charge = stripeLib.planCharge(plan, b.interval);
-  const out = { activeSince: (b.paidAt || t.createdAt || '').slice(0, 10), status: t.status, paused: pausedInfo(t), isOwner: currentUser(req).role === 'owner', plan: { id: plan.id, name: plan.name, price: plan.price || '', charge },
+  const out = { activeSince: (b.paidAt || t.createdAt || '').slice(0, 10), status: t.status, paused: pausedInfo(t), isOwner: currentUser(req).role === 'owner', plan: { id: plan.id, name: plan.name, price: plan.price || '', charge, maxUsers: plan.maxUsers || 0, extraUser: plan.extraUser || null, locked: plan.locked || null },
     productName: P.settings.productName, contactEmail: P.settings.contactEmail, live: !!stripeLib.platformKey(), billed: !!(b.customerId && stripeLib.platformKey()),
-    demo: !!b.demo, managed: !tenancy.isDefault(), plans: P.plans.filter((p) => !p.hidden || p.id === plan.id).map((p) => ({ id: p.id, name: p.name, price: p.price || '', description: p.description || '', hidden: !!p.hidden, maxUsers: p.maxUsers || 0, features: tenancy.FEATURES.filter((f) => (p.features || []).includes(f.key)).map((f) => f.label), month: (stripeLib.planCharge(p, 'month') || {}).interval === 'month' ? stripeLib.planCharge(p, 'month').cents / 100 : null, year: (stripeLib.planCharge(p, 'year') || {}).interval === 'year' ? stripeLib.planCharge(p, 'year').cents / 100 : null })),
+    demo: !!b.demo, managed: !tenancy.isDefault(), plans: P.plans.filter((p) => !p.hidden || p.id === plan.id).map((x) => x.id === plan.id ? plan : x).map((p) => ({ id: p.id, name: p.name, price: p.price || '', description: p.description || '', hidden: !!p.hidden, maxUsers: p.maxUsers || 0, extraUser: p.maxUsers > 0 && p.extraUser ? p.extraUser : null, locked: !!p.locked, features: tenancy.FEATURES.filter((f) => (p.features || []).includes(f.key)).map((f) => f.label), month: (stripeLib.planCharge(p, 'month') || {}).interval === 'month' ? stripeLib.planCharge(p, 'month').cents / 100 : null, year: (stripeLib.planCharge(p, 'year') || {}).interval === 'year' ? stripeLib.planCharge(p, 'year').cents / 100 : null })),
     interval: charge ? charge.interval : b.interval || 'month', popularPlan: P.settings.popularPlan || '', alwaysIncluded: tenancy.ALWAYS_INCLUDED,
     card: null, customer: null, subscription: null, invoices: [], endsAt: b.endsAt || null, trial: onTrial(t) ? { endsAt: t.expiresAt, code: b.trial.code, cancelled: !!b.trial.cancelled, prepaid: !!b.trial.prepaid } : null, prepaidUntil: supporters.lockedUntil(t), pendingPlan: b.pendingPlanId ? (P.plans.find((p) => p.id === b.pendingPlanId) || {}).name || null : null,
-    retention: retentionInfo(t), usage: { clients: db.clients.length, quotes: db.quotes.length, jobs: db.jobs.length, invoices: db.invoices.length, logins: db.users.length } };
+    retention: retentionInfo(t), usage: { clients: db.clients.length, quotes: db.quotes.length, jobs: db.jobs.length, invoices: db.invoices.length, logins: db.users.length, extraLogins: extraCount(plan), texts: smsUsage() } };
+  const sc = stripeLib.seatCharge(plan, out.interval); if (sc && out.usage.extraLogins) out.extra = { count: out.usage.extraLogins, cents: sc.cents, interval: sc.interval };
   if (out.billed) {
     const get = (ep) => billingCall('GET', ep).catch((e) => { console.error('Billing:', e.message); return null; });
     const [cust, sub, inv] = await Promise.all([get(`customers/${encodeURIComponent(b.customerId)}?expand[]=invoice_settings.default_payment_method`),
@@ -3906,12 +3934,16 @@ app.get('/api/account/billing', async (req, res) => {
     else if (pm && pm.type === 'link') out.link = { email: (pm.link && pm.link.email) || '' }; // paying with Link
     if (cust && !cust.deleted) out.customer = { name: cust.name || (pm && pm.billing_details && pm.billing_details.name) || b.ownerName || '', email: cust.email || b.email || '', address: cust.address || (pm && pm.billing_details && pm.billing_details.address) || null };
     if (sub) {
-      const item = sub.items && sub.items.data && sub.items.data[0]; const price = item && item.price;
+      const item = planItem(sub); const price = item && item.price; const seats = seatItem(sub);
       out.subscription = { status: sub.status, cancelAtPeriodEnd: !!sub.cancel_at_period_end, cancelAt: unix(sub.cancel_at), startedAt: unix(sub.start_date),
         periodEnd: unix(sub.current_period_end || (item && item.current_period_end)), amount: price && price.unit_amount != null ? round2(price.unit_amount / 100) : charge ? charge.cents / 100 : null,
         interval: (price && price.recurring && price.recurring.interval) || (charge && charge.interval) || 'month' };
       if (out.subscription.startedAt) out.activeSince = out.subscription.startedAt;
       out.interval = out.subscription.interval; out.plan.charge = charge = stripeLib.planCharge(plan, out.interval);
+      if (charge && price && price.unit_amount != null && charge.interval === out.interval && !charge.regular) out.plan.charge = charge = { ...charge, cents: price.unit_amount }; // what Stripe really charges
+      const sc2 = stripeLib.seatCharge(plan, out.interval);
+      if (((seats && seats.quantity) || 0) !== extraCount(plan) && !tenancy.isDefault(t)) seatsChanged(); // out of step (e.g. a failed update): fix it for the next bill
+      out.extra = seats ? { count: seats.quantity || 0, cents: (seats.price && seats.price.unit_amount) || 0, interval: out.interval } : out.usage.extraLogins && sc2 ? { count: out.usage.extraLogins, cents: sc2.cents, interval: sc2.interval } : null;
     }
     out.invoices = ((inv && inv.data) || []).filter((i) => i.status !== 'draft').map((i) => ({ id: i.id, date: unix(i.status_transitions && i.status_transitions.paid_at) || unix(i.created), amount: round2((i.amount_paid || i.total || 0) / 100),
       currency: String(i.currency || 'usd').toUpperCase(), status: i.status, receiptUrl: i.hosted_invoice_url || null, pdf: i.invoice_pdf || null }));
@@ -3926,6 +3958,45 @@ async function planProduct(plan) {
   const p = await billingCall('POST', 'products', { name: `${P.settings.productName} ${plan.name}`, 'metadata[planId]': plan.id });
   P.stripeProducts[k] = p.id; tenancy.savePlatform(); return p.id;
 }
+// ---------- extra logins: past a plan's included logins (maxUsers), a plan with extraUser (Alpha → Plans) bills each one ----------
+// They're a second line on the account's Stripe subscription ("Extra logins" × how many), in the subscription's billing period.
+// An account can add them while it can be billed: a subscription (or demo billing), a free trial (the extras go on the subscription
+// made when a card is added), or a server without Stripe (nothing is charged). Trial pages and prepaid codes otherwise keep the cap.
+const canBuyExtra = (t, p) => !!(p && p.maxUsers > 0 && Number(p.extraUser) > 0) && (!stripeLib.platformKey() || onTrial(t) || t.status === 'suspended' || !!(t.billing && (t.billing.subscriptionId || t.billing.demo))); // suspended: reopening goes through Checkout, extras included
+const extraCount = (p, users = db.users.length) => (p && p.maxUsers > 0 && Number(p.extraUser) > 0 ? Math.max(0, users - p.maxUsers) : 0);
+async function seatProduct() {
+  const P = tenancy.platform(); P.stripeProducts = P.stripeProducts || {}; const k = `${stripeLib.modeOf(stripeLib.platformKey())}:seats`;
+  if (P.stripeProducts[k]) return P.stripeProducts[k];
+  const p = await billingCall('POST', 'products', { name: `${P.settings.productName} extra logins`, 'metadata[seats]': '1' });
+  P.stripeProducts[k] = p.id; tenancy.savePlatform(); return p.id;
+}
+const seatProductId = () => ((tenancy.platform().stripeProducts || {})[`${stripeLib.modeOf(stripeLib.platformKey())}:seats`]) || '';
+const productOf = (item) => (item && item.price && (typeof item.price.product === 'object' ? item.price.product.id : item.price.product)) || '';
+const isSeatItem = (item) => !!seatProductId() && productOf(item) === seatProductId();
+// the plan's own line on a subscription (not the extra logins)
+const planItem = (sub) => { const items = (sub && sub.items && sub.items.data) || []; return items.find((i) => !isSeatItem(i)) || items[0]; };
+const seatItem = (sub) => ((sub && sub.items && sub.items.data) || []).find(isSeatItem) || null;
+// subscription update fields that set the extra logins line to `count` for plan p in `interval` (as items[n]); {} when nothing changes.
+// Sent in the same update as a plan or billing period change, since every line on a subscription must share one period.
+async function seatParams(sub, p, interval, count, n = 1) {
+  const k = (f) => `items[${n}]${f}`;
+  const cur = seatItem(sub); const c = count > 0 && stripeLib.seatCharge(p, interval);
+  if (!c) return cur ? { [k('[id]')]: cur.id, [k('[deleted]')]: 'true' } : {};
+  const same = cur && cur.quantity === count && cur.price && cur.price.unit_amount === c.cents && cur.price.recurring && cur.price.recurring.interval === c.interval;
+  if (same) return {};
+  return { ...(cur ? { [k('[id]')]: cur.id } : {}), [k('[quantity]')]: String(count), [k('[price_data][currency]')]: 'usd', [k('[price_data][product]')]: await seatProduct(),
+    [k('[price_data][unit_amount]')]: String(c.cents), [k('[price_data][recurring][interval]')]: c.interval };
+}
+// bring the extra logins line in line with the account's logins now (after an invite, a removed login, a new subscription).
+// The difference for the rest of the period goes on the next bill.
+async function syncSeats(t) {
+  if (!stripeLib.platformKey() || !t.billing || !t.billing.subscriptionId) return;
+  const sub = await liveSubscription(t.billing); if (!sub) return;
+  const plan = tenancy.planOf(t); const item = planItem(sub); const interval = (item && item.price && item.price.recurring && item.price.recurring.interval) || t.billing.interval || 'month';
+  const p = await seatParams(sub, plan, interval, extraCount(plan), 0);
+  if (Object.keys(p).length) await billingCall('POST', `subscriptions/${sub.id}`, { ...p, proration_behavior: 'create_prorations' });
+}
+const seatsChanged = () => { const t = tenancy.current(); if (!tenancy.isDefault(t)) syncSeats(t).catch((e) => console.error(`Extra logins for ${t.slug}:`, e.message)); };
 const periodEndOf = (sub) => unix(sub.current_period_end || (sub.items && sub.items.data[0] && sub.items.data[0].current_period_end));
 const tellPlatform = (title, message) => { const to = tenancy.platform().settings.contactEmail; if (to) sendTemplate('accountActivity', to, { title, message, link: tenancy.tenantUrl(tenancy.current()) }, { server: true }).catch(() => {}); };
 // "Get Support" in the app's help panel: saved for the platform console (Messages → Contact requests) and emailed to the contact address
@@ -4055,11 +4126,11 @@ app.post('/api/account/billing/redeem', async (req, res) => {
   try {
     const sub = stripeLib.platformKey() ? await liveSubscription(b) : null; let until; let message;
     if (sub) {
-      const item = sub.items.data[0]; const end = Math.max(sub.trial_end || 0, sub.current_period_end || item.current_period_end || 0, Math.floor(Date.now() / 1000)); // the next charge, as referral credit does
+      const item = planItem(sub); const end = Math.max(sub.trial_end || 0, sub.current_period_end || item.current_period_end || 0, Math.floor(Date.now() / 1000)); // the next charge, as referral credit does
       const next = new Date(end * 1000); next.setUTCMonth(next.getUTCMonth() + ck.months);
       const p = { trial_end: String(Math.floor(next.getTime() / 1000)), proration_behavior: 'none', cancel_at_period_end: 'false', 'metadata[planId]': to.id };
       const c = stripeLib.planCharge(to, (item.price.recurring && item.price.recurring.interval) || b.interval);
-      if (c && t.planId !== to.id) Object.assign(p, { 'items[0][id]': item.id, 'items[0][price_data][currency]': 'usd', 'items[0][price_data][product]': await planProduct(to), 'items[0][price_data][unit_amount]': String(c.cents), 'items[0][price_data][recurring][interval]': c.interval });
+      if (c && t.planId !== to.id) Object.assign(p, { 'items[0][id]': item.id, 'items[0][price_data][currency]': 'usd', 'items[0][price_data][product]': await planProduct(to), 'items[0][price_data][unit_amount]': String(c.cents), 'items[0][price_data][recurring][interval]': c.interval }, await seatParams(sub, to, c.interval, extraCount(to)));
       await billingCall('POST', `subscriptions/${sub.id}`, p);
       t.planId = to.id; delete b.pendingPlanId; delete b.endsAt; until = iso(new Date(next.getTime() - 864e5));
       message = `You’re on ${to.name}, prepaid until ${niceDate(until)}. Your next charge${c ? ` of ${money(c.cents / 100)}` : ''} is on ${niceDate(iso(next))}.`;
@@ -4079,11 +4150,12 @@ app.post('/api/account/billing/plan', async (req, res) => {
   if (!planChooser(req, res)) return;
   const t = tenancy.current(); const P = tenancy.platform(); const u = currentUser(req);
   if (tenancy.isDefault(t)) return res.status(400).json({ error: 'Your platform’s own account doesn’t have a plan to change' });
-  const to = P.plans.find((p) => p.id === (req.body && req.body.planId) && !p.hidden); if (!to) return res.status(400).json({ error: 'Choose a plan' });
+  const pick = P.plans.find((p) => p.id === (req.body && req.body.planId) && !p.hidden); if (!pick) return res.status(400).json({ error: 'Choose a plan' });
+  const to = pick.id === t.planId ? tenancy.planOf(t) : pick; // the current plan at the price it's locked at, e.g. monthly → yearly
   const locked = supporters.lockedUntil(t); // prepaid months from a supporter code are for one plan
   if (locked) return res.status(400).json({ error: `Your ${tenancy.planOf(t).name} plan is prepaid until ${niceDate(locked)}, so it can’t be changed before then. Contact us if you need a different plan.` });
   const from = tenancy.planOf(t); const b = t.billing || (t.billing = {});
-  if (to.id !== t.planId && to.maxUsers > 0 && db.users.length > to.maxUsers) { const extra = db.users.length - to.maxUsers; // a smaller team plan: remove the extra logins first
+  if (to.id !== t.planId && to.maxUsers > 0 && db.users.length > to.maxUsers && !canBuyExtra(t, to)) { const extra = db.users.length - to.maxUsers; // a smaller team plan: remove the extra logins first
     return res.status(400).json({ error: `${to.name} includes ${logins(to.maxUsers)} and you have ${db.users.length}. Remove login access for ${extra} team member${extra === 1 ? '' : 's'} first (Manage team → open a team member → Remove login access), then switch.`, upgrade: 'users' }); }
   const want = req.body.interval === 'year' ? 'year' : 'month'; const c = stripeLib.planCharge(to, want);
   if (c && c.interval !== want) return res.status(400).json({ error: `${to.name} isn’t available ${want === 'year' ? 'yearly' : 'monthly'}` });
@@ -4092,7 +4164,7 @@ app.post('/api/account/billing/plan', async (req, res) => {
   const switched = (message) => { if (c) b.interval = c.interval; if (t.planId === to.id && !onTrial(t)) delete t.expiresAt; tenancy.savePlatform(); if (c && t.planId === to.id && !onTrial(t)) referrals.paid(t).catch(() => {}); tellPlatform(`Plan changed: ${t.name} → ${label}`, `${u.name} (${u.email}) changed ${t.name} from ${from.name} to ${label}. ${message}`); res.json({ ok: true, message }); };
   try {
     const sub = stripeLib.platformKey() ? await liveSubscription(b) : null;
-    const nowInterval = (sub && sub.items.data[0].price.recurring && sub.items.data[0].price.recurring.interval) || b.interval || 'month';
+    const nowItem = sub && planItem(sub); const nowInterval = (nowItem && nowItem.price.recurring && nowItem.price.recurring.interval) || b.interval || 'month';
     if (to.id === t.planId && !b.pendingPlanId && (!c || c.interval === nowInterval)) return res.status(400).json({ error: `You’re already on ${label}` });
     if (onTrial(t) && !sub) { // free trial, no card yet: switch now; a paid plan stays free until the trial ends, a free plan ends the trial
       t.planId = to.id; if (!c) { b.status = 'free'; delete b.trial; delete t.expiresAt; return switched(`You’re now on ${to.name}.`); }
@@ -4107,13 +4179,14 @@ app.post('/api/account/billing/plan', async (req, res) => {
       return switched(`You’ll move to ${to.name} on ${niceDate(b.endsAt)}, when your paid period ends. You won’t be charged again.`);
     }
     if (sub) {
-      const item = sub.items.data[0];
+      const item = planItem(sub); const extra = extraCount(to); const sc = extra && stripeLib.seatCharge(to, c.interval);
       const s2 = await billingCall('POST', `subscriptions/${sub.id}`, { 'items[0][id]': item.id, 'items[0][price_data][currency]': 'usd', 'items[0][price_data][product]': await planProduct(to),
         'items[0][price_data][unit_amount]': String(c.cents), 'items[0][price_data][recurring][interval]': c.interval, proration_behavior: 'always_invoice', payment_behavior: 'error_if_incomplete',
-        cancel_at_period_end: 'false', 'metadata[planId]': to.id });
+        cancel_at_period_end: 'false', 'metadata[planId]': to.id, ...(await seatParams(sub, to, c.interval, extra)) });
+      const plus = sc ? `, plus ${money(sc.cents / 100)} each ${sc.interval} for each of your ${extra} extra login${extra === 1 ? '' : 's'}` : '';
       t.planId = to.id; delete b.pendingPlanId; delete b.endsAt; b.subscriptionStatus = s2.status;
-      return switched(c.interval !== nowInterval ? `You’re now on ${label}. Your unused time is credited and the new ${c.interval}ly price of ${money(c.cents / 100)} is charged now; it renews every ${c.interval}.`
-        : `You’re now on ${label}. Any difference for the rest of this billing period is charged or credited now, and you’ll pay ${money(c.cents / 100)} each ${c.interval} from your next bill.`);
+      return switched(c.interval !== nowInterval ? `You’re now on ${label}. Your unused time is credited and the new ${c.interval}ly price of ${money(c.cents / 100)}${plus} is charged now; it renews every ${c.interval}.`
+        : `You’re now on ${label}. Any difference for the rest of this billing period is charged or credited now, and you’ll pay ${money(c.cents / 100)} each ${c.interval}${plus} from your next bill.`);
     }
     // no paid subscription yet: pay at Stripe Checkout; the plan switches when the payment goes through
     const s = await subscribeSession(t, u, to, c); res.json({ redirect: s.url });
@@ -4143,6 +4216,9 @@ async function subscribeSession(t, u, to, c, { trial = onTrial(t) } = {}) {
     'line_items[0][quantity]': '1', 'line_items[0][price_data][currency]': 'usd', 'line_items[0][price_data][product]': await planProduct(to),
     'line_items[0][price_data][unit_amount]': String(c.cents), 'line_items[0][price_data][recurring][interval]': c.interval, 'payment_method_types[0]': 'card',
     success_url: `${baseUrl()}/settings/billing?checkout={CHECKOUT_SESSION_ID}`, cancel_url: `${baseUrl()}/settings/billing` };
+  const extra = extraCount(to); const sc = extra && stripeLib.seatCharge(to, c.interval); // logins past the plan's included ones, as a second line
+  if (sc) Object.assign(p, { 'line_items[1][quantity]': String(extra), 'line_items[1][price_data][currency]': 'usd', 'line_items[1][price_data][product]': await seatProduct(),
+    'line_items[1][price_data][unit_amount]': String(sc.cents), 'line_items[1][price_data][recurring][interval]': sc.interval });
   if (b.customerId) p.customer = b.customerId; else p.customer_email = u.email;
   Object.assign(p, referrals.bankedTrial(t)); // free months earned by referring other businesses
   if (b.retention && b.retention.pending && b.retention.coupon) p['discounts[0][coupon]'] = await discountsLib.stripeCoupon(stripeLib.platformKey(), b.retention.coupon); // a stay offer claimed during the trial
@@ -4354,6 +4430,7 @@ const platformApp = require('./lib/platform')({
   createOwner, ownerLink, sendVerifyEmail, sendPasswordReset, loginsFor, handoffUrl, tenantStats, endSupportSessions, sendEmail, sendTemplate, sendSms, emailProvider: serverEmailProvider, applyStripeSession, syncStripeAccount, resetDemo, saveConnection, saveAccounting, setCompanyEmail: (e) => { if (!db.company.email) { db.company.email = e; save(); } }, setCompanyPhone: (p) => { if (p && !db.company.phone) { db.company.phone = p; save(); } },
   setCompanyIndustry: (i) => { Object.assign(db.company, i); save(); },
   planProduct, // the Stripe product for a plan (Alpha → an account → Subscription → Change plan)
+  planItem, seatItem, seatParams, extraCount, // a subscription's plan line and extra logins line
 });
 // which app answers: the platform's (its own domain, or /alpha… while developing) or an account's
 const PLATFORM_PATHS = /^\/(alpha(\/.*)?|platform(\/.*)?|stripe\/go\/[a-z]+|oauth\/(google|meta|tiktok|linkedin|pinterest|threads|quickbooks|xero)\/callback|home|features|pricing|signup|sign-in|supporters|industries(\/[a-z-]+)?|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;

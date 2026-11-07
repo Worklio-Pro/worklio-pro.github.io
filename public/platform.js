@@ -508,6 +508,8 @@ const planFields = (p, i, used = '', rm = '') => `<div class="pc">
 <label>Last day <span class="muted">(optional)</span><input type="date" data-i="${i}" data-k="saleEnds" value="${esc(p.saleEnds || '')}" aria-label="Last day of the sale for ${esc(p.name)}"></label>
 <div class="pc-sec"><span>Details</span></div>
 <label>Team logins <span class="muted">(0 = unlimited)</span><input type="number" inputmode="numeric" min="0" data-i="${i}" data-k="maxUsers" value="${p.maxUsers || 0}" aria-label="Team logins for ${esc(p.name)}"></label>
+${money$(p, i, 'extraUser', 'none', 'Each extra login, a month')}
+<label>Texts a month <span class="muted">(0 = no limit)</span><input type="number" inputmode="numeric" min="0" data-i="${i}" data-k="smsLimit" value="${p.smsLimit || 0}" aria-label="Texts a month for ${esc(p.name)}"></label>
 <label>Short description<textarea rows="3" data-i="${i}" data-k="description" maxlength="200" aria-label="Description for ${esc(p.name)}">${esc(p.description)}</textarea></label>
 <div class="pc-foot"><label class="switchline"><input type="checkbox" data-hide="${i}" ${p.hidden ? 'checked' : ''}> Hide from public</label>${rm}</div></div>`;
 // a feature ticked as Beta shows a "Beta" tag to businesses (pricing page, checkout, their plan and menu)
@@ -523,7 +525,7 @@ function plansView(main) {
   const rmBtn = (p, i) => (P.length > 1 ? `<button type="button" class="rm-plan" data-act="rmPlan" data-i="${i}" ${used(p.id) ? `disabled title="Move its accounts to another plan first"` : ''}>Remove plan</button>` : '');
   const dirty = plansDirty();
   planIx = Math.min(planIx, P.length - 1);
-  const head = `<div class="head"><div><h1>Pricing</h1><p class="sub" style="margin:4px 0 0">Tick what each plan includes. Accounts get changes as soon as you save.</p></div><button class="btn alt" data-act="addPlan">Add plan</button></div>${pricingSeg()}`;
+  const head = `<div class="head"><div><h1>Pricing</h1><p class="sub" style="margin:4px 0 0">Tick what each plan includes. Accounts get changes as soon as you save. Raising a price, or lowering the logins, is for new accounts: the ones already on that plan keep what they have.</p></div><button class="btn alt" data-act="addPlan">Add plan</button></div>${pricingSeg()}`;
   const savebar = `<div class="savebar"><span class="muted">${dirty ? 'Unsaved changes' : 'All changes saved'}</span>${dirty ? '<button type="button" class="btn alt" data-act="discardPlans">Discard</button>' : ''}<button type="button" class="btn" data-act="savePlans" ${dirty ? '' : 'disabled'}>Save plans</button></div>`;
   if (narrow.matches) {
     const i = planIx; const p = P[i];
@@ -549,10 +551,10 @@ ${savebar}</div>`;
   mxScroller(main);
   // hidden plans stay off the pricing page and checkout; you can still put an account on one
   $$('input[data-hide]', main).forEach((c) => c.addEventListener('change', () => { const p = P[c.dataset.hide]; if (c.checked) p.hidden = true; else delete p.hidden; markDirty(main); }));
-  const PRICES = ['monthly', 'yearly', 'saleMonthly', 'saleYearly'];
+  const PRICES = ['monthly', 'yearly', 'saleMonthly', 'saleYearly', 'extraUser'];
   $$('input[data-k], textarea[data-k]', main).forEach((i) => i.addEventListener('input', () => {
     const p = P[i.dataset.i]; const k = i.dataset.k;
-    p[k] = k === 'maxUsers' ? Math.max(0, parseInt(i.value, 10) || 0) : PRICES.includes(k) ? (Number(i.value) > 0 ? Number(i.value) : null) : i.value;
+    p[k] = k === 'maxUsers' || k === 'smsLimit' ? Math.max(0, parseInt(i.value, 10) || 0) : PRICES.includes(k) ? (Number(i.value) > 0 ? Number(i.value) : null) : i.value;
     if ((k === 'saleEnds' || k === 'saleName') && !i.value) delete p[k];
     if (PRICES.includes(k) || k === 'saleEnds') { $(`[data-save="${i.dataset.i}"]`, main).textContent = saveText(p); $(`[data-sale="${i.dataset.i}"]`, main).innerHTML = saleTag(p); $(`[data-saleerr="${i.dataset.i}"]`, main).textContent = saleText(p).err || ''; }
     if (k === 'name') { const tabBtn = $(`.pl-pick [data-i="${i.dataset.i}"]`, main); if (tabBtn) tabBtn.firstChild.textContent = i.value || 'Untitled'; }
@@ -590,7 +592,7 @@ A.pickPlan = (d) => { planIx = Number(d.i); render(); };
 A.rmPlan = (d) => { const p = draftPlans[d.i]; if (!confirm(`Remove the ${p.name} plan?`)) return; draftPlans.splice(Number(d.i), 1); render(); };
 A.discardPlans = () => { draftPlans = structuredClone(D.plans); draftBeta = [...D.betaFeatures]; render(); };
 A.savePlans = async () => {
-  try { await api('PUT', '/api/platform/plans', { plans: draftPlans, betaFeatures: draftBeta }); await load(); draftPlans = structuredClone(D.plans); draftBeta = [...D.betaFeatures]; toast('Plans saved'); render(); } catch (x) { toast(x.message, true); }
+  try { const r = await api('PUT', '/api/platform/plans', { plans: draftPlans, betaFeatures: draftBeta }); await load(); draftPlans = structuredClone(D.plans); draftBeta = [...D.betaFeatures]; toast(r.locked ? `Plans saved. ${r.locked} account${r.locked === 1 ? '' : 's'} already on a plan you raised keep${r.locked === 1 ? 's' : ''} the price ${r.locked === 1 ? 'it' : 'they'} had` : 'Plans saved'); render(); } catch (x) { toast(x.message, true); }
 };
 window.addEventListener('beforeunload', (e) => { if (D && draftPlans && plansDirty()) e.preventDefault(); });
 
