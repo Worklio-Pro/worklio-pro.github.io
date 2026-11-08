@@ -1872,3 +1872,13 @@ label.bk-auto input{width:auto;margin:0}
 .jf-svclist{display:flex;flex-direction:column;gap:6px;max-height:200px;overflow:auto;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)}
 .jf-svclist label[hidden]{display:none}
 @media (max-width:900px){.jf-svcs{margin-left:0}.jf-svclist label{min-height:40px}}
+
+/* phones: every bar pinned to the bottom sits flush: on the tab bar on app pages, on the screen's edge in sheets and full-screen pages */
+@media (max-width:760px){
+ .qsave,.ce-foot,.rpm+.rp-save{position:fixed;left:0;right:0;bottom:var(--bnav-h,calc(66px + env(safe-area-inset-bottom)));z-index:45;margin:0;padding:10px 14px;border-radius:0}
+ #main:has(.qsave,.ce-foot,.rpm+.rp-save){padding-bottom:calc(var(--bnav-h,66px) + 110px)}
+ .ms-body:has(.ms-foot,.jf-foot){padding-bottom:0}
+ .ms-foot{margin:auto -14px 0;padding:10px 14px calc(10px + env(safe-area-inset-bottom));z-index:2}
+ .ms-body>.jf-fill{flex:1 0 auto;display:flex;flex-direction:column}.jf-fill>.jf-foot{margin:auto -14px 0;z-index:2;border-top:1px solid var(--line)}
+ .mp-page:has(.pfm-foot){padding-bottom:0}.pfm-foot{z-index:2}
+}

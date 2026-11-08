@@ -251,6 +251,8 @@ function sideHtml(path) {
     navFor().map(([g, items]) => (SIDE_BREAKS.includes(g) ? '<hr class="side-div">' : '') + items.map(([p, l]) => `<a href="${p}" data-link class="nav-link ${p === path || (!navPaths.includes(path) && path.startsWith(p + '/')) ? 'on' : ''}">${navIcon(p)}<span class="nav-l">${l}</span></a>`).join('')).join('') + `</div>${items.length ? `<div class="side-set"><button type="button" class="side-set-btn" data-act="openSettings"><span class="nav-ic">${svgIcon(ICONS.gear, 19)}</span><span class="nav-l">Settings</span></button></div>` : ''}`;
 }
 // bottom tab bar (phones): the first four main pages this member can open, then More for the full menu
+// its real height (it grows with the iPhone's home bar) as --bnav-h, so save bars sit right on top of it, with no gap
+if (window.ResizeObserver && document.getElementById('bnav')) new ResizeObserver(() => document.documentElement.style.setProperty('--bnav-h', document.getElementById('bnav').offsetHeight + 'px')).observe(document.getElementById('bnav'));
 const bico = (d) => `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const BNAV = [
   ['/business-overview', 'Home', '<path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/>'],
