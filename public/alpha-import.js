@@ -69,7 +69,7 @@ const IM_FIELDS = {
     ['paid', 'Amount paid', /^(amount )?paid( amount)?$|^payments?( applied| received)?$|collected/], ...IM_DOC_MONEY, ['paidDate', 'Paid date', /paid (date|on)|date paid|payment date|last payment/],
     ['dueDate', 'Due date', /due/], ['date', 'Issue date', /issued?( date)?|invoice date|^date$|created|sent/], ['status', 'Status', /status|stage/], ['method', 'Payment method', /method|tender|paid with/], ...IM_CLIENT,
     ['title', 'Subject', /subject|title|description|memo/], ['notes', 'Notes / message', /note|message|comment/], ...IM_ITEMS],
-  payments: [['invoiceNumber', 'Invoice number', /invoice|^inv|applied to/], ['amount', 'Amount', /amount|total|^paid$|payment$/], ['date', 'Date', /date|paid on|received/], ['method', 'Method', /method|type|tender|paid with/],
+  payments: [['invoiceNumber', 'Invoice number', /invoice|^inv|applied to/], ['amount', 'Amount', /amount|total|^paid$|payment$/], ['date', 'Date', /date|paid on|received/], ['method', 'Method', /method|tender|paid with|payment type/], ['type', 'Transaction type (payment / refund)', /^(transaction |payment )?type$/],
     ['reference', 'Reference', /reference|^ref|transaction|check ?(#|no)|confirmation|memo|note/], ...IM_CLIENT],
   expenses: [['date', 'Date', /date/], ['amount', 'Amount', /amount|total|cost/], ['vendor', 'Vendor', /vendor|merchant|payee|supplier|store|paid to/], ['category', 'Category', /category|account|type/],
     ['jobNumber', 'Job number', /job/], ['description', 'Description', /desc|item|note|memo|details/]],
@@ -107,12 +107,14 @@ function imRecords() {
     date: imDate(v.date), dueDate: imDate(v.dueDate), closedDate: imDate(v.closedDate), paidDate: imDate(v.paidDate), startTime: imTime(v.startTime) || (v.date && /\d:\d\d/.test(v.date) ? imTime(v.date) : ''), endTime: imTime(v.endTime),
     subtotal: imMoney(v.subtotal), discount: imMoney(v.discount), tax: imMoney(v.tax), total: imMoney(v.total), paid: imMoney(v.paid), balance: imMoney(v.balance), method: v.method || '', jobNumber: v.jobNumber || '', address: v.jobAddress || '', items: [] });
   const line = (v) => (v.itemName || v.itemDesc || v.itemTotal || v.itemPrice ? { desc: v.itemName || v.itemDesc || 'Item', details: v.itemName && v.itemDesc ? v.itemDesc : '', qty: imMoney(v.itemQty) === '' ? 1 : imMoney(v.itemQty), price: imMoney(v.itemPrice), lineTotal: imMoney(v.itemTotal) } : null);
-  const rows = s.rows.map(pick);
+  // reports end with a totals row ("Report totals:", "Total", "Grand total"): never a record
+  const isTotals = (row) => { const first = row.find((c) => String(c || '').trim()); return /^(report |grand |sub-?)?totals?:?$/i.test(String(first || '').trim()); };
+  const rows = s.rows.filter((r) => !isTotals(r)).map(pick);
   if (s.kind === 'clients') return rows.map((v) => { const city = [v.city, [v.state, v.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
     return { name: v.name || [v.first, v.last].filter(Boolean).join(' '), company: v.company || '', email: v.email || '', phone: v.phone || '', notes: v.notes || '', tags: v.tags || '', createdDate: imDate(v.createdDate),
       address: (v.address || [v.street, v.street2, city].filter(Boolean).join(', ')).replace(/\s*\n\s*/g, ', ') }; });
   if (s.kind === 'services') return rows.map((v) => ({ name: v.name || '', type: v.type || '', description: v.description || '', price: imMoney(v.price), unit: v.unit || '', category: v.category || '' }));
-  if (s.kind === 'payments') return rows.map((v) => ({ invoiceNumber: v.invoiceNumber || '', client: client(v), date: imDate(v.date), amount: imMoney(v.amount), method: v.method || '', reference: v.reference || '' }));
+  if (s.kind === 'payments') return rows.map((v) => ({ invoiceNumber: v.invoiceNumber || '', client: client(v), date: imDate(v.date), amount: imMoney(v.amount), method: v.method || '', type: v.type || '', reference: v.reference || '' }));
   if (s.kind === 'expenses') return rows.map((v) => ({ date: imDate(v.date), amount: imMoney(v.amount), vendor: v.vendor || '', category: v.category || '', jobNumber: v.jobNumber || '', description: v.description || '' }));
   // quotes, jobs, invoices: with line items mapped, rows with the same number are one document
   const lines = s.map.some((k) => /^item/.test(k)); if (!lines) return rows.map(doc);
@@ -163,7 +165,7 @@ function imRender() {
 function imHome() {
   const s = IM; const S = s.summary; const t = S.totals; const live = S.log.filter((b) => !b.undoneAt);
   const said = (b) => { const c = b.counts; const bits = [`${c.added} added`]; if (c.dupe) bits.push(`${c.dupe} already there`); if (c.noClient) bits.push(`${c.noClient} without a client`); if (c.noInvoice) bits.push(`${c.noInvoice} without an invoice`);
-    if (c.void) bits.push(`${c.void} void`); if (c.invalid) bits.push(`${c.invalid} unreadable`); if (b.clientsCreated) bits.push(`${b.clientsCreated} new client${b.clientsCreated === 1 ? '' : 's'}`); if (b.invoicesCreated) bits.push(`${b.invoicesCreated} invoice${b.invoicesCreated === 1 ? '' : 's'} made for payments`); return bits.join(' · '); };
+    if (c.void) bits.push(`${c.void} void`); if (c.refund) bits.push(`${c.refund} refund${c.refund === 1 ? '' : 's'} skipped`); if (c.invalid) bits.push(`${c.invalid} unreadable`); if (b.clientsCreated) bits.push(`${b.clientsCreated} new client${b.clientsCreated === 1 ? '' : 's'}`); if (b.invoicesCreated) bits.push(`${b.invoicesCreated} invoice${b.invoicesCreated === 1 ? '' : 's'} made for payments`); return bits.join(' · '); };
   return `<p class="muted" style="margin-top:0">Bring a business’s records over from the app they used before, one CSV export at a time. Only Alpha can do this; the business doesn’t see it.
 Imported records don’t get late fees, review emails or QuickBooks/Xero sync, and their automations only act on what happens after the import. Each import can be undone.</p>
 <p class="sm" style="margin:0 0 14px"><strong>In the account now:</strong> ${t.clients} clients · ${t.services} products & services · ${t.jobs} jobs · ${t.quotes} quotes · ${t.invoices} invoices · ${t.expenses} expenses</p>
@@ -196,7 +198,7 @@ function imMap() {
     payments: [['Invoice', (r) => r.invoiceNumber], ['Client', (r) => r.client.name || r.client.email], ['Date', (r) => r.date], ['Amount', (r) => r.amount], ['Method', (r) => r.method]],
     expenses: [['Date', (r) => r.date], ['Vendor', (r) => r.vendor], ['Category', (r) => r.category], ['Amount', (r) => r.amount]] }[s.kind]
     || [['#', (r) => r.number], ['Client', (r) => r.client.name || r.client.company || r.client.email], ['Date', (r) => r.date], ['Status', (r) => r.status], ['Total', (r) => r.total], ...(s.kind === 'invoices' ? [['Paid', (r) => r.paid !== '' ? r.paid : r.balance !== '' ? `bal ${r.balance}` : '']] : []), ['Lines', (r) => r.items.length || '']];
-  return `<p class="muted" style="margin-top:0"><strong>${esc(IM_KINDS[s.kind])}</strong> from ${esc(label)} · ${esc(s.file)} · ${s.rows.length} row${s.rows.length === 1 ? '' : 's'}${recs.length !== s.rows.length ? ` → ${recs.length} record${recs.length === 1 ? '' : 's'} (rows with the same number are one, with its lines)` : ''}</p>
+  return `<p class="muted" style="margin-top:0"><strong>${esc(IM_KINDS[s.kind])}</strong> from ${esc(label)} · ${esc(s.file)} · ${s.rows.length} row${s.rows.length === 1 ? '' : 's'}${recs.length !== s.rows.length ? ` → ${recs.length} record${recs.length === 1 ? '' : 's'} (a totals row is left out; rows with the same number are one, with its lines)` : ''}</p>
 <h3 style="font-size:15px;margin:0 0 6px">Match the columns</h3>
 <div class="tablewrap" style="max-height:300px;overflow:auto"><table class="acc"><thead><tr><th>Column in the file</th><th>Example</th><th>Import as</th></tr></thead><tbody>
 ${s.headers.map((h, i) => `<tr><td class="nm">${esc(h)}</td><td class="sm">${esc(String((s.rows.find((r) => String(r[i] || '').trim()) || [])[i] || '').slice(0, 60))}</td>
@@ -214,7 +216,7 @@ function imDone() {
   const line = (n, what) => (n ? `<li><strong>${n}</strong> ${what}</li>` : '');
   return `<p style="margin-top:0"><strong>${esc(IM_KINDS[IM.kind])}</strong> from ${esc(S.sources[IM.source])} (${esc(IM.file)}) ${r.stopped ? 'stopped part way' : 'imported'}.</p>
 <ul>${line(c.added, 'added')}${line(r.clientsCreated, 'new clients made')}${line(r.invoicesCreated, 'paid invoices made for payments with no invoice')}${line(c.dupe, 'already in the account (skipped)')}
-${line(c.noClient, 'skipped: no client (map the client columns, or tick “Add clients”)')}${line(c.noInvoice, 'payments skipped: no invoice with that number')}${line(c.void, 'void or written-off invoices skipped')}${line(c.invalid, 'rows without what they need (a name or an amount)')}</ul>
+${line(c.noClient, 'skipped: no client (map the client columns, or tick “Add clients”)')}${line(c.noInvoice, 'payments skipped: no invoice with that number')}${line(c.void, 'void or written-off invoices skipped')}${line(c.refund, 'refunds skipped (only payments received are imported)')}${line(c.invalid, 'rows without what they need (a name or an amount)')}</ul>
 ${r.problems.length ? `<details><summary class="sm">Problems (${r.problems.length})</summary><ul class="sm">${r.problems.map((p) => `<li>${esc(p)}</li>`).join('')}</ul></details>` : ''}
 ${r.stopped ? `<p class="sm" style="color:var(--danger)">${esc(r.stopped)}</p>` : ''}
 <div class="foot"><button type="button" class="btn alt" data-act="imHome">See all imports</button><button type="button" class="btn" data-act="imStart">Import another file</button></div>`;
@@ -228,7 +230,7 @@ A.imRun = async (d, el) => {
   const s = IM; const recs = imRecords(); const size = Math.min(500, s.summary.maxRows || 500);
   if (!confirm(`Import ${recs.length} ${IM_KINDS[s.kind].toLowerCase()} into ${s.account.name}?`)) return;
   const m = $('#ov .pf-modal'); m.dataset.sticky = '1'; el.disabled = true; $$('.foot button', m).forEach((b) => { b.disabled = true; });
-  const total = { added: 0, dupe: 0, noClient: 0, noInvoice: 0, void: 0, invalid: 0 }; const res = { counts: total, clientsCreated: 0, invoicesCreated: 0, problems: [] }; let batchId = null;
+  const total = { added: 0, dupe: 0, noClient: 0, noInvoice: 0, void: 0, refund: 0, invalid: 0 }; const res = { counts: total, clientsCreated: 0, invoicesCreated: 0, problems: [] }; let batchId = null;
   try {
     for (let i = 0; i < recs.length; i += size) {
       el.textContent = `Importing ${Math.min(i + size, recs.length)} of ${recs.length}…`;
