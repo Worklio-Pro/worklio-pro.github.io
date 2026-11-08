@@ -1882,3 +1882,8 @@ label.bk-auto input{width:auto;margin:0}
  .ms-body>.jf-fill{flex:1 0 auto;display:flex;flex-direction:column}.jf-fill>.jf-foot{margin:auto -14px 0;z-index:2;border-top:1px solid var(--line)}
  .mp-page:has(.pfm-foot){padding-bottom:0}.pfm-foot{z-index:2}
 }
+
+/* pull to refresh (installed app on a phone): the round arrow that follows the finger, then spins while the page reloads */
+#ptr{position:fixed;top:calc(env(safe-area-inset-top) + 8px);left:50%;z-index:95;display:grid;place-items:center;width:44px;height:44px;border-radius:50%;background:var(--card);color:var(--muted);box-shadow:0 4px 14px rgba(15,23,42,.22);pointer-events:none;transition:color .15s}
+#ptr.go{color:var(--brand)}#ptr.spin{transition:transform .15s}#ptr.spin svg{animation:ptrSpin .8s linear infinite}
+@keyframes ptrSpin{to{transform:rotate(360deg)}}

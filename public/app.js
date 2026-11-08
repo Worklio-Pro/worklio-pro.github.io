@@ -84,6 +84,31 @@ const INSTALL_KEY = 'installPrompt'; let installDone = false;
 const installSeen = () => { if (installDone) return true; try { return !!localStorage.getItem(INSTALL_KEY); } catch (e) { return false; } };
 const installHide = () => { installDone = true; try { localStorage.setItem(INSTALL_KEY, new Date().toISOString()); } catch (e) { /* remembered for this visit only */ } $('#installBar').hidden = true; };
 const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+
+// pull to refresh in the app installed on the Home Screen (a phone's browser has its own): at the top of a page, pull down and let go to reload it
+(function pullToRefresh() {
+  const GO = 70; const MAX = 110; let y0 = null; let d = 0; let el = null;
+  const scrolledInside = (t) => { for (let n = t; n && n !== document.body; n = n.parentElement) if (n.scrollTop > 0) return true; return false; };
+  const blocked = (t) => !phoneMq.matches || !isStandalone() || window.scrollY > 0 || scrolledInside(t) || !!document.querySelector('.mpage, #msheet, #overlay, #side.open, #helpPanel.open, .mprev');
+  const show = (px) => {
+    if (!el) { el = document.createElement('div'); el.id = 'ptr'; el.setAttribute('aria-hidden', 'true'); el.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>'; document.body.append(el); }
+    el.classList.toggle('go', px >= GO); el.style.opacity = Math.min(1, px / GO);
+    el.style.transform = `translate(-50%, ${px - 44}px) rotate(${px * 4}deg)`;
+  };
+  const hide = () => { if (el) { el.remove(); el = null; } };
+  document.addEventListener('touchstart', (e) => { y0 = e.touches.length === 1 && !blocked(e.target) ? e.touches[0].clientY : null; d = 0; }, { passive: true });
+  document.addEventListener('touchmove', (e) => {
+    if (y0 === null) return;
+    if (window.scrollY > 0) { y0 = null; hide(); return; }
+    d = Math.min(MAX, Math.max(0, (e.touches[0].clientY - y0) * 0.5));
+    if (d > 4) show(d); else hide();
+  }, { passive: true });
+  const end = () => {
+    if (y0 === null) return; y0 = null;
+    if (d >= GO && el) { el.classList.add('spin'); el.style.transform = 'translate(-50%, 30px)'; el.style.opacity = 1; location.reload(); } else hide();
+  };
+  document.addEventListener('touchend', end); document.addEventListener('touchcancel', () => { y0 = null; hide(); });
+})();
 const isIos = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const isPhone = () => matchMedia('(max-width:900px) and (pointer:coarse)').matches;
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; if (me && !$('#installBar').hidden) showInstallBar(false); });
