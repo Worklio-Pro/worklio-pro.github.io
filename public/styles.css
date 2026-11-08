@@ -1975,6 +1975,6 @@ label.bk-auto input{width:auto;margin:0}
 .bi-client{padding:10px 0;border-bottom:1px solid var(--border)}.bi-ch{margin:0 0 6px}
 .bi-job{display:flex;align-items:flex-start;gap:10px;padding:6px 0 6px 4px;font-weight:400;margin:0;cursor:pointer}.bi-job input{width:18px;height:18px;margin:2px 0 0;flex:none}
 .bi-job small{display:block}.bi-amt{white-space:nowrap;font-weight:600}
-.lf-amt{display:flex;gap:8px}.lf-amt input{flex:1;min-width:0}.lf-amt select{width:auto}
+.lf-amt{display:flex;gap:8px;margin-top:4px}.lf-amt input{flex:1;min-width:0}.lf-amt select{width:auto}
 .lf-fields{margin-top:10px}
 @media (max-width:600px){.bi-opts .mseg{flex-direction:column}}
