@@ -641,17 +641,17 @@ const round2 = (n) => Math.round(n * 100) / 100;
 // price = unit price the client sees (cost plus markup as % of cost or flat $ per unit); the server recomputes it the same way
 const readItems = (root) => $$('.item-row', root).map((r) => {
   const cost = Number($('.cost', r).value) || 0; const markup = Number($('.markup', r).value) || 0; const markupType = $('.mtype', r).value;
-  return { desc: $('.desc', r).value.trim(), details: $('.details', r).value, qty: Number($('.qty', r).value) || 0, cost, markup, markupType, price: round2(markupType === 'flat' ? cost + markup : cost * (1 + markup / 100)) };
+  return { desc: $('.desc', r).value.trim(), details: $('.details', r).value, qty: Number($('.qty', r).value) || 0, cost, markup, markupType, price: round2(markupType === 'flat' ? cost + markup : cost * (1 + markup / 100)), ...($('.iopt', r) ? { opt: $('.iopt', r).value } : {}) };
 });
 function recalc(root) {
   if (!$('.calc', root)) return; // no Product / Service section (job page for technicians)
+  if (root._optRows) root._optRows(); // quote options: every line item has its Option box
   const items = readItems(root); const rate = Number($('[name=taxRate]', root).value) || 0;
   $$('.item-row', root).forEach((r, i) => { $('.amt', r).textContent = money(items[i].qty * items[i].price); });
-  const sub = round2(items.reduce((s, i) => s + i.qty * i.price, 0));
   // discount comes off the subtotal before tax (the server computes it the same way)
   const dv = Math.max(0, Number($('[name=discountValue]', root).value) || 0); const dPct = $('[name=discountType]', root).value === 'percent';
-  const disc = Math.min(sub, round2(dPct ? sub * dv / 100 : dv));
-  const tax = round2((sub - disc) * rate / 100); const total = round2(sub - disc + tax);
+  const calc = (list) => { const sub = round2(list.reduce((s, i) => s + i.qty * i.price, 0)); const disc = Math.min(sub, round2(dPct ? sub * dv / 100 : dv)); const tax = round2((sub - disc) * rate / 100); return { sub, disc, tax, total: round2(sub - disc + tax) }; };
+  const { sub, disc, tax, total } = calc(root._optFilter ? root._optFilter(items) : items); if (root._optSum) root._optSum(items, calc);
   $('.t-sub', root).textContent = money(sub); $('.t-discount', root).textContent = disc ? '−' + money(disc) : money(0);
   $('.t-tax', root).textContent = money(tax); $('.t-total', root).textContent = money(total);
   if ($('[name=depositValue]', root)) { // quotes: requested deposit
@@ -1844,7 +1844,7 @@ const DEFAULT_DISCLAIMER = 'This quote is valid for the next 30 days, after whic
 function qItemRow(it) {
   // Jobber-style row: labeled boxes (name, qty, unit cost, markup, total) with the description full width underneath and a ⋯ menu.
   // Unit cost shows $; markup shows $ when flat, or % (percent of cost) from its selector.
-  return `<div class="item-row qi"><button type="button" class="drag-h" aria-label="Drag to reorder (or use the arrow keys)" title="Drag to reorder">${DRAG_DOTS}</button><label class="fl qi-name"><span>Name</span><input class="desc" autocomplete="off" placeholder="Item name or catalog service" value="${esc(it.desc || '')}"></label>
+  return `<div class="item-row qi" data-opt="${esc(it.opt || '')}"><button type="button" class="drag-h" aria-label="Drag to reorder (or use the arrow keys)" title="Drag to reorder">${DRAG_DOTS}</button><label class="fl qi-name"><span>Name</span><input class="desc" autocomplete="off" placeholder="Item name or catalog service" value="${esc(it.desc || '')}"></label>
 <label class="fl"><span>Quantity</span><input class="qty" type="number" step="any" min="0" value="${it.qty ?? 1}"></label>
 <label class="fl"><span>Unit cost</span><div class="affix"><i>$</i><input class="cost" type="number" step="any" min="0" value="${it.cost ?? it.price ?? 0}"></div></label>
 <label class="fl mk${it.markupType === 'flat' ? ' flat' : ''}"><span>Markup</span><div class="affix"><i class="pre">$</i><input class="markup" type="number" step="any" value="${it.markup ?? 0}"><select class="mtype" aria-label="Markup type"><option value="percent">%</option><option value="flat" ${it.markupType === 'flat' ? 'selected' : ''}>$</option></select></div></label>
@@ -1903,6 +1903,103 @@ const cardHint = () => (['owner', 'admin'].includes(role()) ? 'Set up card payme
 // Zelle needs the business's Zelle details (App Settings → Zelle payments)
 const zelleHint = () => (['owner', 'admin'].includes(role()) ? 'Add your Zelle details in <a href="/settings#zelle" data-link>App Settings</a>' : 'Not set up yet: ask your account owner');
 const switchRow = (name, label, on, note, disabled) => `<label class="sw-row"><span>${label}${note ? `<small class="muted">${note}</small>` : ''}</span>${disabled ? '<input type="checkbox" class="sw" disabled>' : `<input type="hidden" name="${name}" value="off"><input type="checkbox" class="sw" name="${name}" value="on" ${on ? 'checked' : ''}>`}<i></i></label>`;
+/* ===== Good / Better / Best (a plan feature): 2–3 options on a quote, each with its own line items and total; the client picks one when they approve.
+   An item's opt is its option's id, or '' for an item in every option. The quote's totals are the chosen option's, else the recommended (or first) one's. ===== */
+const qHasOpts = (q) => !!q && Array.isArray(q.options) && q.options.length >= 2;
+const qOptItems = (q, id) => (q.items || []).filter((i) => !i.opt || i.opt === id);
+const qShown = (q) => (qHasOpts(q) ? q.options.find((o) => o.id === q.chosenOption) || q.options.find((o) => o.id === q.recommended) || q.options[0] : null);
+// what a quote shows: each option with its items and totals until one is chosen, then only that one (as the server's quoteParts)
+const qParts = (q) => (!qHasOpts(q) ? [{ doc: q }] : q.chosenOption ? [{ opt: qShown(q), chosen: true, doc: { ...q, items: qOptItems(q, q.chosenOption) } }]
+  : q.options.map((o) => ({ opt: o, recommended: q.recommended === o.id, doc: { ...q, items: qOptItems(q, o.id), ...((q.optionTotals || {})[o.id] || {}) } })));
+const optId = () => Array.from(crypto.getRandomValues(new Uint8Array(5)), (b) => b.toString(16).padStart(2, '0')).join('');
+const OPT_NAMES = ['Good', 'Better', 'Best'];
+const optHead = (p, many) => (p.opt ? `<div class="qo-h"><strong>${p.chosen ? 'Client chose: ' : ''}${esc(p.opt.name)}</strong>${p.recommended ? '<span class="qo-rec">Recommended</span>' : ''}${many ? `<span class="qo-tot">${money(p.doc.total || 0)}</span>` : ''}</div>${p.opt.desc ? `<p class="muted qo-d">${esc(p.opt.desc)}</p>` : ''}` : '');
+// the quote page's Product / Service card: one block per option (or the chosen one), each with its totals and deposit
+function quoteItemsView(d) {
+  const parts = qParts(d); const many = parts.length > 1; const paid = depositPaid(d);
+  return parts.map((p) => `<div class="${p.opt ? `qo-part${p.recommended ? ' rec' : ''}` : ''}">${optHead(p, many)}${viewItems(p.doc)}<div class="vtotals">${viewTotals(p.doc)}${p.doc.depositFee > 0 ? vt('Required deposit', money(p.doc.depositFee))
+    + (!many && d.depositPaidAt ? vt(payLink('q-' + d.id, 'Deposit collected', d.depositPaidAt), '−' + money(paid)) : '') + (!many ? vt('Outstanding deposit', money(Math.max(0, round2(p.doc.depositFee - paid)))) : '') : ''}</div></div>`).join('');
+}
+// which option the client picked (Mark approved, a signature on the phone): a popup on computers, a sheet on phones
+function qPickOption(q, title, then) {
+  const html = `<p class="muted" style="margin-top:0">This quote has ${q.options.length} options. Pick the one the client chose; its line items go on the job and invoice.</p><div class="qo-pick">${q.options.map((o) => `<button type="button" class="jf-row" data-o="${esc(o.id)}"><span class="jf-main"><strong>${esc(o.name)}${q.recommended === o.id ? ' <span class="qo-rec">Recommended</span>' : ''}</strong>${o.desc ? `<small>${esc(o.desc)}</small>` : ''}</span><strong>${money(((q.optionTotals || {})[o.id] || {}).total || 0)}</strong></button>`).join('')}</div>`;
+  const box = phoneMq.matches ? mSheet(title, html) : modal(title, html);
+  box.addEventListener('click', (e) => { const b = e.target.closest('[data-o]'); if (!b) return; closeModal(); mClose(true); then(b.dataset.o); });
+}
+// the quote editor (computers): Offer options, then a row per option (name, what's included, recommended) and an Option box on each line item;
+// the totals under the items are the option shown to the client first, with every option's total above them
+function quoteOptionsEditor(form, d) {
+  const card = $('#items', form).closest('.qcard'); let opts = qHasOpts(d) ? d.options.map((o) => ({ ...o })) : null; let rec = d.recommended || '';
+  $('h2', card).insertAdjacentHTML('afterend', '<div class="qo-ed"></div>'); const box = $('.qo-ed', card);
+  $('.qmeta', form).insertAdjacentHTML('beforeend', '<dt class="qo-ch">Client chose</dt><dd class="qo-ch"><select name="chosenOption" aria-label="The option the client chose"></select></dd>');
+  const ch = $('[name=chosenOption]', form); const status = $('[name=status]', form);
+  const nameOf = (o, i) => o.name.trim() || OPT_NAMES[i] || `Option ${i + 1}`;
+  const syncChosen = () => {
+    const v = ch.value || d.chosenOption || ''; ch.innerHTML = `<option value="">Choose…</option>${(opts || []).map((o, i) => `<option value="${o.id}">${esc(nameOf(o, i))}</option>`).join('')}`; ch.value = (opts || []).some((o) => o.id === v) ? v : '';
+    $$('.qo-ch', form).forEach((el) => { el.hidden = !opts || status.value !== 'approved'; });
+  };
+  const syncSelects = () => $$('.item-row', form).forEach((r) => {
+    let s = $('.iopt', r);
+    if (!opts) { if (s) s.closest('.qi-opt').remove(); return; }
+    if (!s) { $('.qi-desc', r).insertAdjacentHTML('beforebegin', '<label class="fl qi-opt"><span>Option</span><select class="iopt"></select></label>'); s = $('.iopt', r); }
+    const v = s.value || r.dataset.opt || ''; s.innerHTML = `<option value="">All options</option>${opts.map((o, i) => `<option value="${o.id}">${esc(nameOf(o, i))}</option>`).join('')}`; s.value = opts.some((o) => o.id === v) ? v : '';
+  });
+  const shownId = () => (opts ? (status.value === 'approved' && opts.some((o) => o.id === ch.value) ? ch.value : opts.some((o) => o.id === rec) ? rec : opts[0].id) : '');
+  form._optFilter = (items) => (opts ? items.filter((i) => !i.opt || i.opt === shownId()) : items);
+  form._optSum = (items, calc) => {
+    const sum = $('.qo-sum', box); if (!sum || !opts) return; const shown = shownId();
+    sum.innerHTML = opts.map((o, i) => { const t = calc(items.filter((x) => !x.opt || x.opt === o.id)); return `<span class="${o.id === shown ? 'on' : ''}">${esc(nameOf(o, i))}<b>${money(t.total)}</b></span>`; }).join('') + `<small class="muted">The totals below are for ${esc(nameOf(opts.find((o) => o.id === shown), opts.findIndex((o) => o.id === shown)))}.</small>`;
+  };
+  const draw = () => {
+    box.innerHTML = !opts ? '<button type="button" class="btn alt sm qo-on" data-q="on">Offer options (Good / Better / Best)</button>'
+      : `<div class="qo-list">${opts.map((o, i) => `<div class="qo-row" data-o="${o.id}"><span class="qo-n">${i + 1}</span><input class="qo-name" maxlength="60" value="${esc(o.name)}" placeholder="${OPT_NAMES[i]}" aria-label="Option ${i + 1} name">
+<input class="qo-desc" maxlength="500" value="${esc(o.desc || '')}" placeholder="What’s included (optional)" aria-label="Option ${i + 1}: what’s included"><label class="qo-r"><input type="radio" name="qoRec" value="${o.id}" ${rec === o.id ? 'checked' : ''}> Recommended</label>
+${opts.length > 2 ? `<button type="button" class="icon-btn qo-rm" data-q="rm" aria-label="Remove option ${i + 1}" title="Remove this option">${TRASH}</button>` : '<span></span>'}</div>`).join('')}</div>
+<div class="qo-acts">${opts.length < 3 ? '<button type="button" class="link-btn" data-q="add">+ Add option</button>' : ''}<button type="button" class="link-btn" data-q="off">Turn off options</button></div>
+<p class="muted sm qo-hint">Pick each line item’s option below. Items set to “All options” are in every option, like a service call fee.</p><div class="qo-sum"></div>`;
+    syncSelects(); syncChosen(); recalc(form);
+  };
+  box.addEventListener('input', (e) => { const r = e.target.closest('.qo-row'); if (!r) return; const o = opts.find((x) => x.id === r.dataset.o);
+    if (e.target.classList.contains('qo-name')) o.name = e.target.value; if (e.target.classList.contains('qo-desc')) o.desc = e.target.value; syncSelects(); syncChosen(); recalc(form); });
+  box.addEventListener('change', (e) => { if (e.target.name === 'qoRec') { rec = e.target.value; recalc(form); } });
+  box.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-q]'); if (!b) return; const k = b.dataset.q;
+    if (k === 'on') { opts = [{ id: optId(), name: OPT_NAMES[0], desc: '' }, { id: optId(), name: OPT_NAMES[1], desc: '' }]; rec = ''; }
+    if (k === 'add') opts.push({ id: optId(), name: OPT_NAMES[opts.length] || '', desc: '' });
+    if (k === 'rm') { const id = b.closest('.qo-row').dataset.o; opts = opts.filter((o) => o.id !== id); if (rec === id) rec = ''; $$('.iopt', form).forEach((s) => { if (s.value === id) s.value = ''; }); }
+    if (k === 'off') { if (!confirm('Turn off options? Every line item stays on the quote, and the client approves the whole quote.')) return; opts = null; rec = ''; }
+    draw(); if (k === 'on' || k === 'add') { const n = $$('.qo-name', box).pop(); if (n) n.select(); }
+  });
+  form.addEventListener('change', (e) => { if (e.target === status) { syncChosen(); recalc(form); } if (e.target === ch || e.target.classList.contains('iopt')) recalc(form); });
+  form._optRows = syncSelects; // new line items get their Option box
+  form._optBody = () => (opts ? { options: opts.map((o, i) => ({ id: o.id, name: nameOf(o, i), desc: (o.desc || '').trim() })), recommended: rec, chosenOption: status.value === 'approved' ? ch.value || null : null } : { options: [], chosenOption: null });
+  draw();
+}
+// phones: the quote's options, from the Options section of the quote page
+function mQuoteOptions(kind, d) {
+  let opts = qHasOpts(d) ? d.options.map((o) => ({ ...o })) : [{ id: optId(), name: OPT_NAMES[0], desc: '' }, { id: optId(), name: OPT_NAMES[1], desc: '' }]; let rec = d.recommended || '';
+  const f = mSheet('Options', '<div class="mqo"></div>', { full: true, foot: `${mSaveBtn('Save options')}${qHasOpts(d) ? '<button type="button" class="btn alt" data-q="off">Turn off</button>' : ''}` });
+  const box = $('.mqo', f);
+  const draw = () => { box.innerHTML = `<p class="muted mqo-p">Offer the client ${opts.length} options, like Good, Better and Best. They pick one when they approve. Then give each line item its option.</p>
+${opts.map((o, i) => `<div class="mqo-o" data-o="${o.id}"><div class="mqo-oh"><strong>Option ${i + 1}</strong>${opts.length > 2 ? `<button type="button" class="link-btn" data-q="rm">Remove</button>` : ''}</div>
+${mField('Name', `<input class="qo-name" maxlength="60" value="${esc(o.name)}" placeholder="${OPT_NAMES[i]}">`)}${mField('What’s included', `<textarea class="qo-desc" rows="2" maxlength="500" placeholder="Optional">${esc(o.desc || '')}</textarea>`)}
+<label class="jf-share"><input type="radio" name="qoRec" value="${o.id}" ${rec === o.id ? 'checked' : ''}><span>Recommended</span></label></div>`).join('')}
+${opts.length < 3 ? '<button type="button" class="btn alt" data-q="add">+ Add option</button>' : ''}`; };
+  draw();
+  f.addEventListener('input', (e) => { const r = e.target.closest('.mqo-o'); if (!r) return; const o = opts.find((x) => x.id === r.dataset.o); if (e.target.classList.contains('qo-name')) o.name = e.target.value; if (e.target.classList.contains('qo-desc')) o.desc = e.target.value; });
+  f.addEventListener('change', (e) => { if (e.target.name === 'qoRec') rec = e.target.value; });
+  f.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-q]'); if (!b) return; const k = b.dataset.q;
+    if (k === 'add') { opts.push({ id: optId(), name: OPT_NAMES[opts.length] || '', desc: '' }); draw(); }
+    if (k === 'rm') { const id = b.closest('.mqo-o').dataset.o; opts = opts.filter((o) => o.id !== id); if (rec === id) rec = ''; draw(); }
+    if (k === 'off') { if (!confirm('Turn off options? Every line item stays on the quote, and the client approves the whole quote.')) return; try { await mSave(kind, d, { options: [] }, 'Options turned off'); } catch (x) { toast(x.message, true); } }
+  });
+  onSubmit(f, () => {
+    const items = (d.items || []).map((i) => ({ ...i, opt: opts.some((o) => o.id === i.opt) ? i.opt : '' }));
+    return mSave(kind, d, { options: opts.map((o, i) => ({ id: o.id, name: o.name.trim() || OPT_NAMES[i], desc: (o.desc || '').trim() })), recommended: rec, items }, 'Options saved');
+  });
+}
+const quoteJobItems = (q) => (qHasOpts(q) ? (q.chosenOption ? qOptItems(q, q.chosenOption) : []) : q.items || []).map(({ opt, ...i }) => i);
 function quoteForm(main, doc, preset) {
   const d = doc || {}; const p = preset || {}; const items = d.items && d.items.length ? d.items : [{}];
   const status = d.id ? quoteStatus(d) : 'draft'; const job = d.id ? quoteJob(d) : null;
@@ -1924,7 +2021,7 @@ ${planHas('onlinePayments') ? switchRow('allowCard', 'Card payments', d.allowCar
 ${planHas('zelle') ? switchRow('allowZelle', 'Zelle', d.allowZelle !== 'off' && !!company.zelleRecipient, company.zelleRecipient ? '' : zelleHint(), !company.zelleRecipient) : ''}</div>
 <div class="qcard"><h3>Notes</h3><textarea name="internalNotes" rows="6" placeholder="Leave an internal note for yourself or a team member. Clients never see this.">${esc(d.internalNotes || '')}</textarea></div></aside></div>
 <div class="qsave noprint"><a class="btn alt" href="/quotes${d.id ? '/view?id=' + d.id : ''}" data-link>Cancel</a><button class="btn">Save</button></div></form>`;
-  const form = $('form', main); wireItems(form);
+  const form = $('form', main); if (planHas('quoteOptions') || qHasOpts(d)) quoteOptionsEditor(form, d); wireItems(form);
   form._doc = d; form._kind = 'quote';
   if (qp('unsign') === '1') form._removeSig = true; // confirmed on the quote page before opening the editor
   if (d.id && d.signedAt && d.depositPaidAt) guardSignature(form);
@@ -1937,6 +2034,7 @@ ${planHas('zelle') ? switchRow('allowZelle', 'Zelle', d.allowZelle !== 'off' && 
     const body = Object.fromEntries(new FormData(form));
     body.items = readItems(form).filter((i) => i.desc); if (form._removeSig) body.removeSignature = true;
     if (!body.items.length) return toast('Add at least one line item', true);
+    delete body.qoRec; if (form._optBody) Object.assign(body, form._optBody()); // Good / Better / Best
     const saved = d.id ? await api('PUT', `/api/quotes/${d.id}`, body) : await api('POST', '/api/quotes', body);
     if ($('#discDefault', form).checked) { await api('PUT', '/api/company', { quoteDisclaimer: body.disclaimer }); company.quoteDisclaimer = body.disclaimer; }
     toast('Quote saved'); await navigate('/quotes/view?id=' + saved.id);
@@ -2109,11 +2207,8 @@ function quotePage(d) {
 ${sendBtn('quote', d)}</div></div>
 <div class="vhead"><div class="vtitle-row"><h1 class="vtitle">${esc(d.title || 'Untitled quote')}</h1>${editBtn('quote', d, 'top')}</div>
 <div class="qhead"><div class="qclient"><div class="vclient"><span>${esc(c.name || 'No client')}</span>${c.id ? clientMenu(c) : ''}</div><div class="muted qlabel">Property address</div><div class="qaddr">${esc(d.address || c.address || '') || '<span class="muted">No address on file</span>'}</div></div>
-<dl class="qmeta"><dt>Quote #</dt><dd>${esc(d.number)}</dd><dt>Created</dt><dd>${fmtDate((d.createdAt || '').slice(0, 10))}</dd>${d.depositFee > 0 ? `<dt>Required deposit</dt><dd>${money(d.depositFee)}</dd>` : ''}</dl></div></div>
-<div class="qcard"><div class="qcard-h"><h2>Product / Service</h2>${editBtn('quote', d, 'items')}</div>${viewItems(d)}
-<div class="vtotals">${viewTotals(d)}${d.depositFee > 0 ? vt('Required deposit', money(d.depositFee))
-    + (d.depositPaidAt ? vt(payLink('q-' + d.id, 'Deposit collected', d.depositPaidAt), '−' + money(paid)) : '')
-    + vt('Outstanding deposit', money(Math.max(0, round2(d.depositFee - paid)))) : ''}</div></div>
+<dl class="qmeta"><dt>Quote #</dt><dd>${esc(d.number)}</dd><dt>Created</dt><dd>${fmtDate((d.createdAt || '').slice(0, 10))}</dd>${d.depositFee > 0 && !(qHasOpts(d) && !d.chosenOption) ? `<dt>Required deposit</dt><dd>${money(d.depositFee)}</dd>` : ''}${qHasOpts(d) && d.chosenOption ? `<dt>Client chose</dt><dd>${esc(qShown(d).name)}</dd>` : ''}</dl></div></div>
+<div class="qcard"><div class="qcard-h"><h2>Product / Service</h2>${editBtn('quote', d, 'items')}</div>${qHasOpts(d) && !d.chosenOption ? `<p class="muted qo-intro">${d.options.length} options for the client to choose from.</p>` : ''}${quoteItemsView(d)}</div>
 ${d.signedAt ? `<div class="qcard sig-card"><div class="qcard-h"><h2>Client signature</h2><span class="cstatus q-approved">Signed</span></div>
 ${d.signature ? `<div class="sig-show"><img class="sig-img" src="${esc(d.signature.file)}" alt="Signature of ${esc(d.signedName || 'the client')}"></div>` : ''}
 <p class="sig-meta">Signed${d.signedName ? ` by <strong>${esc(d.signedName)}</strong>` : ''} on ${esc(fmtStamp(d.signedAt))}${d.signature && d.signature.method === 'typed' ? ' <span class="muted">· typed signature</span>' : ''}</p></div>` : ''}
@@ -2300,12 +2395,13 @@ function mText(kind, d, title, name, placeholder, extra = '') {
   return f;
 }
 const M_EDIT = {
+  options: (kind, d) => mQuoteOptions(kind, d),
   details(kind, d) {
     const q = kind === 'quote';
     const f = mSheet(q ? 'Quote details' : 'Invoice details', `${mField(q ? 'Title' : 'Subject', `<input name="${q ? 'title' : 'subject'}" value="${esc((q ? d.title : d.subject) || '')}" maxlength="120">`)}
 ${mField('Client', `<select name="clientId">${clientOptions(d.clientId)}</select>`)}
 ${mField(q ? 'Quote #' : 'Invoice #', `<input name="number" value="${esc(d.number || '')}" maxlength="30">`)}
-${q ? mField('Status', `<select name="status">${['draft', 'sent', 'approved', 'declined'].map((s) => `<option value="${s}" ${d.status === s ? 'selected' : ''}>${Q_STATUS[s]}</option>`).join('')}</select>`)
+${q ? mField('Status', `<select name="status">${['draft', 'sent', 'approved', 'declined'].map((s) => `<option value="${s}" ${d.status === s ? 'selected' : ''}>${Q_STATUS[s]}</option>`).join('')}</select>`) + (qHasOpts(d) ? mField('Client chose', `<select name="chosenOption"><option value="">Not yet</option>${d.options.map((o) => `<option value="${esc(o.id)}" ${d.chosenOption === o.id ? 'selected' : ''}>${esc(o.name)}</option>`).join('')}</select>`) : '')
     : `${mField('Invoice for', `<select name="jobId"><option value="">No job</option>${D.jobs.map((j) => `<option value="${j.id}" ${d.jobId === j.id ? 'selected' : ''}>${esc(j.number + ' · ' + j.title)}</option>`).join('')}</select>`)}
 ${mField('Issued', `<input type="date" name="issueDate" value="${esc(d.issueDate || '')}">`)}
 ${mField('Payment terms', `<select name="paymentTerms">${TERMS.map(([k, l]) => `<option value="${k}" ${String(d.paymentTerms || 'custom') === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}
@@ -2329,6 +2425,7 @@ ${mField('Unit cost', `<span class="mf-in"><b class="pre">$</b><input name="cost
 <div class="mseg mk-seg" role="radiogroup" aria-label="Markup type">${[['percent', 'Percent (%)'], ['flat', 'Fixed ($)']].map(([k, l]) => `<label><input type="radio" name="markupType" value="${k}" ${(it.markupType === 'flat') === (k === 'flat') ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div>
 <label class="mf mf-mk${it.markupType === 'flat' ? ' flat' : ''}"><span>Markup</span><span class="mf-in"><b class="pre">$</b><input name="markup" type="number" inputmode="decimal" step="any" value="${it.markup ?? 0}"><b class="suf">%</b></span></label>
 ${mField('Quantity', `<input name="qty" type="number" inputmode="decimal" step="any" min="0" value="${esc(it.qty ?? 1)}">`)}
+${kind === 'quote' && qHasOpts(d) ? mField('Option', `<select name="opt"><option value="">All options</option>${d.options.map((o) => `<option value="${esc(o.id)}" ${(i >= 0 ? it.opt : x.opt) === o.id ? 'selected' : ''}>${esc(o.name)}</option>`).join('')}</select>`) : ''}
 <div class="m-total"><span>Total</span><strong class="m-tot"></strong></div>`, { full: true, foot: `${mSaveBtn('Save Line Item')}${i >= 0 ? '<button type="button" class="btn alt ms-more" data-act="mRmItem" aria-label="Delete line item" title="Delete line item">⋯</button>' : ''}` });
     f._ctx = { kind, d, i };
     // unit price = cost plus markup (% of cost, or flat $ per unit), as on the desktop editor and the server
@@ -2340,7 +2437,7 @@ ${mField('Quantity', `<input name="qty" type="number" inputmode="decimal" step="
     onSubmit(f, (fd) => {
       const desc = String(fd.get('desc')).trim(); if (!desc) throw new Error('Enter the item’s name');
       const cost = Math.max(0, Number(fd.get('cost')) || 0); const markup = Number(fd.get('markup')) || 0; const markupType = fd.get('markupType') === 'flat' ? 'flat' : 'percent';
-      const item = { ...(i >= 0 ? it : {}), desc, details: String(fd.get('details')), qty: Number(fd.get('qty')) || 0, cost, markup, markupType, price: unit() };
+      const item = { ...(i >= 0 ? it : {}), desc, details: String(fd.get('details')), qty: Number(fd.get('qty')) || 0, cost, markup, markupType, price: unit(), ...(fd.has('opt') ? { opt: String(fd.get('opt')) } : {}) };
       const items = [...(d.items || [])]; if (i >= 0) items[i] = item; else items.push(item);
       return mSave(kind, d, { items }, i >= 0 ? 'Line item saved' : 'Line item added');
     });
@@ -2450,9 +2547,15 @@ function mobileDocPage(kind, d) {
   const btn = (act, label, cls = '') => `<button type="button" class="btn ${cls}" data-act="${act}" data-kind="${kind}" data-id="${d.id}">${label}</button>`;
   const acts = q ? [canJob ? btn('quoteToJob', 'Create Job') : '', btn('sendDoc', d.sentAt ? 'Resend' : 'Send')]
     : [d.status !== 'paid' ? btn('collectPayment', 'Collect Payment') : '', d.status !== 'paid' ? btn('sendDoc', d.sentAt ? 'Resend' : 'Send') : `<a class="btn" href="/invoices/view?id=${d.id}&preview=1" data-link>View Receipt</a>`];
-  const items = (d.items || []).map((it, i) => mTap(kind, d, 'item', `<strong>${esc(it.desc)}</strong>${it.details ? `<span class="md-det">${esc(it.details)}</span>` : ''}<span class="md-qp"><span>${esc(it.qty)} × ${money(it.price)}</span><span>${money(round2(it.qty * it.price))}</span></span>`, 'md-item', `data-i="${i}"`)).join('');
+  const itemTap = (it, i) => mTap(kind, d, 'item', `<strong>${esc(it.desc)}</strong>${it.details ? `<span class="md-det">${esc(it.details)}</span>` : ''}<span class="md-qp"><span>${esc(it.qty)} × ${money(it.price)}</span><span>${money(round2(it.qty * it.price))}</span></span>`, 'md-item', `data-i="${i}"`);
+  const opts = q && qHasOpts(d); // Good / Better / Best: the items in every option, then each option's own with its total and its own +
+  const items = !opts ? (d.items || []).map(itemTap).join('') : [['', 'In every option'], ...d.options.map((o) => [o.id, o.name])].map(([id, name]) => {
+    const list = (d.items || []).map((it, i) => [it, i]).filter(([it]) => (it.opt || '') === id); if (!id && !list.length) return ''; const t = id && (d.optionTotals || {})[id];
+    return `<div class="mqo-h"><strong>${esc(name)}</strong>${id && id === d.recommended ? '<span class="qo-rec">Recommended</span>' : ''}${id && id === d.chosenOption ? '<span class="qo-rec ch">Chosen</span>' : ''}${t ? `<span class="mqo-t">${money(t.total)}</span>` : ''}</div>${list.map(([it, i]) => itemTap(it, i)).join('') || '<p class="muted md-empty">No line items in this option yet.</p>'}${id ? `<button type="button" class="md-tap mqo-add" data-act="mEdit" data-kind="quote" data-id="${d.id}" data-sec="item" data-i="" data-opt="${esc(id)}">+ Add to ${esc(name)}</button>` : ''}`;
+  }).join('');
+  const optSec = q && (planHas('quoteOptions') || opts) ? mTap(kind, d, 'options', `<span class="md-sh">Options${ARROW}</span><span class="md-text${opts ? '' : ' muted'}">${opts ? d.options.map((o) => esc(o.name)).join(' · ') : 'Offer Good / Better / Best options'}</span>`, 'md-sec') : '';
   const paid = q ? depositPaid(d) : 0; const pays = q ? [] : [...(d.payments || [])].sort((a, b) => a.date.localeCompare(b.date));
-  const totals = mRow('Subtotal', money(d.subtotal || 0), 'b')
+  const totals = (q && qHasOpts(d) ? mRow(d.chosenOption ? 'Client chose' : 'Totals for', esc(qShown(d).name)) : '') + mRow('Subtotal', money(d.subtotal || 0), 'b')
     + mTapRow(kind, d, 'discount', `Discount${d.discount && d.discountType === 'percent' ? ` (${d.discountValue}%)` : ''}`, d.discount ? '−' + money(d.discount) : money(0))
     + mTapRow(kind, d, 'tax', `Tax${Number(d.taxRate) ? ` (${d.taxRate}%)` : ''}`, money(d.tax || 0))
     + mRow('Total', money(d.total || 0), 'grand')
@@ -2468,12 +2571,12 @@ function mobileDocPage(kind, d) {
   const viewSec = q ? '' : mTap(kind, d, 'clientView', `<span class="md-sh">Client view${ARROW}</span><span class="md-text muted">${[['showQty', 'Quantities'], ['showUnit', 'Unit prices'], ['showLineTotals', 'Line totals'], ['showAccountBalance', 'Account balance'], ['showLateStamp', 'Late stamp']].filter(([k]) => on(k)).map(([, l]) => l).join(', ') || 'Totals only'}</span>`, 'md-sec');
   return `<div class="mdoc"><a href="/${kind}s" data-link class="md-back" aria-label="Back to ${kind}s">${CHEV('M15 18l-6-6 6-6')}</a>
 <div class="md-st">${q ? qBadge(st) : iBadge(st)}${d.signedAt ? `<span class="vsign">✓ Signed${d.signedName ? ' by ' + esc(d.signedName) : ''}</span>` : ''}</div>
-${mTap(kind, d, 'details', `<span class="md-h">${q ? 'Quote' : 'Invoice'} #${esc(d.number)} for ${esc(c.name || 'no client')} for ${money(d.total || 0)}</span>${(q ? d.title : d.subject) ? `<span class="md-sub">${esc(q ? d.title : d.subject)}</span>` : ''}
+${mTap(kind, d, 'details', `<span class="md-h">${q ? 'Quote' : 'Invoice'} #${esc(d.number)} for ${esc(c.name || 'no client')} ${q && qHasOpts(d) && !d.chosenOption ? `· ${d.options.length} options from ${money(Math.min(...Object.values(d.optionTotals || {}).map((t) => t.total)))}` : `for ${money(d.total || 0)}`}</span>${(q ? d.title : d.subject) ? `<span class="md-sub">${esc(q ? d.title : d.subject)}</span>` : ''}
 <span class="md-dates"><span><small>${q ? 'Created' : 'Issued'}</small>${fmtDate(((q ? d.createdAt : d.issueDate) || '').slice(0, 10))}</span>${second && second[1] ? `<span><small>${second[0]}</small>${fmtDate(String(second[1]).slice(0, 10))}</span>` : ''}</span>`, 'md-head')}
 <div class="md-acts">${acts.filter(Boolean).join('')}<button type="button" class="btn alt md-more" data-act="mMore" data-kind="${kind}" data-id="${d.id}" aria-label="More actions">⋯</button></div>
 <div class="md-tabs" role="tablist"><button type="button" role="tab" class="on" aria-selected="true" data-act="mTab" data-k="doc">${q ? 'Quote' : 'Invoice'}</button><button type="button" role="tab" aria-selected="false" data-act="mTab" data-k="notes">Notes</button></div>
 <div class="md-pane" data-pane="doc"><section class="md-block"><h2 class="md-sh">Product / Service</h2><div class="md-lh"><strong>Line items</strong><button type="button" class="md-plus" data-act="mEdit" data-kind="${kind}" data-id="${d.id}" data-sec="item" data-i="" aria-label="Add line item">${CHEV('M12 5v14M5 12h14')}</button></div>${items || '<p class="muted md-empty">No line items yet. Tap + to add one.</p>'}</section>
-<section class="md-block md-totals">${totals}</section>${paySec}${viewSec}
+${optSec}<section class="md-block md-totals">${totals}</section>${paySec}${viewSec}
 ${mTextSec(kind, d, 'message', 'Client message', d.notes, 'Add a message for the client')}
 ${mTextSec(kind, d, 'terms', 'Contract / disclaimer', d.disclaimer, 'Add a contract or disclaimer')}</div>
 <div class="md-pane" data-pane="notes" hidden>${mNotesPane(kind, d, d.internalNotes ? mTextSec(kind, d, 'notes', 'Internal notes', d.internalNotes, '') : '')}</div></div>`;
@@ -2608,7 +2711,7 @@ A.mlOpen = (x) => navigate(x.href);
 function jobDoc(j) {
   if (j.items && j.items.length) return j;
   const q = byId(D.quotes, j.quoteId);
-  return q && (q.items || []).length ? { ...j, items: q.items, taxRate: q.taxRate, discountType: q.discountType, discountValue: q.discountValue, subtotal: q.subtotal, discount: q.discount, tax: q.tax, total: q.total, _fromQuote: true } : j;
+  return q && quoteJobItems(q).length ? { ...j, items: quoteJobItems(q), taxRate: q.taxRate, discountType: q.discountType, discountValue: q.discountValue, subtotal: q.subtotal, discount: q.discount, tax: q.tax, total: q.total, _fromQuote: true } : j;
 }
 // the checks the job page makes before saving a visit: times, overlapping jobs, time off, working hours
 function jobScheduleOk(id, body) {
@@ -2769,7 +2872,7 @@ ${quoteSel.size ? `<div class="bulk"><strong>${quoteSel.size} selected</strong><
 ${th('client', 'Client')}${th('number', 'Quote number')}<th>Property</th>${th('created', 'Created')}${th('status', 'Status')}${th('total', 'Total', 'r')}</tr>
 ${list.map((q) => { const c = byId(D.clients, q.clientId) || {}; return `<tr class="crow" data-id="${q.id}"><td><input type="checkbox" class="qsel" value="${q.id}" ${quoteSel.has(q.id) ? 'checked' : ''} aria-label="Select ${esc(q.number)}"></td>
 <td><strong>${esc(cname(q))}</strong></td><td>${esc(q.number)}${q.title ? `<div>${esc(q.title)}</div>` : ''}</td><td>${esc(c.address || '')}</td><td style="white-space:nowrap">${fmtDate(day(q.createdAt))}</td>
-<td>${qBadge(quoteStatus(q))}${q.zelleSentAt && !q.depositPaidAt ? ' <span class="badge zelle">Zelle sent</span>' : ''}</td><td class="r"><strong>${money(q.total)}</strong></td></tr>`; }).join('') || `<tr><td colspan="7" class="empty">${D.quotes.length ? 'No quotes match these filters' : 'No quotes yet'}</td></tr>`}</table></div></div>`;
+<td>${qBadge(quoteStatus(q))}${q.zelleSentAt && !q.depositPaidAt ? ' <span class="badge zelle">Zelle sent</span>' : ''}</td><td class="r">${qHasOpts(q) && !q.chosenOption ? `<small class="muted qo-from">${q.options.length} options from</small><strong>${money(Math.min(...Object.values(q.optionTotals || {}).map((t) => t.total)))}</strong>` : `<strong>${money(q.total)}</strong>`}</td></tr>`; }).join('') || `<tr><td colspan="7" class="empty">${D.quotes.length ? 'No quotes match these filters' : 'No quotes yet'}</td></tr>`}</table></div></div>`;
     $$('[data-qv]').forEach((s) => s.addEventListener('change', (e) => { quoteView[e.target.dataset.qv] = e.target.value; refresh(); }));
     let t; $('#qq').addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(async () => { quoteView.q = e.target.value; await refresh(); const q = $('#qq'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 250); });
     $('#qSelAll').addEventListener('change', (e) => { list.forEach((q) => (e.target.checked ? quoteSel.add(q.id) : quoteSel.delete(q.id))); refresh(); });
@@ -2791,7 +2894,11 @@ A.exportQuotes = () => downloadCsv('quotes.csv', [['Quote', 'Title', 'Client', '
 A.newQuote = () => navigate('/quotes/new');
 A.editQuote = (d) => navigate('/quotes/view?id=' + d.id);
 A.sendQuote = (d) => sendDialog('quote', byId(D.quotes, d.id));
-A.approveQuote = async (d) => { await api('POST', `/api/quotes/${d.id}/approve`, {}); toast('Quote approved'); refresh(); };
+A.approveQuote = async (d) => {
+  const q = byId(D.quotes, d.id); const go = async (option) => { try { await api('POST', `/api/quotes/${d.id}/approve`, option ? { option } : {}); toast('Quote approved'); mClose(true); refresh(); } catch (x) { toast(x.message, true); } };
+  if (qHasOpts(q) && !q.chosenOption) return qPickOption(q, 'Which option did the client pick?', go); // Good / Better / Best
+  return go();
+};
 A.setDeposit = (d) => {
   const q = byId(D.quotes, d.id);
   const mb = modal(`Set deposit for ${q.number}`, `<form><label>Deposit amount<input type="number" name="depositFee" step="0.01" min="0" required value="${q.depositFee || ''}"></label>
@@ -3162,7 +3269,7 @@ const RP_ICON = '<span class="rj-ico" title="Repeats" aria-label="Repeats">↻</
 function jobPage(main, job, preset) {
   const j = job || {}; const p = preset || {};
   const q = byId(D.quotes, j.quoteId); const st = j.id ? jobStatus(j) : 'upcoming';
-  const items = j.items && j.items.length ? j.items : q ? q.items : [{}];
+  const items = j.items && j.items.length ? j.items : q && quoteJobItems(q).length ? quoteJobItems(q) : [{}];
   const invs = j.id ? jobInvoices(j) : [];
   const team = D.staff.filter((s) => s.status !== 'deactivated' || (j.staffIds || []).includes(s.id));
   main.innerHTML = `<form class="qform jform"><div class="qpage"><div class="qmain">
@@ -3258,7 +3365,12 @@ function mSignPad({ icon, label, amount, save }) {
     b.disabled = true; try { await save(upright()); mPagesClose(); toast('Signature saved'); refresh(); } catch (x) { toast(x.message, true); b.disabled = false; }
   });
 }
-A.mSignQuote = (d) => { const q = byId(D.quotes, d.id); const c = byId(D.clients, q.clientId) || {}; mSignPad({ icon: PI.quote, label: `Quote #${q.number}`, amount: money(q.total || 0), save: (dataUrl) => api('POST', `/api/quotes/${q.id}/signature`, { name: c.name || 'Client', dataUrl }) }); };
+A.mSignQuote = (d) => {
+  const q = byId(D.quotes, d.id); const c = byId(D.clients, q.clientId) || {};
+  const pad = (option) => { const o = option && q.options.find((x) => x.id === option); mSignPad({ icon: PI.quote, label: `Quote #${q.number}${o ? ` · ${o.name}` : ''}`, amount: money(o ? q.optionTotals[o.id].total : q.total || 0), save: (dataUrl) => api('POST', `/api/quotes/${q.id}/signature`, { name: c.name || 'Client', dataUrl, ...(option ? { option } : {}) }) }); };
+  if (qHasOpts(q) && !q.chosenOption) return qPickOption(q, 'Which option is the client signing for?', pad); // Good / Better / Best
+  return pad();
+};
 A.mSignInvoice = (d) => { const i = byId(D.invoices, d.id); const c = byId(D.clients, i.clientId) || {}; mSignPad({ icon: QM.invoice, label: `Invoice #${i.number}`, amount: money(i.total || 0), save: (dataUrl) => api('POST', `/api/invoices/${i.id}/signature`, { name: c.name || 'Client', dataUrl }) }); };
 A.collectSignature = (d) => {
   const j = byId(D.jobs, d.id); const c = byId(D.clients, j.clientId) || {};

@@ -148,28 +148,63 @@ function readHours(raw) { // uses DAYS / HHMM from the team-hours code below (on
 
 // ---------- helpers ----------
 const round2 = (n) => Math.round(n * 100) / 100;
+// Good / Better / Best: a quote can offer 2–3 options. options: [{ id, name, desc }], recommended: an option's id or '', chosenOption: the one the
+// client (or the business) picked when it was approved. Each line item has opt: its option's id, or '' for an item in every option. The quote's
+// totals and deposit are always the chosen option's, or the recommended (else first) one's until a choice is made, so payments, lists and reports
+// work as they do for any quote; optionTotals has every option's.
+const hasOptions = (q) => Array.isArray(q.options) && q.options.length >= 2;
+const optionItems = (q, id) => (q.items || []).filter((i) => !i.opt || i.opt === id);
+const shownOption = (q) => (hasOptions(q) ? q.options.find((o) => o.id === q.chosenOption) || q.options.find((o) => o.id === q.recommended) || q.options[0] : null);
+// the line items that go on the job and invoice: the chosen option's (without their option marks)
+const quoteItems = (q) => (hasOptions(q) ? (q.chosenOption ? optionItems(q, q.chosenOption) : []) : q.items || []).map(({ opt, ...i }) => ({ ...i }));
+function sumItems(doc, items) {
+  const subtotal = round2(items.reduce((s, i) => s + i.qty * i.price, 0));
+  const discount = Math.min(subtotal, round2(doc.discountType === 'percent' ? subtotal * doc.discountValue / 100 : doc.discountValue));
+  const tax = round2((subtotal - discount) * doc.taxRate / 100); const total = round2(subtotal - discount + tax);
+  const depositFee = Math.min(total, round2(doc.depositType === 'percent' ? total * doc.depositValue / 100 : doc.depositValue));
+  return { subtotal, discount, tax, total, depositFee };
+}
 function computeTotals(doc) {
+  // the options (quotes only): 2 or 3, each named; anything else means no options
+  const opts = Array.isArray(doc.options) ? doc.options.slice(0, 3).map((o) => ({ id: /^[a-z0-9]{4,16}$/.test(o && o.id) ? o.id : uid(), name: String((o && o.name) || '').trim().slice(0, 60), desc: String((o && o.desc) || '').trim().slice(0, 500) })) : [];
+  const ids = new Set(opts.map((o) => o.id));
   // price is the client-facing unit price: cost plus a markup (% of cost, or a flat $ per unit). Older items without a cost use their price as the cost.
   doc.items = (doc.items || []).filter((i) => i.desc).map((i) => {
     const cost = Number(i.cost ?? i.price) || 0; const markup = Number(i.markup) || 0; const markupType = i.markupType === 'flat' ? 'flat' : 'percent';
-    return { desc: String(i.desc), details: i.details ? String(i.details) : '', qty: Number(i.qty) || 0, cost, markup, markupType, price: round2(markupType === 'flat' ? cost + markup : cost * (1 + markup / 100)) };
+    return { desc: String(i.desc), details: i.details ? String(i.details) : '', qty: Number(i.qty) || 0, cost, markup, markupType, price: round2(markupType === 'flat' ? cost + markup : cost * (1 + markup / 100)), ...(opts.length >= 2 ? { opt: ids.has(i.opt) ? i.opt : '' } : {}) };
   });
   doc.taxRate = Number(doc.taxRate) || 0;
-  doc.subtotal = round2(doc.items.reduce((s, i) => s + i.qty * i.price, 0));
   // optional discount before tax: a flat amount or a percentage of the subtotal
   doc.discountType = doc.discountType === 'percent' ? 'percent' : 'flat';
   doc.discountValue = Math.max(0, Number(doc.discountValue) || 0);
-  doc.discount = Math.min(doc.subtotal, round2(doc.discountType === 'percent' ? doc.subtotal * doc.discountValue / 100 : doc.discountValue));
-  doc.tax = round2((doc.subtotal - doc.discount) * doc.taxRate / 100);
-  doc.total = round2(doc.subtotal - doc.discount + doc.tax);
   // deposit: a flat fee or a percentage of the total. Older quotes only have depositFee, treated as flat.
   doc.depositType = doc.depositType === 'percent' ? 'percent' : 'flat';
   doc.depositValue = Math.max(0, Number(doc.depositValue ?? doc.depositFee) || 0);
-  doc.depositFee = Math.min(doc.total, round2(doc.depositType === 'percent' ? doc.total * doc.depositValue / 100 : doc.depositValue));
+  if (opts.length >= 2) {
+    doc.options = opts; if (!ids.has(doc.recommended)) doc.recommended = ''; if (!ids.has(doc.chosenOption)) doc.chosenOption = null;
+    doc.optionTotals = Object.fromEntries(opts.map((o) => [o.id, sumItems(doc, optionItems(doc, o.id))]));
+    Object.assign(doc, doc.optionTotals[shownOption(doc).id]);
+  } else {
+    delete doc.options; delete doc.recommended; delete doc.chosenOption; delete doc.optionTotals;
+    Object.assign(doc, sumItems(doc, doc.items));
+  }
   return doc;
 }
+// what a quote shows: one part per option with its own items and totals, or, once one is chosen (or without options), the quote itself
+const quoteParts = (q) => (!hasOptions(q) ? [{ doc: q }] : q.chosenOption ? [{ opt: shownOption(q), chosen: true, doc: { ...q, items: optionItems(q, q.chosenOption) } }]
+  : q.options.map((o) => ({ opt: o, recommended: q.recommended === o.id, doc: { ...q, items: optionItems(q, o.id), ...q.optionTotals[o.id] } })));
+// options need names, and an approved quote needs the option that was picked. Each option needs a line item of its own before the
+// quote goes to the client (sent, or marked Awaiting response); a draft can be saved while its items are still being sorted into options
+function optionsProblem(q) {
+  if (!hasOptions(q)) return '';
+  const unnamed = q.options.findIndex((o) => !o.name); if (unnamed >= 0) return `Give option ${unnamed + 1} a name`;
+  if (q.status !== 'draft') { const e = optionsEmpty(q); if (e) return e; }
+  if (q.status === 'approved' && !q.chosenOption) return 'Choose the option the client picked';
+  return '';
+}
+const optionsEmpty = (q) => { const empty = hasOptions(q) && q.options.find((o) => !q.items.some((i) => i.opt === o.id)); return empty ? `Give the “${empty.name}” option a line item of its own first` : ''; };
 // what the client agreed to when they signed: everything they see on the quote and its deposit payment (not internal notes or the payment switches)
-const QUOTE_TERMS = ['title', 'clientId', 'number', 'status', 'notes', 'disclaimer', 'items', 'taxRate', 'discountType', 'discountValue', 'depositType', 'depositValue', 'depositFee', 'total', 'depositPaidAt', 'depositPaidAmount', 'depositMethod', 'depositReference'];
+const QUOTE_TERMS = ['title', 'clientId', 'number', 'status', 'notes', 'disclaimer', 'items', 'options', 'chosenOption', 'taxRate', 'discountType', 'discountValue', 'depositType', 'depositValue', 'depositFee', 'total', 'depositPaidAt', 'depositPaidAmount', 'depositMethod', 'depositReference'];
 const quoteTerms = (q) => JSON.stringify(QUOTE_TERMS.map((k) => (typeof q[k] === 'string' ? q[k].replace(/\r\n/g, '\n') : q[k] ?? '')));
 // payments are recorded, paid online and refunded through their own endpoints; a quote or invoice edit can never change one
 const PAYMENT_FIELDS = { quotes: ['depositPaidAt', 'depositPaidAmount', 'depositMethod', 'depositReference', 'depositStatus', 'depositRefunds', 'depositPayment'],
@@ -1802,7 +1837,9 @@ app.post('/api/:col', (req, res, next) => {
   if (col === 'clients') { doc.portalToken = token(); doc.smsConsent = b.smsConsent ? { at: new Date().toISOString(), source: 'business' } : null; }
   if (col === 'quotes') {
     doc.number = doc.number || nextNumber('quotes'); doc.status = b.status || 'draft'; doc.token = token();
+    if (!tenancy.has('quoteOptions')) { delete doc.options; delete doc.chosenOption; } // Good / Better / Best is a plan feature
     if (b.taxRate === undefined) doc.taxRate = db.company.taxRate; applyMemberDiscount(doc); computeTotals(doc); // a service plan member's discount
+    const bad = optionsProblem(doc); if (bad) return res.status(400).json({ error: bad });
   }
   if (col === 'invoices') {
     doc.number = doc.number || nextNumber('invoices'); doc.status = b.status || 'draft'; doc.token = token(); doc.paidAt = null;
@@ -1840,14 +1877,17 @@ app.put('/api/:col/:id', (req, res, next) => {
     const r = customNumber(col, req.body.number, req.params.id); if (r.error) return res.status(400).json({ error: r.error }); upd.number = r.number;
   }
   if (col === 'jobs' && isMemberReq(req)) upd = Object.fromEntries(Object.entries(upd).filter(([k]) => MEMBER_JOB_FIELDS.includes(k)));
+  if (col === 'quotes' && !tenancy.has('quoteOptions') && Array.isArray(upd.options) && upd.options.length) delete upd.options; // Good / Better / Best is a plan feature (turning options off always works)
   if (col === 'tasks' || col === 'events') { const bad = calItemProblem({ ...db[col][i], ...upd }); if (bad) return res.status(400).json({ error: bad }); }
   if (col === 'clients' && 'smsConsent' in upd) upd.smsConsent = upd.smsConsent ? db.clients[i].smsConsent || { at: new Date().toISOString(), source: 'business' } : null; // keeps when and where they first agreed
   let doc = { ...db[col][i], ...upd };
   // sent back to the client (Draft or Sent) before any deposit is paid: they approve and sign again, so the old signature goes
   if (col === 'quotes' && ['draft', 'sent'].includes(doc.status) && doc.status !== db.quotes[i].status && !doc.depositPaidAt) {
     doc.signedAt = null; doc.signedName = null; delete doc.signature; if (doc.depositStatus === 'pending') doc.depositStatus = null;
+    doc.chosenOption = null; // they pick an option again
   }
   if (col === 'quotes' || col === 'invoices' || (col === 'jobs' && Array.isArray(doc.items))) computeTotals(doc); // jobs are priced once they have line items
+  if (col === 'quotes') { const bad = optionsProblem(doc); if (bad) return res.status(400).json({ error: bad }); }
   // a signed quote with its deposit paid: any change to it removes the client's signature, once the business confirms (the quote editor asks first).
   // The business then marks it Awaiting response and re-sends it so the client signs again.
   const was = db[col][i];
@@ -1954,7 +1994,7 @@ function signedPdf(kind, d) {
   const top = 150; let ly = top + 8; pdf.text(L, ly, 'RECIPIENT:', { size: 8.5, bold: true, color: INK }); ly += 22; pdf.text(L, ly, c.name || '', { size: 12, bold: true, color: INK }); ly += 16;
   const where = String(d.address || c.address || '').split(',').map((s) => s.trim()).filter(Boolean); const lines = where.length > 2 ? [where.slice(0, -2).join(', '), where.slice(-2).join(', ')] : where.length ? [where.join(', ')] : [];
   for (const t of lines) ly = pdf.para(L, ly, t, 240, { size: 10, color: INK, lineHeight: 14 });
-  const word = job ? 'Job' : q ? 'Quote' : 'Invoice'; const bx = 322; const facts = (job ? [['Scheduled', d.date ? niceDate(d.date) : 'Not Scheduled'], ['Description', d.title || '']] : q ? [['Created', niceDate(String(d.createdAt || '').slice(0, 10))], ['Description', d.title || ''], ['Total', money(d.total || 0)]] : [['Issued', niceDate(d.issueDate)], ['Due', niceDate(d.dueDate)], ['Description', d.subject || ''], ['Total', money(d.total || 0)]]).filter(([, v]) => v);
+  const word = job ? 'Job' : q ? 'Quote' : 'Invoice'; const bx = 322; const facts = (job ? [['Scheduled', d.date ? niceDate(d.date) : 'Not Scheduled'], ['Description', d.title || '']] : q ? [['Created', niceDate(String(d.createdAt || '').slice(0, 10))], ['Description', d.title || ''], ...(hasOptions(d) && d.chosenOption ? [['Option', shownOption(d).name]] : []), ['Total', money(d.total || 0)]] : [['Issued', niceDate(d.issueDate)], ['Due', niceDate(d.dueDate)], ['Description', d.subject || ''], ['Total', money(d.total || 0)]]).filter(([, v]) => v);
   pdf.rect(bx, top, R - bx, 34, { fill: BLUE }); pdf.text(bx + 11, top + 22, `${word} #${d.number}`, { size: 14, bold: true, color: '#ffffff' }); pdf.rect(bx, top + 34, R - bx, facts.length * 21, { fill: GRAY });
   facts.forEach(([k, v], i) => { const ry = top + 34 + i * 21 + 15; pdf.text(bx + 11, ry, k, { size: 10, color: INK }); pdf.text(R - 11, ry, v.length > 28 ? v.slice(0, 27) + '…' : v, { size: 10, color: INK, align: 'right' }); });
   y = Math.max(ly, top + 34 + facts.length * 21) + 16;
@@ -1962,7 +2002,7 @@ function signedPdf(kind, d) {
   const qtyOn = on('showQty'); const unitOn = !job && on('showUnit'); const lineOn = !job && on('showLineTotals'); const cDesc = L + 140; const cQty = job ? R - 6 : unitOn || lineOn ? 400 : R - 6; const cUnit = 474; const descW = (cQty - 36) - cDesc;
   const head = () => { pdf.rect(L, y, R - L, 22, { fill: BLUE }); const o = { size: 10, bold: true, color: '#ffffff' }; pdf.text(L + 6, y + 15, 'Product/Service', o); pdf.text(cDesc + 6, y + 15, 'Description', o); if (qtyOn) pdf.text(cQty, y + 15, 'Qty.', { ...o, align: 'right' }); if (unitOn) pdf.text(cUnit, y + 15, 'Unit price', { ...o, align: 'right' }); if (lineOn) pdf.text(R - 6, y + 15, 'Total', { ...o, align: 'right' }); y += 22; };
   head();
-  for (const it of d.items || []) {
+  for (const it of q && hasOptions(d) ? optionItems(d, shownOption(d).id) : d.items || []) { // a quote with options: the option signed for
     const need = Math.ceil(pdf.width(it.details || '', 10) / Math.max(40, descW)) + String(it.details || '').split('\n').length; if (y + 26 + need * 13 > 720) { pdf.addPage(); y = 64; head(); }
     const tp = y + 16; const a = pdf.para(L + 6, tp, it.desc, 128, { size: 10, color: INK, lineHeight: 13 }); let b = tp; for (const t of String(it.details || '').split('\n').filter((s) => s.trim())) b = pdf.para(cDesc + 6, b, t, descW, { size: 10, color: INK, lineHeight: 13 });
     if (qtyOn) pdf.text(cQty, tp, String(it.qty), { size: 10, color: INK, align: 'right' }); if (unitOn) pdf.text(cUnit, tp, money(it.price), { size: 10, color: INK, align: 'right' }); if (lineOn) pdf.text(R - 6, tp, money(round2(it.qty * it.price)), { size: 10, color: INK, align: 'right' }); y = Math.max(a, b) + 4;
@@ -2114,6 +2154,7 @@ app.delete('/api/email-templates/:key', (req, res) => {
 app.post('/api/quotes/:id/send', async (req, res) => {
   const q = db.quotes.find((x) => x.id === req.params.id);
   if (!q) return res.status(404).json({ error: 'Not found' });
+  const empty = optionsEmpty(q); if (empty) return res.status(400).json({ error: empty }); // every option needs its own line item before the client sees it
   const channels = (req.body.channels && req.body.channels.length) ? req.body.channels : ['email'];
   const link = quoteLink(q); const co = db.company.name;
   const results = [];
@@ -2128,10 +2169,13 @@ app.post('/api/quotes/:id/send', async (req, res) => {
   save(); res.json({ quote: q, results });
 });
 
+// approving a quote with options needs one of them: an option's id → it; nothing needed (no options, or one already chosen) → null; missing → false
+const pickOption = (q, id) => (!hasOptions(q) ? null : q.options.some((o) => o.id === id) ? id : q.chosenOption ? null : false);
 app.post('/api/quotes/:id/approve', (req, res) => {
   const q = db.quotes.find((x) => x.id === req.params.id);
   if (!q) return res.status(404).json({ error: 'Not found' });
-  q.status = req.body.status === 'declined' ? 'declined' : 'approved'; q.respondedAt = iso(new Date()); save(); res.json(q);
+  const approve = req.body.status !== 'declined'; const pick = pickOption(q, req.body.option); if (approve && pick === false) return res.status(400).json({ error: 'Choose the option the client picked' });
+  q.status = approve ? 'approved' : 'declined'; q.respondedAt = iso(new Date()); if (approve && pick) { q.chosenOption = pick; computeTotals(q); } save(); res.json(q);
 });
 
 // a signature collected on the team member's phone: signing accepts the quote, so a draft or sent one is approved too (the same record as the client's own page).
@@ -2139,6 +2183,7 @@ app.post('/api/quotes/:id/approve', (req, res) => {
 app.post('/api/quotes/:id/signature', (req, res) => {
   const q = db.quotes.find((x) => x.id === req.params.id); if (!q) return res.status(404).json({ error: 'Not found' });
   if (!['draft', 'sent', 'approved'].includes(q.status)) return res.status(400).json({ error: 'This quote can’t be signed' });
+  const pick = pickOption(q, req.body && req.body.option); if (pick === false) return res.status(400).json({ error: 'Choose the option the client is signing for' }); if (pick) { q.chosenOption = pick; computeTotals(q); }
   const name = String((req.body && req.body.name) || '').trim().slice(0, 100); if (!name) return res.status(400).json({ error: 'Enter the name of the person signing' });
   const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec((req.body && req.body.dataUrl) || '');
   if (!m || m[1].length < 200) return res.status(400).json({ error: 'Please sign in the box first' });
@@ -2155,8 +2200,9 @@ app.post('/api/quotes/:id/signature', (req, res) => {
 app.post('/api/quotes/:id/convert-to-job', (req, res) => {
   const q = db.quotes.find((x) => x.id === req.params.id);
   if (!q) return res.status(404).json({ error: 'Not found' });
-  const c = findClient(q.clientId);
-  const job = { id: uid(), number: nextNumber('jobs'), clientId: q.clientId, title: q.title || 'Job from ' + q.number, description: q.items.map((i) => `${i.qty} x ${i.desc}`).join(', '), date: req.body.date || daysFromNow(1), startTime: req.body.startTime || '09:00', endTime: req.body.endTime || '11:00', staffIds: req.body.staffIds || [], status: 'scheduled', quoteId: q.id, address: q.address || (c ? c.address : ''), createdAt: iso(new Date()), items: q.items.map((i) => ({ ...i })), taxRate: q.taxRate, discountType: q.discountType, discountValue: q.discountValue };
+  if (hasOptions(q) && !q.chosenOption) return res.status(400).json({ error: 'Mark the quote approved with the option the client picked first' });
+  const c = findClient(q.clientId); const qItems = quoteItems(q);
+  const job = { id: uid(), number: nextNumber('jobs'), clientId: q.clientId, title: q.title || 'Job from ' + q.number, description: qItems.map((i) => `${i.qty} x ${i.desc}`).join(', '), date: req.body.date || daysFromNow(1), startTime: req.body.startTime || '09:00', endTime: req.body.endTime || '11:00', staffIds: req.body.staffIds || [], status: 'scheduled', quoteId: q.id, address: q.address || (c ? c.address : ''), createdAt: iso(new Date()), items: qItems, taxRate: q.taxRate, discountType: q.discountType, discountValue: q.discountValue };
   computeTotals(job); autoForms(job, (currentUser(req) || {}).name);
   db.jobs.push(job); if (q.status !== 'approved') q.status = 'approved'; save(); pushScheduleChange(null, job, currentUser(req)); res.status(201).json(job);
 });
@@ -2165,7 +2211,7 @@ app.post('/api/jobs/:id/create-invoice', (req, res) => {
   const j = db.jobs.find((x) => x.id === req.params.id);
   if (!j) return res.status(404).json({ error: 'Not found' });
   const q = j.quoteId && db.quotes.find((x) => x.id === j.quoteId);
-  const items = j.items && j.items.length ? j.items : q ? q.items : [{ desc: j.title, qty: 1, price: 0 }]; // the job's own lines win
+  const items = j.items && j.items.length ? j.items : q && quoteItems(q).length ? quoteItems(q) : [{ desc: j.title, qty: 1, price: 0 }]; // the job's own lines win (a quote with options: the chosen one's)
   const inv = computeTotals({ id: uid(), number: nextNumber('invoices'), clientId: j.clientId, jobId: j.id, subject: j.title, status: 'draft', issueDate: iso(new Date()), dueDate: iso(new Date()), paymentTerms: '0', paidAt: null, token: token(), createdAt: iso(new Date()), notes: '', items: items.map((i) => ({ ...i })), taxRate: j.items && j.items.length ? j.taxRate : q ? q.taxRate : db.company.taxRate, ...(() => { const src = j.items && j.items.length ? j : q || {}; return { discountType: src.discountType, discountValue: src.discountValue }; })() });
   applyMemberDiscount(inv); computeTotals(inv); // a service plan member's discount, when the job had none
   db.invoices.push(inv); save(); res.status(201).json(withStatus(inv));
@@ -2260,25 +2306,36 @@ function docPdf(kind, d) {
   // line items
   const cQty = 392; const cUnit = 474; const descW = (showQty || showUnit ? 300 : 400);
   const head = () => { pdf.rect(L, y, R - L, 24, { fill: '#f1f5fb' }); pdf.text(L + 8, y + 16, 'Description', { size: 9, bold: true, color: soft }); if (showQty) pdf.text(cQty, y + 16, 'Qty', { size: 9, bold: true, color: soft, align: 'right' }); if (showUnit) pdf.text(cUnit, y + 16, 'Unit price', { size: 9, bold: true, color: soft, align: 'right' }); if (showLine) pdf.text(R - 8, y + 16, 'Total', { size: 9, bold: true, color: soft, align: 'right' }); y += 24; };
-  y += 14; head();
-  for (const i of d.items || []) {
-    const lines = Math.ceil(pdf.width(i.details || '', 9.5) / descW) + String(i.details || '').split('\n').length;
-    if (y + 34 + (i.details ? lines * 13 : 0) > 740) { pdf.addPage(); y = 64; head(); }
-    const top = y + 18; let yy = pdf.para(L + 8, top, i.desc, descW, { size: 10.5, bold: true, lineHeight: 14 });
-    for (const t of String(i.details || '').split('\n').filter((t) => t.trim())) yy = pdf.para(L + 8, yy + 1, t, descW, { size: 9.5, color: gray, lineHeight: 13 });
-    if (showQty) pdf.text(cQty, top, String(i.qty), { size: 10.5, align: 'right' });
-    if (showUnit) pdf.text(cUnit, top, money(i.price), { size: 10.5, align: 'right' });
-    if (showLine) pdf.text(R - 8, top, money(round2(i.qty * i.price)), { size: 10.5, align: 'right' });
-    y = yy + 6; pdf.line(L, y, R, y);
-  }
-  // totals
-  y += 10; const tl = 340;
+  const tl = 340;
   const row = (k, v, bold) => { room(22); pdf.text(tl, y + 14, k, { size: 10.5, bold }); pdf.text(R - 8, y + 14, v, { size: 10.5, bold, align: 'right' }); y += 22; };
-  row('Subtotal', money(d.subtotal || 0));
-  if (d.discount > 0) row(`Discount${d.discountType === 'percent' ? ` (${d.discountValue}%)` : ''}`, '-' + money(d.discount));
-  if (Number(d.taxRate)) row(`${Number(d.taxRate) === Number(co.taxRate) && co.taxName ? co.taxName : 'Tax'} (${d.taxRate}%)`, money(d.tax || 0));
-  row('Total', money(d.total || 0), true);
-  if (q && d.depositFee > 0) row(`Required deposit${d.depositType === 'percent' ? ` (${d.depositValue}%)` : ''}`, money(d.depositFee));
+  // a quote with options (Good / Better / Best): each option under its own heading with its items and totals, or only the chosen one
+  const parts = q ? quoteParts(d) : [{ doc: d }];
+  if (parts.length > 1) { y += 16; y = pdf.para(L, y, `${parts.length} options: choose one when you approve`, R - L, { size: 10.5, color: gray, lineHeight: 14 }); }
+  for (const part of parts) {
+    const dd = part.doc;
+    if (part.opt) {
+      room(80); y += 30; pdf.text(L, y, `${part.chosen ? 'Chosen option: ' : ''}${part.opt.name}${part.recommended ? '  (Recommended)' : ''}`, { size: 13, bold: true }); if (parts.length > 1) pdf.text(R, y, money(dd.total || 0), { size: 13, bold: true, align: 'right' }); y += 4;
+      if (part.opt.desc) for (const t of part.opt.desc.split('\n').filter((t) => t.trim())) y = pdf.para(L, y + 12, t, R - L, { size: 10, color: gray, lineHeight: 13 }) - 12;
+    }
+    y += 14; head();
+    for (const i of dd.items || []) {
+      const lines = Math.ceil(pdf.width(i.details || '', 9.5) / descW) + String(i.details || '').split('\n').length;
+      if (y + 34 + (i.details ? lines * 13 : 0) > 740) { pdf.addPage(); y = 64; head(); }
+      const top = y + 18; let yy = pdf.para(L + 8, top, i.desc, descW, { size: 10.5, bold: true, lineHeight: 14 });
+      for (const t of String(i.details || '').split('\n').filter((t) => t.trim())) yy = pdf.para(L + 8, yy + 1, t, descW, { size: 9.5, color: gray, lineHeight: 13 });
+      if (showQty) pdf.text(cQty, top, String(i.qty), { size: 10.5, align: 'right' });
+      if (showUnit) pdf.text(cUnit, top, money(i.price), { size: 10.5, align: 'right' });
+      if (showLine) pdf.text(R - 8, top, money(round2(i.qty * i.price)), { size: 10.5, align: 'right' });
+      y = yy + 6; pdf.line(L, y, R, y);
+    }
+    // totals
+    y += 10;
+    row('Subtotal', money(dd.subtotal || 0));
+    if (dd.discount > 0) row(`Discount${dd.discountType === 'percent' ? ` (${dd.discountValue}%)` : ''}`, '-' + money(dd.discount));
+    if (Number(dd.taxRate)) row(`${Number(dd.taxRate) === Number(co.taxRate) && co.taxName ? co.taxName : 'Tax'} (${dd.taxRate}%)`, money(dd.tax || 0));
+    row(part.opt && parts.length > 1 ? `${part.opt.name} total` : 'Total', money(dd.total || 0), true);
+    if (q && dd.depositFee > 0) row(`Required deposit${dd.depositType === 'percent' ? ` (${dd.depositValue}%)` : ''}`, money(dd.depositFee));
+  }
   if (!q) {
     const paid = (d.payments || []).reduce((n, pm) => n + (Number(pm.amount) || 0), 0);
     if (d.depositApplied > 0) row('Deposit collected', '-' + money(d.depositApplied));
@@ -2797,6 +2854,11 @@ const QV_CSS = `.qv-biz{position:sticky;top:0;z-index:40;display:flex;align-item
 .qv-tot{display:grid;grid-template-columns:1fr 244px;border-top:3px solid #d5dbdf;margin-top:32px}.qv-tot>div:last-child{border-left:1px solid #d5dbdf;border-bottom:3px solid #d5dbdf}
 .qv-row{display:flex;justify-content:space-between;gap:12px;padding:10px 0 8px 8px;border-bottom:1px solid #e4e1dc;font-size:14px}.qv-row:last-child{border-bottom:0}
 .qv-text{margin-top:20px;font-size:14px;line-height:1.45;white-space:pre-line}
+.qv-pick{margin:28px 0 0;font-size:15px;font-weight:600}.qv-opt{margin-top:24px;padding:20px 20px 4px;border:2px solid #e4e1dc;border-radius:12px}.qv-opt.rec{border-color:var(--brand)}.qv-opt .qv-items{margin-top:16px}.qv-opt .qv-tot{margin-top:16px}
+.qv-oh h2{margin:0;font-size:19px}.qv-on{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px}.qv-oh p{margin:8px 0 0;font-size:14px;line-height:1.45;color:#5b6b70;white-space:pre-line}
+.qv-rec{padding:3px 10px;border-radius:99px;background:var(--brand);color:#fff;font-size:12px;font-weight:700}.qv-ot{margin-left:auto;font-size:19px;font-weight:700}
+.qv-btn.qv-obtn{height:auto;min-height:40px;padding:8px 12px;text-align:center;line-height:1.3}
+@media (max-width:900px){.qv-opt{padding:16px 16px 4px;margin:20px -4px 0}.qv-opt .qv-items{margin-top:4px}.qv-ot{font-size:18px}}
 .qv-btn{display:flex;align-items:center;justify-content:center;width:100%;height:40px;border:1px solid #d7d3cc;border-radius:8px;background:#fff;color:#032b3a;font:inherit;font-size:14px;font-weight:600;cursor:pointer;text-decoration:none}.qv-btn:hover{background:#f6f5f3}
 .qv-btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}.qv-btn.primary:hover{filter:brightness(.94)}.qv-act form{margin:0}
 .qv-chg>summary{list-style:none}.qv-chg>summary::-webkit-details-marker{display:none}.qv-chg[open]>summary{display:none}
@@ -2835,14 +2897,20 @@ function quoteView(q, c, { signed, depositSection, sent, preview, business }) {
   const addr = q.address || (c && c.address) || '';
   const taxName = Number(q.taxRate) === Number(co.taxRate) && co.taxName ? co.taxName : 'Tax';
   const row = (l, v) => `<div class="qv-row"><span>${l}</span><span>${v}</span></div>`;
-  const totals = row('Subtotal', money(q.subtotal)) + (q.discount > 0 ? row(`Discount${q.discountType === 'percent' ? ` (${q.discountValue}%)` : ''}`, '−' + money(q.discount)) : '')
-    + (Number(q.taxRate) ? row(`${esc(taxName)} (${q.taxRate}%)`, money(q.tax)) : '') + row('Total', money(q.total))
-    + (q.depositFee > 0 ? row(`Deposit${q.depositType === 'percent' ? ` (${q.depositValue}%)` : ''}`, money(q.depositFee)) : '');
-  const items = (q.items || []).map((i) => `<div class="qv-it"><div class="qv-it-d"><strong>${esc(i.desc)}</strong>${i.details ? `<p>${esc(i.details)}</p>` : ''}</div>
+  const totalsOf = (d) => row('Subtotal', money(d.subtotal)) + (d.discount > 0 ? row(`Discount${d.discountType === 'percent' ? ` (${d.discountValue}%)` : ''}`, '−' + money(d.discount)) : '')
+    + (Number(d.taxRate) ? row(`${esc(taxName)} (${d.taxRate}%)`, money(d.tax)) : '') + row('Total', money(d.total))
+    + (d.depositFee > 0 ? row(`Deposit${d.depositType === 'percent' ? ` (${d.depositValue}%)` : ''}`, money(d.depositFee)) : '');
+  const itemsOf = (d) => (d.items || []).map((i) => `<div class="qv-it"><div class="qv-it-d"><strong>${esc(i.desc)}</strong>${i.details ? `<p>${esc(i.details)}</p>` : ''}</div>
 <div class="qv-n"><span class="qv-l">Qty.</span>${esc(String(i.qty))}</div><div class="qv-n"><span class="qv-l">Unit price</span>${money(i.price)}</div><div class="qv-n"><span class="qv-l">Total</span>${money(i.qty * i.price)}</div></div>`).join('');
-  const depositNote = open && q.depositFee > 0 ? `<div class="qv-note">${q.depositPaidAt ? `<strong>Deposit paid: ${money(q.depositPaidAmount ?? q.depositFee)}.</strong> This estimate was updated. After you approve, you’ll sign it again.` : `<strong>Deposit: ${money(q.depositFee)}${q.depositType === 'percent' ? ` (${q.depositValue}% of the total)` : ''}.</strong> After you approve, you’ll sign the estimate and pay this deposit before work begins.`}</div>` : '';
+  // Good / Better / Best: each option with its own items and totals until one is chosen; then only that one
+  const parts = quoteParts(q); const many = parts.length > 1;
+  const optHead = (p) => (p.opt ? `<div class="qv-oh" id="opt-${esc(p.opt.id)}"><div class="qv-on"><h2>${p.chosen ? 'Your choice: ' : ''}${esc(p.opt.name)}</h2>${p.recommended ? '<span class="qv-rec">Recommended</span>' : ''}${many ? `<span class="qv-ot">${money(p.doc.total)}</span>` : ''}</div>${p.opt.desc ? `<p>${esc(p.opt.desc)}</p>` : ''}</div>` : '');
+  const body = parts.map((p) => `<section class="${p.opt ? 'qv-opt' : ''}${p.recommended ? ' rec' : ''}">${optHead(p)}<div class="qv-items"><div class="qv-ih"><span>Product / Service</span><span>Qty.</span><span>Unit Price</span><span>Total</span></div>${itemsOf(p.doc)}</div>
+<div class="qv-tot"><div></div><div>${totalsOf(p.doc)}</div></div></section>`).join('');
+  const depositNote = open && q.depositFee > 0 ? `<div class="qv-note">${q.depositPaidAt ? `<strong>Deposit paid: ${money(q.depositPaidAmount ?? q.depositFee)}.</strong> This estimate was updated. After you approve, you’ll sign it again.` : `<strong>Deposit: ${many && q.depositType === 'percent' ? `${q.depositValue}% of the option you choose` : `${money(q.depositFee)}${q.depositType === 'percent' ? ` (${q.depositValue}% of the total)` : ''}`}.</strong> After you approve, you’ll sign the estimate and pay this deposit before work begins.`}</div>` : '';
   const actions = open ? `${sent ? '<div class="qv-msg" role="status">Thanks! We got your changes and will send you an updated estimate.</div>' : ''}
-<form method="post" action="/p/quote/${esc(q.token)}/respond"><button class="qv-btn primary" name="r" value="approved">Approve</button></form>
+${many ? `<div class="qv-note"><strong>Choose an option to approve.</strong></div>${parts.map((p) => `<form method="post" action="/p/quote/${esc(q.token)}/respond"><input type="hidden" name="opt" value="${esc(p.opt.id)}"><button class="qv-btn${p.recommended ? ' primary' : ''} qv-obtn" name="r" value="approved">Approve ${esc(p.opt.name)} · ${money(p.doc.total)}</button></form>`).join('')}`
+  : `<form method="post" action="/p/quote/${esc(q.token)}/respond"><button class="qv-btn primary" name="r" value="approved">Approve</button></form>`}
 <details class="qv-chg"><summary class="qv-btn">Request Changes</summary><form method="post" action="/p/quote/${esc(q.token)}/changes">
 <label for="qvChg">What would you like changed?</label><textarea id="qvChg" name="message" required maxlength="2000"></textarea><button class="qv-btn primary">Send to ${esc(co.name)}</button></form></details>
 ${chg ? `<div class="qv-note">You asked for changes on ${esc(niceDate(q.changesRequestedAt.slice(0, 10)))}: “${esc(q.changeRequests[q.changeRequests.length - 1].text)}”</div>` : ''}${depositNote}
@@ -2855,8 +2923,7 @@ ${chg ? `<div class="qv-note">You asked for changes on ${esc(niceDate(q.changesR
 <div class="qv-hd"><div class="qv-hd-l"><div class="qv-no"><span>Estimate #${esc(q.number)}</span><span class="qv-pill ${tone}">${esc(label)}</span></div>
 <div class="qv-who">${esc((c && c.name) || '')}</div>${addr ? `<div>${esc(addr)}</div>` : ''}${c && c.phone ? `<a class="qv-ph" href="tel:${esc(c.phone)}">${esc(c.phone)}</a>` : ''}</div>
 <div class="qv-hd-r"><span>Sent on</span><span>${esc(niceDate(q.sentAt || String(q.createdAt || '').slice(0, 10)))}</span></div></div>
-<div class="qv-items"><div class="qv-ih"><span>Product / Service</span><span>Qty.</span><span>Unit Price</span><span>Total</span></div>${items}</div>
-<div class="qv-tot"><div></div><div>${totals}</div></div>
+${many ? `<p class="qv-pick">${parts.length} options: choose the one that suits you.</p>` : ''}${body}
 ${q.notes ? `<div class="qv-text">${esc(q.notes)}</div>` : ''}${q.disclaimer ? `<div class="qv-text">${esc(q.disclaimer)}</div>` : ''}
 <a class="qv-btn qv-pdf-m" href="${pdf}">Download PDF</a></div></details></div>
 ${act.trim() ? `<div class="qv-act">${act}</div>` : ''}</div></main></div></div><script src="/phone.js?v=2" defer></script></body></html>`;
@@ -2897,9 +2964,10 @@ setMode('drawn');})();</script>`;
 // email the business when a client approves, declines or signs a quote, and log it with the other notifications
 function tellBusinessQuote(q, status) {
   const c = findClient(q.clientId);
-  if (status === 'approved') pushTo(usersWhoCan('quotes'), 'quoteApproved', { title: 'Client approved quote', body: `${c ? c.name : 'A client'} approved quote ${q.number}${q.title ? ` (${q.title})` : ''}`, url: `/quotes/edit?id=${q.id}` });
+  const picked = hasOptions(q) && q.chosenOption ? `, choosing ${shownOption(q).name}` : ''; // Good / Better / Best: which option
+  if (status === 'approved') pushTo(usersWhoCan('quotes'), 'quoteApproved', { title: 'Client approved quote', body: `${c ? c.name : 'A client'} approved quote ${q.number}${q.title ? ` (${q.title})` : ''}${picked}`, url: `/quotes/edit?id=${q.id}` });
   if (!db.company.email) return;
-  const what = `quote ${q.number}${q.title ? ` (${q.title})` : ''}`;
+  const what = `quote ${q.number}${q.title ? ` (${q.title})` : ''}${status === 'approved' ? picked : ''}`;
   const next = status === 'declined' ? 'You can follow up with them, or edit the quote and send it again.'
     : status === 'approved' ? `They’ll sign it next${q.depositFee > 0 ? `, then pay the ${money(q.depositFee)} deposit` : ''}.`
       : q.depositFee > 0 ? `Next they pay the ${money(q.depositFee)} deposit.` : 'It’s ready to schedule as a job.';
@@ -3167,7 +3235,10 @@ app.post('/p/quote/:token/changes', (req, res) => {
 app.post('/p/quote/:token/respond', (req, res) => {
   const q = db.quotes.find((x) => x.token === req.params.token);
   if (!q) return res.status(404).send('Not found');
-  if (['sent', 'draft'].includes(q.status)) { q.status = req.body.r === 'declined' ? 'declined' : 'approved'; q.respondedAt = iso(new Date()); save(); tellBusinessQuote(q, q.status); }
+  if (['sent', 'draft'].includes(q.status)) {
+    const approve = req.body.r !== 'declined'; const pick = pickOption(q, req.body.opt); if (approve && pick === false) return res.redirect(`/p/quote/${q.token}`); // each option has its own Approve button
+    q.status = approve ? 'approved' : 'declined'; q.respondedAt = iso(new Date()); if (approve && pick) { q.chosenOption = pick; computeTotals(q); } save(); tellBusinessQuote(q, q.status);
+  }
   res.redirect(`/p/quote/${q.token}`);
 });
 app.post('/p/quote/:token/sign', (req, res) => {
