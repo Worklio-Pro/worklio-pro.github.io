@@ -1775,3 +1775,16 @@ label.bk-auto input{width:auto;margin:0}
 .rpm-grp{margin:14px 0 -12px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
 .rpm-row{padding:14px 0;font-size:16px;line-height:1.35}.rpm-row small{margin-top:3px;font-size:14px}.rpm-row i{width:50px;height:30px}.rpm-row i::after{width:24px;height:24px}.rpm-row .sw:checked+i::after{left:23px}
 .rpm+.rp-save{position:sticky;bottom:calc(66px + env(safe-area-inset-bottom));margin:0 -14px;border-radius:0}.rpm+.rp-save .btn{flex:1}
+
+/* phones: the More menu fills the screen above the tab bar, with rows as tall as the rest of the app */
+@media (max-width:760px){
+ #side{width:100%;left:-100%;padding:calc(14px + env(safe-area-inset-top)) 16px 24px;transition:left .22s ease-out;overflow-y:auto;-webkit-overflow-scrolling:touch}
+ #side.open{left:0}
+ #side a.nav-link,#side .side-settings a,.side-set-btn{display:flex;align-items:center;gap:16px;min-height:52px;padding:12px 14px;font-size:17px;border-radius:12px}
+ #side .nav-ic{width:24px;height:24px}#side .nav-ic svg{width:22px;height:22px}
+ #side .grp{font-size:13px;padding:22px 14px 8px}
+ .side-back{min-height:48px;padding:12px 18px 12px 12px;font-size:17px;border-radius:12px}
+ .side-title{margin:0 14px 6px;font-size:26px}
+ .side-div{margin:12px 14px}
+ .side-search input{height:50px;font-size:16px;border-radius:12px}
+}

@@ -574,8 +574,8 @@ $('#menuBtn').addEventListener('click', () => $('#side').classList.toggle('open'
 A.installLater = installHide;
 A.installApp = async () => { const e = installEvt; installEvt = null; if (!e) return; e.prompt(); const r = await e.userChoice.catch(() => null); installHide(); if (r && r.outcome === 'accepted') toast('Installed. Open it from your Home Screen.'); };
 A.toggleSide = (d, el) => { const open = $('#side').classList.toggle('open'); el.setAttribute('aria-expanded', open); };
-// tapping outside the open menu drawer closes it
-document.addEventListener('click', (e) => { const side = $('#side'); if (side.classList.contains('open') && !e.target.closest('#side, #menuBtn, [data-act="toggleSide"]')) { side.classList.remove('open'); const b = $('#bnav [data-act="toggleSide"]'); if (b) b.setAttribute('aria-expanded', 'false'); } });
+// tapping outside the open menu drawer closes it (not a tap on Settings or Go Back, whose button the redrawn menu has already replaced)
+document.addEventListener('click', (e) => { const side = $('#side'); if (side.classList.contains('open') && e.target.isConnected && !e.target.closest('#side, #menuBtn, [data-act="toggleSide"]')) { side.classList.remove('open'); const b = $('#bnav [data-act="toggleSide"]'); if (b) b.setAttribute('aria-expanded', 'false'); } });
 // form submit handlers are async: show any save error (e.g. "Another invoice already uses number …") instead of failing silently
 // an error whose stack never touches this site's code came from something else on the page (a browser extension, say): not the client's or team's to see
 const foreignError = (err) => { const st = String(err.stack || ''); return /:\d+:\d+/.test(st) && !st.includes(location.origin); };
