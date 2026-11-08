@@ -1937,10 +1937,16 @@ function quoteItemsView(d) {
 }
 // which option the client picked (Mark approved, a signature on the phone): a popup on computers, a sheet on phones
 function qPickOption(q, title, then) {
-  const html = `<p class="muted" style="margin-top:0">This quote has ${q.options.length} options. Pick the one the client chose; its line items go on the job and invoice.</p><div class="qo-pick">${q.options.map((o) => `<button type="button" class="jf-row" data-o="${esc(o.id)}"><span class="jf-main"><strong>${esc(o.name)}${q.recommended === o.id ? ' <span class="qo-rec">Recommended</span>' : ''}</strong>${o.desc ? `<small>${esc(o.desc)}</small>` : ''}</span><strong>${money(((q.optionTotals || {})[o.id] || {}).total || 0)}</strong></button>`).join('')}</div>`;
+  const html = `<p class="muted" style="margin-top:0">This quote has ${q.options.length} options. Pick the one the client chose; its line items go on the job and invoice.</p><div class="qo-pick">${q.options.map((o) => `<button type="button" class="jf-row" data-o="${esc(o.id)}"><span class="jf-main"><strong>${esc(o.name)}${q.recommended === o.id ? ' <span class="qo-rec">Recommended</span>' : ''}</strong>${o.desc ? `<small>${esc(o.desc)}</small>` : ''}</span>${(q.optionTotals || {})[o.id] ? `<strong>${money(q.optionTotals[o.id].total)}</strong>` : ''}</button>`).join('')}</div>`;
   const box = phoneMq.matches ? mSheet(title, html) : modal(title, html);
   box.addEventListener('click', (e) => { const b = e.target.closest('[data-o]'); if (!b) return; closeModal(); mClose(true); then(b.dataset.o); });
 }
+// saving an approved quote with options needs the option the client picked: when it isn't set (the box is in another section, or on a phone
+// sheet that doesn't show it), ask for it and save again with the answer
+const withChoice = (q, save) => save({}).catch((x) => {
+  if (!/Choose the option the client picked/.test(x.message) || !qHasOpts(q)) throw x;
+  return new Promise((res, rej) => qPickOption(q, 'Which option did the client pick?', (id) => save({ chosenOption: id }).then(res, rej)));
+});
 // the quote editor (computers): Offer options, then a row per option (name, what's included, recommended) and an Option box on each line item;
 // the totals under the items are the option shown to the client first, with every option's total above them
 function quoteOptionsEditor(form, d) {
@@ -1993,16 +1999,18 @@ ${opts.length > 2 ? `<button type="button" class="icon-btn qo-rm" data-q="rm" ar
 // phones: the quote's options, from the Options section of the quote page
 function mQuoteOptions(kind, d) {
   let opts = qHasOpts(d) ? d.options.map((o) => ({ ...o })) : [{ id: optId(), name: OPT_NAMES[0], desc: '' }, { id: optId(), name: OPT_NAMES[1], desc: '' }]; let rec = d.recommended || '';
+  const itemOpt = (d.items || []).map((i) => i.opt || ''); // each line item's option, set here too, so a sent quote's options save with their items in one go
   const f = mSheet('Options', '<div class="mqo"></div>', { full: true, foot: `${mSaveBtn('Save options')}${qHasOpts(d) ? '<button type="button" class="btn alt" data-q="off">Turn off</button>' : ''}` });
   const box = $('.mqo', f);
   const draw = () => { box.innerHTML = `<p class="muted mqo-p">Offer the client ${opts.length} options, like Good, Better and Best. They pick one when they approve. Then give each line item its option.</p>
 ${opts.map((o, i) => `<div class="mqo-o" data-o="${o.id}"><div class="mqo-oh"><strong>Option ${i + 1}</strong>${opts.length > 2 ? `<button type="button" class="link-btn" data-q="rm">Remove</button>` : ''}</div>
 ${mField('Name', `<input class="qo-name" maxlength="60" value="${esc(o.name)}" placeholder="${OPT_NAMES[i]}">`)}${mField('What’s included', `<textarea class="qo-desc" rows="2" maxlength="500" placeholder="Optional">${esc(o.desc || '')}</textarea>`)}
 <label class="jf-share"><input type="radio" name="qoRec" value="${o.id}" ${rec === o.id ? 'checked' : ''}><span>Recommended</span></label></div>`).join('')}
-${opts.length < 3 ? '<button type="button" class="btn alt" data-q="add">+ Add option</button>' : ''}`; };
+${opts.length < 3 ? '<button type="button" class="btn alt" data-q="add">+ Add option</button>' : ''}
+${(d.items || []).length ? `<h3 class="mqo-ih">Line items</h3><p class="muted mqo-p">Pick each item’s option. “All options” items are in every option.</p>${d.items.map((it, k) => mField(esc(it.desc), `<select class="mqo-io" data-k="${k}"><option value="">All options</option>${opts.map((o, i) => `<option value="${o.id}" ${itemOpt[k] === o.id ? 'selected' : ''}>${esc(o.name.trim() || OPT_NAMES[i])}</option>`).join('')}</select>`)).join('')}` : ''}`; };
   draw();
   f.addEventListener('input', (e) => { const r = e.target.closest('.mqo-o'); if (!r) return; const o = opts.find((x) => x.id === r.dataset.o); if (e.target.classList.contains('qo-name')) o.name = e.target.value; if (e.target.classList.contains('qo-desc')) o.desc = e.target.value; });
-  f.addEventListener('change', (e) => { if (e.target.name === 'qoRec') rec = e.target.value; });
+  f.addEventListener('change', (e) => { if (e.target.name === 'qoRec') rec = e.target.value; if (e.target.classList.contains('mqo-io')) itemOpt[Number(e.target.dataset.k)] = e.target.value; if (e.target.classList.contains('qo-name')) draw(); });
   f.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-q]'); if (!b) return; const k = b.dataset.q;
     if (k === 'add') { opts.push({ id: optId(), name: OPT_NAMES[opts.length] || '', desc: '' }); draw(); }
@@ -2010,7 +2018,7 @@ ${opts.length < 3 ? '<button type="button" class="btn alt" data-q="add">+ Add op
     if (k === 'off') { if (!confirm('Turn off options? Every line item stays on the quote, and the client approves the whole quote.')) return; try { await mSave(kind, d, { options: [] }, 'Options turned off'); } catch (x) { toast(x.message, true); } }
   });
   onSubmit(f, () => {
-    const items = (d.items || []).map((i) => ({ ...i, opt: opts.some((o) => o.id === i.opt) ? i.opt : '' }));
+    const items = (d.items || []).map((i, k) => ({ ...i, opt: opts.some((o) => o.id === itemOpt[k]) ? itemOpt[k] : '' }));
     return mSave(kind, d, { options: opts.map((o, i) => ({ id: o.id, name: o.name.trim() || OPT_NAMES[i], desc: (o.desc || '').trim() })), recommended: rec, items }, 'Options saved');
   });
 }
@@ -2050,7 +2058,7 @@ ${planHas('zelle') ? switchRow('allowZelle', 'Zelle', d.allowZelle !== 'off' && 
     body.items = readItems(form).filter((i) => i.desc); if (form._removeSig) body.removeSignature = true;
     if (!body.items.length) return toast('Add at least one line item', true);
     delete body.qoRec; if (form._optBody) Object.assign(body, form._optBody()); // Good / Better / Best
-    const saved = d.id ? await api('PUT', `/api/quotes/${d.id}`, body) : await api('POST', '/api/quotes', body);
+    const saved = await withChoice({ ...d, ...body }, (extra) => (d.id ? api('PUT', `/api/quotes/${d.id}`, { ...body, ...extra }) : api('POST', '/api/quotes', { ...body, ...extra })));
     if ($('#discDefault', form).checked) { await api('PUT', '/api/company', { quoteDisclaimer: body.disclaimer }); company.quoteDisclaimer = body.disclaimer; }
     toast('Quote saved'); await navigate('/quotes/view?id=' + saved.id);
   });
@@ -2286,7 +2294,8 @@ async function mSave(kind, d, patch, msg) {
     if (!(await saveJobWithRepeat(d, patch, repeatFromHere(d), null, msg || 'Saved'))) { const b = $('#msheet .ms-save'); if (b) b.disabled = false; return; }
     mClose(); return refresh();
   }
-  await api('PUT', `/api/${kind}s/${d.id}`, { ...patch, ...(mUnsign === d.id ? { removeSignature: true } : {}) });
+  const put = (extra) => api('PUT', `/api/${kind}s/${d.id}`, { ...patch, ...extra, ...(mUnsign === d.id ? { removeSignature: true } : {}) });
+  await (kind === 'quote' ? withChoice({ ...d, ...patch }, put) : put({})); // a quote with options: which one the client picked, if it's needed
   mClose(); toast(msg || 'Saved'); return refresh();
 }
 const onSubmit = (form, fn) => form.addEventListener('submit', async (e) => {
