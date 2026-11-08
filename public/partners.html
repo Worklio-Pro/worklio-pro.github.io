@@ -103,6 +103,8 @@
         <label>Other profiles (optional)<input name="handle" maxlength="200" placeholder="e.g. YouTube and Instagram links"></label>
         <div class="cr-row"><label>Your trade<input name="trade" maxlength="100" placeholder="e.g. Pressure washing"></label>
           <label>Do you run a trade business?<select name="runsBusiness"><option value="yes">Yes</option><option value="no">No</option></select></label></div>
+        <div class="cr-row"><label>How should we pay you?<select name="payMethod" id="crPayM"><option>PayPal</option><option>Venmo</option><option>Zelle</option><option>Cash App</option><option>Bank transfer</option><option>Check</option><option>Other</option></select></label>
+          <label id="crPayH">Your PayPal email<input name="payHandle" maxlength="150"></label></div>
         <label>Anything else? (optional)<textarea name="message" rows="3" maxlength="2000" placeholder="What you post about, what you use to run your business today"></textarea></label>
         <label class="cr-hp" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label>
         <button class="btn" id="crGo">Send application</button>
@@ -152,6 +154,10 @@
       if (p.offer) document.getElementById('crOffer').textContent = p.offer.charAt(0).toUpperCase() + p.offer.slice(1);
       if (p.pitch) document.getElementById('crPitch').textContent = p.pitch;
     }).catch(() => {});
+    // payout details: the handle for PayPal, Venmo, Zelle, Cash App or Other; bank transfer and check details come later by email
+    const pm = document.getElementById('crPayM'); const ph = document.getElementById('crPayH');
+    const paySync = () => { const v = pm.value; ph.style.display = v === 'Bank transfer' || v === 'Check' ? 'none' : ''; ph.firstChild.textContent = { PayPal: 'Your PayPal email', Venmo: 'Your Venmo username', Zelle: 'Email or phone for Zelle', 'Cash App': 'Your Cash App $cashtag', Other: 'Your payout details' }[v] || ''; };
+    pm.addEventListener('change', paySync); paySync();
     const f = document.getElementById('crForm'); const go = document.getElementById('crGo');
     f.addEventListener('submit', async (e) => {
       e.preventDefault(); go.disabled = true; go.textContent = 'Sending…'; document.getElementById('crErr').innerHTML = '';

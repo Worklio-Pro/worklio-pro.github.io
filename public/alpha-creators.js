@@ -28,7 +28,7 @@ ${apps.map((c) => `<tr><td class="nm">${esc(c.name)}<div class="sm">${esc(c.emai
 <td><div class="acts"><button type="button" class="btn alt sm" data-act="crOpen" data-id="${c.id}">View</button><button type="button" class="btn sm" data-act="crApprove" data-id="${c.id}">Approve</button></div></td></tr>`).join('')}</tbody></table></div></div>` : ''}
 <div class="card" style="max-width:960px"><h2>Creators</h2>${rest.length ? `<div class="tablewrap"><table class="acc"><thead><tr><th>Creator</th><th>Visits</th><th>Sign-ups</th><th>Paying</th><th>Earned</th><th>To pay</th><th>Status</th></tr></thead><tbody>
 ${rest.map((c) => `<tr class="click" data-act="crOpen" data-id="${c.id}" style="cursor:pointer"><td class="nm">${esc(c.name)}<div class="sm disc-code">${esc(c.code || '')}</div></td><td>${c.totals.clicks}<div class="sm">${c.totals.clicksMonth} this month</div></td><td>${c.totals.signups}</td><td>${c.totals.paying}</td>
-<td>${crUsd(c.totals.earned)}${c.totals.pending ? `<div class="sm">+${crUsd(c.totals.pending)} on hold</div>` : ''}</td><td><strong>${crUsd(c.totals.owed)}</strong></td><td><span class="cstatus ${CR_STATUS[c.status][1]}">${CR_STATUS[c.status][0]}</span></td></tr>`).join('')}</tbody></table></div>`
+<td>${crUsd(c.totals.earned)}${c.totals.pending ? `<div class="sm">+${crUsd(c.totals.pending)} on hold</div>` : ''}</td><td><strong>${crUsd(c.totals.owed)}</strong><div class="sm">${esc(c.payTo || 'No payout details')}${c.totals.owed > 0 && !c.w9At ? ' · No W-9' : ''}</div></td><td><span class="cstatus ${CR_STATUS[c.status][1]}">${CR_STATUS[c.status][0]}</span></td></tr>`).join('')}</tbody></table></div>`
     : `<p class="muted">No creators yet. Approve an application, or add someone you’ve already talked to with Add creator.</p>`}</div>
 ${declined.length ? `<details class="card" style="max-width:960px"><summary><strong>Declined (${declined.length})</strong></summary><div class="tablewrap"><table class="acc"><tbody>${declined.map((c) => `<tr><td class="nm">${esc(c.name)}<div class="sm">${esc(c.email)}</div></td><td class="sm">${esc(c.network || '')} ${esc(c.audience || '')}</td><td><div class="acts"><button type="button" class="btn alt sm" data-act="crOpen" data-id="${c.id}">View</button></div></td></tr>`).join('')}</tbody></table></div></details>` : ''}`;
 }
@@ -51,6 +51,7 @@ A.crOpen = (d) => {
 <div class="row">${field('channel', 'Main channel', 'https://…', 300)}${field('handle', 'Other profiles')}</div>
 <div class="row">${field('network', 'Network', 'e.g. TikTok', 40)}${field('audience', 'Audience', 'e.g. 10,000–50,000', 40)}${field('trade', 'Trade', '', 100)}</div>
 <div class="row">${field('payTo', 'Pay them by', 'e.g. PayPal: mike@example.com')}${c.code ? field('code', 'Code', '', 30) : ''}</div>
+<label class="switchline"><input type="checkbox" name="w9" ${c.w9At ? 'checked' : ''}> W-9 received${c.w9At ? ` (${fmtDate(c.w9At)})` : ' (US creators: before the first payout)'}</label>
 <label class="switchline"><input type="checkbox" name="ownTerms" ${own ? 'checked' : ''}> Their own commission instead of the program’s (${esc(CR.programTerms)})</label>
 <div class="row" id="crTerms" ${own ? '' : 'hidden'}><label>Flat per paying business ($)<input name="flat" type="number" min="0" step="0.01" value="${esc(own ? c.terms.flat : CR.program.flat)}"></label><label>Percent of each month (%)<input name="percent" type="number" min="0" max="100" step="0.01" value="${esc(own ? c.terms.percent : CR.program.percent)}"></label><label>For how many months<input name="months" type="number" min="0" max="36" value="${esc(own ? c.terms.months : CR.program.months)}"></label></div>
 <p class="muted" style="font-size:12px;margin:-4px 0 8px">A change applies to new sign-ups. Businesses that already signed up keep the terms they came with.</p>
@@ -63,11 +64,11 @@ ${c.status !== 'applied' && c.status !== 'declined' ? `<h3 class="hc-h3">Payouts
   f.ownTerms.addEventListener('change', () => { $('#crTerms', f).hidden = !f.ownTerms.checked; });
   f.addEventListener('submit', async (e) => {
     e.preventDefault(); const b = Object.fromEntries(new FormData(f));
-    b.terms = f.ownTerms.checked ? { flat: b.flat, percent: b.percent, months: b.months } : null; delete b.flat; delete b.percent; delete b.months; delete b.ownTerms;
+    b.w9 = f.w9.checked; b.terms = f.ownTerms.checked ? { flat: b.flat, percent: b.percent, months: b.months } : null; delete b.flat; delete b.percent; delete b.months; delete b.ownTerms;
     try { crSet(await api('PUT', `/api/platform/partners/${c.id}`, b)); await load(); toast('Saved'); A.crOpen({ id: c.id }); } catch (x) { toast(x.message, true); }
   });
   const pay = $('#crpay', m);
-  if (pay) pay.addEventListener('submit', async (e) => { e.preventDefault(); try { crSet(await api('POST', `/api/platform/partners/${c.id}/payouts`, Object.fromEntries(new FormData(pay)))); toast('Payout recorded'); A.crOpen({ id: c.id }); } catch (x) { toast(x.message, true); } });
+  if (pay) pay.addEventListener('submit', async (e) => { e.preventDefault(); if (!c.w9At && !confirm(`There’s no W-9 on file for ${c.name}. Record this payout anyway?`)) return; try { crSet(await api('POST', `/api/platform/partners/${c.id}/payouts`, Object.fromEntries(new FormData(pay)))); toast('Payout recorded'); A.crOpen({ id: c.id }); } catch (x) { toast(x.message, true); } });
 };
 A.crWelcome = async (d) => { const r = await api('GET', `/api/platform/partners/${d.id}/welcome`); await navigator.clipboard.writeText(r.welcome).then(() => toast('Welcome message copied: paste it into an email or DM'), () => toast('Couldn’t copy', true)); };
 A.crSendStats = async (d, el) => { el.disabled = true; try { crSet(await api('POST', `/api/platform/partners/${d.id}/send-stats`, {})); toast('Stats link emailed'); A.crOpen({ id: d.id }); } finally { el.disabled = false; } };
