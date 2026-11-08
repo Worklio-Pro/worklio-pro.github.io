@@ -733,7 +733,9 @@ table.domains td{vertical-align:middle}.dom-acts{display:flex;gap:6px;justify-co
 #supportBar{display:flex;align-items:center;gap:10px;padding:8px 28px;background:var(--warn-bg);color:var(--warn-fg);border-bottom:1px solid var(--warn-border);font-size:14px}
 #supportBar span{flex:1}#supportBar[hidden]{display:none}
 #expiryBar{display:flex;align-items:center;gap:12px;padding:8px 28px;background:var(--info-bg);color:var(--info-fg);border-bottom:1px solid var(--line);font-size:14px}#expiryBar span{flex:1}#expiryBar a:not(.btn){color:inherit}#expiryBar .btn{white-space:nowrap}#expiryBar[hidden]{display:none}
-@media (max-width:900px){#expiryBar{padding:8px 14px;flex-wrap:wrap}}
+#textsBar{display:flex;align-items:center;gap:12px;padding:8px 28px;background:var(--info-bg);color:var(--info-fg);border-bottom:1px solid var(--line);font-size:14px}#textsBar span{flex:1}#textsBar .btn{white-space:nowrap}#textsBar[hidden]{display:none}
+#textsBar.full{background:var(--warn-bg);color:var(--warn-fg);border-bottom-color:var(--warn-border)}#textsBar .tb-x{background:none;border:0;color:inherit;font-size:20px;line-height:1;padding:2px 6px;cursor:pointer;opacity:.75}#textsBar .tb-x:hover{opacity:1}
+@media (max-width:900px){#expiryBar,#textsBar{padding:8px 14px;flex-wrap:wrap}}
 #installBar{display:flex;align-items:center;gap:12px;padding:10px 8px 10px 14px;background:var(--card);color:var(--text);border-bottom:1px solid var(--line);font-size:14px;line-height:1.4;box-shadow:0 2px 10px rgba(15,23,42,.06)}#installBar[hidden]{display:none}
 #installBar span{flex:1;min-width:0}#installBar .btn{white-space:nowrap}
 .ib-icon{width:40px;height:40px;border-radius:9px;flex-shrink:0}.ib-share{vertical-align:-3px;color:var(--link)}

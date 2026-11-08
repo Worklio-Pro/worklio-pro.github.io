@@ -337,19 +337,33 @@ function toE164(phone) {
   return digits ? '+' + digits : '';
 }
 // texts a month: each plan's smsLimit (0 = no limit) caps what an account sends through the platform's Twilio number.
-// db.smsUsage = { month: 'YYYY-MM', sent, warned }; the owner is emailed once a month when the limit is reached.
+// db.smsUsage = { month: 'YYYY-MM', sent, warned, warned80 }; the owner is emailed once a month at 80% (warned80) and once when the limit is reached (warned).
 const smsMonth = () => new Date().toISOString().slice(0, 7);
 function smsUsage() {
   const plan = tenancy.planOf(tenancy.current()); const u = db.smsUsage && db.smsUsage.month === smsMonth() ? db.smsUsage : { month: smsMonth(), sent: 0 };
   return { sent: u.sent || 0, limit: Number(plan.smsLimit) || 0, plan: plan.name };
 }
+const SMS_WARN_AT = 0.8; // the owner is told when this share of the month's texts is used (and the app shows a banner)
+function smsWarnOwner(title, message) {
+  const o = db.users.find((x) => x.role === 'owner');
+  if (o && o.email) sendTemplate('accountActivity', o.email, { title, message, link: `${baseUrl()}/settings/billing` }, { server: true }).catch(() => {});
+}
+// after a text goes out (or before one is blocked): email the owner once a month at 80%, and once when they're all used
+function smsWarnings() {
+  const u = smsUsage(); if (!u.limit || !db.smsUsage) return;
+  const m = smsMonth(); const name = db.company.name || tenancy.current().name; const n = (x) => x.toLocaleString('en-US');
+  if (u.sent >= u.limit) {
+    if (db.smsUsage.warned === m) return;
+    db.smsUsage.warned = m; db.smsUsage.warned80 = m; save();
+    smsWarnOwner('You’ve used this month’s text messages', `${name} has sent ${n(u.limit)} text messages this month, which is what the ${u.plan} plan includes. Texts to clients won’t go out until the 1st; emails still do. To send more now, change your plan in Account and billing.`);
+  } else if (u.sent >= Math.ceil(u.limit * SMS_WARN_AT) && db.smsUsage.warned80 !== m) {
+    db.smsUsage.warned80 = m; save();
+    smsWarnOwner(`You’ve used ${Math.floor((u.sent / u.limit) * 100)}% of this month’s text messages`, `${name} has sent ${n(u.sent)} of the ${n(u.limit)} text messages the ${u.plan} plan includes this month, so ${n(u.limit - u.sent)} are left. Once they’re used, texts to clients won’t go out until the 1st; emails still do. To get more, change your plan in Account and billing.`);
+  }
+}
 function smsAtLimit() {
   const u = smsUsage(); if (!u.limit || u.sent < u.limit) return null;
-  if (db.smsUsage.warned !== smsMonth()) { // tell the owner once a month
-    db.smsUsage.warned = smsMonth(); save();
-    const o = db.users.find((x) => x.role === 'owner'); const t = tenancy.current();
-    if (o && o.email) sendTemplate('accountActivity', o.email, { title: 'You’ve used this month’s text messages', message: `${db.company.name || t.name} has sent ${u.limit.toLocaleString('en-US')} text messages this month, which is what the ${u.plan} plan includes. Texts to clients won’t go out until the 1st; emails still do. To send more now, change your plan in Account and billing.`, link: `${baseUrl()}/settings/billing` }, { server: true }).catch(() => {});
-  }
+  smsWarnings(); // in case the limit was reached another way (a move to a plan with fewer texts)
   return { status: 'failed', detail: `This month’s ${u.limit.toLocaleString('en-US')} texts on the ${u.plan} plan are used. Texts start again on the 1st, or change plan in Account and billing.` };
 }
 async function sendSms(to, body, { server = false } = {}) {
@@ -366,7 +380,7 @@ async function sendSms(to, body, { server = false } = {}) {
         body: new URLSearchParams(params),
       });
       const j = await r.json().catch(() => ({}));
-      if (r.ok && !server) { const m = smsMonth(); if (!db.smsUsage || db.smsUsage.month !== m) db.smsUsage = { month: m, sent: 0, warned: (db.smsUsage || {}).warned || '' }; db.smsUsage.sent++; save(); }
+      if (r.ok && !server) { const m = smsMonth(); if (!db.smsUsage || db.smsUsage.month !== m) db.smsUsage = { month: m, sent: 0, warned: (db.smsUsage || {}).warned || '', warned80: (db.smsUsage || {}).warned80 || '' }; db.smsUsage.sent++; save(); smsWarnings(); }
       return r.ok ? { status: 'sent', detail: `Twilio ${j.sid || ''}`.trim() } : { status: 'failed', detail: `Twilio ${r.status}${j.code ? ' (error ' + j.code + ')' : ''}: ${j.message || 'request rejected'}` };
     } catch (e) { return { status: 'failed', detail: e.message }; }
   }
@@ -1510,6 +1524,7 @@ function accountInfo() {
     cardSetupType: secrets().stripeAccountId ? secrets().stripeAccountType || 'standard' : stripeKey() ? 'server' : null, payoutBank: secrets().stripeBank || null,
     expiry: (() => { const x = expiryOf(t); return x && { ...x, when: whenText(x) }; })(),
     paused: pausedInfo(t),
+    texts: (() => { const u = smsUsage(); return u.limit && tenancy.has('sms') ? { sent: u.sent, limit: u.limit, warnAt: SMS_WARN_AT, plan: u.plan } : null; })(), // texts this month (the app's banner at 80% and 100%)
     industries: industries.CHOICES, // the Industry choices in Company Profile
     featureList: tenancy.FEATURES.filter((f) => f.key !== 'ai' || tenancy.aiForBusinesses()).map(({ key, label, desc }) => ({ key, label, desc, beta: tenancy.isBeta(key), included: tenancy.featuresOf(t).has(key) })), alwaysIncluded: tenancy.ALWAYS_INCLUDED,
   };
