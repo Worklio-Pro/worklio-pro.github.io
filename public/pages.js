@@ -2809,11 +2809,34 @@ async function pushOffHere() {
   const s = await pushSubHere(); if (!s) return;
   await api('POST', '/api/auth/push/unsubscribe', { endpoint: s.endpoint }).catch(() => {}); await s.unsubscribe();
 }
+// calendar link: this login's private iCal feed (server.js, calendarFeed), for Google Calendar, Outlook and Apple Calendar
+const calScopeRows = (F, cur) => !F.canAll ? '' : `<div class="choose-list" role="radiogroup" aria-label="What the calendar shows">${[['mine', 'Just my work', 'Jobs, tasks and events you’re assigned to, and your time off'], ['all', 'Everyone’s schedule', 'Every team member’s jobs, tasks and events, with who’s on each']].map(([v, l, s]) => `<label class="choose-row"><input type="radio" name="calScope" value="${v}" ${cur === v ? 'checked' : ''}><span><strong>${l}</strong><small class="muted" style="display:block">${s}</small></span></label>`).join('')}</div>`;
+function calCard(F) {
+  const noStaff = !F.hasStaff && (F.on ? F.scope : 'mine') === 'mine' ? `<div class="notice">Your login isn’t linked to a team member, so no work is assigned to you and your calendar will be empty.${F.canAll ? ' Choose <strong>Everyone’s schedule</strong>, or ask' : ' Ask'} the account owner to link you in Manage Team.</div>` : '';
+  const head = '<h2>Calendar link</h2><p class="muted">See your work in Google Calendar, Outlook or Apple Calendar. Changes you make here show there on their own. It only goes one way: change jobs here, not in your calendar app.</p>';
+  if (!F.on) return `${head}${noStaff}${calScopeRows(F, 'mine')}<button type="button" class="btn" id="calOn">Get my calendar link</button>`;
+  return `${head}${noStaff}
+<div style="display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 10px"><a class="btn" href="${esc(F.google)}" target="_blank" rel="noopener">Add to Google Calendar</a><a class="btn alt" href="${esc(F.webcal)}">Add to Apple Calendar or Outlook</a></div>
+<p class="muted" style="margin:0">Or copy your link and paste it into your calendar app (in Outlook on the web: <strong>Add calendar → Subscribe from web</strong>; in Google Calendar on a computer: <strong>Other calendars → + → From URL</strong>).</p>
+<div class="copy-row"><input readonly value="${esc(F.url)}" onclick="this.select()" aria-label="Your calendar link"><button type="button" class="btn alt sm" data-act="copyInput">Copy</button></div>
+<p class="muted" style="font-size:13px">Keep this link to yourself: anyone who has it can see your schedule. Google Calendar checks for changes every few hours, so a change can take up to a day to show there. Apple Calendar and Outlook check more often. ${F.fetchedAt ? `Last checked by a calendar app: ${esc(fmtDate(F.fetchedAt))}.` : 'No calendar app has checked it yet.'}</p>
+${calScopeRows(F, F.scope)}
+<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px"><button type="button" class="btn alt sm" id="calReset">Get a new link</button><button type="button" class="btn alt sm" id="calOff">Turn off</button></div>`;
+}
+function wireCal(box, F) {
+  box.innerHTML = calCard(F);
+  const call = async (m, p, body, msg) => { try { const N = await api(m, p, body); wireCal(box, N); if (msg) toast(msg); } catch (err) { toast(err.message, true); wireCal(box, F); } };
+  const picked = () => { const r = box.querySelector('input[name=calScope]:checked'); return r ? r.value : 'mine'; };
+  $('#calOn', box)?.addEventListener('click', () => call('POST', '/api/auth/calendar-feed', { scope: picked() }, 'Your calendar link is ready'));
+  if (F.on) box.querySelectorAll('input[name=calScope]').forEach((r) => r.addEventListener('change', () => call('POST', '/api/auth/calendar-feed', { scope: r.value }, 'Saved. Your calendar shows the change the next time it checks.')));
+  $('#calReset', box)?.addEventListener('click', () => { if (confirm('Get a new link? The old one stops working, so you’ll need to add the new one to your calendar app again (and remove the old calendar there).')) call('POST', '/api/auth/calendar-feed/reset', {}, 'New link ready. Add it to your calendar app.'); });
+  $('#calOff', box)?.addEventListener('click', () => { if (confirm('Turn off your calendar link? Your calendar app stops getting your work. Remove the calendar there too.')) call('DELETE', '/api/auth/calendar-feed', null, 'Calendar link turned off'); });
+}
 const apCard = (t, label, cur) => `<button type="button" class="ap-card ${cur === t ? 'on' : ''}" data-act="setTheme" data-t="${t}" aria-pressed="${cur === t}"><span class="ap-pic ap-${t}" aria-hidden="true">${t === 'system' ? '<i class="ap-half"></i>' : ''}<b></b><b></b><u></u><u></u></span><span class="ap-name">${label}</span></button>`;
 PAGES['/settings/preferences'] = {
   title: 'Preferences',
   async render(main) {
-    const P = await api('GET', '/api/auth/push'); const capable = pushCapable(); let here = !!(await pushSubHere().catch(() => null));
+    const [P, F] = await Promise.all([api('GET', '/api/auth/push'), api('GET', '/api/auth/calendar-feed').catch(() => ({ allowed: false }))]); const capable = pushCapable(); let here = !!(await pushSubHere().catch(() => null));
     const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     const quotes = canDo('quotes') && planHas('quotes');
     const kinds = [['overview', 'Today’s work overview', 'Each morning, if there are jobs today', true], ['schedule', 'Today’s schedule changed', 'A job today is added, moved, reassigned or cancelled', true],
@@ -2827,7 +2850,9 @@ PAGES['/settings/preferences'] = {
 <div class="qcard pref-card"><h2>Push notifications</h2><p class="muted">Receive push notifications on your phone, tablet or computer. Turn them on for each device you use.</p>
 ${why ? `<div class="notice">${why}</div>` : ''}
 <label class="sw-row"><span>Notifications on this device</span><input type="checkbox" class="sw" id="pushHere" ${here ? 'checked' : ''} ${why ? 'disabled' : ''}><i></i></label>
-${kinds.map(([k, label, note]) => `<label class="sw-row"><span>${label}<small class="muted">${note}</small></span><input type="checkbox" class="sw" data-push="${k}" ${P.prefs[k] ? 'checked' : ''}><i></i></label>`).join('')}</div>`;
+${kinds.map(([k, label, note]) => `<label class="sw-row"><span>${label}<small class="muted">${note}</small></span><input type="checkbox" class="sw" data-push="${k}" ${P.prefs[k] ? 'checked' : ''}><i></i></label>`).join('')}</div>
+${F.allowed ? '<div class="qcard pref-card" id="calendar"></div>' : ''}`;
+    if (F.allowed) { wireCal($('#calendar', main), F); if (location.hash === '#calendar') $('#calendar', main).scrollIntoView({ block: 'start' }); }
     const kindBoxes = $$('[data-push]', main); const dim = () => kindBoxes.forEach((c) => { c.disabled = !here; }); dim();
     const box = $('#pushHere', main);
     box.addEventListener('change', async () => {

@@ -436,7 +436,7 @@ app.use((req, res, next) => {
   }
   tenancy.expireIfDue(r.tenant); // its last day of access has passed
   // paused: the team can still log in and look around (read-only, see pausedGuard); clients' quote, pay, portal and booking pages stay closed
-  const clientSide = isApi ? req.path.startsWith('/api/portal/') || req.path === '/api/stripe/webhook' : /^\/(p|pay|refer)\/|^\/(client-portal|book)$/.test(req.path);
+  const clientSide = isApi ? req.path.startsWith('/api/portal/') || req.path === '/api/stripe/webhook' : /^\/(p|pay|refer|cal)\/|^\/(client-portal|book)$/.test(req.path);
   if (r.tenant.status === 'suspended' && clientSide) {
     const msg = `${r.tenant.expiredOn ? `This account’s access ended on ${esc(new Date(r.tenant.expiredOn + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }))}.` : 'This account is paused.'}${P.contactEmail ? ` Contact ${esc(P.contactEmail)} for help.` : ''}`;
     return isApi ? res.status(403).json({ error: r.tenant.expiredOn ? 'This account’s access has ended' : 'This account is paused' }) : res.status(403).send(notice(r.tenant.expiredOn ? 'Access ended' : 'Account paused', msg));
@@ -507,7 +507,7 @@ app.use((req, res, next) => {
   const p = req.path;
   if (currentUser(req)) ideasHint(req, res, true);
   if (p.startsWith('/api/')) return PUBLIC_API(req) || currentUser(req) ? next() : res.status(401).json({ error: 'Please log in' });
-  if (p === '/login' || p === '/login/handoff' || p === '/ideas/sso' || p === '/manifest.webmanifest' || p === '/support-login' || p === '/client-portal' || p.startsWith('/p/') || p.startsWith('/pay/') || p.startsWith('/refer/') || p === '/book' || p === '/card' || p.startsWith('/card/') || p.startsWith('/uploads/') || /\.(js|css|png|jpe?g|gif|webp|svg|ico)$/i.test(p)) return next();
+  if (p === '/login' || p === '/login/handoff' || p === '/ideas/sso' || p === '/manifest.webmanifest' || p === '/support-login' || p === '/client-portal' || p.startsWith('/p/') || p.startsWith('/pay/') || p.startsWith('/refer/') || p.startsWith('/cal/') || p === '/book' || p === '/card' || p.startsWith('/card/') || p.startsWith('/uploads/') || /\.(js|css|png|jpe?g|gif|webp|svg|ico)$/i.test(p)) return next();
   if (currentUser(req)) return next();
   res.redirect('/login' + (p !== '/' ? '?next=' + encodeURIComponent(req.url) : ''));
 });
@@ -522,7 +522,7 @@ const roleValid = (r) => (r === 'admin' ? customRolesOn() : teamRoles().some((x)
 const defaultRole = () => (teamRoles().find((r) => r.id === 'technician') || teamRoles()[0] || { id: 'admin' }).id;
 const can = (u, key) => !!u && rolesLib.can(teamRoles(), roleKey(u), key);
 // a support session works like the owner, but can't change the owner's own login, the subscription, or support access itself
-const SUPPORT_BLOCKED = /^\/api\/(auth\/(password|profile|hours|push(\/.*)?)|account\/(billing|support-access)(\/.*)?)$/;
+const SUPPORT_BLOCKED = /^\/api\/(auth\/(password|profile|hours|push(\/.*)?|calendar-feed(\/.*)?)|account\/(billing|support-access)(\/.*)?)$/;
 app.use('/api', (req, res, next) => {
   if (req.method !== 'GET' && currentUser(req) && req._support && SUPPORT_BLOCKED.test(req.path)) return res.status(403).json({ error: 'Support sessions can’t change this. Ask the account owner.' });
   next();
@@ -1470,6 +1470,90 @@ app.post('/api/auth/password', (req, res) => {
   const mine = sha(cookies(req).sid || ''); // keep this session, sign out everywhere else
   for (const [sk, s] of Object.entries(db.sessions)) if (s.userId === u.id && sk !== mine) delete db.sessions[sk];
   save(); res.json({ ok: true });
+});
+
+// ---------- calendar feed: each login's private iCal link (Settings → Preferences) ----------
+// Google Calendar, Outlook and Apple Calendar subscribe to /cal/<token>.ics and fetch it again every few hours. It's one-way: changes made here show there.
+// u.calFeed = { token, scope: 'mine' (visits assigned to their team member) | 'all' (everyone's, needs the Calendar permission), createdAt, fetchedAt }
+// Never prices; the client's phone only for logins that can see clients. Paused or ended accounts stop serving it (see the account middleware)
+const feedOk = (u) => can(u, 'schedule') || can(u, 'jobs.view');
+const feedScope = (u) => (u.calFeed && u.calFeed.scope === 'all' && can(u, 'schedule') ? 'all' : 'mine');
+function feedView(u) {
+  const f = u.calFeed; const st = staffOfUser(u); const base = { allowed: feedOk(u), canAll: can(u, 'schedule'), hasStaff: !!st };
+  if (!f) return { ...base, on: false };
+  const url = `${baseUrl()}/cal/${f.token}.ics`; const webcal = url.replace(/^https?:/, 'webcal:');
+  return { ...base, on: true, scope: feedScope(u), url, webcal, google: `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(webcal)}`, createdAt: f.createdAt, fetchedAt: f.fetchedAt || null };
+}
+const feedUser = (req) => { const u = currentUser(req); if (!u) return null; if (!feedOk(u)) throw Object.assign(new Error('Your access level doesn’t include the calendar. Ask the account owner.'), { status: 403 }); return u; };
+const feedRoute = (fn) => (req, res) => { try { const u = feedUser(req); if (!u) return res.status(401).json({ error: 'Please log in' }); fn(u, req.body || {}); save(); res.json(feedView(u)); } catch (e) { res.status(e.status || 500).json({ error: e.message }); } };
+app.get('/api/auth/calendar-feed', (req, res) => { const u = currentUser(req); if (!u) return res.status(401).json({ error: 'Please log in' }); res.json(feedView(u)); });
+app.post('/api/auth/calendar-feed', feedRoute((u, b) => { // turn it on, or change what it shows (the link stays the same)
+  u.calFeed = u.calFeed || { token: crypto.randomBytes(24).toString('hex'), scope: 'mine', createdAt: new Date().toISOString() };
+  if (b.scope) { if (b.scope === 'all' && !can(u, 'schedule')) throw Object.assign(new Error('Your access level doesn’t include everyone’s calendar'), { status: 403 }); u.calFeed.scope = b.scope === 'all' ? 'all' : 'mine'; }
+}));
+app.post('/api/auth/calendar-feed/reset', feedRoute((u) => { if (!u.calFeed) throw Object.assign(new Error('Your calendar link isn’t on'), { status: 400 }); Object.assign(u.calFeed, { token: crypto.randomBytes(24).toString('hex'), createdAt: new Date().toISOString(), fetchedAt: null }); }));
+app.delete('/api/auth/calendar-feed', feedRoute((u) => { delete u.calFeed; }));
+
+// iCalendar text (RFC 5545): escape text, fold lines at 75 bytes, CRLF endings
+const icsText = (s) => String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+function icsFold(line) {
+  const out = []; let cur = ''; let bytes = 0;
+  for (const ch of line) { const n = Buffer.byteLength(ch); if (bytes + n > (out.length ? 74 : 75)) { out.push(cur); cur = ''; bytes = 0; } cur += ch; bytes += n; }
+  out.push(cur); return out.join('\r\n ');
+}
+const icsUtc = (d) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+const icsDay = (ymd) => String(ymd).replace(/-/g, '');
+// "2026-11-09" + "14:30" in the account's time zone (applyTimezone set process.env.TZ for this request) → a UTC stamp
+const icsAt = (ymd, hm) => icsUtc(new Date(`${ymd}T${hm}:00`));
+const addHour = (hm) => { const [h, m] = String(hm).split(':').map(Number); return h >= 23 ? '23:59' : `${String(h + 1).padStart(2, '0')}:${String(m || 0).padStart(2, '0')}`; };
+// one event: all day when there's no start time (multi-day for time off), else start/end, an hour long when there's no end
+function icsEvent({ uid: id, date, to, start, end, summary, location, description, url, status }) {
+  const L = ['BEGIN:VEVENT', `UID:${id}`, `DTSTAMP:${icsUtc(new Date())}`];
+  if (!start) L.push(`DTSTART;VALUE=DATE:${icsDay(date)}`, `DTEND;VALUE=DATE:${icsDay(addDaysYmd(to || date, 1))}`);
+  else L.push(`DTSTART:${icsAt(date, start)}`, `DTEND:${icsAt(date, end && end > start ? end : addHour(start))}`);
+  L.push(`SUMMARY:${icsText(summary)}`);
+  if (location) L.push(`LOCATION:${icsText(location)}`);
+  if (description) L.push(`DESCRIPTION:${icsText(description)}`);
+  if (url) L.push(`URL:${url}`);
+  if (status) L.push(`STATUS:${status}`);
+  L.push('END:VEVENT'); return L;
+}
+// what goes in the feed: from 60 days back to 400 days ahead; cancelled jobs and finished tasks are left out
+function calendarFeed(u) {
+  const scope = feedScope(u); const st = staffOfUser(u); const mine = (ids) => scope === 'all' || (!!st && (ids || []).includes(st.id));
+  const from = addDaysYmd(localNow().date, -60); const until = addDaysYmd(localNow().date, 400); const inRange = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d || '') && d >= from && d <= until;
+  const host = tenancy.hostOnly(new URL(baseUrl()).host); const phones = can(u, 'clients.view');
+  const names = (ids) => (ids || []).map((id) => (db.staff.find((s) => s.id === id) || {}).name).filter(Boolean).join(', ');
+  const clientLines = (c) => (c ? [`Client: ${c.name}`, ...(phones && c.phone ? [`Phone: ${c.phone}`] : [])] : []);
+  const timed = (x) => (x.anytime || !x.startTime ? {} : { start: x.startTime, end: x.endTime });
+  const L = ['BEGIN:VCALENDAR', 'VERSION:2.0', `PRODID:-//${icsText(tenancy.platform().settings.productName || 'Worklio Pro')}//Calendar feed//EN`, 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+    `X-WR-CALNAME:${icsText(`${db.company.name || 'Work'}${scope === 'all' ? '' : ` (${u.name})`}`)}`, `X-WR-CALDESC:${icsText(scope === 'all' ? 'Everyone’s jobs, tasks and events' : 'Your jobs, tasks and events')}`,
+    'REFRESH-INTERVAL;VALUE=DURATION:PT1H', 'X-PUBLISHED-TTL:PT1H'];
+  if (feedOk(u)) {
+    for (const j of db.jobs) {
+      if (j.status === 'cancelled' || !inRange(j.date) || !mine(j.staffIds)) continue; const c = findClient(j.clientId);
+      L.push(...icsEvent({ uid: `job-${j.id}@${host}`, date: j.date, ...timed(j), summary: c ? `${j.title || 'Job'} · ${c.name}` : j.title || 'Job', location: j.address,
+        description: [`Job #${j.number}${j.status === 'completed' ? ' (completed)' : ''}`, ...clientLines(c), ...(scope === 'all' && names(j.staffIds) ? [`Team: ${names(j.staffIds)}`] : []), ...(j.description ? ['', j.description] : []), '', `${baseUrl()}/jobs/edit?id=${j.id}`].join('\n'),
+        url: `${baseUrl()}/jobs/edit?id=${j.id}` }));
+    }
+    for (const [col, word] of [['tasks', 'Task'], ['events', '']]) for (const x of db[col] || []) {
+      if (x.done || !inRange(x.date) || !mine(x.staffIds)) continue; const c = findClient(x.clientId);
+      L.push(...icsEvent({ uid: `${col}-${x.id}@${host}`, date: x.date, ...timed(x), summary: `${word ? word + ': ' : ''}${x.title}${c ? ` · ${c.name}` : ''}`, location: x.address,
+        description: [...clientLines(c), ...(scope === 'all' && names(x.staffIds) ? [`Team: ${names(x.staffIds)}`] : []), ...(x.description ? ['', x.description] : [])].join('\n').trim() }));
+    }
+    for (const r of db.timeOff || []) {
+      if (r.status !== 'approved' || !(r.to >= from && r.from <= until) || !mine([r.staffId])) continue; const who = (db.staff.find((s) => s.id === r.staffId) || {}).name || '';
+      L.push(...icsEvent({ uid: `timeoff-${r.id}@${host}`, date: r.from, to: r.start ? '' : r.to, ...(r.start ? { start: r.start, end: r.end } : {}), summary: scope === 'all' ? `${who}: time off` : 'Time off' }));
+    }
+  }
+  L.push('END:VCALENDAR'); return L.map(icsFold).join('\r\n') + '\r\n';
+}
+app.get('/cal/:token.ics', (req, res) => {
+  const t = String(req.params.token || ''); const u = /^[0-9a-f]{48}$/.test(t) && db.users.find((x) => x.calFeed && x.calFeed.token === t);
+  if (!u || !u.passwordHash || staffBlocked(u)) { res.statusCode = 404; return res.end('Calendar not found'); } // turned off, reset, or the login was removed or deactivated
+  const today = localNow().date; if (u.calFeed.fetchedAt !== today) { u.calFeed.fetchedAt = today; save(); } // "Last checked" on Preferences (a day is enough; calendars fetch often)
+  res.setHeader('Content-Type', 'text/calendar; charset=utf-8'); res.setHeader('Content-Disposition', 'inline; filename="calendar.ics"'); res.setHeader('Cache-Control', 'private, max-age=900');
+  res.end(calendarFeed(u));
 });
 
 app.use('/uploads', (req, res, next) => express.static(uploadDir())(req, res, next)); // each account's own uploads folder
@@ -4059,7 +4143,8 @@ async function syncAllBooks() {
 }
 
 // ---------- App Marketplace (lib/marketplace.js): apps that connect today, and "I want this" for the ones on the way ----------
-function liveAppState(a) {
+function liveAppState(a, u) {
+  if (a.id === 'gcal' || a.id === 'outlook' || a.id === 'applecal') return { planOk: true, available: true, connected: !!(u && u.calFeed) }; // each login's own calendar link (Preferences)
   if (accounting.has(a.id)) { const B = books(); return { planOk: tenancy.has('accounting'), available: social.available(a.id), connected: !!(B && B.provider === a.id && booksConn()) }; }
   const planOk = !a.feature || tenancy.has(a.feature);
   if (SOCIAL_KINDS.includes(a.id)) return { planOk, available: social.available(a.id), connected: !!connOf(a.id) };
@@ -4069,13 +4154,13 @@ function liveAppState(a) {
   if (a.id === 'claude') { const on = !!process.env.ANTHROPIC_API_KEY; return { planOk, available: on, connected: on }; }
   return { planOk, available: false, connected: false };
 }
-const marketplaceView = () => {
+const marketplaceView = (u) => {
   const P = tenancy.platform(); const mine = marketplace.requestedBy(P, tenancy.current().id);
-  return { categories: marketplace.CATEGORIES, apps: marketplace.catalog().filter((a) => a.feature !== 'ai' || tenancy.aiOn('aiDescriptions')).map((a) => ({ ...a, ...(a.live ? liveAppState(a) : { requested: mine.includes(a.id) }) })) };
+  return { categories: marketplace.CATEGORIES, apps: marketplace.catalog().filter((a) => a.feature !== 'ai' || tenancy.aiOn('aiDescriptions')).map((a) => ({ ...a, ...(a.live ? liveAppState(a, u) : { requested: mine.includes(a.id) }) })) };
 };
 const marketplaceWho = (req) => { const u = currentUser(req); const t = tenancy.current(); return { t: t.id, company: db.company.name || t.slug, account: tenancy.tenantUrl(t), name: u.name, email: u.email }; };
 const marketplaceAdmin = (req, res) => { if (!marketplace.isOn(tenancy.platform())) { res.status(404).json({ error: 'The App Marketplace isn’t available' }); return false; } if (isAdmin(currentUser(req))) return true; res.status(403).json({ error: 'Only the account owner or an admin can manage apps' }); return false; };
-app.get('/api/marketplace', (req, res) => { if (marketplaceAdmin(req, res)) res.json(marketplaceView()); });
+app.get('/api/marketplace', (req, res) => { if (marketplaceAdmin(req, res)) res.json(marketplaceView(currentUser(req))); });
 // Home Depot (lib/homedepot.js): turned on in the marketplace, with the ZIP code for local prices and the markup added to the price picked
 const hdSettings = () => db.homeDepot || {};
 const hdView = () => { const h = hdSettings(); return { available: homeDepot.ready(), on: !!h.on && tenancy.has('services') && marketplace.isOn(tenancy.platform()), zip: h.zip || '', markup: Number(h.markup) || 0 }; };
@@ -4095,7 +4180,7 @@ app.get('/api/home-depot/search', async (req, res) => {
 // "I want this" (on: true) or take it back (on: false)
 app.post('/api/marketplace/:id/request', (req, res) => {
   if (!marketplaceAdmin(req, res)) return;
-  try { marketplace.request(tenancy.platform(), req.params.id, marketplaceWho(req), !!(req.body && req.body.on)); tenancy.savePlatform(); res.json(marketplaceView()); } catch (e) { res.status(e.status || 400).json({ error: e.message }); }
+  try { marketplace.request(tenancy.platform(), req.params.id, marketplaceWho(req), !!(req.body && req.body.on)); tenancy.savePlatform(); res.json(marketplaceView(currentUser(req))); } catch (e) { res.status(e.status || 400).json({ error: e.message }); }
 });
 // an app that isn't listed
 app.post('/api/marketplace/suggest', (req, res) => {
