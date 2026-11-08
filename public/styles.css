@@ -1788,3 +1788,12 @@ label.bk-auto input{width:auto;margin:0}
  .side-div{margin:12px 14px}
  .side-search input{height:50px;font-size:16px;border-radius:12px}
 }
+
+/* phones: client rows as tall as the Quotes, Jobs and Invoices lists, with status and address under the name */
+@media (max-width:760px){
+ .clist td{padding:16px 14px;font-size:16px}.clist .cl-name strong{font-size:17px}
+ .clist .cl-sub{display:flex;align-items:center;gap:10px;margin-top:6px;min-width:0;color:var(--muted);font-size:15px}
+ .clist .cl-addr{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.clist .cl-sub .cstatus{flex:none}
+ .clist .cl-name{max-width:0;width:100%}
+ .clist tr.crow:active{background:var(--surface-2)}
+}
