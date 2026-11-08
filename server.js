@@ -1527,7 +1527,7 @@ function calendarFeed(u) {
   const clientLines = (c) => (c ? [`Client: ${c.name}`, ...(phones && c.phone ? [`Phone: ${c.phone}`] : [])] : []);
   const timed = (x) => (x.anytime || !x.startTime ? {} : { start: x.startTime, end: x.endTime });
   const L = ['BEGIN:VCALENDAR', 'VERSION:2.0', `PRODID:-//${icsText(tenancy.platform().settings.productName || 'Worklio Pro')}//Calendar feed//EN`, 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
-    `X-WR-CALNAME:${icsText(`${db.company.name || 'Work'}${scope === 'all' ? '' : ` (${u.name})`}`)}`, `X-WR-CALDESC:${icsText(scope === 'all' ? 'Everyone’s jobs, tasks and events' : 'Your jobs, tasks and events')}`,
+    `X-WR-CALNAME:${icsText(tenancy.platform().settings.productName || 'Worklio Pro')}`, // the name calendar apps give it when it's added (people can rename it there) `X-WR-CALDESC:${icsText(scope === 'all' ? 'Everyone’s jobs, tasks and events' : 'Your jobs, tasks and events')}`,
     'REFRESH-INTERVAL;VALUE=DURATION:PT1H', 'X-PUBLISHED-TTL:PT1H'];
   if (feedOk(u)) {
     for (const j of db.jobs) {
