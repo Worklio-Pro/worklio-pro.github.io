@@ -42,7 +42,7 @@ ${o.productivity.map((p) => `<tr><td><span style="display:inline-block;width:9px
   },
 };
 
-/* ===== /calendar (Calendar): a week or day on a time grid with everyone's jobs, tasks and events.
+/* ===== /calendar (Calendar): a week or day on a time grid, or a whole month with everyone's jobs, tasks and events.
    Click an empty time to add a Job, Task or Event there; drag anything to another day or time to move it. ===== */
 const SC_START = 6; const SC_END = 21; const SC_HOUR = 48; // the grid runs 6 AM to 9 PM, 48px per hour
 let scState = { anchor: new Date(), view: innerWidth < 700 ? 'day' : 'week', hidden: [] };
@@ -73,14 +73,14 @@ PAGES['/calendar'] = {
   title: 'Calendar',
   async render(main) {
     const days = scDays(); const today = ymd(new Date()); const edit = canDo('jobs.edit');
-    const views = `<div class="sc-views">${[['day', 'Day'], ['week', 'Week'], ...(planHas('dispatchMap') ? [['map', 'Map']] : [])].map(([k, l]) => `<button type="button" class="${scState.view === k ? 'on' : ''}" data-act="scView" data-v="${k}">${l}</button>`).join('')}</div>`;
+    const views = `<div class="sc-views">${[['day', 'Day'], ['week', 'Week'], ['month', 'Month'], ...(planHas('dispatchMap') ? [['map', 'Map']] : [])].map(([k, l]) => `<button type="button" class="${scState.view === k ? 'on' : ''}" data-act="scView" data-v="${k}">${l}</button>`).join('')}</div>`;
     if (scState.view === 'map' && !planHas('dispatchMap')) scState.view = 'day';
     if (scState.view === 'map') return scMapRender(main, edit, `<div class="sc-bar"><button type="button" class="btn alt sm" data-act="scToday">Today</button><button type="button" class="btn alt sm sc-arrow" data-act="scStep" data-n="-1" aria-label="Previous day">‹</button><button type="button" class="btn alt sm sc-arrow" data-act="scStep" data-n="1" aria-label="Next day">›</button>
 <h1 class="sc-range">${esc(scState.anchor.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }))}</h1><span style="flex:1"></span>${views}</div>`);
     const a = scState.anchor; const first = new Date(a.getFullYear(), a.getMonth(), 1); const gridStart = startOfWeek(first);
-    const range = scState.view === 'day' ? a.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+    const range = scState.view === 'month' ? first.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : scState.view === 'day' ? a.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
       : `${days[0].toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}–${days[0].getMonth() === days[6].getMonth() ? days[6].getDate() : days[6].toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}, ${days[6].getFullYear()}`;
-    const week = days.map(ymd);
+    const week = scState.view === 'month' ? [] : days.map(ymd);
     const mini = `<div class="sc-mini"><div class="sc-mini-h"><strong>${first.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</strong><span><button type="button" data-act="scMonth" data-n="-1" aria-label="Previous month">‹</button><button type="button" data-act="scMonth" data-n="1" aria-label="Next month">›</button></span></div>
 <div class="sc-mini-g">${Array.from({ length: 7 }, (_, i) => `<span class="dow">${addDays(gridStart, i).toLocaleDateString('en-US', { weekday: 'short' }).slice(0, 2)}</span>`).join('')}${Array.from({ length: 42 }, (_, i) => { const d = addDays(gridStart, i); const s = ymd(d);
       return d.getMonth() !== first.getMonth() && i >= 35 ? '' : `<button type="button" class="${d.getMonth() !== first.getMonth() ? 'out ' : ''}${week.includes(s) ? 'in ' : ''}${s === today ? 'today' : ''}" data-act="scGo" data-d="${s}">${d.getDate()}</button>`; }).join('')}</div></div>`;
@@ -95,20 +95,21 @@ PAGES['/calendar'] = {
 ${edit ? '<p class="muted sc-tip">Click a time to add a job, task or event. Drag anything to move it.</p>' : ''}</aside>
 <section class="sc-main"><div class="sc-bar"><button type="button" class="btn alt sm" data-act="scToday">Today</button><button type="button" class="btn alt sm sc-arrow" data-act="scStep" data-n="-1" aria-label="Previous">‹</button><button type="button" class="btn alt sm sc-arrow" data-act="scStep" data-n="1" aria-label="Next">›</button>
 <h1 class="sc-range">${esc(range)}</h1><span style="flex:1"></span>${views}</div>
-<div class="sc-grid" style="--days:${days.length}">
+${scState.view === 'month' ? scMonthHtml(first, today, edit) : `<div class="sc-grid" style="--days:${days.length}">
 <div class="sc-head"><div class="sc-gut">${esc(Intl.DateTimeFormat().resolvedOptions().timeZone.split('/').pop().replace('_', ' '))}</div>${days.map((d) => `<div class="sc-dh${ymd(d) === today ? ' today' : ''}"><span>${d.toLocaleDateString('en-US', { weekday: 'short' })}</span><b>${d.getDate()}</b></div>`).join('')}</div>
 <div class="sc-head sc-anyrow"><div class="sc-gut">Anytime</div>${week.map(lane).join('')}</div>
 <div class="sc-body" id="scBody"><div class="sc-hours">${Array.from({ length: SC_END - SC_START }, (_, i) => `<div style="height:${SC_HOUR}px"><span>${fmtTime(scTime((SC_START + i) * 60)).replace(':00', '')}</span></div>`).join('')}</div>
-<div class="sc-cols" style="height:${(SC_END - SC_START) * SC_HOUR}px">${week.map(col).join('')}</div></div></div></section></div>`;
+<div class="sc-cols" style="height:${(SC_END - SC_START) * SC_HOUR}px">${week.map(col).join('')}</div></div></div>`}</section></div>`;
+    if (scState.view === 'month') return scMonthWire(main, edit);
     const body = $('#scBody'); const nowH = new Date().getHours(); body.scrollTop = Math.max(0, ((week.includes(today) ? nowH - 1 : 7) - SC_START) * SC_HOUR);
     scWire(main, edit);
   },
 };
 A.scView = (d) => { scState.view = d.v; scSave(); refresh(); };
 A.scToday = () => { scState.anchor = new Date(); refresh(); };
-A.scStep = (d) => { scState.anchor = addDays(scState.anchor, Number(d.n) * (scState.view === 'week' ? 7 : 1)); refresh(); };
+A.scStep = (d) => { if (scState.view === 'month') return A.scMonth(d); scState.anchor = addDays(scState.anchor, Number(d.n) * (scState.view === 'week' ? 7 : 1)); refresh(); };
 A.scMonth = (d) => { const a = scState.anchor; scState.anchor = new Date(a.getFullYear(), a.getMonth() + Number(d.n), 1); refresh(); };
-A.scGo = (d) => { scState.anchor = parseD(d.d); refresh(); };
+A.scGo = (d) => { scState.anchor = parseD(d.d); if (d.day) { scState.view = 'day'; scSave(); } refresh(); };
 A.scTeam = (d, el) => { scState.hidden = el.checked ? scState.hidden.filter((x) => x !== d.id) : [...new Set([...scState.hidden, d.id])]; scSave(); refresh(); };
 // clicks on empty time, and dragging items to a new day or time (pointer events: works with a mouse and on touch screens)
 function scWire(main, edit) {
@@ -150,6 +151,56 @@ function scWire(main, edit) {
   });
 }
 let scDragged = false;
+
+/* Calendar → Month: every day of the month in a grid, with each day's jobs, tasks and events in time order (Anytime first) and who's off.
+   Click a day's empty space to add something on that day, its number (or "+N more") to open the day, and drag an item to another day to move it (it keeps its time). */
+const SC_MONTH_MAX = 3; // items shown in a day before "+N more"
+function scMonthHtml(first, today, edit) {
+  const start = startOfWeek(first); const last = new Date(first.getFullYear(), first.getMonth() + 1, 0);
+  const n = Math.ceil((Math.round((last - start) / 864e5) + 1) / 7) * 7;
+  const order = (x) => (x.anytime || !x.start ? -1 : scMin(x.start));
+  const short = (t) => fmtTime(t).replace(':00', '').replace(/ ?([AP])M/i, (m, ap) => ap.toLowerCase());
+  const cell = (d) => { const s = ymd(d);
+    const its = scItems(s).sort((a, b) => order(a) - order(b));
+    const off = D.staff.filter((st) => staffActive(st) && !scState.hidden.includes(st.id) && offOn(st.id, s));
+    const shown = its.length > SC_MONTH_MAX + 1 ? its.slice(0, SC_MONTH_MAX) : its;
+    return `<div class="sc-mc${d.getMonth() !== first.getMonth() ? ' out' : ''}${s === today ? ' today' : ''}" data-d="${s}">
+<button type="button" class="sc-mn" data-act="scGo" data-d="${s}" data-day="1" aria-label="Open ${esc(d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }))}">${d.getDate() === 1 ? esc(d.toLocaleDateString('en-US', { month: 'short' })) + ' ' : ''}${d.getDate()}</button>
+${off.map((st) => `<span class="sc-off" title="Approved time off">${esc(st.name.split(' ')[0])} off</span>`).join('')}
+${shown.map((x) => { const any = x.anytime || !x.start; return `<div class="sc-mi k-${x.kind}${x.done ? ' done' : ''}${any ? ' any' : ''}" style="--c:${esc(scColor(x))}" data-kind="${x.kind}" data-id="${x.id}" ${edit ? 'data-drag="1"' : ''} title="${esc(`${any ? 'Anytime' : `${fmtTime(x.start)}–${fmtTime(x.end)}`} · ${x.title}${x.sub ? ' · ' + x.sub : ''}`)}">${any ? '' : `<span class="sc-t">${esc(short(x.start))}</span>`}<span class="sc-mt">${esc(x.title)}</span></div>`; }).join('')}
+${its.length > shown.length ? `<button type="button" class="sc-more" data-act="scGo" data-d="${s}" data-day="1">+${its.length - shown.length} more</button>` : ''}</div>`; };
+  return `<div class="sc-month"><div class="sc-mh">${Array.from({ length: 7 }, (_, i) => `<span>${addDays(start, i).toLocaleDateString('en-US', { weekday: 'short' })}</span>`).join('')}</div>
+<div class="sc-mg">${Array.from({ length: n }, (_, i) => cell(addDays(start, i))).join('')}</div></div>`;
+}
+function scMonthWire(main, edit) {
+  const cells = $$('.sc-mc', main);
+  if (edit) cells.forEach((c) => c.addEventListener('click', (e) => {
+    if (e.target.closest('.sc-mi, button') || scDragged) return;
+    scQuick({ date: c.dataset.d, startTime: '09:00', endTime: '10:00' }, e.clientX, e.clientY);
+  }));
+  $$('.sc-mi', main).forEach((el) => {
+    el.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return; const sx = e.clientX; const sy = e.clientY; const box = el.getBoundingClientRect(); let ghost = null; let target = null;
+      const move = (m) => {
+        if (!el.dataset.drag) return;
+        if (!ghost && Math.hypot(m.clientX - sx, m.clientY - sy) < 5) return;
+        if (!ghost) { ghost = el.cloneNode(true); ghost.classList.add('sc-ghost'); ghost.style.width = box.width + 'px'; document.body.appendChild(ghost); el.classList.add('sc-dragging'); }
+        ghost.style.left = m.clientX - (sx - box.left) + 'px'; ghost.style.top = m.clientY - (sy - box.top) + 'px';
+        const c = cells.find((x) => { const r = x.getBoundingClientRect(); return m.clientX >= r.left && m.clientX <= r.right && m.clientY >= r.top && m.clientY <= r.bottom; });
+        cells.forEach((x) => x.classList.toggle('drop', x === c)); target = c ? c.dataset.d : null;
+      };
+      const up = async () => {
+        removeEventListener('pointermove', move); removeEventListener('pointerup', up);
+        if (!ghost) { scOpen(el.dataset.kind, el.dataset.id, sx, sy); return; } // a click
+        ghost.remove(); el.classList.remove('sc-dragging'); cells.forEach((x) => x.classList.remove('drop')); scDragged = true; setTimeout(() => { scDragged = false; }, 0);
+        if (!target || target === el.closest('.sc-mc').dataset.d) return;
+        const col = { job: 'jobs', task: 'tasks', event: 'events' }[el.dataset.kind];
+        try { await api('PUT', `/api/${col}/${el.dataset.id}`, { date: target }); toast(`Moved to ${fmtDate(target)}`); refresh(); } catch (x) { toast(x.message, true); refresh(); }
+      };
+      addEventListener('pointermove', move); addEventListener('pointerup', up);
+    });
+  });
+}
 
 /* ===== Calendar → Map (dispatch map): one day's jobs on a map, numbered in each team member's color in visiting order, with a line for each
    person's route from the business address. The list beside it groups visits by person: drag a visit onto someone to assign it (or use
