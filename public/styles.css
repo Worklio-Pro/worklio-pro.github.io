@@ -1912,3 +1912,25 @@ label.bk-auto input{width:auto;margin:0}
 .mqo-add{padding:12px 0;color:var(--link);font-weight:600}
 .mqo{display:flex;flex-direction:column;gap:14px}.mqo-p{margin:0}.mqo-o{padding:12px 14px;border:1px solid var(--line);border-radius:12px}.mqo-oh{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
 @media (max-width:760px){.qo-row{grid-template-columns:26px minmax(0,1fr) 36px}.qo-row .qo-desc{grid-column:2/4}.qo-row .qo-r{grid-column:2/4}}
+/* Marketing → Every job markets itself */
+.jp{margin:0 0 28px}
+.jp-head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px 24px;align-items:flex-start}.jp-head>div:first-child{flex:1 1 380px}.jp-head h2{margin:0 0 6px}.jp-head p{margin:0}
+.jp-set .sp-chk{margin:0 0 6px}
+.jp-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:16px 0 6px}
+.jp-stat{display:flex;flex-direction:column;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)}
+.jp-stat strong{font-size:24px;line-height:1.2}.jp-stat span{font-size:14px;font-weight:500}.jp-stat small{color:var(--muted);font-size:12px}
+.jp-last{margin:4px 0 0;font-size:13px}
+.jp-h{font-size:16px;margin:20px 0 10px}
+.jp-empty{margin:0}
+.jp-draft{display:block;padding:14px;border:1px solid var(--line);border-radius:12px;margin:0 0 12px}
+.jp-top{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;margin-bottom:8px}.jp-top .mk-link{margin-left:auto}
+.jp-hint{font-size:13px;margin:0 0 8px}
+.jp-photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;margin-bottom:12px}
+.jp-photos label{position:relative;margin:0;cursor:pointer;aspect-ratio:1;border-radius:8px;overflow:hidden;border:2px solid transparent;background:var(--surface-2)}
+.jp-photos label:has(input:checked){border-color:var(--brand)}
+.jp-photos input{position:absolute;top:6px;left:6px;z-index:1;width:18px;height:18px;margin:0}
+.jp-photos img{width:100%;height:100%;object-fit:cover;display:block}
+.jp-photos label:not(:has(input:checked)) img{opacity:.55}
+.jp-photos span{position:absolute;left:6px;bottom:6px;padding:1px 7px;border-radius:99px;background:rgba(0,0,0,.65);color:#fff;font-size:11px;font-weight:600}
+.jp-tones{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:-4px 0 14px;font-size:13px}
+@media (max-width:600px){.jp-draft{padding:12px}.jp-top .mk-link{margin-left:0}.sp-dest{min-width:0;flex:1 1 100%}}

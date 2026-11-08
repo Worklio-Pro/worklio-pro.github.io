@@ -1455,14 +1455,91 @@ function marketingConnect(C) {
 <div class="mk-grp">Major networks</div><div class="mk-grid">${live('facebook', 'Facebook', (x) => x.name)}${live('instagram', 'Instagram', (x) => '@' + x.username)}${live('linkedin', 'LinkedIn', (x) => x.name)}${live('tiktok', 'TikTok', (x) => x.name)}${live('youtube', 'YouTube', (x) => x.name)}</div>
 <div class="mk-grp">More networks</div><div class="mk-grid">${bsky}${live('pinterest', 'Pinterest', (x) => x.name)}${live('threads', 'Threads', (x) => '@' + x.username)}${xCard}${gbp}</div></section>`;
 }
+/* ===== Marketing → Every job markets itself: posts drafted from finished jobs, waiting for approval (lib/job-posts.js) ===== */
+// where a job's post can go: TikTok needs its own options and YouTube a video, so those are posted from New post
+const JP_NETS = ['facebook', 'instagram', 'google', 'linkedin', 'threads', 'pinterest', 'bluesky', 'x'];
+const JP_TONES = [['friendly', 'Friendly'], ['proud', 'Proud'], ['professional', 'Professional'], ['shorter', 'Shorter']];
+let jpTo = null; // the networks ticked for job posts on this visit (shared by every draft)
+let jpTimer = 0;
+function jobPostsSection(J, R) {
+  if (!J || !J.included) return '';
+  const admin = ['owner', 'admin'].includes(role());
+  const nets = SP_NETS.filter(([k]) => JP_NETS.includes(k) && R[k]);
+  if (!jpTo) jpTo = nets.map(([k]) => k);
+  const s = J.stats.month; const L = J.stats.last;
+  const tile = (v, l, sub) => `<div class="jp-stat"><strong>${Number(v).toLocaleString('en-US')}</strong><span>${l}</span><small>${sub}</small></div>`;
+  const last = L.posts ? `<p class="muted jp-last">Last month: ${L.posts} post${L.posts === 1 ? '' : 's'} from jobs${J.booking ? `, ${L.visits} booking page visit${L.visits === 1 ? '' : 's'} and ${L.requests} request${L.requests === 1 ? '' : 's'} from them` : ''}.</p>` : '';
+  const draft = (d) => d.status === 'writing'
+    ? `<div class="jp-draft"><div class="jp-top"><strong>${esc(d.jobNumber ? d.jobNumber + ' · ' : '')}${esc(d.jobTitle)}</strong></div><p class="muted" style="margin:0">Writing the caption…</p></div>`
+    : `<form class="jp-draft" data-id="${d.id}">
+<div class="jp-top"><strong>${esc(d.jobNumber ? d.jobNumber + ' · ' : '')}${esc(d.jobTitle)}</strong>${d.town ? `<span class="muted">${esc(d.town)}</span>` : ''}<a class="mk-link" href="/jobs/edit?id=${d.jobId}" data-link>Open job</a></div>
+<p class="muted jp-hint">Tick the photos to post (up to 10). The first one ticked is the cover.</p>
+<div class="jp-photos">${d.photos.map((p) => `<label title="${esc(p.label)}"><input type="checkbox" name="pic" value="${esc(p.url)}" ${p.picked ? 'checked' : ''}><img src="${esc(p.url)}" alt="${esc(p.label)} photo" loading="lazy"><span>${esc(p.label)}</span></label>`).join('')}</div>
+<label>Caption${d.ai ? ' <small class="muted">written by AI from the photos and the job. Change anything you like.</small>' : ''}<textarea name="caption" rows="6" maxlength="2200">${esc(d.caption)}</textarea></label>
+${J.ai ? `<div class="jp-tones"><span class="muted">Write it again:</span>${JP_TONES.map(([k, n]) => `<button type="button" class="btn alt sm" data-act="jpRewrite" data-id="${d.id}" data-tone="${k}">${n}</button>`).join('')}</div>` : ''}
+${nets.length ? `<div class="sp-dests">${nets.map(([k, n, who]) => `<label class="sp-dest"><input type="checkbox" name="to" value="${k}" ${jpTo.includes(k) ? 'checked' : ''}>${CONN_ICONS[k]}<span><strong>${n}</strong><small>${esc(who(R))}</small></span></label>`).join('')}</div>` : '<p class="muted">Connect a social account above to post this.</p>'}
+${J.booking && nets.length ? '<p class="muted jp-hint">A link to your booking page is added on Facebook, LinkedIn and Threads, and to the Google and Pinterest buttons, so you can see the requests your posts bring in.</p>' : ''}
+<div class="sp-foot"><button type="button" class="btn alt" data-act="jpSkip" data-id="${d.id}">Skip this one</button><button class="btn"${nets.length ? '' : ' disabled'}>Post now</button></div></form>`;
+  const done = (d) => `<div class="sp-row">${d.photos.find((p) => p.picked) ? `<img src="${esc(d.photos.find((p) => p.picked).url)}" alt="" loading="lazy">` : '<span class="sp-noimg"></span>'}
+<div><p><strong>${esc(d.jobNumber ? d.jobNumber + ' · ' : '')}${esc(d.jobTitle)}</strong></p><div class="sp-meta"><span class="muted">Posted ${fmtDate(d.postedAt.slice(0, 10))}${d.by ? ' by ' + esc(d.by) : ''}</span>
+${Object.entries(d.results).filter(([, r]) => r.status === 'posted' && r.url).map(([k, r]) => `<a class="conn-chip on" href="${esc(r.url)}" target="_blank" rel="noopener"><i></i>${SP_NAMES[k] || k}</a>`).join('')}
+${J.booking ? `<span class="muted">${d.visits} visit${d.visits === 1 ? '' : 's'} · ${d.requests} request${d.requests === 1 ? '' : 's'}</span>` : ''}</div></div><span></span></div>`;
+  return `<section class="card jp" id="jobPosts"><div class="jp-head"><div><h2>Every job markets itself${J.beta ? '<span class="beta-tag">Beta</span>' : ''}</h2>
+<p class="muted">When a job is completed and has photos, it becomes a ready-to-post social post${J.ai ? ' with a caption written by AI' : ''}. Check it here and post it to your accounts with one tap. Nothing goes out until you approve it.</p></div>
+${admin ? `<div class="jp-set"><label class="sp-chk"><input type="checkbox" id="jpOn" ${J.settings.on ? 'checked' : ''}> Make posts from finished jobs</label><label class="sp-chk"><input type="checkbox" id="jpMail" ${J.settings.notify ? 'checked' : ''}> Email the owner when one is ready</label></div>` : ''}</div>
+<div class="jp-stats">${tile(s.posts, 'Posts from jobs', 'this month')}${tile(s.reviews, 'Client reviews', 'this month')}${J.booking ? tile(s.visits, 'Booking page visits', 'from your posts this month') + tile(s.requests, 'Booking requests', 'from your posts this month') : ''}</div>${last}
+<h3 class="jp-h">Ready to post${J.ready.length ? ` (${J.ready.length})` : ''}</h3>
+${J.ready.length ? J.ready.map(draft).join('') : `<p class="muted jp-empty">${J.settings.on ? 'Nothing waiting. Complete a job with before and after photos (in Project Gallery, a job note or a checklist) and its post shows up here.' : 'Making posts from finished jobs is turned off.'}</p>`}
+${J.done.length ? `<h3 class="jp-h">Posted from jobs</h3><div class="sp-list">${J.done.map(done).join('')}</div>` : ''}</section>`;
+}
+function bindJobPosts(J, R) {
+  clearTimeout(jpTimer); if (!J || !J.included) return;
+  if (J.ready.some((d) => d.status === 'writing')) jpTimer = setTimeout(() => { if (location.pathname === '/social-posts') refresh(); }, 4000); // the caption is being written
+  const setting = (id, key) => { const el = $('#' + id); if (el) el.addEventListener('change', async () => { try { await api('PUT', '/api/social-posts/jobs/settings', { [key]: el.checked }); toast('Saved'); if (key === 'on') refresh(); } catch (x) { el.checked = !el.checked; toast(x.message, true); } }); };
+  setting('jpOn', 'on'); setting('jpMail', 'notify');
+  for (const f of $$('form.jp-draft')) {
+    const id = f.dataset.id; const cap = f.caption; let saved = cap.value;
+    const picked = () => $$('input[name=pic]:checked', f).map((c) => c.value);
+    $$('input[name=pic]', f).forEach((c) => c.addEventListener('change', async () => {
+      if (picked().length > 10) { c.checked = false; return toast('Up to 10 photos per post', true); }
+      try { await api('PUT', '/api/social-posts/jobs/' + id, { picked: picked() }); } catch (x) { toast(x.message, true); }
+    }));
+    cap.addEventListener('blur', async () => { if (cap.value === saved) return; try { await api('PUT', '/api/social-posts/jobs/' + id, { caption: cap.value }); saved = cap.value; } catch (x) { toast(x.message, true); } });
+    $$('input[name=to]', f).forEach((c) => c.addEventListener('change', () => { jpTo = $$('input[name=to]:checked', f).map((x) => x.value); $$('form.jp-draft input[name=to]').forEach((x) => { x.checked = jpTo.includes(x.value); }); }));
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault(); const btn = $('.sp-foot .btn:not(.alt)', f); const to = $$('input[name=to]:checked', f).map((x) => x.value); const pics = picked(); const text = cap.value.trim();
+      if (!to.length) return toast('Choose where to post', true);
+      if (!pics.length) return toast('Tick at least one photo', true);
+      for (const k of to) {
+        const Lm = SP_LIMITS[k]; const n = SP_NAMES[k]; const len = Lm.graphemes ? graphemeCount(text) : text.length;
+        if (len > Lm.text) return toast(`${n} posts can be up to ${Lm.text.toLocaleString('en-US')} characters. Shorten the caption or untick ${n}.`, true);
+        if (Lm.needsText && !text) return toast(`${n} posts need a caption`, true);
+        if (Lm.maxPhotos && pics.length > Lm.maxPhotos) return toast(`${n} posts can have up to ${Lm.maxPhotos} photos. Untick some photos or untick ${n}.`, true);
+      }
+      btn.disabled = true; btn.textContent = 'Posting…';
+      try {
+        const images = []; for (const src of pics) images.push(await toJpeg(src, 1440, to.includes('bluesky') ? 950000 : 0));
+        const p = await api('POST', '/api/social-posts', { caption: cap.value, images, to, draftId: id });
+        const bad = Object.entries(p.results).filter(([, r]) => r.status !== 'posted');
+        if (bad.length) toast(`Didn’t post to ${bad.map(([k]) => SP_NAMES[k]).join(' or ')}: ${bad[0][1].error}`, true); else toast('Posted');
+        refresh();
+      } catch (x) { btn.disabled = false; btn.textContent = 'Post now'; toast(x.message, true); }
+    });
+  }
+}
+A.jpRewrite = async (d, el) => {
+  const btns = $$(`[data-act=jpRewrite][data-id="${d.id}"]`); btns.forEach((b) => { b.disabled = true; }); const was = el && el.textContent; if (el) el.textContent = 'Writing…';
+  try { await api('POST', `/api/social-posts/jobs/${d.id}/caption`, { tone: d.tone }); refresh(); } catch (x) { btns.forEach((b) => { b.disabled = false; }); if (el) el.textContent = was; toast(x.message, true); }
+};
+A.jpSkip = async (d) => { try { await api('DELETE', '/api/social-posts/jobs/' + d.id); toast('Skipped. It won’t be posted.'); refresh(); } catch (x) { toast(x.message, true); } };
 PAGES['/social-posts'] = {
   title: 'Marketing',
   async render(main) {
-    const [R, C] = await Promise.all([api('GET', '/api/social-posts'), api('GET', '/api/connections')]);
+    const [R, C, J] = await Promise.all([api('GET', '/api/social-posts'), api('GET', '/api/connections'), planHas('jobPosts') ? api('GET', '/api/social-posts/jobs').catch(() => null) : null]);
     connReturnNotice();
     const head = `<div class="mk-hero"><h1>Grow your audience by posting across platforms in minutes</h1><p class="sub">One place for your business’s social media. Create a post once and publish it to every account you connect. Before-and-after photos from your jobs make great posts.</p></div>
-${marketingConnect(C)}`;
-    if (!SP_NETS.some(([k]) => R[k])) { main.innerHTML = head; return; }
+${jobPostsSection(J, R)}${marketingConnect(C)}`;
+    if (!SP_NETS.some(([k]) => R[k])) { main.innerHTML = head; bindJobPosts(J, R); return; }
     if (!spDraft.to) spDraft.to = Object.keys(SP_NAMES).filter((k) => R[k]);
     const dest = (k, name, label) => `<label class="sp-dest ${R[k] ? '' : 'off'}"><input type="checkbox" name="to" value="${k}" ${R[k] ? '' : 'disabled'} ${R[k] && spDraft.to.includes(k) ? 'checked' : ''}>${CONN_ICONS[k]}<span><strong>${name}</strong><small>${R[k] ? esc(label) : 'Not connected'}</small></span></label>`;
     const res = (p, k, name) => { const r = p.results[k]; if (!r) return ''; return r.status === 'posted' ? `<a class="conn-chip on" href="${esc(r.url)}" target="_blank" rel="noopener"><i></i>${name}: view post</a>` : `<span class="conn-chip bad" title="${esc(r.error)}"><i></i>${name}: didn’t post</span>`; };
@@ -1532,7 +1609,7 @@ ${['owner', 'admin'].includes(role()) ? `<button type="button" class="x sp-x" da
         refresh();
       } catch (x) { btn.disabled = false; btn.textContent = 'Post now'; toast(x.message, true); }
     });
-    drawSpPhotos();
+    drawSpPhotos(); bindJobPosts(J, R);
   },
 };
 // the post's video (YouTube only): its name and size, with a button to take it off
@@ -2723,7 +2800,7 @@ PAGES['/settings/preferences'] = {
     const quotes = canDo('quotes') && planHas('quotes');
     const kinds = [['overview', 'Today’s work overview', 'Each morning, if there are jobs today', true], ['schedule', 'Today’s schedule changed', 'A job today is added, moved, reassigned or cancelled', true],
       ['request', 'New request', 'A client asks for work from their portal or a referral', canDo('clients.view')], ['booking', 'New online booking', 'Someone books on your booking page', canDo('clients.view') && planHas('onlineBooking')],
-      ['quoteViewed', 'Client viewed quote', 'The first time a client opens a sent quote', quotes], ['quoteApproved', 'Client approved quote', 'A client approves a quote', quotes], ['review', 'New client review', 'A client leaves a review', canDo('reviews') && planHas('reviews')], ['automation', 'Your automations', 'An automation you set up to notify the team', planHas('automations')]].filter((k) => k[3]);
+      ['quoteViewed', 'Client viewed quote', 'The first time a client opens a sent quote', quotes], ['quoteApproved', 'Client approved quote', 'A client approves a quote', quotes], ['review', 'New client review', 'A client leaves a review', canDo('reviews') && planHas('reviews')], ['automation', 'Your automations', 'An automation you set up to notify the team', planHas('automations')], ['jobPost', 'A post is ready to approve', 'A finished job’s photos became a social post', canDo('social') && planHas('jobPosts')]].filter((k) => k[3]);
     const why = !capable ? (ios ? 'On iPhone and iPad, add this app to your Home Screen first (Share → Add to Home Screen), then open it from there and come back to this page. Needs iOS 16.4 or later.' : 'This browser can’t receive push notifications. Try Chrome, Edge, Firefox or Safari.')
       : Notification.permission === 'denied' ? 'Notifications are blocked for this app. Allow them in your browser or device settings, then come back to this page.' : '';
     const t = getTheme();

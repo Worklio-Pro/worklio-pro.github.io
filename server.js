@@ -1114,7 +1114,7 @@ app.post('/api/jobs/:id/forms/:fid/photo', formRoute((req, res, u, b) => {
   if (m[2].length > 12e6) throw formFail('That photo is too large');
   const file = `form-${token()}.${m[1] === 'jpeg' ? 'jpg' : m[1]}`; fs.writeFileSync(path.join(uploadDir(), file), Buffer.from(m[2], 'base64')); // unguessable: uploads are served without login
   form.answers[f.id] = [...list, { url: `/uploads/${file}`, at: new Date().toISOString(), by: u.name }]; form.updatedAt = new Date().toISOString(); form.updatedBy = u.name;
-  save(); res.status(201).json(jobFormReply(req, j));
+  save(); res.status(201).json(jobFormReply(req, j)); jobPosts.maybeDraft(j);
 }));
 // the client portal: finished forms the business shares, with their answers (no names of who filled them in)
 const formForClient = (f) => ({ id: f.id, name: f.name, description: f.description, completedAt: f.completedAt, fields: f.fields.map(({ id, type, label, options }) => ({ id, type, label, options })), answers: f.answers });
@@ -1388,7 +1388,7 @@ app.post('/api/auth/hours', (req, res) => {
   st.hours = hours; save(); res.json(profileOf(u));
 });
 // ---- push notifications (Gear → Preferences): each login picks what it gets; each browser or phone it turns them on for is saved on the login ----
-const PUSH_KINDS = ['overview', 'schedule', 'request', 'booking', 'quoteViewed', 'quoteApproved', 'review', 'automation'];
+const PUSH_KINDS = ['overview', 'schedule', 'request', 'booking', 'quoteViewed', 'quoteApproved', 'review', 'automation', 'jobPost'];
 const pushPrefs = (u) => Object.fromEntries(PUSH_KINDS.map((k) => [k, !u.pushPrefs || u.pushPrefs[k] !== false]));
 const isOwnerOrAdmin = (u) => u.role === 'owner' || u.role === 'admin';
 // never throws: a notification must not get in the way of the work that caused it. A subscription the browser has dropped is forgotten.
@@ -1925,7 +1925,7 @@ app.put('/api/:col/:id', (req, res, next) => {
   if (col === 'jobs' && doc.status === 'completed' && was.status !== 'completed') doc.completedAt = iso(new Date()); // the "job completed" automations count from this
   const following = col === 'jobs' && req.query.following && doc.seriesId && tenancy.has('recurringJobs') ? applyToFollowing(doc, upd, req.query.following) : 0; // Save → "This and following visits"
   if (col === 'jobs') matchFormsOnEdit(was, doc, (currentUser(req) || {}).name); // new line items can bring their checklists
-  db[col][i] = doc; save(); if (col === 'clients' && doc.smsConsent && !was.smsConsent) optInText(doc).catch(() => {}); if (col === 'jobs') { pushScheduleChange(was, doc, currentUser(req)); if (doc.status === 'completed' && was.status !== 'completed') askForReview('job', doc); }
+  db[col][i] = doc; save(); if (col === 'clients' && doc.smsConsent && !was.smsConsent) optInText(doc).catch(() => {}); if (col === 'jobs') { pushScheduleChange(was, doc, currentUser(req)); if (doc.status === 'completed' && was.status !== 'completed') { askForReview('job', doc); jobPosts.maybeDraft(doc); } }
   res.json(col === 'invoices' ? withStatus(doc) : col === 'jobs' ? { ...withRepeat(isMemberReq(req) ? jobForMember(doc) : doc), ...(following ? { following } : {}) } : col === 'clients' && isMemberReq(req) ? clientForMember(doc) : doc);
 });
 
@@ -1976,6 +1976,7 @@ for (const col of ['quotes', 'jobs', 'invoices']) {
     let files; try { files = saveNoteFiles(b.add); } catch (e) { return res.status(e.status || 500).json({ error: e.message }); }
     if (!text && !files.length) return res.status(400).json({ error: 'Write a note or attach a file' });
     const u = currentUser(req); d.noteEntries = [{ id: uid(), text, at: new Date().toISOString(), by: u ? u.name : '', files, links: links(b) }, ...(d.noteEntries || [])]; save(); reply(req, res, d);
+    if (col === 'jobs' && files.some((f) => f.type === 'image')) jobPosts.maybeDraft(d); // a photo on a finished job can make its post
   });
   app.put(`/api/${col}/:id/notes/:note`, (req, res) => {
     const d = docOf(req); const n = d && (d.noteEntries || []).find((x) => x.id === req.params.note); if (!n) return res.status(404).json({ error: 'Not found' }); const b = req.body || {};
@@ -2069,6 +2070,7 @@ app.post('/api/photos', (req, res) => {
   fs.writeFileSync(path.join(uploadDir(), file), Buffer.from(m[2], 'base64'));
   const doc = { id: uid(), jobId, caption: caption || '', type: type || 'progress', file: `/uploads/${file}`, createdAt: iso(new Date()) };
   db.photos.push(doc); save(); res.status(201).json(doc);
+  jobPosts.maybeDraft(db.jobs.find((j) => j.id === jobId)); // a photo on a finished job can make its post
 });
 
 // ---------- workflow ----------
@@ -3429,7 +3431,7 @@ ${smsConsentBox(values)}
 <input name="website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">
 <button class="btn">Send booking request</button></form>`);
 }
-app.get('/book', (req, res) => res.send(bookPage()));
+app.get('/book', (req, res) => { if (req.query.ref) jobPosts.visit(String(req.query.ref)); res.send(bookPage()); }); // ?ref=<post>: opened from a job's social post
 app.post('/book', async (req, res) => {
   const b = req.body || {}; const clip = (k, n) => String(b[k] || '').trim().slice(0, n);
   const done = shell('Booking request sent', `<h1>Thanks${clip('name', 100) ? ', ' + esc(clip('name', 100).split(/\s+/)[0]) : ''}!</h1><p class="muted">We got your request and will be in touch soon to confirm a time.</p>${smsSignedUp(b, clip('phone', 40))}`);
@@ -3451,7 +3453,7 @@ app.post('/book', async (req, res) => {
   const preferredDate = /^\d{4}-\d{2}-\d{2}$/.test(b.preferredDate || '') && b.preferredDate >= iso(new Date()) ? b.preferredDate : '';
   const preferredTime = ['morning', 'afternoon', 'evening'].includes(b.preferredTime) ? b.preferredTime : 'any';
   db.requests = db.requests || [];
-  const r = { id: uid(), clientId: c.id, title, details: clip('details', 4000), address: clip('address', 300) || c.address || '', preferredDate, preferredTime, status: 'new', source: 'booking', createdAt: new Date().toISOString() };
+  const r = { id: uid(), clientId: c.id, title, details: clip('details', 4000), address: clip('address', 300) || c.address || '', preferredDate, preferredTime, status: 'new', source: 'booking', ...(jobPosts.refOf(String(req.query.ref || '')) ? { fromPost: String(req.query.ref) } : {}), createdAt: new Date().toISOString() };
   db.requests.push(r);
   const details = emails.details([['Name', name + (isNew ? ' (new lead)' : '')], ['Phone', phone || c.phone], ['Email', email || c.email], ['Address', r.address || 'not given'], ['Preferred', `${preferredDate || 'any day'}, ${preferredTime === 'any' ? 'any time' : preferredTime}`], ['From', 'Online booking']]);
   const sent = await sendTemplate('workRequest', db.company.email, { client: name, title, details, request: r.details, business: db.company.name, account_url: baseUrl() });
@@ -4083,11 +4085,11 @@ app.delete('/api/reviews/reply', async (req, res) => {
 // and are saved in the account's uploads, because Facebook and Instagram fetch them from a public address.
 // Bluesky gets the photos themselves (jpegs); a Google post gets a Book button while the Business Profile's booking button is on
 const POST_TO = { facebook: (c, p) => social.facebookPost(c, p), instagram: (c, p) => networks.NETWORKS.instagram.post(c, p), bluesky: (c, p) => bluesky.post(c, p),
-  google: (c, p) => social.googlePost(c, { ...p, book: c.booking && tenancy.has('onlineBooking') ? bookingUrl() : '' }),
+  google: (c, p) => social.googlePost(c, { ...p, book: p.ref || (c.booking && tenancy.has('onlineBooking') ? bookingUrl() : '') }), // p.ref: a job post's tracked booking link
   // LinkedIn uploads the photos itself; a Pin links to the business's website (or its booking page); TikTok fetches the photos from the
   // <slug>.<root domain> address, the one verified in the TikTok app, with the options picked in the form
   linkedin: (c, p) => networks.NETWORKS.linkedin.post(c, p),
-  pinterest: (c, p) => networks.NETWORKS.pinterest.post(c, { ...p, link: db.company.website || (tenancy.has('onlineBooking') ? bookingUrl() : baseUrl()) }),
+  pinterest: (c, p) => networks.NETWORKS.pinterest.post(c, { ...p, link: p.ref || db.company.website || (tenancy.has('onlineBooking') ? bookingUrl() : baseUrl()) }),
   threads: (c, p) => networks.NETWORKS.threads.post(c, p),
   tiktok: (c, p) => networks.NETWORKS.tiktok.post(c, { ...p, images: p.paths.map((u) => tenancy.subdomainUrl(tenancy.current()) + u) }),
   // YouTube takes only the post's video; X gets the photos themselves, posted with the business's own X app
@@ -4101,6 +4103,8 @@ const NET_NAMES = { facebook: 'Facebook', instagram: 'Instagram', google: 'Googl
 // ---------- the business's own automations (lib/business-automations.js) ----------
 const portalLink = (c) => { if (!c.portalToken) { c.portalToken = token(); save(); } return `${baseUrl()}/client-portal?c=${c.portalToken}`; };
 const bizAuto = require('./lib/business-automations')({ db, save, uid, token, iso, niceDate, money, findClient, tenancy, localNow, withStatus, quoteLink, invoiceLink, portalLink, baseUrl, renderEmail, notify, sendEmail, pushTo, jobCrew, pushTime, reviewRecord, reviewLink });
+// Every job markets itself (lib/job-posts.js): a finished job's photos become a post waiting in Marketing for approval
+const jobPosts = require('./lib/job-posts')({ db, save, uid, tenancy, uploadDir, findClient, aiClient, pushTo, usersWhoCan, sendTemplate, baseUrl, localNow });
 const autoRoute = (fn) => async (req, res) => { try { res.json(await fn(req)); } catch (e) { if (!e.status) console.error('automations:', e.message); res.status(e.status || 500).json({ error: e.status ? e.message : 'Something went wrong' }); } };
 app.get('/api/automations', autoRoute(() => bizAuto.view()));
 app.post('/api/automations', autoRoute((req) => { bizAuto.create(req.body || {}); return bizAuto.view(); }));
@@ -4149,6 +4153,11 @@ app.get('/api/social-posts/tiktok', async (req, res) => {
 });
 app.post('/api/social-posts', async (req, res) => {
   const b = req.body || {}; const caption = String(b.caption || '').trim();
+  // a job's drafted post (Every job markets itself): its link to the booking page is tagged so visits and requests from it are counted
+  const draft = b.draftId ? jobPosts.waiting(String(b.draftId)) : null;
+  if (b.draftId && !draft) return res.status(400).json({ error: 'This post has already gone out or was skipped' });
+  const ref = draft && tenancy.has('onlineBooking') ? `${bookingUrl()}?ref=${draft.id}` : '';
+  const capFor = (k) => { if (!ref || !['facebook', 'linkedin', 'threads'].includes(k)) return caption; const c = `${caption}\n\nBook online: ${ref}`; return c.length <= ((POST_LIMITS[k] || {}).text || Infinity) ? c : caption; };
   const to = Object.keys(POST_TO).filter((k) => (b.to || []).includes(k) && connOf(k));
   if (!to.length) return res.status(400).json({ error: 'Choose where to post' });
   const imgs = Array.isArray(b.images) ? b.images : [];
@@ -4179,14 +4188,23 @@ app.post('/api/social-posts', async (req, res) => {
   const post = { id: uid(), caption, images, ...(video ? { video: true } : {}), results: {}, createdAt: new Date().toISOString(), by: currentUser(req).name || '' };
   for (const k of to) {
     try {
-      const r = await POST_TO[k](connOf(k), { caption, images: images.map((u) => baseUrl() + u), paths: images, jpegs: bufs, video, options: k === 'tiktok' ? b.tiktok : k === 'youtube' ? b.youtube : undefined });
+      const r = await POST_TO[k](connOf(k), { caption: capFor(k), ref, images: images.map((u) => baseUrl() + u), paths: images, jpegs: bufs, video, options: k === 'tiktok' ? b.tiktok : k === 'youtube' ? b.youtube : undefined });
       post.results[k] = { status: 'posted', url: k === 'facebook' ? `https://www.facebook.com/${r.post_id || r.id}` : k === 'bluesky' || k === 'x' || networks.has(k) ? r.url : k === 'google' ? r.searchUrl || connOf('google').mapsUrl || '' : r.permalink || `https://www.instagram.com/${connOf(k).username}` };
     } catch (e) { post.results[k] = { status: 'failed', error: e.message }; }
   }
   if (video && post.results.youtube.status === 'posted') fs.rm(video.file, { force: true }, () => {}); // kept after a failure, so posting again doesn't need a new upload
+  if (draft) { post.jobId = draft.jobId; if (Object.values(post.results).some((r) => r.status === 'posted')) jobPosts.posted(draft.id, post, currentUser(req).name || ''); }
   db.socialPosts = [post, ...(db.socialPosts || [])].slice(0, 500); save();
   res.status(201).json(post);
 });
+// Every job markets itself: Marketing → Ready to post (anyone with Social posts); the on/off switch and the owner's emails: owner or admin
+const jpRoute = (fn) => async (req, res) => { try { res.json(await fn(req)); } catch (e) { if (!e.status) console.error('job posts:', e.message); res.status(e.status || 500).json({ error: e.status ? e.message : 'Something went wrong' }); } };
+const jpPlan = () => { if (!tenancy.has('jobPosts')) throw Object.assign(new Error('Every job markets itself isn’t included in your plan'), { status: 403 }); };
+app.get('/api/social-posts/jobs', jpRoute(() => jobPosts.view()));
+app.put('/api/social-posts/jobs/settings', jpRoute((req) => { jpPlan(); if (!isAdmin(currentUser(req))) throw Object.assign(new Error('Ask the account owner or an admin'), { status: 403 }); return jobPosts.setSettings(req.body || {}); }));
+app.put('/api/social-posts/jobs/:id', jpRoute((req) => { jpPlan(); return jobPosts.edit(req.params.id, req.body || {}); }));
+app.post('/api/social-posts/jobs/:id/caption', jpRoute((req) => { jpPlan(); return jobPosts.rewrite(req.params.id, String((req.body || {}).tone || '')); }));
+app.delete('/api/social-posts/jobs/:id', jpRoute((req) => { jpPlan(); jobPosts.skip(req.params.id); return jobPosts.view(); }));
 // takes a post off this list only: it stays on the networks it was posted to
 app.delete('/api/social-posts/:id', (req, res) => {
   if (!isAdmin(currentUser(req))) return res.status(403).json({ error: 'Ask the account owner or an admin' });
@@ -4724,7 +4742,7 @@ const platformApp = require('./lib/platform')({
   planItem, seatItem, seatParams, extraCount, // a subscription's plan line and extra logins line
 });
 // which app answers: the platform's (its own domain, or /alpha… while developing) or an account's
-const PLATFORM_PATHS = /^\/(alpha(\/.*)?|platform(\/.*)?|stripe\/go\/[a-z]+|oauth\/(google|meta|tiktok|linkedin|pinterest|threads|quickbooks|xero)\/callback|home|features|pricing|signup|sign-in|supporters|industries(\/[a-z-]+)?|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;
+const PLATFORM_PATHS = /^\/(alpha(\/.*)?|platform(\/.*)?|stripe\/go\/[a-z]+|oauth\/(google|meta|tiktok|linkedin|pinterest|threads|quickbooks|xero)\/callback|home|features|marketing|pricing|signup|sign-in|supporters|industries(\/[a-z-]+)?|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;
 function dispatch(req, res) {
   // www. → the bare domain, so search engines see one copy of each page (the canonical links name the bare domain). Page loads only: a form or webhook posted to www. still works
   if (!tenancy.devMode && /^(GET|HEAD)$/.test(req.method) && tenancy.hostOnly(req.headers.host) === 'www.' + tenancy.PLATFORM_DOMAIN) { res.writeHead(301, { Location: tenancy.platformUrl() + req.url }); return res.end(); }
@@ -4778,6 +4796,8 @@ if (rpp > 0) { // same for the platform console login: node server.js --reset-pl
 }
 setTimeout(remindExpiring, 10e3); setInterval(remindExpiring, 3600e3); // reminder emails before an account's last day of access
 setTimeout(() => bizAuto.runAll().catch((e) => console.error('automations:', e.message)), 30e3); setInterval(() => bizAuto.runAll().catch((e) => console.error('automations:', e.message)), 3600e3); // checks every automation hourly
+const jobPostsMonthly = () => { for (const t of tenancy.platform().tenants) if (t.status === 'active') tenancy.run(t, () => { try { jobPosts.monthlyReport(); } catch (e) { console.error('job posts:', e.message); } }); };
+setTimeout(jobPostsMonthly, 40e3); setInterval(jobPostsMonthly, 3600e3); // Every job markets itself: last month's results on the 1st
 setTimeout(billMemberships, 35e3); setInterval(billMemberships, 3600e3); // service plans: each billing period's invoice
 setTimeout(extendSeries, 25e3); setInterval(extendSeries, 3600e3); // recurring jobs: make visits as the months go by
 setTimeout(pushOverviews, 20e3); setInterval(pushOverviews, 15 * 60e3); // the morning's Today's work overview notifications
