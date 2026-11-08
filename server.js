@@ -4149,7 +4149,7 @@ app.post('/api/social-posts/video', async (req, res) => {
 // what the TikTok account may post right now: who can see it and whether comments can be on (TikTok asks apps to check before each post)
 app.get('/api/social-posts/tiktok', async (req, res) => {
   const c = connOf('tiktok'); if (!c) return res.status(400).json({ error: 'Connect TikTok first' });
-  try { const r = await networks.NETWORKS.tiktok.creator(c); save(); res.json(r); } catch (e) { save(); res.status(e.status || 502).json({ error: e.message }); }
+  try { const r = await networks.NETWORKS.tiktok.creator(c); save(); res.json(r); } catch (e) { save(); res.status(e.status || 502).json({ error: e.message, reconnect: !!e.reconnect }); }
 });
 app.post('/api/social-posts', async (req, res) => {
   const b = req.body || {}; const caption = String(b.caption || '').trim();
@@ -4190,7 +4190,7 @@ app.post('/api/social-posts', async (req, res) => {
     try {
       const r = await POST_TO[k](connOf(k), { caption: capFor(k), ref, images: images.map((u) => baseUrl() + u), paths: images, jpegs: bufs, video, options: k === 'tiktok' ? b.tiktok : k === 'youtube' ? b.youtube : undefined });
       post.results[k] = { status: 'posted', url: k === 'facebook' ? `https://www.facebook.com/${r.post_id || r.id}` : k === 'bluesky' || k === 'x' || networks.has(k) ? r.url : k === 'google' ? r.searchUrl || connOf('google').mapsUrl || '' : r.permalink || `https://www.instagram.com/${connOf(k).username}` };
-    } catch (e) { post.results[k] = { status: 'failed', error: e.message }; }
+    } catch (e) { post.results[k] = { status: 'failed', error: e.message, ...(e.reconnect ? { reconnect: true } : {}) }; }
   }
   if (video && post.results.youtube.status === 'posted') fs.rm(video.file, { force: true }, () => {}); // kept after a failure, so posting again doesn't need a new upload
   if (draft) { post.jobId = draft.jobId; if (Object.values(post.results).some((r) => r.status === 'posted')) jobPosts.posted(draft.id, post, currentUser(req).name || ''); }

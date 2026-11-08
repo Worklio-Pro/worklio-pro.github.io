@@ -1555,7 +1555,7 @@ ${jobPostsSection(J, R)}${marketingConnect(C)}`;
 <div class="sp-foot"><span class="muted" id="spCount" style="font-size:13px"></span><button class="btn">Post now</button></div></form>
 <div class="card"><h2>Posted</h2>${(R.posts || []).length ? `<div class="sp-list">${R.posts.map((p) => `<div class="sp-row">${p.images[0] ? `<img src="${esc(p.images[0])}" alt="" loading="lazy">` : '<span class="sp-noimg"></span>'}
 <div><p>${p.caption ? esc(p.caption.length > 220 ? p.caption.slice(0, 220) + '…' : p.caption) : '<span class="muted">No caption</span>'}</p><div class="sp-meta"><span class="muted">${fmtDate(p.createdAt.slice(0, 10))}${p.by ? ' · ' + esc(p.by) : ''}${p.images.length > 1 ? ` · ${p.images.length} photos` : ''}${p.video ? ' · video' : ''}</span>${SP_NETS.map(([k]) => res(p, k, SP_NAMES[k])).join('')}</div>
-${Object.values(p.results).filter((r) => r.status !== 'posted').map((r) => `<p class="sp-err">${esc(r.error)}</p>`).join('')}</div>
+${Object.values(p.results).filter((r) => r.status !== 'posted').map((r) => `<p class="sp-err">${esc(r.error)}</p>`).join('')}${Object.values(p.results).some((r) => r.status !== 'posted' && r.reconnect) ? spReconnect() : ''}</div>
 ${['owner', 'admin'].includes(role()) ? `<button type="button" class="x sp-x" data-act="spRemove" data-id="${p.id}" title="Remove from this list (it stays on the networks it was posted to)" aria-label="Remove from this list">×</button>` : ''}</div>`).join('')}</div>` : '<p class="muted" style="margin:0">Nothing posted yet.</p>'}</div>`;
     const f = $('#spForm'); const cap = f.caption;
     const len = (k, t) => (SP_LIMITS[k].graphemes ? graphemeCount(t) : t.length);
@@ -1640,11 +1640,13 @@ async function spYouTube() {
   box.querySelector('[name=ytPrivacy]').addEventListener('change', (e) => { y.privacy = e.target.value; });
   box.querySelector('[name=ytKids]').addEventListener('change', (e) => { y.kids = e.target.checked; });
 }
+// a network signed the business out: owners and admins get a button to fix it; everyone else is told who can
+const spReconnect = () => ['owner', 'admin'].includes(role()) ? '<p style="margin:6px 0 0"><a class="btn sm" href="/settings/connections" data-link>Go to Account Connections</a></p>' : '<p class="muted" style="margin:6px 0 0">Ask the account owner or an admin to connect it again.</p>';
 const TT_HINT = { SELF_ONLY: 'Until TikTok approves this app, posts can only be private.' };
 async function spTikTok() {
   const box = $('#spTt'); if (!box) return; const on = spDraft.to.includes('tiktok'); box.hidden = !on; if (!on || box.dataset.loaded) return;
   box.dataset.loaded = '1'; box.innerHTML = '<p class="muted" style="margin:0">Checking your TikTok account…</p>';
-  let c; try { c = await api('GET', '/api/social-posts/tiktok'); } catch (x) { box.innerHTML = `<p class="sp-err" style="margin:0">${esc(x.message)}</p>`; delete box.dataset.loaded; return; }
+  let c; try { c = await api('GET', '/api/social-posts/tiktok'); } catch (x) { box.innerHTML = `<p class="sp-err" style="margin:0">${esc(x.message)}</p>${x.data && x.data.reconnect ? spReconnect() : ''}`; delete box.dataset.loaded; return; }
   const t = spDraft.tiktok = spDraft.tiktok || { privacy: '', comments: !c.commentsOff, brand: false };
   const only = c.privacy.length === 1 && c.privacy[0].id === 'SELF_ONLY';
   box.innerHTML = `<h3>${CONN_ICONS.tiktok}TikTok · posting as ${esc(c.nickname)}${c.username ? ` <span class="muted">@${esc(c.username)}</span>` : ''}</h3>
