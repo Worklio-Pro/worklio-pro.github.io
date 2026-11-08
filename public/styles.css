@@ -1980,3 +1980,10 @@ label.bk-auto input{width:auto;margin:0}
 .lf-amt{display:flex;gap:8px;margin-top:4px}.lf-amt input{flex:1;min-width:0}.lf-amt select{width:auto}
 .lf-fields{margin-top:10px}
 @media (max-width:600px){.bi-opts .mseg{flex-direction:column}}
+/* Products & services categories: the tag in lists, group headings in the line-item pickers, the category in report titles */
+.svc-cat{display:inline-block;padding:1px 8px;border-radius:999px;background:var(--tint);color:var(--text);font-size:12px;font-weight:600;white-space:nowrap}
+.svc-ac .svc-ac-cat{margin:6px 10px 2px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.svc-ac .svc-ac-cat:first-child{margin-top:4px}
+.mli-cat{margin:0;padding:14px 14px 6px;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line);background:var(--surface-2)}
+.rpt-cat-h{font-weight:500;color:var(--muted)}
+.rpt-bar .rpt-cat{font-weight:600}

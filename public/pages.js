@@ -707,28 +707,36 @@ A.delStaff = async (d) => {
 };
 
 /* ===== /services ===== */
-let svcView = { q: '', sort: 'name', dir: 1 };
+let svcView = { q: '', sort: 'name', dir: 1, cat: '' }; // cat: one category ('__none' = items without one), '' = all
 const svcType = (s) => (s.type === 'product' ? 'Product' : 'Service');
+// the catalog's categories (Products & services → Category), A–Z, one per spelling ignoring case
+const svcCats = () => { const m = new Map(); (D.services || []).forEach((s) => { const c = String(s.category || '').trim(); if (c && !m.has(c.toLowerCase())) m.set(c.toLowerCase(), c); }); return [...m.values()].sort((a, b) => a.localeCompare(b)); };
+const svcCatIs = (s, cat) => !cat || (cat === '__none' ? !String(s.category || '').trim() : String(s.category || '').trim().toLowerCase() === cat.toLowerCase());
 PAGES['/services'] = {
   title: 'Products & Services',
   async render(main) {
     const v = svcView;
-    const list = D.services.filter((s) => !v.q || [s.name, s.description, svcType(s)].join(' ').toLowerCase().includes(v.q.toLowerCase()));
-    const key = { name: (s) => (s.name || '').toLowerCase(), type: (s) => svcType(s) + (s.name || '').toLowerCase(), price: (s) => Number(s.price) || 0 }[v.sort];
+    const cats = svcCats(); if (v.cat && v.cat !== '__none' && !cats.some((c) => c.toLowerCase() === v.cat.toLowerCase())) v.cat = '';
+    const list = D.services.filter((s) => svcCatIs(s, v.cat) && (!v.q || [s.name, s.description, svcType(s), s.category].join(' ').toLowerCase().includes(v.q.toLowerCase())));
+    const key = { name: (s) => (s.name || '').toLowerCase(), type: (s) => svcType(s) + (s.name || '').toLowerCase(), cat: (s) => (s.category ? '0' + s.category.toLowerCase() : '1') + '|' + (s.name || '').toLowerCase(), price: (s) => Number(s.price) || 0 }[v.sort];
     list.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0) * v.dir);
     const th = (k, label, cls = '') => `<th class="${cls}"><button class="th-btn" data-act="svcSort" data-k="${k}">${label} <span class="sort ${v.sort === k ? 'on' : ''}">${v.sort === k ? (v.dir > 0 ? '▲' : '▼') : '⇅'}</span></button></th>`;
     main.innerHTML = `<div class="head"><div><h1>Products &amp; services</h1><p class="sub">Add and update your products and services to stay organized when creating quotes, jobs and invoices.</p></div></div>
 <div class="cfilters"><div class="search-x"><input id="sq" type="search" placeholder="Search" value="${esc(v.q)}" aria-label="Search products and services"><button type="button" class="icon-btn" data-act="svcClear" aria-label="Clear search" ${v.q ? '' : 'hidden'}>✕</button></div>
+${cats.length ? `<select id="svcCat" aria-label="Category" style="width:auto"><option value="">All categories</option>${cats.map((c) => `<option value="${esc(c)}" ${v.cat.toLowerCase() === c.toLowerCase() ? 'selected' : ''}>${esc(c)}</option>`).join('')}<option value="__none" ${v.cat === '__none' ? 'selected' : ''}>No category</option></select>` : ''}
 <a class="btn alt" href="/services/import" data-link style="margin-left:auto">Import</a><button class="btn" data-act="newService">+ Add Item</button></div>
-<div class="card ctable"><div class="tablewrap"><table><tr>${th('name', 'Name')}<th class="svc-desc">Description</th>${th('type', 'Type')}${th('price', 'Price', 'r')}</tr>
-${list.map((s) => `<tr class="crow" data-id="${s.id}"><td><strong>${esc(s.name)}</strong></td><td class="svc-desc">${esc(s.description)}</td><td>${svcType(s)}</td><td class="r" style="white-space:nowrap">${money(s.price)}<span class="muted"> / ${esc(s.unit || (s.type === 'product' ? 'each' : 'job'))}</span></td></tr>`).join('')
-  || `<tr><td colspan="4" class="empty">${D.services.length ? 'Nothing matches your search' : 'No products or services yet. Add your first one.'}</td></tr>`}</table></div></div>`;
+<div class="card ctable"><div class="tablewrap"><table><tr>${th('name', 'Name')}<th class="svc-desc">Description</th>${cats.length ? th('cat', 'Category') : ''}${th('type', 'Type')}${th('price', 'Price', 'r')}</tr>
+${list.map((s) => `<tr class="crow" data-id="${s.id}"><td><strong>${esc(s.name)}</strong></td><td class="svc-desc">${esc(s.description)}</td>${cats.length ? `<td>${s.category ? `<span class="svc-cat">${esc(s.category)}</span>` : '<span class="muted">—</span>'}</td>` : ''}<td>${svcType(s)}</td><td class="r" style="white-space:nowrap">${money(s.price)}<span class="muted"> / ${esc(s.unit || (s.type === 'product' ? 'each' : 'job'))}</span></td></tr>`).join('')
+  || `<tr><td colspan="${cats.length ? 5 : 4}" class="empty">${D.services.length ? 'Nothing matches your search' : 'No products or services yet. Add your first one.'}</td></tr>`}</table></div></div>`;
+    if ($('#svcCat')) $('#svcCat').addEventListener('change', (e) => { svcView.cat = e.target.value; refresh(); });
     let t; $('#sq').addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(async () => { svcView.q = e.target.value; await refresh(); const q = $('#sq'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 250); });
     $$('.crow').forEach((r) => r.addEventListener('click', () => serviceForm(byId(D.services, r.dataset.id))));
   },
 };
 A.svcSort = (d) => { svcView.dir = svcView.sort === d.k ? -svcView.dir : 1; svcView.sort = d.k; refresh(); };
 A.svcClear = () => { svcView.q = ''; refresh().then(() => $('#sq').focus()); };
+// a category box: type a new one or pick one already used (the list under it)
+const catField = (name, value, label = 'Category', hint = 'e.g. Low voltage, T-shirts. Reports can show each category on its own.') => `<label>${label}<input name="${name}" list="svcCatList" maxlength="40" value="${esc(value || '')}" placeholder="None" autocomplete="off"><datalist id="svcCatList">${svcCats().map((c) => `<option value="${esc(c)}">`).join('')}</datalist><small class="muted">${hint}</small></label>`;
 function serviceForm(s) {
   s = s || {};
   const mb = modal(s.id ? 'Edit item' : 'New item', `<form><div class="row"><label>Name<input name="name" required value="${esc(s.name)}"></label>
@@ -737,6 +745,7 @@ function serviceForm(s) {
 <label>Description<textarea name="description" placeholder="Shown on quote and invoice lines">${esc(s.description)}</textarea></label>
 ${aiOn() ? '<div class="ai-row"><button type="button" class="btn alt sm" id="aiDesc">✨ Write with AI</button></div>' : ''}
 <div class="row"><label>Standard price ($)<input name="price" type="number" step="0.01" min="0" required value="${s.price ?? ''}"></label><label>Unit<input name="unit" value="${esc(s.unit || '')}" placeholder="job, hour, visit, each"></label></div>
+${catField('category', s.id ? s.category : (svcView.cat && svcView.cat !== '__none' ? svcView.cat : ''))}
 <div class="foot">${s.id ? `<button type="button" class="btn danger" data-act="delService" data-id="${s.id}">Delete</button>` : ''}<button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save</button></div></form>`);
   if ($('#aiDesc', mb)) $('#aiDesc', mb).addEventListener('click', async (e) => {
     const f = $('form', mb); const nameIn = $('[name=name]', f); const desc = $('[name=description]', f); const btn = e.currentTarget;
@@ -790,11 +799,11 @@ A.newService = () => serviceForm(); A.editService = (d) => serviceForm(byId(D.se
 A.delService = async (d) => { if (!confirm('Delete this item? Quotes and invoices that already use it keep their lines.')) return; await api('DELETE', '/api/services/' + d.id); closeModal(); refresh(); };
 
 /* ===== /services/import: products and services from a CSV (parseCsv is under /clients/import) ===== */
-const SVC_FIELDS = [['', "Don't import"], ['name', 'Name'], ['description', 'Description'], ['type', 'Type (product or service)'], ['price', 'Price'], ['unit', 'Unit'], ['active', 'Active (no = skip)']];
-const SVC_GUESS = [['price', /price|rate|cost|amount/], ['description', /desc|details/], ['type', /^(type|category|kind|item type)$/], ['unit', /^(unit|uom|unit of measure)$/], ['active', /^(active|enabled|status)$/], ['name', /^(name|item|product|service|(item|product|service) ?name|title)$/]];
+const SVC_FIELDS = [['', "Don't import"], ['name', 'Name'], ['description', 'Description'], ['type', 'Type (product or service)'], ['price', 'Price'], ['unit', 'Unit'], ['category', 'Category'], ['active', 'Active (no = skip)']];
+const SVC_GUESS = [['price', /price|rate|cost|amount/], ['description', /desc|details/], ['category', /^(category|group|department|division|business|business line|service line)$/], ['type', /^(type|kind|item type)$/], ['unit', /^(unit|uom|unit of measure)$/], ['active', /^(active|enabled|status)$/], ['name', /^(name|item|product|service|(item|product|service) ?name|title)$/]];
 let svcImport = null;
 const svcRow = (row, map) => { const v = {}; map.forEach((f, i) => { if (f && (row[i] || '').trim()) v[f] = row[i].trim(); });
-  return { name: v.name || '', description: v.description || '', type: /product|material|part|goods/i.test(v.type || '') ? 'product' : 'service', price: Number(String(v.price || '').replace(/[^0-9.-]/g, '')) || 0, unit: v.unit || '', inactive: /^(false|no|n|0|inactive|archived)$/i.test(v.active || '') }; };
+  return { name: v.name || '', description: v.description || '', type: /product|material|part|goods/i.test(v.type || '') ? 'product' : 'service', price: Number(String(v.price || '').replace(/[^0-9.-]/g, '')) || 0, unit: v.unit || '', category: v.category || '', inactive: /^(false|no|n|0|inactive|archived)$/i.test(v.active || '') }; };
 function svcImportPlan() {
   const norm = (x) => String(x || '').trim().toLowerCase(); const seen = new Set(D.services.map((s) => norm(s.name)));
   return svcImport.rows.map((r) => { const c = svcRow(r, svcImport.map);
@@ -829,8 +838,8 @@ ${s.map.includes('name') ? '' : '<div class="notice" style="margin-top:12px">Cho
 <div class="card"><h2>3. Review and import</h2>
 <p><strong>${plan.length}</strong> rows: <strong>${n('new')}</strong> new, <strong>${n('dupe')}</strong> already in your list or repeated in the file${n('inactive') ? `, <strong>${n('inactive')}</strong> inactive (skipped)` : ''}${n('noname') ? `, <strong>${n('noname')}</strong> without a name (skipped)` : ''}.</p>
 <div class="chk"><label><input type="checkbox" id="svcSkip" ${s.skipDupes ? 'checked' : ''}> Skip items already in my list (same name)</label></div>
-<div class="tablewrap"><table class="m-svcimp"><tr><th>Name</th><th>Type</th><th>Description</th><th class="r">Price</th><th></th></tr>
-${plan.slice(0, 100).map((p) => `<tr><td>${esc(p.c.name) || '<span class="muted">—</span>'}</td><td>${p.c.type === 'product' ? 'Product' : 'Service'}</td><td>${esc(p.c.description)}</td><td class="r">${money(p.c.price)}${p.c.unit ? `<span class="muted"> / ${esc(p.c.unit)}</span>` : ''}</td><td>${tag[p.status]}</td></tr>`).join('')}</table></div>
+<div class="tablewrap"><table class="m-svcimp"><tr><th>Name</th><th>Type</th>${s.map.includes('category') ? '<th>Category</th>' : ''}<th>Description</th><th class="r">Price</th><th></th></tr>
+${plan.slice(0, 100).map((p) => `<tr><td>${esc(p.c.name) || '<span class="muted">—</span>'}</td><td>${p.c.type === 'product' ? 'Product' : 'Service'}</td>${s.map.includes('category') ? `<td>${esc(p.c.category)}</td>` : ''}<td>${esc(p.c.description)}</td><td class="r">${money(p.c.price)}${p.c.unit ? `<span class="muted"> / ${esc(p.c.unit)}</span>` : ''}</td><td>${tag[p.status]}</td></tr>`).join('')}</table></div>
 ${plan.length > 100 ? `<p class="muted">Showing the first 100 of ${plan.length} rows.</p>` : ''}
 <div class="foot"><a class="btn alt" href="/services" data-link>Cancel</a><button class="btn" data-act="runSvcImport" ${take.length ? '' : 'disabled'}>Import ${take.length} item${take.length === 1 ? '' : 's'}</button></div></div>`;
   $$('[data-smap]').forEach((sel) => sel.addEventListener('change', (e) => { s.map[Number(e.target.dataset.smap)] = e.target.value; svcImportStep(); }));
@@ -838,12 +847,12 @@ ${plan.length > 100 ? `<p class="muted">Showing the first 100 of ${plan.length} 
 }
 A.runSvcImport = async (d, el) => {
   const s = svcImport; if (!s) return;
-  const services = svcImportPlan().filter((p) => p.status === 'new' || (p.status === 'dupe' && !s.skipDupes)).map(({ c }) => ({ name: c.name, description: c.description, type: c.type, price: c.price, unit: c.unit }));
+  const services = svcImportPlan().filter((p) => p.status === 'new' || (p.status === 'dupe' && !s.skipDupes)).map(({ c }) => ({ name: c.name, description: c.description, type: c.type, price: c.price, unit: c.unit, category: c.category }));
   el.disabled = true; el.textContent = 'Importing…';
   try { const r = await api('POST', '/api/services/import', { services }); toast(`Imported ${r.added} item${r.added === 1 ? '' : 's'}`); navigate('/services'); }
   catch (err) { el.disabled = false; el.textContent = `Import ${services.length} items`; throw err; }
 };
-A.svcImportTemplate = () => downloadCsv('products-services-sample.csv', [['Name', 'Description', 'Type', 'Price', 'Unit'], ['Service call', 'Diagnose the problem on site', 'Service', '89', 'visit'], ['Outlet cover', 'White duplex wall plate', 'Product', '4.50', 'each']]);
+A.svcImportTemplate = () => downloadCsv('products-services-sample.csv', [['Name', 'Description', 'Type', 'Price', 'Unit', 'Category'], ['Service call', 'Diagnose the problem on site', 'Service', '89', 'visit', 'Repairs'], ['Outlet cover', 'White duplex wall plate', 'Product', '4.50', 'each', 'Parts']]);
 
 /* ===== /expenses ===== */
 let expJob = '';
@@ -945,7 +954,7 @@ PAGES['/expenses'] = {
     main.innerHTML = `<div class="head"><div><h1>Expense Tracker</h1><p class="sub">Log material costs, subcontractor fees and other spending against specific projects.</p></div><button class="btn" data-act="newExpense">+ Log expense</button></div>
 <div class="grid g3">${stat('Total shown', money(total), list.length + ' expenses')}${stat('All expenses', money(D.expenses.reduce((s, e) => s + e.amount, 0)))}<div class="card"><div class="l muted">By category</div>${Object.entries(byCat).map(([k, v]) => `<div style="display:flex;justify-content:space-between"><span>${esc(k)}</span><span>${money(v)}</span></div>`).join('') || '<span class="muted">None yet</span>'}</div></div>
 <div class="card" style="margin-top:16px"><label style="max-width:360px">Filter by project<select id="expJob"><option value="">All projects</option><option value="none" ${expJob === 'none' ? 'selected' : ''}>General (no project)</option>${D.jobs.map((j) => `<option value="${j.id}" ${expJob === j.id ? 'selected' : ''}>${esc(j.number + ' · ' + j.title)}</option>`).join('')}</select></label>
-<div class="tablewrap"><table class="m-exp"><tr><th>Date</th><th>Category</th><th>Vendor</th><th>Description</th><th>Project</th><th class="r">Amount</th><th></th></tr>${list.map((e) => `<tr><td>${fmtDate(e.date)}</td><td>${esc(e.category)}</td><td>${esc(e.vendor)}</td><td>${esc(e.description)}</td><td>${jobLabel(e.jobId)}</td><td class="r">${money(e.amount)}</td><td class="actions"><button class="btn alt sm row-edit" data-act="editExpense" data-id="${e.id}">Edit</button></td></tr>`).join('') || '<tr><td colspan="7" class="empty">No expenses logged</td></tr>'}</table></div></div>`;
+<div class="tablewrap"><table class="m-exp"><tr><th>Date</th><th>Category</th><th>Vendor</th><th>Description</th><th>Project</th><th class="r">Amount</th><th></th></tr>${list.map((e) => `<tr><td>${fmtDate(e.date)}</td><td>${esc(e.category)}</td><td>${esc(e.vendor)}</td><td>${esc(e.description)}</td><td>${jobLabel(e.jobId)}${e.bizCat ? ` <span class="svc-cat">${esc(e.bizCat)}</span>` : ''}</td><td class="r">${money(e.amount)}</td><td class="actions"><button class="btn alt sm row-edit" data-act="editExpense" data-id="${e.id}">Edit</button></td></tr>`).join('') || '<tr><td colspan="7" class="empty">No expenses logged</td></tr>'}</table></div></div>`;
     $('#expJob').addEventListener('change', (e) => { expJob = e.target.value; refresh(); });
   },
 };
@@ -955,6 +964,7 @@ function expenseForm(x) {
 <div class="row"><label>Category<select name="category">${CATS.map((c) => `<option ${x.category === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label><label>Vendor / payee<input name="vendor" value="${esc(x.vendor)}"></label></div>
 <label>Description<input name="description" value="${esc(x.description)}"></label>
 <label>Project (job)<select name="jobId"><option value="">General business expense</option>${D.jobs.map((j) => `<option value="${j.id}" ${x.jobId === j.id ? 'selected' : ''}>${esc(j.number + ' · ' + j.title + ' (' + clientName(j.clientId) + ')')}</option>`).join('')}</select></label>
+${svcCats().length || x.bizCat ? catField('bizCat', x.bizCat, 'Counts toward', 'A products & services category, for its own reports. Leave empty for the whole business (or the job’s category when a job is picked).') : ''}
 <div class="foot">${x.id ? `<button type="button" class="btn danger" data-act="delExpense" data-id="${x.id}">Delete</button>` : ''}<button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save</button></div></form>`);
   $('form', mb).addEventListener('submit', async (e) => { e.preventDefault(); const b = Object.fromEntries(new FormData(e.target)); b.jobId = b.jobId || null; x.id ? await api('PUT', '/api/expenses/' + x.id, b) : await api('POST', '/api/expenses', b); closeModal(); toast('Expense saved'); refresh(); });
 }
@@ -965,7 +975,7 @@ A.delExpense = async (d) => { if (!confirm('Delete this expense?')) return; awai
 // tabs: the overview, then accounting-style reports for a date range (profit & loss, job profit) and unpaid invoices by age
 const RPT_TABS = [['overview', 'Overview'], ['pl', 'Profit & loss'], ['jobs', 'Job profit'], ['aging', 'Unpaid invoices']];
 const RPT_RANGES = [['thisMonth', 'This month'], ['lastMonth', 'Last month'], ['thisQuarter', 'This quarter'], ['lastQuarter', 'Last quarter'], ['thisYear', 'This year'], ['lastYear', 'Last year'], ['last12', 'Last 12 months'], ['custom', 'Custom dates']];
-const rpt = { tab: 'overview', range: 'thisYear', from: '', to: '', basis: 'cash' };
+const rpt = { tab: 'overview', range: 'thisYear', from: '', to: '', basis: 'cash', cat: '' }; // cat: one products & services category ('__none' = no category), '' = everything
 try { Object.assign(rpt, JSON.parse(localStorage.getItem('rptView') || '{}')); } catch (e) { /* no saved view */ }
 const rptSave = () => { try { localStorage.setItem('rptView', JSON.stringify(rpt)); } catch (e) { /* storage blocked */ } };
 function rptDates() {
@@ -981,18 +991,25 @@ function rptDates() {
     default: return [d(y, 0, 1), d(y, 11, 31)];
   }
 }
-const rptRangeBar = (withBasis) => { const [from, to] = rptDates(); return `<div class="rpt-bar noprint"><select data-rpt="range" aria-label="Dates">${RPT_RANGES.map(([k, l]) => `<option value="${k}" ${rpt.range === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+// the category picker (only once the catalog has categories), and the query string it adds to a report's address
+const rptCatOk = () => { const cats = svcCats(); if (rpt.cat && rpt.cat !== '__none' && !cats.some((c) => c.toLowerCase() === rpt.cat.toLowerCase())) rpt.cat = ''; return cats; };
+const rptCatQ = () => (rptCatOk().length && rpt.cat ? '&cat=' + encodeURIComponent(rpt.cat) : '');
+const rptCatName = () => (!rpt.cat ? '' : rpt.cat === '__none' ? 'No category' : (svcCats().find((c) => c.toLowerCase() === rpt.cat.toLowerCase()) || rpt.cat));
+const rptCatSel = () => { const cats = rptCatOk(); return cats.length ? `<select data-rpt="cat" aria-label="Category" class="rpt-cat"><option value="">All categories</option>${cats.map((c) => `<option value="${esc(c)}" ${rpt.cat.toLowerCase() === c.toLowerCase() ? 'selected' : ''}>${esc(c)}</option>`).join('')}<option value="__none" ${rpt.cat === '__none' ? 'selected' : ''}>No category</option></select>` : ''; };
+const rptRangeBar = (withBasis) => { const [from, to] = rptDates(); return `<div class="rpt-bar noprint">${rptCatSel()}<select data-rpt="range" aria-label="Dates">${RPT_RANGES.map(([k, l]) => `<option value="${k}" ${rpt.range === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
 ${rpt.range === 'custom' ? `<input type="date" data-rpt="from" value="${from}" aria-label="From"><span class="muted">to</span><input type="date" data-rpt="to" value="${to}" aria-label="To">` : `<span class="muted">${fmtDate(from)} – ${fmtDate(to)}</span>`}
 ${withBasis ? `<div class="tabs rpt-basis" role="group" aria-label="Accounting method">${[['cash', 'Cash basis'], ['accrual', 'Accrual basis']].map(([k, l]) => `<button type="button" class="${rpt.basis === k ? 'on' : ''}" data-act="rptBasis" data-b="${k}">${l}</button>`).join('')}</div>` : ''}</div>`; };
 A.rptTab = (d) => { rpt.tab = d.t; rptSave(); refresh(); };
 A.rptBasis = (d) => { rpt.basis = d.b; rptSave(); refresh(); };
-const rptHead = (sub, csv) => `<div class="head"><div><h1>Financial Reports</h1><p class="sub">${sub}</p></div><div class="actions noprint">${csv ? '<button class="btn alt" data-act="rptCsv">Export CSV</button>' : ''}<button class="btn alt" onclick="window.print()">Print</button></div></div>
+A.rptCat = (d) => { rpt.cat = d.c; rptSave(); refresh(); window.scrollTo(0, 0); };
+const rptCatSlug = () => { const n = rptCatName(); return n ? n.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).join('-') + '-' : ''; };
+const rptHead = (sub, csv) => `<div class="head"><div><h1>Financial Reports${rptCatName() ? ` <span class="rpt-cat-h">· ${esc(rptCatName())}</span>` : ''}</h1><p class="sub">${sub}</p></div><div class="actions noprint">${csv ? '<button class="btn alt" data-act="rptCsv">Export CSV</button>' : ''}<button class="btn alt" onclick="window.print()">Print</button></div></div>
 <div class="tabs noprint" role="tablist">${RPT_TABS.map(([k, l]) => `<button type="button" role="tab" aria-selected="${rpt.tab === k}" class="${rpt.tab === k ? 'on' : ''}" data-act="rptTab" data-t="${k}">${l}</button>`).join('')}</div>`;
 const signed = (n) => `<span class="${n < 0 ? 'neg' : ''}">${n < 0 ? '−' + money(-n) : money(n)}</span>`;
 const marginTxt = (m) => (m === null || m === undefined ? '—' : m + '%');
 const RPT = {
   async pl(main) {
-    const [from, to] = rptDates(); const r = await api('GET', `/api/reports/profit-loss?from=${from}&to=${to}&basis=${rpt.basis}`);
+    const [from, to] = rptDates(); const r = await api('GET', `/api/reports/profit-loss?from=${from}&to=${to}&basis=${rpt.basis}${rptCatQ()}`);
     const rows = (list) => list.map((x) => `<tr><td style="padding-left:24px">${esc(x.name)}</td><td class="r">${money(x.amount)}</td></tr>`).join('');
     main.innerHTML = rptHead('Income minus expenses for the dates you choose.', true) + rptRangeBar(true) + `
 <div class="grid g4">${stat('Income', money(r.totalIncome), r.basis === 'cash' ? 'Payments received, before sales tax' : 'Invoiced, before sales tax')}${stat('Expenses', money(r.totalExpenses))}${stat('Net profit', signed(r.net), 'Margin ' + marginTxt(r.margin))}${stat('Sales tax collected', money(r.taxCollected), 'Owed to the state, not income')}</div>
@@ -1001,45 +1018,46 @@ ${r.byMonth.length > 1 ? `<div class="card" style="margin-top:16px"><h2>Net prof
 <tr><th>Income</th><th class="r"></th></tr>${rows(r.income) || '<tr><td colspan="2" class="empty">No income in these dates</td></tr>'}<tr class="pl-sum"><td>Total income</td><td class="r">${money(r.totalIncome)}</td></tr>
 <tr><th>Expenses</th><th class="r"></th></tr>${rows(r.expenses) || '<tr><td colspan="2" class="empty">No expenses in these dates</td></tr>'}<tr class="pl-sum"><td>Total expenses</td><td class="r">${money(r.totalExpenses)}</td></tr>
 <tr class="pl-net"><td>Net profit</td><td class="r">${signed(r.net)}</td></tr></table></div>
+${rpt.cat && rpt.cat !== '__none' ? `<p class="muted">Only ${esc(rptCatName())}: the lines on quotes and invoices in this category, and expenses counted toward it (picked on the expense, or from its job).${r.sharedExpenses ? ` Expenses for the whole business (${money(r.sharedExpenses)} in these dates) aren’t included.` : ''}</p>` : ''}
 <p class="muted">${r.basis === 'cash' ? 'Cash basis: income counts on the day it’s paid (deposits included, refunds taken off). Each payment is split across the invoice’s lines.' : 'Accrual basis: income counts on the invoice date, whether or not it’s been paid. Drafts are left out.'} Expenses count on their date. Labor isn’t included unless you log it as an expense.</p></div>`;
-    A.rptCsv = () => downloadCsv(`profit-loss-${from}-to-${to}.csv`, [['Profit and loss', `${from} to ${to}`, r.basis === 'cash' ? 'Cash basis' : 'Accrual basis'], [], ['Income', ''], ...r.income.map((x) => [x.name, x.amount]), ['Total income', r.totalIncome], [], ['Expenses', ''], ...r.expenses.map((x) => [x.name, x.amount]), ['Total expenses', r.totalExpenses], [], ['Net profit', r.net], ['Sales tax collected (not income)', r.taxCollected]]);
+    A.rptCsv = () => downloadCsv(`profit-loss-${rptCatSlug()}${from}-to-${to}.csv`, [['Profit and loss', `${from} to ${to}`, r.basis === 'cash' ? 'Cash basis' : 'Accrual basis', ...(rptCatName() ? [rptCatName()] : [])], [], ['Income', ''], ...r.income.map((x) => [x.name, x.amount]), ['Total income', r.totalIncome], [], ['Expenses', ''], ...r.expenses.map((x) => [x.name, x.amount]), ['Total expenses', r.totalExpenses], [], ['Net profit', r.net], ['Sales tax collected (not income)', r.taxCollected]]);
   },
   async jobs(main) {
-    const [from, to] = rptDates(); const r = await api('GET', `/api/reports/jobs?from=${from}&to=${to}`); const J = r.jobs;
+    const [from, to] = rptDates(); const r = await api('GET', `/api/reports/jobs?from=${from}&to=${to}${rptCatQ()}`); const J = r.jobs;
     const rev = J.reduce((s, j) => s + j.revenue, 0); const cost = J.reduce((s, j) => s + j.costs, 0); const losing = J.filter((j) => j.profit < 0).length;
     main.innerHTML = rptHead('What each job brought in against what it cost.', true) + rptRangeBar(false) + `
 <div class="grid g4">${stat('Jobs', J.length, 'With invoices or expenses')}${stat('Invoiced', money(rev), 'Before sales tax')}${stat('Job costs', money(cost), planHas('timesheets') ? `${money(J.reduce((s, j) => s + (j.labor || 0), 0))} of it labor` : 'Expenses logged to jobs')}${stat('Profit', signed(rev - cost), `Margin ${rev ? Math.round((rev - cost) / rev * 1000) / 10 + '%' : '—'}${losing ? ` · ${losing} at a loss` : ''}`)}</div>
-<div class="card" style="margin-top:16px"><div class="tablewrap"><table class="m-jprofit"><tr><th>Job</th><th>Client</th><th>Date</th><th class="r">Invoiced</th><th class="r">Expenses</th>${planHas('timesheets') ? '<th class="r m-hide">Labor</th>' : ''}<th class="r">Profit</th><th class="r">Margin</th></tr>
-${J.map((j) => `<tr><td><a href="/jobs/edit?id=${esc(j.id)}" data-link>${esc(j.number)}</a> ${esc(j.title)}</td><td>${esc(j.client)}</td><td>${fmtDate(j.date)}</td><td class="r">${money(j.revenue)}</td><td class="r">${money(j.expenses ?? j.costs)}</td>${planHas('timesheets') ? `<td class="r m-hide">${money(j.labor || 0)}</td>` : ''}<td class="r">${signed(j.profit)}</td><td class="r">${marginTxt(j.margin)}</td></tr>`).join('') || `<tr><td colspan="${planHas('timesheets') ? 8 : 7}" class="empty">No jobs with invoices or costs in these dates</td></tr>`}</table></div>
-<p class="muted">Jobs count by their scheduled date. Invoiced is every invoice for the job except drafts, after discounts. Expenses are the ones linked to the job in Expenses.${planHas('timesheets') ? ' Labor is the time logged to the job in Timesheets, at each person’s pay rate (set by the owner or an admin in Timesheets → Pay rates).' : ''}</p></div>`;
-    A.rptCsv = () => downloadCsv(`job-profit-${from}-to-${to}.csv`, [['Job', 'Title', 'Client', 'Date', 'Status', 'Invoiced', 'Expenses', 'Labor', 'Costs', 'Profit', 'Margin %'], ...J.map((j) => [j.number, j.title, j.client, j.date, j.status, j.revenue, j.expenses ?? j.costs, j.labor || 0, j.costs, j.profit, j.margin ?? ''])]);
+<div class="card" style="margin-top:16px"><div class="tablewrap"><table class="m-jprofit"><tr><th>Job</th><th>Client</th>${svcCats().length && !rpt.cat ? '<th class="m-hide">Category</th>' : ''}<th>Date</th><th class="r">Invoiced</th><th class="r">Expenses</th>${planHas('timesheets') ? '<th class="r m-hide">Labor</th>' : ''}<th class="r">Profit</th><th class="r">Margin</th></tr>
+${J.map((j) => `<tr><td><a href="/jobs/edit?id=${esc(j.id)}" data-link>${esc(j.number)}</a> ${esc(j.title)}</td><td>${esc(j.client)}</td>${svcCats().length && !rpt.cat ? `<td class="m-hide">${j.category ? esc(j.category) : '<span class="muted">—</span>'}</td>` : ''}<td>${fmtDate(j.date)}</td><td class="r">${money(j.revenue)}</td><td class="r">${money(j.expenses ?? j.costs)}</td>${planHas('timesheets') ? `<td class="r m-hide">${money(j.labor || 0)}</td>` : ''}<td class="r">${signed(j.profit)}</td><td class="r">${marginTxt(j.margin)}</td></tr>`).join('') || `<tr><td colspan="${(planHas('timesheets') ? 8 : 7) + (svcCats().length && !rpt.cat ? 1 : 0)}" class="empty">No jobs with invoices or costs in these dates${rpt.cat ? ' in this category' : ''}</td></tr>`}</table></div>
+<p class="muted">Jobs count by their scheduled date. Invoiced is every invoice for the job except drafts, after discounts. Expenses are the ones linked to the job in Expenses.${svcCats().length ? ' A job’s category is the one most of its lines are in.' : ''}${planHas('timesheets') ? ' Labor is the time logged to the job in Timesheets, at each person’s pay rate (set by the owner or an admin in Timesheets → Pay rates).' : ''}</p></div>`;
+    A.rptCsv = () => downloadCsv(`job-profit-${rptCatSlug()}${from}-to-${to}.csv`, [['Job', 'Title', 'Client', 'Category', 'Date', 'Status', 'Invoiced', 'Expenses', 'Labor', 'Costs', 'Profit', 'Margin %'], ...J.map((j) => [j.number, j.title, j.client, j.category || '', j.date, j.status, j.revenue, j.expenses ?? j.costs, j.labor || 0, j.costs, j.profit, j.margin ?? ''])]);
   },
   async aging(main) {
-    const r = await api('GET', '/api/reports/aging'); const L = { current: 'Not yet due', d1_30: '1–30 days', d31_60: '31–60 days', d61_90: '61–90 days', d90: 'Over 90 days' };
-    main.innerHTML = rptHead(`What clients owe you, by how long it’s been past due. As of ${fmtDate(r.asOf)}.`, true) + `
+    const r = await api('GET', '/api/reports/aging?' + rptCatQ().slice(1)); const L = { current: 'Not yet due', d1_30: '1–30 days', d31_60: '31–60 days', d61_90: '61–90 days', d90: 'Over 90 days' };
+    main.innerHTML = rptHead(`What clients owe you, by how long it’s been past due. As of ${fmtDate(r.asOf)}.`, true) + (svcCats().length ? `<div class="rpt-bar noprint">${rptCatSel()}</div>` : '') + `
 <div class="grid g4">${stat('Total owed', money(r.totals.total), r.invoices.length + ' invoices')}${stat('Not yet due', money(r.totals.current))}${stat('Past due', money(r.totals.total - r.totals.current))}${stat('Over 90 days', money(r.totals.d90))}</div>
 <div class="card" style="margin-top:16px"><h2>By client</h2><div class="tablewrap"><table class="m-aging"><tr><th>Client</th>${r.buckets.map((b) => `<th class="r">${L[b]}</th>`).join('')}<th class="r">Total</th></tr>
 ${r.clients.map((c) => `<tr><td><a href="/clients/view?id=${esc(c.clientId)}" data-link>${esc(c.client)}</a></td>${r.buckets.map((b) => `<td class="r">${c[b] ? money(c[b]) : '<span class="muted">—</span>'}</td>`).join('')}<td class="r"><strong>${money(c.total)}</strong></td></tr>`).join('') || `<tr><td colspan="${r.buckets.length + 2}" class="empty">Nothing owed. Every sent invoice is paid.</td></tr>`}
 ${r.clients.length ? `<tr class="pl-sum"><td>Total</td>${r.buckets.map((b) => `<td class="r">${money(r.totals[b])}</td>`).join('')}<td class="r">${money(r.totals.total)}</td></tr>` : ''}</table></div></div>
 ${r.invoices.length ? `<div class="card"><h2>Invoices</h2><div class="tablewrap"><table class="m-aginv"><tr><th>Invoice</th><th>Client</th><th>Due</th><th class="r">Days past due</th><th class="r">Balance</th></tr>${r.invoices.map((i) => `<tr><td><a href="/invoices/view?id=${esc(i.id)}" data-link>${esc(i.number)}</a></td><td>${esc(i.client)}</td><td>${i.dueDate ? fmtDate(i.dueDate) : '—'}</td><td class="r">${i.daysOverdue || '<span class="muted">Not due</span>'}</td><td class="r">${money(i.balance)}</td></tr>`).join('')}</table></div></div>` : ''}`;
-    A.rptCsv = () => downloadCsv(`unpaid-invoices-${r.asOf}.csv`, [['Invoice', 'Client', 'Issued', 'Due', 'Days past due', 'Balance', 'Invoice total'], ...r.invoices.map((i) => [i.number, i.client, i.issueDate, i.dueDate, i.daysOverdue, i.balance, i.total])]);
+    A.rptCsv = () => downloadCsv(`unpaid-invoices-${rptCatSlug()}${r.asOf}.csv`, [['Invoice', 'Client', 'Issued', 'Due', 'Days past due', 'Balance', 'Invoice total'], ...r.invoices.map((i) => [i.number, i.client, i.issueDate, i.dueDate, i.daysOverdue, i.balance, i.total])]);
   },
 };
 PAGES['/reports'] = {
   title: 'Financial Reports',
   async render(main) {
-    if (RPT[rpt.tab]) {
-      await RPT[rpt.tab](main);
-      $$('[data-rpt]', main).forEach((el) => el.addEventListener('change', (e) => { const k = e.target.dataset.rpt; if (k === 'range' && e.target.value === 'custom') { [rpt.from, rpt.to] = rptDates(); } rpt[k] = e.target.value; rptSave(); refresh(); }));
-      return;
-    }
-    const r = await api('GET', '/api/reports'); const labels = r.revenueByMonth.map((m) => monthLabel(m.month));
+    const wire = () => $$('[data-rpt]', main).forEach((el) => el.addEventListener('change', (e) => { const k = e.target.dataset.rpt; if (k === 'range' && e.target.value === 'custom') { [rpt.from, rpt.to] = rptDates(); } rpt[k] = e.target.value; rptSave(); refresh(); }));
+    if (RPT[rpt.tab]) { await RPT[rpt.tab](main); return wire(); }
+    const r = await api('GET', '/api/reports?' + rptCatQ().slice(1)); const labels = r.revenueByMonth.map((m) => monthLabel(m.month));
     const totalAll = r.paidTotal + r.pendingTotal || 1; const maxSvc = Math.max(...r.popularServices.map((s) => s.count), 1);
-    main.innerHTML = `${rptHead('Revenue, invoice status and your most popular services.')}
+    const maxCat = Math.max(...(r.byCategory || []).map((c) => c.revenue), 1);
+    main.innerHTML = `${rptHead(rpt.cat ? 'Revenue, invoice status and the most popular items in this category.' : 'Revenue, invoice status and your most popular services.')}${svcCats().length ? `<div class="rpt-bar noprint">${rptCatSel()}</div>` : ''}
 <div class="grid g4">${stat('Revenue this month', money(r.thisMonthRevenue))}${stat('Paid invoices', money(r.paidTotal), r.paidCount + ' invoices')}${stat('Pending invoices', money(r.pendingTotal), r.pendingCount + ' invoices · ' + money(r.overdueTotal) + ' overdue')}${stat('Expenses logged', money(r.totalExpenses), 'Net of paid revenue: ' + money(r.paidTotal - r.totalExpenses))}</div>
 <div class="grid g2" style="margin-top:16px"><div class="card"><h2>Total monthly revenue (last 12 months)</h2>${bars(r.revenueByMonth.map((m) => m.revenue), labels, (v) => (v ? '$' + Math.round(v) : ''))}</div>
 <div class="card"><h2>Paid vs pending</h2><p>Paid <strong>${money(r.paidTotal)}</strong></p><div class="meter"><i style="width:${(r.paidTotal / totalAll) * 100}%"></i></div><p style="margin-top:14px">Pending <strong>${money(r.pendingTotal)}</strong></p><div class="meter"><i style="width:${(r.pendingTotal / totalAll) * 100}%;background:var(--warn)"></i></div><p class="muted" style="margin-top:14px">Drafts are excluded. Pending includes sent and overdue invoices.</p></div></div>
+${!rpt.cat && (r.byCategory || []).length ? `<div class="card"><h2>Revenue by category (last 12 months)</h2><div class="tablewrap"><table class="m-pop rpt-bycat"><tr><th>Category</th><th class="r">Paid revenue</th><th style="width:30%"></th></tr>${r.byCategory.map((c) => `<tr><td><button type="button" class="link-btn" data-act="rptCat" data-c="${c.name ? esc(c.name) : '__none'}">${c.name ? esc(c.name) : 'No category'}</button></td><td class="r">${money(c.revenue)}</td><td><div class="meter"><i style="width:${(c.revenue / maxCat) * 100}%"></i></div></td></tr>`).join('')}</table></div><p class="muted">Each paid invoice is split across its lines’ categories (tax included). Pick a category to see all its reports on their own.</p></div>` : ''}
 <div class="card"><h2>Popular services</h2><div class="tablewrap"><table class="m-pop"><tr><th>Service</th><th class="r">Units sold</th><th class="r">Revenue</th><th style="width:30%"></th></tr>${r.popularServices.map((s) => `<tr><td>${esc(s.name)}</td><td class="r">${s.count}</td><td class="r">${money(s.revenue)}</td><td><div class="meter"><i style="width:${(s.count / maxSvc) * 100}%"></i></div></td></tr>`).join('') || '<tr><td colspan="4" class="empty">No invoiced services yet</td></tr>'}</table></div></div>`;
+    wire();
   },
 };
 

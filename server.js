@@ -166,6 +166,15 @@ function sumItems(doc, items) {
   const depositFee = Math.min(total, round2(doc.depositType === 'percent' ? total * doc.depositValue / 100 : doc.depositValue));
   return { subtotal, discount, tax, total, depositFee };
 }
+// Products & services categories (e.g. "Low voltage", "Custom t-shirts"): each catalog item can have one. A quote, job or invoice line
+// keeps the category of the catalog item with its name when it's saved (cat), so reports can show each category on its own.
+const cleanCat = (v) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, 40);
+const catMaps = new WeakMap(); // each account's catalog: name -> category, rebuilt when it changes (reports look up every line)
+const catalogCat = (name) => {
+  const list = db.services || []; let c = catMaps.get(list);
+  if (!c || c.n !== list.length || Date.now() - c.at > 2000) { c = { at: Date.now(), n: list.length, map: new Map() }; for (const s of list) { const k = String(s.name || '').trim().toLowerCase(); if (k && s.category && !c.map.has(k)) c.map.set(k, cleanCat(s.category)); } catMaps.set(list, c); }
+  return c.map.get(String(name || '').trim().toLowerCase()) || '';
+};
 function computeTotals(doc) {
   // the options (quotes only): 2 or 3, each named; anything else means no options
   const opts = Array.isArray(doc.options) ? doc.options.slice(0, 3).map((o) => ({ id: /^[a-z0-9]{4,16}$/.test(o && o.id) ? o.id : uid(), name: String((o && o.name) || '').trim().slice(0, 60), desc: String((o && o.desc) || '').trim().slice(0, 500) })) : [];
@@ -174,7 +183,8 @@ function computeTotals(doc) {
   doc.items = (doc.items || []).filter((i) => i.desc).map((i) => {
     const cost = Number(i.cost ?? i.price) || 0; const markup = Number(i.markup) || 0; const markupType = i.markupType === 'flat' ? 'flat' : 'percent';
     const price = round2(markupType === 'flat' ? cost + markup : cost * (1 + markup / 100));
-    return { desc: String(i.desc), details: i.details ? String(i.details) : '', qty: Number(i.qty) || 0, cost, markup, markupType, price, ...(i.needsPrice && !(price > 0) ? { needsPrice: true } : {}), ...(i.lateFee ? { lateFee: true } : {}), ...(typeof i.job === 'string' && /^[\w-]{1,40}$/.test(i.job) ? { job: i.job } : {}), ...(opts.length >= 2 ? { opt: ids.has(i.opt) ? i.opt : '' } : {}) };
+    const cat = catalogCat(i.desc) || cleanCat(i.cat);
+    return { desc: String(i.desc), details: i.details ? String(i.details) : '', qty: Number(i.qty) || 0, cost, markup, markupType, price, ...(cat ? { cat } : {}), ...(i.needsPrice && !(price > 0) ? { needsPrice: true } : {}), ...(i.lateFee ? { lateFee: true } : {}), ...(typeof i.job === 'string' && /^[\w-]{1,40}$/.test(i.job) ? { job: i.job } : {}), ...(opts.length >= 2 ? { opt: ids.has(i.opt) ? i.opt : '' } : {}) };
   });
   doc.taxRate = Number(doc.taxRate) || 0;
   // optional discount before tax: a flat amount or a percentage of the subtotal
@@ -1848,7 +1858,7 @@ app.post('/api/services/import', (req, res) => {
   for (const r of rows) {
     const name = str(r.name, 200); if (!name) continue;
     const price = Math.max(0, Math.round((Number(String(r.price ?? '').replace(/[^0-9.-]/g, '')) || 0) * 100) / 100);
-    db.services.push({ id: uid(), name, type: r.type === 'product' ? 'product' : 'service', description: str(r.description, 5000), price, unit: str(r.unit, 40) });
+    db.services.push({ id: uid(), name, type: r.type === 'product' ? 'product' : 'service', description: str(r.description, 5000), price, unit: str(r.unit, 40), category: cleanCat(r.category) });
     added++;
   }
   save(); res.json({ added });
@@ -1957,8 +1967,8 @@ app.post('/api/:col', (req, res, next) => {
     if (Array.isArray(b.items)) { if (b.taxRate === undefined) doc.taxRate = db.company.taxRate; computeTotals(doc); }
     autoForms(doc, (currentUser(req) || {}).name);
   }
-  if (col === 'expenses') doc.amount = Number(b.amount) || 0;
-  if (col === 'services') { doc.price = Number(b.price) || 0; homeDepot.clean(doc); }
+  if (col === 'expenses') { doc.amount = Number(b.amount) || 0; doc.bizCat = cleanCat(b.bizCat); }
+  if (col === 'services') { doc.price = Number(b.price) || 0; doc.category = cleanCat(b.category); homeDepot.clean(doc); catMaps.delete(db.services); }
   db[col].push(doc); save(); if (col === 'clients') optInText(doc).catch(() => {}); if (col === 'jobs') pushScheduleChange(null, doc, currentUser(req));
   res.status(201).json(col === 'invoices' ? withStatus(doc) : col === 'jobs' && isMemberReq(req) ? jobForMember(doc) : col === 'clients' && isMemberReq(req) ? clientForMember(doc) : doc);
 });
@@ -2004,8 +2014,8 @@ app.put('/api/:col/:id', (req, res, next) => {
     if ((doc.payments || []).length) settleInvoice(doc);
   }
   if (col === 'staff' && isOwnerStaff(doc) && doc.status === 'deactivated') return res.status(400).json({ error: 'The account owner can’t be deactivated' });
-  if (col === 'expenses') doc.amount = Number(doc.amount) || 0;
-  if (col === 'services') { doc.price = Number(doc.price) || 0; homeDepot.clean(doc); }
+  if (col === 'expenses') { doc.amount = Number(doc.amount) || 0; doc.bizCat = cleanCat(doc.bizCat); }
+  if (col === 'services') { doc.price = Number(doc.price) || 0; doc.category = cleanCat(doc.category); homeDepot.clean(doc); catMaps.delete(db.services); }
   if (col === 'quotes' && was.signature && !doc.signature) removeSignatureFile(was);
   if (col === 'jobs' && doc.status === 'completed' && was.status !== 'completed' && tenancy.has('jobForms')) { // a checklist that has to be finished first
     const open = (doc.forms || []).filter((f) => f.requiredToComplete && !f.completedAt); if (open.length) return res.status(400).json({ error: `Finish ${open.length === 1 ? `the “${open[0].name}” checklist` : `the ${open.length} required checklists`} before marking this job complete`, formId: open[0].id });
@@ -3777,22 +3787,63 @@ function lastMonths(n) {
   for (let i = n - 1; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`); }
   return out;
 }
+// ---------- report categories (Products & services → Category): ?cat=<name> shows one category, ?cat=__none what has none (and whole-business expenses), no cat everything ----------
+const wantCat = (req) => { const c = req.query.cat; return c === undefined || c === '' ? null : c === '__none' ? '' : cleanCat(c); };
+const catIs = (c, want) => want === null || String(c || '').toLowerCase() === String(want).toLowerCase();
+const lineAmt = (i) => Math.abs((Number(i.qty) || 0) * (Number(i.price) || 0));
+// each line's category: its own (saved with it), else its catalog item's, else (a line typed in by hand, a late fee) the document's only category
+function lineCats(doc) {
+  const own = (doc.items || []).map((i) => cleanCat(i.cat) || catalogCat(i.desc));
+  const only = new Set(own.filter(Boolean).map((c) => c.toLowerCase())).size === 1 ? own.find(Boolean) : '';
+  return own.map((c) => c || only);
+}
+// the part of a document (by its line amounts) in the category, 0 to 1
+function catShare(doc, want) {
+  if (want === null) return 1;
+  const cats = lineCats(doc); let all = 0; let mine = 0;
+  (doc.items || []).forEach((i, k) => { all += lineAmt(i); if (catIs(cats[k], want)) mine += lineAmt(i); });
+  return all ? mine / all : want === '' ? 1 : 0;
+}
+// the category most of these documents' money is in ('' when none has one)
+function mainCat(docs) {
+  const t = {}; for (const d of docs) { const cats = lineCats(d); (d.items || []).forEach((i, k) => { if (cats[k]) t[cats[k]] = (t[cats[k]] || 0) + lineAmt(i) + 1e-9; }); }
+  return (Object.entries(t).sort((a, b) => b[1] - a[1])[0] || [''])[0];
+}
+const jobInvoices = (j) => db.invoices.filter((i) => (i.jobId === j.id || (i.jobIds || []).includes(j.id)) && i.status !== 'draft');
+const jobCat = (j) => mainCat([j]) || mainCat(jobInvoices(j));
+// an expense counts toward the category picked on it, else its job's, else the whole business ('')
+function expenseCats() {
+  const memo = new Map();
+  return (e) => { const own = cleanCat(e.bizCat); if (own || !e.jobId) return own;
+    if (!memo.has(e.jobId)) { const j = db.jobs.find((x) => x.id === e.jobId); memo.set(e.jobId, j ? jobCat(j) : ''); } return memo.get(e.jobId); };
+}
 app.get('/api/reports', (req, res) => {
-  const months = lastMonths(12);
-  const paid = db.invoices.filter((i) => i.status === 'paid');
-  const pending = db.invoices.filter((i) => i.status !== 'paid' && i.status !== 'draft');
-  const revenueByMonth = months.map((m) => ({ month: m, revenue: round2(paid.filter((i) => monthKey(i.paidAt) === m).reduce((s, i) => s + i.total, 0)) }));
+  const want = wantCat(req); const months = lastMonths(12); const w = (i) => catShare(i, want);
+  const paid = db.invoices.filter((i) => i.status === 'paid' && w(i) > 0);
+  const pending = db.invoices.filter((i) => i.status !== 'paid' && i.status !== 'draft' && w(i) > 0);
+  const sum = (list) => round2(list.reduce((s, i) => s + (Number(i.total) || 0) * w(i), 0));
+  const revenueByMonth = months.map((m) => ({ month: m, revenue: sum(paid.filter((i) => monthKey(i.paidAt) === m)) }));
   const svc = {};
-  db.invoices.filter((i) => i.status !== 'draft').forEach((i) => i.items.forEach((it) => { const s = svc[it.desc] || (svc[it.desc] = { name: it.desc, count: 0, revenue: 0 }); s.count += it.qty; s.revenue += it.qty * it.price; }));
+  db.invoices.filter((i) => i.status !== 'draft').forEach((i) => { const cats = lineCats(i); (i.items || []).forEach((it, k) => { if (!catIs(cats[k], want)) return; const s = svc[it.desc] || (svc[it.desc] = { name: it.desc, count: 0, revenue: 0 }); s.count += it.qty; s.revenue += it.qty * it.price; }); });
   const popularServices = Object.values(svc).map((s) => ({ ...s, revenue: round2(s.revenue) })).sort((a, b) => b.count - a.count || b.revenue - a.revenue);
-  const thisMonth = months[months.length - 1];
-  const totalExpenses = round2(db.expenses.reduce((s, e) => s + e.amount, 0));
+  // paid revenue in the last 12 months by category (always every category, so they can be compared)
+  const byCat = {};
+  for (const i of db.invoices) {
+    if (i.status !== 'paid' || !months.includes(monthKey(i.paidAt))) continue;
+    const cats = lineCats(i); const part = {}; let all = 0;
+    (i.items || []).forEach((it, k) => { const c = cats[k] || ''; part[c] = (part[c] || 0) + lineAmt(it); all += lineAmt(it); });
+    if (!all) { part[''] = 1; all = 1; }
+    for (const [c, a] of Object.entries(part)) byCat[c] = (byCat[c] || 0) + (Number(i.total) || 0) * a / all;
+  }
+  const byCategory = Object.keys(byCat).some(Boolean) ? Object.entries(byCat).map(([name, revenue]) => ({ name, revenue: round2(revenue) })).filter((x) => x.revenue).sort((a, b) => b.revenue - a.revenue) : [];
+  const thisMonth = months[months.length - 1]; const ec = expenseCats();
+  const totalExpenses = round2(db.expenses.filter((e) => catIs(ec(e), want)).reduce((s, e) => s + e.amount, 0));
   res.json({
-    revenueByMonth, popularServices,
+    revenueByMonth, popularServices, byCategory,
     thisMonthRevenue: revenueByMonth[revenueByMonth.length - 1].revenue,
-    paidTotal: round2(paid.reduce((s, i) => s + i.total, 0)), paidCount: paid.length,
-    pendingTotal: round2(pending.reduce((s, i) => s + i.total, 0)), pendingCount: pending.length,
-    overdueTotal: round2(pending.filter((i) => invoiceStatus(i) === 'overdue').reduce((s, i) => s + i.total, 0)),
+    paidTotal: sum(paid), paidCount: paid.length,
+    pendingTotal: sum(pending), pendingCount: pending.length,
+    overdueTotal: sum(pending.filter((i) => invoiceStatus(i) === 'overdue')),
     totalExpenses, thisMonth,
   });
 });
@@ -3802,8 +3853,8 @@ const validDay = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
 const inRange = (d, from, to) => { const k = String(d || '').slice(0, 10); return !!k && k >= from && k <= to; };
 // a quote's or invoice's lines, net of its discount and before sales tax: what was sold, for income by service
 function netLines(doc) {
-  const sub = Number(doc.subtotal) || 0; const f = sub ? (sub - (Number(doc.discount) || 0)) / sub : 0;
-  return (doc.items || []).map((i) => ({ name: i.desc || 'Other', amount: (Number(i.qty) || 0) * (Number(i.price) || 0) * f }));
+  const sub = Number(doc.subtotal) || 0; const f = sub ? (sub - (Number(doc.discount) || 0)) / sub : 0; const cats = lineCats(doc);
+  return (doc.items || []).map((i, k) => ({ name: i.desc || 'Other', amount: (Number(i.qty) || 0) * (Number(i.price) || 0) * f, cat: cats[k] }));
 }
 // share of a payment that is income (the rest is sales tax collected for the state)
 const preTaxShare = (doc) => (Number(doc.total) > 0 ? Math.max(0, Math.min(1, (doc.total - (Number(doc.tax) || 0)) / doc.total)) : 1);
@@ -3819,39 +3870,46 @@ function cashMoves() {
   for (const q of db.quotes) if (q.depositPaidAt) { add(q, 'quote', q.depositPaidAt, Number(q.depositPaidAmount ?? q.depositFee) || 0); refunds(q, 'quote', q.depositRefunds); }
   return out;
 }
-function profitLoss(from, to, basis) {
+// want: one category's income and expenses (see wantCat); null for everything
+function profitLoss(from, to, basis, want = null) {
   const income = {}; let tax = 0; const months = {};
   const month = (d) => months[d.slice(0, 7)] || (months[d.slice(0, 7)] = { month: d.slice(0, 7), income: 0, expenses: 0 });
-  const addIncome = (name, amt, d) => { income[name] = (income[name] || 0) + amt; month(d).income += amt; };
+  const addIncome = (name, amt, d) => { if (!amt) return; income[name] = (income[name] || 0) + amt; month(d).income += amt; };
   if (basis === 'accrual') { // income when invoiced
     for (const inv of db.invoices) {
       const d = String(inv.issueDate || inv.createdAt || '').slice(0, 10);
       if (inv.status === 'draft' || !inRange(d, from, to)) continue;
-      netLines(inv).forEach((l) => addIncome(l.name, l.amount, d)); tax += Number(inv.tax) || 0;
+      netLines(inv).forEach((l) => { if (catIs(l.cat, want)) addIncome(l.name, l.amount, d); }); tax += (Number(inv.tax) || 0) * catShare(inv, want);
     }
   } else { // income when paid: each payment split across the lines it paid for, sales tax taken out
     for (const m of cashMoves()) {
       if (!inRange(m.date, from, to)) continue;
       const share = preTaxShare(m.doc); const lines = netLines(m.doc); const base = lines.reduce((s, l) => s + l.amount, 0);
-      const net = m.amount * share; tax += m.amount - net;
-      if (m.kind === 'quote') addIncome('Deposits received', net, m.date);
-      else if (!base) addIncome('Other income', net, m.date);
-      else lines.forEach((l) => addIncome(l.name, net * l.amount / base, m.date));
+      const net = m.amount * share; const w = catShare(m.doc, want); tax += (m.amount - net) * w;
+      if (m.kind === 'quote') addIncome('Deposits received', net * w, m.date);
+      else if (!base) { if (catIs('', want)) addIncome('Other income', net, m.date); }
+      else lines.forEach((l) => { if (catIs(l.cat, want)) addIncome(l.name, net * l.amount / base, m.date); });
     }
   }
-  const exp = {};
-  for (const e of db.expenses) { const d = String(e.date || '').slice(0, 10); if (!inRange(d, from, to)) continue; const c = e.category || 'Other'; exp[c] = (exp[c] || 0) + (Number(e.amount) || 0); month(d).expenses += Number(e.amount) || 0; }
+  const exp = {}; const ec = expenseCats(); let shared = 0;
+  for (const e of db.expenses) {
+    const d = String(e.date || '').slice(0, 10); if (!inRange(d, from, to)) continue;
+    if (!catIs(ec(e), want)) { if (!ec(e)) shared += Number(e.amount) || 0; continue; }
+    const c = e.category || 'Other'; exp[c] = (exp[c] || 0) + (Number(e.amount) || 0); month(d).expenses += Number(e.amount) || 0;
+  }
   const list = (o) => Object.entries(o).map(([name, amount]) => ({ name, amount: round2(amount) })).filter((x) => x.amount).sort((a, b) => b.amount - a.amount);
   const incomeList = list(income); const expList = list(exp);
   const totalIncome = round2(incomeList.reduce((s, x) => s + x.amount, 0)); const totalExpenses = round2(expList.reduce((s, x) => s + x.amount, 0));
   return { basis, from, to, income: incomeList, expenses: expList, totalIncome, totalExpenses, net: round2(totalIncome - totalExpenses), margin: totalIncome ? Math.round((totalIncome - totalExpenses) / totalIncome * 1000) / 10 : null, taxCollected: round2(tax),
+    sharedExpenses: round2(shared), // with one category picked: whole-business expenses (no category, no job) left out
     byMonth: Object.values(months).sort((a, b) => a.month.localeCompare(b.month)).map((m) => ({ month: m.month, income: round2(m.income), expenses: round2(m.expenses), net: round2(m.income - m.expenses) })) };
 }
-// each job's invoiced amount (before tax) against the expenses logged to it
-function jobProfit(from, to) {
+// each job's invoiced amount (before tax) against the expenses logged to it; want: only the jobs whose main category it is
+function jobProfit(from, to, want = null) {
   const labor = laborByJob(); // hours logged to each job (Timesheets) at each person's pay rate
   return db.jobs.filter((j) => inRange(j.date || j.createdAt, from, to)).map((j) => {
-    const invs = db.invoices.filter((i) => (i.jobId === j.id || (i.jobIds || []).includes(j.id)) && i.status !== 'draft');
+    const invs = jobInvoices(j); const category = mainCat([j]) || mainCat(invs);
+    if (!catIs(category, want)) return null;
     // an invoice for several jobs (batch invoicing) counts this job's own lines, less their share of any discount
     const part = (i) => { if (!(i.jobIds || []).length) return (Number(i.subtotal) || 0) - (Number(i.discount) || 0);
       const lines = (i.items || []).filter((x) => !x.lateFee); const mine = lines.filter((x) => x.job === j.id).reduce((s, x) => s + x.qty * x.price, 0); const all = lines.reduce((s, x) => s + x.qty * x.price, 0);
@@ -3860,16 +3918,16 @@ function jobProfit(from, to) {
     const expenses = round2(db.expenses.filter((e) => e.jobId === j.id).reduce((s, e) => s + (Number(e.amount) || 0), 0));
     const laborCost = round2(labor[j.id] || 0); const costs = round2(expenses + laborCost);
     const profit = round2(revenue - costs);
-    return { id: j.id, number: j.number, title: j.title, client: (findClient(j.clientId) || {}).name || '', date: String(j.date || j.createdAt || '').slice(0, 10), status: j.status, invoices: invs.length, revenue, expenses, labor: laborCost, costs, profit, margin: revenue ? Math.round(profit / revenue * 1000) / 10 : null };
-  }).filter((j) => j.revenue || j.costs).sort((a, b) => b.date.localeCompare(a.date));
+    return { id: j.id, number: j.number, title: j.title, client: (findClient(j.clientId) || {}).name || '', date: String(j.date || j.createdAt || '').slice(0, 10), status: j.status, category, invoices: invs.length, revenue, expenses, labor: laborCost, costs, profit, margin: revenue ? Math.round(profit / revenue * 1000) / 10 : null };
+  }).filter((j) => j && (j.revenue || j.costs)).sort((a, b) => b.date.localeCompare(a.date));
 }
-// unpaid invoices by how long past due, as of today
-function receivablesAging() {
+// unpaid invoices by how long past due, as of today; want: only invoices whose main category it is
+function receivablesAging(want = null) {
   const today = iso(new Date()); const BUCKETS = ['current', 'd1_30', 'd31_60', 'd61_90', 'd90']; const zero = () => Object.fromEntries(BUCKETS.map((b) => [b, 0]));
   const bucket = (days) => (days <= 0 ? 'current' : days <= 30 ? 'd1_30' : days <= 60 ? 'd31_60' : days <= 90 ? 'd61_90' : 'd90');
   const invoices = []; const byClient = {}; const totals = zero();
   for (const inv of db.invoices) {
-    if (inv.status === 'draft' || inv.status === 'paid') continue;
+    if (inv.status === 'draft' || inv.status === 'paid' || !catIs(mainCat([inv]), want)) continue;
     const { balanceDue } = invoiceCredits(inv); if (balanceDue <= 0) continue;
     const days = inv.dueDate ? Math.floor((Date.parse(today) - Date.parse(inv.dueDate)) / 864e5) : 0; const b = bucket(days);
     const c = findClient(inv.clientId) || {}; const row = byClient[inv.clientId] || (byClient[inv.clientId] = { clientId: inv.clientId, client: c.name || 'Unknown client', ...zero(), total: 0 });
@@ -3883,9 +3941,9 @@ const reportRange = (req) => {
   const today = iso(new Date()); const from = validDay(req.query.from) ? req.query.from : `${today.slice(0, 4)}-01-01`; const to = validDay(req.query.to) ? req.query.to : today;
   return from <= to ? [from, to] : [to, from];
 };
-app.get('/api/reports/profit-loss', (req, res) => { const [from, to] = reportRange(req); res.json(profitLoss(from, to, req.query.basis === 'accrual' ? 'accrual' : 'cash')); });
-app.get('/api/reports/jobs', (req, res) => { const [from, to] = reportRange(req); res.json({ from, to, jobs: jobProfit(from, to) }); });
-app.get('/api/reports/aging', (req, res) => res.json(receivablesAging()));
+app.get('/api/reports/profit-loss', (req, res) => { const [from, to] = reportRange(req); res.json(profitLoss(from, to, req.query.basis === 'accrual' ? 'accrual' : 'cash', wantCat(req))); });
+app.get('/api/reports/jobs', (req, res) => { const [from, to] = reportRange(req); res.json({ from, to, jobs: jobProfit(from, to, wantCat(req)) }); });
+app.get('/api/reports/aging', (req, res) => res.json(receivablesAging(wantCat(req))));
 
 app.get('/api/tax-summary', (req, res) => {
   const year = String(req.query.year || new Date().getFullYear());

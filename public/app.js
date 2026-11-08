@@ -692,14 +692,18 @@ function wireItems(root) {
 }
 // catalog suggestions under a line item's name box (replaces the browser's datalist popup, which it positions badly)
 const svcAc = { input: null, box: null, idx: -1, list: [] };
+// catalog items to pick from, grouped by category (A–Z, items without one last) when the catalog has categories; head(c) draws a group's heading
+const svcGrouped = (list) => { const k = (s) => String(s.category || '').trim().toLowerCase(); return svcCats().length ? [...list].sort((a, b) => (k(a) ? 0 : 1) - (k(b) ? 0 : 1) || k(a).localeCompare(k(b))) : list; };
+const svcRows = (list, row, head) => { const on = svcCats().length; let last = null; return list.map((s, i) => { const c = String(s.category || '').trim(); const h = on && c.toLowerCase() !== last ? head(c || 'No category') : ''; last = c.toLowerCase(); return h + row(s, i); }).join(''); };
 function svcAcClose() { if (svcAc.box) svcAc.box.remove(); Object.assign(svcAc, { input: null, box: null, idx: -1, list: [] }); }
 function svcAcOpen(input) {
   const q = input.value.trim().toLowerCase();
-  const list = D.services.filter((s) => !q || s.name.toLowerCase().includes(q));
+  const list = svcGrouped(D.services.filter((s) => !q || s.name.toLowerCase().includes(q) || String(s.category || '').toLowerCase().includes(q)));
   if (!list.length || (list.length === 1 && list[0].name.toLowerCase() === q)) return svcAcClose();
   if (svcAc.input !== input) { svcAcClose(); svcAc.input = input; svcAc.box = document.createElement('div'); svcAc.box.className = 'svc-ac'; svcAc.box.setAttribute('role', 'listbox'); input.after(svcAc.box); }
   svcAc.list = list; svcAc.idx = Math.min(svcAc.idx, list.length - 1);
-  svcAc.box.innerHTML = list.map((s, i) => `<div role="option" class="${i === svcAc.idx ? 'on' : ''}" data-i="${i}"><span>${esc(s.name)}</span><span class="muted">${money(s.price)}${s.unit ? ' / ' + esc(s.unit) : ''}</span></div>`).join('');
+  svcAc.box.innerHTML = svcRows(list, (s, i) => `<div role="option" class="${i === svcAc.idx ? 'on' : ''}" data-i="${i}"><span>${esc(s.name)}</span><span class="muted">${money(s.price)}${s.unit ? ' / ' + esc(s.unit) : ''}</span></div>`, (c) => `<p class="svc-ac-cat" role="presentation">${esc(c)}</p>`);
+  const on = $('[data-i].on', svcAc.box); if (on) on.scrollIntoView({ block: 'nearest' });
 }
 function svcAcPick(i) {
   const s = svcAc.list[i]; const input = svcAc.input; if (!s || !input) return;
@@ -716,7 +720,7 @@ document.addEventListener('keydown', (e) => {
 }, true);
 document.addEventListener('mousedown', (e) => {
   const opt = e.target.closest('.svc-ac [data-i]');
-  if (opt) { e.preventDefault(); svcAcPick(Number(opt.dataset.i)); } else if (svcAc.box && e.target !== svcAc.input) svcAcClose();
+  if (opt) { e.preventDefault(); svcAcPick(Number(opt.dataset.i)); } else if (e.target.closest('.svc-ac')) e.preventDefault(); else if (svcAc.box && e.target !== svcAc.input) svcAcClose();
 });
 A.addItem = (d, el) => { const root = el.closest('form'); $('#items', root).insertAdjacentHTML('beforeend', qItemRow({})); recalc(root); $$('.item-row', root).pop().querySelector('.desc').focus(); };
 // line items reorder by dragging the dotted handle on the left (mouse or touch), or with the arrow keys while it has focus
@@ -2397,8 +2401,8 @@ function mItemPicker(kind, d, x) {
   f.classList.add('mli'); f.addEventListener('submit', (e) => e.preventDefault());
   $('#msheet .ms-sp').outerHTML = `<button type="button" class="ms-x mli-new" aria-label="Add a custom line item">${CHEV('M12 5v14M5 12h14')}</button>`;
   const open = (svc) => M_EDIT.item(kind, d, { ...x, chosen: true, svc });
-  const draw = () => { const q = f.q.value.trim().toLowerCase(); const list = D.services.filter((s) => !q || [s.name, s.description].join(' ').toLowerCase().includes(q));
-    $('.mli-list', f).innerHTML = list.map((s) => `<button type="button" class="mli-row" data-svc="${esc(s.id)}"><strong>${esc(s.name)}</strong><span class="mli-sub"><span>${esc(s.description || '')}</span><span>${money(s.price || 0)}</span></span></button>`).join('') || `<p class="muted mli-none">${D.services.length ? 'No line items match' : 'No products or services saved yet. Tap + to add a line item.'}</p>`; };
+  const draw = () => { const q = f.q.value.trim().toLowerCase(); const list = svcGrouped(D.services.filter((s) => !q || [s.name, s.description, s.category].join(' ').toLowerCase().includes(q)));
+    $('.mli-list', f).innerHTML = svcRows(list, (s) => `<button type="button" class="mli-row" data-svc="${esc(s.id)}"><strong>${esc(s.name)}</strong><span class="mli-sub"><span>${esc(s.description || '')}</span><span>${money(s.price || 0)}</span></span></button>`, (c) => `<p class="mli-cat">${esc(c)}</p>`) || `<p class="muted mli-none">${D.services.length ? 'No line items match' : 'No products or services saved yet. Tap + to add a line item.'}</p>`; };
   draw(); f.q.addEventListener('input', draw);
   $('.mli-list', f).addEventListener('click', (e) => { const b = e.target.closest('[data-svc]'); if (b) open(b.dataset.svc); });
   $('#msheet .mli-new').addEventListener('click', () => open(''));
