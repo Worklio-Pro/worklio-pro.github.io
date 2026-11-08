@@ -4,7 +4,7 @@ const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const slugify = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32).replace(/-+$/, '');
 // features added in the last release, tagged "New" on the plans and in the table (take keys out once they're no longer news)
-const NEW = new Set(['jobForms', 'recurringJobs', 'servicePlans', 'dispatchMap', 'timesheets', 'accounting', 'automations']);
+const NEW = new Set(['jobPosts', 'jobForms', 'recurringJobs', 'servicePlans', 'dispatchMap', 'timesheets', 'accounting', 'automations']);
 
 // "How we compare": our entry and team plans against two well-known competitors' list prices.
 // Their prices: monthly billing, from each company's public pricing page. Check them and update CHECKED when they change.
