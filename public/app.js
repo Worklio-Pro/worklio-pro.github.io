@@ -2617,7 +2617,7 @@ ${mField('Status', `<select name="status">${[['scheduled', 'Scheduled'], ['compl
 // ⋯ on the job page
 A.mJobMore = (x) => {
   const j = byId(D.jobs, x.id); const edit = canDo('jobs.edit');
-  const f = mSheet('More', `<div class="ms-list">${planHas('signatures') ? `<button type="button" data-act="collectSignature" data-id="${j.id}">${j.signature ? 'Collect another signature' : 'Collect signature'}</button>` : ''}
+  const f = mSheet('More', `<div class="ms-list">${onThisJob(j) ? '' : clockBtn(j, '')}${omwBtn(j, '')}${planHas('signatures') ? `<button type="button" data-act="collectSignature" data-id="${j.id}">${j.signature ? 'Collect another signature' : 'Collect signature'}</button>` : ''}
 ${edit ? `<button type="button" data-act="jobRemind" data-id="${j.id}">${planHas('sms') && byId(D.clients, j.clientId)?.smsConsent ? 'Text' : 'Email'} reminder to client</button>` : ''}
 ${planHas('invoices') ? `<button type="button" class="need-invoices" data-act="jobInvoice" data-id="${j.id}">Create invoice</button>` : ''}
 ${planHas('timeOff') && me && me.staffId && (j.staffIds || []).includes(me.staffId) && j.date >= ymd(new Date()) ? `<button type="button" data-act="jobRequestOff" data-id="${j.id}">Request off for this job</button>` : ''}
@@ -2633,7 +2633,7 @@ function mobileJobPage(j) {
   const tapRow = (sec, l, v) => tap(sec, `<span>${l}</span><span class="md-v">${v}</span>`, 'md-tr');
   const textSec = (sec, title, text, empty) => tap(sec, `<span class="md-sh">${title}${ARROW}</span>${text ? `<span class="md-text">${esc(text)}</span>` : `<span class="md-text muted">${edit ? empty : 'None'}</span>`}`, 'md-sec');
   const btn = (act, label, cls = '') => `<button type="button" class="btn ${cls}" data-act="${act}" data-id="${j.id}">${label}</button>`;
-  const acts = [clockBtn(j), omwBtn(j), ...(edit ? [j.status === 'scheduled' ? btn('completeJob', 'Mark Complete') : btn('reopenJob', 'Reopen', 'alt'), st === 'invoice' && planHas('invoices') ? btn('jobInvoice', 'Create Invoice', 'need-invoices') : ''] : [])];
+  const acts = [onThisJob(j) ? clockBtn(j) : '', ...(edit ? [j.status === 'scheduled' ? btn('completeJob', 'Mark Complete') : btn('reopenJob', 'Reopen', 'alt'), st === 'invoice' && planHas('invoices') ? btn('jobInvoice', 'Create Invoice', 'need-invoices') : ''] : [])];
   const team = (j.staffIds || []).map((id) => byId(D.staff, id)).filter(Boolean);
   const items = (d.items || []).map((it, i) => tap('item', `<strong>${esc(it.desc)}</strong>${it.details ? `<span class="md-det">${esc(it.details)}</span>` : ''}<span class="md-qp"><span>${esc(it.qty)} × ${money(it.price)}</span><span>${money(round2(it.qty * it.price))}</span></span>`, 'md-item', `data-i="${i}"`)).join('');
   const paid = q ? depositPaid(q) : 0;
