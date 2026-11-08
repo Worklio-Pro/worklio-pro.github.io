@@ -1797,3 +1797,9 @@ label.bk-auto input{width:auto;margin:0}
  .clist .cl-name{max-width:0;width:100%}
  .clist tr.crow:active{background:var(--surface-2)}
 }
+
+/* phones: tick boxes big enough to hit with a thumb (switches, .sw, stay hidden behind their slider) */
+@media (max-width:760px){
+ :where(#main,.modal,.mpage,.msheet) input[type=checkbox]:not(.sw),:where(#main,.modal,.mpage,.msheet) input[type=radio]{width:24px;height:24px;flex:none;accent-color:var(--brand)}
+ .clist th:first-child,.clist td:first-child{width:48px!important;padding-right:4px;vertical-align:middle}
+}
