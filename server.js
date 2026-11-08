@@ -1606,7 +1606,7 @@ function accountInfo() {
     aiDescriptions: tenancy.aiOn('aiDescriptions'), aiRewrite: tenancy.aiOn('aiRewrite'), // Alpha → Settings → Integrations → AI
     navIcons: iconsLib.navIcons(), navOrder: iconsLib.order(), // the menu's icons, order and sections (Alpha → Settings → Menu)
     productName: tenancy.platform().settings.productName, product: brandLib.brand(), contactEmail: tenancy.platform().settings.contactEmail, helpUrl: tenancy.helpUrl(), ideasUrl: tenancy.ideasUrl(), managed: !tenancy.isDefault(),
-    referrals: referrals.openTo(t), cardReady: !!stripeKey(), // card payments set up (App Settings → Card payments)
+    referrals: referrals.openTo(t), cardReady: !!stripeKey(), // card payments set up (App Settings → Payments → Card payments)
     // how: 'embedded' (set up in the app, payout bank changed in the app), 'standard' (own Stripe account), 'server' (the platform's own account), or null
     cardSetupType: secrets().stripeAccountId ? secrets().stripeAccountType || 'standard' : stripeKey() ? 'server' : null, payoutBank: secrets().stripeBank || null,
     expiry: (() => { const x = expiryOf(t); return x && { ...x, when: whenText(x) }; })(),
@@ -1730,10 +1730,10 @@ const stripePubKey = () => tenancy.platform().settings.stripePublishableKey || p
 // the ways a business without an account can start now (embedded needs the publishable key for Stripe's form)
 const setupMethods = () => { const m = cardSetup(); return [m !== 'embedded' && 'standard', m !== 'standard' && stripePubKey() && 'embedded'].filter(Boolean); };
 // "Connect with Stripe" (Online card payments feature): the business signs up for or finishes its Stripe account on Stripe's own pages
-const connectReturn = () => `${baseUrl()}/settings?stripe=connected#payments`; // back to App Settings → Card payments
+const connectReturn = () => `${baseUrl()}/settings?stripe=connected#payments`; // back to App Settings → Payments → Card payments
 async function stripeOnboardingLink() {
   const key = stripeLib.platformKey(); const sec = { ...secrets() }; const t = tenancy.current();
-  if (sec.stripeAccountId && sec.stripeAccountType === 'embedded') throw new Error('Card payments were set up in the app. Use Finish setup in App Settings → Card payments.');
+  if (sec.stripeAccountId && sec.stripeAccountType === 'embedded') throw new Error('Card payments were set up in the app. Use Finish setup in App Settings → Payments → Card payments.');
   if (!sec.stripeAccountId && !setupMethods().includes('standard')) throw new Error('Set up card payments with the Set up card payments button instead');
   if (!sec.stripeAccountId) {
     const a = await stripeLib.request(key, 'POST', 'accounts', { type: 'standard', ...(db.company.email ? { email: db.company.email } : {}), 'business_profile[name]': db.company.name || t.name, 'metadata[tenantId]': t.id });
@@ -2374,7 +2374,7 @@ app.post('/api/invoices/batch', async (req, res) => {
   res.status(201).json({ invoices: made.map((i) => ({ id: i.id, number: i.number, clientId: i.clientId, total: i.total, status: i.status, jobs: (i.jobIds || [i.jobId]).length })), sent, drafts: made.length - sent });
 });
 
-// ---------- Late fees (App Settings → Late fees) ----------
+// ---------- Late fees (App Settings → Payments → Late fees) ----------
 // db.company.lateFee: { on, type: flat|percent (of the balance due), amount, days (grace days after the due date), times (1 = once, else again
 // every 30 days while unpaid, up to this many), email (tell the client), since (the day they were turned on) }.
 // Checked hourly: a past-due invoice gets a "Late fee" line (item.lateFee: never discounted or taxed) and an entry in inv.lateFees. Only
@@ -2398,7 +2398,7 @@ function nextLateFee(inv, cfg = db.company.lateFee || {}) {
 }
 const lateFeeText = (cfg) => (cfg.type === 'percent' ? `${cfg.amount}% of the balance` : money(cfg.amount));
 EMAIL_TEMPLATES.lateFee = {
-  label: 'Late fee added', description: 'Sent when a late fee is added to a past-due invoice, if you turned this on in App Settings → Late fees.',
+  label: 'Late fee added', description: 'Sent when a late fee is added to a past-due invoice, if you turned this on in App Settings → Payments → Late fees.',
   subject: 'Late fee added to invoice {{invoice_number}}',
   body: '# Invoice {{invoice_number}} is past due\n\nHello {{client_name}},\n\nInvoice {{invoice_number}} was due {{due_date}} and is still unpaid, so a late fee of **{{fee}}** has been added. The balance is now **{{balance}}**.\n\n[View and pay invoice]({{link}})\n\nIf you\x27ve already paid, thank you, and please let us know at {{company_email}}.\n\n{{company_name}}',
   vars: { client_name: 'Client name', company_name: 'Your business name', company_email: 'Your business email', invoice_number: 'Invoice number', due_date: 'Due date', fee: 'The late fee', balance: 'Balance due with the fee', total: 'Invoice total', link: 'Link to view and pay' },
@@ -5047,7 +5047,7 @@ setTimeout(() => bizAuto.runAll().catch((e) => console.error('automations:', e.m
 const jobPostsMonthly = () => { for (const t of tenancy.platform().tenants) if (t.status === 'active') tenancy.run(t, () => { try { jobPosts.monthlyReport(); } catch (e) { console.error('job posts:', e.message); } }); };
 setTimeout(jobPostsMonthly, 40e3); setInterval(jobPostsMonthly, 3600e3); // Every job markets itself: last month's results on the 1st
 setTimeout(billMemberships, 35e3); setInterval(billMemberships, 3600e3); // service plans: each billing period's invoice
-setTimeout(lateFeesAll, 50e3); setInterval(lateFeesAll, 3600e3); // late fees on past-due invoices (App Settings → Late fees)
+setTimeout(lateFeesAll, 50e3); setInterval(lateFeesAll, 3600e3); // late fees on past-due invoices (App Settings → Payments → Late fees)
 setTimeout(extendSeries, 25e3); setInterval(extendSeries, 3600e3); // recurring jobs: make visits as the months go by
 setTimeout(pushOverviews, 20e3); setInterval(pushOverviews, 15 * 60e3); // the morning's Today's work overview notifications
 setTimeout(() => keepConnections().catch(() => {}), 90e3); setInterval(() => keepConnections().catch(() => {}), 6 * 3600e3); // social sign-ins: renewed before they run out

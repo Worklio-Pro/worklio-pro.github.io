@@ -850,6 +850,8 @@ a.hp-nav{color:var(--text);text-decoration:none;padding:6px 8px;margin:0 -8px 10
 /* App Settings: two columns of boxes, each stacked at its own height (one column on narrow screens) */
 .as-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:start}.as-col>.card{margin:0 0 18px}.pay-card{margin-top:0}
 @media (max-width:900px){.as-cols{grid-template-columns:minmax(0,1fr)}}
+/* App Settings tabs: General · White Label · Payments */
+.as-tabs{display:flex;gap:4px;margin:0 0 18px;border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none}.as-tabs::-webkit-scrollbar{display:none}.as-tabs button{flex:none;padding:10px 14px;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;background:none;color:var(--muted);font:inherit;font-size:15px;font-weight:600;cursor:pointer;white-space:nowrap}.as-tabs button:hover{color:var(--text)}.as-tabs button.on{color:var(--brand);border-bottom-color:var(--brand)}
 /* Email Templates: the list, and the editor popup (message on the left, preview on the right) */
 .tpl-list td{vertical-align:middle}.tpl-subj{max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .modal.tpl-modal{max-width:1120px}.tpl-modal .pv-frame{height:460px}

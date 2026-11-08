@@ -1913,12 +1913,12 @@ A.aiTextUndo = (d, el) => { const box = $('textarea', el.closest('.ai-box')); if
 A.aiUndo = (d, el) => { const row = el.closest('.item-row'); if (row._aiOrig === undefined) return; setBox($('.details', row), row._aiOrig); delete row._aiOrig; el.disabled = true; };
 // hidden "off" + checkbox "on" with the same name: FormData keeps the last one, so unchecked saves "off".
 // A disabled switch submits nothing, leaving the saved value alone.
-// card payments are set up (App Settings → Card payments); until then the switch on quotes and invoices is off and greyed out
+// card payments are set up (App Settings → Payments → Card payments); until then the switch on quotes and invoices is off and greyed out
 const cardReady = () => !!(company.account && company.account.cardReady);
 const cardHint = () => (['owner', 'admin'].includes(role()) ? 'Set up card payments in <a href="/settings#payments" data-link>App Settings</a>' : 'Not set up yet: ask your account owner');
-// Zelle needs the business's Zelle details (App Settings → Zelle payments)
+// Zelle needs the business's Zelle details (App Settings → Payments → Zelle payments)
 const zelleHint = () => (['owner', 'admin'].includes(role()) ? 'Add your Zelle details in <a href="/settings#zelle" data-link>App Settings</a>' : 'Not set up yet: ask your account owner');
-// late fees (App Settings → Late fees): an invoice's switch, shown while they're turned on (inv.lateFee 'off' = none on this invoice)
+// late fees (App Settings → Payments → Late fees): an invoice's switch, shown while they're turned on (inv.lateFee 'off' = none on this invoice)
 const lateFeesOn = () => !!(company.lateFee && company.lateFee.on);
 const lateFeeText = () => { const l = company.lateFee || {}; return l.type === 'percent' ? `${l.amount}% of the balance` : money(l.amount || 0); };
 const lateSw = (d) => (lateFeesOn() ? switchRow('lateFee', 'Late fees', d.lateFee !== 'off', `${lateFeeText()} if paid late`) : '');

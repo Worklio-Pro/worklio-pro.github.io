@@ -1966,7 +1966,7 @@ const tzOffset = (tz) => { try { return new Intl.DateTimeFormat('en-US', { timeZ
 // social media pages (Company Profile); the server turns a handle into the page's link
 const SOCIAL = [['facebook', 'Facebook', 'facebook.com/yourbusiness'], ['instagram', 'Instagram', '@yourbusiness'], ['tiktok', 'TikTok', '@yourbusiness'], ['x', 'X (Twitter)', '@yourbusiness'],
   ['youtube', 'YouTube', '@yourbusiness'], ['linkedin', 'LinkedIn', 'linkedin.com/company/yourbusiness'], ['google', 'Google Business Profile', 'Link to your Google business page or reviews'], ['yelp', 'Yelp', 'yelp.com/biz/yourbusiness'], ['nextdoor', 'Nextdoor', 'nextdoor.com/pages/yourbusiness']];
-// App Settings → Regional settings: time zone, date and time formats, first day of the week
+// App Settings → General → Regional settings: time zone, date and time formats, first day of the week
 function regionalBox(c) {
   const tz = c.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const zones = Intl.supportedValuesOf('timeZone').map((z) => [z, `(${tzOffset(z)}) ${z}`]);
@@ -2009,7 +2009,7 @@ ${switchRow('showHours', 'Show business hours', c.showHours, 'Display your busin
 <div class="tax-rate">${fl('Tax name', `<input name="taxName" value="${v('taxName')}" placeholder="e.g. TX Sales Tax">`)}${fl('Tax rate (%)', `<input name="taxRate" type="number" step="any" min="0" value="${c.taxRate ?? 0}">`)}${fl('Internal tax description', `<input name="taxDescription" value="${v('taxDescription')}">`)}</div>
 <p class="muted cs-note">Used on new quotes, jobs and invoices. The tax name shows on documents that use this rate.</p></div></div></div>`;
 }
-// App Settings → Late fees (company.lateFee): its own little form, saved as soon as something changes. The server adds the fee hourly.
+// App Settings → Payments → Late fees (company.lateFee): its own little form, saved as soon as something changes. The server adds the fee hourly.
 function lateFeeCard(c) {
   const lf = c.lateFee || {}; const opt = (v, l, cur) => `<option value="${v}" ${String(cur) === String(v) ? 'selected' : ''}>${l}</option>`;
   return `<div class="card" id="late-fees"><h2>Late fees</h2><p class="muted" style="margin-top:0">Add a fee to invoices still unpaid after their due date. It goes on the invoice as a “Late fee” line (never discounted or taxed), and the client’s invoice page says when it will be added. Only invoices due after you turn this on get one. Switch it off on any invoice under Client payments, or delete the line to waive a fee.</p>
@@ -2029,20 +2029,35 @@ function wireLateFees() {
     try { const saved = await api('PUT', '/api/company', { lateFee: b }); company = { ...company, ...saved }; toast(b.on ? 'Late fees saved' : 'Late fees are off'); } catch (err) { toast(err.message, true); }
   });
 }
+// App Settings tabs; the hash keeps the tab (links to #payments, #zelle or #late-fees open Payments). Every card stays in the page so form="cf" fields still save.
+const AS_TABS = [['general', 'General'], ['white-label', 'White Label'], ['payments', 'Payments']];
+function wireAsTabs(main) {
+  const tabOf = (h) => (['zelle', 'late-fees'].includes(h) ? 'payments' : AS_TABS.some(([t]) => t === h) ? h : 'general');
+  const show = (t, keep) => {
+    $$('[data-as-tab]', main).forEach((b) => { const on = b.dataset.asTab === t; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); });
+    $$('.as-panel', main).forEach((p) => { p.hidden = p.id !== 'as-' + t; });
+    if (!keep) history.replaceState(history.state, '', location.pathname + location.search + (t === 'general' ? '' : '#' + t));
+  };
+  $$('[data-as-tab]', main).forEach((b) => b.addEventListener('click', () => show(b.dataset.asTab)));
+  show(tabOf(location.hash.slice(1)), true);
+}
 async function companyPage(main, full) {
   const c = company; const integ = full ? await api('GET', '/api/integrations') : null;
   // App Settings boxes; on App Settings they sit in two columns outside the form, so their fields say form="cf"
   const logoBox = planHas('branding') ? `<div class="card${full ? '' : ' cs'}"><h2>Logo</h2><div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap"><div id="logoPrev" style="width:120px;height:70px;border:1px dashed var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden">${c.logo ? `<img src="${esc(c.logo)}" style="max-width:100%;max-height:100%">` : '<span class="muted">No logo</span>'}</div><div class="logo-side"><div class="logo-acts"><input type="file" id="logoFile" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" style="width:auto">${c.logo ? '<button type="button" class="btn danger sm" data-act="removeLogo">Delete logo</button>' : ''}</div><div class="muted">Appears on quotes, invoices and the client portal.</div></div></div></div>` : '';
-  const brandBox = full ? `<div class="card"><h2>${planHas('branding') ? 'Branding and defaults' : 'Defaults'}</h2>${planHas('branding') ? `<div class="row"><label>Brand color<input form="cf" name="brandColor" type="color" value="${esc(c.brandColor || '#2563eb')}"><span class="muted">Used on quotes, invoices and emails to clients.</span></label><label>Accent color<input form="cf" name="accentColor" type="color" value="${esc(c.accentColor || c.defaultAccent)}"><span class="muted">Used on your client portal.${c.accentColor ? ' <button type="button" class="linkbtn" data-act="resetAccent">Reset</button>' : ''}</span></label></div>` : ''}<label>Invoice footer message<input form="cf" name="invoiceFooter" value="${esc(c.invoiceFooter)}"></label></div>` : '';
+  const brandBox = full && planHas('branding') ? `<div class="card"><h2>Branding</h2><div class="row"><label>Brand color<input form="cf" name="brandColor" type="color" value="${esc(c.brandColor || '#2563eb')}"><span class="muted">Used on quotes, invoices and emails to clients.</span></label><label>Accent color<input form="cf" name="accentColor" type="color" value="${esc(c.accentColor || c.defaultAccent)}"><span class="muted">Used on your client portal.${c.accentColor ? ' <button type="button" class="linkbtn" data-act="resetAccent">Reset</button>' : ''}</span></label></div></div>` : '';
+  const defaultsBox = full ? `<div class="card"><h2>Defaults</h2><label>Invoice footer message<input form="cf" name="invoiceFooter" value="${esc(c.invoiceFooter)}"></label></div>` : '';
   const prefixBox = full ? planHas('numberPrefixes') ? `<div class="card"><h2>Number prefixes</h2><p class="muted" style="margin-top:0">The label in front of each quote, job and invoice number. Changes apply to new ones only; existing numbers stay as they are.</p>
 <div class="row3 prefix-row">${[['quotePrefix', 'Quotes', 1005], ['jobPrefix', 'Jobs', 2010], ['invoicePrefix', 'Invoices', 3010]].map(([k, l, n]) => `<label>${l}<input form="cf" name="${k}" maxlength="10" value="${esc(docPrefix(k))}" data-sample="${n}"><span class="muted prefix-eg">e.g. ${esc(docPrefix(k))}${n}</span></label>`).join('')}</div></div>` : '' : '';
   const zelleBox = full && planHas('zelle') ? `<div class="card" id="zelle"><h2>Zelle payments</h2><p class="muted" style="margin-top:0">Shown to clients on the invoice pay page and the quote deposit step. Leave blank to hide Zelle. Zelle payments can’t be confirmed automatically: when a client reports one, check your bank, then use Mark paid.</p>
 <div class="row"><label>Zelle email or phone<input form="cf" name="zelleRecipient" value="${esc(c.zelleRecipient || '')}" placeholder="payments@yourbusiness.com or +17135550100"></label><label>Name registered with Zelle<input form="cf" name="zelleName" value="${esc(c.zelleName || '')}" placeholder="e.g. TLB Group LLC"></label></div></div>` : '';
-  main.innerHTML = `<div class="head"><div><h1>${full ? 'App Settings' : 'Company settings'}</h1>${full ? '<p class="sub">Branding and defaults used on every quote and invoice. Business details, social media and tax settings are on <a href="/settings/company" data-link>Company Profile</a>.</p>' : ''}</div></div>
-${full ? planCard(c.account) : ''}
-${full ? `<div class="as-cols"><div class="as-col">${webAddressCard(c.account)}${brandBox}${regionalBox(c)}</div><div class="as-col">${payCard(integ)}${zelleBox}${lateFeeCard(c)}${prefixBox}</div></div>
+  main.innerHTML = `<div class="head"><div><h1>${full ? 'App Settings' : 'Company settings'}</h1>${full ? '<p class="sub">Defaults, white label and payments for every quote and invoice. Business details, social media and tax settings are on <a href="/settings/company" data-link>Company Profile</a>.</p>' : ''}</div></div>
+${full ? `<div class="as-tabs" role="tablist">${AS_TABS.map(([t, n]) => `<button type="button" role="tab" data-as-tab="${t}" aria-controls="as-${t}">${n}</button>`).join('')}</div>
+<div class="as-panel" id="as-general" role="tabpanel">${planCard(c.account)}<div class="as-cols"><div class="as-col">${regionalBox(c)}</div><div class="as-col">${defaultsBox}${prefixBox}</div></div></div>
+<div class="as-panel" id="as-white-label" role="tabpanel"><div class="as-cols"><div class="as-col">${webAddressCard(c.account)}</div><div class="as-col">${brandBox || `<div class="card"><h2>Branding</h2><p class="muted" style="margin:0">Your own brand and accent colors on quotes, invoices, emails and the client portal come with a plan that includes Branding.</p></div>`}</div></div></div>
+<div class="as-panel" id="as-payments" role="tabpanel"><div class="as-cols"><div class="as-col">${payCard(integ)}${zelleBox}</div><div class="as-col">${lateFeeCard(c)}</div></div></div>
 <form id="cf"></form>` :`<form id="cf" class="cs-form">${companySettingsHtml(c, logoBox)}</form>`}`;
-  if (full) wireLateFees();
+  if (full) { wireLateFees(); wireAsTabs(main); }
   $$('.prefix-row input').forEach((i) => i.addEventListener('input', () => { i.nextElementSibling.textContent = 'e.g. ' + i.value.trim() + i.dataset.sample; }));
   const ind = $('#cf select[name=industry]', main); if (ind) ind.addEventListener('change', () => { $('#cf [data-other]', main).hidden = ind.value !== 'other'; });
   if (!full) { // Company Profile saves on its own: a field as soon as it changes, the business hours with their pencil
@@ -2087,7 +2102,7 @@ ${full ? `<div class="as-cols"><div class="as-col">${webAddressCard(c.account)}$
     try { await api('DELETE', '/api/company/logo'); toast('Logo deleted'); refresh(); } catch (err) { toast(err.message, true); }
   };
   wireAccountCards(main);
-  if (full) { stripeReturnNotice(integ); const to = ['#payments', '#zelle', '#late-fees'].includes(location.hash) ? $(location.hash, main) : null; if (to) to.scrollIntoView({ block: 'start' }); } // back from Stripe, or a link to Card payments
+  if (full) { stripeReturnNotice(integ); const to = ['#zelle', '#late-fees'].includes(location.hash) ? $(location.hash, main) : null; if (to) to.scrollIntoView({ block: 'start' }); } // back from Stripe, or a link to Card payments
   if ($('#logoFile')) $('#logoFile').addEventListener('change', async (e) => {
     const f = e.target.files[0]; if (!f) return; if (f.size > 4e6) return toast('Logo must be under 4 MB', true);
     const dataUrl = f.type === 'image/svg+xml' ? await readFileAsDataUrl(f) : await resizeImage(f, 600);
@@ -2281,7 +2296,7 @@ A.toggleConn = (d) => {
   body.hidden = !body.hidden; $('.conn-btn', sec).setAttribute('aria-expanded', String(!body.hidden));
   if (!body.hidden) { const f = $('input:not([disabled]):not([readonly]), select', body); if (f) f.focus(); }
 };
-// App Settings → Card payments: the one-time Stripe setup (Stripe Connect), so clients can pay invoices and deposits by card
+// App Settings → Payments → Card payments: the one-time Stripe setup (Stripe Connect), so clients can pay invoices and deposits by card
 function payCard(integ) {
   const r = stripeConn(integ);
   return `<div class="card pay-card" id="payments"><div class="pay-card-h">${CONN_ICONS.stripe}<div><h2>Card payments ${r.status}</h2><p class="muted" style="margin:0">${r.desc}</p></div></div>${r.body ? `<div class="pay-card-b">${r.body}</div>` : ''}
@@ -3324,7 +3339,7 @@ PAGES['/payments/settings'] = {
     const bal = S.balance ? S.balance.pending + S.balance.available : 0;
     main.innerHTML = `<div class="head"><div><a href="/payments" data-link class="muted">← Payments</a><h1>Payment settings</h1></div></div>
 <div class="pay-grid"><div>
-${!can ? '<div class="notice">Online payments aren’t included in your plan. You can still record cash, check and other payments on invoices.</div>' : !S.connected ? `<div class="notice">Set up card payments in <a href="/settings#payments" data-link>App Settings → Card payments</a> to take online payments. Until then, clients can’t pay by card.</div>` : ''}
+${!can ? '<div class="notice">Online payments aren’t included in your plan. You can still record cash, check and other payments on invoices.</div>' : !S.connected ? `<div class="notice">Set up card payments in <a href="/settings#payments" data-link>App Settings → Payments → Card payments</a> to take online payments. Until then, clients can’t pay by card.</div>` : ''}
 <div class="card"><h2>Client payments</h2>
 <h3 class="pay-h">Quote payments<small class="muted">Let clients pay deposits online when viewing quotes</small></h3>${methodRows('quote')}
 <h3 class="pay-h">Invoice payments<small class="muted">Let clients pay online when viewing invoices</small></h3>${methodRows('invoice')}
