@@ -5,10 +5,12 @@
 (function () {
   const ALLOWED = new Set(['P', 'H2', 'H3', 'STRONG', 'EM', 'A', 'UL', 'OL', 'LI', 'DIV', 'CODE', 'KBD', 'BR', 'TABLE', 'THEAD', 'TBODY', 'TR', 'TH', 'TD', 'FIGCAPTION']);
   const RENAME = { B: 'STRONG', I: 'EM', H1: 'H2', H4: 'H3', H5: 'H3', H6: 'H3' };
-  const DROP = new Set(['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'NOSCRIPT', 'TEMPLATE', 'META', 'LINK', 'svg', 'SVG', 'VIDEO', 'AUDIO', 'FORM', 'INPUT', 'BUTTON', 'SELECT', 'TEXTAREA']);
+  const DROP = new Set(['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'NOSCRIPT', 'TEMPLATE', 'META', 'LINK', 'svg', 'SVG', 'AUDIO', 'FORM', 'INPUT', 'BUTTON', 'SELECT', 'TEXTAREA']);
   const BLOCK = new Set(['P', 'H2', 'H3', 'UL', 'OL', 'DIV', 'TABLE', 'FIGURE']);
   // screenshots: only the app's own help pictures (/img/help/…) and images uploaded in Alpha (/brand/media-…)
   const safeImg = (s) => (/^\/(img\/help\/[a-z0-9-]+\.(png|jpg|webp)|brand\/media-\d+\.(png|jpg|gif|webp))$/.test(String(s || '')) ? s : '');
+  // how-to videos: only the app's own (/video/help/…), with their poster and captions
+  const safeVid = (s, ext) => (new RegExp(`^/video/help/[a-z0-9-]+\\.(${ext})$`).test(String(s || '')) ? s : '');
   const safeHref = (h) => { const v = String(h || '').trim(); return /^(https?:\/\/|mailto:|\/|#)/i.test(v) ? v : ''; };
   const escHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -26,6 +28,15 @@
     }
     if (tag === 'SPAN' && /font-weight:\s*(bold|[6-9]00)/i.test(node.getAttribute('style') || '')) { const s = document.createElement('strong'); kids().forEach((k) => s.appendChild(k)); return [s]; } // bold pasted from Google Docs
     if (tag === 'IMG') { const src = safeImg(node.getAttribute('src')); if (!src) return []; const i = document.createElement('img'); i.setAttribute('src', src); i.setAttribute('alt', node.getAttribute('alt') || ''); return [i]; }
+    if (tag === 'VIDEO') {
+      const src = safeVid(node.getAttribute('src'), 'mp4|webm'); if (!src) return [];
+      const v = document.createElement('video'); ['controls', 'playsinline'].forEach((a) => v.setAttribute(a, '')); v.setAttribute('preload', 'metadata'); v.setAttribute('src', src);
+      const poster = safeVid(node.getAttribute('poster'), 'jpg|png|webp'); if (poster) v.setAttribute('poster', poster);
+      const t = node.querySelector('track'); const vtt = t && safeVid(t.getAttribute('src'), 'vtt');
+      if (vtt) { const tr = document.createElement('track'); tr.setAttribute('kind', 'captions'); tr.setAttribute('src', vtt); tr.setAttribute('srclang', 'en'); tr.setAttribute('label', 'English'); v.appendChild(tr); }
+      return [v];
+    }
+    if (tag === 'FIGURE' && node.querySelector('video')) { const f = document.createElement('figure'); f.className = 'video'; kids().forEach((k) => f.appendChild(k)); return f.querySelector('video') ? [f] : [...f.childNodes].map((n) => (n.tagName === 'FIGCAPTION' ? document.createTextNode(n.textContent) : n)); }
     if (tag === 'FIGURE') { const f = document.createElement('figure'); f.className = 'shot'; kids().forEach((k) => f.appendChild(k)); return f.querySelector('img') ? [f] : [...f.childNodes].map((n) => (n.tagName === 'FIGCAPTION' ? document.createTextNode(n.textContent) : n)); } // a screenshot with its caption
     if (tag === 'FIGCAPTION' && !(node.parentElement && node.parentElement.tagName === 'FIGURE')) return kids(); // a caption only belongs in a figure
     if (!ALLOWED.has(tag)) return kids(); // spans, fonts and anything else: keep the text, drop the wrapper
