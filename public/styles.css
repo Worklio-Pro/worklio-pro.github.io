@@ -1988,3 +1988,15 @@ label.bk-auto input{width:auto;margin:0}
 .rpt-cat-h{font-weight:500;color:var(--muted)}
 .rpt-bar .rpt-cat{font-weight:600}
 .cat-wrap{position:relative;display:block}.cat-wrap .cat-ac{top:calc(100% + 4px);max-height:220px}
+/* ===== Settings → Online Booking: the booking page link and the website widget (pages.js) ===== */
+.ob-card h2{margin:0 0 4px}.ob-card>.muted{margin:0 0 10px}
+.ob-card .ob-google,.ob-card .ob-stats{margin:12px 0 0;font-size:13px}.ob-card .ob-stats{margin-top:4px}
+.ob-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:24px;margin-top:16px;align-items:start}
+.ob-l{margin:0 0 6px;font-size:13px;font-weight:600;color:var(--text)}
+.ob-modes{margin-bottom:6px}.ob-modes button{font-weight:500}
+.ob-note{margin:0 0 14px;font-size:13px;min-height:2.6em}
+.ob-code{width:100%;box-sizing:border-box;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;resize:none;background:var(--surface-2,var(--bg));word-break:break-all}
+.ob-actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 0}
+.ob-small{font-size:12px;margin:10px 0 0}
+.ob-prev iframe{display:block;width:100%;height:520px;border:1px solid var(--border);border-radius:10px;background:#f8fafc}
+@media(max-width:860px){.ob-grid{grid-template-columns:minmax(0,1fr)}.ob-prev iframe{height:480px}}

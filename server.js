@@ -2660,7 +2660,7 @@ function shell(title, inner) {
 h1{margin:0 0 4px;font-size:22px}table{width:100%;border-collapse:collapse;margin:16px 0}td,th{padding:8px 4px;border-bottom:1px solid #e5e7eb;text-align:left}.r{text-align:right}
 .btn{background:${esc(co.brandColor)};color:#fff;border:0;border-radius:8px;padding:12px 20px;font-size:16px;cursor:pointer}.btn.alt{background:#fff;color:#111;border:1px solid #d1d5db}.muted{color:#6b7280;font-size:14px}.badge{display:inline-block;padding:2px 10px;border-radius:99px;background:#e5e7eb;font-size:13px}.paid{background:#dcfce7;color:#166534}
 input{padding:10px;border:1px solid #d1d5db;border-radius:8px;width:100%;box-sizing:border-box;margin:4px 0 10px}select.ph-cc{padding:10px 8px;border:1px solid #d1d5db;border-radius:8px;background:#fff;color:#111}</style><script src="/phone.js?v=2" defer></script></head><body><div class="card">
-<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">${co.logo ? `<img src="${esc(co.logo)}" style="height:48px">` : ''}<div><strong>${esc(co.name)}</strong><div class="muted">${esc(co.email)} · ${esc(co.phone)}</div></div></div>${inner}</div></body></html>`;
+<div class="sh-head" style="display:flex;align-items:center;gap:12px;margin-bottom:16px">${co.logo ? `<img src="${esc(co.logo)}" style="height:48px">` : ''}<div><strong>${esc(co.name)}</strong><div class="muted">${esc(co.email)} · ${esc(co.phone)}</div></div></div>${inner}</div></body></html>`;
 }
 // o.qty / o.unit / o.line = false hide those columns (invoice "Client view" switches); o.invoice shows the deposit credit
 function itemsTable(d, o = {}) {
@@ -3617,12 +3617,79 @@ app.post('/refer/:code', async (req, res) => {
 // ---------- online booking: <account address>/book, linked from the Google Business Profile ("Book" button) and the business's own website ----------
 // New clients ask for work here; it arrives as a request (and a lead, unless the email or phone matches a client already).
 const bookHits = new Map(); // ip -> [timestamps]: at most 5 bookings per hour per address
+// The booking widget: <script src="<account address>/book/widget.js" data-mode="inline|button|float" data-text="Book now" data-color="#hex"></script>
+// on the business's own website. inline puts the form where the script is; button puts a button there and float one in the page's corner,
+// each opening the form in a popup. The form is /book?embed=1 in an iframe, which tells the widget its height so it never scrolls inside.
+const HEX = /^#[0-9a-f]{6}$/i;
+app.get('/book/widget.js', (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8'); res.setHeader('Cache-Control', 'public, max-age=600');
+  if (!tenancy.has('onlineBooking')) return res.end('/* Online booking isn’t included in this business’s plan. */\n');
+  const cfg = { color: HEX.test(db.company.brandColor || '') ? db.company.brandColor : '#2563eb', title: `Book with ${db.company.name || 'us'}` };
+  res.end(`/* ${String(db.company.name || '').replace(/\*\//g, '')} online booking */
+(function () {
+  var s = document.currentScript; if (!s || s.getAttribute('data-wp-done')) return; s.setAttribute('data-wp-done', '1');
+  var cfg = ${JSON.stringify(cfg).replace(/</g, '\\u003c')};
+  var base = new URL(s.src).origin; var d = s.dataset; var mode = /^(button|float)$/.test(d.mode || '') ? d.mode : 'inline';
+  var color = /^#[0-9a-fA-F]{6}$/.test(d.color || '') ? d.color : cfg.color;
+  var src = function (inPopup) { return base + '/book?embed=1&site=' + encodeURIComponent(location.hostname) + (color !== cfg.color ? '&color=' + encodeURIComponent(color) : '') + (inPopup ? '&in=popup' : '') + (d.ref ? '&ref=' + encodeURIComponent(d.ref) : ''); };
+  function frame(inPopup) {
+    var f = document.createElement('iframe'); f.src = src(inPopup); f.title = cfg.title; f.setAttribute('scrolling', 'no');
+    f.style.cssText = 'display:block;width:100%;height:760px;border:0;background:transparent;color-scheme:light';
+    var loads = 0;
+    window.addEventListener('message', function (e) {
+      if (e.source !== f.contentWindow || e.origin !== base || !e.data || !e.data.wpBook) return;
+      if (e.data.h) f.style.height = Math.ceil(e.data.h) + 'px';
+      if (e.data.load && ++loads > 1) { var r = f.getBoundingClientRect(); if (r.top < 0 || r.top > innerHeight) f.scrollIntoView({ behavior: 'smooth', block: 'start' }); } // after sending: show the thank-you
+    });
+    return f;
+  }
+  if (mode === 'inline') { var w = document.createElement('div'); w.style.cssText = 'max-width:640px;margin:0 auto'; w.appendChild(frame(false)); s.parentNode.insertBefore(w, s.nextSibling); return; }
+  var b = document.createElement('button'); b.type = 'button'; b.textContent = (d.text || 'Book now').slice(0, 40);
+  b.style.cssText = 'font:600 16px/1.2 system-ui,-apple-system,sans-serif;background:' + color + ';color:#fff;border:0;border-radius:8px;padding:13px 22px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.18)' + (mode === 'float' ? ';position:fixed;right:20px;bottom:20px;z-index:2147482000;border-radius:999px' : '');
+  var open = null; var back = null; var overflow = '';
+  function close() { if (!open) return; open.remove(); open = null; document.documentElement.style.overflow = overflow; document.removeEventListener('keydown', esc); if (back) back.focus(); }
+  function esc(e) { if (e.key === 'Escape') close(); }
+  b.addEventListener('click', function () {
+    if (open) return; back = document.activeElement;
+    var o = document.createElement('div'); o.setAttribute('role', 'dialog'); o.setAttribute('aria-modal', 'true'); o.setAttribute('aria-label', cfg.title);
+    o.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:rgba(15,23,42,.55);display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:24px 12px;box-sizing:border-box';
+    var box = document.createElement('div'); box.style.cssText = 'position:relative;width:100%;max-width:600px;margin:auto 0;background:#fff;border-radius:14px;box-shadow:0 20px 50px rgba(0,0,0,.3);overflow:hidden';
+    var x = document.createElement('button'); x.type = 'button'; x.setAttribute('aria-label', 'Close'); x.innerHTML = '&times;';
+    x.style.cssText = 'position:absolute;top:8px;right:8px;width:40px;height:40px;border:0;border-radius:50%;background:#f3f4f6;color:#111827;font:400 26px/1 system-ui,sans-serif;cursor:pointer;z-index:1';
+    x.addEventListener('click', close); o.addEventListener('click', function (e) { if (e.target === o) close(); });
+    box.appendChild(x); box.appendChild(frame(true)); o.appendChild(box);
+    overflow = document.documentElement.style.overflow; document.documentElement.style.overflow = 'hidden';
+    document.body.appendChild(o); open = o; document.addEventListener('keydown', esc); x.focus();
+  });
+  if (mode === 'float') document.body ? document.body.appendChild(b) : document.addEventListener('DOMContentLoaded', function () { document.body.appendChild(b); });
+  else s.parentNode.insertBefore(b, s.nextSibling);
+})();
+`);
+});
 app.use('/book', express.urlencoded({ extended: false }));
 app.use('/book', (req, res, next) => (tenancy.has('onlineBooking') ? next() : res.status(404).send(shell('Page not found', '<h1>Page not found</h1><p class="muted">Online booking isn’t available for this business.</p>'))));
-function bookPage({ error, values = {} } = {}) {
+// ?embed=1: inside the widget's iframe on the business's website (no business header, no page margins; ?in=popup: no border either).
+// It posts its height to the widget on load and whenever it changes. ?color=#hex: the widget's button color for the Send button too
+const bookEmbed = (req) => { const q = req.query || {}; return q.embed === '1' ? { popup: q.in === 'popup', color: HEX.test(q.color || '') ? q.color : '' } : null; };
+function bookShell(title, inner, embed) {
+  const html = shell(title, inner); if (!embed) return html;
+  const css = `<style>html,body{background:transparent;color-scheme:light}.card{max-width:none;margin:0;box-shadow:none;${embed.popup ? 'border:0;border-radius:0;padding:24px 24px 20px}h1{padding-right:44px' : 'border:1px solid #e5e7eb;padding:24px'}}.sh-head{display:none!important}${embed.color ? `.btn{background:${embed.color}}` : ''}@media(max-width:480px){.card{padding:18px 16px}}</style>`;
+  const js = `<script>(function(){var t=window.parent;if(t===window)return;var h=function(load){t.postMessage({wpBook:1,h:document.documentElement.scrollHeight,load:load?1:0},'*')};addEventListener('load',function(){h(1)});if(window.ResizeObserver)new ResizeObserver(function(){h(0)}).observe(document.body)})()</script>`;
+  // links to the Terms and Privacy Policy open in a new tab, not inside the little frame
+  return html.replace('</head>', css + '</head>').replace('</body>', js + '</body>').replace(/<a href="\//g, '<a target="_blank" rel="noopener" href="/');
+}
+// Settings → Online Booking: the booking page link, the widget script, whether Google's Book button is on, and the last 30 days' bookings
+app.get('/api/booking', (req, res) => {
+  const since = new Date(Date.now() - 30 * 864e5).toISOString(); const recent = (db.requests || []).filter((r) => r.source === 'booking' && r.createdAt >= since);
+  const sites = {}; for (const r of recent) if (r.site) sites[r.site] = (sites[r.site] || 0) + 1;
+  const g = connOf('google');
+  res.json({ url: bookingUrl(), script: `${bookingUrl()}/widget.js`, color: HEX.test(db.company.brandColor || '') ? db.company.brandColor : '#2563eb', google: { connected: !!g, booking: !!(g && g.booking) },
+    last30: { total: recent.length, website: recent.filter((r) => r.site).length, sites: Object.entries(sites).sort((a, b) => b[1] - a[1]).slice(0, 5) } });
+});
+function bookPage({ error, values = {}, embed = null } = {}) {
   const v = (k) => esc(values[k] || ''); const sel = (k, x) => (values[k] === x ? ' selected' : '');
   const field = 'padding:10px;border:1px solid #d1d5db;border-radius:8px;width:100%;box-sizing:border-box;margin:4px 0 10px;font:inherit';
-  return shell(`${db.company.name}: book online`, `<h1>Book with ${esc(db.company.name)}</h1>
+  return bookShell(`${db.company.name}: book online`, `<h1>Book with ${esc(db.company.name)}</h1>
 <p class="muted">Tell us what you need and when suits you. We'll confirm a time with you${db.company.phone ? `, or call <a href="tel:${esc(db.company.phone)}">${esc(fmtUsPhone(db.company.phone))}</a>` : ''}.</p>
 ${error ? `<p style="color:#b91c1c;font-weight:600">${esc(error)}</p>` : ''}
 <form method="post" style="margin-top:16px">
@@ -3636,33 +3703,36 @@ ${smsConsentBox(values)}
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px"><label>Preferred day<input name="preferredDate" type="date" min="${iso(new Date())}" value="${v('preferredDate')}"></label>
 <label>Preferred time<select name="preferredTime" style="${field}"><option value="any">Any time</option><option value="morning"${sel('preferredTime', 'morning')}>Morning</option><option value="afternoon"${sel('preferredTime', 'afternoon')}>Afternoon</option><option value="evening"${sel('preferredTime', 'evening')}>Evening</option></select></label></div>
 <input name="website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">
-<button class="btn">Send booking request</button></form>`);
+<button class="btn">Send booking request</button></form>`, embed);
 }
-app.get('/book', (req, res) => { if (req.query.ref) jobPosts.visit(String(req.query.ref)); res.send(bookPage()); }); // ?ref=<post>: opened from a job's social post
+app.get('/book', (req, res) => { if (req.query.ref) jobPosts.visit(String(req.query.ref)); res.send(bookPage({ embed: bookEmbed(req) })); }); // ?ref=<post>: opened from a job's social post
 app.post('/book', async (req, res) => {
-  const b = req.body || {}; const clip = (k, n) => String(b[k] || '').trim().slice(0, n);
-  const done = shell('Booking request sent', `<h1>Thanks${clip('name', 100) ? ', ' + esc(clip('name', 100).split(/\s+/)[0]) : ''}!</h1><p class="muted">We got your request and will be in touch soon to confirm a time.</p>${smsSignedUp(b, clip('phone', 40))}`);
+  const b = req.body || {}; const clip = (k, n) => String(b[k] || '').trim().slice(0, n); const embed = bookEmbed(req);
+  const done = bookShell('Booking request sent', `<h1>Thanks${clip('name', 100) ? ', ' + esc(clip('name', 100).split(/\s+/)[0]) : ''}!</h1><p class="muted">We got your request and will be in touch soon to confirm a time.</p>${smsSignedUp(b, clip('phone', 40))}`, embed);
   if (b.website) return res.send(done); // honeypot: bots fill every field
   const ip = req.socket.remoteAddress; const now = Date.now(); const hits = (bookHits.get(ip) || []).filter((t) => now - t < 3600e3);
-  if (hits.length >= 5) return res.status(429).send(bookPage({ error: 'Too many requests from this connection. Please call or email us instead.', values: b }));
+  const again = (status, error) => res.status(status).send(bookPage({ error, values: b, embed }));
+  if (hits.length >= 5) return again(429, 'Too many requests from this connection. Please call or email us instead.');
   const name = clip('name', 100); const title = clip('title', 120); const email = normEmail(clip('email', 120)); const phone = clip('phone', 40);
-  if (!name || !title) return res.status(400).send(bookPage({ error: 'Please enter your name and what you need done.', values: b }));
-  if (!email && !phone) return res.status(400).send(bookPage({ error: 'Please give us an email or phone number so we can reach you.', values: b }));
-  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).send(bookPage({ error: 'Please check your email address.', values: b }));
+  if (!name || !title) return again(400, 'Please enter your name and what you need done.');
+  if (!email && !phone) return again(400, 'Please give us an email or phone number so we can reach you.');
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return again(400, 'Please check your email address.');
+  // the website the widget is on (its host name), shown on the request and in the email
+  const site = embed && /^[a-z0-9.-]{1,100}$/i.test(String(req.query.site || '')) ? String(req.query.site).toLowerCase().replace(/^www\./, '') : '';
   hits.push(now); bookHits.set(ip, hits);
   const digits = (s) => String(s || '').replace(/\D/g, '').slice(-10);
   let c = db.clients.find((x) => (email && normEmail(x.email) === email) || (digits(phone).length === 10 && digits(x.phone) === digits(phone)));
   const isNew = !c;
-  if (!c) { c = { id: uid(), name, email, phone, address: clip('address', 300), company: '', tags: ['Online booking'], notes: 'Booked online', portalToken: token(), createdAt: iso(new Date()) }; db.clients.push(c); }
+  if (!c) { c = { id: uid(), name, email, phone, address: clip('address', 300), company: '', tags: ['Online booking'], notes: site ? `Booked online on ${site}` : 'Booked online', portalToken: token(), createdAt: iso(new Date()) }; db.clients.push(c); }
   // consent covers the number typed on this form: an existing client's texts go to their saved number, so it has to be the same one
   const optedIn = !c.smsConsent && (!c.phone || digits(c.phone) === digits(phone)) && smsConsentFrom(b, phone, 'booking form');
   if (optedIn) { c.smsConsent = optedIn; c.phone = c.phone || phone; }
   const preferredDate = /^\d{4}-\d{2}-\d{2}$/.test(b.preferredDate || '') && b.preferredDate >= iso(new Date()) ? b.preferredDate : '';
   const preferredTime = ['morning', 'afternoon', 'evening'].includes(b.preferredTime) ? b.preferredTime : 'any';
   db.requests = db.requests || [];
-  const r = { id: uid(), clientId: c.id, title, details: clip('details', 4000), address: clip('address', 300) || c.address || '', preferredDate, preferredTime, status: 'new', source: 'booking', ...(jobPosts.refOf(String(req.query.ref || '')) ? { fromPost: String(req.query.ref) } : {}), createdAt: new Date().toISOString() };
+  const r = { id: uid(), clientId: c.id, title, details: clip('details', 4000), address: clip('address', 300) || c.address || '', preferredDate, preferredTime, status: 'new', source: 'booking', ...(site ? { site } : {}), ...(jobPosts.refOf(String(req.query.ref || '')) ? { fromPost: String(req.query.ref) } : {}), createdAt: new Date().toISOString() };
   db.requests.push(r);
-  const details = emails.details([['Name', name + (isNew ? ' (new lead)' : '')], ['Phone', phone || c.phone], ['Email', email || c.email], ['Address', r.address || 'not given'], ['Preferred', `${preferredDate || 'any day'}, ${preferredTime === 'any' ? 'any time' : preferredTime}`], ['From', 'Online booking']]);
+  const details = emails.details([['Name', name + (isNew ? ' (new lead)' : '')], ['Phone', phone || c.phone], ['Email', email || c.email], ['Address', r.address || 'not given'], ['Preferred', `${preferredDate || 'any day'}, ${preferredTime === 'any' ? 'any time' : preferredTime}`], ['From', site ? `Booking form on ${site}` : 'Online booking']]);
   const sent = await sendTemplate('workRequest', db.company.email, { client: name, title, details, request: r.details, business: db.company.name, account_url: baseUrl() });
   db.notifications.unshift({ id: uid(), at: r.createdAt, clientId: c.id, clientName: c.name, channel: 'email', kind: 'request', refId: r.id, refNumber: '', to: db.company.email || '', subject: `New request: ${title}`, body: sent.text, status: sent.status, detail: sent.detail });
   save(); pushNewRequest('booking', c, r); res.send(done); if (optedIn) optInText(c).catch(() => {});

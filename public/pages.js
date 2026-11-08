@@ -2322,7 +2322,7 @@ A.bookingManage = () => {
   const G = (connectionsData || {}).google || {};
   const mb = modal('Online booking', `<p>New clients can ask for a visit from your booking page. Requests arrive in <a href="/clients" data-link>Clients</a> as leads, and you get an email.</p>
 <label class="sw-row"><span>Show a Book button on Google<small class="muted">On your Business Profile in Google Search and Maps. Google can take a few hours to show it.</small></span><input type="checkbox" class="sw" id="bkOn" ${G.booking ? 'checked' : ''}><i></i></label>
-<p style="margin:16px 0 6px"><strong>Your booking page</strong></p><p class="muted" style="margin:0 0 8px;font-size:13px">Add it to your website, social media bio or email signature.</p>
+<p style="margin:16px 0 6px"><strong>Your booking page</strong></p><p class="muted" style="margin:0 0 8px;font-size:13px">Add it to your social media bio or email signature. To put the form on your website, see <a href="/settings/booking" data-link>Online Booking</a>.</p>
 <div class="copy-row"><input readonly value="${esc(G.bookingUrl)}" onclick="this.select()" aria-label="Booking page link"><button type="button" class="btn alt sm" data-act="copyInput">Copy</button><a class="btn alt sm" href="${esc(G.bookingUrl)}" target="_blank" rel="noopener">Open</a></div>
 <div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button type="button" class="btn" data-act="bookingSave">Save</button></div>`);
   return mb;
@@ -2331,6 +2331,52 @@ A.bookingSave = async (d, el) => {
   const on = $('#bkOn').checked; el.disabled = true;
   try { await api('PUT', '/api/connections/google', { booking: on }); closeModal(); toast(on ? 'The Book button is on. Google can take a few hours to show it.' : 'The Book button is off'); refresh(); } catch (e) { el.disabled = false; toast(e.message, true); }
 };
+// Settings → Online Booking: the booking page link, the Book button on Google, and the widget for the business's own website.
+// The widget's choices live in the code it makes (data-mode, data-text, data-color), so nothing is saved here
+const BK_MODES = [['inline', 'Form on the page', 'The booking form sits in your page, where you paste the code.'], ['button', 'Book button', 'A button where you paste the code. It opens the form in a popup.'], ['float', 'Button in the corner', 'A round button stays in the bottom-right corner of the page and opens the form in a popup.']];
+let bkW = null;
+const bkCode = (src = bkW.script) => { const w = bkW; return `<script src="${src}"${w.mode !== 'inline' ? ` data-mode="${w.mode}"${w.text !== 'Book now' ? ` data-text="${esc(w.text)}"` : ''}` : ''}${w.color.toLowerCase() !== w.brand.toLowerCase() ? ` data-color="${w.color}"` : ''}></script>`; };
+// a pretend web page with the code on it, so the preview is the real widget (loaded from this address: the same account, and it works on a test copy too)
+const bkPreview = () => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;font-family:system-ui,sans-serif;background:#f8fafc;color:#334155;min-height:100vh}header{background:#fff;border-bottom:1px solid #e2e8f0;padding:14px 20px;font-weight:700;font-size:15px}main{padding:24px 20px 40px}.l{height:10px;background:#e2e8f0;border-radius:5px;margin:0 0 10px}</style></head><body><header>Your website</header><main><div class="l" style="width:55%"></div><div class="l" style="width:85%"></div><div class="l" style="width:70%;margin-bottom:24px"></div>${bkCode(location.origin + '/book/widget.js')}</main></body></html>`;
+function bkRefresh(preview = true) {
+  const box = $('#bkCode'); if (!box) return; box.value = bkCode();
+  $('#bkTextRow').hidden = bkW.mode === 'inline';
+  $$('[data-act="bkMode"]').forEach((b) => { b.classList.toggle('on', b.dataset.mode === bkW.mode); b.setAttribute('aria-pressed', String(b.dataset.mode === bkW.mode)); });
+  $('#bkModeNote').textContent = BK_MODES.find(([k]) => k === bkW.mode)[2];
+  if (preview) $('#bkPrev').srcdoc = bkPreview();
+}
+PAGES['/settings/booking'] = {
+  title: 'Online Booking',
+  async render(main) {
+    const B = await api('GET', '/api/booking');
+    bkW = { script: B.script, brand: B.color, color: B.color, mode: 'inline', text: 'Book now' };
+    const L = B.last30; const host = B.url.replace(/^https?:\/\//, '');
+    const google = !B.google.connected ? `<a href="/settings/connections" data-link>Connect your Google Business Profile</a> to add a <strong>Book</strong> button to it in Search and Maps.`
+      : `The <strong>Book</strong> button on your Google Business Profile is <strong>${B.google.booking ? 'on' : 'off'}</strong>. Change it in <a href="/settings/connections" data-link>Account Connections</a> → Google → Online booking.`;
+    main.innerHTML = `<div class="head"><div><h1>Online Booking</h1><p class="sub">New clients ask for a visit from your booking page. Each request arrives in <a href="/clients" data-link>Clients</a> as a lead, and you get an email.</p></div></div>
+<div class="card ob-card"><h2>Your booking page</h2><p class="muted">Share it anywhere: your social media bio, email signature or a text to a new client.</p>
+<div class="copy-row"><input readonly value="${esc(B.url)}" onclick="this.select()" aria-label="Booking page link"><button type="button" class="btn alt sm" data-act="copyInput">Copy</button><a class="btn alt sm" href="${esc(B.url)}" target="_blank" rel="noopener">Open</a></div>
+<p class="muted ob-google">${google}</p>
+<p class="muted ob-stats">Last 30 days: <strong>${L.total}</strong> booking${L.total === 1 ? '' : 's'}${L.website ? `, ${L.website} from your website${L.sites.length ? ` (${L.sites.map(([s, n]) => `${esc(s)}${L.sites.length > 1 ? ` ${n}` : ''}`).join(', ')})` : ''}` : ''}.</p></div>
+<div class="card ob-card"><h2>Add it to your website</h2><p class="muted">Copy the code below and paste it into your website where you want it. Most website builders have a block for this, called <strong>Custom HTML</strong>, <strong>Embed</strong> or <strong>Code</strong>.</p>
+<div class="ob-grid"><div class="ob-opts">
+<p class="ob-l">Style</p><div class="tabs ob-modes" role="group" aria-label="Style">${BK_MODES.map(([k, l]) => `<button type="button" data-act="bkMode" data-mode="${k}">${l}</button>`).join('')}</div>
+<p class="muted ob-note" id="bkModeNote"></p>
+<label id="bkTextRow">Button text<input id="bkText" maxlength="40" value="Book now"></label>
+<label>Color<span class="bp-color"><input id="bkColor" maxlength="7" spellcheck="false" value="${esc(B.color)}"><input type="color" id="bkColorPick" value="${esc(B.color.toLowerCase())}" aria-label="Color"></span></label>
+<p class="ob-l">Code</p><textarea id="bkCode" class="ob-code" readonly rows="4" onclick="this.select()" aria-label="Code for your website"></textarea>
+<div class="ob-actions"><button type="button" class="btn" data-act="bkCopy">Copy code</button><a href="${esc((company.account && company.account.helpUrl) || '')}/articles/online-booking" target="_blank" rel="noopener" class="btn alt">How to add it</a></div>
+<p class="muted ob-small">The form always shows your latest business name and details, so you only add the code once. Requests sent from it say which website they came from.</p></div>
+<div class="ob-prev"><p class="ob-l">Preview</p><iframe id="bkPrev" title="Preview of the booking widget on a website"></iframe><p class="muted ob-small">This is your real form: a request sent here arrives in Clients.</p></div></div></div>`;
+    bkRefresh();
+    let t = 0; const later = () => { clearTimeout(t); t = setTimeout(() => bkRefresh(), 400); };
+    $('#bkText').addEventListener('input', (e) => { bkW.text = e.target.value.trim().slice(0, 40) || 'Book now'; bkRefresh(false); later(); });
+    $('#bkColor').addEventListener('input', (e) => { const v = e.target.value.trim(); if (/^#[0-9a-f]{6}$/i.test(v)) { bkW.color = v; $('#bkColorPick').value = v.toLowerCase(); bkRefresh(false); later(); } });
+    $('#bkColorPick').addEventListener('input', (e) => { bkW.color = e.target.value; $('#bkColor').value = e.target.value; bkRefresh(false); later(); });
+  },
+};
+A.bkMode = (d) => { bkW.mode = d.mode; bkRefresh(); };
+A.bkCopy = async (d, el) => { const c = bkCode(); try { await navigator.clipboard.writeText(c); } catch (e) { const t = $('#bkCode'); t.select(); document.execCommand('copy'); } el.textContent = 'Copied'; setTimeout(() => { el.textContent = 'Copy code'; }, 2000); };
 A.toggleConn = (d) => {
   const sec = $(`#conn-${d.id}`); const body = sec && $('.conn-body', sec); if (!body) return;
   body.hidden = !body.hidden; $('.conn-btn', sec).setAttribute('aria-expanded', String(!body.hidden));
