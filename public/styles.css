@@ -1747,3 +1747,19 @@ label.bk-auto input{width:auto;margin:0}
 
 /* products & services: the description column is too narrow to read on a phone */
 @media (max-width:600px){.svc-desc{display:none}}
+
+/* phones: lists drop their less important columns so they fit without scrolling sideways */
+@media (max-width:760px){
+ .m-team :is(th,td):nth-child(3),.m-team :is(th,td):nth-child(4),.m-team :is(th,td):nth-child(6),.m-team :is(th,td):nth-child(7),.m-ts :is(th,td):nth-child(2),.m-ts :is(th,td):nth-child(3),.m-ts :is(th,td):nth-child(4),.m-exp :is(th,td):nth-child(3),.m-exp :is(th,td):nth-child(4),.m-exp :is(th,td):nth-child(5),.m-jprofit :is(th,td):nth-child(2),.m-jprofit :is(th,td):nth-child(3),.m-jprofit :is(th,td):nth-child(5),.m-aginv :is(th,td):nth-child(3),.m-aginv :is(th,td):nth-child(4),.m-pop :is(th,td):nth-child(4),.m-taxm :is(th,td):nth-child(2),.m-taxm :is(th,td):nth-child(3),.m-taxi :is(th,td):nth-child(3),.m-taxi :is(th,td):nth-child(4),.m-taxi :is(th,td):nth-child(5),.m-ablog :is(th,td):nth-child(2),.m-ablog :is(th,td):nth-child(4),.m-notif :is(th,td):nth-child(3),.m-notif :is(th,td):nth-child(4),.m-notif :is(th,td):nth-child(5),.tpl-list :is(th,td):nth-child(3),.tpl-list :is(th,td):nth-child(4),.m-pay :is(th,td):nth-child(3),.m-pay :is(th,td):nth-child(4),.m-pay :is(th,td):nth-child(5),.po-table :is(th,td):nth-child(2),.m-sp :is(th,td):nth-child(3),.m-sp :is(th,td):nth-child(4),.m-sp :is(th,td):nth-child(5),.m-sp :is(th,td):nth-child(6),.m-svcimp :is(th,td):nth-child(2),.m-svcimp :is(th,td):nth-child(3),.m-climp :is(th,td):nth-child(3),.m-climp :is(th,td):nth-child(4),.m-map :is(th,td):nth-child(2),.m-jinv :is(th,td):nth-child(2),.m-jinv :is(th,td):nth-child(4),.m-jinv :is(th,td):nth-child(5){display:none}
+ .m-tprod :is(th,td):not(:first-child):not(:nth-last-child(-n+2)),.m-aging :is(th,td):not(:first-child):not(:last-child),.m-jprofit :is(th,td):not(:first-child):last-child{display:none}
+ /* a row with an Edit or View button opens it when tapped (app.js); the button is hidden, and its column when nothing else is in it */
+ .row-edit{display:none!important}
+ tr:has(.row-edit){cursor:pointer;-webkit-tap-highlight-color:transparent}tr:has(.row-edit):active{background:var(--surface-2)}
+ table:not(:has(td.actions>:not(.row-edit))) td.actions,table:not(:has(td.actions>:not(.row-edit))):has(.row-edit) th:empty:last-child{display:none}
+ /* one size for buttons and boxes everywhere in the app, as big as on the quote, job and invoice pages */
+ :where(#main,.modal,.mpage,.msheet) .btn,:where(#main,.modal,.mpage,.msheet) .btn.sm{min-height:50px;padding:14px 18px;font-size:16px;line-height:20px;border-radius:12px}
+ :where(#main,.modal,.mpage,.msheet) input:where(:not([type=checkbox],[type=radio],[type=range],[type=color],[type=file])),:where(#main,.modal,.mpage,.msheet) select{height:50px;padding-left:14px;font-size:16px;border-radius:12px}
+ :where(#main,.modal,.mpage,.msheet) input:where(:not([type=checkbox],[type=radio],[type=range],[type=color],[type=file])){padding-right:14px}
+ :where(#main,.modal,.mpage,.msheet) textarea{padding:12px 14px;font-size:16px;border-radius:12px}
+ :where(#main,.modal,.mpage,.msheet) input:is([type=date],[type=time]):not(:where(.mf *,.fl *)),:where(#main,.modal,.mpage,.msheet) input:is([type=date],[type=time]):not(:where(.mf *,.fl *))::-webkit-date-and-time-value,:where(#main,.modal,.mpage,.msheet) input:is([type=date],[type=time]):not(:where(.mf *,.fl *))::-webkit-datetime-edit{line-height:48px} /* boxes inside a labeled field (.mf, .fl) keep their own size */
+}
