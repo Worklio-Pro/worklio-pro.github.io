@@ -656,13 +656,13 @@ const round2 = (n) => Math.round(n * 100) / 100;
 // price = unit price the client sees (cost plus markup as % of cost or flat $ per unit); the server recomputes it the same way
 const readItems = (root) => $$('.item-row', root).map((r) => {
   const cost = Number($('.cost', r).value) || 0; const markup = Number($('.markup', r).value) || 0; const markupType = $('.mtype', r).value;
-  return { desc: $('.desc', r).value.trim(), details: $('.details', r).value, qty: Number($('.qty', r).value) || 0, cost, markup, markupType, price: round2(markupType === 'flat' ? cost + markup : cost * (1 + markup / 100)), ...($('.iopt', r) ? { opt: $('.iopt', r).value } : {}) };
+  return { desc: $('.desc', r).value.trim(), details: $('.details', r).value, qty: Number($('.qty', r).value) || 0, cost, markup, markupType, price: round2(markupType === 'flat' ? cost + markup : cost * (1 + markup / 100)), ...($('.iopt', r) ? { opt: $('.iopt', r).value } : {}), ...(r.dataset.np && !(Number($('.cost', r).value) > 0) ? { needsPrice: true } : {}) }; // Snap to quote: still to be priced
 });
 function recalc(root) {
   if (!$('.calc', root)) return; // no Product / Service section (job page for technicians)
   if (root._optRows) root._optRows(); // quote options: every line item has its Option box
   const items = readItems(root); const rate = Number($('[name=taxRate]', root).value) || 0;
-  $$('.item-row', root).forEach((r, i) => { $('.amt', r).textContent = money(items[i].qty * items[i].price); });
+  $$('.item-row', root).forEach((r, i) => { $('.amt', r).textContent = money(items[i].qty * items[i].price); r.classList.toggle('np-on', !!items[i].needsPrice); });
   // discount comes off the subtotal before tax (the server computes it the same way)
   const dv = Math.max(0, Number($('[name=discountValue]', root).value) || 0); const dPct = $('[name=discountType]', root).value === 'percent';
   const calc = (list) => { const sub = round2(list.reduce((s, i) => s + i.qty * i.price, 0)); const disc = Math.min(sub, round2(dPct ? sub * dv / 100 : dv)); const tax = round2((sub - disc) * rate / 100); return { sub, disc, tax, total: round2(sub - disc + tax) }; };
@@ -1859,7 +1859,7 @@ const DEFAULT_DISCLAIMER = 'This quote is valid for the next 30 days, after whic
 function qItemRow(it) {
   // Jobber-style row: labeled boxes (name, qty, unit cost, markup, total) with the description full width underneath and a ⋯ menu.
   // Unit cost shows $; markup shows $ when flat, or % (percent of cost) from its selector.
-  return `<div class="item-row qi" data-opt="${esc(it.opt || '')}"><button type="button" class="drag-h" aria-label="Drag to reorder (or use the arrow keys)" title="Drag to reorder">${DRAG_DOTS}</button><label class="fl qi-name"><span>Name</span><input class="desc" autocomplete="off" placeholder="Item name or catalog service" value="${esc(it.desc || '')}"></label>
+  return `<div class="item-row qi" data-opt="${esc(it.opt || '')}"${it.needsPrice ? ' data-np="1"' : ''}><button type="button" class="drag-h" aria-label="Drag to reorder (or use the arrow keys)" title="Drag to reorder">${DRAG_DOTS}</button><label class="fl qi-name"><span>Name</span><input class="desc" autocomplete="off" placeholder="Item name or catalog service" value="${esc(it.desc || '')}"></label>
 <label class="fl"><span>Quantity</span><input class="qty" type="number" step="any" min="0" value="${it.qty ?? 1}"></label>
 <label class="fl"><span>Unit cost</span><div class="affix"><i>$</i><input class="cost" type="number" step="any" min="0" value="${it.cost ?? it.price ?? 0}"></div></label>
 <label class="fl mk${it.markupType === 'flat' ? ' flat' : ''}"><span>Markup</span><div class="affix"><i class="pre">$</i><input class="markup" type="number" step="any" value="${it.markup ?? 0}"><select class="mtype" aria-label="Markup type"><option value="percent">%</option><option value="flat" ${it.markupType === 'flat' ? 'selected' : ''}>$</option></select></div></label>
@@ -2045,7 +2045,7 @@ ${planHas('zelle') ? switchRow('allowZelle', 'Zelle', d.allowZelle !== 'off' && 
 <div class="qcard"><h3>Notes</h3><textarea name="internalNotes" rows="6" placeholder="Leave an internal note for yourself or a team member. Clients never see this.">${esc(d.internalNotes || '')}</textarea></div></aside></div>
 <div class="qsave noprint"><a class="btn alt" href="/quotes${d.id ? '/view?id=' + d.id : ''}" data-link>Cancel</a><button class="btn">Save</button></div></form>`;
   const form = $('form', main); if (planHas('quoteOptions') || qHasOpts(d)) quoteOptionsEditor(form, d); wireItems(form);
-  form._doc = d; form._kind = 'quote';
+  form._doc = d; form._kind = 'quote'; placeSnap(form, d, true);
   if (qp('unsign') === '1') form._removeSig = true; // confirmed on the quote page before opening the editor
   if (d.id && d.signedAt && d.depositPaidAt) guardSignature(form);
   form.addEventListener('change', (e) => {
@@ -2147,6 +2147,7 @@ function viewPage(kind) {
       if (!d) { main.innerHTML = `<div class="card"><h1>${kind === 'quote' ? 'Quote' : 'Invoice'} not found</h1><p><a href="/${kind}s" data-link>Back to the list</a></p></div>`; return; }
       if (kind === 'invoice' && phoneMq.matches && qp('preview')) { main.innerHTML = qp('receipt') ? mobileReceipt(d, qp('receipt')) : mobileInvoicePreview(d); mpStatusBar(); return; }
       main.innerHTML = phoneMq.matches ? mobileDocPage(kind, d) : (kind === 'quote' ? quotePage : invoicePage)(d);
+      if (kind === 'quote') placeSnap(main, d); // Snap to quote: the AI draft's banner, or Draft from photos
     },
   };
 }
@@ -2648,7 +2649,7 @@ function mobileNew(kind, main, preset) {
 <form class="mnew-f" novalidate><h2 class="mn-sh">Service for</h2><div class="mn-who"></div><h2 class="mn-sh">Overview</h2>
 ${mField(kind === 'invoice' ? 'Subject' : 'Title', `<input name="${kind === 'invoice' ? 'subject' : 'title'}" maxlength="120" placeholder="${q ? 'e.g. Backyard cleanup' : job ? 'e.g. Streamer Install' : 'e.g. Camera System Install'}">`)}
 ${job ? mField('Date', `<input type="date" name="date" value="${esc(preset.date || ymd(new Date()))}">`) + repeatCard({}, preset.date || ymd(new Date())) : ''}
-<button class="btn ms-save">Save</button><p class="muted mn-next">${job ? 'You’ll set the time and team next.' : 'You’ll add line items next.'}</p></form></div>`;
+<button class="btn ms-save">Save</button>${q && (planHas('snapQuote') || canDo('quotes')) ? '<button class="btn alt ms-snap" data-snap="1">Snap to quote: draft from photos</button>' : ''}<p class="muted mn-next">${job ? 'You’ll set the time and team next.' : 'You’ll add line items next.'}</p></form></div>`;
   const f = $('form', main); const who = $('.mn-who', f); if (job) wireRepeat(f);
   const draw = () => {
     if (client) {
@@ -2695,6 +2696,7 @@ ${newOk ? `<div class="mn-row">${ic.contact}<div class="mn-stack"><input name="f
       }
       const where = { address: prop ? propAddr(prop) : client.address || '', propertyId: prop ? prop.id : '', ...(prop && prop.taxRate != null && prop.taxRate !== '' ? { taxRate: Number(prop.taxRate) } : {}) };
       const b = { clientId: client.id, [kind === 'invoice' ? 'subject' : 'title']: v(kind === 'invoice' ? 'subject' : 'title') };
+      if (q && e.submitter && e.submitter.dataset.snap) { btn.disabled = false; return A.snapQuote({ clientId: client.id, ...where }); } // Snap to quote: the draft is made from the photos
       if (job) {
         const saved = await saveJobWithRepeat({}, { ...b, date: v('date'), startTime: '09:00', endTime: '11:00', status: 'scheduled', staffIds: [], ...where }, readRepeat(f), f); // with its Repeats settings
         return navigate('/jobs/edit?id=' + saved.id);
@@ -2835,6 +2837,93 @@ ${prices && planHas('invoices') ? `<section class="md-block need-invoices"><div 
 ${invs.map((i) => `<a class="md-inv" href="/invoices/view?id=${i.id}" data-link><span><strong>Invoice #${esc(i.number)}</strong><small>${esc(I_STATUS[i.displayStatus] || i.displayStatus)} · due ${fmtDate(i.dueDate)}</small></span><span>${money(i.total)}</span></a>`).join('') || '<p class="muted md-empty">No invoices yet. Create one when the work is done.</p>'}</section>` : ''}</div>
 <div class="md-pane" data-pane="notes" hidden>${mNotesPane('job', j, j.internalNotes ? textSec('notes', 'Internal notes', j.internalNotes, '') : '')}</div></div>`;
 }
+/* ===== Snap to quote: job site photos and the tech's notes become a draft quote (lib/snap-quote.js) ===== */
+const SNAP_MAX = 6;
+const snapOpen = (d) => !!d && (d.status || 'draft') === 'draft' && !d.signedAt; // a draft nobody has signed
+// the banner on a quote drafted by AI (until it's sent), or the Draft from photos bar on an empty draft
+function snapBlock(d) {
+  if (!snapOpen(d)) return '';
+  if (d.aiDraft) {
+    const ai = d.aiDraft; const unpriced = (d.items || []).filter((i) => i.needsPrice && !(Number(i.price) > 0)).map((i) => i.desc);
+    return `<div class="snap-note" role="note"><strong>Drafted by AI</strong> from ${ai.photos ? `${ai.photos} photo${ai.photos === 1 ? '' : 's'} and ` : ''}your notes. Check every line before you send it.
+${unpriced.length ? `<p class="snap-np"><strong>Set a price for:</strong> ${unpriced.map(esc).join(', ')}. These weren’t in your price list, so they’re at $0 and the quote can’t be sent until they’re priced.</p>` : ''}
+${(ai.questions || []).length ? `<details open><summary>Check before sending (${ai.questions.length})</summary><ul>${ai.questions.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></details>` : ''}</div>`;
+  }
+  if ((d.items || []).some((i) => i.desc) || !(planHas('snapQuote') || canDo('quotes'))) return '';
+  return `<div class="snap-bar"><span><strong>Snap to quote${planHas('snapQuote') ? '' : ' <span class="beta-tag">Unlimited</span>'}</strong> Take photos of the job and say what the client needs. AI drafts the line items from your price list.</span><button type="button" class="btn alt sm" data-act="snapQuote" data-quote-id="${esc(d.id || '')}">Draft from photos</button></div>`;
+}
+// put it above the first card (desktop) or at the top of the quote tab (phone)
+function placeSnap(root, d, inForm) {
+  let html = snapBlock(d); if (!html) return; if (inForm) html = html.replace('data-act="snapQuote"', 'data-act="snapFromForm"'); // the editor: the form's client
+  const pane = $('.md-pane[data-pane="doc"]', root); if (pane) return pane.insertAdjacentHTML('afterbegin', html);
+  const card = $('.qcard', root); if (card) card.insertAdjacentHTML('beforebegin', html);
+}
+function snapUpsell() {
+  const owner = role() === 'owner';
+  modal('Snap to quote', `<p><strong>Draft a quote from photos in about 30 seconds.</strong> Take photos of the job, say what the client needs, and AI builds the line items from your price list, with Good / Better / Best options when the job has choices.</p>
+<p class="muted">Snap to quote is on the Unlimited plan.${owner ? '' : ' Ask the account owner about moving up.'}</p>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Not now</button>${owner ? '<a class="btn" href="/settings/billing" data-link>See plans</a>' : ''}</div>`);
+}
+// o: { quoteId } to fill a draft, or { clientId, address, propertyId, taxRate, title } for a new quote
+A.snapQuote = async (o = {}) => {
+  if (!planHas('snapQuote')) return snapUpsell();
+  const draft = o.quoteId ? byId(D.quotes, o.quoteId) : null;
+  if (o.quoteId && !draft) return toast('Quote not found', true);
+  const photos = [];
+  const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const body = modal('Snap to quote', `<form class="snap"><p class="muted" style="margin-top:0">Take or choose photos of the job, then say what the client needs. AI drafts the quote from your price list, and you check it before anything is sent.${draft && (draft.items || []).some((i) => i.desc) ? ' <strong>This replaces the quote’s line items.</strong>' : ''}</p>
+<div class="snap-pics"></div>
+<div class="snap-add"><label class="btn alt sm">Take a photo<input type="file" accept="image/*" capture="environment" hidden></label><label class="btn alt sm">Choose photos<input type="file" accept="image/*" multiple hidden></label><span class="muted snap-n">Up to ${SNAP_MAX} photos</span></div>
+<label class="fl"><span>What does the client need?</span><textarea name="notes" rows="5" maxlength="4000" placeholder="e.g. 18-year-old AC unit, still on R-22, the client wants it quieter. Also asked about a smart thermostat."></textarea></label>
+<div class="snap-talk">${Rec ? '<button type="button" class="btn alt sm snap-mic" aria-pressed="false">🎤 Talk</button><span class="muted">Tap, talk, then tap again to stop.</span>' : '<span class="muted">Tip: tap the microphone on your keyboard to talk instead of typing.</span>'}</div>
+<p class="muted snap-left"></p>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn snap-go">Draft quote</button></div></form>`);
+  const f = $('form', body); const pics = $('.snap-pics', f); const go = $('.snap-go', f);
+  api('GET', '/api/snap-quote').then((s) => {
+    const left = Math.max(0, s.limit - s.used); $('.snap-left', f).textContent = s.ready ? `${left} of ${s.limit} drafts left this month.` : 'Snap to quote isn’t available right now. Try again later.';
+    if (!s.ready || !left) go.disabled = true;
+  }).catch(() => {});
+  const draw = () => {
+    pics.innerHTML = photos.map((src, i) => `<figure><img src="${esc(src)}" alt="Photo ${i + 1}"><button type="button" class="x" data-i="${i}" aria-label="Remove photo">×</button></figure>`).join('');
+    $('.snap-n', f).textContent = photos.length ? `${photos.length} of ${SNAP_MAX} photos` : `Up to ${SNAP_MAX} photos`;
+  };
+  pics.addEventListener('click', (e) => { const b = e.target.closest('[data-i]'); if (b) { photos.splice(+b.dataset.i, 1); draw(); } });
+  $$('input[type=file]', f).forEach((inp) => inp.addEventListener('change', async () => {
+    for (const file of [...inp.files]) { if (photos.length >= SNAP_MAX) { toast(`Up to ${SNAP_MAX} photos`, true); break; } try { photos.push(await resizeImage(file, 1568)); } catch (x) { toast('Couldn’t read ' + file.name, true); } }
+    inp.value = ''; draw();
+  }));
+  // talk: the browser's speech recognition types into the box (Chrome, Edge, Safari); elsewhere the keyboard's own microphone
+  const mic = $('.snap-mic', f); let rec = null;
+  if (mic) mic.addEventListener('click', () => {
+    if (rec) { rec.stop(); return; }
+    rec = new Rec(); rec.lang = 'en-US'; rec.continuous = true; rec.interimResults = false;
+    const box = f.notes; rec.onresult = (e) => { for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) box.value = (box.value ? box.value.replace(/\s*$/, ' ') : '') + e.results[i][0].transcript.trim(); };
+    rec.onerror = (e) => { if (e.error === 'not-allowed') toast('Allow the microphone for this app to talk, or type instead', true); };
+    rec.onend = () => { rec = null; mic.textContent = '🎤 Talk'; mic.setAttribute('aria-pressed', 'false'); };
+    try { rec.start(); mic.textContent = '■ Stop'; mic.setAttribute('aria-pressed', 'true'); } catch (x) { rec = null; }
+  });
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault(); if (rec) rec.stop();
+    const notes = f.notes.value.trim();
+    if (!photos.length && notes.length < 10) return toast('Add a photo, or say what the client needs', true);
+    go.disabled = true; go.textContent = 'Drafting… about 30 seconds';
+    try {
+      const r = await api('POST', '/api/snap-quote', { ...(draft ? { quoteId: draft.id } : { clientId: o.clientId, address: o.address || '', propertyId: o.propertyId || '', ...(o.taxRate != null && o.taxRate !== '' ? { taxRate: o.taxRate } : {}) }), photos, notes });
+      const i = D.quotes.findIndex((x) => x.id === r.quote.id); if (i >= 0) D.quotes[i] = r.quote; else D.quotes.push(r.quote);
+      if (o.title && !r.quote.title) r.quote.title = o.title;
+      closeModal(); toast('Your draft is ready. Check every line before you send it.');
+      const to = phoneMq.matches ? `/quotes/view?id=${r.quote.id}` : `/quotes/edit?id=${r.quote.id}`;
+      if (location.pathname + location.search === to) refresh(); else navigate(to);
+    } catch (x) { go.disabled = false; go.textContent = 'Draft quote'; toast(x.message, true); }
+  });
+};
+// the editor's bar: a saved draft is filled in place; a new quote needs its client first
+A.snapFromForm = (d, el) => {
+  const form = el.closest('form'); const doc = (form && form._doc) || {};
+  if (doc.id) return A.snapQuote({ quoteId: doc.id });
+  if (!form.clientId.value) return toast('Choose the client first', true);
+  return A.snapQuote({ clientId: form.clientId.value, address: form.address.value });
+};
 PAGES['/quotes/new'] = docPage('quote', true); PAGES['/quotes/edit'] = docPage('quote', false);
 PAGES['/invoices/new'] = docPage('invoice', true); PAGES['/invoices/edit'] = docPage('invoice', false);
 PAGES['/quotes/view'] = viewPage('quote'); PAGES['/invoices/view'] = viewPage('invoice');

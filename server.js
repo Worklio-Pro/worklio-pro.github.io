@@ -171,7 +171,8 @@ function computeTotals(doc) {
   // price is the client-facing unit price: cost plus a markup (% of cost, or a flat $ per unit). Older items without a cost use their price as the cost.
   doc.items = (doc.items || []).filter((i) => i.desc).map((i) => {
     const cost = Number(i.cost ?? i.price) || 0; const markup = Number(i.markup) || 0; const markupType = i.markupType === 'flat' ? 'flat' : 'percent';
-    return { desc: String(i.desc), details: i.details ? String(i.details) : '', qty: Number(i.qty) || 0, cost, markup, markupType, price: round2(markupType === 'flat' ? cost + markup : cost * (1 + markup / 100)), ...(opts.length >= 2 ? { opt: ids.has(i.opt) ? i.opt : '' } : {}) };
+    const price = round2(markupType === 'flat' ? cost + markup : cost * (1 + markup / 100));
+    return { desc: String(i.desc), details: i.details ? String(i.details) : '', qty: Number(i.qty) || 0, cost, markup, markupType, price, ...(i.needsPrice && !(price > 0) ? { needsPrice: true } : {}), ...(opts.length >= 2 ? { opt: ids.has(i.opt) ? i.opt : '' } : {}) };
   });
   doc.taxRate = Number(doc.taxRate) || 0;
   // optional discount before tax: a flat amount or a percentage of the subtotal
@@ -196,9 +197,9 @@ const quoteParts = (q) => (!hasOptions(q) ? [{ doc: q }] : q.chosenOption ? [{ o
 // options need names, and an approved quote needs the option that was picked. Each option needs a line item of its own before the
 // quote goes to the client (sent, or marked Awaiting response); a draft can be saved while its items are still being sorted into options
 function optionsProblem(q) {
-  if (!hasOptions(q)) return '';
+  if (!hasOptions(q)) return q.status !== 'draft' ? snapQuote.unpricedProblem(q) : ''; // Snap to quote: nothing at $0 waiting for a price
   const unnamed = q.options.findIndex((o) => !o.name); if (unnamed >= 0) return `Give option ${unnamed + 1} a name`;
-  if (q.status !== 'draft') { const e = optionsEmpty(q); if (e) return e; }
+  if (q.status !== 'draft') { const e = optionsEmpty(q) || snapQuote.unpricedProblem(q); if (e) return e; }
   if (q.status === 'approved' && !q.chosenOption) return 'Choose the option the client picked';
   return '';
 }
@@ -1902,7 +1903,7 @@ app.put('/api/:col/:id', (req, res, next) => {
     doc.chosenOption = null; // they pick an option again
   }
   if (col === 'quotes' || col === 'invoices' || (col === 'jobs' && Array.isArray(doc.items))) computeTotals(doc); // jobs are priced once they have line items
-  if (col === 'quotes') { const bad = optionsProblem(doc); if (bad) return res.status(400).json({ error: bad }); }
+  if (col === 'quotes') { if (Array.isArray(upd.items)) snapQuote.carryNeedsPrice(db[col][i], doc); else if (doc.aiDraft && doc.status !== 'draft') delete doc.aiDraft; const bad = optionsProblem(doc); if (bad) return res.status(400).json({ error: bad }); }
   // a signed quote with its deposit paid: any change to it removes the client's signature, once the business confirms (the quote editor asks first).
   // The business then marks it Awaiting response and re-sends it so the client signs again.
   const was = db[col][i];
@@ -2171,7 +2172,7 @@ app.delete('/api/email-templates/:key', (req, res) => {
 app.post('/api/quotes/:id/send', async (req, res) => {
   const q = db.quotes.find((x) => x.id === req.params.id);
   if (!q) return res.status(404).json({ error: 'Not found' });
-  const empty = optionsEmpty(q); if (empty) return res.status(400).json({ error: empty }); // every option needs its own line item before the client sees it
+  const empty = optionsEmpty(q) || snapQuote.unpricedProblem(q); if (empty) return res.status(400).json({ error: empty }); // every option needs its own line item, and every item a price, before the client sees it
   const channels = (req.body.channels && req.body.channels.length) ? req.body.channels : ['email'];
   const link = quoteLink(q); const co = db.company.name;
   const results = [];
@@ -4141,6 +4142,13 @@ const NET_NAMES = { facebook: 'Facebook', instagram: 'Instagram', google: 'Googl
 // ---------- the business's own automations (lib/business-automations.js) ----------
 const portalLink = (c) => { if (!c.portalToken) { c.portalToken = token(); save(); } return `${baseUrl()}/client-portal?c=${c.portalToken}`; };
 const bizAuto = require('./lib/business-automations')({ db, save, uid, token, iso, niceDate, money, findClient, tenancy, localNow, withStatus, quoteLink, invoiceLink, portalLink, baseUrl, renderEmail, notify, sendEmail, pushTo, jobCrew, pushTime, reviewRecord, reviewLink });
+// Snap to quote (lib/snap-quote.js): a draft quote from job site photos and the tech's notes
+const snapQuote = require('./lib/snap-quote')({ db, save, uid, tenancy, aiClient, saveNoteFiles, computeTotals, nextNumber, token, iso, findClient });
+app.get('/api/snap-quote', (req, res) => res.json(snapQuote.status()));
+app.post('/api/snap-quote', async (req, res) => {
+  try { const r = await snapQuote.draft(req.body || {}, currentUser(req)); res.status(201).json({ quote: r.quote, questions: r.questions, usage: r.usage }); }
+  catch (e) { if (!e.status) console.error('snap to quote:', e.message); res.status(e.status || 500).json({ error: e.status ? e.message : 'Something went wrong' }); }
+});
 // Every job markets itself (lib/job-posts.js): a finished job's photos become a post waiting in Marketing for approval
 const jobPosts = require('./lib/job-posts')({ db, save, uid, tenancy, uploadDir, findClient, aiClient, pushTo, usersWhoCan, sendTemplate, baseUrl, localNow });
 const autoRoute = (fn) => async (req, res) => { try { res.json(await fn(req)); } catch (e) { if (!e.status) console.error('automations:', e.message); res.status(e.status || 500).json({ error: e.status ? e.message : 'Something went wrong' }); } };
@@ -4781,7 +4789,7 @@ const platformApp = require('./lib/platform')({
   planItem, seatItem, seatParams, extraCount, // a subscription's plan line and extra logins line
 });
 // which app answers: the platform's (its own domain, or /alpha… while developing) or an account's
-const PLATFORM_PATHS = /^\/(alpha(\/.*)?|platform(\/.*)?|stripe\/go\/[a-z]+|oauth\/(google|meta|tiktok|linkedin|pinterest|threads|quickbooks|xero)\/callback|home|features|marketing|pricing|signup|sign-in|supporters|industries(\/[a-z-]+)?|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;
+const PLATFORM_PATHS = /^\/(alpha(\/.*)?|platform(\/.*)?|stripe\/go\/[a-z]+|oauth\/(google|meta|tiktok|linkedin|pinterest|threads|quickbooks|xero)\/callback|home|features|marketing|quote-from-photos|pricing|signup|sign-in|supporters|industries(\/[a-z-]+)?|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;
 function dispatch(req, res) {
   // www. → the bare domain, so search engines see one copy of each page (the canonical links name the bare domain). Page loads only: a form or webhook posted to www. still works
   if (!tenancy.devMode && /^(GET|HEAD)$/.test(req.method) && tenancy.hostOnly(req.headers.host) === 'www.' + tenancy.PLATFORM_DOMAIN) { res.writeHead(301, { Location: tenancy.platformUrl() + req.url }); return res.end(); }

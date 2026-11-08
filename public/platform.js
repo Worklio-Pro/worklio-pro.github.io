@@ -1686,7 +1686,8 @@ ${env('<code>TWILIO_ACCOUNT_SID</code>, <code>TWILIO_AUTH_TOKEN</code> and <code
 ${ig('AI', on(I.ai), `<p class="ig-d">Everything that uses Claude. Turning a switch off takes effect right away, and nothing else changes.</p>
 ${[['aiDescriptions', 'Descriptions', 'Write with AI on products and services, and Rewrite on quote, invoice and job lines. Every business, on plans with AI descriptions.', D.settings.aiDescriptions !== false],
   ['aiRewrite', 'Client messages and contracts', 'Rewrite in the Client message and Contract / Disclaimer boxes on quotes and invoices. Every business, on plans with AI descriptions.', D.settings.aiRewrite !== false],
-  ['aiCaptions', 'Social captions', 'Write with AI on your posts in Social.', D.settings.aiCaptions !== false],
+  ['aiCaptions', 'Social captions', 'Write with AI on your posts in Social, and the captions on businesses’ posts from finished jobs (Every job markets itself).', D.settings.aiCaptions !== false],
+  ['aiSnapQuote', 'Snap to quote', 'Draft a quote from job site photos and the tech’s notes. Every business, on plans with Snap to quote.', D.settings.aiSnapQuote !== false],
   ['aiChat', 'Help chat', 'The chat bot answers from your help center. Off, it uses only your saved answers and matching articles. Same setting as in Messages.', I.aiChat]].map(([k, l, n, v]) => `<label class="sw-row"><span>${l}<small class="muted">${n}</small></span><input type="checkbox" class="sw" data-ai="${k}" ${v ? 'checked' : ''}><i></i></label>`).join('')}
 <p class="muted ig-p">With Descriptions and Client messages and contracts both off, AI descriptions also leaves your pricing page and plan lists.</p>
 ${env('<code>ANTHROPIC_API_KEY</code>.')}`)}
