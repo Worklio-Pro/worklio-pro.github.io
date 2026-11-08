@@ -1428,6 +1428,14 @@ const MK_ICONS = {
   // Google's G on a white tile, built when drawn (CONN_ICONS comes later in this file)
   get google() { return '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3.5" y="3.5" width="41" height="41" rx="10" fill="#fff" stroke="#dadce0"/><g transform="translate(10 10) scale(.583)">' + CONN_ICONS.google.replace(/^<svg[^>]*>/, '').replace(/<\/svg>$/, '') + '</g></svg>'; },
 };
+// connections a network has signed out: said at the top of Marketing, so nobody finds out from a failed post
+function marketingBroken(C) {
+  const out = ['facebook', 'instagram', 'linkedin', 'tiktok', 'youtube', 'pinterest', 'threads', 'google'].filter((k) => C[k] && C[k].connected && C[k].broken);
+  if (!out.length) return '';
+  const names = out.map((k) => CONN_LABEL[k]); const list = names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] : names[0];
+  const admin = ['owner', 'admin'].includes(role());
+  return `<div class="notice mk-notice"><strong>${esc(list)} ${out.length > 1 ? 'need' : 'needs'} reconnecting.</strong> ${out.length > 1 ? 'They' : 'It'} signed Worklio Pro out, so nothing can be posted there until ${out.length > 1 ? 'they’re' : 'it’s'} connected again. ${admin ? out.map((k) => `<button type="button" class="btn sm" data-act="socialConnect" data-kind="${k}" data-back="/social-posts">Reconnect ${esc(CONN_LABEL[k])}</button>`).join(' ') : 'Ask the account owner or an admin to reconnect.'}</div>`;
+}
 function marketingConnect(C) {
   const admin = ['owner', 'admin'].includes(role());
   const card = (name, icon, body, on) => `<div class="mk-card${on ? ' on' : ''}"><span class="mk-ic">${icon}</span><strong>${name}</strong>${body}</div>`;
@@ -1435,12 +1443,13 @@ function marketingConnect(C) {
   const ask = '<small class="muted">Ask the account owner or an admin to connect it</small>';
   // the business signs in with its own account on each network
   // who: the account it's connected to; a network the server doesn't list yet shows Coming soon
-  const live = (kind, name, who) => { const x = C[kind] || {}; return card(name, CONN_ICONS[kind], x.connected
+  const fix = (kind) => `<span class="mk-bad">Needs reconnecting</span>${admin ? `<button type="button" class="mk-btn" data-act="socialConnect" data-kind="${kind}" data-back="/social-posts">Reconnect</button>` : '<small class="muted">Ask the account owner or an admin to reconnect it</small>'}`;
+  const live = (kind, name, who) => { const x = C[kind] || {}; return card(name, CONN_ICONS[kind], x.connected && x.broken ? fix(kind) : x.connected
     ? `<span class="mk-on">Connected</span><small class="muted">${esc(who(x))}</small>${admin ? `<a class="mk-link" href="/settings/connections#conn-${kind}" data-link>Manage</a>` : ''}`
     : !x.available ? soon
       : admin ? `<button type="button" class="mk-btn" data-act="socialConnect" data-kind="${kind}" data-back="/social-posts">+ Connect</button>` : '<small class="muted">Ask the account owner or an admin to connect it</small>', x.connected); };
   const G = C.google || {};
-  const gbp = card('Google Business Profile', MK_ICONS.google, G.connected
+  const gbp = card('Google Business Profile', MK_ICONS.google, G.connected && G.broken ? fix('google') : G.connected
     ? `<span class="mk-on">Connected</span><small class="muted">${esc(G.title)}</small>${admin ? '<a class="mk-link" href="/settings/connections#conn-google" data-link>Manage</a>' : ''}`
     : !G.available ? soon : admin ? '<button type="button" class="mk-btn" data-act="socialConnect" data-kind="google" data-back="/social-posts">+ Connect</button>' : '<small class="muted">Ask the account owner or an admin to connect it</small>', G.connected);
   const B = C.bluesky || {};
@@ -1451,7 +1460,7 @@ function marketingConnect(C) {
   const xCard = card('X', CONN_ICONS.x, X.connected
     ? `<span class="mk-on">Connected</span><small class="muted">@${esc(X.username)}</small>${admin ? '<a class="mk-link" href="/settings/connections#conn-x" data-link>Manage</a>' : ''}`
     : X.available === false ? soon : admin ? '<button type="button" class="mk-btn" data-act="xConnect">+ Connect</button>' : ask, X.connected);
-  return `<section class="mk-connect"><h2>Connect your social accounts</h2><p class="muted">Pick where you want to publish. You can add or remove networks anytime.</p>
+  return `${marketingBroken(C)}<section class="mk-connect"><h2>Connect your social accounts</h2><p class="muted">Pick where you want to publish. You can add or remove networks anytime.</p>
 <div class="mk-grp">Major networks</div><div class="mk-grid">${live('facebook', 'Facebook', (x) => x.name)}${live('instagram', 'Instagram', (x) => '@' + x.username)}${live('linkedin', 'LinkedIn', (x) => x.name)}${live('tiktok', 'TikTok', (x) => x.name)}${live('youtube', 'YouTube', (x) => x.name)}</div>
 <div class="mk-grp">More networks</div><div class="mk-grid">${bsky}${live('pinterest', 'Pinterest', (x) => x.name)}${live('threads', 'Threads', (x) => '@' + x.username)}${xCard}${gbp}</div></section>`;
 }
@@ -1641,7 +1650,7 @@ async function spYouTube() {
   box.querySelector('[name=ytKids]').addEventListener('change', (e) => { y.kids = e.target.checked; });
 }
 // a network signed the business out: owners and admins get a button to fix it; everyone else is told who can
-const spReconnect = () => ['owner', 'admin'].includes(role()) ? '<p style="margin:6px 0 0"><a class="btn sm" href="/settings/connections" data-link>Go to Account Connections</a></p>' : '<p class="muted" style="margin:6px 0 0">Ask the account owner or an admin to connect it again.</p>';
+const spReconnect = () => ['owner', 'admin'].includes(role()) ? '<p style="margin:6px 0 0"><a class="btn sm" href="/settings/connections" data-link>Go to Account Connections to reconnect</a></p>' : '<p class="muted" style="margin:6px 0 0">Ask the account owner or an admin to connect it again.</p>';
 const TT_HINT = { SELF_ONLY: 'Until TikTok approves this app, posts can only be private.' };
 async function spTikTok() {
   const box = $('#spTt'); if (!box) return; const on = spDraft.to.includes('tiktok'); box.hidden = !on; if (!on || box.dataset.loaded) return;
@@ -2099,7 +2108,12 @@ async function connectionsPage(main) {
   const connect = (id) => ({ status: connChip('off', 'Not connected'), button: admin ? `<button type="button" class="btn alt conn-btn" data-act="socialConnect" data-kind="${id}">Connect</button>` : '' });
   const connected = (id, to, n) => ({ status: connChip('on', 'Connected'), connectedTo: `Connected to ${to}.${admin && n > 1 ? ` <button type="button" class="link-btn" data-act="socialChoose" data-kind="${id}">Change</button>` : ''}`,
     button: admin ? `<button type="button" class="btn alt conn-btn" data-act="socialDisconnect" data-kind="${id}">Disconnect</button>` : '' });
-  const state = (id, x, to) => (x.connected ? connected(id, to, x.choices) : !x.available ? soon : connect(id)); // already connected: still shown, so it can be disconnected
+  // signed out by the network (or LinkedIn's yearly sign-in ending soon): Reconnect goes straight to its sign-in, which replaces the connection
+  const reBtn = (id) => (admin ? `<button type="button" class="btn conn-btn" data-act="socialConnect" data-kind="${id}">Reconnect</button>` : '');
+  const ask = admin ? '' : ' Ask the account owner or an admin to reconnect it.';
+  const broken = (id, to) => ({ status: connChip('bad', 'Needs reconnecting'), connectedTo: `Connected to ${to}. ${esc(CONN_LABEL[id] || CONN_NAMES[id])} signed Worklio Pro out, so nothing can be posted there until it’s reconnected.${admin ? ' Click <strong>Reconnect</strong> and sign in again; it takes about a minute.' : ask}`, button: reBtn(id) });
+  const ending = (id, to, x) => ({ ...connected(id, to, x.choices), status: connChip('wait', 'Reconnect soon'), connectedTo: `Connected to ${to}. ${esc(CONN_LABEL[id] || CONN_NAMES[id])} asks you to sign in again every so often: reconnect by ${esc(fmtDate(x.endsAt.slice(0, 10)))} so posts keep going out.${ask}`, button: reBtn(id) });
+  const state = (id, x, to) => (x.connected ? (x.broken ? broken(id, to) : x.endsAt ? ending(id, to, x) : connected(id, to, x.choices)) : !x.available ? soon : connect(id)); // already connected: still shown, so it can be disconnected
   const G = C.google; const F = C.facebook; const I = C.instagram; const B = C.bluesky || {};
   // Google's features, each managed on its own (Jobber-style sub-rows)
   const sub = (title, desc, chip, btn) => `<div class="conn-sub"><div><h3>${title} ${chip}</h3><p>${desc}</p></div>${btn}</div>`;
@@ -2144,6 +2158,8 @@ ${admin ? '' : '<p class="muted" style="font-size:13px">Only the account owner o
   connectionsData = C;
 }
 let connectionsData = null;
+// the network's own name, used in "TikTok signed Worklio Pro out"
+const CONN_LABEL = { google: 'Google', facebook: 'Facebook', instagram: 'Instagram', linkedin: 'LinkedIn', pinterest: 'Pinterest', threads: 'Threads', tiktok: 'TikTok', youtube: 'YouTube' };
 const CONN_NAMES = { google: 'Google Business Profile', facebook: 'Facebook Page', instagram: 'Instagram account', bluesky: 'Bluesky account', linkedin: 'LinkedIn page', pinterest: 'Pinterest account', threads: 'Threads account', tiktok: 'TikTok account', youtube: 'YouTube channel', x: 'X account', quickbooks: 'QuickBooks', xero: 'Xero' };
 // back from Google or Facebook's sign-in (lib/platform.js → /oauth/…/callback)
 function connReturnNotice() {

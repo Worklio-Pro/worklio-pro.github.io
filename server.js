@@ -3789,10 +3789,46 @@ function saveConnection(kind, conn) {
   const old = connOf(kind); if (kind === 'google' && old && old.booking && old.location === conn.location) conn.booking = true; // reconnecting keeps online booking on
   setConnection(kind, conn);
 }
+// a refreshed sign-in is saved at once (lib/networks.js, lib/social.js), inside the account whose request or check refreshed it
+networks.onRenew(() => save()); social.onRenew(() => save());
+// a connection the network has signed out (conn.broken): Account Connections and Marketing show it with a Reconnect button, and the owner is
+// emailed once. Connecting again replaces the connection, which clears it; a later call that works clears it too.
+const CONN_LABEL = { google: 'Google Business Profile', facebook: 'Facebook', instagram: 'Instagram', linkedin: 'LinkedIn', pinterest: 'Pinterest', threads: 'Threads', tiktok: 'TikTok', youtube: 'YouTube' };
+function markBroken(kind, e) {
+  const c = connOf(kind); if (!c || !e || !e.reconnect) return;
+  if (c.broken) return; c.broken = { at: new Date().toISOString() }; save();
+  const name = CONN_LABEL[kind] || kind; const o = db.users.find((x) => x.role === 'owner');
+  if (o && o.email) sendTemplate('accountActivity', o.email, { title: `Reconnect ${name}`, message: `${name} has signed Worklio Pro out, so posts can’t go there until it’s connected again. Open Account Connections and click Reconnect next to ${name}, then sign in to ${name}. It takes about a minute, and nothing you’ve posted is lost.`, link: `${baseUrl()}/settings/connections#conn-${kind}` }, { server: true }).catch(() => {});
+}
+const markWorking = (kind) => { const c = connOf(kind); if (c && c.broken) { delete c.broken; save(); } };
+// LinkedIn makes the business sign in again once a year however often the sign-in is renewed: warn the owner two weeks ahead, once
+function warnEnding(kind) {
+  const c = connOf(kind); if (!c || c.broken || !c.refreshExpiresAt || c.refreshExpiresAt - Date.now() > 14 * 864e5 || c.endWarned === c.refreshExpiresAt) return;
+  c.endWarned = c.refreshExpiresAt; save();
+  const name = CONN_LABEL[kind] || kind; const o = db.users.find((x) => x.role === 'owner'); const when = new Date(c.refreshExpiresAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+  if (o && o.email) sendTemplate('accountActivity', o.email, { title: `Reconnect ${name} by ${when}`, message: `${name} asks you to sign in again every so often, and your sign-in ends on ${when}. Open Account Connections and click Reconnect next to ${name} before then so posts keep going out.`, link: `${baseUrl()}/settings/connections#conn-${kind}` }, { server: true }).catch(() => {});
+}
+// a few times a day: renew each account's social sign-ins before they run out, so they last while the business isn't posting
+let keepTick = false;
+async function keepConnections() {
+  if (keepTick) return; keepTick = true;
+  try {
+    for (const t of tenancy.platform().tenants.filter((x) => x.status === 'active')) { // every account: t.social isn't set on accounts that connected before it was added
+      await tenancy.run(t, async () => {
+        for (const kind of Object.keys(secrets().social || {})) {
+          const c = connOf(kind); if (!c || c.broken || !(kind === 'google' || networks.has(kind))) continue;
+          try { if (kind === 'google') { if (c.refreshToken) await social.googleKeepAlive(c); } else await networks.keepAlive(kind, c); }
+          catch (e) { if (e.reconnect) markBroken(kind, e); else console.error('keeping connections:', t.slug, kind, e.message); }
+          warnEnding(kind);
+        }
+      }).catch((e) => console.error('keeping connections:', t.slug, e.message));
+    }
+  } finally { keepTick = false; }
+}
 const bookingUrl = () => `${baseUrl()}/book`;
 function connectionsView() {
   const g = connOf('google'); const f = connOf('facebook'); const bs = connOf('bluesky'); const x = connOf('x');
-  return {
+  const view = {
     google: { available: social.available('google'), connected: !!g, title: g ? g.title : '', address: g ? g.address : '', mapsUrl: g ? g.mapsUrl : '', reviewUrl: g ? g.reviewUrl : '', choices: g ? g.choices || 1 : 0,
       reviews: !!(g && g.reviews !== false), booking: !!(g && g.booking), bookingUrl: bookingUrl(), bookingPlan: tenancy.has('onlineBooking'), reviewsPlan: tenancy.has('reviews') },
     facebook: { available: social.available('facebook'), connected: !!f, name: f ? f.name : '', link: f ? f.link : '', choices: f ? f.choices || 1 : 0 },
@@ -3801,6 +3837,8 @@ function connectionsView() {
     ...Object.fromEntries(Object.keys(networks.NETWORKS).map((k) => { const c = connOf(k); return [k, { available: social.available(k), connected: !!c, name: c ? c.name || '' : '', username: c ? c.username || '' : '', link: c ? c.link || '' : '', choices: c ? c.choices || 1 : 0 }]; })),
     postsPlan: tenancy.has('socialPosts'),
   };
+  for (const k of SOCIAL_KINDS) { const c = connOf(k); if (c && view[k]) { view[k].broken = !!c.broken; if (c.refreshExpiresAt && c.refreshExpiresAt - Date.now() < 14 * 864e5) view[k].endsAt = new Date(c.refreshExpiresAt).toISOString(); } }
+  return view;
 }
 const connKind = (req, res) => {
   const kind = req.params.kind; if (!SOCIAL_KINDS.includes(kind)) { res.status(404).json({ error: 'Unknown connection' }); return null; }
@@ -3808,7 +3846,7 @@ const connKind = (req, res) => {
   return kind;
 };
 // a Google or Meta call failed: the message, and a saved token refresh either way
-const connFail = (res, e) => { save(); res.status(e.status || 502).json({ error: e.message }); };
+const connFail = (res, e, kind) => { if (kind) markBroken(kind, e); save(); res.status(e.status || 502).json({ error: e.message, reconnect: !!e.reconnect }); };
 app.get('/api/connections', (req, res) => res.json(connectionsView()));
 // Bluesky: the handle and an app password, checked by signing in before they're saved
 const adminOnly = (req, res) => { if (isAdmin(currentUser(req))) return true; res.status(403).json({ error: 'Only the account owner or an admin can manage connections' }); return false; };
@@ -3845,7 +3883,7 @@ app.get('/api/connections/:kind/choices', async (req, res) => {
     const list = kind === 'google' ? (await social.googleLocations(c)).map((l) => ({ id: l.location, label: l.title, sub: l.address, current: l.location === c.location }))
       : (await social.metaChoices(kind, c)).map((x) => ({ id: x.id, label: x.label, sub: '', current: x.id === c.pageId }));
     save(); res.json(list);
-  } catch (e) { connFail(res, e); }
+  } catch (e) { connFail(res, e, kind); }
 });
 app.put('/api/connections/:kind', async (req, res) => {
   const kind = connKind(req, res); if (!kind) return; const c = connOf(kind); if (!c) return res.status(400).json({ error: 'Connect it first' });
@@ -3868,7 +3906,7 @@ app.put('/api/connections/:kind', async (req, res) => {
       await social.googleBookingLink(c, b.booking ? bookingUrl() : ''); c.booking = !!b.booking;
     }
     setConnection(kind, c); res.json(connectionsView());
-  } catch (e) { connFail(res, e); }
+  } catch (e) { connFail(res, e, kind); }
 });
 
 // ---------- Settings → QuickBooks & Xero (lib/accounting.js): clients, invoices, payments and expenses sent to the business's books ----------
@@ -4067,18 +4105,18 @@ app.post('/api/marketplace/suggest', (req, res) => {
 // Google reviews (the Reviews page): read straight from the Business Profile; replies show publicly on Google
 app.get('/api/reviews', async (req, res) => {
   const c = connOf('google'); if (!c || c.reviews === false) return res.json({ connected: !!c, on: false });
-  try { const r = await social.googleReviews(c, String(req.query.page || '')); save(); res.json({ connected: true, on: true, title: c.title, mapsUrl: c.mapsUrl, reviewUrl: c.reviewUrl, ...r }); } catch (e) { connFail(res, e); }
+  try { const r = await social.googleReviews(c, String(req.query.page || '')); markWorking('google'); save(); res.json({ connected: true, on: true, title: c.title, mapsUrl: c.mapsUrl, reviewUrl: c.reviewUrl, ...r }); } catch (e) { connFail(res, e, 'google'); }
 });
 const canReply = (req, res) => { const u = currentUser(req); if (can(u, 'reviews')) return true; res.status(403).json({ error: 'Ask a manager or admin to reply to reviews' }); return false; };
 app.put('/api/reviews/reply', async (req, res) => {
   if (!canReply(req, res)) return; const c = connOf('google'); if (!c) return res.status(400).json({ error: 'Connect your Google Business Profile first' });
   const comment = String((req.body && req.body.comment) || '').trim(); if (!comment) return res.status(400).json({ error: 'Write a reply first' });
   if (comment.length > 4000) return res.status(400).json({ error: 'Keep the reply under 4,000 characters' });
-  try { const r = await social.googleReply(c, String(req.body.name || ''), comment); save(); res.json({ comment: r.comment || comment, updatedAt: r.updateTime || new Date().toISOString() }); } catch (e) { connFail(res, e); }
+  try { const r = await social.googleReply(c, String(req.body.name || ''), comment); save(); res.json({ comment: r.comment || comment, updatedAt: r.updateTime || new Date().toISOString() }); } catch (e) { connFail(res, e, 'google'); }
 });
 app.delete('/api/reviews/reply', async (req, res) => {
   if (!canReply(req, res)) return; const c = connOf('google'); if (!c) return res.status(400).json({ error: 'Connect your Google Business Profile first' });
-  try { await social.googleDeleteReply(c, String(req.query.name || '')); save(); res.json({ ok: true }); } catch (e) { connFail(res, e); }
+  try { await social.googleDeleteReply(c, String(req.query.name || '')); save(); res.json({ ok: true }); } catch (e) { connFail(res, e, 'google'); }
 });
 
 // Social Posts: project photos to the connected Facebook Page and Instagram account. Photos arrive as JPEGs (the browser converts them)
@@ -4149,7 +4187,7 @@ app.post('/api/social-posts/video', async (req, res) => {
 // what the TikTok account may post right now: who can see it and whether comments can be on (TikTok asks apps to check before each post)
 app.get('/api/social-posts/tiktok', async (req, res) => {
   const c = connOf('tiktok'); if (!c) return res.status(400).json({ error: 'Connect TikTok first' });
-  try { const r = await networks.NETWORKS.tiktok.creator(c); save(); res.json(r); } catch (e) { save(); res.status(e.status || 502).json({ error: e.message, reconnect: !!e.reconnect }); }
+  try { const r = await networks.NETWORKS.tiktok.creator(c); markWorking('tiktok'); save(); res.json(r); } catch (e) { markBroken('tiktok', e); save(); res.status(e.status || 502).json({ error: e.message, reconnect: !!e.reconnect }); }
 });
 app.post('/api/social-posts', async (req, res) => {
   const b = req.body || {}; const caption = String(b.caption || '').trim();
@@ -4189,8 +4227,9 @@ app.post('/api/social-posts', async (req, res) => {
   for (const k of to) {
     try {
       const r = await POST_TO[k](connOf(k), { caption: capFor(k), ref, images: images.map((u) => baseUrl() + u), paths: images, jpegs: bufs, video, options: k === 'tiktok' ? b.tiktok : k === 'youtube' ? b.youtube : undefined });
+      markWorking(k);
       post.results[k] = { status: 'posted', url: k === 'facebook' ? `https://www.facebook.com/${r.post_id || r.id}` : k === 'bluesky' || k === 'x' || networks.has(k) ? r.url : k === 'google' ? r.searchUrl || connOf('google').mapsUrl || '' : r.permalink || `https://www.instagram.com/${connOf(k).username}` };
-    } catch (e) { post.results[k] = { status: 'failed', error: e.message, ...(e.reconnect ? { reconnect: true } : {}) }; }
+    } catch (e) { markBroken(k, e); post.results[k] = { status: 'failed', error: e.message, ...(e.reconnect ? { reconnect: true } : {}) }; }
   }
   if (video && post.results.youtube.status === 'posted') fs.rm(video.file, { force: true }, () => {}); // kept after a failure, so posting again doesn't need a new upload
   if (draft) { post.jobId = draft.jobId; if (Object.values(post.results).some((r) => r.status === 'posted')) jobPosts.posted(draft.id, post, currentUser(req).name || ''); }
@@ -4801,6 +4840,7 @@ setTimeout(jobPostsMonthly, 40e3); setInterval(jobPostsMonthly, 3600e3); // Ever
 setTimeout(billMemberships, 35e3); setInterval(billMemberships, 3600e3); // service plans: each billing period's invoice
 setTimeout(extendSeries, 25e3); setInterval(extendSeries, 3600e3); // recurring jobs: make visits as the months go by
 setTimeout(pushOverviews, 20e3); setInterval(pushOverviews, 15 * 60e3); // the morning's Today's work overview notifications
+setTimeout(() => keepConnections().catch(() => {}), 90e3); setInterval(() => keepConnections().catch(() => {}), 6 * 3600e3); // social sign-ins: renewed before they run out
 setTimeout(() => syncAllBooks().catch(() => {}), 45e3); setInterval(() => syncAllBooks().catch(() => {}), 15 * 60e3); // QuickBooks & Xero: send what's new
 require('http').createServer(dispatch).listen(PORT, () => {
   console.log(`App running at ${BASE_URL}`);

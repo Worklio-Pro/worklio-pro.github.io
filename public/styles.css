@@ -921,6 +921,8 @@ a.conn-chip{text-decoration:none}a.conn-chip:hover{text-decoration:underline}
 .mk-ic svg{width:48px;height:48px;display:block}
 .mk-btn{display:inline-block;margin-top:4px;padding:6px 14px;border:0;border-radius:6px;background:var(--surface-2);color:var(--text);font:inherit;font-size:13px;cursor:pointer}
 .mk-btn:hover:not(.soon){background:var(--tint);color:var(--tint-fg)}.mk-btn.soon{color:var(--muted);cursor:default}
+.mk-bad{display:inline-flex;align-items:center;gap:6px;margin-top:4px;padding:4px 10px;border-radius:99px;background:var(--bad-bg);color:var(--bad-fg);font-size:13px;font-weight:600}.mk-bad::before{content:'!'}
+.mk-notice{margin-bottom:16px;line-height:1.6}.mk-notice .btn{margin:4px 6px 0 0}
 .mk-on{display:inline-flex;align-items:center;gap:6px;margin-top:4px;padding:4px 10px;border-radius:99px;background:var(--ok-bg);color:var(--ok-fg);font-size:13px;font-weight:600}.mk-on::before{content:'✓'}
 .mk-link{font-size:13px;font-weight:600;text-decoration:none}
 .sp-over{color:var(--danger)!important;font-weight:600} /* the caption is over a ticked network's limit */
