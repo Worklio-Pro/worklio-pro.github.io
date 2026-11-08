@@ -1018,12 +1018,13 @@ ${pricingSeg(due)}<div id="promoBody"></div>`;
   sideLayout(main);
   const box = $('#promoBody', main);
   if (promoTab === 'codes') return discountsView(box);
+  if (promoTab === 'creators' || promoTab === 'crprogram') return creatorsTab(box); // public/alpha-creators.js
   if (!RF) { box.innerHTML = '<p class="muted">Loading…</p>'; api('GET', '/api/platform/referrals').then((r) => { RF = r; if (tab === 'discounts') promoView($('#main')); }).catch((x) => toast(x.message, true)); return; }
   (promoTab === 'program' ? referralProgramView : referralActivityView)(box);
 }
 // Pricing's tabs: Plans & features is its own page (#plans); the rest are Promotions (#discounts)
-const pricingSeg = (due = 0) => sideNav('Pricing', 'pricingTab', [['plans', 'Plans & features'], ['codes', 'Discount codes'], ['program', 'Referral program'], ['activity', 'Referral activity']]
-  .map(([k, l]) => [k, l, k === 'activity' && due ? due : undefined, tab === 'plans' ? k === 'plans' : promoTab === k, 'Rewards to send']));
+const pricingSeg = (due = 0) => sideNav('Pricing', 'pricingTab', [['plans', 'Plans & features'], ['codes', 'Discount codes'], ['program', 'Referral program'], ['activity', 'Referral activity'], ['creators', 'Creator partners'], ['crprogram', 'Creator program']]
+  .map(([k, l]) => [k, l, k === 'activity' && due ? due : k === 'creators' && typeof crApps === 'function' && crApps() ? crApps() : undefined, tab === 'plans' ? k === 'plans' : promoTab === k, 'Rewards to send']));
 A.pricingTab = (d) => {
   if (d.k === 'plans') { location.hash = 'plans'; return; }
   promoTab = d.k; if (tab === 'discounts') promoView($('#main')); else location.hash = 'discounts';
