@@ -1803,3 +1803,11 @@ label.bk-auto input{width:auto;margin:0}
  :where(#main,.modal,.mpage,.msheet) input[type=checkbox]:not(.sw),:where(#main,.modal,.mpage,.msheet) input[type=radio]{width:24px;height:24px;flex:none;accent-color:var(--brand)}
  .clist th:first-child,.clist td:first-child{width:48px!important;padding-right:4px;vertical-align:middle}
 }
+
+/* phones: Notifications Log as a list (client, what was sent, when, status), filters side by side */
+@media (max-width:760px){
+ .nf-filters{display:grid!important;grid-template-columns:1fr 1fr;gap:12px!important;width:100%}
+ .nf-filters label{flex-direction:column;align-items:stretch!important;gap:4px!important;font-size:14px}.nf-filters select{width:100%!important}
+ .card.nf-list{padding:0;overflow:hidden}.nf-list .ml-row:last-child{border-bottom:0}
+ .nf-st{flex:none;margin-top:2px}
+}
