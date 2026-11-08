@@ -1010,7 +1010,7 @@ PAGES['/tax-summary'] = {
 };
 
 /* ===== /settings/roles: Roles & Permissions. Owner and Admin have full access; the business makes its other roles ===== */
-let roleDraft = null; let roleData = null;
+let roleDraft = null; let roleData = null; let roleSel = 0; // roleSel: the role shown on a phone
 PAGES['/settings/roles'] = {
   title: 'Roles & Permissions',
   async render(main) {
@@ -1020,6 +1020,22 @@ PAGES['/settings/roles'] = {
     const head = (r, i) => `<th class="rp-col"><input class="rp-name" data-i="${i}" data-k="name" value="${esc(r.name)}" maxlength="40" placeholder="Role name" aria-label="Role name">
 <input class="rp-desc" data-i="${i}" data-k="desc" value="${esc(r.desc || '')}" maxlength="160" placeholder="What this role is for" aria-label="Description">
 <div class="rp-meta"><span class="muted">${r.users ? `${r.users} ${r.users === 1 ? 'person' : 'people'}` : 'No one yet'}</span><button type="button" class="link-btn danger" data-act="roleRm" data-i="${i}" ${r.users ? 'disabled title="Give these team members another role first"' : ''}>Remove</button></div></th>`;
+    const saveBar = `<div class="rp-save"><span class="muted">${dirty ? 'Unsaved changes' : 'All changes saved'}</span>${dirty ? '<button type="button" class="btn alt" data-act="roleDiscard">Discard</button>' : ''}<button type="button" class="btn" data-act="roleSave" ${dirty ? '' : 'disabled'}>Save roles</button></div>`;
+    // phones: one role at a time (chips to switch), its permissions as a list of switches, instead of a wide table
+    if (phoneMq.matches) {
+      roleSel = Math.max(0, Math.min(roleSel, roleDraft.length - 1)); const r = roleDraft[roleSel]; const i = roleSel;
+      main.innerHTML = `<div class="head"><div><h1>Roles &amp; Permissions</h1><p class="sub">Choose what each team role can see and do. Give someone a role in <a href="/team" data-link>Manage Team</a>.</p></div></div>
+<p class="rpm-full"><span class="rpm-ok">✓</span><span><strong>Owner</strong> and <strong>Admins</strong>${roleData.admins ? ` (${roleData.admins})` : ''} always have full access.</span></p>
+<div class="rpm-chips">${roleDraft.map((x, k) => `<button type="button" class="ml-chip ${k === i ? 'on' : ''}" data-act="roleSel" data-i="${k}">${esc(x.name || 'New role')}</button>`).join('')}<button type="button" class="ml-chip rpm-add" data-act="roleAdd">+ Add role</button></div>
+${r ? `<div class="card rpm"><label class="mf"><span>Role name</span><input class="rp-name" data-i="${i}" data-k="name" value="${esc(r.name)}" maxlength="40" placeholder="Role name"></label>
+<label class="mf"><span>What this role is for</span><input class="rp-desc" data-i="${i}" data-k="desc" value="${esc(r.desc || '')}" maxlength="160" placeholder="Optional"></label>
+<div class="rpm-meta"><span class="muted">${r.users ? `${r.users} ${r.users === 1 ? 'person has' : 'people have'} this role` : 'No one has this role yet'}</span><button type="button" class="link-btn danger" data-act="roleRm" data-i="${i}" ${r.users ? 'disabled' : ''}>Remove role</button></div>
+${groups.map((g) => `<h3 class="rpm-grp">${esc(g)}</h3>` + C.filter((p) => p.group === g).map((p) => `<label class="sw-row rpm-row"><span><strong>${esc(p.label)}</strong>${p.feature && !planHas(p.feature) ? ' <span class="badge draft">Not in your plan</span>' : ''}${p.desc ? `<small class="muted">${esc(p.desc)}</small>` : ''}${p.needs ? `<small class="muted rp-needs">Includes “${esc(C.find((x) => x.key === p.needs).label)}”</small>` : ''}</span><input type="checkbox" class="sw" data-act="roleTick" data-i="${i}" data-k="${p.key}" ${r.perms.includes(p.key) ? 'checked' : ''}><i></i></label>`).join('')).join('')}</div>
+${saveBar}` : '<div class="card"><p class="muted" style="margin:0">No roles yet. Add one to choose what those team members can see and do.</p></div>'}
+<p class="muted" style="font-size:13px">Settings pages are for the Owner and Admins only.</p>`;
+      $$('.rp-name, .rp-desc', main).forEach((el) => el.addEventListener('input', () => { roleDraft[el.dataset.i][el.dataset.k] = el.value; const s = $('.rp-save', main); if (s) { s.querySelector('.muted').textContent = 'Unsaved changes'; s.querySelector('[data-act=roleSave]').disabled = false; } }));
+      return;
+    }
     const cell = (r, i, p) => `<td class="rp-c"><input type="checkbox" data-act="roleTick" data-i="${i}" data-k="${p.key}" ${r.perms.includes(p.key) ? 'checked' : ''} aria-label="${esc(r.name || 'New role')}: ${esc(p.label)}"></td>`;
     main.innerHTML = `<div class="head"><div><h1>Roles &amp; Permissions</h1><p class="sub">Choose what each team role can see and do. The <strong>Owner</strong> and <strong>Admins</strong> always have full access. Give someone a role in <a href="/team" data-link>Manage Team</a>.</p></div>
 <button type="button" class="btn" data-act="roleAdd">+ Add role</button></div>
@@ -1037,7 +1053,8 @@ A.roleTick = (d, el) => {
   if (el.checked) { set.add(d.k); const p = C.find((x) => x.key === d.k); if (p.needs) set.add(p.needs); } else { set.delete(d.k); C.filter((x) => x.needs === d.k).forEach((x) => set.delete(x.key)); }
   r.perms = C.map((x) => x.key).filter((k) => set.has(k)); PAGES['/settings/roles'].render($('#main'));
 };
-A.roleAdd = () => { roleDraft.push({ id: '', name: '', desc: '', perms: ['schedule', 'clients.view', 'jobs.view'], users: 0 }); PAGES['/settings/roles'].render($('#main')); const n = $$('.rp-name'); n[n.length - 1].focus(); };
+A.roleSel = (d) => { roleSel = Number(d.i); PAGES['/settings/roles'].render($('#main')); };
+A.roleAdd = () => { roleSel = roleDraft.length; roleDraft.push({ id: '', name: '', desc: '', perms: ['schedule', 'clients.view', 'jobs.view'], users: 0 }); PAGES['/settings/roles'].render($('#main')); const n = $$('.rp-name'); n[n.length - 1].focus(); };
 A.roleRm = (d) => { const r = roleDraft[d.i]; if (r.users) return; if (r.id && !confirm(`Remove the ${r.name} role?`)) return; roleDraft.splice(Number(d.i), 1); PAGES['/settings/roles'].render($('#main')); };
 A.roleDiscard = () => { roleDraft = structuredClone(roleData.roles); PAGES['/settings/roles'].render($('#main')); };
 A.roleSave = async (d, el) => {

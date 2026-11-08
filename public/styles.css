@@ -1763,3 +1763,14 @@ label.bk-auto input{width:auto;margin:0}
  :where(#main,.modal,.mpage,.msheet) textarea{padding:12px 14px;font-size:16px;border-radius:12px}
  :where(#main,.modal,.mpage,.msheet) input:is([type=date],[type=time]):not(:where(.mf *,.fl *)),:where(#main,.modal,.mpage,.msheet) input:is([type=date],[type=time]):not(:where(.mf *,.fl *))::-webkit-date-and-time-value,:where(#main,.modal,.mpage,.msheet) input:is([type=date],[type=time]):not(:where(.mf *,.fl *))::-webkit-datetime-edit{line-height:48px} /* boxes inside a labeled field (.mf, .fl) keep their own size */
 }
+
+/* phones: Roles & Permissions, one role at a time */
+.rpm-full{display:flex;align-items:center;gap:10px;margin:0 0 14px;font-size:15px}.rpm-ok{flex:none;color:var(--ok);font-weight:700;font-size:18px}
+.rpm-chips{display:flex;gap:10px;overflow-x:auto;margin:0 -14px 14px;padding:0 14px 4px;scrollbar-width:none}.rpm-chips::-webkit-scrollbar{display:none}
+.rpm-chips .rpm-add{background:none;border:1px dashed var(--border);color:var(--link)}
+.rpm{display:flex;flex-direction:column;gap:12px;padding:16px}
+.rpm .rp-name,.rpm .rp-desc{height:auto;margin:0!important;font-weight:400;font-size:17px!important}
+.rpm-meta{display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:14px}.rpm-meta .link-btn{font-size:14px}.rpm-meta .link-btn:disabled{opacity:.4}
+.rpm-grp{margin:14px 0 -12px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.rpm-row{padding:14px 0;font-size:16px;line-height:1.35}.rpm-row small{margin-top:3px;font-size:14px}.rpm-row i{width:50px;height:30px}.rpm-row i::after{width:24px;height:24px}.rpm-row .sw:checked+i::after{left:23px}
+.rpm+.rp-save{position:sticky;bottom:calc(66px + env(safe-area-inset-bottom));margin:0 -14px;border-radius:0}.rpm+.rp-save .btn{flex:1}
