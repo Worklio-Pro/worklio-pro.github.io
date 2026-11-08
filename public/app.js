@@ -2349,7 +2349,7 @@ A.mMore = (x) => {
   const q = x.kind === 'quote'; const d = byId(D[x.kind + 's'], x.id); const job = q && quoteJob(d);
   const canJob = q && d.status === 'approved' && !job && (!(d.depositFee > 0) || d.depositPaidAt);
   const item = (act, label, extra = '') => `<button type="button" data-act="${act}" data-id="${d.id}" ${extra}>${label}</button>`;
-  const f = mSheet('More', `<div class="ms-list">${q ? `<a href="/p/quote/${d.token}" target="_blank">View as client</a>
+  const f = mSheet('More', `<div class="ms-list">${q ? `<a href="/p/quote/${d.token}">View as client</a>
 ${d.status === 'sent' ? item('approveQuote', 'Mark approved') : ''}
 ${['draft', 'sent', 'approved'].includes(d.status) ? item('mSignQuote', d.signedAt ? 'Collect another signature' : 'Collect signature') : ''}
 ${d.status !== 'declined' && d.depositFee > 0 && !d.depositPaidAt ? item('markDepositPaid', `Record deposit payment${d.zelleSentAt ? ' (Zelle sent)' : ''}`) : ''}
