@@ -1767,6 +1767,7 @@ label.bk-auto input{width:auto;margin:0}
 /* phones: Roles & Permissions, one role at a time */
 .rpm-full{display:flex;align-items:center;gap:10px;margin:0 0 14px;font-size:15px}.rpm-ok{flex:none;color:var(--ok);font-weight:700;font-size:18px}
 .rpm-chips{display:flex;gap:10px;overflow-x:auto;margin:0 -14px 14px;padding:0 14px 4px;scrollbar-width:none}.rpm-chips::-webkit-scrollbar{display:none}
+.rpm-chips .ml-chip,.rpm-chips .ml-chip.on{justify-content:center;padding:0 20px;text-align:center} /* the selected chip has no ✕ here, so no lopsided padding */
 .rpm-chips .rpm-add{background:none;border:1px dashed var(--border);color:var(--link)}
 .rpm{display:flex;flex-direction:column;gap:12px;padding:16px}
 .rpm .rp-name,.rpm .rp-desc{height:auto;margin:0!important;font-weight:400;font-size:17px!important}
