@@ -29,6 +29,11 @@
     .cr-row{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
     .cr-form .btn{width:100%;margin-top:6px}
     .cr-hp{position:absolute;left:-9999px}
+    .cr-login{max-width:640px;margin:22px auto 0;display:flex;flex-wrap:wrap;gap:10px;align-items:end;padding:18px 22px;border:1px dashed var(--line);border-radius:18px}
+    .cr-login p{flex:1 1 100%;margin:0}
+    .cr-login label{flex:1 1 240px;font-weight:600;font-size:14px}
+    .cr-login input{display:block;width:100%;margin-top:5px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:inherit;background:var(--bg,#fff);color:inherit;box-sizing:border-box}
+    .cr-top-login{font-weight:600;margin-right:6px}
     .cr-done{text-align:center;padding:10px 0}
     .cr-done h3{margin:0 0 6px}
     @media (max-width:600px){.cr-row{grid-template-columns:1fr}}
@@ -41,6 +46,7 @@
     <div class="h-panel" id="h-panel">
       <button type="button" class="h-close" aria-label="Close menu"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
       <nav class="h-links" aria-label="Site"><!--features-menu--><!--industries-menu--><a href="/pricing">Pricing</a><a href="/sign-in">Log in</a></nav>
+      <a href="#partner-login" class="cr-top-login">Partner stats</a>
       <a class="btn" href="#apply">Apply now</a>
     </div>
     <button type="button" class="h-burger" aria-expanded="false" aria-controls="h-panel" aria-label="Open menu"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
@@ -101,6 +107,12 @@
         <button class="btn" id="crGo">Send application</button>
         <p class="muted" style="font-size:13px;margin:10px 0 0;text-align:center">By applying you agree to say it’s a paid partnership whenever you mention us, as the FTC requires.</p>
       </form>
+      <form class="cr-login" id="partner-login" novalidate>
+        <p><strong>Already a partner?</strong> <span class="muted">Enter the email you applied with and we’ll email you the link to your stats page.</span></p>
+        <label>Email<input name="email" type="email" required autocomplete="email"></label>
+        <button class="btn alt" id="crLoginGo">Email my stats link</button>
+        <p id="crLoginMsg" class="muted" role="status" style="font-size:14px"></p>
+      </form>
     </div></section>
 
     <section class="h-sec h-steps-bg" id="faq"><div class="h-wrap">
@@ -148,6 +160,18 @@
         if (!r.ok) throw new Error(j.error || 'That didn’t send. Try again.');
         f.innerHTML = '<div class="cr-done"><h3>Thanks, your application is in</h3><p class="muted" style="margin:0">We’ll email you within a few days. Once you’re approved you get your link, your code and your stats page.</p></div>';
       } catch (x) { document.getElementById('crErr').innerHTML = `<div class="msg err">${esc(x.message)}</div>`; go.disabled = false; go.textContent = 'Send application'; }
+    });
+  </script>
+  <script>
+    // "Already a partner?": the stats link goes to the email on file; the reply is the same whether or not the email belongs to a partner
+    const lf = document.getElementById('partner-login'); const lg = document.getElementById('crLoginGo'); const lm = document.getElementById('crLoginMsg');
+    lf.addEventListener('submit', async (e) => {
+      e.preventDefault(); lg.disabled = true; lm.textContent = '';
+      try {
+        const r = await fetch('/api/site/partner-stats-link', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: lf.email.value }) });
+        const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'That didn’t send. Try again.');
+        lm.textContent = 'If that email belongs to an approved partner, the link is on its way. Check your inbox (and spam) in a few minutes.';
+      } catch (x) { lm.textContent = x.message; } finally { lg.disabled = false; }
     });
   </script>
   <script src="/chat.js?v=6" data-where="site" defer></script>
