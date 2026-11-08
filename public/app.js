@@ -39,7 +39,7 @@ async function api(method, url, body) {
 // go to Account and billing to choose a plan; everyone else sees a note to contact their owner or admin instead of the page
 const pausedNow = () => !!(company.account && company.account.paused);
 const PAUSED_FREE = ['/settings/billing', '/profile', '/settings/preferences', '/settings/support-access']; // pages that still work as normal
-const PAUSED_ACTS = /^(new|edit|add|del|delete|rm|remove|save|create|mark|approve|collect|complete|reopen|merge|import|runImport|upload|send|setDeposit|undoDeposit|quoteToJob|jobInvoice|jobRemind|jobRequestOff|requestOff|manageStaff|tm(Invite|Revoke|HoursEdit)|role(Add|Rm|Save|Tick)|disc(Save|Delete)|rev(Edit|Delete)|sp(Drop|Move|Remove)|social(Connect|Disconnect|Choose)|connectStripe|pay(Bank|Disable|StripeRetry)|pdRefund|toDecide|toCancel|bookingSave|primaryDomain|checkDomain|resetTpl|importTemplate|clientDupes)/;
+const PAUSED_ACTS = /^(batchInvoice|new|edit|add|del|delete|rm|remove|save|create|mark|approve|collect|complete|reopen|merge|import|runImport|upload|send|setDeposit|undoDeposit|quoteToJob|jobInvoice|jobRemind|jobRequestOff|requestOff|manageStaff|tm(Invite|Revoke|HoursEdit)|role(Add|Rm|Save|Tick)|disc(Save|Delete)|rev(Edit|Delete)|sp(Drop|Move|Remove)|social(Connect|Disconnect|Choose)|connectStripe|pay(Bank|Disable|StripeRetry)|pdRefund|toDecide|toCancel|bookingSave|primaryDomain|checkDomain|resetTpl|importTemplate|clientDupes)/;
 // what a paused account is told, by why it's paused: most reasons the business fixes itself (choose a plan, or update the card);
 // only an account paused by the platform is told to get in touch. btn: the button's label (Explore plans / Update billing), or '' for none
 function pausedMsg(pz) {
@@ -656,7 +656,7 @@ const round2 = (n) => Math.round(n * 100) / 100;
 // price = unit price the client sees (cost plus markup as % of cost or flat $ per unit); the server recomputes it the same way
 const readItems = (root) => $$('.item-row', root).map((r) => {
   const cost = Number($('.cost', r).value) || 0; const markup = Number($('.markup', r).value) || 0; const markupType = $('.mtype', r).value;
-  return { desc: $('.desc', r).value.trim(), details: $('.details', r).value, qty: Number($('.qty', r).value) || 0, cost, markup, markupType, price: round2(markupType === 'flat' ? cost + markup : cost * (1 + markup / 100)), ...($('.iopt', r) ? { opt: $('.iopt', r).value } : {}), ...(r.dataset.np && !(Number($('.cost', r).value) > 0) ? { needsPrice: true } : {}) }; // Snap to quote: still to be priced
+  return { desc: $('.desc', r).value.trim(), details: $('.details', r).value, qty: Number($('.qty', r).value) || 0, cost, markup, markupType, price: round2(markupType === 'flat' ? cost + markup : cost * (1 + markup / 100)), ...($('.iopt', r) ? { opt: $('.iopt', r).value } : {}), ...(r.dataset.np && !(Number($('.cost', r).value) > 0) ? { needsPrice: true } : {}), ...(r.dataset.fee ? { lateFee: true } : {}), ...(r.dataset.job ? { job: r.dataset.job } : {}) }; // Snap to quote: still to be priced; a late fee line; a combined invoice's job
 });
 function recalc(root) {
   if (!$('.calc', root)) return; // no Product / Service section (job page for technicians)
@@ -665,7 +665,8 @@ function recalc(root) {
   $$('.item-row', root).forEach((r, i) => { $('.amt', r).textContent = money(items[i].qty * items[i].price); r.classList.toggle('np-on', !!items[i].needsPrice); });
   // discount comes off the subtotal before tax (the server computes it the same way)
   const dv = Math.max(0, Number($('[name=discountValue]', root).value) || 0); const dPct = $('[name=discountType]', root).value === 'percent';
-  const calc = (list) => { const sub = round2(list.reduce((s, i) => s + i.qty * i.price, 0)); const disc = Math.min(sub, round2(dPct ? sub * dv / 100 : dv)); const tax = round2((sub - disc) * rate / 100); return { sub, disc, tax, total: round2(sub - disc + tax) }; };
+  // late fee lines are in the subtotal but never discounted or taxed
+  const calc = (list) => { const sub = round2(list.reduce((s, i) => s + i.qty * i.price, 0)); const base = round2(sub - list.filter((i) => i.lateFee).reduce((s, i) => s + i.qty * i.price, 0)); const disc = Math.min(base, round2(dPct ? base * dv / 100 : dv)); const tax = round2((base - disc) * rate / 100); return { sub, disc, tax, total: round2(sub - disc + tax) }; };
   const { sub, disc, tax, total } = calc(root._optFilter ? root._optFilter(items) : items); if (root._optSum) root._optSum(items, calc);
   $('.t-sub', root).textContent = money(sub); $('.t-discount', root).textContent = disc ? '−' + money(disc) : money(0);
   $('.t-tax', root).textContent = money(tax); $('.t-total', root).textContent = money(total);
@@ -1773,7 +1774,7 @@ ${discCard('invoice', d.id ? d.disclaimer || '' : company.invoiceDisclaimer ?? '
 </div>
 <aside class="qside"><div class="qcard pay-c"><h3>Client payments</h3><p class="muted">How the client can pay this invoice.</p>
 ${planHas('onlinePayments') ? switchRow('allowCard', 'Card payments', on('allowCard') && cardReady(), cardReady() ? '' : cardHint(), !cardReady()) : ''}
-${planHas('zelle') ? switchRow('allowZelle', 'Zelle', on('allowZelle') && !!company.zelleRecipient, company.zelleRecipient ? '' : zelleHint(), !company.zelleRecipient) : ''}</div>
+${planHas('zelle') ? switchRow('allowZelle', 'Zelle', on('allowZelle') && !!company.zelleRecipient, company.zelleRecipient ? '' : zelleHint(), !company.zelleRecipient) : ''}${lateSw(d)}</div>
 <div class="qcard view-c"><h3>Client view</h3><p class="muted">What the client sees on their invoice.</p>
 ${switchRow('showQty', 'Quantities', on('showQty'))}${switchRow('showUnit', 'Unit prices', on('showUnit'))}${switchRow('showLineTotals', 'Line item totals', on('showLineTotals'))}
 ${switchRow('showAccountBalance', 'Account balance', on('showAccountBalance'))}${switchRow('showLateStamp', 'Late stamp (if overdue)', on('showLateStamp'))}</div>
@@ -1859,7 +1860,7 @@ const DEFAULT_DISCLAIMER = 'This quote is valid for the next 30 days, after whic
 function qItemRow(it) {
   // Jobber-style row: labeled boxes (name, qty, unit cost, markup, total) with the description full width underneath and a ⋯ menu.
   // Unit cost shows $; markup shows $ when flat, or % (percent of cost) from its selector.
-  return `<div class="item-row qi" data-opt="${esc(it.opt || '')}"${it.needsPrice ? ' data-np="1"' : ''}><button type="button" class="drag-h" aria-label="Drag to reorder (or use the arrow keys)" title="Drag to reorder">${DRAG_DOTS}</button><label class="fl qi-name"><span>Name</span><input class="desc" autocomplete="off" placeholder="Item name or catalog service" value="${esc(it.desc || '')}"></label>
+  return `<div class="item-row qi" data-opt="${esc(it.opt || '')}"${it.needsPrice ? ' data-np="1"' : ''}${it.lateFee ? ' data-fee="1"' : ''}${it.job ? ` data-job="${esc(it.job)}"` : ''}><button type="button" class="drag-h" aria-label="Drag to reorder (or use the arrow keys)" title="Drag to reorder">${DRAG_DOTS}</button><label class="fl qi-name"><span>Name</span><input class="desc" autocomplete="off" placeholder="Item name or catalog service" value="${esc(it.desc || '')}"></label>
 <label class="fl"><span>Quantity</span><input class="qty" type="number" step="any" min="0" value="${it.qty ?? 1}"></label>
 <label class="fl"><span>Unit cost</span><div class="affix"><i>$</i><input class="cost" type="number" step="any" min="0" value="${it.cost ?? it.price ?? 0}"></div></label>
 <label class="fl mk${it.markupType === 'flat' ? ' flat' : ''}"><span>Markup</span><div class="affix"><i class="pre">$</i><input class="markup" type="number" step="any" value="${it.markup ?? 0}"><select class="mtype" aria-label="Markup type"><option value="percent">%</option><option value="flat" ${it.markupType === 'flat' ? 'selected' : ''}>$</option></select></div></label>
@@ -1917,6 +1918,10 @@ const cardReady = () => !!(company.account && company.account.cardReady);
 const cardHint = () => (['owner', 'admin'].includes(role()) ? 'Set up card payments in <a href="/settings#payments" data-link>App Settings</a>' : 'Not set up yet: ask your account owner');
 // Zelle needs the business's Zelle details (App Settings → Zelle payments)
 const zelleHint = () => (['owner', 'admin'].includes(role()) ? 'Add your Zelle details in <a href="/settings#zelle" data-link>App Settings</a>' : 'Not set up yet: ask your account owner');
+// late fees (App Settings → Late fees): an invoice's switch, shown while they're turned on (inv.lateFee 'off' = none on this invoice)
+const lateFeesOn = () => !!(company.lateFee && company.lateFee.on);
+const lateFeeText = () => { const l = company.lateFee || {}; return l.type === 'percent' ? `${l.amount}% of the balance` : money(l.amount || 0); };
+const lateSw = (d) => (lateFeesOn() ? switchRow('lateFee', 'Late fees', d.lateFee !== 'off', `${lateFeeText()} if paid late`) : '');
 const switchRow = (name, label, on, note, disabled) => `<label class="sw-row"><span>${label}${note ? `<small class="muted">${note}</small>` : ''}</span>${disabled ? '<input type="checkbox" class="sw" disabled>' : `<input type="hidden" name="${name}" value="off"><input type="checkbox" class="sw" name="${name}" value="on" ${on ? 'checked' : ''}>`}<i></i></label>`;
 /* ===== Good / Better / Best (a plan feature): 2–3 options on a quote, each with its own line items and total; the client picks one when they approve.
    An item's opt is its option's id, or '' for an item in every option. The quote's totals are the chosen option's, else the recommended (or first) one's. ===== */
@@ -2133,7 +2138,7 @@ const vopts = (rows, empty) => rows.map(([l, on]) => `<div class="vopt"><span>${
 // the right column: client payments, client view (invoices) and internal notes, each with its pencil
 const docSide = (kind, d) => {
   const on = (k) => d[k] !== 'off';
-  const pays = [planHas('onlinePayments') ? ['Card payments', on('allowCard') && cardReady()] : null, planHas('zelle') ? ['Zelle', on('allowZelle') && !!company.zelleRecipient] : null].filter(Boolean);
+  const pays = [planHas('onlinePayments') ? ['Card payments', on('allowCard') && cardReady()] : null, planHas('zelle') ? ['Zelle', on('allowZelle') && !!company.zelleRecipient] : null, kind === 'invoice' && lateFeesOn() ? ['Late fees', on('lateFee')] : null].filter(Boolean);
   const view = [['showQty', 'Quantities'], ['showUnit', 'Unit prices'], ['showLineTotals', 'Line item totals'], ['showAccountBalance', 'Account balance'], ['showLateStamp', 'Late stamp (if overdue)']].map(([k, l]) => [l, on(k)]);
   return `<aside class="qside"><div class="qcard"><div class="qcard-h"><h2>Client payments</h2>${editBtn(kind, d, 'payments')}</div>${vopts(pays, 'No online payment options on your plan')}</div>
 ${kind === 'invoice' ? `<div class="qcard"><div class="qcard-h"><h2>Client view</h2>${editBtn(kind, d, 'clientView')}</div>${vopts(view)}</div>` : ''}
@@ -2202,8 +2207,9 @@ ${b('delDoc', 'trash', 'Delete')}</div></details>`;
 // Create Similar Invoice: a new draft for the same client with the same subject, line items, terms and client view (not linked to the job, so no deposit credit twice)
 A.copyInvoice = async (x) => {
   const i = byId(D.invoices, x.id);
-  const keep = ['clientId', 'subject', 'items', 'taxRate', 'discountType', 'discountValue', 'notes', 'disclaimer', 'internalNotes', 'allowCard', 'allowZelle', 'paymentTerms', 'showQty', 'showUnit', 'showLineTotals', 'showAccountBalance', 'showLateStamp'];
+  const keep = ['clientId', 'subject', 'items', 'taxRate', 'discountType', 'discountValue', 'notes', 'disclaimer', 'internalNotes', 'allowCard', 'allowZelle', 'lateFee', 'paymentTerms', 'showQty', 'showUnit', 'showLineTotals', 'showAccountBalance', 'showLateStamp'];
   const body = Object.fromEntries(keep.filter((k) => i[k] !== undefined).map((k) => [k, i[k]]));
+  body.items = (body.items || []).filter((it) => !it.lateFee).map(({ job, ...it }) => it); // not its late fees, nor the batch invoice's job marks
   const today = ymd(new Date()); body.issueDate = today;
   if (body.paymentTerms && body.paymentTerms !== 'custom') body.dueDate = ymd(addDays(new Date(), Number(body.paymentTerms))); else { body.paymentTerms = '0'; body.dueDate = today; }
   const saved = await api('POST', '/api/invoices', body);
@@ -2483,7 +2489,7 @@ ${kind === 'quote' && qHasOpts(d) ? mField('Option', `<select name="opt"><option
   },
   payments(kind, d) {
     const f = mSheet('Client payments', `<div class="ms-sw">${planHas('onlinePayments') ? switchRow('allowCard', 'Accept card payments', d.allowCard !== 'off' && cardReady(), cardReady() ? '' : cardHint(), !cardReady()) : ''}
-${planHas('zelle') ? switchRow('allowZelle', 'Accept Zelle', d.allowZelle !== 'off' && !!company.zelleRecipient, company.zelleRecipient ? '' : zelleHint(), !company.zelleRecipient) : ''}</div>
+${planHas('zelle') ? switchRow('allowZelle', 'Accept Zelle', d.allowZelle !== 'off' && !!company.zelleRecipient, company.zelleRecipient ? '' : zelleHint(), !company.zelleRecipient) : ''}${kind === 'invoice' ? lateSw(d) : ''}</div>
 <p class="muted ms-note">Changes here only apply to this ${kind}.</p>`, { foot: mSaveBtn() });
     onSubmit(f, (fd) => mSave(kind, d, Object.fromEntries(fd)));
   },
@@ -2591,7 +2597,8 @@ function mobileDocPage(kind, d) {
       + (!pays.length && d.status === 'paid' && d.paidAt ? mRow(payLink('i-' + d.id, 'Paid', d.paidAt), '') : '')
       + mRow('Balance due', money(invBalance(d)), 'b'));
   const yes = (v) => (v ? 'Yes' : 'No');
-  const paySec = planHas('onlinePayments') || planHas('zelle') ? mTap(kind, d, 'payments', `<span class="md-sh">Client payments${ARROW}</span>${planHas('onlinePayments') ? `<span class="md-kv"><small>Accept card payments</small>${yes(d.allowCard !== 'off' && cardReady())}</span>` : ''}${planHas('zelle') ? `<span class="md-kv"><small>Accept Zelle</small>${yes(d.allowZelle !== 'off' && !!company.zelleRecipient)}</span>` : ''}`, 'md-sec') : '';
+  const lateRow = !q && lateFeesOn();
+  const paySec = planHas('onlinePayments') || planHas('zelle') || lateRow ? mTap(kind, d, 'payments', `<span class="md-sh">Client payments${ARROW}</span>${planHas('onlinePayments') ? `<span class="md-kv"><small>Accept card payments</small>${yes(d.allowCard !== 'off' && cardReady())}</span>` : ''}${planHas('zelle') ? `<span class="md-kv"><small>Accept Zelle</small>${yes(d.allowZelle !== 'off' && !!company.zelleRecipient)}</span>` : ''}${lateRow ? `<span class="md-kv"><small>Late fees</small>${yes(d.lateFee !== 'off')}</span>` : ''}`, 'md-sec') : '';
   const on = (k) => d[k] !== 'off';
   const viewSec = q ? '' : mTap(kind, d, 'clientView', `<span class="md-sh">Client view${ARROW}</span><span class="md-text muted">${[['showQty', 'Quantities'], ['showUnit', 'Unit prices'], ['showLineTotals', 'Line totals'], ['showAccountBalance', 'Account balance'], ['showLateStamp', 'Late stamp']].filter(([k]) => on(k)).map(([, l]) => l).join(', ') || 'Totals only'}</span>`, 'md-sec');
   return `<div class="mdoc"><a href="/${kind}s" data-link class="md-back" aria-label="Back to ${kind}s">${CHEV('M15 18l-6-6 6-6')}</a>
@@ -2719,7 +2726,7 @@ function mobileList(main, o) {
   mlState = o; const st = o.status;
   const chips = [...o.statuses].sort((a, b) => (b[0] === st) - (a[0] === st)); // the chosen one first
   const rows = [...o.list].sort((a, b) => String(o.date(b) || '').localeCompare(String(o.date(a) || '')));
-  main.innerHTML = `<div class="mlist"><div class="ml-top"><h1 class="ml-h">${o.title}</h1>${o.newAct ? `<button type="button" class="ml-new ${o.newCls || ''}" data-act="${o.newAct}">${CHEV('M12 5v14M5 12h14')}New ${o.one}</button>` : ''}</div>
+  main.innerHTML = `<div class="mlist"><div class="ml-top"><h1 class="ml-h">${o.title}</h1>${o.newAct ? `<button type="button" class="ml-new ${o.newCls || ''}" data-act="${o.newAct}">${CHEV('M12 5v14M5 12h14')}New ${o.one}</button>` : ''}</div>${o.banner || ''}
 <label class="ml-search">${svgIcon(ICONS.search, 22)}<input type="search" id="mlq" placeholder="Search ${o.plural}" value="${esc(o.q)}" aria-label="Search ${o.plural}"></label>
 <div class="ml-chips" role="group" aria-label="Filter by status">${chips.map(([k, l]) => `<button type="button" class="ml-chip${k === st ? ' on' : ''}" data-act="mlChip" data-k="${k === st ? 'all' : k}" aria-pressed="${k === st}">${esc(l)}${k === st ? `<span class="ml-x" aria-label="Clear filter">${X_ICO}</span>` : ''}</button>`).join('')}</div>
 <h2 class="ml-sub">${st !== 'all' ? `${esc((o.statuses.find(([k]) => k === st) || [, ''])[1])} ${o.plural}` : o.q ? 'Results' : `Recent ${o.plural}`}</h2>
@@ -3077,10 +3084,10 @@ PAGES['/invoices'] = {
     const th = (k, label, cls = '') => `<th class="${cls}"><button class="th-btn" data-act="invSort" data-k="${k}">${label} <span class="sort ${v.sort === k ? 'on' : ''}">${v.sort === k ? (v.dir > 0 ? '▲' : '▼') : '⇅'}</span></button></th>`;
     if (phoneMq.matches) return mobileList(main, { path: '/invoices', title: 'Invoices', plural: 'invoices', one: 'invoice', list, q: v.q, status: v.status, statuses: order.map((s) => [s, I_STATUS[s]]), date: (x) => x.issueDate,
       row: (x) => ({ name: cname(x), date: mDay(x.issueDate), amount: mAmt(x.total), title: invSubject(x), label: I_STATUS[x.displayStatus], cls: I_CLASS[x.displayStatus], href: '/invoices/view?id=' + x.id }),
-      onStatus: (k) => { invView = { ...invView, status: k }; }, onQ: (t) => { invView.q = t; }, newAct: 'newInvoice' });
+      onStatus: (k) => { invView = { ...invView, status: k }; }, onQ: (t) => { invView.q = t; }, newAct: 'newInvoice', banner: batchBanner() });
     main.innerHTML = `<div class="head"><h1>Invoices</h1><div class="actions"><button class="btn" data-act="newInvoice">New Invoice</button>
-<details class="menu"><summary class="btn alt">⋯ More Actions</summary><div class="menu-list"><button data-act="exportInvoices">Export to CSV</button></div></details></div></div>
-<div class="cstats">
+<details class="menu"><summary class="btn alt">⋯ More Actions</summary><div class="menu-list"><button data-act="batchInvoice">Invoice completed jobs</button><button data-act="exportInvoices">Export to CSV</button></div></details></div></div>
+${batchBanner()}<div class="cstats">
 <div class="cstat"><strong class="cs-h">Overview</strong><div class="qov">${[['overdue', 'q-declined'], ['sent', 'q-sent'], ['draft', 'q-draft']].map(([s, c]) => `<button data-act="invFilter" data-s="${s}"><i class="dot ${c}"></i><span class="grow">${I_STATUS[s]} (${group(s).length})</span><span>${moneyShort(sum(group(s)))}</span></button>`).join('')}</div></div>
 <button class="cstat" data-act="invCard"><div class="cs-h"><strong>Issued</strong><span>↗</span></div><div class="muted">Past 30 days</div><div class="cs-v">${issNow.length} ${change(issNow.length, issPrev.length)}</div><div class="muted">${moneyShort(sum(issNow))}</div></button>
 <div class="cstat"><div class="cs-h"><strong>Average invoice</strong></div><div class="muted">Past 30 days</div><div class="cs-v">${avg(issNow) >= 1000 ? moneyShort(avg(issNow)) : "$" + Math.round(avg(issNow))} ${change(avg(issNow), avg(issPrev))}</div></div>
@@ -3105,6 +3112,41 @@ A.invSort = (d) => { invView.dir = invView.sort === d.k ? -invView.dir : (['clie
 A.exportInvoices = () => downloadCsv('invoices.csv', [['Invoice', 'Client', 'Company', 'Subject', 'Issued', 'Due', 'Status', 'Subtotal', 'Tax', 'Total', 'Balance', 'Paid on', 'Paid by'],
   ...D.invoices.map((i) => { const c = byId(D.clients, i.clientId) || {}; return [i.number, c.name || '', c.company || '', invSubject(i), i.issueDate, i.dueDate, I_STATUS[i.displayStatus], i.subtotal, i.tax, i.total, invBalance(i), i.paidAt || '', i.paymentMethod ? payLabel(i.paymentMethod) : '']; })]);
 A.newInvoice = () => navigate('/invoices/new');
+/* ===== Batch invoicing: every completed job without an invoice, invoiced in one go (one per job, or one per client), sent now or kept as drafts.
+   The server (GET/POST /api/invoices/batch) picks the jobs: completed, not a service plan visit, not invoiced yet. A job with its own discount
+   or a paid deposit gets its own invoice, and only jobs with the same tax rate go together (the same rule is used here to count). ===== */
+const batchCount = () => (D.jobs || []).filter((j) => j.status === 'completed' && !j.membershipId && !jobInvoices(j).length).length;
+const batchBanner = () => { const n = batchCount(); return n ? `<div class="bi-banner"><span>${svgIcon(NAV_ICONS['/invoices'], 20)}<span><strong>${n} completed job${n === 1 ? '' : 's'}</strong> ${n === 1 ? 'isn’t' : 'aren’t'} invoiced yet</span></span><button type="button" class="btn sm" data-act="batchInvoice">Invoice ${n === 1 ? 'it' : 'them'}</button></div>` : ''; };
+A.batchInvoice = async () => {
+  const jobs = await api('GET', '/api/invoices/batch');
+  if (!jobs.length) return toast('Every completed job already has an invoice');
+  const clients = [...new Map(jobs.map((j) => [j.clientId, j.client])).entries()];
+  const row = (j) => `<label class="bi-job"><input type="checkbox" name="job" value="${esc(j.id)}" data-client="${esc(j.clientId)}" ${j.total > 0 ? 'checked' : ''}><span class="grow"><strong>${esc(j.number)}</strong> ${esc(j.title)}<small class="muted">${j.date ? fmtDate(j.date) : ''}${j.own ? ' · Own invoice (discount or deposit)' : ''}${j.total > 0 ? '' : ' · Nothing to charge yet'}</small></span><span class="bi-amt">${money(j.total)}</span></label>`;
+  const b = modal('Invoice completed jobs', `<form id="biForm"><p class="muted" style="margin-top:0">Completed jobs that don’t have an invoice yet. Service plan visits are left out: their plan bills for them. Due dates follow each client’s payment terms.</p>
+<div class="bi-opts"><div class="mseg" role="radiogroup" aria-label="How to group"><label><input type="radio" name="combine" value="" checked><span>One invoice per job</span></label><label><input type="radio" name="combine" value="1"><span>One invoice per client</span></label></div>
+<label class="m-chk"><input type="checkbox" name="send" ${jobs.some((j) => j.email) ? 'checked' : ''}> Email them to clients now <small class="muted">(clients without an email address get a draft)</small></label></div>
+<label class="m-chk bi-all"><input type="checkbox" id="biAll"> <strong>Select all</strong></label>
+<div class="bi-list">${clients.map(([id, name]) => { const mine = jobs.filter((j) => j.clientId === id); return `<div class="bi-client"><div class="bi-ch"><strong>${esc(name)}</strong>${mine[0].email ? '' : ' <span class="badge">No email</span>'}</div>${mine.map(row).join('')}</div>`; }).join('')}</div>
+<div class="actions"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn" id="biGo">Create invoices</button></div></form>`, true);
+  const f = $('#biForm', b); const boxes = $$('input[name=job]', f);
+  const count = () => {
+    const picked = jobs.filter((j) => boxes.find((x) => x.value === j.id).checked); const combine = !!f.combine.value;
+    const n = combine ? picked.filter((j) => j.own).length + new Set(picked.filter((j) => !j.own).map((j) => j.clientId + '|' + (Number(j.taxRate) || 0))).size : picked.length;
+    $('#biAll', f).checked = picked.length === boxes.length; $('#biAll', f).indeterminate = picked.length > 0 && picked.length < boxes.length;
+    const go = $('#biGo', f); go.disabled = !n; go.textContent = n ? `Create ${n} invoice${n === 1 ? '' : 's'} · ${money(picked.reduce((s, j) => s + j.total, 0))}` : 'Choose jobs to invoice';
+  };
+  $('#biAll', f).addEventListener('change', (e) => { boxes.forEach((x) => { x.checked = e.target.checked; }); count(); });
+  f.addEventListener('change', count); count();
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault(); const go = $('#biGo', f); go.disabled = true;
+    try {
+      const r = await api('POST', '/api/invoices/batch', { jobIds: boxes.filter((x) => x.checked).map((x) => x.value), combine: !!f.combine.value, send: f.send.checked });
+      const n = r.invoices.length; closeModal();
+      toast(`${n} invoice${n === 1 ? '' : 's'} created${f.send.checked ? ` · ${r.sent} emailed${r.drafts ? `, ${r.drafts} kept as draft${r.drafts === 1 ? '' : 's'}` : ''}` : ' as drafts'}`);
+      invView = { ...invView, status: 'all', date: 'all', q: '', sort: 'issued', dir: -1 }; curPath() === '/invoices' ? refresh() : navigate('/invoices');
+    } catch (err) { toast(err.message, true); go.disabled = false; }
+  });
+};
 A.editInvoice = (d) => navigate('/invoices/view?id=' + d.id);
 A.sendInvoice = (d) => sendDialog('invoice', byId(D.invoices, d.id));
 // record a payment received outside the app (cash, check, Zelle…) on an invoice; part payments allowed
@@ -3539,7 +3581,7 @@ A.jobRemind = async (d) => { const r = await api('POST', `/api/jobs/${d.id}/remi
 // Job status as shown on the Jobs page, derived from the stored status (scheduled/completed/cancelled), the date and invoices
 const J_STATUS = { late: 'Late', today: 'Today', upcoming: 'Upcoming', invoice: 'Requires invoicing', archived: 'Archived', cancelled: 'Cancelled' };
 const J_CLASS = { late: 'q-declined', today: 'q-converted', upcoming: 'q-approved', invoice: 'q-sent', archived: 'q-draft', cancelled: 'q-draft' };
-const jobInvoices = (j) => D.invoices.filter((i) => i.jobId === j.id);
+const jobInvoices = (j) => D.invoices.filter((i) => i.jobId === j.id || (i.jobIds || []).includes(j.id)); // a batch invoice can cover several jobs
 function jobStatus(j) {
   const today = ymd(new Date());
   if (j.status === 'cancelled') return 'cancelled';

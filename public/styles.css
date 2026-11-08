@@ -1965,3 +1965,16 @@ label.bk-auto input{width:auto;margin:0}
 .item-row.np-on{outline:2px solid var(--warn-fg);outline-offset:2px;border-radius:8px}
 .item-row.np-on .cost{background:var(--warn-bg)}
 .ms-snap{width:100%;margin-top:10px}
+/* batch invoicing (Invoices → Invoice completed jobs) and late fees (App Settings) */
+.bi-banner{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 16px;padding:12px 16px;border:1px solid var(--border);border-radius:12px;background:var(--card)}
+.bi-banner>span{display:flex;align-items:center;gap:10px}.bi-banner svg{color:var(--brand);flex:none}
+.mlist .bi-banner{margin:4px 0 14px}
+.bi-opts{display:flex;flex-direction:column;gap:12px;margin:0 0 14px}.bi-opts .mseg span{padding:9px 16px;font-size:15px}
+.bi-all{padding:8px 0;border-bottom:1px solid var(--border)}
+.bi-list{max-height:min(52vh,460px);overflow:auto;margin:0 0 14px}
+.bi-client{padding:10px 0;border-bottom:1px solid var(--border)}.bi-ch{margin:0 0 6px}
+.bi-job{display:flex;align-items:flex-start;gap:10px;padding:6px 0 6px 4px;font-weight:400;margin:0;cursor:pointer}.bi-job input{width:18px;height:18px;margin:2px 0 0;flex:none}
+.bi-job small{display:block}.bi-amt{white-space:nowrap;font-weight:600}
+.lf-amt{display:flex;gap:8px}.lf-amt input{flex:1;min-width:0}.lf-amt select{width:auto}
+.lf-fields{margin-top:10px}
+@media (max-width:600px){.bi-opts .mseg{flex-direction:column}}

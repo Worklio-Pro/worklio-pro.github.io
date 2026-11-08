@@ -2009,6 +2009,26 @@ ${switchRow('showHours', 'Show business hours', c.showHours, 'Display your busin
 <div class="tax-rate">${fl('Tax name', `<input name="taxName" value="${v('taxName')}" placeholder="e.g. TX Sales Tax">`)}${fl('Tax rate (%)', `<input name="taxRate" type="number" step="any" min="0" value="${c.taxRate ?? 0}">`)}${fl('Internal tax description', `<input name="taxDescription" value="${v('taxDescription')}">`)}</div>
 <p class="muted cs-note">Used on new quotes, jobs and invoices. The tax name shows on documents that use this rate.</p></div></div></div>`;
 }
+// App Settings → Late fees (company.lateFee): its own little form, saved as soon as something changes. The server adds the fee hourly.
+function lateFeeCard(c) {
+  const lf = c.lateFee || {}; const opt = (v, l, cur) => `<option value="${v}" ${String(cur) === String(v) ? 'selected' : ''}>${l}</option>`;
+  return `<div class="card" id="late-fees"><h2>Late fees</h2><p class="muted" style="margin-top:0">Add a fee to invoices still unpaid after their due date. It goes on the invoice as a “Late fee” line (never discounted or taxed), and the client’s invoice page says when it will be added. Only invoices due after you turn this on get one. Switch it off on any invoice under Client payments, or delete the line to waive a fee.</p>
+<form id="lff">${switchRow('on', 'Charge late fees', !!lf.on)}
+<div class="lf-fields"${lf.on ? '' : ' hidden'}><div class="row"><label>Fee<div class="lf-amt"><input name="amount" type="number" min="0" step="any" inputmode="decimal" value="${lf.amount || ''}" placeholder="e.g. 25"><select name="type" aria-label="Fee type">${opt('flat', '$ flat fee', lf.type || 'flat')}${opt('percent', '% of the balance', lf.type)}</select></div></label>
+<label>Added<select name="days">${[0, 3, 5, 7, 10, 14, 30].map((n) => opt(n, n ? `${n} days after the due date` : 'The day after the due date', lf.days || 0)).join('')}</select></label></div>
+<label>How often<select name="times">${[1, 2, 3, 6, 12].map((n) => opt(n, n === 1 ? 'Once' : `Again every 30 days while unpaid, up to ${n} times`, lf.times || 1)).join('')}</select></label>
+${switchRow('email', 'Email the client when a fee is added', lf.email !== false, 'Uses the “Late fee added” template in Email Templates')}</div></form></div>`;
+}
+function wireLateFees() {
+  const f = $('#lff'); if (!f) return;
+  f.addEventListener('submit', (e) => e.preventDefault());
+  f.addEventListener('change', async () => {
+    const fd = new FormData(f); const b = { on: fd.getAll('on').includes('on'), type: fd.get('type'), amount: fd.get('amount'), days: fd.get('days'), times: fd.get('times'), email: fd.getAll('email').includes('on') };
+    $('.lf-fields', f).hidden = !b.on;
+    if (b.on && !(Number(b.amount) > 0)) return $('[name=amount]', f).focus(); // waits for the amount
+    try { const saved = await api('PUT', '/api/company', { lateFee: b }); company = { ...company, ...saved }; toast(b.on ? 'Late fees saved' : 'Late fees are off'); } catch (err) { toast(err.message, true); }
+  });
+}
 async function companyPage(main, full) {
   const c = company; const integ = full ? await api('GET', '/api/integrations') : null;
   // App Settings boxes; on App Settings they sit in two columns outside the form, so their fields say form="cf"
@@ -2020,8 +2040,9 @@ async function companyPage(main, full) {
 <div class="row"><label>Zelle email or phone<input form="cf" name="zelleRecipient" value="${esc(c.zelleRecipient || '')}" placeholder="payments@yourbusiness.com or +17135550100"></label><label>Name registered with Zelle<input form="cf" name="zelleName" value="${esc(c.zelleName || '')}" placeholder="e.g. TLB Group LLC"></label></div></div>` : '';
   main.innerHTML = `<div class="head"><div><h1>${full ? 'App Settings' : 'Company settings'}</h1>${full ? '<p class="sub">Branding and defaults used on every quote and invoice. Business details, social media and tax settings are on <a href="/settings/company" data-link>Company Profile</a>.</p>' : ''}</div></div>
 ${full ? planCard(c.account) : ''}
-${full ? `<div class="as-cols"><div class="as-col">${webAddressCard(c.account)}${brandBox}${regionalBox(c)}</div><div class="as-col">${payCard(integ)}${zelleBox}${prefixBox}</div></div>
+${full ? `<div class="as-cols"><div class="as-col">${webAddressCard(c.account)}${brandBox}${regionalBox(c)}</div><div class="as-col">${payCard(integ)}${zelleBox}${lateFeeCard(c)}${prefixBox}</div></div>
 <form id="cf"></form>` :`<form id="cf" class="cs-form">${companySettingsHtml(c, logoBox)}</form>`}`;
+  if (full) wireLateFees();
   $$('.prefix-row input').forEach((i) => i.addEventListener('input', () => { i.nextElementSibling.textContent = 'e.g. ' + i.value.trim() + i.dataset.sample; }));
   const ind = $('#cf select[name=industry]', main); if (ind) ind.addEventListener('change', () => { $('#cf [data-other]', main).hidden = ind.value !== 'other'; });
   if (!full) { // Company Profile saves on its own: a field as soon as it changes, the business hours with their pencil
@@ -2066,7 +2087,7 @@ ${full ? `<div class="as-cols"><div class="as-col">${webAddressCard(c.account)}$
     try { await api('DELETE', '/api/company/logo'); toast('Logo deleted'); refresh(); } catch (err) { toast(err.message, true); }
   };
   wireAccountCards(main);
-  if (full) { stripeReturnNotice(integ); const to = location.hash === '#payments' || location.hash === '#zelle' ? $(location.hash, main) : null; if (to) to.scrollIntoView({ block: 'start' }); } // back from Stripe, or a link to Card payments
+  if (full) { stripeReturnNotice(integ); const to = ['#payments', '#zelle', '#late-fees'].includes(location.hash) ? $(location.hash, main) : null; if (to) to.scrollIntoView({ block: 'start' }); } // back from Stripe, or a link to Card payments
   if ($('#logoFile')) $('#logoFile').addEventListener('change', async (e) => {
     const f = e.target.files[0]; if (!f) return; if (f.size > 4e6) return toast('Logo must be under 4 MB', true);
     const dataUrl = f.type === 'image/svg+xml' ? await readFileAsDataUrl(f) : await resizeImage(f, 600);
@@ -2939,7 +2960,7 @@ ${TPL.list.map((t) => `<tr class="crow" data-act="editTpl" data-key="${t.key}"><
   },
 };
 const TPL = { list: [] };
-const tplSample = () => ({ work: 'Gutter cleaning', reply: 'Thank you! It was a pleasure working with you.', client_name: 'Jane Smith', company_name: company.name || 'Your Business', company_email: company.email || 'hello@yourbusiness.com', sent_date: fmtDate(ymd(new Date())), quote_number: docPrefix('quotePrefix') + '1005', quote_title: 'Backyard cleanup', invoice_number: docPrefix('invoicePrefix') + '3010', total: '$1,250.00', due_date: fmtDate(ymd(addDays(new Date(), 14))), job_number: docPrefix('jobPrefix') + '2010', job_title: 'Gutter cleaning', date: fmtDate(ymd(addDays(new Date(), 2))), time: '09:00', address: '100 Main St, Houston, TX 77002', amount: '$1,250.00', paid_for: 'Invoice ' + docPrefix('invoicePrefix') + '3010', reference: 'pi_3Q8x2L4eZvKYlo2C', staff_name: 'Alex Rivera', eta: '20 minutes', arrival_time: '2:35 PM' });
+const tplSample = () => ({ work: 'Gutter cleaning', reply: 'Thank you! It was a pleasure working with you.', client_name: 'Jane Smith', company_name: company.name || 'Your Business', company_email: company.email || 'hello@yourbusiness.com', sent_date: fmtDate(ymd(new Date())), quote_number: docPrefix('quotePrefix') + '1005', quote_title: 'Backyard cleanup', invoice_number: docPrefix('invoicePrefix') + '3010', total: '$1,250.00', fee: '$25.00', balance: '$1,275.00', due_date: fmtDate(ymd(addDays(new Date(), 14))), job_number: docPrefix('jobPrefix') + '2010', job_title: 'Gutter cleaning', date: fmtDate(ymd(addDays(new Date(), 2))), time: '09:00', address: '100 Main St, Houston, TX 77002', amount: '$1,250.00', paid_for: 'Invoice ' + docPrefix('invoicePrefix') + '3010', reference: 'pi_3Q8x2L4eZvKYlo2C', staff_name: 'Alex Rivera', eta: '20 minutes', arrival_time: '2:35 PM' });
 const tplLinks = () => ({ quote: location.origin + '/p/quote/abc123', invoice: location.origin + '/pay/abc123', reviewRequest: location.origin + '/p/review/abc123', reviewReply: location.origin + '/p/review/abc123' });
 A.editTpl = (d) => {
   const t = TPL.list.find((x) => x.key === d.key); if (!t) return; const vars = { ...tplSample(), link: tplLinks()[t.key] || '' };

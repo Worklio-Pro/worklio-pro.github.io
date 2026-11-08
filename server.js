@@ -159,8 +159,10 @@ const shownOption = (q) => (hasOptions(q) ? q.options.find((o) => o.id === q.cho
 const quoteItems = (q) => (hasOptions(q) ? (q.chosenOption ? optionItems(q, q.chosenOption) : []) : q.items || []).map(({ opt, ...i }) => ({ ...i }));
 function sumItems(doc, items) {
   const subtotal = round2(items.reduce((s, i) => s + i.qty * i.price, 0));
-  const discount = Math.min(subtotal, round2(doc.discountType === 'percent' ? subtotal * doc.discountValue / 100 : doc.discountValue));
-  const tax = round2((subtotal - discount) * doc.taxRate / 100); const total = round2(subtotal - discount + tax);
+  // late fee lines (invoices) are in the subtotal but never discounted or taxed
+  const base = round2(subtotal - items.filter((i) => i.lateFee).reduce((s, i) => s + i.qty * i.price, 0));
+  const discount = Math.min(base, round2(doc.discountType === 'percent' ? base * doc.discountValue / 100 : doc.discountValue));
+  const tax = round2((base - discount) * doc.taxRate / 100); const total = round2(subtotal - discount + tax);
   const depositFee = Math.min(total, round2(doc.depositType === 'percent' ? total * doc.depositValue / 100 : doc.depositValue));
   return { subtotal, discount, tax, total, depositFee };
 }
@@ -172,7 +174,7 @@ function computeTotals(doc) {
   doc.items = (doc.items || []).filter((i) => i.desc).map((i) => {
     const cost = Number(i.cost ?? i.price) || 0; const markup = Number(i.markup) || 0; const markupType = i.markupType === 'flat' ? 'flat' : 'percent';
     const price = round2(markupType === 'flat' ? cost + markup : cost * (1 + markup / 100));
-    return { desc: String(i.desc), details: i.details ? String(i.details) : '', qty: Number(i.qty) || 0, cost, markup, markupType, price, ...(i.needsPrice && !(price > 0) ? { needsPrice: true } : {}), ...(opts.length >= 2 ? { opt: ids.has(i.opt) ? i.opt : '' } : {}) };
+    return { desc: String(i.desc), details: i.details ? String(i.details) : '', qty: Number(i.qty) || 0, cost, markup, markupType, price, ...(i.needsPrice && !(price > 0) ? { needsPrice: true } : {}), ...(i.lateFee ? { lateFee: true } : {}), ...(typeof i.job === 'string' && /^[\w-]{1,40}$/.test(i.job) ? { job: i.job } : {}), ...(opts.length >= 2 ? { opt: ids.has(i.opt) ? i.opt : '' } : {}) };
   });
   doc.taxRate = Number(doc.taxRate) || 0;
   // optional discount before tax: a flat amount or a percentage of the subtotal
@@ -1653,6 +1655,7 @@ app.put('/api/company', (req, res) => {
   const allowed = ['name', 'email', 'phone', 'website', 'address', 'logo', 'taxRate', 'paymentTermsDays', 'invoiceFooter', 'brandColor', 'accentColor', 'zelleRecipient', 'zelleName', 'quoteDisclaimer', 'invoiceDisclaimer', ...Object.keys(PREFIX_DEFAULTS),
     ...ADDRESS_PARTS, 'taxIdName', 'taxIdNumber', 'taxName', 'taxDescription', 'hours', ...Object.keys(REGIONAL)];
   for (const k of allowed) if (k in b) db.company[k] = k === 'taxRate' || k === 'paymentTermsDays' ? Number(b[k]) || 0 : typeof b[k] === 'string' ? b[k].trim().slice(0, 500) : b[k];
+  if (b.lateFee && typeof b.lateFee === 'object') { try { db.company.lateFee = cleanLateFee(b.lateFee, db.company.lateFee); } catch (e) { return res.status(400).json({ error: e.message }); } }
   for (const k of ['addressPrivate', 'showHours']) if (k in b) db.company[k] = b[k] === true || b[k] === 'on' || b[k] === 'true';
   if (ADDRESS_PARTS.some((k) => k in b)) db.company.address = composeAddress(db.company); // the one-line address used everywhere else
   if ('timezone' in b) applyTimezone();
@@ -1968,7 +1971,7 @@ app.put('/api/:col/:id', (req, res, next) => {
   if (i < 0) return res.status(404).json({ error: 'Not found' });
   const protectedKeys = ['id', 'number', 'token', 'portalToken', 'createdAt', 'seriesId', 'repeat', 'membershipId', 'forms']; // checklists change only through /forms
   let upd = { ...req.body }; protectedKeys.forEach((k) => delete upd[k]); delete upd.noteEntries; // notes change only through /notes
-  if (col === 'invoices') { delete upd.signedAt; delete upd.signedName; delete upd.signature; } // signatures only through /signature
+  if (col === 'invoices') { delete upd.signedAt; delete upd.signedName; delete upd.signature; delete upd.lateFees; delete upd.jobIds; } // signatures only through /signature; the late fees charged and a combined invoice's jobs stay
   (PAYMENT_FIELDS[col] || []).forEach((k) => delete upd[k]);
   if (col === 'invoices' && (upd.status === 'paid' || db.invoices[i].status === 'paid')) delete upd.status; // paid only by its payments
   if (col === 'invoices' && upd.depositCreditRemoved && !db.invoices[i].depositCreditRemoved) delete upd.depositCreditRemoved; // a collected deposit stays credited
@@ -2312,12 +2315,120 @@ app.post('/api/quotes/:id/convert-to-job', (req, res) => {
 app.post('/api/jobs/:id/create-invoice', (req, res) => {
   const j = db.jobs.find((x) => x.id === req.params.id);
   if (!j) return res.status(404).json({ error: 'Not found' });
-  const q = j.quoteId && db.quotes.find((x) => x.id === j.quoteId);
-  const items = j.items && j.items.length ? j.items : q && quoteItems(q).length ? quoteItems(q) : [{ desc: j.title, qty: 1, price: 0 }]; // the job's own lines win (a quote with options: the chosen one's)
-  const inv = computeTotals({ id: uid(), number: nextNumber('invoices'), clientId: j.clientId, jobId: j.id, subject: j.title, status: 'draft', issueDate: iso(new Date()), dueDate: iso(new Date()), paymentTerms: '0', paidAt: null, token: token(), createdAt: iso(new Date()), notes: '', items: items.map((i) => ({ ...i })), taxRate: j.items && j.items.length ? j.taxRate : q ? q.taxRate : db.company.taxRate, ...(() => { const src = j.items && j.items.length ? j : q || {}; return { discountType: src.discountType, discountValue: src.discountValue }; })() });
+  const l = jobLines(j);
+  const inv = computeTotals({ id: uid(), number: nextNumber('invoices'), clientId: j.clientId, jobId: j.id, subject: j.title, status: 'draft', issueDate: iso(new Date()), dueDate: iso(new Date()), paymentTerms: '0', paidAt: null, token: token(), createdAt: iso(new Date()), notes: '', items: l.items, taxRate: l.taxRate, discountType: l.discountType, discountValue: l.discountValue });
   applyMemberDiscount(inv); computeTotals(inv); // a service plan member's discount, when the job had none
   db.invoices.push(inv); save(); res.status(201).json(withStatus(inv));
 });
+// what a job's invoice is made of: the job's own lines win (else its quote's, with options the chosen one's), with the same tax and discount
+function jobLines(j) {
+  const q = j.quoteId && db.quotes.find((x) => x.id === j.quoteId); const own = !!(j.items && j.items.length);
+  const items = own ? j.items : q && quoteItems(q).length ? quoteItems(q) : [{ desc: j.title, qty: 1, price: 0 }];
+  const src = own ? j : q || {};
+  return { q, items: items.map((i) => ({ ...i })), taxRate: own ? j.taxRate : q ? q.taxRate : db.company.taxRate, discountType: src.discountType, discountValue: src.discountValue };
+}
+
+// ---------- Batch invoicing (Invoices → Invoice completed jobs) ----------
+// Completed jobs with no invoice yet, invoiced in one go: one invoice per job, or one per client with their jobs together (each line keeps its
+// job in item.job, and the invoice lists them in jobIds; jobId is the first). A job with its own discount or a deposit paid on its quote gets an
+// invoice of its own even then, and only jobs with the same tax rate are put together, so discounts, deposit credits and tax stay right.
+// Service plan visits are left out (the plan bills for them). Due dates follow each client's payment terms. With send, invoices are emailed
+// with the pay link to clients who have an email address (and something to pay); the rest stay drafts.
+const jobInvoiced = (j) => db.invoices.some((i) => i.jobId === j.id || (i.jobIds || []).includes(j.id));
+const batchJobs = () => db.jobs.filter((j) => j.status === 'completed' && !j.membershipId && findClient(j.clientId) && !jobInvoiced(j));
+const ownInvoice = (l) => !!(l.q && l.q.depositPaidAt) || Number(l.discountValue) > 0;
+app.get('/api/invoices/batch', (req, res) => res.json(batchJobs().map((j) => {
+  const l = jobLines(j); const c = findClient(j.clientId); const t = computeTotals({ clientId: j.clientId, items: l.items, taxRate: l.taxRate, discountType: l.discountType, discountValue: l.discountValue });
+  applyMemberDiscount(t); computeTotals(t);
+  return { id: j.id, number: j.number, title: j.title, date: j.date || '', clientId: c.id, client: c.company || c.name, email: !!c.email, total: t.total, taxRate: Number(l.taxRate) || 0, own: ownInvoice(l) };
+}).sort((a, b) => a.client.localeCompare(b.client) || a.date.localeCompare(b.date))));
+app.post('/api/invoices/batch', async (req, res) => {
+  const b = req.body || {}; const want = new Set(Array.isArray(b.jobIds) ? b.jobIds : []);
+  const jobs = batchJobs().filter((j) => want.has(j.id)).sort((x, y) => (x.date || '').localeCompare(y.date || ''));
+  if (!jobs.length) return res.status(400).json({ error: 'Choose at least one completed job that isn’t invoiced yet' });
+  const groups = []; const byKey = {};
+  for (const j of jobs) {
+    const l = jobLines(j);
+    if (!b.combine || ownInvoice(l)) { groups.push([{ j, l }]); continue; }
+    const k = j.clientId + '|' + (Number(l.taxRate) || 0); if (!byKey[k]) groups.push((byKey[k] = [])); byKey[k].push({ j, l });
+  }
+  const today = localNow().date; const made = [];
+  for (const g of groups) {
+    const { j, l } = g[0]; const c = findClient(j.clientId); const terms = Math.max(0, Number(c.paymentTerms) || 0); const one = g.length === 1;
+    const where = (x) => [x.number, x.date ? niceDate(x.date) : '', x.address && x.address !== c.address ? x.address : ''].filter(Boolean).join(' · ');
+    const items = one ? l.items : g.flatMap((x) => x.l.items.map((i) => ({ ...i, job: x.j.id, details: [where(x.j), i.details].filter(Boolean).join('\n') })));
+    const first = g[0].j.date; const last = g[g.length - 1].j.date;
+    const inv = computeTotals({ id: uid(), number: nextNumber('invoices'), clientId: c.id, jobId: j.id, ...(one ? {} : { jobIds: g.map((x) => x.j.id) }),
+      subject: one ? j.title : `${g.length} jobs${first ? `, ${niceDate(first)}${last && last !== first ? ` – ${niceDate(last)}` : ''}` : ''}`,
+      status: 'draft', issueDate: today, dueDate: addDaysYmd(today, terms), paymentTerms: String(terms), paidAt: null, token: token(), createdAt: iso(new Date()), notes: '',
+      disclaimer: db.company.invoiceDisclaimer ?? '', items, taxRate: l.taxRate, discountType: one ? l.discountType : 'flat', discountValue: one ? l.discountValue : 0 });
+    applyMemberDiscount(inv); computeTotals(inv); db.invoices.push(inv); made.push(inv);
+  }
+  let sent = 0;
+  if (b.send) for (const inv of made) {
+    const c = findClient(inv.clientId); if (!c.email || !(inv.total > 0)) continue;
+    inv.status = 'sent'; sent++; const email = renderEmail('invoice', docVars('invoice', inv));
+    notify({ clientId: c.id, channel: 'email', kind: 'invoice', refId: inv.id, refNumber: inv.number, subject: email.subject, html: email.html, body: email.body }).then(() => save()).catch((e) => console.error('batch invoice email:', e.message));
+  }
+  save();
+  res.status(201).json({ invoices: made.map((i) => ({ id: i.id, number: i.number, clientId: i.clientId, total: i.total, status: i.status, jobs: (i.jobIds || [i.jobId]).length })), sent, drafts: made.length - sent });
+});
+
+// ---------- Late fees (App Settings → Late fees) ----------
+// db.company.lateFee: { on, type: flat|percent (of the balance due), amount, days (grace days after the due date), times (1 = once, else again
+// every 30 days while unpaid, up to this many), email (tell the client), since (the day they were turned on) }.
+// Checked hourly: a past-due invoice gets a "Late fee" line (item.lateFee: never discounted or taxed) and an entry in inv.lateFees. Only
+// invoices due on or after `since` (clients with older invoices weren't told), never drafts or paid ones, nor one switched to no late fees
+// (inv.lateFee === 'off'). inv.lateFees counts what was charged, so deleting the line from the invoice waives that fee for good.
+const LATE_TIMES = [1, 2, 3, 6, 12];
+function cleanLateFee(b, old = {}) {
+  const yes = (v) => v === true || v === 'true' || v === 'on';
+  const on = yes(b.on); const type = b.type === 'percent' ? 'percent' : 'flat'; const amount = round2(Math.max(0, Number(b.amount) || 0));
+  if (on && !(amount > 0)) throw new Error('Enter the late fee amount');
+  if (type === 'percent' && amount > 25) throw new Error('A late fee can be at most 25% of the balance');
+  if (type === 'flat' && amount > 10000) throw new Error('A late fee can be at most $10,000');
+  return { on, type, amount, days: Math.min(90, Math.max(0, Math.round(Number(b.days) || 0))), times: LATE_TIMES.includes(Number(b.times)) ? Number(b.times) : 1,
+    email: b.email === undefined ? old.email !== false : yes(b.email), since: on ? (old.on && old.since) || localNow().date : '' };
+}
+// the next fee this invoice will get: { n, on: the day it's added }, or null
+function nextLateFee(inv, cfg = db.company.lateFee || {}) {
+  if (!cfg.on || !(cfg.amount > 0) || inv.lateFee === 'off' || !inv.dueDate || inv.status === 'draft' || inv.status === 'paid' || inv.dueDate < (cfg.since || '9999')) return null;
+  const n = (inv.lateFees || []).length; if (n >= (cfg.times || 1)) return null;
+  return { n: n + 1, on: addDaysYmd(inv.dueDate, (cfg.days || 0) + 1 + 30 * n) };
+}
+const lateFeeText = (cfg) => (cfg.type === 'percent' ? `${cfg.amount}% of the balance` : money(cfg.amount));
+EMAIL_TEMPLATES.lateFee = {
+  label: 'Late fee added', description: 'Sent when a late fee is added to a past-due invoice, if you turned this on in App Settings → Late fees.',
+  subject: 'Late fee added to invoice {{invoice_number}}',
+  body: '# Invoice {{invoice_number}} is past due\n\nHello {{client_name}},\n\nInvoice {{invoice_number}} was due {{due_date}} and is still unpaid, so a late fee of **{{fee}}** has been added. The balance is now **{{balance}}**.\n\n[View and pay invoice]({{link}})\n\nIf you\x27ve already paid, thank you, and please let us know at {{company_email}}.\n\n{{company_name}}',
+  vars: { client_name: 'Client name', company_name: 'Your business name', company_email: 'Your business email', invoice_number: 'Invoice number', due_date: 'Due date', fee: 'The late fee', balance: 'Balance due with the fee', total: 'Invoice total', link: 'Link to view and pay' },
+};
+function chargeLateFees() {
+  const cfg = db.company.lateFee || {}; if (!cfg.on) return 0;
+  const today = localNow().date; let n = 0;
+  for (const inv of db.invoices) {
+    const next = nextLateFee(inv, cfg); if (!next || next.on > today) continue;
+    const owed = invoiceCredits(inv).balanceDue; if (!(owed > 0)) continue;
+    const amount = round2(cfg.type === 'percent' ? owed * cfg.amount / 100 : cfg.amount); if (!(amount > 0)) continue;
+    const late = Math.round((Date.parse(today) - Date.parse(inv.dueDate)) / 864e5);
+    inv.items = [...(inv.items || []), { desc: 'Late fee', details: `${cfg.type === 'percent' ? `${cfg.amount}% of ${money(owed)} unpaid` : 'Unpaid'} ${late} day${late === 1 ? '' : 's'} after the due date (${niceDate(inv.dueDate)})`, qty: 1, cost: amount, markup: 0, markupType: 'percent', price: amount, lateFee: true }];
+    (inv.lateFees = inv.lateFees || []).push({ n: next.n, date: today, amount });
+    computeTotals(inv); n++;
+    const c = findClient(inv.clientId);
+    if (cfg.email !== false && c && c.email) {
+      const email = renderEmail('lateFee', { ...docVars('invoice', inv), fee: money(amount), balance: money(invoiceCredits(inv).balanceDue) });
+      notify({ clientId: c.id, channel: 'email', kind: 'invoice', refId: inv.id, refNumber: inv.number, subject: email.subject, html: email.html, body: email.body }).then(() => save()).catch((e) => console.error('late fee email:', e.message));
+    }
+  }
+  return n;
+}
+// hourly, in every active account with late fees on
+function lateFeesAll() {
+  for (const t of tenancy.platform().tenants) {
+    if (t.status !== 'active') continue;
+    tenancy.run(t, () => { if (!(db.company.lateFee || {}).on || !tenancy.has('invoices')) return; try { if (chargeLateFees()) save(); } catch (e) { console.error('late fees:', e.message); } });
+  }
+}
 
 app.post('/api/invoices/:id/send', async (req, res) => {
   const inv = db.invoices.find((x) => x.id === req.params.id);
@@ -2858,6 +2969,7 @@ ${st === 'overdue' && on('showLateStamp') ? '<div style="display:inline-block;ma
 ${db.company.taxIdNumber ? `<div class="muted">${esc(db.company.taxIdName || 'Tax ID')}: ${esc(db.company.taxIdNumber)}</div>` : ''}<div class="muted">Billed to ${esc(c?.name)}${inv.subject ? ` · ${esc(inv.subject)}` : ''} · Issued ${esc(niceDate(inv.issueDate))} · Due ${inv.dueDate && inv.dueDate <= inv.issueDate ? 'upon receipt' : esc(niceDate(inv.dueDate))}</div>
 ${itemsTable(x, { qty: on('showQty'), unit: on('showUnit'), line: on('showLineTotals'), invoice: true })}
 ${on('showAccountBalance') && st !== 'paid' && account > 0 ? `<p class="muted" style="text-align:right">Account balance (all open invoices): <strong>${money(account)}</strong></p>` : ''}
+${(() => { const next = st !== 'paid' && nextLateFee(inv); return next ? `<p class="muted" style="text-align:right">${next.n > 1 ? 'Another late fee' : 'A late fee'} of ${esc(lateFeeText(db.company.lateFee))} is added if this invoice isn’t paid by ${esc(niceDate(addDaysYmd(next.on, -1)))}.</p>` : ''; })()}
 ${inv.notes ? `<p style="white-space:pre-wrap">${esc(inv.notes)}</p>` : ''}
 ${previewNote}${st === 'paid' ? `<p>Paid on ${esc(niceDate(inv.paidAt))}. Thank you!</p>${reviewPrompt(inv, preview)}` : payOff(card + zelle) + (!card && !zelle ? `<p class="muted">Please contact ${esc(db.company.name)} at ${esc(db.company.phone || db.company.email)} to arrange payment.</p>` : '')}
 ${inv.disclaimer ? `<div style="margin:16px 0;padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px;white-space:pre-wrap" class="muted">${esc(inv.disclaimer)}</div>` : `<p class="muted">${esc(db.company.invoiceFooter)}</p>`}`));
@@ -3086,7 +3198,7 @@ app.use('/p', express.urlencoded({ extended: false }));
 const REVIEW_ASK_GAP_DAYS = 30;
 const reviewSettings = () => ({ afterJob: true, afterInvoice: true, notifyEmail: true, ...(db.reviewSettings || {}) });
 const clientReviews = () => (db.clientReviews = db.clientReviews || []);
-const reviewRefs = (kind, doc) => { const job = kind === 'job' ? doc : doc.jobId && db.jobs.find((j) => j.id === doc.jobId); return job ? [job.id, ...db.invoices.filter((i) => i.jobId === job.id).map((i) => i.id)] : [doc.id]; };
+const reviewRefs = (kind, doc) => { const job = kind === 'job' ? doc : doc.jobId && db.jobs.find((j) => j.id === doc.jobId); return job ? [job.id, ...db.invoices.filter((i) => i.jobId === job.id || (i.jobIds || []).includes(job.id)).map((i) => i.id)] : [doc.id]; };
 function reviewRecord(kind, doc) {
   const refs = reviewRefs(kind, doc); let r = clientReviews().find((x) => refs.includes(x.refId));
   if (!r) { r = { id: uid(), token: token(), clientId: doc.clientId, kind, refId: doc.id, refNumber: doc.number, title: (kind === 'job' ? doc.title : doc.subject) || '', createdAt: new Date().toISOString() }; clientReviews().push(r); save(); }
@@ -3739,8 +3851,12 @@ function profitLoss(from, to, basis) {
 function jobProfit(from, to) {
   const labor = laborByJob(); // hours logged to each job (Timesheets) at each person's pay rate
   return db.jobs.filter((j) => inRange(j.date || j.createdAt, from, to)).map((j) => {
-    const invs = db.invoices.filter((i) => i.jobId === j.id && i.status !== 'draft');
-    const revenue = round2(invs.reduce((s, i) => s + (Number(i.subtotal) || 0) - (Number(i.discount) || 0), 0));
+    const invs = db.invoices.filter((i) => (i.jobId === j.id || (i.jobIds || []).includes(j.id)) && i.status !== 'draft');
+    // an invoice for several jobs (batch invoicing) counts this job's own lines, less their share of any discount
+    const part = (i) => { if (!(i.jobIds || []).length) return (Number(i.subtotal) || 0) - (Number(i.discount) || 0);
+      const lines = (i.items || []).filter((x) => !x.lateFee); const mine = lines.filter((x) => x.job === j.id).reduce((s, x) => s + x.qty * x.price, 0); const all = lines.reduce((s, x) => s + x.qty * x.price, 0);
+      return mine - (all ? (Number(i.discount) || 0) * mine / all : 0); };
+    const revenue = round2(invs.reduce((s, i) => s + part(i), 0));
     const expenses = round2(db.expenses.filter((e) => e.jobId === j.id).reduce((s, e) => s + (Number(e.amount) || 0), 0));
     const laborCost = round2(labor[j.id] || 0); const costs = round2(expenses + laborCost);
     const profit = round2(revenue - costs);
@@ -4931,6 +5047,7 @@ setTimeout(() => bizAuto.runAll().catch((e) => console.error('automations:', e.m
 const jobPostsMonthly = () => { for (const t of tenancy.platform().tenants) if (t.status === 'active') tenancy.run(t, () => { try { jobPosts.monthlyReport(); } catch (e) { console.error('job posts:', e.message); } }); };
 setTimeout(jobPostsMonthly, 40e3); setInterval(jobPostsMonthly, 3600e3); // Every job markets itself: last month's results on the 1st
 setTimeout(billMemberships, 35e3); setInterval(billMemberships, 3600e3); // service plans: each billing period's invoice
+setTimeout(lateFeesAll, 50e3); setInterval(lateFeesAll, 3600e3); // late fees on past-due invoices (App Settings → Late fees)
 setTimeout(extendSeries, 25e3); setInterval(extendSeries, 3600e3); // recurring jobs: make visits as the months go by
 setTimeout(pushOverviews, 20e3); setInterval(pushOverviews, 15 * 60e3); // the morning's Today's work overview notifications
 setTimeout(() => keepConnections().catch(() => {}), 90e3); setInterval(() => keepConnections().catch(() => {}), 6 * 3600e3); // social sign-ins: renewed before they run out
