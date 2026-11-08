@@ -165,8 +165,8 @@ const NAV = [
   ['Records', [['/project-gallery', 'Project Gallery'], ['/notifications', 'Notifications Log']]],
 ];
 // the Settings pages open in their own sidebar column (Settings at the bottom of the sidebar), in these groups
-const SETTINGS_NAV = [['/settings/company', 'Company Profile'], ['/settings/business-page', 'Business Page'], ['/team', 'Manage Team'], ['/requests', 'Team Requests'], ['/settings/roles', 'Roles & Permissions'], ['/settings/emails', 'Email Templates'], ['/settings', 'App Settings'], ['/settings/preferences', 'Preferences'], ['/settings/connections', 'Account Connections'], ['/settings/accounting', 'QuickBooks & Xero'], ['/marketplace', 'App Marketplace'], ['/settings/billing', 'Account and Billing'], ['/rewards', 'Refer & Earn'], ['/settings/support-access', 'Support Access']];
-const SETTINGS_GROUPS = [['My Business', ['/settings/company', '/settings/business-page', '/profile', '/team', '/requests', '/settings/roles', '/settings/billing']], ['Business Services', ['/settings/emails', '/settings/connections', '/settings/accounting', '/marketplace']], ['Other Settings', ['/settings', '/settings/preferences', '/rewards', '/settings/support-access']]];
+const SETTINGS_NAV = [['/settings/company', 'Company Profile'], ['/settings/business-page', 'Business Page'], ['/team', 'Manage Team'], ['/requests', 'Team Requests'], ['/settings/roles', 'Roles & Permissions'], ['/settings/emails', 'Email Templates'], ['/settings/job-forms', 'Checklists & Forms'], ['/settings', 'App Settings'], ['/settings/preferences', 'Preferences'], ['/settings/connections', 'Account Connections'], ['/settings/accounting', 'QuickBooks & Xero'], ['/marketplace', 'App Marketplace'], ['/settings/billing', 'Account and Billing'], ['/rewards', 'Refer & Earn'], ['/settings/support-access', 'Support Access']];
+const SETTINGS_GROUPS = [['My Business', ['/settings/company', '/settings/business-page', '/profile', '/team', '/requests', '/settings/roles', '/settings/billing']], ['Business Services', ['/settings/emails', '/settings/job-forms', '/settings/connections', '/settings/accounting', '/marketplace']], ['Other Settings', ['/settings', '/settings/preferences', '/rewards', '/settings/support-access']]];
 const navPaths = [...NAV.flatMap(([, items]) => items.map(([p]) => p)), ...SETTINGS_NAV.map(([p]) => p)];
 const curPath = () => location.pathname.replace(/\/+$/, '') || '/';
 function navigate(url) { history.pushState({}, '', url); window.scrollTo(0, 0); return render(); }
@@ -321,7 +321,7 @@ const FEATURE_WORDS = {
   '/quotes': 'estimates proposals', '/jobs': 'work orders visits', '/timesheets': 'time tracking clock in out hours payroll timecard labor', '/service-plans': 'memberships maintenance agreements contracts recurring billing subscriptions club', '/invoices': 'billing', '/payments': 'card online stripe', '/services': 'catalog products price list items',
   '/expenses': 'costs receipts spending', '/reports': 'revenue profit charts', '/tax-summary': 'sales tax', '/project-gallery': 'photos pictures', '/reviews': 'client google reviews ratings stars reply feedback', '/automations': 'automatic follow up reminder rules workflow messages overdue', '/social-posts': 'facebook instagram social media post marketing', '/notifications': 'emails texts sms sent messages log',
   '/requests': 'time off day off vacation sick leave request approve', '/settings/roles': 'roles permissions access manager technician what team can see do', '/settings/company': 'business details logo address phone social media facebook instagram tiktok tax', '/team': 'staff employees users access roles technicians', '/settings/emails': 'templates text messages sms reminders',
-  '/settings/preferences': 'appearance theme dark mode light system push notifications alerts phone', '/settings': 'number prefixes branding brand color zelle defaults stripe card payments online payments regional time zone date format time format week', '/settings/connections': 'integrations google facebook instagram ai', '/settings/accounting': 'quickbooks xero accounting bookkeeping books sync accountant', '/settings/business-page': 'qr code business card digital card link in bio links save contact vcard scan limit expiry', '/marketplace': 'apps integrations connect quickbooks xero accounting home depot lowes supplies materials zapier chatgpt claude ai automation calendar slack gusto payroll', '/settings/billing': 'subscription plan upgrade payment method', '/settings/support-access': 'grant revoke help troubleshoot permission',
+  '/settings/job-forms': 'checklists checklist forms form inspection safety check templates job photos required', '/settings/preferences': 'appearance theme dark mode light system push notifications alerts phone', '/settings': 'number prefixes branding brand color zelle defaults stripe card payments online payments regional time zone date format time format week', '/settings/connections': 'integrations google facebook instagram ai', '/settings/accounting': 'quickbooks xero accounting bookkeeping books sync accountant', '/settings/business-page': 'qr code business card digital card link in bio links save contact vcard scan limit expiry', '/marketplace': 'apps integrations connect quickbooks xero accounting home depot lowes supplies materials zapier chatgpt claude ai automation calendar slack gusto payroll', '/settings/billing': 'subscription plan upgrade payment method', '/settings/support-access': 'grant revoke help troubleshoot permission',
 };
 const featureList = () => {
   const open = (p) => PAGES[p] && memberCan(p) && !planLocked(p) && !planLocked(p.split('/').slice(0, 2).join('/'));
@@ -2654,6 +2654,7 @@ ${c.phone || c.email ? `<div class="md-contact">${c.phone ? `<a href="tel:${esc(
 <div class="md-pane" data-pane="doc">${tap('visit', `<span class="md-sh">Scheduled visit${ARROW}</span><span class="md-text">${esc(visitText(j))}</span>${j.repeat ? `<span class="md-text muted">↻ ${repeatLine(j)}</span>` : ''}`, 'md-sec')}
 ${tap('team', `<span class="md-sh">Assigned team${ARROW}</span>${team.length ? `<span class="md-team">${team.map((s) => `<span>${avatarHtml(s, 28)}${esc(s.name)}</span>`).join('')}</span>` : `<span class="md-text muted">${edit ? 'Assign team members' : 'No one assigned'}</span>`}`, 'md-sec')}
 ${textSec('instructions', 'Instructions', j.description, 'Add instructions for the team')}
+${mJobForms(j)}
 ${prices ? `<section class="md-block"><h2 class="md-sh">Product / Service</h2><div class="md-lh"><strong>Line items</strong>${edit ? `<button type="button" class="md-plus" data-act="mEdit" data-kind="job" data-id="${j.id}" data-sec="item" data-i="" aria-label="Add line item">${CHEV('M12 5v14M5 12h14')}</button>` : ''}</div>${items || '<p class="muted md-empty">No line items yet.</p>'}</section>
 ${totals ? `<section class="md-block md-totals">${totals}</section>` : ''}` : ''}
 ${sig ? `<section class="md-block"><div class="md-lh"><h2 class="md-sh" style="margin:0">Client signature</h2>${planHas('signatures') ? `<button type="button" class="md-plus" data-act="collectSignature" data-id="${j.id}" aria-label="Collect another signature">${CHEV('M12 5v14M5 12h14')}</button>` : ''}</div><img class="sig-img" src="${esc(sig.file)}" alt="Signature of ${esc(sig.name)}"><p class="md-text">Signed by <strong>${esc(sig.name)}</strong> · ${esc(fmtStamp(sig.signedAt))}</p></section>`
@@ -2872,6 +2873,120 @@ A.clockIn = async (d) => {
 A.clockOut = async () => {
   try { const r = await api('POST', '/api/time/clock-out', {}); D.clock = { ...D.clock, open: null }; toast(`Clocked out: ${r.entry.hours.toFixed(2)} h`); refresh(); } catch (x) { toast(x.message, true); }
 };
+/* ===== job checklists & forms (a plan feature): the card on a job, adding one, and filling one in (a popup on computers, full screen on phones).
+   Answers save as they're typed or ticked; Finish checks every required item. Templates are made on Settings → Checklists & Forms (pages.js). ===== */
+const JF_ICO = '<path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="m9 14 2 2 4-4"/>';
+const jfFilled = (f, v) => (f.type === 'check' ? v === true : f.type === 'photo' ? Array.isArray(v) && v.length > 0 : v !== undefined && v !== null && String(v).trim() !== '');
+const jfCount = (form) => { const items = form.fields.filter((f) => f.type !== 'heading'); return { done: items.filter((f) => jfFilled(f, form.answers[f.id])).length, total: items.length }; };
+const jfBadge = (form) => (form.completedAt ? '<span class="cstatus active">Finished</span>' : form.requiredToComplete ? '<span class="cstatus jf-req">Required</span>' : '<span class="cstatus q-draft">To do</span>');
+const jfSub = (form) => { if (form.completedAt) return `Finished${form.completedBy ? ` by ${esc(form.completedBy)}` : ''} · ${esc(fmtStamp(form.completedAt))}`; const n = jfCount(form); return `${n.done} of ${n.total} done`; };
+const jfRow = (j, form) => { const n = jfCount(form); const pct = form.completedAt ? 100 : n.total ? Math.round(n.done / n.total * 100) : 0;
+  return `<button type="button" class="jf-row" data-act="jfOpen" data-id="${j.id}" data-f="${form.id}"><span class="jf-ic">${svgIcon(JF_ICO, 22)}</span><span class="jf-main"><strong>${esc(form.name)}</strong><small>${jfSub(form)}</small><span class="jf-bar"><i style="width:${pct}%"></i></span></span>${jfBadge(form)}</button>`; };
+// the job page's card (computers) and section (phones); people who can't edit jobs see it only when the job has forms
+const jobFormsCard = (j) => {
+  if (!planHas('jobForms') || (!(j.forms || []).length && !canDo('jobs.edit'))) return '';
+  return `<div class="qcard jf-card"><div class="qcard-h"><h2>Checklists &amp; Forms</h2>${canDo('jobs.edit') ? `<button type="button" class="btn alt" data-act="jfAdd" data-id="${j.id}">+ Add</button>` : ''}</div>
+${(j.forms || []).length ? `<div class="jf-list">${j.forms.map((f) => jfRow(j, f)).join('')}</div>` : '<p class="muted" style="margin:0">No checklists on this job yet.</p>'}</div>`;
+};
+const mJobForms = (j) => {
+  if (!planHas('jobForms') || (!(j.forms || []).length && !canDo('jobs.edit'))) return '';
+  return `<section class="md-block jf-m"><div class="md-lh"><h2 class="md-sh" style="margin:0">Checklists &amp; forms</h2>${canDo('jobs.edit') ? `<button type="button" class="md-plus" data-act="jfAdd" data-id="${j.id}" aria-label="Add a checklist">${CHEV('M12 5v14M5 12h14')}</button>` : ''}</div>
+${(j.forms || []).length ? `<div class="jf-list">${j.forms.map((f) => jfRow(j, f)).join('')}</div>` : '<p class="muted md-empty">No checklists on this job yet.</p>'}</section>`;
+};
+const jfSetForms = (jobId, forms) => { const j = byId(D.jobs, jobId); if (j) { if (forms && forms.length) j.forms = forms; else delete j.forms; } return j; };
+// + Add: pick one of the business's checklists
+A.jfAdd = async (d) => {
+  let T; try { T = await api('GET', '/api/form-templates'); } catch (x) { return toast(x.message, true); }
+  const list = T.templates.filter((t) => !t.archived); const have = new Set(((byId(D.jobs, d.id) || {}).forms || []).map((f) => f.templateId));
+  if (!list.length) { if (confirm('You haven’t set up any checklists yet. Open Settings → Checklists & Forms to make one?')) { closeModal(); mClose(true); navigate('/settings/job-forms'); } return; }
+  const html = `<div class="jf-pick">${list.map((t) => `<button type="button" class="jf-row" data-act="jfAddPick" data-id="${d.id}" data-t="${t.id}"><span class="jf-ic">${svgIcon(JF_ICO, 22)}</span><span class="jf-main"><strong>${esc(t.name)}</strong><small>${t.fields.filter((f) => f.type !== 'heading').length} items${t.requiredToComplete ? ' · required before completing' : ''}${have.has(t.id) ? ' · already on this job' : ''}</small></span></button>`).join('')}</div>
+<p class="muted sm jf-pick-foot">Make and change checklists in <a href="/settings/job-forms" data-link>Settings → Checklists &amp; Forms</a>.</p>`;
+  if (phoneMq.matches) mSheet('Add a checklist', html); else modal('Add a checklist', html);
+};
+A.jfAddPick = async (d) => {
+  try { const r = await api('POST', `/api/jobs/${d.id}/forms`, { templateId: d.t }); const j = jfSetForms(d.id, r.forms); closeModal(); mClose(true); const f = r.forms[r.forms.length - 1]; toast(`${f.name} added`); refresh().then(() => jfOpenForm(j.id, f.id)); }
+  catch (x) { toast(x.message, true); }
+};
+A.jfOpen = (d) => jfOpenForm(d.id, d.f);
+// one item, as an input; read-only once the form is finished
+function jfField(f, v, off) {
+  const dis = off ? ' disabled' : ''; const star = f.required ? '<span class="jf-star" title="Required" aria-label="required">*</span>' : '';
+  const name = `jf_${f.id}`; const lab = `<span class="jf-l">${esc(f.label)}${star}</span>`;
+  const seg = (opts) => `<div class="jf-seg" role="radiogroup" aria-label="${esc(f.label)}">${opts.map(([k, l]) => `<label class="jf-${f.type === 'yesno' ? k : 'opt'}"><input type="radio" name="${name}" value="${esc(k)}" ${v === k ? 'checked' : ''}${dis}><span>${esc(l)}</span></label>`).join('')}</div>`;
+  switch (f.type) {
+    case 'heading': return `<h3 class="jf-h">${esc(f.label)}</h3>`;
+    case 'check': return `<label class="jf-item jf-check"><input type="checkbox" name="${name}" ${v === true ? 'checked' : ''}${dis}>${lab}</label>`;
+    case 'yesno': return `<div class="jf-item">${lab}${seg([['pass', 'Pass'], ['fail', 'Fail'], ['na', 'N/A']])}</div>`;
+    case 'choice': return `<div class="jf-item">${lab}${f.options.length <= 4 ? seg(f.options.map((o) => [o, o])) : `<select name="${name}"${dis}><option value="">Choose…</option>${f.options.map((o) => `<option ${v === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`}</div>`;
+    case 'text': return `<label class="jf-item">${lab}<input name="${name}" maxlength="300" value="${esc(v ?? '')}"${dis}></label>`;
+    case 'longtext': return `<label class="jf-item">${lab}<textarea name="${name}" rows="3" maxlength="5000"${dis}>${esc(v ?? '')}</textarea></label>`;
+    case 'number': return `<label class="jf-item">${lab}<input name="${name}" type="number" step="any" inputmode="decimal" value="${esc(v ?? '')}"${dis}></label>`;
+    case 'date': return `<label class="jf-item">${lab}<input name="${name}" type="date" value="${esc(v ?? '')}"${dis}></label>`;
+    case 'photo': return `<div class="jf-item">${lab}<div class="jf-photos">${(v || []).map((p) => `<span class="jf-ph"><a href="${esc(p.url)}" target="_blank" rel="noopener"><img src="${esc(p.url)}" alt="Photo for ${esc(f.label)}"></a>${off ? '' : `<button type="button" data-jf-rm="${f.id}" data-url="${esc(p.url)}" aria-label="Remove photo">×</button>`}</span>`).join('')}
+${off ? (v || []).length ? '' : '<span class="muted">No photos</span>' : `<label class="jf-addph">${svgIcon('<path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/>', 22)}<span>Add photo</span><input type="file" accept="image/*" multiple hidden data-jf-ph="${f.id}"></label>`}</div></div>`;
+    default: return '';
+  }
+}
+// the form: its items, how far along it is, and Finish (or Edit once finished)
+function jfOpenForm(jobId, formId) {
+  const j = byId(D.jobs, jobId); const form = j && (j.forms || []).find((x) => x.id === formId); if (!form) return toast('That checklist isn’t on this job anymore', true);
+  const phone = phoneMq.matches; const off = !!form.completedAt; const edit = canDo('jobs.edit');
+  const body = `<div class="jf-fill${off ? ' jf-done' : ''}" data-sticky>${form.description ? `<p class="muted jf-desc">${esc(form.description)}</p>` : ''}<p class="jf-for muted">Job #${esc(j.number)}${j.title ? ` · ${esc(j.title)}` : ''}</p>
+${off ? `<div class="jf-fin">${svgIcon('<path d="M20 6 9 17l-5-5"/>', 18)}<span>Finished${form.completedBy ? ` by ${esc(form.completedBy)}` : ''} · ${esc(fmtStamp(form.completedAt))}</span></div>` : ''}
+<div class="jf-items">${form.fields.map((f) => jfField(f, form.answers[f.id], off)).join('')}</div>
+${edit ? `<label class="jf-share"><input type="checkbox" data-jf-share ${form.clientVisible ? 'checked' : ''}><span>Show it in the client’s portal once finished</span></label>` : ''}
+<div class="jf-foot"><span class="jf-status muted" aria-live="polite">${off ? '' : `${jfCount(form).done} of ${jfCount(form).total} done`}</span>${edit ? '<button type="button" class="btn alt jf-rmform" data-jf-del>Remove</button>' : ''}${off ? '<button type="button" class="btn alt" data-jf-reopen>Edit</button>' : '<button type="button" class="btn" data-jf-finish>Finish</button>'}<button type="button" class="btn alt" data-act="jfClose">Done</button></div></div>`;
+  const box = phone ? mSheet(form.name, body, { full: true }) : modal(form.name, body, true); if (box.tagName === 'FORM') box.addEventListener('submit', (e) => e.preventDefault()); // Enter in a box doesn't submit the sheet
+  const root = $('.jf-fill', box.closest('#msheet, #overlay')); const shell = root.closest('#msheet, #overlay');
+  const x = $('.ms-x, .mh .x', shell); if (x) x.dataset.act = 'jfClose';
+  let timer = null; let saving = Promise.resolve();
+  const status = (t) => { $('.jf-status', root).textContent = t; };
+  const collect = () => Object.fromEntries(form.fields.filter((f) => !['heading', 'photo'].includes(f.type)).map((f) => {
+    const n = `jf_${f.id}`; const el = $(`[name="${n}"]`, root);
+    if (f.type === 'check') return [f.id, el.checked || null];
+    if (f.type === 'yesno' || (f.type === 'choice' && el && el.type === 'radio')) { const c = $(`[name="${n}"]:checked`, root); return [f.id, c ? c.value : null]; }
+    return [f.id, el.value === '' ? null : el.value];
+  }));
+  const apply = (r) => { const nf = (r.forms || []).find((x) => x.id === form.id); jfSetForms(jobId, r.forms); if (nf) Object.assign(form, nf); };
+  const save = () => { clearTimeout(timer); timer = null; const answers = collect(); status('Saving…');
+    saving = saving.then(() => api('PUT', `/api/jobs/${jobId}/forms/${form.id}`, { answers })).then((r) => { apply(r); const n = jfCount(form); status(`Saved · ${n.done} of ${n.total} done`); }, (e) => { status(''); toast(e.message, true); });
+    return saving; };
+  const later = (ms) => { clearTimeout(timer); timer = setTimeout(save, ms); };
+  root.addEventListener('input', (e) => { if (e.target.name && e.target.name.startsWith('jf_') && !['checkbox', 'radio'].includes(e.target.type)) { e.target.closest('.jf-item').classList.remove('jf-miss'); later(800); } });
+  root.addEventListener('change', async (e) => {
+    const t = e.target;
+    if (t.matches('[data-jf-share]')) { try { apply(await api('PUT', `/api/jobs/${jobId}/forms/${form.id}`, { clientVisible: t.checked })); toast(t.checked ? 'Clients see it in their portal once it’s finished' : 'Hidden from the client’s portal'); } catch (x2) { t.checked = !t.checked; toast(x2.message, true); } return; }
+    if (t.matches('[data-jf-ph]')) {
+      const files = [...t.files]; t.value = ''; if (!files.length) return; await save(); status('Adding photo…');
+      try { let r; for (const f of files) r = await api('POST', `/api/jobs/${jobId}/forms/${form.id}/photo`, { fieldId: t.dataset.jfPh, dataUrl: await resizeImage(f, 1600) }); apply(r); jfOpenForm(jobId, form.id); }
+      catch (x2) { status(''); toast(x2.message, true); }
+      return;
+    }
+    if (t.name && t.name.startsWith('jf_')) { const it = t.closest('.jf-item'); if (it) it.classList.remove('jf-miss'); later(t.type === 'checkbox' || t.type === 'radio' || t.tagName === 'SELECT' ? 150 : 800); }
+  });
+  root.addEventListener('click', async (e) => {
+    const rm = e.target.closest('[data-jf-rm]');
+    if (rm) { const fid = rm.dataset.jfRm; const left = (form.answers[fid] || []).filter((p) => p.url !== rm.dataset.url); await save();
+      try { apply(await api('PUT', `/api/jobs/${jobId}/forms/${form.id}`, { answers: { [fid]: left } })); jfOpenForm(jobId, form.id); } catch (x2) { toast(x2.message, true); } return; }
+    if (e.target.closest('[data-jf-finish]')) {
+      if (timer) save(); await saving;
+      const miss = form.fields.filter((f) => f.required && !jfFilled(f, form.answers[f.id]));
+      if (miss.length) { $$('.jf-miss', root).forEach((el) => el.classList.remove('jf-miss')); miss.forEach((f) => { const el = $(`[name="jf_${f.id}"], [data-jf-ph="${f.id}"]`, root); const it = el && el.closest('.jf-item'); if (it) it.classList.add('jf-miss'); });
+        const first = $('.jf-miss', root); if (first) first.scrollIntoView({ block: 'center', behavior: 'smooth' }); return toast(`Fill in ${miss.length === 1 ? `“${miss[0].label}”` : `the ${miss.length} required items`} first`, true); }
+      try { apply(await api('PUT', `/api/jobs/${jobId}/forms/${form.id}`, { complete: true })); toast(`${form.name} finished`); jfClose(); } catch (x2) { toast(x2.message, true); } return;
+    }
+    if (e.target.closest('[data-jf-reopen]')) { try { apply(await api('PUT', `/api/jobs/${jobId}/forms/${form.id}`, { complete: false })); jfOpenForm(jobId, form.id); } catch (x2) { toast(x2.message, true); } return; }
+    if (e.target.closest('[data-jf-del]')) {
+      if (!confirm(`Remove ${form.name} from this job?${jfCount(form).done ? ' What’s been filled in, photos too, is deleted.' : ''}`)) return;
+      try { jfSetForms(jobId, (await api('DELETE', `/api/jobs/${jobId}/forms/${form.id}`)).forms); toast(`${form.name} removed`); jfClose(); } catch (x2) { toast(x2.message, true); }
+    }
+  });
+  // closing saves what's waiting, then redraws the job page so its card shows the progress
+  jfFlush = async () => { if (timer) save(); await saving; };
+}
+let jfFlush = async () => {};
+async function jfClose() { await jfFlush(); jfFlush = async () => {}; closeModal(); mClose(); refresh(); }
+A.jfClose = () => jfClose();
 const omwBtn = (j, cls = 'btn alt') => (canOnMyWay(j) ? `<button type="button" class="${cls}" data-act="onMyWay" data-id="${j.id}">On My Way</button>` : '');
 // the On the way badge: sent today
 const omwBadge = (j) => (j.onMyWay && j.status === 'scheduled' && ymd(new Date(j.onMyWay.at)) === ymd(new Date()) ? `<span class="vsign" title="${esc(j.onMyWay.name)} sent On my way">➜ On the way · ${esc(fmtTime(new Date(j.onMyWay.at).toTimeString().slice(0, 5)))}</span>` : '');
@@ -2901,7 +3016,7 @@ ${canDo('jobs.prices') ? `<div class="qcard"><div class="qcard-h"><h2>Product / 
 ${j.repeat ? `<dt>Repeats</dt><dd><span>${repeatLine(j)}</span></dd>` : ''}
 <dt>Team</dt><dd>${team.length ? `<span class="vteam">${team.map((t) => `<span>${avatarHtml(t, 24)}${esc(t.name)}</span>`).join('')}</span>` : none('Nobody assigned yet')}</dd>
 <dt>Instructions</dt><dd>${j.description ? `<p class="vtext">${esc(j.description)}</p>` : none('None')}</dd></dl></div>
-${j.signature ? sigCard(j) : ''}${jobBilling(j, jobInvoices(j))}</div>
+${jobFormsCard(j)}${j.signature ? sigCard(j) : ''}${jobBilling(j, jobInvoices(j))}</div>
 <aside class="qside">${textCard('job', j, 'notes', 'Internal Notes', j.internalNotes, 'No internal notes. Clients never see these.')}${noteFilesCard('job', j)}</aside></div></div>`;
 }
 // the Billing card (job form and job page): the job's invoices, and Create invoice
@@ -3216,7 +3331,11 @@ A.jobCard = (d) => { jobView = { ...jobView, status: d.k === 'upcoming' ? 'upcom
 A.jobSort = (d) => { jobView.dir = jobView.sort === d.k ? -jobView.dir : (['client', 'status'].includes(d.k) ? 1 : -1); jobView.sort = d.k; refresh(); };
 A.exportJobs = () => downloadCsv('jobs.csv', [['Job', 'Title', 'Client', 'Company', 'Property', 'Date', 'Start', 'End', 'Team', 'Status', 'Total'],
   ...D.jobs.map((j) => { const c = byId(D.clients, j.clientId) || {}; return [j.number, j.title, c.name || '', c.company || '', j.address || '', j.date, j.startTime, j.endTime, (j.staffIds || []).map((id) => (byId(D.staff, id) || {}).name).filter(Boolean).join('; '), J_STATUS[jobStatus(j)], jobTotal(j) ?? '']; })]);
-A.completeJob = async (d) => { await api('PUT', '/api/jobs/' + d.id, { status: 'completed' }); closeModal(); toast('Job completed. Create an invoice from the job when ready.'); refresh(); };
+A.completeJob = async (d) => {
+  try { await api('PUT', '/api/jobs/' + d.id, { status: 'completed' }); } catch (x) { // e.g. a checklist that has to be finished first: open it
+    toast(x.message, true); const j = byId(D.jobs, d.id); const f = j && (j.forms || []).find((y) => y.requiredToComplete && !y.completedAt); if (f) { closeModal(); jfOpenForm(j.id, f.id); } return;
+  }
+  closeModal(); toast('Job completed. Create an invoice from the job when ready.'); refresh(); };
 // On my way: pick about how long until you arrive; the server texts the client (if they agreed to texts) or emails them
 A.onMyWay = (d) => {
   $$('details.menu[open]').forEach((x) => { x.open = false; });

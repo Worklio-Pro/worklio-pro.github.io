@@ -1759,7 +1759,7 @@ ${p.client.smsConsent ? `<p class="cp-sub" style="margin:4px 0 12px">You get tex
     estimates: () => (quotes.length ? head('Estimates') + `<div class="cp-list">${quotes.map((q) => row(`${esc(q.title || 'Estimate')} <span class="cp-num">#${esc(q.number)}</span>`, [`Sent ${fmtDate((q.sentAt || q.createdAt).slice(0, 10))}`, `Total ${money(q.total)}`, q.depositFee > 0 ? (q.depositPaidAt ? `Deposit paid ${money(q.depositPaidAmount ?? q.depositFee)}` : `Deposit ${money(q.depositFee)}`) : ''], `${cpBadge(q.status)}<a class="cp-btn ${q.status === 'sent' ? 'primary' : ''}" href="${esc(q.link)}">${q.status === 'sent' ? 'Review' : 'View'}</a>`)).join('')}</div>`
       : cpEmpty('estimates', 'No estimates yet', 'When we send you an estimate, you can review and approve it here.')),
     appointments: () => (p.jobs.length ? head('Appointments') + (upcoming.length ? `<h3 class="cp-sec">Upcoming</h3><div class="cp-list">${upcoming.map((j) => row(esc(j.title), [`${fmtDate(j.date)} · ${fmtTime(j.startTime)} – ${fmtTime(j.endTime)}`, esc(j.address)], cpBadge('scheduled'))).join('')}</div>` : '')
-      + (past.length ? `<h3 class="cp-sec">Past</h3><div class="cp-list">${past.map((j) => row(esc(j.title), [fmtDate(j.date), esc(j.address)], `${cpBadge(j.status)}${rvBtn(j.id)}`)).join('')}</div>` : '')
+      + (past.length ? `<h3 class="cp-sec">Past</h3><div class="cp-list">${past.map((j) => row(esc(j.title), [fmtDate(j.date), esc(j.address)], `${cpBadge(j.status)}${(j.forms || []).map((f) => `<button type="button" class="cp-btn" data-cp-form="${esc(j.id)}:${esc(f.id)}">${esc(f.name)}</button>`).join('')}${rvBtn(j.id)}`)).join('')}</div>` : '')
       : cpEmpty('appointments', 'No appointments', 'Your scheduled visits will show up here.')),
     invoices: () => (invoices.length ? head('Invoices') + (openInv.length ? `<div class="cp-due"><span>Balance due</span><strong>${money(openInv.reduce((s, i) => s + (i.balanceDue ?? i.total), 0))}</strong></div>` : '')
       + `<div class="cp-list">${[...openInv, ...invoices.filter((i) => i.displayStatus === 'paid')].map((i) => row(`${esc(i.subject || 'Invoice')} <span class="cp-num">#${esc(i.number)}</span>`, [i.displayStatus === 'paid' ? `Paid ${fmtDate((i.paidAt || i.issueDate).slice(0, 10))}` : `Due ${fmtDate(i.dueDate)}`, i.displayStatus === 'paid' ? money(i.total) : `${money(i.balanceDue ?? i.total)}${i.depositApplied > 0 ? ` after ${money(i.depositApplied)} deposit` : ''}`], `${cpBadge(i.displayStatus)}${i.displayStatus !== 'paid' && p.reviewsViewOnly ? '<button type="button" class="cp-btn primary" disabled title="Only your client can pay. You’re previewing as the business.">Pay now</button>' : `<a class="cp-btn ${i.displayStatus === 'paid' ? '' : 'primary'}" href="${esc(i.link)}">${i.displayStatus === 'paid' ? 'Receipt' : 'Pay now'}</a>`}${i.displayStatus === 'paid' ? rvBtn(i.id) : ''}`)).join('')}</div>`
@@ -1807,6 +1807,7 @@ ${co.hours ? `<h3 class="cp-sec">Business hours</h3><table class="cp-hours">${WE
   main.onclick = async (e) => {
     if (e.target.closest('.cp-burger')) return setMenu(!$('.cp-side.open', main));
     if ($('.cp-side.open', main) && !e.target.closest('.cp-navs')) setMenu(false);
+    const fb = e.target.closest('[data-cp-form]'); if (fb) { const [jid, fid] = fb.dataset.cpForm.split(':'); const j = p.jobs.find((x) => x.id === jid); const f = j && j.forms.find((x) => x.id === fid); if (f) modal(f.name, `<div class="jf-fill jf-done">${f.description ? `<p class="muted jf-desc">${esc(f.description)}</p>` : ''}<div class="jf-fin">Finished ${esc(fmtDate(f.completedAt.slice(0, 10)))} · ${esc(j.title)}</div><div class="jf-items">${f.fields.map((x) => jfField(x, f.answers[x.id], true)).join('')}</div></div>`, true); return; } // a finished checklist the business shares
     const b = e.target.closest('[data-cp]'); if (b) { e.preventDefault(); if (b.dataset.rv) return openReview(p.reviewable[Number(b.dataset.rv)]); if (b.dataset.rve) { const r = p.reviews[Number(b.dataset.rve)]; return openReview({ kind: r.kind, title: r.title, number: r.refNumber, edit: r }); } show(b.dataset.cp); return; }
     const cp = e.target.closest('[data-cp-copy]');
     if (cp) {
@@ -3491,3 +3492,82 @@ A.spCancel = async (d) => {
   if (!confirm(`Cancel ${m.client || 'this client'}’s ${m.name || ''} plan? No more invoices are made, and upcoming plan visits nobody has worked on are removed. Invoices already made stay.`)) return;
   try { const r = await api('POST', `/api/memberships/${d.id}/cancel`); toast(`Membership canceled${r.removed ? ` · ${r.removed} upcoming visit${r.removed === 1 ? '' : 's'} removed` : ''}`); refresh(); } catch (x) { toast(x.message, true); }
 };
+
+
+/* ===== Settings → Checklists & Forms (a plan feature): the business's checklist templates. Filling them in on a job is in app.js (jfOpenForm) ===== */
+let JF = { templates: [], types: {} };
+const JF_STARTERS = [
+  { name: 'Job completion checklist', description: 'Before leaving the site', requiredToComplete: true, fields: [
+    { type: 'check', label: 'Work matches what was quoted', required: true }, { type: 'check', label: 'Work area cleaned up and debris removed', required: true },
+    { type: 'check', label: 'Walked the client through the finished work' }, { type: 'photo', label: 'After photos', required: true }, { type: 'longtext', label: 'Notes for the office' }] },
+  { name: 'Site safety check', description: 'Before starting work', fields: [
+    { type: 'yesno', label: 'Work area is clear of hazards', required: true }, { type: 'yesno', label: 'PPE worn by everyone on site', required: true },
+    { type: 'yesno', label: 'Power / water shut off where needed' }, { type: 'text', label: 'Hazards noted' }] },
+  { name: 'Equipment inspection', description: 'Record the equipment and its condition', fields: [
+    { type: 'heading', label: 'Equipment' }, { type: 'text', label: 'Make and model', required: true }, { type: 'text', label: 'Serial number' }, { type: 'number', label: 'Age (years)' },
+    { type: 'heading', label: 'Condition' }, { type: 'choice', label: 'Overall condition', options: ['Good', 'Fair', 'Poor'], required: true }, { type: 'yesno', label: 'Operating safely', required: true },
+    { type: 'photo', label: 'Photos of the equipment' }, { type: 'longtext', label: 'Recommended repairs' }] },
+];
+const jfTypeIco = { heading: 'H', check: '☑', yesno: '✓✗', text: 'Aa', longtext: '¶', number: '#', choice: '◉', date: '📅', photo: '📷' };
+PAGES['/settings/job-forms'] = {
+  title: 'Checklists & Forms',
+  async render(main) {
+    JF = await api('GET', '/api/form-templates');
+    const live = JF.templates.filter((t) => !t.archived); const arch = JF.templates.filter((t) => t.archived);
+    const card = (t) => { const n = t.fields.filter((f) => f.type !== 'heading').length; const tags = [t.autoAdd && 'On every new job', t.requiredToComplete && 'Required before completing', t.clientVisible && 'Shared with the client'].filter(Boolean);
+      return `<div class="card jf-tpl${t.archived ? ' sp-arch' : ''}"><div class="sp-ph"><h3>${esc(t.name)}</h3>${JF.manage ? `<button type="button" class="btn alt sm" data-act="jfTpl" data-id="${t.id}">Edit</button>` : ''}</div>
+${t.description ? `<p class="muted sp-desc">${esc(t.description)}</p>` : ''}<p class="jf-tn">${n} item${n === 1 ? '' : 's'}${t.fields.some((f) => f.type === 'photo') ? ' · photos' : ''}</p>
+${tags.length ? `<div class="jf-tags">${tags.map((x) => `<span>${x}</span>`).join('')}</div>` : ''}</div>`; };
+    main.innerHTML = `<div class="head"><div><h1>Checklists &amp; Forms</h1><p class="sub">Checklists your team fills in on a job: inspections, safety checks, required photos. Add one to a job from its page, or have it added to every new job.</p></div>
+${JF.manage ? '<div class="ts-acts"><button type="button" class="btn" data-act="jfTpl">New checklist</button></div>' : ''}</div>
+${live.length ? `<div class="sp-plans">${live.map(card).join('')}</div>` : `<div class="card"><p style="margin:0 0 12px"><strong>No checklists yet.</strong> Start from one of these and change it to suit you, or make your own.</p>
+<div class="jf-starters">${JF_STARTERS.map((s, i) => `<button type="button" class="jf-row" data-act="jfTpl" data-starter="${i}"><span class="jf-ic">${svgIcon(JF_ICO, 22)}</span><span class="jf-main"><strong>${esc(s.name)}</strong><small>${esc(s.description)} · ${s.fields.filter((f) => f.type !== 'heading').length} items</small></span></button>`).join('')}</div></div>`}
+${arch.length ? `<details class="sp-archd"><summary class="muted">Archived (${arch.length})</summary><div class="sp-plans">${arch.map(card).join('')}</div></details>` : ''}`;
+  },
+};
+// the editor: name, settings and the items (type, wording, required, choices), each movable
+A.jfTpl = (d) => {
+  const src = d.id ? JF.templates.find((x) => x.id === d.id) : d.starter !== undefined ? JF_STARTERS[Number(d.starter)] : null;
+  const t = structuredClone(src || { name: '', description: '', fields: [{ type: 'check', label: '', required: false }] }); t.fields = t.fields.map((f) => ({ options: [], ...f, _k: Math.random().toString(36).slice(2) }));
+  const types = Object.entries(JF.types);
+  const row = (f, i) => `<div class="jf-erow" data-k="${f._k}"><div class="jf-etop"><select data-e="type" aria-label="Item type">${types.map(([k, l]) => `<option value="${k}" ${f.type === k ? 'selected' : ''}>${jfTypeIco[k] || ''}  ${l}</option>`).join('')}</select>
+<span class="jf-emove"><button type="button" class="btn alt sm" data-e="up" ${i ? '' : 'disabled'} aria-label="Move up">↑</button><button type="button" class="btn alt sm" data-e="down" ${i < t.fields.length - 1 ? '' : 'disabled'} aria-label="Move down">↓</button><button type="button" class="btn alt sm" data-e="del" aria-label="Remove item">✕</button></span></div>
+<input data-e="label" maxlength="200" value="${esc(f.label)}" placeholder="${f.type === 'heading' ? 'Section name, e.g. Outdoor unit' : 'What to check or fill in, e.g. Filter replaced'}" aria-label="Item wording">
+${f.type === 'choice' ? `<textarea data-e="options" rows="2" placeholder="One choice per line, e.g.&#10;Good&#10;Fair&#10;Poor" aria-label="Choices">${esc((f.options || []).join('\n'))}</textarea>` : ''}
+${f.type === 'heading' ? '' : `<label class="jf-ereq"><input type="checkbox" data-e="required" ${f.required ? 'checked' : ''}> Required</label>`}</div>`;
+  const html = `<div class="jf-ed"><label>Name<input name="name" maxlength="80" required value="${esc(t.name)}" placeholder="e.g. AC tune-up checklist"></label>
+<label>Description<input name="description" maxlength="500" value="${esc(t.description || '')}" placeholder="Optional, e.g. Before leaving the site"></label>
+<div class="jf-opts"><label class="jf-share"><input type="checkbox" name="autoAdd" ${t.autoAdd ? 'checked' : ''}><span>Add it to every new job automatically</span></label>
+<label class="jf-share"><input type="checkbox" name="requiredToComplete" ${t.requiredToComplete ? 'checked' : ''}><span>It has to be finished before the job can be marked complete</span></label>
+<label class="jf-share"><input type="checkbox" name="clientVisible" ${t.clientVisible ? 'checked' : ''}><span>Show it in the client’s portal once finished</span></label></div>
+<h3 class="jf-eh">Items</h3><div class="jf-erows"></div><button type="button" class="btn alt" data-e="add">+ Add item</button>
+${t.id ? '<p class="muted sm" style="margin:0">Changes apply to checklists added from now on. Ones already on jobs keep what they had.</p>' : ''}</div>`;
+  const foot = `${t.id ? `<button type="button" class="btn alt" data-act="jfTplArchive" data-id="${t.id}">${t.archived ? 'Unarchive' : 'Archive'}</button><button type="button" class="btn danger" data-act="jfTplDel" data-id="${t.id}">Delete</button>` : ''}<button type="button" class="btn" data-e="save">Save checklist</button>`;
+  const phone = phoneMq.matches; const title = t.id ? 'Edit checklist' : 'New checklist';
+  const box = phone ? mSheet(title, html, { full: true, foot }) : modal(title, `${html}<div class="foot">${foot.replace('<button type="button" class="btn" data-e="save">', '<button type="button" class="btn alt" data-act="closeModal">Cancel</button><button type="button" class="btn" data-e="save">')}</div>`, true);
+  const root = box.closest('#msheet, #overlay'); const rows = $('.jf-erows', root); if (box.tagName === 'FORM') box.addEventListener('submit', (e) => e.preventDefault());
+  $('.modal', root)?.setAttribute('data-sticky', ''); // a stray click outside doesn't lose the edits
+  const draw = () => { rows.innerHTML = t.fields.map(row).join(''); };
+  const at = (el) => { const r = el.closest('.jf-erow'); return r ? t.fields.findIndex((f) => f._k === r.dataset.k) : -1; };
+  draw();
+  root.addEventListener('input', (e) => { const i = at(e.target); if (i < 0) return; const k = e.target.dataset.e;
+    if (k === 'label') t.fields[i].label = e.target.value; if (k === 'options') t.fields[i].options = e.target.value.split('\n').map((s) => s.trim()).filter(Boolean); });
+  root.addEventListener('change', (e) => { const i = at(e.target); if (i < 0) return; const k = e.target.dataset.e;
+    if (k === 'required') t.fields[i].required = e.target.checked;
+    if (k === 'type') { t.fields[i].type = e.target.value; if (e.target.value === 'heading') t.fields[i].required = false; draw(); $(`[data-k="${t.fields[i]._k}"] [data-e=label]`, rows).focus(); } });
+  root.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-e]'); if (!b || b.tagName === 'SELECT' || b.tagName === 'INPUT' || b.tagName === 'TEXTAREA') return; const k = b.dataset.e; const i = at(b);
+    if (k === 'add') { const last = t.fields[t.fields.length - 1]; t.fields.push({ type: last && last.type !== 'heading' ? last.type : 'check', label: '', required: false, options: [], _k: Math.random().toString(36).slice(2) }); draw(); $$('[data-e=label]', rows).pop().focus(); return; }
+    if (k === 'up' && i > 0) { [t.fields[i - 1], t.fields[i]] = [t.fields[i], t.fields[i - 1]]; draw(); return; }
+    if (k === 'down' && i < t.fields.length - 1) { [t.fields[i + 1], t.fields[i]] = [t.fields[i], t.fields[i + 1]]; draw(); return; }
+    if (k === 'del') { t.fields.splice(i, 1); draw(); return; }
+    if (k === 'save') {
+      const v = (n) => $(`[name=${n}]`, root); const body = { name: v('name').value, description: v('description').value, autoAdd: v('autoAdd').checked, requiredToComplete: v('requiredToComplete').checked, clientVisible: v('clientVisible').checked, archived: !!t.archived,
+        fields: t.fields.map(({ _k, ...f }) => f).filter((f) => f.label.trim()) };
+      b.disabled = true;
+      try { t.id ? await api('PUT', '/api/form-templates/' + t.id, body) : await api('POST', '/api/form-templates', body); closeModal(); mClose(); toast('Checklist saved'); refresh(); } catch (x) { toast(x.message, true); b.disabled = false; }
+    }
+  });
+};
+A.jfTplArchive = async (d) => { const t = JF.templates.find((x) => x.id === d.id); try { await api('PUT', '/api/form-templates/' + t.id, { archived: !t.archived }); closeModal(); mClose(); toast(t.archived ? 'Checklist unarchived' : 'Checklist archived: it can’t be added to jobs'); refresh(); } catch (x) { toast(x.message, true); } };
+A.jfTplDel = async (d) => { if (!confirm('Delete this checklist? Ones already on jobs stay as they are.')) return; try { await api('DELETE', '/api/form-templates/' + d.id); closeModal(); mClose(); toast('Checklist deleted'); refresh(); } catch (x) { toast(x.message, true); } };

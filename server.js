@@ -689,7 +689,7 @@ function fillSeries(s) {
     if ((s.rule.end === 'until' && d > s.rule.until) || (s.rule.end === 'count' && s.made >= s.rule.count)) { s.ended = true; break; }
     if (d > horizon || n >= 200) break;
     if (db.jobs.some((x) => x.seriesId === s.id && x.date === d)) { s.made++; s.through = d; continue; } // a visit kept from before a change of rule is already on that day
-    const job = { ...structuredClone(s.template), id: uid(), number: nextNumber('jobs'), date: d, status: 'scheduled', seriesId: s.id, createdAt: iso(new Date()) };
+    const job = autoForms({ ...structuredClone(s.template), id: uid(), number: nextNumber('jobs'), date: d, status: 'scheduled', seriesId: s.id, createdAt: iso(new Date()) });
     if (Array.isArray(job.items) && job.items.length) computeTotals(job);
     db.jobs.push(job); s.made++; s.through = d; n++;
   }
@@ -824,7 +824,7 @@ app.post('/api/memberships', planRoute((req, res, b) => {
     const prop = (c.properties || []).find((x) => x.id === b.propertyId);
     const j = { id: uid(), number: nextNumber('jobs'), clientId: c.id, title: p.visitTitle || `${p.name} visit`, description: `Included in the ${p.name} service plan`, date, startTime: st, endTime: et,
       staffIds: (Array.isArray(b.staffIds) ? b.staffIds : []).filter((s) => db.staff.some((x) => x.id === s)), status: 'scheduled', address: String(b.address || c.address || ''), propertyId: prop ? prop.id : '', membershipId: m.id, createdAt: iso(new Date()) };
-    db.jobs.push(j);
+    autoForms(j); db.jobs.push(j);
     const rule = cleanRepeatRule({ freq: 'month', every: 12 / p.visitsPerYear, monthBy: 'date', end: 'never' }, date);
     const s = { id: uid(), rule, start: date, through: date, made: 1, template: pickSeries(j), ended: false, createdAt: new Date().toISOString(), createdBy: m.createdBy };
     seriesList().push(s); j.seriesId = s.id; m.seriesId = s.id; visits = 1 + fillSeries(s);
@@ -938,6 +938,124 @@ app.post('/api/dispatch/optimize', async (req, res) => {
   }
   res.json(result);
 });
+
+// ---------- Job checklists & forms (a plan feature) ----------
+// Templates are made on Settings → Checklists & Forms by anyone who can edit jobs. A template can be added to every new job on its own, has to be
+// finished before its job can be marked complete, and/or shows in the client's portal once finished. On a job, the template's fields are copied
+// into the form, so changing a template later never changes forms already on jobs. Anyone who can open a job fills in its forms (photos too).
+// db.formTemplates: { id, name, description, fields: [{ id, type, label, required, options }], autoAdd, requiredToComplete, clientVisible, archived, createdAt, updatedAt }
+// job.forms: [{ id, templateId, name, description, fields, answers: { fieldId: value }, requiredToComplete, clientVisible, addedAt, addedBy, updatedAt, updatedBy, completedAt, completedBy }]
+const FORM_TYPES = { heading: 'Section heading', check: 'Checkbox', yesno: 'Pass / Fail / N/A', text: 'Short answer', longtext: 'Long answer', number: 'Number', choice: 'Choose one', date: 'Date', photo: 'Photos' };
+const FORM_PHOTO_RE = /^\/uploads\/(form-[a-f0-9]+\.(?:png|jpg|webp))$/;
+const formTemplates = () => (db.formTemplates = db.formTemplates || []);
+const canManageForms = (u) => isAdmin(u) || can(u, 'jobs.edit');
+const formFail = (msg, status = 400) => Object.assign(new Error(msg), { status });
+function cleanTemplate(b) {
+  const name = String(b.name || '').trim().slice(0, 80); if (!name) throw formFail('Give the checklist a name');
+  const ids = new Set();
+  const fields = (Array.isArray(b.fields) ? b.fields : []).slice(0, 100).map((f) => {
+    const type = FORM_TYPES[f && f.type] ? f.type : 'check'; const label = String(f.label || '').trim().slice(0, 200);
+    let id = /^[a-z0-9]{4,16}$/.test(f.id || '') && !ids.has(f.id) ? f.id : uid(); ids.add(id);
+    const options = type === 'choice' ? [...new Set((Array.isArray(f.options) ? f.options : String(f.options || '').split(/\n|,/)).map((o) => String(o).trim().slice(0, 80)).filter(Boolean))].slice(0, 30) : [];
+    return { id, type, label, required: type !== 'heading' && !!f.required, options };
+  }).filter((f) => f.label);
+  if (!fields.some((f) => f.type !== 'heading')) throw formFail('Add at least one item to fill in');
+  const bad = fields.find((f) => f.type === 'choice' && f.options.length < 2); if (bad) throw formFail(`Give “${bad.label}” at least two choices`);
+  return { name, description: String(b.description || '').trim().slice(0, 500), fields, autoAdd: !!b.autoAdd, requiredToComplete: !!b.requiredToComplete, clientVisible: !!b.clientVisible, archived: !!b.archived };
+}
+const formFromTemplate = (t, by) => { const now = new Date().toISOString();
+  return { id: uid(), templateId: t.id, name: t.name, description: t.description, fields: structuredClone(t.fields), answers: {}, requiredToComplete: t.requiredToComplete, clientVisible: t.clientVisible, addedAt: now, addedBy: by || '', updatedAt: now, updatedBy: '', completedAt: null, completedBy: '' }; };
+// a new job (made on the job page, from a quote, by a repeat or a service plan) gets the templates set to go on every new job
+function autoForms(job, by) {
+  if (!tenancy.has('jobForms')) return job;
+  job.forms = formTemplates().filter((t) => t.autoAdd && !t.archived).map((t) => formFromTemplate(t, by || 'Added automatically'));
+  if (!job.forms.length) delete job.forms; return job;
+}
+const answered = (f, v) => (f.type === 'check' ? v === true : f.type === 'photo' ? Array.isArray(v) && v.length > 0 : v !== undefined && v !== null && String(v).trim() !== '');
+const formMissing = (form) => form.fields.filter((f) => f.required && !answered(f, form.answers[f.id]));
+// one answer, checked against its field; photos change only through their own route (removing one is allowed here)
+function cleanAnswer(f, v, was) {
+  if (v === null || v === undefined || v === '') return undefined;
+  switch (f.type) {
+    case 'check': return v === true || v === 'true' ? true : undefined;
+    case 'yesno': return ['pass', 'fail', 'na'].includes(v) ? v : undefined;
+    case 'text': return String(v).slice(0, 300);
+    case 'longtext': return String(v).slice(0, 5000);
+    case 'number': { const n = Number(v); if (!isFinite(n)) throw formFail(`Enter a number for “${f.label}”`); return n; }
+    case 'choice': if (!f.options.includes(String(v))) throw formFail(`Choose one of the options for “${f.label}”`); return String(v);
+    case 'date': if (!/^\d{4}-\d{2}-\d{2}$/.test(String(v))) throw formFail(`Enter a date for “${f.label}”`); return String(v);
+    case 'photo': { const keep = new Set((Array.isArray(v) ? v : []).map((p) => p && p.url)); const list = (Array.isArray(was) ? was : []).filter((p) => keep.has(p.url)); return list.length ? list : undefined; }
+    default: return undefined;
+  }
+}
+const rmFormPhoto = (p) => { const m = FORM_PHOTO_RE.exec((p && p.url) || ''); if (m) fs.rm(path.join(uploadDir(), m[1]), { force: true }, () => {}); };
+const formPhotos = (form) => form.fields.filter((f) => f.type === 'photo').flatMap((f) => form.answers[f.id] || []);
+const jobFormReply = (req, j) => (isMemberReq(req) ? jobForMember(j) : j);
+const formRoute = (fn) => (req, res) => { try { fn(req, res, currentUser(req), req.body || {}); } catch (e) { res.status(e.status || 500).json({ error: e.message }); } };
+const findJobForm = (req) => { const j = db.jobs.find((x) => x.id === req.params.id); if (!j) throw formFail('Job not found', 404); const form = req.params.fid && (j.forms || []).find((x) => x.id === req.params.fid); if (req.params.fid && !form) throw formFail('Form not found', 404); return { j, form }; };
+
+app.get('/api/form-templates', (req, res) => res.json({ templates: formTemplates(), types: FORM_TYPES, manage: canManageForms(currentUser(req)) }));
+app.post('/api/form-templates', formRoute((req, res, u, b) => {
+  if (!canManageForms(u)) throw formFail('Only people who can edit jobs can change checklists', 403);
+  const now = new Date().toISOString(); const t = { id: uid(), ...cleanTemplate(b), createdAt: now, updatedAt: now }; formTemplates().push(t); save(); res.status(201).json(t);
+}));
+app.put('/api/form-templates/:tid', formRoute((req, res, u, b) => {
+  if (!canManageForms(u)) throw formFail('Only people who can edit jobs can change checklists', 403);
+  const t = formTemplates().find((x) => x.id === req.params.tid); if (!t) throw formFail('Checklist not found', 404);
+  Object.assign(t, cleanTemplate({ ...t, ...b }), { updatedAt: new Date().toISOString() }); save(); res.json(t);
+}));
+// deleting a template leaves the forms already on jobs as they are
+app.delete('/api/form-templates/:tid', formRoute((req, res, u) => {
+  if (!canManageForms(u)) throw formFail('Only people who can edit jobs can change checklists', 403);
+  const i = formTemplates().findIndex((x) => x.id === req.params.tid); if (i < 0) throw formFail('Checklist not found', 404);
+  formTemplates().splice(i, 1); save(); res.json({ ok: true });
+}));
+// add a checklist to a job (anyone who can edit jobs)
+app.post('/api/jobs/:id/forms', formRoute((req, res, u, b) => {
+  const { j } = findJobForm(req); const t = formTemplates().find((x) => x.id === b.templateId && !x.archived); if (!t) throw formFail('Choose a checklist');
+  if ((j.forms || []).length >= 20) throw formFail('A job can have up to 20 checklists and forms');
+  j.forms = [...(j.forms || []), formFromTemplate(t, u.name)]; save(); res.status(201).json(jobFormReply(req, j));
+}));
+app.delete('/api/jobs/:id/forms/:fid', formRoute((req, res) => {
+  const { j, form } = findJobForm(req); formPhotos(form).forEach(rmFormPhoto);
+  j.forms = j.forms.filter((x) => x !== form); if (!j.forms.length) delete j.forms; save(); res.json(jobFormReply(req, j));
+}));
+// fill in (anyone who can open the job): the answers sent replace those fields' answers; complete: true finishes it (every required item
+// answered), complete: false opens it again; clientVisible (people who edit jobs) shows or hides it in the client's portal once finished
+app.put('/api/jobs/:id/forms/:fid', formRoute((req, res, u, b) => {
+  const { j, form } = findJobForm(req); const now = new Date().toISOString();
+  if (b.answers && typeof b.answers === 'object') {
+    if (form.completedAt && b.complete !== false) throw formFail('This form is finished. Tap Edit to change it.', 409);
+    for (const f of form.fields) {
+      if (f.type === 'heading' || !(f.id in b.answers)) continue;
+      const v = cleanAnswer(f, b.answers[f.id], form.answers[f.id]);
+      if (f.type === 'photo') (form.answers[f.id] || []).filter((p) => !(v || []).includes(p)).forEach(rmFormPhoto);
+      if (v === undefined) delete form.answers[f.id]; else form.answers[f.id] = v;
+    }
+    form.updatedAt = now; form.updatedBy = u.name;
+  }
+  if (b.clientVisible !== undefined) { if (!canManageForms(u)) throw formFail('Only people who can edit jobs can share forms with the client', 403); form.clientVisible = !!b.clientVisible; }
+  if (b.complete === true && !form.completedAt) {
+    const miss = formMissing(form); if (miss.length) throw formFail(`Fill in ${miss.length === 1 ? `“${miss[0].label}”` : `the ${miss.length} required items (${miss.slice(0, 3).map((f) => `“${f.label}”`).join(', ')}${miss.length > 3 ? '…' : ''})`} first`);
+    form.completedAt = now; form.completedBy = u.name;
+  }
+  if (b.complete === false) { form.completedAt = null; form.completedBy = ''; }
+  save(); res.json(jobFormReply(req, j));
+}));
+// a photo for a photo item, added to it right away (up to 10 on an item)
+app.post('/api/jobs/:id/forms/:fid/photo', formRoute((req, res, u, b) => {
+  const { j, form } = findJobForm(req); const f = form.fields.find((x) => x.id === b.fieldId && x.type === 'photo'); if (!f) throw formFail('Photo item not found', 404);
+  if (form.completedAt) throw formFail('This form is finished. Tap Edit to change it.', 409);
+  const list = form.answers[f.id] || []; if (list.length >= 10) throw formFail('Up to 10 photos on an item');
+  const m = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/.exec(b.dataUrl || ''); if (!m) throw formFail('Add a photo (PNG, JPG or WebP)');
+  if (m[2].length > 12e6) throw formFail('That photo is too large');
+  const file = `form-${token()}.${m[1] === 'jpeg' ? 'jpg' : m[1]}`; fs.writeFileSync(path.join(uploadDir(), file), Buffer.from(m[2], 'base64')); // unguessable: uploads are served without login
+  form.answers[f.id] = [...list, { url: `/uploads/${file}`, at: new Date().toISOString(), by: u.name }]; form.updatedAt = new Date().toISOString(); form.updatedBy = u.name;
+  save(); res.status(201).json(jobFormReply(req, j));
+}));
+// the client portal: finished forms the business shares, with their answers (no names of who filled them in)
+const formForClient = (f) => ({ id: f.id, name: f.name, description: f.description, completedAt: f.completedAt, fields: f.fields.map(({ id, type, label, options }) => ({ id, type, label, options })), answers: f.answers });
+const sharedForms = (j) => (tenancy.has('jobForms') ? (j.forms || []).filter((f) => f.completedAt && f.clientVisible).map(formForClient) : []);
 
 // Roles & Permissions (owner/admin): the catalog, the roles, and how many logins have each; saving replaces the whole list
 const rolesView = () => ({ custom: customRolesOn(), catalog: rolesLib.catalog(), roles: teamRoles().map((r) => ({ ...r, users: db.users.filter((u) => u.role !== 'owner' && u.role !== 'admin' && roleKey(u) === r.id).length })), admins: db.users.filter((u) => u.role === 'admin').length });
@@ -1601,7 +1719,7 @@ function customNumber(col, raw, id) {
 app.post('/api/:col', (req, res, next) => {
   const col = req.params.col;
   if (!COLLECTIONS.includes(col) || col === 'photos') return next();
-  let b = req.body || {}; delete b.noteEntries; delete b.seriesId; delete b.repeat; delete b.membershipId; delete b.memberDiscount; // notes only through /notes; repeats only through /repeat; service plans make their own
+  let b = req.body || {}; delete b.noteEntries; delete b.seriesId; delete b.repeat; delete b.membershipId; delete b.memberDiscount; delete b.forms; // checklists only through /forms; notes only through /notes; repeats only through /repeat; service plans make their own
   if (col === 'jobs' && isMemberReq(req)) b = Object.fromEntries(Object.entries(b).filter(([k]) => MEMBER_JOB_FIELDS.includes(k)));
   if (col === 'staff') { // a new team member needs a name, an email and a mobile number
     const name = String(b.name || '').trim(); const email = String(b.email || '').trim(); const phone = String(b.phone || '').replace(/\D/g, '');
@@ -1629,6 +1747,7 @@ app.post('/api/:col', (req, res, next) => {
     doc.number = nextNumber('jobs'); doc.status = b.status || 'scheduled'; doc.staffIds = b.staffIds || [];
     if (!doc.address && b.clientId) { const c = findClient(b.clientId); if (c) doc.address = c.address; }
     if (Array.isArray(b.items)) { if (b.taxRate === undefined) doc.taxRate = db.company.taxRate; computeTotals(doc); }
+    autoForms(doc, (currentUser(req) || {}).name);
   }
   if (col === 'expenses') doc.amount = Number(b.amount) || 0;
   if (col === 'services') { doc.price = Number(b.price) || 0; homeDepot.clean(doc); }
@@ -1642,7 +1761,7 @@ app.put('/api/:col/:id', (req, res, next) => {
   if (!COLLECTIONS.includes(col)) return next();
   const i = db[col].findIndex((x) => x.id === req.params.id);
   if (i < 0) return res.status(404).json({ error: 'Not found' });
-  const protectedKeys = ['id', 'number', 'token', 'portalToken', 'createdAt', 'seriesId', 'repeat', 'membershipId'];
+  const protectedKeys = ['id', 'number', 'token', 'portalToken', 'createdAt', 'seriesId', 'repeat', 'membershipId', 'forms']; // checklists change only through /forms
   let upd = { ...req.body }; protectedKeys.forEach((k) => delete upd[k]); delete upd.noteEntries; // notes change only through /notes
   if (col === 'invoices') { delete upd.signedAt; delete upd.signedName; delete upd.signature; } // signatures only through /signature
   (PAYMENT_FIELDS[col] || []).forEach((k) => delete upd[k]);
@@ -1677,6 +1796,9 @@ app.put('/api/:col/:id', (req, res, next) => {
   if (col === 'expenses') doc.amount = Number(doc.amount) || 0;
   if (col === 'services') { doc.price = Number(doc.price) || 0; homeDepot.clean(doc); }
   if (col === 'quotes' && was.signature && !doc.signature) removeSignatureFile(was);
+  if (col === 'jobs' && doc.status === 'completed' && was.status !== 'completed' && tenancy.has('jobForms')) { // a checklist that has to be finished first
+    const open = (doc.forms || []).filter((f) => f.requiredToComplete && !f.completedAt); if (open.length) return res.status(400).json({ error: `Finish ${open.length === 1 ? `the “${open[0].name}” checklist` : `the ${open.length} required checklists`} before marking this job complete`, formId: open[0].id });
+  }
   if (col === 'jobs' && doc.status === 'completed' && was.status !== 'completed') doc.completedAt = iso(new Date()); // the "job completed" automations count from this
   const following = col === 'jobs' && req.query.following && doc.seriesId && tenancy.has('recurringJobs') ? applyToFollowing(doc, upd, req.query.following) : 0; // Save → "This and following visits"
   db[col][i] = doc; save(); if (col === 'clients' && doc.smsConsent && !was.smsConsent) optInText(doc).catch(() => {}); if (col === 'jobs') { pushScheduleChange(was, doc, currentUser(req)); if (doc.status === 'completed' && was.status !== 'completed') askForReview('job', doc); }
@@ -1692,6 +1814,7 @@ app.delete('/api/:col/:id', (req, res, next) => {
   const [removed] = db[col].splice(i, 1); if (col === 'jobs') { pushScheduleChange(removed, null, currentUser(req)); forgetEmptySeries(removed.seriesId); } // deleting a repeating job's visit skips it; with none left, the repeat ends
   if (col === 'staff') db.users.filter((u) => u.staffId === removed.id && u.role !== 'owner').forEach(removeUser);
   if (col === 'staff') (db.timeOff || []).filter((r) => r.staffId === removed.id && (r.status === 'pending' || (r.status === 'approved' && r.to >= iso(new Date())))).forEach((r) => { r.status = 'canceled'; r.canceledBy = 'Removed from the team'; }); // nothing left waiting for someone who's gone
+  if (col === 'jobs') (removed.forms || []).forEach((f) => formPhotos(f).forEach(rmFormPhoto));
   if (col === 'photos' && removed.file) fs.rmSync(path.join(uploadDir(), path.basename(removed.file)), { force: true });
   save(); res.json({ ok: true });
 });
@@ -1965,7 +2088,7 @@ app.post('/api/quotes/:id/convert-to-job', (req, res) => {
   if (!q) return res.status(404).json({ error: 'Not found' });
   const c = findClient(q.clientId);
   const job = { id: uid(), number: nextNumber('jobs'), clientId: q.clientId, title: q.title || 'Job from ' + q.number, description: q.items.map((i) => `${i.qty} x ${i.desc}`).join(', '), date: req.body.date || daysFromNow(1), startTime: req.body.startTime || '09:00', endTime: req.body.endTime || '11:00', staffIds: req.body.staffIds || [], status: 'scheduled', quoteId: q.id, address: q.address || (c ? c.address : ''), createdAt: iso(new Date()), items: q.items.map((i) => ({ ...i })), taxRate: q.taxRate, discountType: q.discountType, discountValue: q.discountValue };
-  computeTotals(job);
+  computeTotals(job); autoForms(job, (currentUser(req) || {}).name);
   db.jobs.push(job); if (q.status !== 'approved') q.status = 'approved'; save(); pushScheduleChange(null, job, currentUser(req)); res.status(201).json(job);
 });
 
@@ -3043,7 +3166,7 @@ function forClient(doc) {
 }
 // a client's visits: schedule details only (no internal notes, prices or line items)
 const PORTAL_JOB_FIELDS = ['id', 'number', 'title', 'description', 'date', 'startTime', 'endTime', 'address', 'status'];
-const jobForClient = (j) => Object.fromEntries(PORTAL_JOB_FIELDS.map((k) => [k, j[k]]));
+const jobForClient = (j) => ({ ...Object.fromEntries(PORTAL_JOB_FIELDS.map((k) => [k, j[k]])), forms: sharedForms(j) }); // forms: finished checklists the business shares
 const REQ_FIELDS = ['id', 'title', 'details', 'address', 'propertyId', 'preferredDate', 'preferredTime', 'status', 'createdAt'];
 const requestForClient = (r) => Object.fromEntries(REQ_FIELDS.map((k) => [k, r[k]]));
 app.get('/api/portal/:token', (req, res) => {

@@ -1811,3 +1811,59 @@ label.bk-auto input{width:auto;margin:0}
  .card.nf-list{padding:0;overflow:hidden}.nf-list .ml-row:last-child{border-bottom:0}
  .nf-st{flex:none;margin-top:2px}
 }
+/* ===== job checklists & forms: the job's card, the fill-in screen and Settings → Checklists & Forms ===== */
+.jf-list,.jf-pick,.jf-starters{display:flex;flex-direction:column;gap:8px}
+.jf-row{display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--text);font:inherit;text-align:left;cursor:pointer}
+.jf-row:hover{border-color:var(--brand);background:var(--tint)}
+.jf-ic{display:grid;place-items:center;flex:none;width:40px;height:40px;border-radius:10px;background:var(--tint);color:var(--brand)}
+.jf-main{display:flex;flex-direction:column;gap:3px;flex:1;min-width:0}.jf-main strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.jf-main small{color:var(--muted);font-size:13px}
+.jf-bar{display:block;height:4px;border-radius:2px;background:var(--surface-2);overflow:hidden;margin-top:3px;max-width:220px}.jf-bar i{display:block;height:100%;background:var(--ok)}
+.cstatus.jf-req{background:var(--warn-bg);color:var(--warn-fg)}
+.jf-pick-foot{margin:14px 0 0}
+.jf-fill{display:flex;flex-direction:column;gap:6px}
+.jf-desc,.jf-for{margin:0}.jf-for{font-size:13px}
+.jf-fin{display:flex;align-items:center;gap:8px;margin:6px 0;padding:10px 12px;border-radius:10px;background:var(--ok-bg);color:var(--ok-fg);font-weight:600;font-size:14px}
+.jf-items{display:flex;flex-direction:column}
+.jf-h{margin:18px 0 4px;font-size:15px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.jf-item{display:flex;flex-direction:column;gap:8px;margin:0;padding:12px 0;border-bottom:1px solid var(--line);font-weight:400}
+.jf-item.jf-miss{border-left:3px solid var(--danger);padding-left:10px;background:color-mix(in srgb,var(--bad-bg) 45%,transparent)}
+.jf-item{font-size:15px}.jf-l{font-weight:600;font-size:15px;color:var(--text)}.jf-star{color:var(--danger);margin-left:3px}
+.jf-check{flex-direction:row;align-items:center;gap:12px;cursor:pointer}.jf-check input{flex:none;width:22px;height:22px;margin:0}.jf-check .jf-l{font-weight:500}
+.jf-check:has(input:checked) .jf-l{color:var(--muted);text-decoration:line-through}
+.jf-seg{display:flex;flex-wrap:wrap;gap:8px}
+.jf-seg label{margin:0;cursor:pointer}.jf-seg input{position:absolute;opacity:0;pointer-events:none}
+.jf-seg span{display:inline-block;min-width:72px;padding:8px 14px;border:1px solid var(--border);border-radius:999px;text-align:center;font-weight:600;font-size:14px;background:var(--card)}
+.jf-seg input:focus-visible+span{outline:2px solid var(--brand);outline-offset:2px}
+.jf-seg input:checked+span{background:var(--tint-strong);border-color:var(--brand);color:var(--tint-fg)}
+.jf-seg .jf-pass input:checked+span{background:var(--ok-bg);border-color:var(--ok);color:var(--ok-fg)}
+.jf-seg .jf-fail input:checked+span{background:var(--bad-bg);border-color:var(--danger);color:var(--bad-fg)}
+.jf-seg .jf-na input:checked+span{background:var(--neutral-bg);border-color:var(--neutral-fg);color:var(--neutral-fg)}
+.jf-seg input:disabled+span{cursor:default;opacity:.75}.jf-seg input:disabled:not(:checked)+span{opacity:.35}
+.jf-photos{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.jf-ph{position:relative}.jf-ph img{display:block;width:84px;height:84px;object-fit:cover;border-radius:10px;border:1px solid var(--line)}
+.jf-ph button{position:absolute;top:-8px;right:-8px;width:26px;height:26px;border-radius:50%;border:0;background:var(--text);color:var(--card);font-size:16px;line-height:1;cursor:pointer}
+.jf-addph{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;width:84px;height:84px;margin:0;border:1.5px dashed var(--border);border-radius:10px;color:var(--brand);font-size:12px;font-weight:600;cursor:pointer}
+.jf-share{display:flex;align-items:flex-start;gap:10px;margin:10px 0 0;font-weight:400;cursor:pointer}.jf-share input{flex:none;width:20px;height:20px;margin:1px 0 0}
+.jf-foot{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+.jf-status{flex:1;font-size:14px;min-width:140px}
+.jf-done .jf-check{cursor:default}
+.jf-tpl{display:flex;flex-direction:column;gap:6px;margin:0}.jf-tn{margin:0;font-size:14px}
+.jf-tags{display:flex;flex-wrap:wrap;gap:6px}.jf-tags span{padding:3px 9px;border-radius:999px;background:var(--tint);color:var(--tint-fg);font-size:12px;font-weight:600}
+.jf-ed{display:flex;flex-direction:column;gap:10px}.jf-ed>label{margin:0}
+.jf-opts{display:flex;flex-direction:column;padding:4px 0 6px}
+.jf-eh{margin:8px 0 0;font-size:16px}
+.jf-erows{display:flex;flex-direction:column;gap:10px}
+.jf-erow{display:flex;flex-direction:column;gap:8px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)}
+.jf-etop{display:flex;gap:8px;align-items:center}.jf-etop select{flex:1;min-width:0;margin:0}
+.jf-emove{display:flex;gap:4px;flex:none}.jf-emove .btn{min-width:36px;padding:6px 8px}
+.jf-erow input,.jf-erow textarea{margin:0}
+.jf-ereq{display:flex;align-items:center;gap:8px;margin:0;font-weight:400;font-size:14px}.jf-ereq input{width:18px;height:18px;margin:0}
+@media (max-width:900px){
+ .jf-row{padding:14px;min-height:64px}.jf-m .jf-list{margin-top:4px}
+ .jf-fill{padding-bottom:12px}.jf-item{padding:16px 0}.jf-l{font-size:17px}.jf-check .jf-l{font-size:17px}.jf-check input{width:26px;height:26px}
+ .jf-seg{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr))}.jf-seg span{display:block;padding:13px 10px;font-size:16px}
+ .jf-ph img,.jf-addph{width:96px;height:96px}
+ .jf-foot{position:sticky;bottom:0;background:var(--card);margin:16px -16px 0;padding:12px 16px calc(12px + env(safe-area-inset-bottom))}
+ .jf-foot .btn{flex:1}.jf-status{flex-basis:100%}
+ .jf-emove .btn{min-width:44px}
+}
