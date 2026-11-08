@@ -28,7 +28,7 @@ ${apps.map((c) => `<tr><td class="nm">${esc(c.name)}<div class="sm">${esc(c.emai
 <td><div class="acts"><button type="button" class="btn alt sm" data-act="crOpen" data-id="${c.id}">View</button><button type="button" class="btn sm" data-act="crApprove" data-id="${c.id}">Approve</button></div></td></tr>`).join('')}</tbody></table></div></div>` : ''}
 <div class="card" style="max-width:960px"><h2>Creators</h2>${rest.length ? `<div class="tablewrap"><table class="acc"><thead><tr><th>Creator</th><th>Visits</th><th>Sign-ups</th><th>Paying</th><th>Earned</th><th>To pay</th><th>Status</th></tr></thead><tbody>
 ${rest.map((c) => `<tr class="click" data-act="crOpen" data-id="${c.id}" style="cursor:pointer"><td class="nm">${esc(c.name)}<div class="sm disc-code">${esc(c.code || '')}</div></td><td>${c.totals.clicks}<div class="sm">${c.totals.clicksMonth} this month</div></td><td>${c.totals.signups}</td><td>${c.totals.paying}</td>
-<td>${crUsd(c.totals.earned)}${c.totals.pending ? `<div class="sm">+${crUsd(c.totals.pending)} on hold</div>` : ''}</td><td><strong>${crUsd(c.totals.owed)}</strong><div class="sm">${esc(c.payTo || 'No payout details')}${c.totals.owed > 0 && !c.w9At ? ' · No W-9' : ''}</div></td><td><span class="cstatus ${CR_STATUS[c.status][1]}">${CR_STATUS[c.status][0]}</span></td></tr>`).join('')}</tbody></table></div>`
+<td>${crUsd(c.totals.earned)}${c.totals.pending ? `<div class="sm">+${crUsd(c.totals.pending)} on hold</div>` : ''}</td><td><strong>${crUsd(c.totals.owed)}</strong><div class="sm">${esc(c.payTo || 'No payout details')}${c.totals.owed > 0 && !c.w9At ? ' · No tax form' : ''}</div></td><td><span class="cstatus ${CR_STATUS[c.status][1]}">${CR_STATUS[c.status][0]}</span></td></tr>`).join('')}</tbody></table></div>`
     : `<p class="muted">No creators yet. Approve an application, or add someone you’ve already talked to with Add creator.</p>`}</div>
 ${declined.length ? `<details class="card" style="max-width:960px"><summary><strong>Declined (${declined.length})</strong></summary><div class="tablewrap"><table class="acc"><tbody>${declined.map((c) => `<tr><td class="nm">${esc(c.name)}<div class="sm">${esc(c.email)}</div></td><td class="sm">${esc(c.network || '')} ${esc(c.audience || '')}</td><td><div class="acts"><button type="button" class="btn alt sm" data-act="crOpen" data-id="${c.id}">View</button></div></td></tr>`).join('')}</tbody></table></div></details>` : ''}`;
 }
@@ -51,7 +51,8 @@ A.crOpen = (d) => {
 <div class="row">${field('channel', 'Main channel', 'https://…', 300)}${field('handle', 'Other profiles')}</div>
 <div class="row">${field('network', 'Network', 'e.g. TikTok', 40)}${field('audience', 'Audience', 'e.g. 10,000–50,000', 40)}${field('trade', 'Trade', '', 100)}</div>
 <div class="row">${field('payTo', 'Pay them by', 'e.g. PayPal: mike@example.com')}${c.code ? field('code', 'Code', '', 30) : ''}</div>
-<label class="switchline"><input type="checkbox" name="w9" ${c.w9At ? 'checked' : ''}> W-9 received${c.w9At ? ` (${fmtDate(c.w9At)})` : ' (US creators: before the first payout)'}</label>
+<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px">${c.taxForm ? `<a class="btn alt sm" href="/api/platform/partners/${c.id}/tax-form">Download ${esc(c.taxForm.kind)}</a><span class="sm muted">Sent ${fmtDate(c.taxForm.at)}${c.taxForm.name ? ` · ${esc(c.taxForm.name)}` : ''}</span>` : '<span class="sm muted">No tax form on file.</span>'}<button type="button" class="btn alt sm" data-act="crTaxUp" data-id="${c.id}">${c.taxForm ? 'Replace' : 'Upload'} tax form</button></div>
+<label class="switchline"><input type="checkbox" name="w9" ${c.w9At ? 'checked' : ''}> Tax form received and checked (W-9 or W-8BEN)${c.w9At ? ` (${fmtDate(c.w9At)})` : ''}</label>
 <label class="switchline"><input type="checkbox" name="ownTerms" ${own ? 'checked' : ''}> Their own commission instead of the program’s (${esc(CR.programTerms)})</label>
 <div class="row" id="crTerms" ${own ? '' : 'hidden'}><label>Flat per paying business ($)<input name="flat" type="number" min="0" step="0.01" value="${esc(own ? c.terms.flat : CR.program.flat)}"></label><label>Percent of each month (%)<input name="percent" type="number" min="0" max="100" step="0.01" value="${esc(own ? c.terms.percent : CR.program.percent)}"></label><label>For how many months<input name="months" type="number" min="0" max="36" value="${esc(own ? c.terms.months : CR.program.months)}"></label></div>
 <p class="muted" style="font-size:12px;margin:-4px 0 8px">A change applies to new sign-ups. Businesses that already signed up keep the terms they came with.</p>
@@ -68,11 +69,19 @@ ${c.status !== 'applied' && c.status !== 'declined' ? `<h3 class="hc-h3">Payouts
     try { crSet(await api('PUT', `/api/platform/partners/${c.id}`, b)); await load(); toast('Saved'); A.crOpen({ id: c.id }); } catch (x) { toast(x.message, true); }
   });
   const pay = $('#crpay', m);
-  if (pay) pay.addEventListener('submit', async (e) => { e.preventDefault(); if (!c.w9At && !confirm(`There’s no W-9 on file for ${c.name}. Record this payout anyway?`)) return; try { crSet(await api('POST', `/api/platform/partners/${c.id}/payouts`, Object.fromEntries(new FormData(pay)))); toast('Payout recorded'); A.crOpen({ id: c.id }); } catch (x) { toast(x.message, true); } });
+  if (pay) pay.addEventListener('submit', async (e) => { e.preventDefault(); if (!c.w9At && !confirm(`There’s no checked tax form (W-9 or W-8BEN) for ${c.name}. Record this payout anyway?`)) return; try { crSet(await api('POST', `/api/platform/partners/${c.id}/payouts`, Object.fromEntries(new FormData(pay)))); toast('Payout recorded'); A.crOpen({ id: c.id }); } catch (x) { toast(x.message, true); } });
 };
 A.crWelcome = async (d) => { const r = await api('GET', `/api/platform/partners/${d.id}/welcome`); await navigator.clipboard.writeText(r.welcome).then(() => toast('Welcome message copied: paste it into an email or DM'), () => toast('Couldn’t copy', true)); };
 A.crSendStats = async (d, el) => { el.disabled = true; try { crSet(await api('POST', `/api/platform/partners/${d.id}/send-stats`, {})); toast('Stats link emailed'); A.crOpen({ id: d.id }); } finally { el.disabled = false; } };
-A.crStatus = async (d) => { crSet(await api('PUT', `/api/platform/partners/${d.id}`, { status: d.s })); await load(); toast({ paused: 'Paused, and their code too', active: 'Active again', declined: 'Declined', applied: 'Back in applications' }[d.s]); if ($('#ov')) A.crOpen({ id: d.id }); };
+// a tax form you got by email: pick the file and say which form it is
+A.crTaxUp = (d) => {
+  const i = document.createElement('input'); i.type = 'file'; i.accept = 'application/pdf,image/png,image/jpeg';
+  i.onchange = () => { const file = i.files[0]; if (!file) return; if (file.size > 8 * 1024 * 1024) return toast('Use a file under 8 MB', true);
+    const usBased = confirm('Is this a W-9 (a creator in the US)?\n\nOK = W-9, Cancel = W-8BEN (outside the US)') ? 'yes' : 'no';
+    const r = new FileReader(); r.onload = () => api('POST', `/api/platform/partners/${d.id}/tax-form`, { usBased, taxForm: r.result, taxFormName: file.name }).then((x) => { crSet(x); toast('Tax form saved'); A.crOpen({ id: d.id }); }, (x) => toast(x.message, true)); r.readAsDataURL(file); };
+  i.click();
+};
+A.crStatus = async (d) => { crSet(await api('PUT', `/api/platform/partners/${d.id}`, { status: d.s })); await load(); toast({ paused: 'Paused, and their code too', active: 'Active again', declined: 'Declined, and their tax form deleted', applied: 'Back in applications' }[d.s]); if ($('#ov')) A.crOpen({ id: d.id }); };
 A.crDelete = async (d) => { if (!confirm('Delete this creator? This can’t be undone.')) return; crSet(await api('DELETE', `/api/platform/partners/${d.id}`)); closeModal(); toast('Deleted'); };
 A.crRmPayout = async (d) => { if (!confirm('Remove this payout from the record?')) return; crSet(await api('DELETE', `/api/platform/partners/${d.id}/payouts/${d.x}`)); toast('Payout removed'); A.crOpen({ id: d.id }); };
 

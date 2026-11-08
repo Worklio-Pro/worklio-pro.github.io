@@ -105,6 +105,11 @@
           <label>Do you run a trade business?<select name="runsBusiness"><option value="yes">Yes</option><option value="no">No</option></select></label></div>
         <div class="cr-row"><label>How should we pay you?<select name="payMethod" id="crPayM"><option>PayPal</option><option>Venmo</option><option>Zelle</option><option>Cash App</option><option>Bank transfer</option><option>Check</option><option>Other</option></select></label>
           <label id="crPayH">Your PayPal email<input name="payHandle" maxlength="150"></label></div>
+        <div class="cr-tax">
+          <label>Where are you based?<select name="usBased" id="crUs"><option value="yes">In the US</option><option value="no">Outside the US</option></select></label>
+          <label><span id="crTaxL">Your filled-in W-9</span> (PDF or photo)<input type="file" id="crTaxF" accept="application/pdf,image/png,image/jpeg" required></label>
+          <p class="muted" style="font-size:13px;margin:-4px 0 12px">We need it to pay you. Get the <a id="crTaxLink" href="https://www.irs.gov/pub/irs-pdf/fw9.pdf" target="_blank" rel="noopener">blank W-9 from the IRS</a>, fill it in and attach it. It’s kept private: only our team can see it, and if we don’t approve your application, we delete it.</p>
+        </div>
         <label>Anything else? (optional)<textarea name="message" rows="3" maxlength="2000" placeholder="What you post about, what you use to run your business today"></textarea></label>
         <label class="cr-hp" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label>
         <button class="btn" id="crGo">Send application</button>
@@ -158,11 +163,17 @@
     const pm = document.getElementById('crPayM'); const ph = document.getElementById('crPayH');
     const paySync = () => { const v = pm.value; ph.style.display = v === 'Bank transfer' || v === 'Check' ? 'none' : ''; ph.firstChild.textContent = { PayPal: 'Your PayPal email', Venmo: 'Your Venmo username', Zelle: 'Email or phone for Zelle', 'Cash App': 'Your Cash App $cashtag', Other: 'Your payout details' }[v] || ''; };
     pm.addEventListener('change', paySync); paySync();
+    // the tax form: a W-9 in the US, a W-8BEN outside it, sent with the application as a data URL
+    const us = document.getElementById('crUs'); const taxF = document.getElementById('crTaxF');
+    us.addEventListener('change', () => { const w9 = us.value === 'yes'; document.getElementById('crTaxL').textContent = w9 ? 'Your filled-in W-9' : 'Your filled-in W-8BEN'; const l = document.getElementById('crTaxLink'); l.href = w9 ? 'https://www.irs.gov/pub/irs-pdf/fw9.pdf' : 'https://www.irs.gov/pub/irs-pdf/fw8ben.pdf'; l.textContent = w9 ? 'blank W-9 from the IRS' : 'blank W-8BEN from the IRS'; });
+    const asDataUrl = (file) => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => no(new Error('That file couldn’t be read. Try another.')); r.readAsDataURL(file); });
     const f = document.getElementById('crForm'); const go = document.getElementById('crGo');
     f.addEventListener('submit', async (e) => {
       e.preventDefault(); go.disabled = true; go.textContent = 'Sending…'; document.getElementById('crErr').innerHTML = '';
       try {
-        const r = await fetch('/api/site/partner-apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.fromEntries(new FormData(f))) });
+        const file = taxF.files[0]; if (!file) throw new Error(us.value === 'yes' ? 'Attach your filled-in W-9' : 'Attach your filled-in W-8BEN'); if (file.size > 8 * 1024 * 1024) throw new Error('Attach a file under 8 MB');
+        const body = Object.fromEntries(new FormData(f)); body.taxForm = await asDataUrl(file); body.taxFormName = file.name;
+        const r = await fetch('/api/site/partner-apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         const j = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(j.error || 'That didn’t send. Try again.');
         f.innerHTML = '<div class="cr-done"><h3>Thanks, your application is in</h3><p class="muted" style="margin:0">We’ll email you within a few days. Once you’re approved you get your link, your code and your stats page.</p></div>';
