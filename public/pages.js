@@ -735,8 +735,30 @@ ${list.map((s) => `<tr class="crow" data-id="${s.id}"><td><strong>${esc(s.name)}
 };
 A.svcSort = (d) => { svcView.dir = svcView.sort === d.k ? -svcView.dir : 1; svcView.sort = d.k; refresh(); };
 A.svcClear = () => { svcView.q = ''; refresh().then(() => $('#sq').focus()); };
-// a category box: type a new one or pick one already used (the list under it)
-const catField = (name, value, label = 'Category', hint = 'e.g. Low voltage, T-shirts. Reports can show each category on its own.') => `<label>${label}<input name="${name}" list="svcCatList" maxlength="40" value="${esc(value || '')}" placeholder="None" autocomplete="off"><datalist id="svcCatList">${svcCats().map((c) => `<option value="${esc(c)}">`).join('')}</datalist><small class="muted">${hint}</small></label>`;
+// a category box: type a new one or pick one already used from the list that opens under it
+// (its own list, like the line-item name box: the browser's datalist popup can open away from the box, outside the dialog)
+const catField = (name, value, label = 'Category', hint = 'e.g. Low voltage, T-shirts. Reports can show each category on its own.') => `<label>${label}<span class="cat-wrap"><input name="${name}" class="cat-in" maxlength="40" value="${esc(value || '')}" placeholder="None" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false"></span><small class="muted">${hint}</small></label>`;
+const catAc = { input: null, box: null, idx: -1, list: [] };
+function catAcClose() { if (catAc.box) catAc.box.remove(); if (catAc.input) catAc.input.setAttribute('aria-expanded', 'false'); Object.assign(catAc, { input: null, box: null, idx: -1, list: [] }); }
+function catAcOpen(input) {
+  const q = input.value.trim().toLowerCase();
+  const list = svcCats().filter((c) => !q || c.toLowerCase().includes(q));
+  if (!list.length || (list.length === 1 && list[0].toLowerCase() === q)) return catAcClose();
+  if (catAc.input !== input) { catAcClose(); catAc.input = input; catAc.box = document.createElement('div'); catAc.box.className = 'svc-ac cat-ac'; catAc.box.setAttribute('role', 'listbox'); input.after(catAc.box); input.setAttribute('aria-expanded', 'true'); }
+  catAc.list = list; catAc.idx = Math.min(catAc.idx, list.length - 1);
+  catAc.box.innerHTML = list.map((c, i) => `<div role="option" class="${i === catAc.idx ? 'on' : ''}" data-i="${i}"><span>${esc(c)}</span></div>`).join('');
+}
+function catAcPick(i) { const c = catAc.list[i]; const input = catAc.input; if (c === undefined || !input) return; input.value = c; catAcClose(); input.dispatchEvent(new Event('change', { bubbles: true })); }
+document.addEventListener('focusin', (e) => { if (e.target.matches && e.target.matches('.cat-in')) { catAc.idx = -1; catAcOpen(e.target); } });
+document.addEventListener('input', (e) => { if (e.target.matches && e.target.matches('.cat-in')) { catAc.idx = -1; catAcOpen(e.target); } });
+document.addEventListener('focusout', (e) => { if (e.target === catAc.input) catAcClose(); });
+document.addEventListener('keydown', (e) => {
+  if (!catAc.box || e.target !== catAc.input) return;
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); catAc.idx = (catAc.idx + (e.key === 'ArrowDown' ? 1 : -1) + catAc.list.length) % catAc.list.length; catAcOpen(catAc.input); }
+  else if (e.key === 'Enter' && catAc.idx >= 0) { e.preventDefault(); catAcPick(catAc.idx); }
+  else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); catAcClose(); }
+}, true);
+document.addEventListener('mousedown', (e) => { const opt = e.target.closest && e.target.closest('.cat-ac [data-i]'); if (opt) { e.preventDefault(); catAcPick(Number(opt.dataset.i)); } else if (e.target.closest && e.target.closest('.cat-ac')) e.preventDefault(); });
 function serviceForm(s) {
   s = s || {};
   const mb = modal(s.id ? 'Edit item' : 'New item', `<form><div class="row"><label>Name<input name="name" required value="${esc(s.name)}"></label>

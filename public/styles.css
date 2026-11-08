@@ -1987,3 +1987,4 @@ label.bk-auto input{width:auto;margin:0}
 .mli-cat{margin:0;padding:14px 14px 6px;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line);background:var(--surface-2)}
 .rpt-cat-h{font-weight:500;color:var(--muted)}
 .rpt-bar .rpt-cat{font-weight:600}
+.cat-wrap{position:relative;display:block}.cat-wrap .cat-ac{top:calc(100% + 4px);max-height:220px}
