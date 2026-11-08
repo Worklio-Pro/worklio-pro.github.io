@@ -3204,7 +3204,7 @@ PAGES['/payments/view'] = {
       X ? field('Paid through', X.card && X.card.wallet ? `Digital wallet (${esc(WALLET[X.card.wallet] || X.card.wallet)})` : X.link ? `Link by Stripe${X.link.email ? ` (${esc(X.link.email)})` : ''}` : 'Online payment page') : '',
       field('Transaction number', X ? `<code>${esc(X.chargeId || X.paymentIntent)}</code>` : P.reference ? esc(P.reference) : ''),
       !X ? field('Recorded by', esc(P.recordedBy)) : '',
-      field('Details', `Payment applied to ${esc(docName)}`),
+      field('Details', `Payment applied to ${esc(docName)}${P.tip ? `, plus a ${money(P.tip)} tip from the client` : ''}`),
       field('Applied to', `<a href="${docHref}" data-link>${esc(docName)}</a>`),
       field('Note', esc(P.note)),
     ].join('');
@@ -3223,7 +3223,7 @@ PAGES['/payments/view'] = {
     } else if (demo) steps = step('done', 'Payment collected', esc(fmtDate(P.date))) + step('todo', 'No payout', 'Demo payments charge nobody');
     else steps = step('done', 'Payment recorded', `${esc(P.createdAt ? pdWhen(P.createdAt) : fmtDate(P.date))}${P.recordedBy ? ` by ${esc(P.recordedBy)}` : ''}`) + step('done', 'Deposited', 'You deposit this payment yourself') + refundSteps().join('');
     const sent = R.receipts.length ? `<h3 class="tl-h">Receipts</h3><ul class="tl-list">${R.receipts.map((r) => `<li>${r.status === 'failed' ? 'Not delivered to' : 'Sent to'} ${esc(r.to)}<small>${esc(pdWhen(r.at))}</small></li>`).join('')}</ul>` : '';
-    const summary = `<div class="pd-sum"><h3>Payment summary</h3><div class="pd-l"><span>Payment amount</span><span>${money(P.amount)}</span></div>
+    const summary = `<div class="pd-sum"><h3>Payment summary</h3>${P.tip ? `<div class="pd-l"><span>Toward ${esc(docName)}</span><span>${money(P.amount - P.tip)}</span></div><div class="pd-l"><span>Tip</span><span>${money(P.tip)}</span></div>` : ''}<div class="pd-l"><span>Payment amount</span><span>${money(P.amount)}</span></div>
 ${refunded ? `<div class="pd-l pd-ref"><span>Refunded</span><span>−${money(refunded)}</span></div>` : ''}
 ${X && X.fee != null ? `<div class="pd-l muted"><span>Processing fees</span><span>−${money(X.fee)}</span></div><div class="pd-l muted"><span>Net to you</span><span>${money(X.net - refunded)}</span></div>` : ''}
 <div class="pd-l pd-tot"><span>Paid</span><span>${money(P.amount - refunded)}</span></div></div>`;
@@ -3283,7 +3283,7 @@ const refundStatus = (amount, refunded) => (refunded >= amount - 0.004 && refund
 function paymentRows() {
   const rows = [];
   for (const i of D.invoices) {
-    for (const p of i.payments || []) rows.push({ id: p.id, clientId: i.clientId, doc: ['invoice', i], date: (p.date || '').slice(0, 10), method: p.method, amount: Number(p.amount) || 0, reference: p.reference || '', refunded: refundSum(p.refunds) });
+    for (const p of i.payments || []) rows.push({ id: p.id, clientId: i.clientId, doc: ['invoice', i], date: (p.date || '').slice(0, 10), method: p.method, amount: (Number(p.amount) || 0) + (Number(p.tip) || 0), tip: Number(p.tip) || 0, reference: p.reference || '', refunded: refundSum(p.refunds) });
     if (!(i.payments || []).length && i.status === 'paid' && i.paidAt) rows.push({ id: 'i-' + i.id, clientId: i.clientId, doc: ['invoice', i], date: i.paidAt.slice(0, 10), method: i.paymentMethod || 'other', amount: Number(i.paidAmount || i.total) || 0, reference: '' });
   }
   for (const q of D.quotes) if (q.depositPaidAt) rows.push({ id: 'q-' + q.id, clientId: q.clientId, doc: ['quote', q], date: q.depositPaidAt.slice(0, 10), method: q.depositMethod || 'other', amount: Number(q.depositPaidAmount ?? q.depositFee) || 0, reference: q.depositReference || '' });
@@ -3416,7 +3416,7 @@ PAGES['/payments/settings'] = {
   title: 'Payment settings',
   async render(main) {
     const S = planHas('onlinePayments') ? await api('GET', '/api/payments/stripe').catch(() => ({ connected: false })) : { connected: false };
-    const P = { ...{ quoteCard: true, quoteAch: false, invoiceCard: true, invoiceAch: false, link: true, notifyEmail: true, emailReceipts: true, disabled: false }, ...(company.paySettings || {}) };
+    const P = { ...{ quoteCard: true, quoteAch: false, invoiceCard: true, invoiceAch: false, link: true, tips: false, notifyEmail: true, emailReceipts: true, disabled: false }, ...(company.paySettings || {}) };
     const can = planHas('onlinePayments');
     const sw = (k, label, note, icon, disabled) => `<label class="sw-row pay-sw">${icon ? `<span class="pay-ic" aria-hidden="true">${icon}</span>` : ''}<span class="grow">${label}${note ? `<small class="muted">${note}</small>` : ''}</span><input type="checkbox" class="sw" data-pay="${k}" ${P[k] ? 'checked' : ''} ${disabled ? 'disabled' : ''}><i></i></label>`;
     const off = !can || P.disabled;
@@ -3429,6 +3429,7 @@ ${!can ? '<div class="notice">Online payments aren’t included in your plan. Yo
 <div class="card"><h2>Client payments</h2>
 <h3 class="pay-h">Quote payments<small class="muted">Let clients pay deposits online when viewing quotes</small></h3>${methodRows('quote')}
 <h3 class="pay-h">Invoice payments<small class="muted">Let clients pay online when viewing invoices</small></h3>${methodRows('invoice')}
+${sw('tips', 'Let clients add a tip', 'When they pay an invoice online, clients can add 10%, 15%, 20% or an amount of their own. The tip is shown on the payment and isn’t part of the invoice.', '💵', off || !(P.invoiceCard || P.invoiceAch))}
 <h3 class="pay-h">Faster checkout<small class="muted">On every payment page that takes cards</small></h3>${sw('link', 'Link by Stripe', 'Clients who saved their details with Link pay in one click, with a code sent to their phone. Same rate as cards.', '⚡', off || !(P.quoteCard || P.invoiceCard))}</div>
 <div class="card"><h2>Notifications</h2>${sw('notifyEmail', 'Get notified of payments by email', `Sent to ${esc(company.email || 'your company email')} when a client pays online`)}${sw('emailReceipts', 'Automatically email receipts to clients', 'Sent from your business when a client pays online')}</div>
 ${can ? `<div class="card pay-off"><div><h2>${P.disabled ? 'Payments are disabled' : 'Disable payments'}</h2><p class="muted">${P.disabled ? 'Clients can’t pay quotes and invoices online. Zelle details and recorded payments still work.' : 'Clients can’t pay outstanding or new quotes and invoices online.'}</p></div>

@@ -2266,7 +2266,7 @@ ${c.phone || c.email ? `<div class="vclient-c">${c.phone ? `<a href="tel:${esc(c
 <dt>Issued</dt><dd>${fmtDate(d.issueDate)}</dd><dt>Payment terms</dt><dd>${esc(termsLabel)}</dd><dt>Due date</dt><dd>${fmtDate(d.dueDate)}</dd></dl></div></div>
 <div class="qcard"><div class="qcard-h"><h2>Product / Service</h2>${editBtn('invoice', d, 'items')}</div>${viewItems(d)}
 <div class="vtotals">${viewTotals(d)}${d.depositApplied ? vt(payLink('q-' + d.depositQuoteId, 'Deposit collected', d.depositAppliedAt, ` <span class="muted">· quote ${esc(d.depositQuote)}</span>`), '−' + money(d.depositApplied)) : ''}
-${pays.map((p) => vt(payLink(p.id, 'Payment collected', p.date, ` <span class="muted">· ${esc(payLabel(p.method))}</span>`), '−' + money(p.amount))).join('')}
+${pays.map((p) => vt(payLink(p.id, 'Payment collected', p.date, ` <span class="muted">· ${esc(payLabel(p.method))}${p.tip ? ` · plus ${money(p.tip)} tip` : ''}</span>`), '−' + money(p.amount))).join('')}
 ${!pays.length && d.status === 'paid' && d.paidAt ? vt(payLink('i-' + d.id, 'Paid', d.paidAt, d.paymentMethod ? ` <span class="muted">· ${esc(payLabel(d.paymentMethod))}</span>` : ''), '') : ''}
 ${vt('Invoice balance', money(invBalance(d)), 'strong')}${vt(`Account balance <span class="muted">(including this ${d.status === 'draft' ? 'draft' : 'invoice'})</span>`, money(others + invBalance(d)))}</div></div>
 ${docCards('invoice', d)}</div>${docSide('invoice', d)}</div></div>`;

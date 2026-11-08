@@ -234,6 +234,8 @@ function invoiceStatus(inv) {
 // Computed on read, never stored, so it follows later edits to the deposit payment.
 // money given back on a payment (Payments → a payment → Issue a refund)
 const refundedOf = (list) => round2((list || []).filter((r) => r.status !== 'failed' && r.status !== 'canceled').reduce((s, r) => s + (Number(r.amount) || 0), 0));
+// what an invoice payment still counts toward the invoice: a tip the client added (p.tip) isn't part of the invoice, and refunds come off the tip first
+const paidPart = (p) => round2((Number(p.amount) || 0) - Math.max(0, refundedOf(p.refunds) - (Number(p.tip) || 0)));
 // balanceDue = total − deposit credit − recorded payments, less refunds (0 once paid, unless ignoreStatus)
 function invoiceCredits(inv, ignoreStatus) {
   const job = inv.jobId && db.jobs.find((j) => j.id === inv.jobId);
@@ -241,7 +243,7 @@ function invoiceCredits(inv, ignoreStatus) {
   const first = job && db.invoices.filter((i) => i.jobId === job.id).sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || '') || String(a.number).localeCompare(String(b.number)))[0];
   // inv.depositCreditRemoved: the admin deleted the deposit line from this invoice, so it isn't credited here
   const credit = q && q.depositPaidAt && first && first.id === inv.id && !inv.depositCreditRemoved ? Math.min(inv.total || 0, Math.max(0, round2((Number(q.depositPaidAmount ?? q.depositFee) || 0) - refundedOf(q.depositRefunds)))) : 0;
-  const paid = round2((inv.payments || []).reduce((s, p) => s + (Number(p.amount) || 0) - refundedOf(p.refunds), 0));
+  const paid = round2((inv.payments || []).reduce((s, p) => s + paidPart(p), 0));
   const balance = Math.max(0, round2((inv.total || 0) - credit - paid));
   return { depositApplied: credit, depositAppliedAt: credit ? q.depositPaidAt : null, depositQuote: credit ? q.number : null, depositQuoteId: credit ? q.id : null, amountPaid: paid, balanceDue: !ignoreStatus && inv.status === 'paid' ? 0 : balance };
 }
@@ -2699,7 +2701,15 @@ const stripeWebhookSecret = () => secrets().stripeWebhookSecret || (tenancy.isDe
 const stripeMode = () => stripeLib.modeOf(stripeKey());
 const stripeApi = (method, endpoint, params) => stripeLib.request(stripeKey(), method, endpoint, params, connectedAccount());
 // ---------- payment settings (Payments → Settings) ----------
-const PAY_DEFAULTS = { quoteCard: true, quoteAch: false, invoiceCard: true, invoiceAch: false, link: true, notifyEmail: true, emailReceipts: true, disabled: false };
+const PAY_DEFAULTS = { quoteCard: true, quoteAch: false, invoiceCard: true, invoiceAch: false, link: true, tips: false, notifyEmail: true, emailReceipts: true, disabled: false };
+// tips on invoices paid online (Payments → Settings → Tips): the client picks one of these percentages of the balance, or types an amount
+const TIP_PCTS = [10, 15, 20];
+const tipMax = (due) => round2(Math.max(due, 100)); // no more than the balance (or $100 on a small one): catches a typo like 500 for 5.00
+function readTip(b, due) {
+  const pct = Number(b.tipPct); if (TIP_PCTS.includes(pct)) return round2(due * pct / 100);
+  if (b.tipPct !== 'other') return 0;
+  const v = round2(Number(String(b.tipAmount || '').replace(/[$,\s]/g, ''))); return v > 0 ? Math.min(v, tipMax(due)) : 0;
+}
 const paySettings = () => ({ ...PAY_DEFAULTS, ...(db.company.paySettings || {}) });
 // the online methods a client can use for an invoice or a quote deposit ([] = none); bank (ACH) needs a live Stripe connection
 function onlineMethods(kind, doc) {
@@ -2708,16 +2718,20 @@ function onlineMethods(kind, doc) {
 }
 const payButtonLabel = (methods, amount, what = '') => (methods.length > 1 ? `Pay ${what}${money(amount)} online` : methods[0] === 'us_bank_account' ? `Pay ${what}${money(amount)} from your bank` : `Pay ${what}${money(amount)} with card`);
 // a Checkout page for one amount; meta = { invoiceId } or { quoteId }; methods = Stripe payment method types
-async function stripeCheckout({ amount, name, client, meta, successUrl, cancelUrl, methods = ['card'] }) {
+async function stripeCheckout({ amount, name, client, meta, successUrl, cancelUrl, methods = ['card'], tip = 0 }) {
   const p = {
     mode: 'payment', 'line_items[0][quantity]': '1', 'line_items[0][price_data][currency]': 'usd',
     'line_items[0][price_data][unit_amount]': String(Math.round(amount * 100)), 'line_items[0][price_data][product_data][name]': name,
     success_url: successUrl + (successUrl.includes('?') ? '&' : '?') + 'session_id={CHECKOUT_SESSION_ID}', cancel_url: cancelUrl,
-    'payment_intent_data[description]': `${db.company.name}: ${name}`,
+    'payment_intent_data[description]': `${db.company.name}: ${name}${tip > 0 ? ` + ${money(tip)} tip` : ''}`,
   };
+  if (tip > 0) { // its own line on the Checkout page; metadata.tip tells applyStripeSession how much of the total is the tip
+    Object.assign(p, { 'line_items[1][quantity]': '1', 'line_items[1][price_data][currency]': 'usd', 'line_items[1][price_data][unit_amount]': String(Math.round(tip * 100)), 'line_items[1][price_data][product_data][name]': 'Tip' });
+    meta = { ...meta, tip: tip.toFixed(2) };
+  }
   for (const [k, v] of Object.entries(meta)) { p[`metadata[${k}]`] = v; p[`payment_intent_data[metadata][${k}]`] = v; }
   const fee = Number(tenancy.platform().settings.platformFeePercent) || 0; // your cut of each card payment, through Stripe Connect only
-  if (connectedAccount() && fee > 0) p['payment_intent_data[application_fee_amount]'] = String(Math.round(amount * fee)); // amount is dollars, fee is %
+  if (connectedAccount() && fee > 0) p['payment_intent_data[application_fee_amount]'] = String(Math.round(amount * fee)); // amount is dollars, fee is %; never taken from a tip
   if (client && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(client.email || '')) p.customer_email = client.email; // Stripe emails the receipt
   methods.forEach((m, i) => { p[`payment_method_types[${i}]`] = m; });
   if (methods.includes('card') && paySettings().link) p[`payment_method_types[${methods.length}]`] = 'link'; // Link next to cards (Payments → Settings)
@@ -2728,7 +2742,9 @@ function applyStripeSession(s) {
   if (!s || s.payment_status !== 'paid') return null;
   clearPayCache(); // a new payment: the Payments page asks Stripe again
   const amount = round2((Number(s.amount_total) || 0) / 100); const meta = s.metadata || {};
+  const tip = meta.invoiceId ? Math.min(amount, Math.max(0, round2(Number(meta.tip) || 0))) : 0; // a tip the client added on the invoice page
   const tell = (what, clientId) => {
+    if (tip > 0) what += ` (including a ${money(tip)} tip)`;
     const c = findClient(clientId); const set = paySettings();
     if (set.emailReceipts && c && c.email) { // receipt to the client, from the business
       const rm = renderEmail('receipt', { client_name: c.name, company_name: db.company.name, amount: money(amount), paid_for: what, date: niceDate(iso(new Date())), reference: s.payment_intent || s.id });
@@ -2743,8 +2759,8 @@ function applyStripeSession(s) {
   if (meta.invoiceId) {
     const inv = db.invoices.find((x) => x.id === meta.invoiceId);
     if (!inv || inv.stripeSessionId === s.id) return inv;
-    inv.payments = [...(inv.payments || []), { id: uid(), amount, method: 'stripe', date: iso(new Date()), reference: s.payment_intent || s.id, recordedBy: 'Stripe', createdAt: new Date().toISOString() }];
-    Object.assign(inv, { paidAmount: amount, stripeSessionId: s.id, stripePaymentIntent: s.payment_intent || null }); settleInvoice(inv);
+    inv.payments = [...(inv.payments || []), { id: uid(), amount: round2(amount - tip), ...(tip > 0 ? { tip } : {}), method: 'stripe', date: iso(new Date()), reference: s.payment_intent || s.id, recordedBy: 'Stripe', createdAt: new Date().toISOString() }];
+    Object.assign(inv, { paidAmount: round2(amount - tip), stripeSessionId: s.id, stripePaymentIntent: s.payment_intent || null }); settleInvoice(inv);
     save(); tell(`invoice ${inv.number}`, inv.clientId); return inv;
   }
   if (meta.quoteId) {
@@ -2857,7 +2873,7 @@ function findPayment(rowId) {
 }
 async function paymentDetail(f) {
   const c = findClient(f.doc.clientId); const p = f.p;
-  const out = { payment: { id: p.id, amount: round2(Number(p.amount) || 0), method: p.method, date: (p.date || '').slice(0, 10), reference: p.reference || '', recordedBy: p.recordedBy || '', createdAt: p.createdAt || '', note: p.note || '',
+  const out = { payment: { id: p.id, amount: round2((Number(p.amount) || 0) + (Number(p.tip) || 0)), tip: round2(Number(p.tip) || 0), method: p.method, date: (p.date || '').slice(0, 10), reference: p.reference || '', recordedBy: p.recordedBy || '', createdAt: p.createdAt || '', note: p.note || '',
       refunds: (p.refunds || []).map((r) => ({ id: r.id, amount: r.amount, at: r.at, by: r.by || '', reason: r.reason || '', note: r.note || '', status: r.status || 'succeeded', stripe: !!r.stripeRefundId })), refunded: refundedOf(p.refunds), refundable: !p.id.startsWith('i-') },
     doc: { kind: f.kind, id: f.doc.id, number: f.doc.number, total: f.doc.total }, client: c ? { id: c.id, name: c.name, company: c.company || '', email: c.email || '', phone: c.phone || '', address: c.address || '' } : null,
     receipts: db.notifications.filter((n) => n.kind === 'receipt' && n.refId === f.doc.id).slice(0, 5).map((n) => ({ at: n.at, to: n.to, status: n.status })), stripe: null };
@@ -2895,7 +2911,7 @@ app.post('/api/payment-detail/:id/refund', async (req, res) => {
   if (!isAdmin(currentUser(req))) return res.status(403).json({ error: 'Only the account owner or an admin can issue refunds' });
   const f = findPayment(req.params.id); if (!f) return res.status(404).json({ error: 'Payment not found' });
   if (f.p.id.startsWith('i-')) return res.status(400).json({ error: 'This older payment wasn’t itemized, so it can’t be refunded here. Remove the payment from the invoice instead.' });
-  const b = req.body || {}; const amount = round2(Number(b.amount)); const left = round2((Number(f.p.amount) || 0) - refundedOf(f.p.refunds));
+  const b = req.body || {}; const amount = round2(Number(b.amount)); const left = round2((Number(f.p.amount) || 0) + (Number(f.p.tip) || 0) - refundedOf(f.p.refunds));
   if (!(amount > 0)) return res.status(400).json({ error: 'Enter the amount to refund' });
   if (amount > left + 0.004) return res.status(400).json({ error: left > 0 ? `You can refund up to ${money(left)}` : 'This payment has already been refunded in full' });
   const reason = REFUND_REASONS[b.reason] ? b.reason : 'requested_by_customer'; const note = String(b.note || '').trim().slice(0, 500);
@@ -2962,6 +2978,23 @@ function tellBusinessZelle(what, amount, clientName) {
   sendTemplate('zelleReported', db.company.email, { client: clientName || 'A client', amount: money(amount), what, business: db.company.name, account_url: baseUrl() }).catch(() => {});
 }
 
+// Add a tip: No tip / 10% / 15% / 20% / Other; the pay button shows the new total as they choose (Checkout gets a separate Tip line)
+function tipPicker(due, methods) {
+  const c = esc(db.company.brandColor);
+  const opt = (v, label, sub, on) => `<label class="tip-o"><input type="radio" name="tipPct" value="${v}" ${on ? 'checked' : ''}><span>${label}${sub ? `<small>${sub}</small>` : ''}</span></label>`;
+  return `<style>.tip{border:0;margin:0 0 14px;padding:0;min-width:0}.tip legend{font-weight:600;margin-bottom:8px;padding:0}.tip-g{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}.tip-o{position:relative}.tip-o input{position:absolute;opacity:0;pointer-events:none}
+.tip-o span{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:52px;padding:6px 4px;border:1px solid #d1d5db;border-radius:8px;cursor:pointer;font-size:15px;text-align:center}.tip-o small{font-size:12px;color:#6b7280;font-weight:400}
+.tip-o input:checked+span{border-color:${c};box-shadow:0 0 0 1px ${c};font-weight:600}.tip-o input:focus-visible+span{outline:2px solid ${c};outline-offset:2px}
+.tip-x{display:none;margin-top:10px}.tip-x.on{display:block}@media(max-width:420px){.tip-g{grid-template-columns:repeat(3,1fr)}}</style>
+<fieldset class="tip"><legend>Add a tip?</legend><div class="tip-g">${opt('0', 'No tip', '', true)}${TIP_PCTS.map((p) => opt(p, p + '%', money(round2(due * p / 100)))).join('')}${opt('other', 'Other', '')}</div>
+<label class="tip-x" id="tipX">Tip amount<input name="tipAmount" type="text" inputmode="decimal" placeholder="$0.00" autocomplete="off"></label>
+<p class="muted" style="margin:8px 0 0">Tips go to ${esc(db.company.name)}.</p></fieldset>
+<script>(function(){var due=${due},max=${tipMax(due)},f=document.currentScript.closest('form'),x=f.querySelector('#tipX'),base=${JSON.stringify(payButtonLabel(methods, 0)).replace(/</g, '\\u003c')};
+function m(v){return '$'+v.toFixed(2).replace(/\\B(?=(\\d{3})+(?!\\d))/g,',')}
+function tip(){var c=f.querySelector('[name=tipPct]:checked'),v=c?c.value:'0';x.classList.toggle('on',v==='other');if(v==='other'){var t=parseFloat(String(f.tipAmount.value).replace(/[$,\\s]/g,''));return t>0?Math.min(Math.round(t*100)/100,max):0}return Math.round(due*Number(v))/100}
+function up(){var t=tip(),b=f.querySelector('#payBtn');if(b)b.textContent=base.replace('$0.00',m(due+t))+(t>0?' (includes '+m(t)+' tip)':'')}
+f.addEventListener('change',function(e){up();if(e.target.value==='other')f.tipAmount.focus()});f.tipAmount.addEventListener('input',up);document.addEventListener('DOMContentLoaded',up);})();</script>`;
+}
 app.get('/pay/:token', (req, res) => {
   const inv = db.invoices.find((x) => x.token === req.params.token);
   if (!inv) return res.status(404).send(shell('Not found', '<h1>Invoice not found</h1>'));
@@ -2969,7 +3002,7 @@ app.get('/pay/:token', (req, res) => {
   const live = !!stripeKey(); const on = (k) => inv[k] !== 'off'; const methods = onlineMethods('invoice', inv);
   const account = db.invoices.filter((i) => i.clientId === inv.clientId && i.status !== 'paid' && i.status !== 'draft').reduce((s, i) => s + withStatus(i).balanceDue, 0);
   const card = !methods.length ? '' : live
-    ? `<form method="post" action="/pay/${esc(inv.token)}/checkout"><button class="btn">${payButtonLabel(methods, due)}</button></form>${methods.length > 1 ? '<p class="muted">Card or bank account (ACH)</p>' : ''}`
+    ? `<form method="post" action="/pay/${esc(inv.token)}/checkout">${paySettings().tips && due > 0 ? tipPicker(due, methods) : ''}<button class="btn" id="payBtn">${payButtonLabel(methods, due)}</button></form>${methods.length > 1 ? '<p class="muted">Card or bank account (ACH)</p>' : ''}`
     : '';
   const zelle = on('allowZelle') ? zelleBox(due, `Invoice ${inv.number}`, `/pay/${inv.token}/zelle-sent`, inv.zelleSentAt) : '';
   const preview = !!currentUser(req); const payOff = (html) => (preview ? previewOff(html, 'opacity:.55') : html);
@@ -2997,7 +3030,8 @@ app.post('/pay/:token/checkout', async (req, res) => {
   const due = withStatus(inv).balanceDue;
   if (inv.status === 'paid' || !(due > 0)) return res.redirect(`/pay/${inv.token}`);
   try {
-    const s = await stripeCheckout({ amount: due, name: `Invoice ${inv.number}`, client: findClient(inv.clientId), meta: { invoiceId: inv.id }, successUrl: `${baseUrl()}/pay/${inv.token}/success`, cancelUrl: `${baseUrl()}/pay/${inv.token}`, methods: onlineMethods('invoice', inv) });
+    const tip = paySettings().tips ? readTip(req.body || {}, due) : 0;
+    const s = await stripeCheckout({ amount: due, tip, name: `Invoice ${inv.number}`, client: findClient(inv.clientId), meta: { invoiceId: inv.id }, successUrl: `${baseUrl()}/pay/${inv.token}/success`, cancelUrl: `${baseUrl()}/pay/${inv.token}`, methods: onlineMethods('invoice', inv) });
     res.redirect(303, s.url);
   } catch (e) { res.status(502).send(shell('Payment error', `<h1>Payment error</h1><p>${esc(e.message)}</p><p><a href="/pay/${esc(inv.token)}">Back to the invoice</a></p>`)); }
 });
@@ -4259,7 +4293,7 @@ function booksPayments(inv) {
   const cr = invoiceCredits(inv, true); const out = [];
   if (cr.depositApplied > 0) out.push({ key: 'dep-' + inv.id, amount: cr.depositApplied, date: cr.depositAppliedAt, reference: `Deposit, quote ${cr.depositQuote}`.slice(0, 21), note: `Deposit paid on quote ${cr.depositQuote} (Worklio Pro)` });
   if ((inv.payments || []).length) {
-    for (const p of inv.payments) { const amount = round2((Number(p.amount) || 0) - refundedOf(p.refunds)); if (amount > 0 && !/^demo/.test(p.method || '')) out.push({ key: p.id, amount, date: p.date, reference: p.reference || '', note: `${p.method || 'Payment'} (Worklio Pro)` }); }
+    for (const p of inv.payments) { const amount = paidPart(p); if (amount > 0 && !/^demo/.test(p.method || '')) out.push({ key: p.id, amount, date: p.date, reference: p.reference || '', note: `${p.method || 'Payment'} (Worklio Pro)` }); }
   } else if (inv.status === 'paid' && inv.paidAt && !/^demo/.test(inv.paymentMethod || '')) {
     const amount = round2(Math.min(Number(inv.paidAmount || inv.total) || 0, (inv.total || 0) - cr.depositApplied)); if (amount > 0) out.push({ key: 'i-' + inv.id, amount, date: inv.paidAt, reference: '', note: `${inv.paymentMethod || 'Payment'} (Worklio Pro)` });
   }
