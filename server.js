@@ -2402,7 +2402,7 @@ function cleanLateFee(b, old = {}) {
 }
 // the next fee this invoice will get: { n, on: the day it's added }, or null
 function nextLateFee(inv, cfg = db.company.lateFee || {}) {
-  if (!cfg.on || !(cfg.amount > 0) || inv.lateFee === 'off' || !inv.dueDate || inv.status === 'draft' || inv.status === 'paid' || inv.dueDate < (cfg.since || '9999')) return null;
+  if (!cfg.on || !(cfg.amount > 0) || inv.lateFee === 'off' || inv.imported || !inv.dueDate || inv.status === 'draft' || inv.status === 'paid' || inv.dueDate < (cfg.since || '9999')) return null;
   const n = (inv.lateFees || []).length; if (n >= (cfg.times || 1)) return null;
   return { n: n + 1, on: addDaysYmd(inv.dueDate, (cfg.days || 0) + 1 + 30 * n) };
 }
@@ -4267,8 +4267,8 @@ function booksPayments(inv) {
 }
 const booksInvoiceHash = (inv) => hashOf([inv.number, inv.clientId, inv.issueDate, inv.dueDate, inv.items, inv.discount, inv.tax, inv.total, inv.notes]);
 const booksExpenseHash = (e) => hashOf([e.date, e.amount, e.category, e.vendor, e.description, e.jobId]);
-const booksInvoicesDue = (B) => db.invoices.filter((inv) => inv.status !== 'draft' && booksDay(inv.issueDate || inv.createdAt) >= (B.startDate || '') && (B.map.invoices[inv.id] || {}).h !== booksInvoiceHash(inv));
-const booksExpensesDue = (B) => db.expenses.filter((e) => booksDay(e.date) >= (B.startDate || '') && (B.map.expenses[e.id] || {}).h !== booksExpenseHash(e));
+const booksInvoicesDue = (B) => db.invoices.filter((inv) => !inv.imported && inv.status !== 'draft' && booksDay(inv.issueDate || inv.createdAt) >= (B.startDate || '') && (B.map.invoices[inv.id] || {}).h !== booksInvoiceHash(inv));
+const booksExpensesDue = (B) => db.expenses.filter((e) => !e.imported && booksDay(e.date) >= (B.startDate || '') && (B.map.expenses[e.id] || {}).h !== booksExpenseHash(e));
 // payments waiting: only on invoices already in the books (an invoice waiting goes first, then its payments)
 const booksPaymentsDue = (B) => db.invoices.filter((inv) => B.map.invoices[inv.id]).flatMap((inv) => booksPayments(inv).filter((p) => !B.map.payments[p.key]).map((p) => ({ inv, p })));
 const booksRunning = new Set(); // accounts syncing right now
@@ -5110,12 +5110,15 @@ const ideasApp = require('./lib/ideas')({
   sha,
 });
 const legal = require('./lib/legal');
+// moving a business's records over from another app: done from Alpha only (lib/data-import.js); imported records are marked imported
+const dataImport = require('./lib/data-import')({ db, save, uid, token, iso, round2, computeTotals, cleanCat, invoiceCredits, nextNumber, docPrefix, NUMBERING });
 const platformApp = require('./lib/platform')({
   hashPassword, checkPassword, sha, normEmail, cookies, tooMany, recordFailure, clearFailures: (k) => failures.delete(k),
   createOwner, ownerLink, sendVerifyEmail, sendPasswordReset, loginsFor, handoffUrl, tenantStats, endSupportSessions, sendEmail, sendTemplate, sendSms, emailProvider: serverEmailProvider, applyStripeSession, syncStripeAccount, resetDemo, saveConnection, saveAccounting, setCompanyEmail: (e) => { if (!db.company.email) { db.company.email = e; save(); } }, setCompanyPhone: (p) => { if (p && !db.company.phone) { db.company.phone = p; save(); } },
   setCompanyIndustry: (i) => { Object.assign(db.company, i); save(); },
   planProduct, // the Stripe product for a plan (Alpha → an account → Subscription → Change plan)
   planItem, seatItem, seatParams, extraCount, // a subscription's plan line and extra logins line
+  dataImport, // Alpha → an account → Import data
 });
 // which app answers: the platform's (its own domain, or /alpha… while developing) or an account's
 const PLATFORM_PATHS = /^\/(alpha(\/.*)?|platform(\/.*)?|stripe\/go\/[a-z]+|oauth\/(google|meta|tiktok|linkedin|pinterest|threads|quickbooks|xero)\/callback|home|features|marketing|partners(\/[a-f0-9]+)?|go\/[A-Za-z0-9_-]+|quote-from-photos|pricing|signup|sign-in|supporters|industries(\/[a-z-]+)?|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;
