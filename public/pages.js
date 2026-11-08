@@ -1807,7 +1807,7 @@ ${co.hours ? `<h3 class="cp-sec">Business hours</h3><table class="cp-hours">${WE
   main.onclick = async (e) => {
     if (e.target.closest('.cp-burger')) return setMenu(!$('.cp-side.open', main));
     if ($('.cp-side.open', main) && !e.target.closest('.cp-navs')) setMenu(false);
-    const fb = e.target.closest('[data-cp-form]'); if (fb) { const [jid, fid] = fb.dataset.cpForm.split(':'); const j = p.jobs.find((x) => x.id === jid); const f = j && j.forms.find((x) => x.id === fid); if (f) modal(f.name, `<div class="jf-fill jf-done">${f.description ? `<p class="muted jf-desc">${esc(f.description)}</p>` : ''}<div class="jf-fin">Finished ${esc(fmtDate(f.completedAt.slice(0, 10)))} · ${esc(j.title)}</div><div class="jf-items">${f.fields.map((x) => jfField(x, f.answers[x.id], true)).join('')}</div></div>`, true); return; } // a finished checklist the business shares
+    const fb = e.target.closest('[data-cp-form]'); if (fb) { const [jid, fid] = fb.dataset.cpForm.split(':'); const j = p.jobs.find((x) => x.id === jid); const f = j && j.forms.find((x) => x.id === fid); if (f) modal(f.name, `<div class="jf-fill jf-done">${f.description ? `<p class="muted jf-desc">${esc(f.description)}</p>` : ''}<div class="jf-fin">Finished ${esc(fmtDate(f.completedAt.slice(0, 10)))} · ${esc(j.title)}</div><div class="jf-items">${f.fields.map((x) => jfField(x, f.answers[x.id], true)).join('')}</div><div class="jf-foot"><a class="cp-btn" href="/api/portal/${encodeURIComponent(tok)}/forms/${esc(f.id)}/pdf" target="_blank" rel="noopener">Download PDF</a></div></div>`, true); return; } // a finished checklist the business shares
     const b = e.target.closest('[data-cp]'); if (b) { e.preventDefault(); if (b.dataset.rv) return openReview(p.reviewable[Number(b.dataset.rv)]); if (b.dataset.rve) { const r = p.reviews[Number(b.dataset.rve)]; return openReview({ kind: r.kind, title: r.title, number: r.refNumber, edit: r }); } show(b.dataset.cp); return; }
     const cp = e.target.closest('[data-cp-copy]');
     if (cp) {
@@ -3514,11 +3514,12 @@ PAGES['/settings/job-forms'] = {
   async render(main) {
     JF = await api('GET', '/api/form-templates');
     const live = JF.templates.filter((t) => !t.archived); const arch = JF.templates.filter((t) => t.archived);
-    const card = (t) => { const n = t.fields.filter((f) => f.type !== 'heading').length; const tags = [t.autoAdd && 'On every new job', t.requiredToComplete && 'Required before completing', t.clientVisible && 'Shared with the client'].filter(Boolean);
+    const card = (t) => { const n = t.fields.filter((f) => f.type !== 'heading').length; const svcNames = (t.services || []).map((id) => (byId(D.services || [], id) || {}).name).filter(Boolean);
+      const tags = [t.autoAdd && 'On every new job', svcNames.length && esc(`On jobs with ${svcNames.length > 2 ? `${svcNames.slice(0, 2).join(', ')} +${svcNames.length - 2}` : svcNames.join(' or ')}`), t.requiredToComplete && 'Required before completing', t.clientVisible && 'Shared with the client'].filter(Boolean);
       return `<div class="card jf-tpl${t.archived ? ' sp-arch' : ''}"><div class="sp-ph"><h3>${esc(t.name)}</h3>${JF.manage ? `<button type="button" class="btn alt sm" data-act="jfTpl" data-id="${t.id}">Edit</button>` : ''}</div>
 ${t.description ? `<p class="muted sp-desc">${esc(t.description)}</p>` : ''}<p class="jf-tn">${n} item${n === 1 ? '' : 's'}${t.fields.some((f) => f.type === 'photo') ? ' · photos' : ''}</p>
 ${tags.length ? `<div class="jf-tags">${tags.map((x) => `<span>${x}</span>`).join('')}</div>` : ''}</div>`; };
-    main.innerHTML = `<div class="head"><div><h1>Checklists &amp; Forms</h1><p class="sub">Checklists your team fills in on a job: inspections, safety checks, required photos. Add one to a job from its page, or have it added to every new job.</p></div>
+    main.innerHTML = `<div class="head"><div><h1>Checklists &amp; Forms</h1><p class="sub">Checklists your team fills in on a job: inspections, safety checks, required photos. Add one to a job from its page, or have it added to every new job or to jobs with certain products or services.</p></div>
 ${JF.manage ? '<div class="ts-acts"><button type="button" class="btn" data-act="jfTpl">New checklist</button></div>' : ''}</div>
 ${live.length ? `<div class="sp-plans">${live.map(card).join('')}</div>` : `<div class="card"><p style="margin:0 0 12px"><strong>No checklists yet.</strong> Start from one of these and change it to suit you, or make your own.</p>
 <div class="jf-starters">${JF_STARTERS.map((s, i) => `<button type="button" class="jf-row" data-act="jfTpl" data-starter="${i}"><span class="jf-ic">${svgIcon(JF_ICO, 22)}</span><span class="jf-main"><strong>${esc(s.name)}</strong><small>${esc(s.description)} · ${s.fields.filter((f) => f.type !== 'heading').length} items</small></span></button>`).join('')}</div></div>`}
@@ -3537,8 +3538,13 @@ ${f.type === 'choice' ? `<textarea data-e="options" rows="2" placeholder="One ch
 ${f.type === 'heading' ? '' : `<label class="jf-ereq"><input type="checkbox" data-e="required" ${f.required ? 'checked' : ''}> Required</label>`}</div>`;
   const html = `<div class="jf-ed"><label>Name<input name="name" maxlength="80" required value="${esc(t.name)}" placeholder="e.g. AC tune-up checklist"></label>
 <label>Description<input name="description" maxlength="500" value="${esc(t.description || '')}" placeholder="Optional, e.g. Before leaving the site"></label>
-<div class="jf-opts"><label class="jf-share"><input type="checkbox" name="autoAdd" ${t.autoAdd ? 'checked' : ''}><span>Add it to every new job automatically</span></label>
-<label class="jf-share"><input type="checkbox" name="requiredToComplete" ${t.requiredToComplete ? 'checked' : ''}><span>It has to be finished before the job can be marked complete</span></label>
+<fieldset class="jf-when"><legend>When it goes on a job</legend>
+<label class="jf-share"><input type="radio" name="when" value="manual" ${!t.autoAdd && !(t.services || []).length ? 'checked' : ''}><span>Only when someone adds it from the job page</span></label>
+<label class="jf-share"><input type="radio" name="when" value="all" ${t.autoAdd ? 'checked' : ''}><span>On every new job automatically</span></label>
+<label class="jf-share"><input type="radio" name="when" value="services" ${!t.autoAdd && (t.services || []).length ? 'checked' : ''}><span>On jobs with these products or services</span></label>
+<div class="jf-svcs" ${!t.autoAdd && (t.services || []).length ? '' : 'hidden'}>${(D.services || []).length ? `<input type="search" class="jf-svcq" placeholder="Search your products and services" aria-label="Search products and services"><div class="jf-svclist">${[...D.services].sort((a, b) => String(a.name).localeCompare(String(b.name))).map((s) => `<label class="jf-ereq" data-n="${esc(String(s.name || '').toLowerCase())}"><input type="checkbox" name="svc" value="${esc(s.id)}" ${(t.services || []).includes(s.id) ? 'checked' : ''}> ${esc(s.name)}</label>`).join('')}</div>
+<p class="muted sm" style="margin:0">It’s added when a job has one of these as a line item: on a new job (from a quote too), or when one is added to a job that’s still to do.</p>` : '<p class="muted sm" style="margin:0">Add your products and services in <a href="/services" data-link>Products &amp; Services</a> first.</p>'}</div></fieldset>
+<div class="jf-opts"><label class="jf-share"><input type="checkbox" name="requiredToComplete" ${t.requiredToComplete ? 'checked' : ''}><span>It has to be finished before the job can be marked complete</span></label>
 <label class="jf-share"><input type="checkbox" name="clientVisible" ${t.clientVisible ? 'checked' : ''}><span>Show it in the client’s portal once finished</span></label></div>
 <h3 class="jf-eh">Items</h3><div class="jf-erows"></div><button type="button" class="btn alt" data-e="add">+ Add item</button>
 ${t.id ? '<p class="muted sm" style="margin:0">Changes apply to checklists added from now on. Ones already on jobs keep what they had.</p>' : ''}</div>`;
@@ -3552,7 +3558,9 @@ ${t.id ? '<p class="muted sm" style="margin:0">Changes apply to checklists added
   draw();
   root.addEventListener('input', (e) => { const i = at(e.target); if (i < 0) return; const k = e.target.dataset.e;
     if (k === 'label') t.fields[i].label = e.target.value; if (k === 'options') t.fields[i].options = e.target.value.split('\n').map((s) => s.trim()).filter(Boolean); });
-  root.addEventListener('change', (e) => { const i = at(e.target); if (i < 0) return; const k = e.target.dataset.e;
+  const svcBox = $('.jf-svcs', root); const svcQ = $('.jf-svcq', root);
+  if (svcQ) svcQ.addEventListener('input', () => { const q = svcQ.value.trim().toLowerCase(); $$('.jf-svclist label', root).forEach((l) => { l.hidden = !!q && !l.dataset.n.includes(q); }); });
+  root.addEventListener('change', (e) => { if (e.target.name === 'when') { svcBox.hidden = e.target.value !== 'services'; return; } const i = at(e.target); if (i < 0) return; const k = e.target.dataset.e;
     if (k === 'required') t.fields[i].required = e.target.checked;
     if (k === 'type') { t.fields[i].type = e.target.value; if (e.target.value === 'heading') t.fields[i].required = false; draw(); $(`[data-k="${t.fields[i]._k}"] [data-e=label]`, rows).focus(); } });
   root.addEventListener('click', async (e) => {
@@ -3562,8 +3570,10 @@ ${t.id ? '<p class="muted sm" style="margin:0">Changes apply to checklists added
     if (k === 'down' && i < t.fields.length - 1) { [t.fields[i + 1], t.fields[i]] = [t.fields[i], t.fields[i + 1]]; draw(); return; }
     if (k === 'del') { t.fields.splice(i, 1); draw(); return; }
     if (k === 'save') {
-      const v = (n) => $(`[name=${n}]`, root); const body = { name: v('name').value, description: v('description').value, autoAdd: v('autoAdd').checked, requiredToComplete: v('requiredToComplete').checked, clientVisible: v('clientVisible').checked, archived: !!t.archived,
+      const v = (n) => $(`[name=${n}]`, root); const body = { name: v('name').value, description: v('description').value, autoAdd: $('[name=when]:checked', root).value === 'all',
+        services: $('[name=when]:checked', root).value === 'services' ? $$('[name=svc]:checked', root).map((x) => x.value) : [], requiredToComplete: v('requiredToComplete').checked, clientVisible: v('clientVisible').checked, archived: !!t.archived,
         fields: t.fields.map(({ _k, ...f }) => f).filter((f) => f.label.trim()) };
+      if ($('[name=when]:checked', root).value === 'services' && !body.services.length) return toast('Tick at least one product or service, or choose another option', true);
       b.disabled = true;
       try { t.id ? await api('PUT', '/api/form-templates/' + t.id, body) : await api('POST', '/api/form-templates', body); closeModal(); mClose(); toast('Checklist saved'); refresh(); } catch (x) { toast(x.message, true); b.disabled = false; }
     }

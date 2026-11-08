@@ -961,15 +961,29 @@ function cleanTemplate(b) {
   }).filter((f) => f.label);
   if (!fields.some((f) => f.type !== 'heading')) throw formFail('Add at least one item to fill in');
   const bad = fields.find((f) => f.type === 'choice' && f.options.length < 2); if (bad) throw formFail(`Give “${bad.label}” at least two choices`);
-  return { name, description: String(b.description || '').trim().slice(0, 500), fields, autoAdd: !!b.autoAdd, requiredToComplete: !!b.requiredToComplete, clientVisible: !!b.clientVisible, archived: !!b.archived };
+  const autoAdd = !!b.autoAdd; // services: Products & Services whose line items bring the checklist onto a job (not needed when it goes on every job)
+  const services = autoAdd ? [] : [...new Set((Array.isArray(b.services) ? b.services : []).filter((id) => db.services.some((s) => s.id === id)))].slice(0, 100);
+  return { name, description: String(b.description || '').trim().slice(0, 500), fields, autoAdd, services, requiredToComplete: !!b.requiredToComplete, clientVisible: !!b.clientVisible, archived: !!b.archived };
 }
 const formFromTemplate = (t, by) => { const now = new Date().toISOString();
   return { id: uid(), templateId: t.id, name: t.name, description: t.description, fields: structuredClone(t.fields), answers: {}, requiredToComplete: t.requiredToComplete, clientVisible: t.clientVisible, addedAt: now, addedBy: by || '', updatedAt: now, updatedBy: '', completedAt: null, completedBy: '' }; };
-// a new job (made on the job page, from a quote, by a repeat or a service plan) gets the templates set to go on every new job
+// line items keep the service's name, not a link to it, so a job matches a template when one of its items has the name of a chosen service
+const normName = (s) => String(s || '').trim().toLowerCase();
+const formMatchesJob = (t, job) => { if (!(t.services || []).length || !(job.items || []).length) return false;
+  const names = new Set(db.services.filter((s) => t.services.includes(s.id)).map((s) => normName(s.name))); return job.items.some((it) => names.has(normName(it.desc))); };
+// a new job (made on the job page, from a quote, by a repeat or a service plan) gets the templates set to go on every new job, and those
+// whose products or services are among its line items
 function autoForms(job, by) {
   if (!tenancy.has('jobForms')) return job;
-  job.forms = formTemplates().filter((t) => t.autoAdd && !t.archived).map((t) => formFromTemplate(t, by || 'Added automatically'));
+  job.forms = formTemplates().filter((t) => !t.archived && (t.autoAdd || formMatchesJob(t, job))).map((t) => formFromTemplate(t, by || 'Added automatically'));
   if (!job.forms.length) delete job.forms; return job;
+}
+// a job still to do whose line items changed: checklists for products or services it didn't have before are added (none is ever removed)
+function matchFormsOnEdit(was, job, by) {
+  if (!tenancy.has('jobForms') || job.status !== 'scheduled' || JSON.stringify(was.items || []) === JSON.stringify(job.items || [])) return 0;
+  const have = new Set((job.forms || []).map((f) => f.templateId));
+  const add = formTemplates().filter((t) => !t.archived && !have.has(t.id) && formMatchesJob(t, job) && !formMatchesJob(t, was)).map((t) => formFromTemplate(t, by || 'Added automatically'));
+  if (add.length) job.forms = [...(job.forms || []), ...add]; return add.length;
 }
 const answered = (f, v) => (f.type === 'check' ? v === true : f.type === 'photo' ? Array.isArray(v) && v.length > 0 : v !== undefined && v !== null && String(v).trim() !== '');
 const formMissing = (form) => form.fields.filter((f) => f.required && !answered(f, form.answers[f.id]));
@@ -1056,6 +1070,60 @@ app.post('/api/jobs/:id/forms/:fid/photo', formRoute((req, res, u, b) => {
 // the client portal: finished forms the business shares, with their answers (no names of who filled them in)
 const formForClient = (f) => ({ id: f.id, name: f.name, description: f.description, completedAt: f.completedAt, fields: f.fields.map(({ id, type, label, options }) => ({ id, type, label, options })), answers: f.answers });
 const sharedForms = (j) => (tenancy.has('jobForms') ? (j.forms || []).filter((f) => f.completedAt && f.clientVisible).map(formForClient) : []);
+// a checklist as a PDF: the business, the job, then each item with its answer and photos. The client's copy leaves out who filled it in.
+const FORM_YESNO = { pass: ['Pass', '#15803d'], fail: ['Fail', '#b91c1c'], na: ['N/A', '#475569'] };
+function formPdf(j, form, forClient) {
+  const co = db.company; const c = findClient(j.clientId) || {}; const pdf = createPdf(); const L = 58; const R = 554; const INK = '#111827'; const GRAY = '#6b7280'; const BOTTOM = 740; let y = 72;
+  const read = (u) => { const m = /^\/uploads\/([\w.-]+)$/.exec(u || ''); if (!m) return null; try { return fs.readFileSync(path.join(uploadDir(), m[1])); } catch (e) { return null; } };
+  const room = (h) => { if (y + h > BOTTOM) { pdf.addPage(); y = 64; } };
+  pdf.text(L, y, co.name || '', { size: 15, bold: true, color: INK }); y += 18;
+  const reach = [co.phone && fmtUsPhone(co.phone), co.email].filter(Boolean).join('  |  '); if (reach) { pdf.text(L, y, reach, { size: 10, color: INK }); y += 14; }
+  const logo = read(co.logo); if (logo) pdf.image(logo, R - 120, 54, 120, 54, { alignRight: true });
+  y = Math.max(y, 112) + 18;
+  y = pdf.para(L, y, form.name, R - L, { size: 18, bold: true, color: INK, lineHeight: 22 }) + 2;
+  if (form.description) y = pdf.para(L, y, form.description, R - L, { size: 10.5, color: GRAY, lineHeight: 14 });
+  y += 6; pdf.rect(L, y, R - L, 58, { fill: '#f1f5fb' });
+  const facts = [['Job', `#${j.number}${j.title ? ' · ' + j.title : ''}`], ['Client', c.name || ''], ['Address', j.address || c.address || ''], ['Visit', j.date ? niceDate(j.date) : '']];
+  facts.forEach(([k, v], i) => { const fx = L + 10 + (i % 2) * ((R - L) / 2); const fy = y + 20 + Math.floor(i / 2) * 22; pdf.text(fx, fy, k, { size: 8.5, bold: true, color: GRAY }); const t = String(v); pdf.text(fx + 48, fy, t.length > 40 ? t.slice(0, 39) + '…' : t, { size: 10, color: INK }); });
+  y += 72;
+  const n = form.fields.filter((f) => f.type !== 'heading'); const done = n.filter((f) => answered(f, form.answers[f.id])).length;
+  const status = form.completedAt ? `Finished ${niceDate(form.completedAt.slice(0, 10))}${!forClient && form.completedBy ? ` by ${form.completedBy}` : ''}` : `Not finished: ${done} of ${n.length} done`;
+  pdf.text(L, y, status, { size: 10.5, bold: true, color: form.completedAt ? '#15803d' : '#b45309' }); y += 20;
+  const ANS = 330; // answers start here; long answers and photos go under their item
+  for (const f of form.fields) {
+    const v = form.answers[f.id];
+    if (f.type === 'heading') { room(40); y += 10; pdf.text(L, y, f.label.toUpperCase(), { size: 10, bold: true, color: GRAY }); y += 6; pdf.line(L, y, R, y, { color: '#cbd5e1', w: 1 }); y += 16; continue; }
+    const label = f.label + (f.required && !forClient ? ' *' : '');
+    if (f.type === 'photo' || f.type === 'longtext') {
+      room(34); y = pdf.para(L, y, label, R - L, { size: 10.5, bold: true, color: INK, lineHeight: 14 }) + 2;
+      if (f.type === 'longtext') { if (v) for (const para of String(v).split('\n')) { room(14); y = para.trim() ? pdf.para(L, y, para, R - L, { size: 10.5, color: INK, lineHeight: 14 }) : y + 6; } else { pdf.text(L, y, '—', { size: 10.5, color: GRAY }); y += 14; } }
+      else { const list = v || []; if (!list.length) { pdf.text(L, y, 'No photos', { size: 10.5, color: GRAY }); y += 14; }
+        const PW = 156; const PH = 117; const GAP = 12; let col = 0; let skipped = 0;
+        for (const p of list) { const buf = read(p.url); if (col === 0) room(PH + 6); const r = buf && pdf.image(buf, L + col * (PW + GAP), y, PW, PH); if (!r) { skipped++; continue; } col++; if (col === 3) { col = 0; y += PH + GAP; } }
+        if (col) y += PH + GAP; if (skipped) { pdf.text(L, y, `${skipped} photo${skipped === 1 ? '' : 's'} can’t be shown in a PDF (open the checklist in the app)`, { size: 9, color: GRAY }); y += 14; } }
+      y += 6; pdf.line(L, y - 4, R, y - 4, { color: '#e5e7eb' }); y += 8; continue;
+    }
+    let ans = '—'; let color = GRAY;
+    if (f.type === 'check') { ans = v === true ? 'Done' : 'Not done'; color = v === true ? '#15803d' : GRAY; }
+    else if (f.type === 'yesno') { if (FORM_YESNO[v]) [ans, color] = FORM_YESNO[v]; }
+    else if (f.type === 'date') { if (v) { ans = niceDate(v); color = INK; } }
+    else if (v !== undefined && v !== null && String(v) !== '') { ans = String(v); color = INK; }
+    room(24); const top = y;
+    const ly = pdf.para(L, top, label, ANS - L - 14, { size: 10.5, color: INK, lineHeight: 14 });
+    const ay = pdf.para(ANS, top, ans, R - ANS, { size: 10.5, bold: f.type === 'yesno' || f.type === 'check', color, lineHeight: 14 });
+    y = Math.max(ly, ay) + 2; pdf.line(L, y - 4, R, y - 4, { color: '#e5e7eb' }); y += 8;
+  }
+  return pdf.toBuffer(`${form.name} · Job ${j.number}`);
+}
+const formPdfName = (j, form) => `${form.name.replace(/[^\w-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'checklist'}_${String(j.number).replace(/[^\w-]+/g, '')}.pdf`;
+const sendFormPdf = (res, j, form, forClient) => { res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Content-Disposition', `inline; filename="${formPdfName(j, form)}"`); res.end(formPdf(j, form, forClient)); };
+app.get('/api/jobs/:id/forms/:fid/pdf', formRoute((req, res) => { const { j, form } = findJobForm(req); sendFormPdf(res, j, form, false); }));
+// the client's copy, from their portal link: only finished checklists the business shares
+app.get('/api/portal/:token/forms/:fid/pdf', (req, res) => {
+  const c = db.clients.find((x) => x.portalToken === req.params.token); if (!c || !tenancy.has('jobForms')) return res.status(404).json({ error: 'Not found' });
+  for (const j of db.jobs) if (j.clientId === c.id) { const f = (j.forms || []).find((x) => x.id === req.params.fid && x.completedAt && x.clientVisible); if (f) return sendFormPdf(res, j, f, true); }
+  res.status(404).json({ error: 'Not found' });
+});
 
 // Roles & Permissions (owner/admin): the catalog, the roles, and how many logins have each; saving replaces the whole list
 const rolesView = () => ({ custom: customRolesOn(), catalog: rolesLib.catalog(), roles: teamRoles().map((r) => ({ ...r, users: db.users.filter((u) => u.role !== 'owner' && u.role !== 'admin' && roleKey(u) === r.id).length })), admins: db.users.filter((u) => u.role === 'admin').length });
@@ -1801,6 +1869,7 @@ app.put('/api/:col/:id', (req, res, next) => {
   }
   if (col === 'jobs' && doc.status === 'completed' && was.status !== 'completed') doc.completedAt = iso(new Date()); // the "job completed" automations count from this
   const following = col === 'jobs' && req.query.following && doc.seriesId && tenancy.has('recurringJobs') ? applyToFollowing(doc, upd, req.query.following) : 0; // Save → "This and following visits"
+  if (col === 'jobs') matchFormsOnEdit(was, doc, (currentUser(req) || {}).name); // new line items can bring their checklists
   db[col][i] = doc; save(); if (col === 'clients' && doc.smsConsent && !was.smsConsent) optInText(doc).catch(() => {}); if (col === 'jobs') { pushScheduleChange(was, doc, currentUser(req)); if (doc.status === 'completed' && was.status !== 'completed') askForReview('job', doc); }
   res.json(col === 'invoices' ? withStatus(doc) : col === 'jobs' ? { ...withRepeat(isMemberReq(req) ? jobForMember(doc) : doc), ...(following ? { following } : {}) } : col === 'clients' && isMemberReq(req) ? clientForMember(doc) : doc);
 });

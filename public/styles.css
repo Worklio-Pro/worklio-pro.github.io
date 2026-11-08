@@ -1867,3 +1867,8 @@ label.bk-auto input{width:auto;margin:0}
  .jf-foot .btn{flex:1}.jf-status{flex-basis:100%}
  .jf-emove .btn{min-width:44px}
 }
+.jf-when{margin:4px 0 0;padding:12px 14px;border:1px solid var(--line);border-radius:10px}.jf-when legend{padding:0 6px;font-weight:600;font-size:14px}.jf-when .jf-share:first-of-type{margin-top:2px}
+.jf-svcs{display:flex;flex-direction:column;gap:8px;margin:10px 0 0 30px}.jf-svcq{margin:0}
+.jf-svclist{display:flex;flex-direction:column;gap:6px;max-height:200px;overflow:auto;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)}
+.jf-svclist label[hidden]{display:none}
+@media (max-width:900px){.jf-svcs{margin-left:0}.jf-svclist label{min-height:40px}}
