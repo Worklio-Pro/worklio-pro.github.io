@@ -2935,7 +2935,7 @@ ${refunded ? `<div class="pd-l pd-ref"><span>Refunded</span><span>−${money(ref
 ${X && X.fee != null ? `<div class="pd-l muted"><span>Processing fees</span><span>−${money(X.fee)}</span></div><div class="pd-l muted"><span>Net to you</span><span>${money(X.net - refunded)}</span></div>` : ''}
 <div class="pd-l pd-tot"><span>Paid</span><span>${money(P.amount - refunded)}</span></div></div>`;
     const canRefund = ['owner', 'admin'].includes(role()) && P.refundable && !demo && P.amount - refunded > 0.004;
-    const more = `<a class="mi" href="/api/payment-detail/${encodeURIComponent(P.id)}/pdf" download>${MI.pdf}Download PDF</a>${canRefund ? `<button type="button" class="mi" data-act="pdRefund">${MI.refund}Issue a Refund</button>` : ''}`;
+    const more = `<a class="mi" href="/api/payment-detail/${encodeURIComponent(P.id)}/pdf" download title="Receipt">${MI.pdf}Download PDF</a>${canRefund ? `<button type="button" class="mi" data-act="pdRefund">${MI.refund}Issue a Refund</button>` : ''}`;
     pdState = { P, X, refunded, docName };
     main.innerHTML = `<div class="pd"><div class="pd-main">
 <div class="pd-top"><a class="pd-back" href="/payments" data-link aria-label="Back to Payments">‹ Payments</a><span class="badge ${stCls}">${stLabel}</span>

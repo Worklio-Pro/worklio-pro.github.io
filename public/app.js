@@ -792,7 +792,7 @@ function emailDialog(kind, doc, c) {
 <div class="em-side"><h3>Attachments</h3>
 <div class="em-drop"><button type="button" class="btn alt sm em-pick">Select</button><span>Select or drag files here to upload</span><input type="file" multiple hidden></div>
 <p class="em-use"></p><div class="em-bar"><i></i></div>
-<div class="em-files"><label class="em-file"><input type="checkbox" name="pdf">${fileIco(true)}<span><b>${esc(word)}_${esc(String(doc.number).replace(/[^\w-]+/g, ''))}.pdf</b><small><a href="/api/${kind}s/${doc.id}/pdf" target="_blank">Preview</a></small></span></label><div class="em-up"></div></div></div></div>
+<div class="em-files"><label class="em-file"><input type="checkbox" name="pdf">${fileIco(true)}<span><b>${esc(word)}_${esc(String(doc.number).replace(/[^\w-]+/g, ''))}.pdf</b><small><a href="/api/${kind}s/${doc.id}/pdf" target="_blank" title="${esc(word)} ${esc(doc.number)}">Preview</a></small></span></label><div class="em-up"></div></div></div></div>
 <div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Send Email</button></div></form>`, true);
   const f = $('form', mb); const picker = $('input[type=file]', mb); const drop = $('.em-drop', mb);
   f.message.addEventListener('input', () => { typed = true; }); f.subject.addEventListener('input', () => { typed = true; });
@@ -2059,7 +2059,7 @@ ${canJob ? b('quoteToJob', 'job', 'Convert to Job') : ''}${job ? `<a class="mi" 
 ${marks ? `<hr class="mi-sep"><div class="mi-h">Mark as…</div>${marks}` : ''}
 <hr class="mi-sep"><a class="mi" href="/p/quote/${d.token}" target="_blank">${QM.eye}Preview as Client</a>
 ${d.signedAt ? '' : `<a class="mi" href="/p/quote/${d.token}?collect=1" target="_blank" title="Opens the client’s quote page, where they approve and sign">${QM.sign}Collect Signature</a>`}
-<a class="mi" href="/api/quotes/${d.id}/pdf" target="_blank">${QM.pdf}Print or Save PDF</a>
+<a class="mi" href="/api/quotes/${d.id}/pdf" target="_blank" title="Quote ${esc(d.number)}">${QM.pdf}Print or Save PDF</a>
 ${b('delDoc', 'trash', 'Delete')}</div></details>`;
 }
 const sendBtn = (kind, d) => (planHas('sms')
@@ -2074,7 +2074,7 @@ ${open ? b('collectPayment', 'pay', 'Collect Payment') : ''}${b('copyInvoice', '
 ${open ? `<hr class="mi-sep"><div class="mi-h">Send as…</div>${b('sendDoc', 'email', 'Email', 'data-ch="email"')}${planHas('sms') && c.phone && c.smsConsent ? b('sendDoc', 'text', 'Text Message', 'data-ch="text"') : ''}` : ''}
 ${d.status === 'draft' ? `<hr class="mi-sep"><div class="mi-h">Mark as…</div>${b('markInvoiceSent', 'awaiting', 'Awaiting Payment')}` : ''}
 <hr class="mi-sep"><a class="mi" href="/pay/${d.token}" target="_blank">${QM.eye}${open ? 'Preview as Client' : 'View Receipt'}</a>
-<a class="mi" href="/api/invoices/${d.id}/pdf" target="_blank">${QM.pdf}Print or Save PDF</a>
+<a class="mi" href="/api/invoices/${d.id}/pdf" target="_blank" title="Invoice ${esc(d.number)}">${QM.pdf}Print or Save PDF</a>
 ${b('delDoc', 'trash', 'Delete')}</div></details>`;
 }
 // Create Similar Invoice: a new draft for the same client with the same subject, line items, terms and client view (not linked to the job, so no deposit credit twice)
@@ -2207,8 +2207,10 @@ const noteFilesCard = (kind, d) => { const own = d.noteEntries || []; const link
 // phones: a note's PDF or photo opens inside the app with a Back link, so nobody gets stuck outside it. pdf.js draws every page (iPhones often show only a PDF's first page in a frame); without it, the browser's own view
 const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
 const pdfjsReady = () => (window.pdfjsLib ? Promise.resolve(window.pdfjsLib) : new Promise((res, rej) => { const s = document.createElement('script'); s.src = PDFJS + 'pdf.min.js'; s.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + 'pdf.worker.min.js'; res(window.pdfjsLib); }; s.onerror = rej; document.head.append(s); }));
+// a PDF also gets Share (the phone's share sheet: save to Files, print, mail), or a plain download where sharing files isn't offered
 async function mFileView(url, name, isPdf) {
-  const page = mPage(name, `<div class="mfv">${isPdf ? '<p class="muted mfv-wait">Opening…</p>' : `<img src="${esc(url)}" alt="${esc(name)}">`}</div>`); page.classList.add('mfv-page');
+  const share = isPdf ? `<button type="button" class="mfv-share" data-url="${esc(url)}" data-name="${esc(name)}">${svgIcon('<path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/>', 20)}<span>Share</span></button>` : '';
+  const page = mPage(name, `<div class="mfv">${isPdf ? '<p class="muted mfv-wait">Opening…</p>' : `<img src="${esc(url)}" alt="${esc(name)}">`}</div>`, share); page.classList.add('mfv-page');
   $('.ms-x', page).innerHTML = `${CHEV('M15 18l-6-6 6-6')}<span>Back</span>`; $('.ms-x', page).classList.add('mfv-back'); if (!isPdf) return; const box = $('.mfv', page);
   try {
     const [lib, data] = await Promise.all([pdfjsReady(), fetch(url).then((r) => { if (!r.ok) throw new Error('not found'); return r.arrayBuffer(); })]);
@@ -2219,7 +2221,23 @@ async function mFileView(url, name, isPdf) {
     }
   } catch (e) { box.innerHTML = `<iframe src="${esc(url)}" title="${esc(name)}"></iframe><a class="mfv-open" href="${esc(url)}" target="_blank" rel="noopener">Open in browser</a>`; }
 }
-document.addEventListener('click', (e) => { const a = e.target.closest && e.target.closest('a.mnt-file'); if (!a || !phoneMq.matches) return; e.preventDefault(); e.stopPropagation(); mFileView(a.getAttribute('href'), a.title || 'File', /\.pdf$/i.test(a.getAttribute('href'))); }, true);
+// on phones, every PDF link in the app opens here too (quotes, invoices, receipts, checklists): the installed app has no browser Back to leave a PDF tab
+const PDF_HREF = /^\/(?:api\/.+\/pdf|uploads\/[\w.-]+\.pdf)(?:\?|$)/i;
+document.addEventListener('click', (e) => {
+  const a = e.target.closest && e.target.closest('a[href]'); if (!a || !phoneMq.matches) return; const href = a.getAttribute('href');
+  const note = a.classList.contains('mnt-file'); if (!note && !PDF_HREF.test(href)) return;
+  e.preventDefault(); e.stopPropagation(); $$('details.menu[open]').forEach((x) => { x.open = false; });
+  const label = note ? a.title : (a.title && !/^print|save/i.test(a.title) ? a.title : '') || (href.split('?')[0].split('/').pop() === 'pdf' ? 'PDF' : href.split('/').pop());
+  mFileView(href, label || 'File', /\.pdf$|\/pdf(\?|$)/i.test(href));
+}, true);
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest && e.target.closest('.mfv-share'); if (!b) return; const { url } = b.dataset; const name = /\.pdf$/i.test(b.dataset.name) ? b.dataset.name : `${b.dataset.name.replace(/[^\w-]+/g, '-') || 'document'}.pdf`;
+  try {
+    const blob = await (await fetch(url)).blob(); const file = new File([blob], name, { type: 'application/pdf' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) return await navigator.share({ files: [file], title: b.dataset.name });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  } catch (x) { if (x && x.name !== 'AbortError') toast('Couldn’t share the PDF', true); }
+});
 const noteRead = async (f) => ({ name: f.name || 'photo.jpg', dataUrl: f.type.startsWith('image/') ? await resizeImage(f, 1800) : await readFileAsDataUrl(f) });
 // Add note / Edit note, from the bottom
 function mNotePage(kind, d, note, firstFiles = []) {
@@ -2421,7 +2439,7 @@ function mobileReceipt(d, id) {
   const c = byId(D.clients, d.clientId) || {}; const row = (l, v) => (v ? `<div class="mp-row"><span>${l}</span><span>${esc(v)}</span></div>` : '');
   return mpShell('Receipt', back, `<div class="mp-acc mp-receipt"><small>Amount paid</small><strong class="mp-amt">${money(r.amount)}</strong>
 ${row('Date', fmtDate(String(r.date).slice(0, 10)))}${row('Paid by', c.name)}${row('Method', r.label || payLabel(r.method))}${row('Reference', r.reference)}${row('For', `Invoice #${d.number}`)}${r.refunded ? row('Refunded', money(r.refunded)) : ''}
-<a class="btn alt mp-pdf" href="/api/payment-detail/${encodeURIComponent(r.id)}/pdf" download>Download PDF</a></div>`);
+<a class="btn alt mp-pdf" href="/api/payment-detail/${encodeURIComponent(r.id)}/pdf" download title="Receipt">Download PDF</a></div>`);
 }
 function mobileDocPage(kind, d) {
   if (mUnsign && mUnsign !== d.id) mUnsign = '';
@@ -2962,7 +2980,7 @@ function jfOpenForm(jobId, formId) {
 ${off ? `<div class="jf-fin">${svgIcon('<path d="M20 6 9 17l-5-5"/>', 18)}<span>Finished${form.completedBy ? ` by ${esc(form.completedBy)}` : ''} · ${esc(fmtStamp(form.completedAt))}</span></div>` : ''}
 <div class="jf-items">${form.fields.map((f) => jfField(f, form.answers[f.id], off)).join('')}</div>
 ${edit ? `<label class="jf-share"><input type="checkbox" data-jf-share ${form.clientVisible ? 'checked' : ''}><span>Show it in the client’s portal once finished</span></label>` : ''}
-<div class="jf-foot"><span class="jf-status muted" aria-live="polite">${off ? '' : `${jfCount(form).done} of ${jfCount(form).total} done`}</span><a class="btn alt" href="/api/jobs/${esc(jobId)}/forms/${esc(form.id)}/pdf" target="_blank" rel="noopener" title="Print or save it as a PDF">PDF</a>${edit ? '<button type="button" class="btn alt jf-rmform" data-jf-del>Remove</button>' : ''}${off ? '<button type="button" class="btn alt" data-jf-reopen>Edit</button>' : '<button type="button" class="btn" data-jf-finish>Finish</button>'}<button type="button" class="btn alt" data-act="jfClose">Done</button></div></div>`;
+<div class="jf-foot"><span class="jf-status muted" aria-live="polite">${off ? '' : `${jfCount(form).done} of ${jfCount(form).total} done`}</span><a class="btn alt" href="/api/jobs/${esc(jobId)}/forms/${esc(form.id)}/pdf" target="_blank" rel="noopener" title="${esc(form.name)}">PDF</a>${edit ? '<button type="button" class="btn alt jf-rmform" data-jf-del>Remove</button>' : ''}${off ? '<button type="button" class="btn alt" data-jf-reopen>Edit</button>' : '<button type="button" class="btn" data-jf-finish>Finish</button>'}<button type="button" class="btn alt" data-act="jfClose">Done</button></div></div>`;
   const box = phone ? mSheet(form.name, body, { full: true }) : modal(form.name, body, true); if (box.tagName === 'FORM') box.addEventListener('submit', (e) => e.preventDefault()); // Enter in a box doesn't submit the sheet
   const root = $('.jf-fill', box.closest('#msheet, #overlay')); const shell = root.closest('#msheet, #overlay');
   const x = $('.ms-x, .mh .x', shell); if (x) x.dataset.act = 'jfClose';
