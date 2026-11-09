@@ -2805,7 +2805,8 @@ ${db.company.zelleName ? `<div class="muted">Registered to ${esc(db.company.zell
 .pa-t{display:flex;align-items:center;justify-content:center;gap:6px;height:54px;border-radius:10px;border:1px solid transparent;cursor:pointer;font:700 19px/1 system-ui,-apple-system,sans-serif;color:#fff;padding:0 10px}
 .pa-t:focus-visible{outline:3px solid #2563eb;outline-offset:2px}.pa-t:hover{filter:brightness(1.06)}
 .pa-zelle{background:#6d1ed4}.pa-venmo{background:#008cff;font-style:italic;letter-spacing:-.02em}.pa-cashapp{background:#00d64f}.pa-paypal{background:#fff;border-color:#d1d5db;font-style:italic}
-.pa-cashapp b{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:6px;background:#fff;color:#00d64f;font-size:17px}
+.pa-zelle b,.pa-venmo b,.pa-cashapp b{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:6px;background:#fff;font-size:17px;font-style:normal;flex:none}
+.pa-zelle b{color:#6d1ed4}.pa-venmo b{color:#008cff;font-style:italic;font-weight:800}.pa-cashapp b{color:#00d64f}.pa-zelle svg{width:18px;height:18px}
 .pa-paypal b{color:#003087}.pa-paypal i{color:#009cde}
 .pa-d{border:0;border-radius:14px;padding:22px 20px 20px;width:min(420px,calc(100% - 32px));box-shadow:0 20px 50px rgba(0,0,0,.25)}.pa-d::backdrop{background:rgba(15,23,42,.5)}
 .pa-x{position:absolute;top:10px;right:12px;border:0;background:none;font-size:26px;line-height:1;cursor:pointer;color:#6b7280;padding:4px 8px}</style>
@@ -2815,7 +2816,8 @@ r.addEventListener('click',function(e){var t=e.target.closest('[data-pay]');if(t
 var d=e.target.closest('dialog');if(!d)return;var b=d.getBoundingClientRect(),out=e.target===d&&(e.clientX<b.left||e.clientX>b.right||e.clientY<b.top||e.clientY>b.bottom);
 if(out||e.target.closest('[data-close]'))d.close()});})();</script>`;
 }
-const PAY_TILE = { zelle: 'Zelle', venmo: 'venmo', cashapp: '<b>$</b>Cash App', paypal: '<b>Pay</b><i>Pal</i>' };
+// a small white badge with each app's mark before its name (Zelle: the Z with its line through the top and bottom)
+const PAY_TILE = { zelle: '<b><svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M5.5 6.5h13v2.6L10 15.9h8.5v2.6h-13v-2.6L14 9.1H5.5z"/><rect x="10.9" y="3" width="2.2" height="4.5" rx=".4"/><rect x="10.9" y="16.5" width="2.2" height="4.5" rx=".4"/></svg></b>Zelle', venmo: '<b>V</b>venmo', cashapp: '<b>$</b>Cash App', paypal: '<b>Pay</b><i>Pal</i>' };
 // ---------- Stripe (online card payments) ----------
 // Each business takes card payments into its own Stripe account, connected with "Connect with Stripe" in App Settings (Stripe Connect):
 // the platform's key (BILLING_STRIPE_SECRET_KEY or STRIPE_SECRET_KEY) acts on the business's account, so the money goes straight to it.
