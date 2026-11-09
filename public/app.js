@@ -754,6 +754,13 @@ A.rmItem = (d, el) => { // the last remaining line is cleared instead of removed
   if ($$('.item-row', root).length > 1) row.remove(); else row.outerHTML = qItemRow({});
   recalc(root);
 };
+// ⋯ → Add line item below: a blank line right under this one (on a quote with options, in the same option), cursor in its name
+A.addItemBelow = (d, el) => {
+  const root = el.closest('form'); const row = el.closest('.item-row'); const menu = el.closest('details'); if (menu) menu.open = false;
+  const opt = $('.iopt', row) ? $('.iopt', row).value : row.dataset.opt || '';
+  row.insertAdjacentHTML('afterend', qItemRow(opt ? { opt } : {})); const added = row.nextElementSibling;
+  recalc(root); flashRow(added); $('.desc', added).focus();
+};
 // ⋯ → Duplicate line item: an exact copy right below it (what's typed so far, its option on a quote with options), as an ordinary line (not a late fee)
 A.dupItem = (d, el) => {
   const root = el.closest('form'); const row = el.closest('.item-row'); const menu = el.closest('details'); if (menu) menu.open = false;
@@ -1877,7 +1884,7 @@ function qItemRow(it) {
 <label class="fl mk${it.markupType === 'flat' ? ' flat' : ''}"><span>Markup</span><div class="affix"><i class="pre">$</i><input class="markup" type="number" step="any" value="${it.markup ?? 0}"><select class="mtype" aria-label="Markup type"><option value="percent">%</option><option value="flat" ${it.markupType === 'flat' ? 'selected' : ''}>$</option></select></div></label>
 <div class="fl amt-box"><span>Total</span><div class="amt"></div></div>
 <details class="menu row-menu"><summary aria-label="Line item options" title="Line item options">⋯</summary><div class="menu-list">
-<button type="button" data-act="dupItem">Duplicate line item</button><button type="button" class="danger-text" data-act="rmItem">Remove line item</button></div></details>
+<button type="button" data-act="addItemBelow">Add line item below</button><button type="button" data-act="dupItem">Duplicate line item</button><button type="button" class="danger-text" data-act="rmItem">Remove line item</button></div></details>
 <label class="fl qi-desc"><span>Description</span><textarea class="details" rows="3" placeholder="Shown to the client (optional)">${esc(it.details || '')}</textarea>${aiOn() ? AI_BTN : ''}</label></div>`;
 }
 // Rewrite in a line's description box (bottom left): a menu of tones (Cheerful, Casual, Professional, Shorter). It drafts from the line's name,
