@@ -178,8 +178,12 @@ const catalogCat = (name) => {
 // ---- matrix line items: a heading line (item.matrix: sizes, each with a price; colors; a quantity per size and color) and its sub items
 // ("M · Navy", item.mx), rebuilt here from the grid every time so they always match it. App Settings → General turns the editor's button on.
 const mxList = (a) => [...new Set((Array.isArray(a) ? a : []).map((x) => String(x == null ? '' : x).replace(/\|/g, '/').trim().slice(0, 30)).filter((x) => x && x !== '__proto__'))].slice(0, 20);
-// who may use them: the default account always, others when Alpha turns on Matrix pricing for them (the business's page in the Alpha console)
-const matrixAllowed = (t = tenancy.current()) => tenancy.isDefault(t) || !!t.matrixPricing;
+// who may use them: the default account always; others when Alpha includes Matrix pricing for free (t.matrixPricing, the business's page in
+// the Alpha console), or while the owner pays for the add-on (t.addons.matrix, App Settings → General; see "paid add-ons" below)
+const matrixFree = (t) => tenancy.isDefault(t) || !!t.matrixPricing;
+// the matrix add-on while it's on: { since, by, endsAt? }. endsAt: removed, kept until the end of the period already paid for (its last day)
+const matrixPaid = (t) => { const a = t.addons && t.addons.matrix; return a && (!a.endsAt || a.endsAt >= iso(new Date())) ? a : null; };
+const matrixAllowed = (t = tenancy.current()) => matrixFree(t) || !!matrixPaid(t);
 function mxClean(m) {
   const sizes = mxList(m.sizes); const colors = mxList(m.colors); if (!sizes.length) return null;
   const p = m.price && typeof m.price === 'object' ? m.price : {}; const q = m.qty && typeof m.qty === 'object' ? m.qty : {}; const price = {}; const qty = {};
@@ -1646,7 +1650,7 @@ function accountInfo() {
     aiDescriptions: tenancy.aiOn('aiDescriptions'), aiRewrite: tenancy.aiOn('aiRewrite'), // Alpha → Settings → Integrations → AI
     navIcons: iconsLib.navIcons(), navOrder: iconsLib.order(), // the menu's icons, order and sections (Alpha → Settings → Menu)
     productName: tenancy.platform().settings.productName, product: brandLib.brand(), contactEmail: tenancy.platform().settings.contactEmail, helpUrl: tenancy.helpUrl(), ideasUrl: tenancy.ideasUrl(), managed: !tenancy.isDefault(),
-    matrixPricing: matrixAllowed(t), // matrix line items (Alpha turns them on per business)
+    matrixPricing: matrixAllowed(t), matrixAddon: matrixInfo(t), // matrix line items: included by Alpha, or the paid add-on
     referrals: referrals.openTo(t), cardReady: !!stripeKey(), // card payments set up (App Settings → Payments → Card payments)
     // how: 'embedded' (set up in the app, payout bank changed in the app), 'standard' (own Stripe account), 'server' (the platform's own account), or null
     cardSetupType: secrets().stripeAccountId ? secrets().stripeAccountType || 'standard' : stripeKey() ? 'server' : null, payoutBank: secrets().stripeBank || null,
@@ -1705,7 +1709,7 @@ app.put('/api/company', (req, res) => {
     if (bad) return res.status(400).json({ error: bad.name ? `Give “${bad.name}” an amount${bad.type === 'percent' ? ' from 0.01 to 100%' : ''}` : 'Give each saved discount a name' });
     db.company.savedDiscounts = list;
   }
-  if (b.matrixItems && typeof b.matrixItems === 'object' && !matrixAllowed()) return res.status(403).json({ error: 'Matrix pricing isn’t available on this account. Contact us to turn it on.' });
+  if (b.matrixItems && typeof b.matrixItems === 'object' && !matrixAllowed()) return res.status(403).json({ error: 'Matrix line items come with the matrix pricing add-on. The account owner can add it in App Settings → General → Matrix line items.' });
   if (b.matrixItems && typeof b.matrixItems === 'object') db.company.matrixItems = { on: !!b.matrixItems.on, sizes: mxList(b.matrixItems.sizes), colors: mxList(b.matrixItems.colors) }; // matrix line items
   if ('timezone' in b) applyTimezone();
   save(); res.json({ ...db.company, account: accountInfo() });
@@ -4712,6 +4716,7 @@ app.get('/api/account/billing', async (req, res) => {
     card: null, customer: null, subscription: null, invoices: [], endsAt: b.endsAt || null, trial: onTrial(t) ? { endsAt: t.expiresAt, code: b.trial.code, cancelled: !!b.trial.cancelled, prepaid: !!b.trial.prepaid } : null, prepaidUntil: supporters.lockedUntil(t), pendingPlan: b.pendingPlanId ? (P.plans.find((p) => p.id === b.pendingPlanId) || {}).name || null : null,
     retention: retentionInfo(t), usage: { clients: db.clients.length, quotes: db.quotes.length, jobs: db.jobs.length, invoices: db.invoices.length, logins: db.users.length, extraLogins: extraCount(plan), texts: smsUsage() } };
   const sc = stripeLib.seatCharge(plan, out.interval); if (sc && out.usage.extraLogins) out.extra = { count: out.usage.extraLogins, cents: sc.cents, interval: sc.interval };
+  out.matrixAddon = matrixInfo(t); // paid add-on (or included by Alpha); out.matrix below: its line on the subscription
   if (out.billed) {
     const get = (ep) => billingCall('GET', ep).catch((e) => { console.error('Billing:', e.message); return null; });
     const [cust, sub, inv] = await Promise.all([get(`customers/${encodeURIComponent(b.customerId)}?expand[]=invoice_settings.default_payment_method`),
@@ -4729,7 +4734,8 @@ app.get('/api/account/billing', async (req, res) => {
       out.interval = out.subscription.interval; out.plan.charge = charge = stripeLib.planCharge(plan, out.interval);
       if (charge && price && price.unit_amount != null && charge.interval === out.interval && !charge.regular) out.plan.charge = charge = { ...charge, cents: price.unit_amount }; // what Stripe really charges
       const sc2 = stripeLib.seatCharge(plan, out.interval);
-      if (((seats && seats.quantity) || 0) !== extraCount(plan) && !tenancy.isDefault(t)) seatsChanged(); // out of step (e.g. a failed update): fix it for the next bill
+      if ((((seats && seats.quantity) || 0) !== extraCount(plan) || !!matrixItem(sub) !== matrixBilled(t)) && !tenancy.isDefault(t)) seatsChanged(); // out of step (e.g. a failed update): fix it for the next bill
+      const mx = matrixItem(sub); if (mx) out.matrix = { cents: (mx.price && mx.price.unit_amount) || 0, interval: (mx.price && mx.price.recurring && mx.price.recurring.interval) || out.interval };
       out.extra = seats ? { count: seats.quantity || 0, cents: (seats.price && seats.price.unit_amount) || 0, interval: out.interval } : out.usage.extraLogins && sc2 ? { count: out.usage.extraLogins, cents: sc2.cents, interval: sc2.interval } : null;
     }
     out.invoices = ((inv && inv.data) || []).filter((i) => i.status !== 'draft').map((i) => ({ id: i.id, date: unix(i.status_transitions && i.status_transitions.paid_at) || unix(i.created), amount: round2((i.amount_paid || i.total || 0) / 100),
@@ -4760,8 +4766,8 @@ async function seatProduct() {
 const seatProductId = () => ((tenancy.platform().stripeProducts || {})[`${stripeLib.modeOf(stripeLib.platformKey())}:seats`]) || '';
 const productOf = (item) => (item && item.price && (typeof item.price.product === 'object' ? item.price.product.id : item.price.product)) || '';
 const isSeatItem = (item) => !!seatProductId() && productOf(item) === seatProductId();
-// the plan's own line on a subscription (not the extra logins)
-const planItem = (sub) => { const items = (sub && sub.items && sub.items.data) || []; return items.find((i) => !isSeatItem(i)) || items[0]; };
+// the plan's own line on a subscription (not the extra logins or an add-on)
+const planItem = (sub) => { const items = (sub && sub.items && sub.items.data) || []; return items.find((i) => !isSeatItem(i) && !isMatrixItem(i)) || items[0]; };
 const seatItem = (sub) => ((sub && sub.items && sub.items.data) || []).find(isSeatItem) || null;
 // subscription update fields that set the extra logins line to `count` for plan p in `interval` (as items[n]); {} when nothing changes.
 // Sent in the same update as a plan or billing period change, since every line on a subscription must share one period.
@@ -4780,10 +4786,84 @@ async function syncSeats(t) {
   if (!stripeLib.platformKey() || !t.billing || !t.billing.subscriptionId) return;
   const sub = await liveSubscription(t.billing); if (!sub) return;
   const plan = tenancy.planOf(t); const item = planItem(sub); const interval = (item && item.price && item.price.recurring && item.price.recurring.interval) || t.billing.interval || 'month';
-  const p = await seatParams(sub, plan, interval, extraCount(plan), 0);
+  const p = await extraLines(sub, plan, interval, extraCount(plan), t, 0); // and the matrix add-on line, if it's out of step
   if (Object.keys(p).length) await billingCall('POST', `subscriptions/${sub.id}`, { ...p, proration_behavior: 'create_prorations' });
 }
 const seatsChanged = () => { const t = tenancy.current(); if (!tenancy.isDefault(t)) syncSeats(t).catch((e) => console.error(`Extra logins for ${t.slug}:`, e.message)); };
+// ---------- paid add-ons: matrix pricing ($10/month, App Settings → General → Matrix line items) ----------
+// The owner adds it in the app; it's a line of its own on the subscription ("Matrix pricing"), in the subscription's billing period
+// (yearly: the plan's yearly discount). Removing it takes the line off with no refund and keeps the add-on until the period ends.
+// On a free trial it's free until the trial ends: the line goes on the subscription made when a card is added.
+// Accounts Alpha includes it for (t.matrixPricing) and the default account never pay for it.
+const MATRIX_ADDON = 10; // dollars a month
+const matrixCharge = (p, interval) => stripeLib.addonCharge(MATRIX_ADDON, p, interval);
+const matrixBilled = (t) => !matrixFree(t) && !!(t.addons && t.addons.matrix && !t.addons.matrix.endsAt); // should have a line on the subscription
+async function matrixProduct() {
+  const P = tenancy.platform(); P.stripeProducts = P.stripeProducts || {}; const k = `${stripeLib.modeOf(stripeLib.platformKey())}:matrix`;
+  if (P.stripeProducts[k]) return P.stripeProducts[k];
+  const p = await billingCall('POST', 'products', { name: `${P.settings.productName} matrix pricing`, 'metadata[addon]': 'matrix' });
+  P.stripeProducts[k] = p.id; tenancy.savePlatform(); return p.id;
+}
+const matrixProductId = () => ((tenancy.platform().stripeProducts || {})[`${stripeLib.modeOf(stripeLib.platformKey())}:matrix`]) || '';
+const isMatrixItem = (item) => !!matrixProductId() && productOf(item) === matrixProductId();
+const matrixItem = (sub) => ((sub && sub.items && sub.items.data) || []).find(isMatrixItem) || null;
+// subscription update fields that put the matrix line on (or take it off) as items[n]; {} when nothing changes. A line already in the
+// right period keeps its price (what they signed up at); a change of billing period reprices it.
+async function matrixParams(sub, p, interval, on, n = 1) {
+  const k = (f) => `items[${n}]${f}`; const cur = matrixItem(sub);
+  if (!on) return cur ? { [k('[id]')]: cur.id, [k('[deleted]')]: 'true' } : {};
+  if (cur && cur.price && cur.price.recurring && cur.price.recurring.interval === interval) return {};
+  const c = matrixCharge(p, interval); if (!c) return {};
+  return { ...(cur ? { [k('[id]')]: cur.id } : {}), [k('[quantity]')]: '1', [k('[price_data][currency]')]: 'usd', [k('[price_data][product]')]: await matrixProduct(),
+    [k('[price_data][unit_amount]')]: String(c.cents), [k('[price_data][recurring][interval]')]: c.interval };
+}
+// every line beside the plan's (extra logins, then add-ons) from items[n] on, for a subscription update in plan p's `interval`
+async function extraLines(sub, p, interval, count, t, n = 1) {
+  const s = await seatParams(sub, p, interval, count, n);
+  return { ...s, ...(await matrixParams(sub, p, interval, matrixBilled(t), Object.keys(s).length ? n + 1 : n)) };
+}
+// what the app and the billing page show about the add-on
+function matrixInfo(t) {
+  if (tenancy.isDefault(t)) return null; const a = matrixPaid(t); const plan = tenancy.planOf(t);
+  const c = matrixCharge(plan, (t.billing && t.billing.interval) || 'month');
+  return { state: t.matrixPricing ? 'included' : a ? (a.endsAt ? 'ending' : 'on') : 'off', since: a ? a.since : null, endsAt: a && a.endsAt ? a.endsAt : null, cents: c ? c.cents : 0, interval: c ? c.interval : 'month', monthly: MATRIX_ADDON };
+}
+// the owner adds or removes it (App Settings → General → Matrix line items)
+app.post('/api/account/addons/matrix', async (req, res) => {
+  if (!ownerOnly(req, res)) return;
+  const t = tenancy.current(); const b = t.billing || (t.billing = {}); const u = currentUser(req); const on = !!(req.body && req.body.on);
+  if (matrixFree(t)) return res.status(400).json({ error: 'Matrix pricing is already included in your account' });
+  if (t.status === 'suspended') return res.status(400).json({ error: 'Your account is paused. Choose a plan in Account and billing to reopen it first.' });
+  const a = t.addons && t.addons.matrix; const today = iso(new Date());
+  if (a && a.endsAt && a.endsAt < today) { delete t.addons.matrix; } // ended: as if never added
+  const cur = t.addons && t.addons.matrix;
+  if (on && cur && !cur.endsAt) return res.status(400).json({ error: 'Matrix pricing is already on' });
+  if (!on && (!cur || cur.endsAt)) return res.status(400).json({ error: 'Matrix pricing isn’t on' });
+  const plan = tenancy.planOf(t); const price = (c) => `${money(c.cents / 100).replace(/\.00$/, '')}/${c.interval}`;
+  try {
+    const sub = stripeLib.platformKey() ? await liveSubscription(b) : null;
+    const item = sub && planItem(sub); const interval = (item && item.price && item.price.recurring && item.price.recurring.interval) || b.interval || 'month';
+    const c = matrixCharge(plan, interval); const paying = sub && sub.status !== 'trialing'; let message;
+    if (on) {
+      if (stripeLib.platformKey() && !sub && !onTrial(t) && !b.demo) return res.status(400).json({ error: supporters.lockedUntil(t) ? 'Your plan is prepaid with no card on file. Add a card in Account and billing first, or contact us to add matrix pricing.' : 'Add-ons are billed with a paid plan. Choose one in Account and billing first.' });
+      const keep = !!(cur && cur.endsAt); // removed earlier this period, which is already paid for
+      t.addons = t.addons || {}; t.addons.matrix = { since: keep ? cur.since : today, by: u.email };
+      if (sub) await billingCall('POST', `subscriptions/${sub.id}`, { ...(await matrixParams(sub, plan, interval, true, 0)), proration_behavior: keep || !paying ? 'none' : 'create_prorations' });
+      message = !c || (!stripeLib.platformKey()) || b.demo ? 'Matrix pricing is on.'
+        : paying ? (keep ? `Matrix pricing is back on. It’s already paid through this billing period, then it’s ${price(c)} again.` : `Matrix pricing is on: ${price(c)}, added to your subscription. The part of this billing period that’s left is on your next bill.`)
+        : `Matrix pricing is on. It’s free until your trial ends${t.expiresAt ? ` on ${niceDate(t.expiresAt)}` : ''}, then ${price(c)} with your plan.`;
+      tellPlatform(`Add-on: ${t.name} added matrix pricing`, `${u.name} (${u.email}) added matrix pricing to ${t.name}${c ? ` (${price(c)})` : ''}.`);
+    } else {
+      if (sub) { const p = await matrixParams(sub, plan, interval, false, 0); if (Object.keys(p).length) await billingCall('POST', `subscriptions/${sub.id}`, { ...p, proration_behavior: 'none' }); }
+      const end = paying && periodEndOf(sub);
+      if (end && end > today) { cur.endsAt = iso(new Date(Date.parse(end + 'T12:00:00Z') - 864e5)); message = `Matrix pricing stays on until ${niceDate(cur.endsAt)}, the end of the period you’ve paid for. You won’t be charged for it again.`; }
+      else { delete t.addons.matrix; message = 'Matrix pricing is off.'; }
+      tellPlatform(`Add-on: ${t.name} removed matrix pricing`, `${u.name} (${u.email}) removed matrix pricing from ${t.name}.${cur.endsAt ? ` It stays on until ${niceDate(cur.endsAt)}.` : ''}`);
+    }
+    tenancy.savePlatform();
+    res.json({ ok: true, message, account: { matrixPricing: matrixAllowed(t), matrixAddon: matrixInfo(t) } });
+  } catch (e) { stripeError(res, 'change matrix pricing', e); }
+});
 const periodEndOf = (sub) => unix(sub.current_period_end || (sub.items && sub.items.data[0] && sub.items.data[0].current_period_end));
 const tellPlatform = (title, message) => { const to = tenancy.platform().settings.contactEmail; if (to) sendTemplate('accountActivity', to, { title, message, link: tenancy.tenantUrl(tenancy.current()) }, { server: true }).catch(() => {}); };
 // "Get Support" in the app's help panel: saved for the platform console (Messages → Contact requests) and emailed to the contact address
@@ -4920,7 +5000,7 @@ app.post('/api/account/billing/redeem', async (req, res) => {
       // after the prepaid months they pay the Founding Supporter price (or less, if this account is already locked lower)
       const c = stripeLib.planCharge(bp, (item.price.recurring && item.price.recurring.interval) || b.interval);
       if (c && t.planId === to.id && item.price.unit_amount > 0 && item.price.unit_amount < c.cents) c.cents = item.price.unit_amount; // already paying less: never raised
-      if (c) Object.assign(p, { 'items[0][id]': item.id, 'items[0][price_data][currency]': 'usd', 'items[0][price_data][product]': await planProduct(to), 'items[0][price_data][unit_amount]': String(c.cents), 'items[0][price_data][recurring][interval]': c.interval }, await seatParams(sub, bp, c.interval, extraCount(bp))); // extra logins only past the backer's included ones
+      if (c) Object.assign(p, { 'items[0][id]': item.id, 'items[0][price_data][currency]': 'usd', 'items[0][price_data][product]': await planProduct(to), 'items[0][price_data][unit_amount]': String(c.cents), 'items[0][price_data][recurring][interval]': c.interval }, await extraLines(sub, bp, c.interval, extraCount(bp), t)); // extra logins only past the backer's included ones
       await billingCall('POST', `subscriptions/${sub.id}`, p);
       t.planId = to.id; delete b.pendingPlanId; delete b.endsAt; until = iso(new Date(next.getTime() - 864e5));
       message = `You’re on ${to.name}, prepaid until ${niceDate(until)}. Your next charge${c ? ` of ${money(c.cents / 100)}` : ''} is on ${niceDate(iso(next))}.`;
@@ -4973,7 +5053,7 @@ app.post('/api/account/billing/plan', async (req, res) => {
       const item = planItem(sub); const extra = extraCount(to); const sc = extra && stripeLib.seatCharge(to, c.interval);
       const s2 = await billingCall('POST', `subscriptions/${sub.id}`, { 'items[0][id]': item.id, 'items[0][price_data][currency]': 'usd', 'items[0][price_data][product]': await planProduct(to),
         'items[0][price_data][unit_amount]': String(c.cents), 'items[0][price_data][recurring][interval]': c.interval, proration_behavior: 'always_invoice', payment_behavior: 'error_if_incomplete',
-        cancel_at_period_end: 'false', 'metadata[planId]': to.id, ...(await seatParams(sub, to, c.interval, extra)) });
+        cancel_at_period_end: 'false', 'metadata[planId]': to.id, ...(await extraLines(sub, to, c.interval, extra, t)) });
       const plus = sc ? `, plus ${money(sc.cents / 100)} each ${sc.interval} for each of your ${extra} extra login${extra === 1 ? '' : 's'}` : '';
       t.planId = to.id; delete b.pendingPlanId; delete b.endsAt; b.subscriptionStatus = s2.status; if (c.regular) tenancy.lockSale(t, to.id, stripeLib.saleLock(to)); // switched at a sale price: kept for good
       return switched(c.interval !== nowInterval ? `You’re now on ${label}. Your unused time is credited and the new ${c.interval}ly price of ${money(c.cents / 100)}${plus} is charged now; it renews every ${c.interval}.`
@@ -5010,6 +5090,9 @@ async function subscribeSession(t, u, to, c, { trial = onTrial(t) } = {}) {
   const extra = extraCount(to); const sc = extra && stripeLib.seatCharge(to, c.interval); // logins past the plan's included ones, as a second line
   if (sc) Object.assign(p, { 'line_items[1][quantity]': String(extra), 'line_items[1][price_data][currency]': 'usd', 'line_items[1][price_data][product]': await seatProduct(),
     'line_items[1][price_data][unit_amount]': String(sc.cents), 'line_items[1][price_data][recurring][interval]': sc.interval });
+  const mc = matrixBilled(t) && matrixCharge(to, c.interval); const mi = sc ? 2 : 1; // the matrix pricing add-on, as the next line
+  if (mc) Object.assign(p, { [`line_items[${mi}][quantity]`]: '1', [`line_items[${mi}][price_data][currency]`]: 'usd', [`line_items[${mi}][price_data][product]`]: await matrixProduct(),
+    [`line_items[${mi}][price_data][unit_amount]`]: String(mc.cents), [`line_items[${mi}][price_data][recurring][interval]`]: mc.interval });
   if (b.customerId) p.customer = b.customerId; else p.customer_email = u.email;
   Object.assign(p, stripeLib.saleLockMeta(to)); // a sale price is kept for good once this goes through (billing/return, or the webhook)
   Object.assign(p, referrals.bankedTrial(t)); // free months earned by referring other businesses
@@ -5224,7 +5307,7 @@ const platformApp = require('./lib/platform')({
   createOwner, ownerLink, sendVerifyEmail, sendPasswordReset, loginsFor, handoffUrl, tenantStats, endSupportSessions, sendEmail, sendTemplate, sendSms, emailProvider: serverEmailProvider, applyStripeSession, syncStripeAccount, resetDemo, saveConnection, saveAccounting, setCompanyEmail: (e) => { if (!db.company.email) { db.company.email = e; save(); } }, setCompanyPhone: (p) => { if (p && !db.company.phone) { db.company.phone = p; save(); } },
   setCompanyIndustry: (i) => { Object.assign(db.company, i); save(); },
   planProduct, // the Stripe product for a plan (Alpha → an account → Subscription → Change plan)
-  planItem, seatItem, seatParams, extraCount, // a subscription's plan line and extra logins line
+  planItem, seatItem, seatParams, extraCount, extraLines, matrixItem, syncSeats, // a subscription’s plan line, extra logins line and add-on lines
   dataImport, // Alpha → an account → Import data
 });
 // which app answers: the platform's (its own domain, or /alpha… while developing) or an account's

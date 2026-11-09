@@ -2131,11 +2131,30 @@ ${savedDiscs().length ? `<div class="sd-view">${savedDiscs().map((x) => `<div><s
 <button type="button" class="btn alt sm" data-act="sdEdit">${savedDiscs().length ? 'Edit saved discounts' : '+ Add a discount'}</button></div>`;
 A.sdEdit = () => savedDiscountsDialog(() => refresh());
 // App Settings → General → Matrix line items: turns on "+ Add matrix item" (sizes × colors grid) beside "+ Add line item"; saves as you change it
-const mxCard = () => { if (!mxAllowed()) return ''; const m = company.matrixItems || {}; return `<div class="card" id="matrix-items"><h2>Matrix line items</h2><p class="muted" style="margin-top:0">For items sold in sizes and colors, like custom t-shirts. Adds <strong>+ Add matrix item</strong> beside <strong>+ Add line item</strong> on quotes, jobs and invoices: a grid with a price for each size and how many of each size and color. Regular line items stay as they are.</p>
+// Matrix pricing is a paid add-on (company.account.matrixAddon: state 'off' | 'on' | 'ending' | 'included', its price); only the owner adds or removes it
+const mxAddon = () => (company.account && company.account.matrixAddon) || null;
+const mxPrice = (x) => `${money(x.cents / 100).replace(/\.00$/, '')}/${x.interval}`;
+const mxIntro = '<p class="muted" style="margin-top:0">For items sold in sizes and colors, like custom t-shirts. Adds <strong>+ Add matrix item</strong> beside <strong>+ Add line item</strong> on quotes, jobs and invoices: a grid with a cost for each size, your markup, and how many of each size and color. Regular line items stay as they are.</p>';
+const mxOwner = () => !!(me && me.role === 'owner');
+const mxCard = () => {
+  const x = mxAddon();
+  if (!mxAllowed()) return x && x.cents ? `<div class="card" id="matrix-items"><h2>Matrix line items</h2>${mxIntro}
+<div class="mx-addon"><p style="margin:0 0 8px"><strong>Matrix pricing is an add-on: ${mxPrice(x)}</strong>, added to your subscription. Free during a free trial. Remove it anytime; it stays on until the end of the period you’ve paid for.</p>
+${mxOwner() ? '<button type="button" class="btn sm" data-act="mxBuy">Add matrix pricing</button>' : '<p class="muted sm" style="margin:0">Ask your account owner to add it.</p>'}</div></div>` : '';
+  const m = company.matrixItems || {};
+  const foot = !x || x.state === 'included' ? '' : x.state === 'ending' ? `<p class="muted sm" style="margin:12px 0 0">Add-on removed: matrix pricing stays on until ${fmtDate(x.endsAt)}.${mxOwner() ? ' <button type="button" class="link-btn" data-act="mxBuy">Keep it</button>' : ''}</p>`
+    : `<p class="muted sm" style="margin:12px 0 0">Matrix pricing add-on, ${mxPrice(x)}.${mxOwner() ? ' <button type="button" class="link-btn" data-act="mxRemove">Remove add-on</button>' : ''}</p>`;
+  return `<div class="card" id="matrix-items"><h2>Matrix line items</h2>${mxIntro}
 <form id="mxf">${switchRow('on', 'Matrix line items', !!m.on)}<div class="mx-fields"${m.on ? '' : ' hidden'}>
 <label>Sizes to start with<input name="sizes" value="${esc((m.sizes && m.sizes.length ? m.sizes : MX_SIZES).join(', '))}" placeholder="S, M, L, XL, 2XL"></label>
 <label>Colors to start with<input name="colors" value="${esc((m.colors || []).join(', '))}" placeholder="Optional, e.g. Black, White, Navy"></label>
-<p class="muted sm">Separate them with commas. You can change them on each item.</p></div></form></div>`; };
+<p class="muted sm">Separate them with commas. You can change them on each item.</p></div></form>${foot}</div>`; };
+async function mxAddonSet(on) {
+  try { const r = await api('POST', '/api/account/addons/matrix', { on }); company.account = { ...company.account, ...r.account }; toast(r.message); refresh(); }
+  catch (e) { toast(e.message, true); }
+}
+A.mxBuy = () => { const x = mxAddon(); if (!x) return; if (x.state === 'ending' || confirm(`Add matrix pricing for ${mxPrice(x)}?\n\nIt’s added to your subscription; the part of this billing period that’s left is on your next bill (free during a free trial). You can remove it anytime.`)) mxAddonSet(true); };
+A.mxRemove = () => { if (confirm('Remove the matrix pricing add-on?\n\nIt stays on until the end of the period you’ve paid for, and you won’t be charged for it again. Quotes, jobs and invoices that already have a grid keep it.')) mxAddonSet(false); };
 function wireMx() {
   const f = $('#mxf'); if (!f) return;
   f.addEventListener('submit', (e) => e.preventDefault());
@@ -3561,6 +3580,8 @@ PAGES['/settings/billing'] = {
     const B = billingData = await api('GET', '/api/account/billing'); const sub = B.subscription;
     const per = (i) => (i === 'year' ? 'yearly' : 'monthly');
     const ending = sub && sub.cancelAtPeriodEnd; const T = B.trial;
+    const withs = [B.extra && B.extra.count ? `${B.extra.count} extra login${B.extra.count === 1 ? '' : 's'}` : '', B.matrix ? 'matrix pricing' : ''].filter(Boolean); // the lines beside the plan's
+    const MX = B.matrixAddon && ['on', 'ending', 'included'].includes(B.matrixAddon.state) ? B.matrixAddon : null; // the overview's Add-ons row
     const statusText = T ? `${T.prepaid ? 'Prepaid until' : T.cancelled ? 'Trial cancelled, ends' : 'Free trial until'} ${fmtDate(T.endsAt)}` : ending ? `Active until ${fmtDate(sub.periodEnd)}` : sub && sub.status === 'past_due' ? 'Payment past due' : B.status === 'suspended' ? 'Paused' : 'Active';
     const contact = '<button type="button" class="btn alt" data-act="supportForm" data-title="Contact us" data-topic="Account and billing">Contact us</button>'; // the support form, sent to the platform's inbox
     const addr = (a) => (a && a.line1 ? [a.line1, a.line2, [a.city, a.state].filter(Boolean).join(', ') + (a.postal_code ? ' ' + a.postal_code : ''), a.country].filter((x) => x && x.trim()).map(esc).join('<br>') : '<span class="muted">No address yet</span>');
@@ -3570,7 +3591,7 @@ PAGES['/settings/billing'] = {
       : T ? `<p>You’re on a free trial of ${esc(B.plan.name)} until <strong>${fmtDate(T.endsAt)}</strong>, with no card on file. ${B.live ? `Add a card to keep your account after that: your first payment${B.plan.charge ? ` of ${money(B.plan.charge.cents / 100)}/${B.plan.charge.interval}` : ''} is taken when the trial ends, and you can cancel anytime before then.` : 'After that, the account is paused unless you choose a plan.'}</p>${B.live ? '<button type="button" class="btn" data-act="billCard">Add card</button>' : ''}`
       : ending && B.pendingPlan ? `<p>Your plan changes to <strong>${esc(B.pendingPlan)}</strong> on ${fmtDate(sub.periodEnd)}. You won’t be charged again.</p><button type="button" class="btn alt sm" data-act="billKeep">Stay on ${esc(B.plan.name)}</button>`
       : ending ? `<p>Your subscription is cancelled. You can keep using ${esc(B.productName)} until <strong>${fmtDate(sub.periodEnd)}</strong>, then the account is paused.</p><button type="button" class="btn" data-act="billKeep">Keep my subscription</button>`
-      : sub ? `${B.prepaidUntil ? `<p>Prepaid with your Founding Supporter code until <strong>${fmtDate(B.prepaidUntil)}</strong>.</p>` : ''}<p>You will be charged <strong>${money(sub.amount + (B.extra ? (B.extra.count * B.extra.cents) / 100 : 0))} USD</strong> for your ${per(sub.interval)} ${esc(B.plan.name)} subscription${B.extra && B.extra.count ? ` (with ${B.extra.count} extra login${B.extra.count === 1 ? '' : 's'})` : ''} on ${fmtDate(sub.periodEnd)}, and every ${sub.interval} after that. Plus taxes where applicable.</p>${sub.status === 'past_due' ? '<p class="bill-warn">Your last payment didn’t go through. Update your card and we’ll retry it right away.</p>' : ''}`
+      : sub ? `${B.prepaidUntil ? `<p>Prepaid with your Founding Supporter code until <strong>${fmtDate(B.prepaidUntil)}</strong>.</p>` : ''}<p>You will be charged <strong>${money(sub.amount + (B.extra ? (B.extra.count * B.extra.cents) / 100 : 0) + (B.matrix ? B.matrix.cents / 100 : 0))} USD</strong> for your ${per(sub.interval)} ${esc(B.plan.name)} subscription${withs.length ? ` (with ${withs.join(' and ')})` : ''} on ${fmtDate(sub.periodEnd)}, and every ${sub.interval} after that. Plus taxes where applicable.</p>${sub.status === 'past_due' ? '<p class="bill-warn">Your last payment didn’t go through. Update your card and we’ll retry it right away.</p>' : ''}`
       : B.demo ? '<p class="muted">Your account was started with a demo checkout, so nothing is charged. Pick a plan to start a paid subscription.</p>'
       : !B.plan.charge ? `<p>You’re on the ${esc(B.plan.name)} plan${B.plan.price ? ` (${esc(B.plan.price)})` : ''}. There’s nothing to pay.</p>`
       : `<p class="muted">Your ${esc(B.plan.name)} plan isn’t billed automatically yet. Choose it under Modify subscription to set up automatic payments.</p>`;
@@ -3582,6 +3603,7 @@ PAGES['/settings/billing'] = {
 <dl class="bill-dl"><div><dt>Active since</dt><dd>${B.activeSince ? fmtDate(B.activeSince) : '—'}</dd></div><div><dt>Account status</dt><dd>${esc(statusText)}</dd></div>
 <div><dt>Current plan</dt><dd>${esc(B.plan.name)}${B.plan.charge ? ` <span class="muted">(${B.plan.charge.interval === 'year' ? 'yearly' : 'monthly'}, ${money(B.plan.charge.cents / 100).replace(/\.00$/, '')}/${B.plan.charge.interval})</span>` : B.plan.price ? ` <span class="muted">(${esc(B.plan.price)})</span>` : ''}${B.plan.locked ? `<div class="muted" style="font-size:13px">Your ${B.plan.locked.name ? `${esc(B.plan.locked.name)} ` : ''}price is locked since ${fmtDate(B.plan.locked.since)} for as long as you stay on ${esc(B.plan.name)}, monthly or yearly.</div>` : ''}</dd></div>
 <div><dt>Team logins</dt><dd>${B.usage.logins}${B.plan.maxUsers ? ` <span class="muted">(${B.plan.maxUsers} included${B.plan.extraUser ? `, then ${money(B.plan.extraUser).replace(/\.00$/, '')}/month each` : ''})</span>` : ' <span class="muted">(unlimited)</span>'}${B.extra && B.extra.count ? `<div class="muted" style="font-size:13px">${B.extra.count} extra login${B.extra.count === 1 ? '' : 's'} × ${money(B.extra.cents / 100).replace(/\.00$/, '')}/${B.extra.interval}</div>` : ''}</dd></div>
+${MX ? `<div><dt>Add-ons</dt><dd>Matrix pricing <span class="muted">(${MX.state === 'included' ? 'included' : `${money((B.matrix ? B.matrix.cents : MX.cents) / 100).replace(/\.00$/, '')}/${B.matrix ? B.matrix.interval : MX.interval}${MX.state === 'ending' ? `, ends ${fmtDate(MX.endsAt)}` : ''}`})</span><div class="muted" style="font-size:13px"><a href="/settings#matrix-items" data-link>Manage in App Settings</a></div></dd></div>` : ''}
 ${B.usage.texts && B.usage.texts.limit ? `<div><dt>Texts this month</dt><dd>${B.usage.texts.sent.toLocaleString('en-US')} of ${B.usage.texts.limit.toLocaleString('en-US')}${B.usage.texts.sent >= B.usage.texts.limit ? ' <span class="muted">(used up: texts start again on the 1st)</span>' : ''}</dd></div>` : ''}</dl></div>
 <div class="bill-grid">
 <div class="card"><div class="bill-h"><h2>Billing details</h2>${B.live && B.managed ? '<button type="button" class="btn alt" data-act="billEdit">Edit</button>' : ''}</div>
