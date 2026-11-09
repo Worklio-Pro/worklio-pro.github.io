@@ -754,6 +754,13 @@ A.rmItem = (d, el) => { // the last remaining line is cleared instead of removed
   if ($$('.item-row', root).length > 1) row.remove(); else row.outerHTML = qItemRow({});
   recalc(root);
 };
+// ⋯ → Duplicate line item: an exact copy right below it (what's typed so far, its option on a quote with options), as an ordinary line (not a late fee)
+A.dupItem = (d, el) => {
+  const root = el.closest('form'); const row = el.closest('.item-row'); const menu = el.closest('details'); if (menu) menu.open = false;
+  const { lateFee, ...it } = readItems(root)[$$('.item-row', root).indexOf(row)];
+  row.insertAdjacentHTML('afterend', qItemRow(it)); const copy = row.nextElementSibling;
+  recalc(root); flashRow(copy); $('.desc', copy).focus();
+};
 // the Product / Service card shared by the quote and invoice editors; `extra` goes under the totals
 const itemsCard = (items, extra, t) => `<div class="qcard"><h2>Product / Service</h2>
 <div id="items">${(items && items.length ? items : [{}]).map(qItemRow).join('')}</div>
@@ -1870,7 +1877,7 @@ function qItemRow(it) {
 <label class="fl mk${it.markupType === 'flat' ? ' flat' : ''}"><span>Markup</span><div class="affix"><i class="pre">$</i><input class="markup" type="number" step="any" value="${it.markup ?? 0}"><select class="mtype" aria-label="Markup type"><option value="percent">%</option><option value="flat" ${it.markupType === 'flat' ? 'selected' : ''}>$</option></select></div></label>
 <div class="fl amt-box"><span>Total</span><div class="amt"></div></div>
 <details class="menu row-menu"><summary aria-label="Line item options" title="Line item options">⋯</summary><div class="menu-list">
-<button type="button" class="danger-text" data-act="rmItem">Remove line item</button></div></details>
+<button type="button" data-act="dupItem">Duplicate line item</button><button type="button" class="danger-text" data-act="rmItem">Remove line item</button></div></details>
 <label class="fl qi-desc"><span>Description</span><textarea class="details" rows="3" placeholder="Shown to the client (optional)">${esc(it.details || '')}</textarea>${aiOn() ? AI_BTN : ''}</label></div>`;
 }
 // Rewrite in a line's description box (bottom left): a menu of tones (Cheerful, Casual, Professional, Shorter). It drafts from the line's name,
