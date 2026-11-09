@@ -2843,8 +2843,8 @@ function readTip(b, due) {
 const paySettings = () => ({ ...PAY_DEFAULTS, ...(db.company.paySettings || {}) });
 // the online methods a client can use for an invoice or a quote deposit ([] = none); bank (ACH) needs a live Stripe connection
 function onlineMethods(kind, doc) {
-  const s = paySettings(); if (s.disabled || !tenancy.has('onlinePayments') || doc.allowCard === 'off' || !stripeKey()) return []; // not set up yet: no card option for clients
-  return [s[kind + 'Card'] && 'card', s[kind + 'Ach'] && stripeKey() && 'us_bank_account'].filter(Boolean);
+  const s = paySettings(); if (s.disabled || !tenancy.has('onlinePayments') || !stripeKey()) return []; // not set up yet: no online option for clients
+  return [s[kind + 'Card'] && doc.allowCard !== 'off' && 'card', s[kind + 'Ach'] && doc.allowAch !== 'off' && 'us_bank_account'].filter(Boolean); // each has its own switch on the quote or invoice
 }
 const payButtonLabel = (methods, amount, what = '') => (methods.length > 1 ? `Pay ${what}${money(amount)} online` : methods[0] === 'us_bank_account' ? `Pay ${what}${money(amount)} from your bank` : `Pay ${what}${money(amount)} with card`);
 // a Checkout page for one amount; meta = { invoiceId } or { quoteId }; methods = Stripe payment method types
