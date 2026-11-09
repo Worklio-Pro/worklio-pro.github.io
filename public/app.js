@@ -3124,7 +3124,7 @@ PAGES['/quotes/snap-to-quote'] = {
   title: 'Snap to quote',
   render(main) {
     const has = planHas('snapQuote'); const billing = memberCan('/settings/billing');
-    const img = (f, alt) => `<img src="/img/industries/${f}.jpg" alt="${esc(alt)}" width="1200" height="900" loading="lazy">`;
+    const img = (f, alt) => `<img src="/img/${f.includes('/') ? f : 'industries/' + f}.jpg" alt="${esc(alt)}" width="1200" height="900" loading="lazy">`;
     const cta = has ? '<a class="btn" href="/quotes/new" data-link>Start a quote</a>'
       : billing ? '<a class="btn" href="/settings/billing" data-link>Upgrade to Unlimited</a>' : '';
     const ask = !has && !billing ? '<p class="muted sq-ask">Snap to quote is on the Unlimited plan. Ask the account owner about moving up.</p>' : '';
@@ -3136,7 +3136,7 @@ PAGES['/quotes/snap-to-quote'] = {
     <h1>Quote the job before you leave the driveway</h1>
     <p class="sq-lead">Take a few photos, say what the client needs, and AI drafts the whole quote from <strong>your own price list</strong>, with Good / Better / Best options when the job has choices. You check it and send it. Nothing goes to the client on its own.</p>
     ${has ? '<p class="sq-have">✓ Your plan includes Snap to quote. Start a quote, choose the client and tap <strong>Draft from photos</strong>.</p>' : ''}
-    <div class="sq-ctas">${cta}<a class="btn alt" href="/quote-from-photos" target="_blank" rel="noopener">See a sample quote</a></div>${ask}
+    <div class="sq-ctas">${cta}<a class="btn alt" href="${esc(((company.account && company.account.siteUrl) || '') + '/quote-from-photos')}" target="_blank" rel="noopener">See a sample quote</a></div>${ask}
   </div>
   <figure class="sq-hero-pic">${img('roofing', 'Two roofers working on a shingle roof')}<figcaption>3 photos + a 20-second voice note → a draft quote</figcaption></figure>
 </section>
@@ -3150,8 +3150,8 @@ PAGES['/quotes/snap-to-quote'] = {
 
 <h2 class="sq-h">Made for the people doing the work</h2>
 <div class="sq-people">
-  <figure class="card">${img('electrical', 'An electrician in a hard hat testing a panel')}<figcaption><b>On the ladder, not the laptop</b><span>Snap the panel, say “upgrade to 200 amp, add two circuits for the garage,” and the line items come from your price list.</span></figcaption></figure>
-  <figure class="card">${img('painting', 'A painter rolling paint on a house from a ladder')}<figcaption><b>Talk, don’t type</b><span>Gloves on? Tap the mic and describe the job. Snap to quote turns what you say into the quote.</span></figcaption></figure>
+  <figure class="card">${img('snap/electrician', 'An electrician with a screwdriver working on an outdoor electrical panel')}<figcaption><b>On the ladder, not the laptop</b><span>Snap the panel, say “upgrade to 200 amp, add two circuits for the garage,” and the line items come from your price list.</span></figcaption></figure>
+  <figure class="card">${img('snap/painter', 'A painter in red coveralls rolling yellow paint on a wall')}<figcaption><b>Talk, don’t type</b><span>Gloves on? Tap the mic and describe the job. Snap to quote turns what you say into the quote.</span></figcaption></figure>
   <figure class="card">${img('plumbing', 'A plumber with a toolbox working in a bathroom')}<figcaption><b>Nothing missed</b><span>It lists what to check before sending (a part size, haul-away) and flags anything not on your price list so you can price it.</span></figcaption></figure>
 </div>
 

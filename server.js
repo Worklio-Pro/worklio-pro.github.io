@@ -1643,7 +1643,7 @@ const pausedInfo = (t) => { const reason = tenancy.pauseReason(t); if (!reason) 
 function accountInfo() {
   const t = tenancy.current(); const plan = tenancy.planOf(t);
   return {
-    slug: t.slug, plan: { id: plan.id, name: plan.name }, features: [...tenancy.featuresOf(t)], lockedPages: tenancy.lockedPages(t), betaPages: tenancy.betaPages(), maxUsers: plan.maxUsers || 0, extraUser: plan.maxUsers > 0 && plan.extraUser ? plan.extraUser : null,
+    slug: t.slug, plan: { id: plan.id, name: plan.name }, features: [...tenancy.featuresOf(t)], lockedPages: tenancy.lockedPages(t), betaPages: tenancy.betaPages(), siteUrl: tenancy.platformUrl(), maxUsers: plan.maxUsers || 0, extraUser: plan.maxUsers > 0 && plan.extraUser ? plan.extraUser : null,
     url: tenancy.tenantUrl(t), subdomainUrl: tenancy.subdomainUrl(t), rootDomain: tenancy.ROOT_DOMAIN, serverIp: process.env.SERVER_IP || '',
     domains: (t.domains || []).map(({ host, verified, primary, addedAt, verifiedAt }) => ({ host, verified: !!verified, primary: !!primary, addedAt, verifiedAt: verifiedAt || null })),
     marketplace: marketplace.isOn(tenancy.platform()), // Alpha → Settings → App Marketplace
