@@ -2078,7 +2078,7 @@ app.put('/api/:col/:id', (req, res, next) => {
     doc.chosenOption = null; // they pick an option again
   }
   if (col === 'quotes' || col === 'invoices' || (col === 'jobs' && Array.isArray(doc.items))) computeTotals(doc); // jobs are priced once they have line items
-  if (col === 'quotes') { if (Array.isArray(upd.items)) snapQuote.carryNeedsPrice(db[col][i], doc); else if (doc.aiDraft && doc.status !== 'draft') delete doc.aiDraft; const bad = optionsProblem(doc); if (bad) return res.status(400).json({ error: bad }); }
+  if (col === 'quotes') { if (Array.isArray(upd.items)) snapQuote.carryNeedsPrice(db[col][i], doc); else if (doc.aiDraft && doc.status !== 'draft') delete doc.aiDraft; if (doc.zeroOk) snapQuote.confirmZero(doc); delete doc.zeroOk; const bad = optionsProblem(doc); if (bad) return res.status(400).json({ error: bad }); }
   // a signed quote with its deposit paid: any change to it removes the client's signature, once the business confirms (the quote editor asks first).
   // The business then marks it Awaiting response and re-sends it so the client signs again.
   const was = db[col][i];
@@ -2347,6 +2347,7 @@ app.delete('/api/email-templates/:key', (req, res) => {
 app.post('/api/quotes/:id/send', async (req, res) => {
   const q = db.quotes.find((x) => x.id === req.params.id);
   if (!q) return res.status(404).json({ error: 'Not found' });
+  if (req.body && req.body.zeroOk) { snapQuote.confirmZero(q); save(); } // "Is $0 right?" answered yes
   const empty = optionsEmpty(q) || snapQuote.unpricedProblem(q); if (empty) return res.status(400).json({ error: empty }); // every option needs its own line item, and every item a price, before the client sees it
   const channels = (req.body.channels && req.body.channels.length) ? req.body.channels : ['email'];
   const link = quoteLink(q); const co = db.company.name;

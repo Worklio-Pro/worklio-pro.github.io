@@ -1094,6 +1094,12 @@ ${why ? `<div class="notice">${why}</div>` : ''}
     return { message: ta.value.trim() };
   });
 }
+// a quote with Snap to quote items still at $0 (Needs a price): ask whether $0 is right. null = the business said no (go back and price them)
+const zeroOkAsk = (kind, doc) => {
+  const q = kind === 'quote' && byId(D.quotes, doc.id) || doc; const z = (q.items || []).filter((i) => i.needsPrice && !(Number(i.price) > 0)).map((i) => `“${i.desc}”`);
+  if (!z.length) return {};
+  return confirm(`${z.join(', ')} ${z.length === 1 ? 'is' : 'are'} at $0. Is $0 right?\n\nOK goes ahead at $0. Cancel lets you set a price first.`) ? { zeroOk: true } : null;
+};
 // sends on the chosen channels (plus anything extra, like a text's message), then shows how each one went
 function sendSubmit(kind, doc, mb, pick, extra = () => ({})) {
   $('form', mb).addEventListener('submit', async (e) => {
@@ -1101,7 +1107,8 @@ function sendSubmit(kind, doc, mb, pick, extra = () => ({})) {
     const channels = pick();
     if (!channels.length) return toast('Choose email, text, or both', true);
     const btn = e.submitter || $('.foot .btn:not(.alt)', mb); let r;
-    try { if (btn) btn.disabled = true; r = await api('POST', `/api/${kind}s/${doc.id}/send`, { channels, ...extra() }); } // extra() can refuse too (no message yet)
+    const zero = zeroOkAsk(kind, doc); if (!zero) return;
+    try { if (btn) btn.disabled = true; r = await api('POST', `/api/${kind}s/${doc.id}/send`, { channels, ...zero, ...extra() }); } // extra() can refuse too (no message yet)
     catch (x) { if (btn) btn.disabled = false; return toast(x.message, true); }
     const rows = r.results.map((x) => `<tr><td>${x.channel === 'email' ? 'Email' : 'Text'}</td><td>${esc(x.to || '—')}</td><td>${badge(x.status)}</td></tr>`).join('');
     const sim = r.results.some((x) => x.status === 'simulated');
@@ -2467,7 +2474,8 @@ A.copyQuote = async (x) => {
 A.markQuoteSent = async (x) => {
   const q = byId(D.quotes, x.id);
   if (q.signedAt && !confirm('Mark this quote as awaiting response? The client’s signature is removed and they approve and sign it again.')) return;
-  await api('PUT', '/api/quotes/' + x.id, { status: 'sent' }); toast('Quote marked as awaiting response'); return refresh();
+  const zero = zeroOkAsk('quote', q); if (!zero) return;
+  await api('PUT', '/api/quotes/' + x.id, { status: 'sent', ...zero }); toast('Quote marked as awaiting response'); return refresh();
 };
 function quotePage(d) {
   const status = quoteStatus(d); const job = quoteJob(d); const c = byId(D.clients, d.clientId) || {};
@@ -3106,7 +3114,7 @@ function snapBlock(d) {
   if (d.aiDraft) {
     const ai = d.aiDraft; const unpriced = (d.items || []).filter((i) => i.needsPrice && !(Number(i.price) > 0)).map((i) => i.desc);
     return `<div class="snap-note" role="note"><strong>Drafted by AI</strong> from ${ai.photos ? `${ai.photos} photo${ai.photos === 1 ? '' : 's'} and ` : ''}your notes. Check every line before you send it.
-${unpriced.length ? `<p class="snap-np"><strong>Set a price for:</strong> ${unpriced.map(esc).join(', ')}. These weren’t in your price list, so they’re at $0 and the quote can’t be sent until they’re priced.</p>` : ''}
+${unpriced.length ? `<p class="snap-np"><strong>Set a price for:</strong> ${unpriced.map(esc).join(', ')}. These weren’t in your price list, so they’re at $0. If $0 is right, you’ll be asked to confirm when you send the quote.</p>` : ''}
 ${(ai.questions || []).length ? `<details open><summary>Check before sending (${ai.questions.length})</summary><ul>${ai.questions.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></details>` : ''}</div>`;
   }
   if ((d.items || []).some((i) => i.desc) || !(planHas('snapQuote') || canDo('quotes'))) return '';
