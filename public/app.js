@@ -3357,11 +3357,15 @@ A.markDepositPaid = (d) => {
 A.quoteToJob = (d) => {
   const q = byId(D.quotes, d.id);
   const mb = modal(`Schedule job from ${q.number}`, `<form><div class="row3"><label>Date<input type="date" name="date" required value="${ymd(addDays(new Date(), 1))}"></label><label>Start<input type="time" name="startTime" value="09:00"></label><label>End<input type="time" name="endTime" value="11:00"></label></div>
+<div class="chk"><label><input type="checkbox" name="anytime"> Anytime that day (no set time)</label></div>
 <div class="muted">Assign staff</div><div class="chk">${D.staff.filter((s) => s.status !== 'deactivated').map((s) => `<label><input type="checkbox" name="staff" value="${s.id}">${esc(s.name)}</label>`).join('')}</div>
 <div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Create job</button></div></form>`);
-  $('form', mb).addEventListener('submit', async (e) => {
+  const f = $('form', mb); const any = f.elements.anytime;
+  any.addEventListener('change', () => { f.elements.startTime.disabled = f.elements.endTime.disabled = any.checked; });
+  f.addEventListener('submit', async (e) => {
     e.preventDefault(); const fd = new FormData(e.target);
-    const job = await api('POST', `/api/quotes/${q.id}/convert-to-job`, { date: fd.get('date'), startTime: fd.get('startTime'), endTime: fd.get('endTime'), staffIds: fd.getAll('staff') });
+    if (!any.checked && fd.get('endTime') <= fd.get('startTime')) { toast('End time must be after start time', true); return; }
+    const job = await api('POST', `/api/quotes/${q.id}/convert-to-job`, { date: fd.get('date'), startTime: fd.get('startTime') || '', endTime: fd.get('endTime') || '', anytime: any.checked, staffIds: fd.getAll('staff') });
     closeModal(); toast('Job scheduled'); navigate('/jobs/edit?id=' + job.id);
   });
 };
