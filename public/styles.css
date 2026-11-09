@@ -2016,3 +2016,8 @@ label.bk-auto input{width:auto;margin:0}
 .ob-small{font-size:12px;margin:10px 0 0}
 .ob-prev iframe{display:block;width:100%;height:520px;border:1px solid var(--border);border-radius:10px;background:#f8fafc}
 @media(max-width:860px){.ob-grid{grid-template-columns:minmax(0,1fr)}.ob-prev iframe{height:480px}}
+
+/* sub items: indented under the main line above, with a rule down the left */
+.item-row.qi.sub{padding-left:26px;background:linear-gradient(var(--line),var(--line)) 8px 14px/2px calc(100% - 28px) no-repeat}
+.vitems tr.sub td:first-child{padding-left:28px}.vitems tr.sub td:first-child strong{font-weight:500}
+.md-item.sub,.mp-item.sub{padding-left:18px;border-left:2px solid var(--line)}

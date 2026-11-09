@@ -654,9 +654,9 @@ A.setTheme = (d) => { applyTheme(d.t); $$('.ap-card').forEach((b) => { b.classLi
 /* ===== line items editor (quotes + invoices) ===== */
 const round2 = (n) => Math.round(n * 100) / 100;
 // price = unit price the client sees (cost plus markup as % of cost or flat $ per unit); the server recomputes it the same way
-const readItems = (root) => $$('.item-row', root).map((r) => {
+const readItems = (root) => $$('.item-row', root).map((r, k) => {
   const cost = Number($('.cost', r).value) || 0; const markup = Number($('.markup', r).value) || 0; const markupType = $('.mtype', r).value;
-  return { desc: $('.desc', r).value.trim(), details: $('.details', r).value, qty: Number($('.qty', r).value) || 0, cost, markup, markupType, price: round2(markupType === 'flat' ? cost + markup : cost * (1 + markup / 100)), ...($('.iopt', r) ? { opt: $('.iopt', r).value } : {}), ...(r.dataset.np && !(Number($('.cost', r).value) > 0) ? { needsPrice: true } : {}), ...(r.dataset.fee ? { lateFee: true } : {}), ...(r.dataset.job ? { job: r.dataset.job } : {}) }; // Snap to quote: still to be priced; a late fee line; a combined invoice's job
+  return { desc: $('.desc', r).value.trim(), details: $('.details', r).value, qty: Number($('.qty', r).value) || 0, cost, markup, markupType, price: round2(markupType === 'flat' ? cost + markup : cost * (1 + markup / 100)), ...($('.iopt', r) ? { opt: $('.iopt', r).value } : {}), ...(r.dataset.np && !(Number($('.cost', r).value) > 0) ? { needsPrice: true } : {}), ...(r.dataset.fee ? { lateFee: true } : {}), ...(r.dataset.job ? { job: r.dataset.job } : {}), ...(k && r.classList.contains('sub') ? { sub: true } : {}) }; // Snap to quote: still to be priced; a late fee line; a combined invoice's job
 });
 // ---- line items not in Products & services yet: offered for the catalog after a quote, job or invoice is saved (phones: a checkbox on the line page) ----
 // Names you said no to, and "Don't ask me again", are kept in this browser; only people who can manage Products & services are asked.
@@ -792,7 +792,7 @@ A.rmItem = (d, el) => { // the last remaining line is cleared instead of removed
 A.addItemBelow = (d, el) => {
   const root = el.closest('form'); const row = el.closest('.item-row'); const menu = el.closest('details'); if (menu) menu.open = false;
   const opt = $('.iopt', row) ? $('.iopt', row).value : row.dataset.opt || '';
-  row.insertAdjacentHTML('afterend', qItemRow(opt ? { opt } : {})); const added = row.nextElementSibling;
+  row.insertAdjacentHTML('afterend', qItemRow({ ...(opt ? { opt } : {}), ...(row.classList.contains('sub') ? { sub: true } : {}) })); const added = row.nextElementSibling;
   recalc(root); flashRow(added); $('.desc', added).focus();
 };
 // ⋯ → Duplicate line item: an exact copy right below it (what's typed so far, its option on a quote with options), as an ordinary line (not a late fee)
@@ -801,6 +801,13 @@ A.dupItem = (d, el) => {
   const { lateFee, ...it } = readItems(root)[$$('.item-row', root).indexOf(row)];
   row.insertAdjacentHTML('afterend', qItemRow(it)); const copy = row.nextElementSibling;
   recalc(root); flashRow(copy); $('.desc', copy).focus();
+};
+// ⋯ → Make sub item: indented under the main line above it (still priced and counted on its own; at $0 the client sees "Included")
+A.subItem = (d, el) => {
+  const row = el.closest('.item-row'); const menu = el.closest('details'); if (menu) menu.open = false;
+  const on = !row.classList.contains('sub');
+  if (on && !(row.previousElementSibling && row.previousElementSibling.classList.contains('item-row'))) return toast('The first line can’t be a sub item. Drag it under its main item first.', true);
+  row.classList.toggle('sub', on); $('.sub-tog', row).textContent = on ? 'Make main item' : 'Make sub item'; flashRow(row);
 };
 // the Product / Service card shared by the quote and invoice editors; `extra` goes under the totals
 const itemsCard = (items, extra, t) => `<div class="qcard"><h2>Product / Service</h2>
@@ -1956,13 +1963,13 @@ const DEFAULT_DISCLAIMER = 'This quote is valid for the next 30 days, after whic
 function qItemRow(it) {
   // Jobber-style row: labeled boxes (name, qty, unit cost, markup, total) with the description full width underneath and a ⋯ menu.
   // Unit cost shows $; markup shows $ when flat, or % (percent of cost) from its selector.
-  return `<div class="item-row qi" data-opt="${esc(it.opt || '')}"${it.needsPrice ? ' data-np="1"' : ''}${it.lateFee ? ' data-fee="1"' : ''}${it.job ? ` data-job="${esc(it.job)}"` : ''}><button type="button" class="drag-h" aria-label="Drag to reorder (or use the arrow keys)" title="Drag to reorder">${DRAG_DOTS}</button><label class="fl qi-name"><span>Name</span><input class="desc" autocomplete="off" placeholder="Item name or catalog service" value="${esc(it.desc || '')}"></label>
+  return `<div class="item-row qi${it.sub ? ' sub' : ''}" data-opt="${esc(it.opt || '')}"${it.needsPrice ? ' data-np="1"' : ''}${it.lateFee ? ' data-fee="1"' : ''}${it.job ? ` data-job="${esc(it.job)}"` : ''}><button type="button" class="drag-h" aria-label="Drag to reorder (or use the arrow keys)" title="Drag to reorder">${DRAG_DOTS}</button><label class="fl qi-name"><span>Name</span><input class="desc" autocomplete="off" placeholder="Item name or catalog service" value="${esc(it.desc || '')}"></label>
 <label class="fl"><span>Quantity</span><input class="qty" type="number" step="any" min="0" value="${it.qty ?? 1}"></label>
 <label class="fl"><span>Unit cost</span><div class="affix"><i>$</i><input class="cost" type="number" step="any" min="0" value="${it.cost ?? it.price ?? 0}"></div></label>
 <label class="fl mk${it.markupType === 'flat' ? ' flat' : ''}"><span>Markup</span><div class="affix"><i class="pre">$</i><input class="markup" type="number" step="any" value="${it.markup ?? 0}"><select class="mtype" aria-label="Markup type"><option value="percent">%</option><option value="flat" ${it.markupType === 'flat' ? 'selected' : ''}>$</option></select></div></label>
 <div class="fl amt-box"><span>Total</span><div class="amt"></div></div>
 <details class="menu row-menu"><summary aria-label="Line item options" title="Line item options">⋯</summary><div class="menu-list">
-<button type="button" data-act="addItemBelow">Add line item below</button><button type="button" data-act="dupItem">Duplicate line item</button><button type="button" class="danger-text" data-act="rmItem">Remove line item</button></div></details>
+<button type="button" data-act="addItemBelow">Add line item below</button><button type="button" data-act="dupItem">Duplicate line item</button><button type="button" class="sub-tog" data-act="subItem">${it.sub ? 'Make main item' : 'Make sub item'}</button><button type="button" class="danger-text" data-act="rmItem">Remove line item</button></div></details>
 <label class="fl qi-desc"><span>Description</span><textarea class="details" rows="3" placeholder="Shown to the client (optional)">${esc(it.details || '')}</textarea>${aiOn() ? AI_BTN : ''}</label></div>`;
 }
 // Rewrite in a line's description box (bottom left): a menu of tones (Cheerful, Casual, Professional, Shorter). It drafts from the line's name,
@@ -2222,7 +2229,7 @@ const depositPaid = (q) => (q.depositPaidAt ? round2(Number(q.depositPaidAmount 
 const vt = (label, value, cls = '') => `<div class="vt ${cls}"><span>${label}</span><span>${value}</span></div>`;
 const payLink = (rowId, label, date, extra = '') => `<a href="/payments/view?id=${encodeURIComponent(rowId)}" data-link class="pay-link">${label}</a> • ${fmtDate(String(date).slice(0, 10))}${extra}`;
 const viewItems = (d) => `<table class="vitems"><thead><tr><th>Line Item</th><th class="r">Quantity</th><th class="r">Unit Price</th><th class="r">Total</th></tr></thead><tbody>
-${(d.items || []).map((i) => `<tr><td><strong>${esc(i.desc)}</strong>${i.details ? `<div class="vd">${esc(i.details)}</div>` : ''}</td><td class="r">${esc(i.qty)}</td><td class="r">${money(i.price)}</td><td class="r">${money(round2(i.qty * i.price))}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">No line items</td></tr>'}</tbody></table>`;
+${(d.items || []).map((i) => `<tr${i.sub ? ' class="sub"' : ''}><td><strong>${esc(i.desc)}</strong>${i.details ? `<div class="vd">${esc(i.details)}</div>` : ''}</td><td class="r">${esc(i.qty)}</td><td class="r">${money(i.price)}</td><td class="r">${money(round2(i.qty * i.price))}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">No line items</td></tr>'}</tbody></table>`;
 const viewTotals = (d) => vt('Subtotal', money(d.subtotal || 0)) + (d.discount ? vt(esc(discLabel(d)), '−' + money(d.discount)) : '')
   + vt(`Tax (${Number(d.taxRate) || 0}%)`, money(d.tax || 0)) + vt('<strong>Total</strong>', `<strong>${money(d.total || 0)}</strong>`, 'grand');
 const textCard = (kind, d, sec, title, text, empty) => `<div class="qcard"><div class="qcard-h"><h2>${title}</h2>${editBtn(kind, d, sec)}</div>${text ? `<p class="vtext">${esc(text)}</p>` : `<p class="muted" style="margin:0">${empty}</p>`}</div>`;
@@ -2557,6 +2564,7 @@ ${mField('Unit cost', `<span class="mf-in"><b class="pre">$</b><input name="cost
 <label class="mf mf-mk${it.markupType === 'flat' ? ' flat' : ''}"><span>Markup</span><span class="mf-in"><b class="pre">$</b><input name="markup" type="number" inputmode="decimal" step="any" value="${it.markup ?? 0}"><b class="suf">%</b></span></label>
 ${mField('Quantity', `<input name="qty" type="number" inputmode="decimal" step="any" min="0" value="${esc(it.qty ?? 1)}">`)}
 ${kind === 'quote' && qHasOpts(d) ? mField('Option', `<select name="opt"><option value="">All options</option>${d.options.map((o) => `<option value="${esc(o.id)}" ${(i >= 0 ? it.opt : x.opt) === o.id ? 'selected' : ''}>${esc(o.name)}</option>`).join('')}</select>`) : ''}
+${i !== 0 && (d.items || []).length ? `<label class="mnt-link">Sub item of the line above<input type="checkbox" name="sub" ${it.sub ? 'checked' : ''}></label>` : ''}
 ${canAddCatalog() ? '<label class="mnt-link m-tocat" hidden>Also save to Products &amp; services<input type="checkbox" name="toCatalog" checked></label>' : ''}
 <div class="m-total"><span>Total</span><strong class="m-tot"></strong></div>`, { full: true, foot: `${mSaveBtn('Save Line Item')}${i >= 0 ? `<button type="button" class="btn alt ms-more ms-del" data-act="mRmItem" aria-label="Delete line item" title="Delete line item">${svgIcon('<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/>', 22)}</button>` : ''}` });
     f._ctx = { kind, d, i };
@@ -2571,7 +2579,7 @@ ${canAddCatalog() ? '<label class="mnt-link m-tocat" hidden>Also save to Product
     onSubmit(f, async (fd) => {
       const desc = String(fd.get('desc')).trim(); if (!desc) throw new Error('Enter the item’s name');
       const cost = Math.max(0, Number(fd.get('cost')) || 0); const markup = Number(fd.get('markup')) || 0; const markupType = fd.get('markupType') === 'flat' ? 'flat' : 'percent';
-      const item = { ...(i >= 0 ? it : {}), desc, details: String(fd.get('details')), qty: Number(fd.get('qty')) || 0, cost, markup, markupType, price: unit(), ...(fd.has('opt') ? { opt: String(fd.get('opt')) } : {}) };
+      const { sub: _sub, ...was } = i >= 0 ? it : {}; const item = { ...was, ...(fd.get('sub') ? { sub: true } : {}), desc, details: String(fd.get('details')), qty: Number(fd.get('qty')) || 0, cost, markup, markupType, price: unit(), ...(fd.has('opt') ? { opt: String(fd.get('opt')) } : {}) };
       const items = [...(d.items || [])]; if (i >= 0) items[i] = item; else items.push(item);
       const cat = toCat && !toCat.hidden ? (f.toCatalog.checked ? 'add' : 'skip') : '';
       await mSave(kind, d, { items }, i >= 0 ? 'Line item saved' : 'Line item added');
@@ -2657,7 +2665,7 @@ const invReceipts = (d) => {
 };
 function mobileInvoicePreview(d) {
   const c = byId(D.clients, d.clientId) || {}; const receipts = invReceipts(d); const on = (k) => d[k] !== 'off';
-  const items = (d.items || []).map((it) => `<div class="mp-item"><div><strong>${esc(it.desc)}</strong>${it.details ? `<small>${esc(it.details)}</small>` : ''}${on('showQty') || on('showUnit') ? `<small>${[on('showQty') ? `Qty ${esc(it.qty)}` : '', on('showUnit') ? money(it.price) : ''].filter(Boolean).join(' × ')}</small>` : ''}</div>${on('showLineTotals') ? `<span>${money(round2(it.qty * it.price))}</span>` : ''}</div>`).join('');
+  const items = (d.items || []).map((it) => `<div class="mp-item${it.sub ? ' sub' : ''}"><div><strong>${esc(it.desc)}</strong>${it.details ? `<small>${esc(it.details)}</small>` : ''}${on('showQty') || on('showUnit') ? `<small>${[on('showQty') ? `Qty ${esc(it.qty)}` : '', on('showUnit') ? money(it.price) : ''].filter(Boolean).join(' × ')}</small>` : ''}</div>${on('showLineTotals') ? `<span>${money(round2(it.qty * it.price))}</span>` : ''}</div>`).join('');
   const row = (l, v, cls = '') => `<div class="mp-row ${cls}"><span>${l}</span><span>${v}</span></div>`;
   const invoice = `<div class="mp-inv"><div class="mp-title"><h2>Invoice #${esc(d.number)}</h2>${iBadge(d.displayStatus || d.status)}</div>
 <p class="mp-meta">Billed to ${esc(c.name || 'no client')}${d.subject ? ` · ${esc(d.subject)}` : ''}<br>Issued ${fmtDate((d.issueDate || '').slice(0, 10))} · Due ${d.dueDate && d.dueDate > d.issueDate ? fmtDate(d.dueDate) : 'upon receipt'}</p>
@@ -2684,7 +2692,7 @@ function mobileDocPage(kind, d) {
   const btn = (act, label, cls = '') => `<button type="button" class="btn ${cls}" data-act="${act}" data-kind="${kind}" data-id="${d.id}">${label}</button>`;
   const acts = q ? [canJob ? btn('quoteToJob', 'Create Job') : '', btn('sendDoc', d.sentAt ? 'Resend' : 'Send')]
     : [d.status !== 'paid' ? btn('collectPayment', 'Collect Payment') : '', d.status !== 'paid' ? btn('sendDoc', d.sentAt ? 'Resend' : 'Send') : `<a class="btn" href="/invoices/view?id=${d.id}&preview=1" data-link>View Receipt</a>`];
-  const itemTap = (it, i) => mTap(kind, d, 'item', `<strong>${esc(it.desc)}</strong>${it.details ? `<span class="md-det">${esc(it.details)}</span>` : ''}<span class="md-qp"><span>${esc(it.qty)} × ${money(it.price)}</span><span>${money(round2(it.qty * it.price))}</span></span>`, 'md-item', `data-i="${i}"`);
+  const itemTap = (it, i) => mTap(kind, d, 'item', `<strong>${esc(it.desc)}</strong>${it.details ? `<span class="md-det">${esc(it.details)}</span>` : ''}<span class="md-qp"><span>${esc(it.qty)} × ${money(it.price)}</span><span>${money(round2(it.qty * it.price))}</span></span>`, `md-item${it.sub ? ' sub' : ''}`, `data-i="${i}"`);
   const opts = q && qHasOpts(d); // Good / Better / Best: the items in every option, then each option's own with its total and its own +
   const items = !opts ? (d.items || []).map(itemTap).join('') : [['', 'In every option'], ...d.options.map((o) => [o.id, o.name])].map(([id, name]) => {
     const list = (d.items || []).map((it, i) => [it, i]).filter(([it]) => (it.opt || '') === id); if (!id && !list.length) return ''; const t = id && (d.optionTotals || {})[id];
@@ -2924,7 +2932,7 @@ function mobileJobPage(j) {
   const btn = (act, label, cls = '') => `<button type="button" class="btn ${cls}" data-act="${act}" data-id="${j.id}">${label}</button>`;
   const acts = [onThisJob(j) ? clockBtn(j) : '', ...(edit ? [j.status === 'scheduled' ? btn('completeJob', 'Mark Complete') : btn('reopenJob', 'Reopen', 'alt'), st === 'invoice' && planHas('invoices') ? btn('jobInvoice', 'Create Invoice', 'need-invoices') : ''] : [])];
   const team = (j.staffIds || []).map((id) => byId(D.staff, id)).filter(Boolean);
-  const items = (d.items || []).map((it, i) => tap('item', `<strong>${esc(it.desc)}</strong>${it.details ? `<span class="md-det">${esc(it.details)}</span>` : ''}<span class="md-qp"><span>${esc(it.qty)} × ${money(it.price)}</span><span>${money(round2(it.qty * it.price))}</span></span>`, 'md-item', `data-i="${i}"`)).join('');
+  const items = (d.items || []).map((it, i) => tap('item', `<strong>${esc(it.desc)}</strong>${it.details ? `<span class="md-det">${esc(it.details)}</span>` : ''}<span class="md-qp"><span>${esc(it.qty)} × ${money(it.price)}</span><span>${money(round2(it.qty * it.price))}</span></span>`, `md-item${it.sub ? ' sub' : ''}`, `data-i="${i}"`)).join('');
   const paid = q ? depositPaid(q) : 0;
   const totals = (d.items || []).length ? mRow('Subtotal', money(d.subtotal || 0), 'b')
     + tapRow('discount', d.discount ? esc(discLabel(d)) : 'Discount', d.discount ? '−' + money(d.discount) : money(0))
@@ -3501,7 +3509,7 @@ const askVisitScope = () => new Promise((done) => {
 });
 // which of the fields a repeat copies to later visits this save changes
 const SERIES_KEYS = ['title', 'clientId', 'address', 'startTime', 'endTime', 'anytime', 'staffIds', 'description', 'items', 'taxRate', 'discountType', 'discountValue', 'discountName'];
-const seriesNorm = (k, v) => JSON.stringify(k === 'items' ? (v || []).map((i) => [i.desc || '', Number(i.qty) || 0, Number(i.price) || 0, i.details || '']) : k === 'staffIds' ? [...(v || [])].sort() : k === 'anytime' ? !!v : ['taxRate', 'discountValue'].includes(k) ? Number(v) || 0 : String(v ?? ''));
+const seriesNorm = (k, v) => JSON.stringify(k === 'items' ? (v || []).map((i) => [i.desc || '', Number(i.qty) || 0, Number(i.price) || 0, i.details || '', !!i.sub]) : k === 'staffIds' ? [...(v || [])].sort() : k === 'anytime' ? !!v : ['taxRate', 'discountValue'].includes(k) ? Number(v) || 0 : String(v ?? ''));
 const seriesChanges = (j, body) => SERIES_KEYS.filter((k) => k in body && (k !== 'items' || canDo('jobs.prices')) && seriesNorm(k, j[k]) !== seriesNorm(k, body[k]));
 const ruleKey = (r) => (r ? JSON.stringify(Object.keys(r).filter((k) => r[k] !== undefined && !(k === 'count' && r.end !== 'count') && !(k === 'until' && r.end !== 'until')).sort().map((k) => [k, r[k]])) : 'null');
 const sameRule = (a, b) => ruleKey(a) === ruleKey(b);

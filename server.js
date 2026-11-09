@@ -184,8 +184,9 @@ function computeTotals(doc) {
     const cost = Number(i.cost ?? i.price) || 0; const markup = Number(i.markup) || 0; const markupType = i.markupType === 'flat' ? 'flat' : 'percent';
     const price = round2(markupType === 'flat' ? cost + markup : cost * (1 + markup / 100));
     const cat = catalogCat(i.desc) || cleanCat(i.cat);
-    return { desc: String(i.desc), details: i.details ? String(i.details) : '', qty: Number(i.qty) || 0, cost, markup, markupType, price, ...(cat ? { cat } : {}), ...(i.needsPrice && !(price > 0) ? { needsPrice: true } : {}), ...(i.lateFee ? { lateFee: true } : {}), ...(typeof i.job === 'string' && /^[\w-]{1,40}$/.test(i.job) ? { job: i.job } : {}), ...(opts.length >= 2 ? { opt: ids.has(i.opt) ? i.opt : '' } : {}) };
+    return { desc: String(i.desc), details: i.details ? String(i.details) : '', qty: Number(i.qty) || 0, cost, markup, markupType, price, ...(cat ? { cat } : {}), ...(i.needsPrice && !(price > 0) ? { needsPrice: true } : {}), ...(i.lateFee ? { lateFee: true } : {}), ...(typeof i.job === 'string' && /^[\w-]{1,40}$/.test(i.job) ? { job: i.job } : {}), ...(opts.length >= 2 ? { opt: ids.has(i.opt) ? i.opt : '' } : {}), ...(i.sub ? { sub: true } : {}) };
   });
+  if (doc.items[0]) delete doc.items[0].sub; // a sub item sits under the line above it
   doc.taxRate = Number(doc.taxRate) || 0;
   // optional discount before tax: a flat amount or a percentage of the subtotal
   doc.discountType = doc.discountType === 'percent' ? 'percent' : 'flat';
@@ -2161,8 +2162,8 @@ function signedPdf(kind, d) {
   head();
   for (const it of q && hasOptions(d) ? optionItems(d, shownOption(d).id) : d.items || []) { // a quote with options: the option signed for
     const need = Math.ceil(pdf.width(it.details || '', 10) / Math.max(40, descW)) + String(it.details || '').split('\n').length; if (y + 26 + need * 13 > 720) { pdf.addPage(); y = 64; head(); }
-    const tp = y + 16; const a = pdf.para(L + 6, tp, it.desc, 128, { size: 10, color: INK, lineHeight: 13 }); let b = tp; for (const t of String(it.details || '').split('\n').filter((s) => s.trim())) b = pdf.para(cDesc + 6, b, t, descW, { size: 10, color: INK, lineHeight: 13 });
-    if (qtyOn) pdf.text(cQty, tp, String(it.qty), { size: 10, color: INK, align: 'right' }); if (unitOn) pdf.text(cUnit, tp, money(it.price), { size: 10, color: INK, align: 'right' }); if (lineOn) pdf.text(R - 6, tp, money(round2(it.qty * it.price)), { size: 10, color: INK, align: 'right' }); y = Math.max(a, b) + 4;
+    const tp = y + 16; const ind = it.sub ? 12 : 0; const inc = included(it); const a = pdf.para(L + 6 + ind, tp, it.desc, 128 - ind, { size: 10, color: INK, lineHeight: 13 }); let b = tp; for (const t of String(it.details || '').split('\n').filter((s) => s.trim())) b = pdf.para(cDesc + 6, b, t, descW, { size: 10, color: INK, lineHeight: 13 });
+    if (qtyOn && !inc) pdf.text(cQty, tp, String(it.qty), { size: 10, color: INK, align: 'right' }); if (unitOn && !inc) pdf.text(cUnit, tp, money(it.price), { size: 10, color: INK, align: 'right' }); if (lineOn) pdf.text(R - 6, tp, inc ? 'Included' : money(round2(it.qty * it.price)), { size: 10, color: INK, align: 'right' }); y = Math.max(a, b) + 4;
   }
   pdf.line(L, y, R, y, { color: '#a3a3a3', w: 1.5 }); y += 8;
   if (!job) { // totals
@@ -2587,11 +2588,11 @@ function docPdf(kind, d) {
     for (const i of dd.items || []) {
       const lines = Math.ceil(pdf.width(i.details || '', 9.5) / descW) + String(i.details || '').split('\n').length;
       if (y + 34 + (i.details ? lines * 13 : 0) > 740) { pdf.addPage(); y = 64; head(); }
-      const top = y + 18; let yy = pdf.para(L + 8, top, i.desc, descW, { size: 10.5, bold: true, lineHeight: 14 });
-      for (const t of String(i.details || '').split('\n').filter((t) => t.trim())) yy = pdf.para(L + 8, yy + 1, t, descW, { size: 9.5, color: gray, lineHeight: 13 });
-      if (showQty) pdf.text(cQty, top, String(i.qty), { size: 10.5, align: 'right' });
-      if (showUnit) pdf.text(cUnit, top, money(i.price), { size: 10.5, align: 'right' });
-      if (showLine) pdf.text(R - 8, top, money(round2(i.qty * i.price)), { size: 10.5, align: 'right' });
+      const ind = i.sub ? 16 : 0; const inc = included(i); const top = y + 18; let yy = pdf.para(L + 8 + ind, top, i.desc, descW - ind, { size: 10.5, bold: !i.sub, lineHeight: 14 });
+      for (const t of String(i.details || '').split('\n').filter((t) => t.trim())) yy = pdf.para(L + 8 + ind, yy + 1, t, descW - ind, { size: 9.5, color: gray, lineHeight: 13 });
+      if (showQty && !inc) pdf.text(cQty, top, String(i.qty), { size: 10.5, align: 'right' });
+      if (showUnit && !inc) pdf.text(cUnit, top, money(i.price), { size: 10.5, align: 'right' });
+      if (showLine) pdf.text(R - 8, top, inc ? 'Included' : money(round2(i.qty * i.price)), { size: 10.5, align: 'right' });
       y = yy + 6; pdf.line(L, y, R, y);
     }
     // totals
@@ -2705,11 +2706,13 @@ h1{margin:0 0 4px;font-size:22px}table{width:100%;border-collapse:collapse;margi
 input{padding:10px;border:1px solid #d1d5db;border-radius:8px;width:100%;box-sizing:border-box;margin:4px 0 10px}select.ph-cc{padding:10px 8px;border:1px solid #d1d5db;border-radius:8px;background:#fff;color:#111}</style><script src="/phone.js?v=2" defer></script></head><body><div class="card">
 <div class="sh-head" style="display:flex;align-items:center;gap:12px;margin-bottom:16px">${co.logo ? `<img src="${esc(co.logo)}" style="height:48px">` : ''}<div><strong>${esc(co.name)}</strong><div class="muted">${esc(co.email)} · ${esc(co.phone)}</div></div></div>${inner}</div></body></html>`;
 }
+// a sub item at $0: the client sees "Included" instead of prices
+const included = (i) => !!i.sub && !(i.qty * i.price);
 // o.qty / o.unit / o.line = false hide those columns (invoice "Client view" switches); o.invoice shows the deposit credit
 function itemsTable(d, o = {}) {
   const qty = o.qty !== false; const unit = o.unit !== false; const line = o.line !== false; const span = 1 + qty + unit;
   const row = (label, value) => `<tr><td colspan="${span}" class="r">${label}</td><td class="r">${value}</td></tr>`;
-  return `<table><tr><th>Description</th>${qty ? '<th class="r">Qty</th>' : ''}${unit ? '<th class="r">Price</th>' : ''}<th class="r">${line ? 'Amount' : ''}</th></tr>${d.items.map((i) => `<tr><td>${esc(i.desc)}${i.details ? `<div class="muted" style="white-space:pre-line">${esc(i.details)}</div>` : ''}</td>${qty ? `<td class="r">${i.qty}</td>` : ''}${unit ? `<td class="r">${money(i.price)}</td>` : ''}<td class="r">${line ? money(i.qty * i.price) : ''}</td></tr>`).join('')}
+  return `<table><tr><th>Description</th>${qty ? '<th class="r">Qty</th>' : ''}${unit ? '<th class="r">Price</th>' : ''}<th class="r">${line ? 'Amount' : ''}</th></tr>${d.items.map((i) => { const inc = included(i); return `<tr><td${i.sub ? ' style="padding-left:28px"' : ''}>${esc(i.desc)}${i.details ? `<div class="muted" style="white-space:pre-line">${esc(i.details)}</div>` : ''}</td>${qty ? `<td class="r">${inc ? '' : i.qty}</td>` : ''}${unit ? `<td class="r">${inc ? '' : money(i.price)}</td>` : ''}<td class="r">${inc ? (line || !unit ? 'Included' : '') : line ? money(i.qty * i.price) : ''}</td></tr>`; }).join('')}
 ${row('Subtotal', money(d.subtotal))}${d.discount > 0 ? row(esc(discLabel(d)), '−' + money(d.discount)) : ''}${row(`${esc(Number(d.taxRate) === Number(db.company.taxRate) && db.company.taxName ? db.company.taxName : 'Tax')} (${d.taxRate}%)`, money(d.tax))}${row('<strong>Total</strong>', `<strong>${money(d.total)}</strong>`)}
 ${o.invoice ? (d.depositApplied > 0 ? row(`Deposit collected (quote ${esc(d.depositQuote)}, ${esc(niceDate(d.depositAppliedAt))})`, '−' + money(d.depositApplied)) + row('<strong>Balance due</strong>', `<strong>${money(d.balanceDue)}</strong>`) : '')
     : d.depositFee > 0 ? row(`Deposit${d.depositType === 'percent' ? ` (${d.depositValue}%)` : ''}`, money(d.depositFee)) + row('Balance after deposit', money(d.total - d.depositFee)) : ''}</table>`;
@@ -3149,7 +3152,7 @@ const QV_CSS = `.qv-biz{position:sticky;top:0;z-index:40;display:flex;align-item
 .qv-pill{display:inline-flex;align-items:center;gap:7px;padding:3px 10px;border-radius:99px;font-size:12px;white-space:nowrap}.qv-pill::before{content:'';width:8px;height:8px;border-radius:50%;background:currentColor}
 .qv-pill.wait{background:#f6efc4;color:#5f5a1e}.qv-pill.wait::before{background:#c9b23f}.qv-pill.ok{background:#e5f4e3;color:#2c6a1b}.qv-pill.no{background:#fbe9e7;color:#a8321f}.qv-pill.grey{background:#eef0f1;color:#3d4b50}.qv-pill.chg{background:#fdf2dc;color:#8a5a00}
 .qv-items{margin-top:48px}.qv-ih,.qv-it{display:grid;grid-template-columns:minmax(0,1fr) 64px 110px 100px;gap:0 12px}.qv-ih{font-weight:700;font-size:16px;padding-bottom:14px}.qv-ih span:not(:first-child),.qv-n{text-align:right}
-.qv-it{padding:14px 0 18px;border-bottom:1px solid #e4e1dc;font-size:14px}.qv-it strong{display:block;margin-bottom:8px}.qv-it p{margin:0;white-space:pre-line;line-height:1.45;max-width:260px}.qv-l{display:none}
+.qv-it{padding:14px 0 18px;border-bottom:1px solid #e4e1dc;font-size:14px}.qv-it.sub .qv-it-d{padding-left:24px;border-left:2px solid #e4e1dc}.qv-it strong{display:block;margin-bottom:8px}.qv-it p{margin:0;white-space:pre-line;line-height:1.45;max-width:260px}.qv-l{display:none}
 .qv-tot{display:grid;grid-template-columns:1fr 244px;border-top:3px solid #d5dbdf;margin-top:32px}.qv-tot>div:last-child{border-left:1px solid #d5dbdf;border-bottom:3px solid #d5dbdf}
 .qv-row{display:flex;justify-content:space-between;gap:12px;padding:10px 0 8px 8px;border-bottom:1px solid #e4e1dc;font-size:14px}.qv-row:last-child{border-bottom:0}
 .qv-text{margin-top:20px;font-size:14px;line-height:1.45;white-space:pre-line}
@@ -3199,8 +3202,8 @@ function quoteView(q, c, { signed, depositSection, sent, preview, business }) {
   const totalsOf = (d) => row('Subtotal', money(d.subtotal)) + (d.discount > 0 ? row(esc(discLabel(d)), '−' + money(d.discount)) : '')
     + (Number(d.taxRate) ? row(`${esc(taxName)} (${d.taxRate}%)`, money(d.tax)) : '') + row('Total', money(d.total))
     + (d.depositFee > 0 ? row(`Deposit${d.depositType === 'percent' ? ` (${d.depositValue}%)` : ''}`, money(d.depositFee)) : '');
-  const itemsOf = (d) => (d.items || []).map((i) => `<div class="qv-it"><div class="qv-it-d"><strong>${esc(i.desc)}</strong>${i.details ? `<p>${esc(i.details)}</p>` : ''}</div>
-<div class="qv-n"><span class="qv-l">Qty.</span>${esc(String(i.qty))}</div><div class="qv-n"><span class="qv-l">Unit price</span>${money(i.price)}</div><div class="qv-n"><span class="qv-l">Total</span>${money(i.qty * i.price)}</div></div>`).join('');
+  const itemsOf = (d) => (d.items || []).map((i) => `<div class="qv-it${i.sub ? ' sub' : ''}"><div class="qv-it-d"><strong>${esc(i.desc)}</strong>${i.details ? `<p>${esc(i.details)}</p>` : ''}</div>
+${included(i) ? '<div class="qv-n"></div><div class="qv-n"></div><div class="qv-n"><span class="qv-l">Total</span>Included</div>' : `<div class="qv-n"><span class="qv-l">Qty.</span>${esc(String(i.qty))}</div><div class="qv-n"><span class="qv-l">Unit price</span>${money(i.price)}</div><div class="qv-n"><span class="qv-l">Total</span>${money(i.qty * i.price)}</div>`}</div>`).join('');
   // Good / Better / Best: each option with its own items and totals until one is chosen; then only that one
   const parts = quoteParts(q); const many = parts.length > 1;
   const optHead = (p) => (p.opt ? `<div class="qv-oh" id="opt-${esc(p.opt.id)}"><div class="qv-on"><h2>${p.chosen ? 'Your choice: ' : ''}${esc(p.opt.name)}</h2>${p.recommended ? '<span class="qv-rec">Recommended</span>' : ''}${many ? `<span class="qv-ot">${money(p.doc.total)}</span>` : ''}</div>${p.opt.desc ? `<p>${esc(p.opt.desc)}</p>` : ''}</div>` : '');
