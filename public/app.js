@@ -2377,7 +2377,7 @@ ${keep.map((f, i) => `<div class="mnt-tile">${noteFile(f)}<button type="button" 
   const page = mPage(note ? 'Edit note' : 'Add note', `<form class="pfm mnt-form" novalidate>${mField('Write a note to your team', `<textarea name="text" rows="2" placeholder=" ">${esc((note && note.text) || '')}</textarea>`)}
 <div><h3 class="mnt-sh">Attach files &amp; photos</h3><div class="mnt-tiles">${tiles()}</div></div>
 <div><h3 class="mnt-sh">Link note</h3><p class="muted mnt-sub">Share note internally on selected client work</p>${opts.map(([k, l]) => `<label class="mnt-link"><span>${l}</span><input type="checkbox" name="link" value="${k}" ${links.has(k) ? 'checked' : ''}></label>`).join('')}</div>
-<div class="pfm-foot mnt-foot"><button class="btn">Save</button>${note ? '<button type="button" class="btn alt ms-more" data-del aria-label="Delete note" title="Delete note">⋯</button>' : ''}</div></form>`, '', true);
+<div class="pfm-foot mnt-foot"><button class="btn">Save</button>${note ? `<button type="button" class="btn alt ms-more ms-del" data-del aria-label="Delete note" title="Delete note">${svgIcon('<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/>', 22)}</button>` : ''}</div></form>`, '', true);
   const f = $('form', page); const box = $('.mnt-tiles', f); const draw = () => { box.innerHTML = tiles(); };
   const done = async (msg) => { mPagesClose(); toast(msg); await refresh(); const t = $('.md-tabs [data-k="notes"]'); if (t) t.click(); };
   f.addEventListener('change', async (e) => { if (!e.target.matches('[data-add]')) return; try { for (const x of e.target.files) { if (x.size > 12e6) { toast(`${x.name} is too large (12 MB at most)`, true); continue; } added.push(await noteRead(x)); } draw(); } catch (err) { toast('Couldn’t read that file', true); } });
@@ -2461,7 +2461,7 @@ ${mField('Unit cost', `<span class="mf-in"><b class="pre">$</b><input name="cost
 <label class="mf mf-mk${it.markupType === 'flat' ? ' flat' : ''}"><span>Markup</span><span class="mf-in"><b class="pre">$</b><input name="markup" type="number" inputmode="decimal" step="any" value="${it.markup ?? 0}"><b class="suf">%</b></span></label>
 ${mField('Quantity', `<input name="qty" type="number" inputmode="decimal" step="any" min="0" value="${esc(it.qty ?? 1)}">`)}
 ${kind === 'quote' && qHasOpts(d) ? mField('Option', `<select name="opt"><option value="">All options</option>${d.options.map((o) => `<option value="${esc(o.id)}" ${(i >= 0 ? it.opt : x.opt) === o.id ? 'selected' : ''}>${esc(o.name)}</option>`).join('')}</select>`) : ''}
-<div class="m-total"><span>Total</span><strong class="m-tot"></strong></div>`, { full: true, foot: `${mSaveBtn('Save Line Item')}${i >= 0 ? '<button type="button" class="btn alt ms-more" data-act="mRmItem" aria-label="Delete line item" title="Delete line item">⋯</button>' : ''}` });
+<div class="m-total"><span>Total</span><strong class="m-tot"></strong></div>`, { full: true, foot: `${mSaveBtn('Save Line Item')}${i >= 0 ? `<button type="button" class="btn alt ms-more ms-del" data-act="mRmItem" aria-label="Delete line item" title="Delete line item">${svgIcon('<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/>', 22)}</button>` : ''}` });
     f._ctx = { kind, d, i };
     // unit price = cost plus markup (% of cost, or flat $ per unit), as on the desktop editor and the server
     const unit = () => { const c = Math.max(0, Number(f.cost.value) || 0); const m = Number(f.markup.value) || 0; return round2(f.markupType.value === 'flat' ? c + m : c * (1 + m / 100)); };

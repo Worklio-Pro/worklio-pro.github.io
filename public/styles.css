@@ -1228,7 +1228,7 @@ body.ms-open{overflow:hidden}
 .bottom .ms-head{padding-top:20px}.bottom .ms-head h2{order:-1;text-align:left;font-size:24px}.bottom .ms-sp{display:none}.bottom .ms-x{border:0;background:none}
 .ms-body{flex:1;overflow:auto;display:flex;flex-direction:column;gap:16px;padding:10px 14px calc(14px + env(safe-area-inset-bottom));margin:0}
 .ms-foot{display:flex;gap:10px;margin-top:auto;padding-top:10px;position:sticky;bottom:0;background:var(--card)}
-.ms-foot .btn{flex:1;height:54px;font-size:17px;border-radius:12px;justify-content:center}.ms-foot .ms-more{flex:none;width:60px;font-size:20px;padding:0}
+.ms-foot .btn{flex:1;height:54px;font-size:17px;border-radius:12px;justify-content:center}.ms-foot .ms-more{flex:none;width:60px;font-size:20px;padding:0}.ms-more.ms-del{color:var(--danger)}
 .mf{display:flex;flex-direction:column;gap:2px;margin:0;border:1px solid var(--line);border-radius:12px;padding:10px 14px;font-weight:400;cursor:text}
 .mf:focus-within{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand)}
 .mf>span:first-child{font-size:14px;color:var(--muted)}
