@@ -658,6 +658,40 @@ const readItems = (root) => $$('.item-row', root).map((r) => {
   const cost = Number($('.cost', r).value) || 0; const markup = Number($('.markup', r).value) || 0; const markupType = $('.mtype', r).value;
   return { desc: $('.desc', r).value.trim(), details: $('.details', r).value, qty: Number($('.qty', r).value) || 0, cost, markup, markupType, price: round2(markupType === 'flat' ? cost + markup : cost * (1 + markup / 100)), ...($('.iopt', r) ? { opt: $('.iopt', r).value } : {}), ...(r.dataset.np && !(Number($('.cost', r).value) > 0) ? { needsPrice: true } : {}), ...(r.dataset.fee ? { lateFee: true } : {}), ...(r.dataset.job ? { job: r.dataset.job } : {}) }; // Snap to quote: still to be priced; a late fee line; a combined invoice's job
 });
+// ---- line items not in Products & services yet: offered for the catalog after a quote, job or invoice is saved (phones: a checkbox on the line page) ----
+// Names you said no to, and "Don't ask me again", are kept in this browser; only people who can manage Products & services are asked.
+const CAT_SKIP = 'catalogSkip';
+const catSkip = () => { try { return JSON.parse(localStorage.getItem(CAT_SKIP) || '{}') || {}; } catch (x) { return {}; } };
+const catSkipSave = (v) => { try { localStorage.setItem(CAT_SKIP, JSON.stringify(v)); } catch (x) { /* private window: it just asks again */ } };
+const catKey = (n) => String(n || '').trim().toLowerCase();
+const canAddCatalog = () => planHas('services') && canDo('services') && !catSkip().off;
+function newCatalogItems(items) {
+  if (!canAddCatalog()) return [];
+  const known = new Set([...(D.services || []).map((s) => catKey(s.name)), ...(catSkip().names || [])]); const out = [];
+  for (const i of items || []) { const k = catKey(i.desc); if (!k || i.lateFee || known.has(k)) continue; known.add(k); out.push(i); }
+  return out;
+}
+// a catalog item's price is what the line's Unit cost fills in from, so the line's unit cost is saved (its markup stays on the line)
+const addToCatalog = async (items) => { const r = await api('POST', '/api/services/import', { services: items.map((i) => ({ name: i.desc.trim(), description: i.details || '', price: Number(i.cost ?? i.price) || 0, type: 'service' })) }); await refresh(); return r.added; };
+const catSkipNames = (items) => { const s = catSkip(); s.names = [...new Set([...(s.names || []), ...items.map((i) => catKey(i.desc))])].slice(-300); catSkipSave(s); };
+function offerCatalog(items) {
+  const list = newCatalogItems(items); if (!list.length) return;
+  const one = list.length === 1;
+  const mb = modal('Add to Products & services?', `<form><p>${one ? 'This line item isn’t' : 'These line items aren’t'} in your Products &amp; services. Add ${one ? 'it' : 'them'} so ${one ? 'it fills' : 'they fill'} in next time?</p>
+<div class="cat-offer">${list.map((i, n) => `<label><input type="checkbox" name="pick" value="${n}" checked><span>${esc(i.desc)}</span><span class="muted">${money(Number(i.cost ?? i.price) || 0)}</span></label>`).join('')}</div>
+<label class="cat-never"><input type="checkbox" name="never"> Don’t ask me again</label>
+<div class="foot"><button type="button" class="btn alt" data-no>Not now</button><button class="btn">Add</button></div></form>`);
+  const f = $('form', mb); const btn = $('.foot .btn:not(.alt)', f);
+  const sync = () => { const n = $$('[name=pick]:checked', f).length; btn.disabled = !n; btn.textContent = n > 1 ? `Add ${n} items` : 'Add'; }; sync();
+  f.addEventListener('change', sync);
+  const never = () => { if (f.never.checked) catSkipSave({ ...catSkip(), off: true }); };
+  $('[data-no]', f).addEventListener('click', () => { never(); catSkipNames(list); closeModal(); });
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault(); const picked = $$('[name=pick]', f).map((b) => b.checked);
+    btn.disabled = true; never(); catSkipNames(list.filter((_, n) => !picked[n]));
+    try { const n = await addToCatalog(list.filter((_, n) => picked[n])); closeModal(); toast(`Added ${n} item${n === 1 ? '' : 's'} to Products & services`); } catch (x) { toast(x.message, true); btn.disabled = false; }
+  });
+}
 function recalc(root) {
   if (!$('.calc', root)) return; // no Product / Service section (job page for technicians)
   if (root._optRows) root._optRows(); // quote options: every line item has its Option box
@@ -1837,7 +1871,7 @@ ${d.id && d.status !== 'paid' && balance > 0 ? `<div class="collect-row"><button
     if (!body.items.length) return toast('Add at least one line item', true);
     const saved = d.id ? await api('PUT', `/api/invoices/${d.id}`, body) : await api('POST', '/api/invoices', body);
     if ($('#discDefault', form).checked) { await api('PUT', '/api/company', { invoiceDisclaimer: body.disclaimer }); company.invoiceDisclaimer = body.disclaimer; }
-    toast('Invoice saved'); await navigate('/invoices/view?id=' + saved.id);
+    toast('Invoice saved'); await navigate('/invoices/view?id=' + saved.id); offerCatalog(body.items);
   });
 }
 const qp = (k) => new URLSearchParams(location.search).get(k);
@@ -2083,7 +2117,7 @@ ${planHas('zelle') ? switchRow('allowZelle', 'Zelle', d.allowZelle !== 'off' && 
     delete body.qoRec; if (form._optBody) Object.assign(body, form._optBody()); // Good / Better / Best
     const saved = await withChoice({ ...d, ...body }, (extra) => (d.id ? api('PUT', `/api/quotes/${d.id}`, { ...body, ...extra }) : api('POST', '/api/quotes', { ...body, ...extra })));
     if ($('#discDefault', form).checked) { await api('PUT', '/api/company', { quoteDisclaimer: body.disclaimer }); company.quoteDisclaimer = body.disclaimer; }
-    toast('Quote saved'); await navigate('/quotes/view?id=' + saved.id);
+    toast('Quote saved'); await navigate('/quotes/view?id=' + saved.id); offerCatalog(body.items);
   });
 }
 // a signed quote with its deposit paid: the first try at changing it (not the top bar, internal notes or payment switches)
@@ -2475,6 +2509,7 @@ ${mField('Unit cost', `<span class="mf-in"><b class="pre">$</b><input name="cost
 <label class="mf mf-mk${it.markupType === 'flat' ? ' flat' : ''}"><span>Markup</span><span class="mf-in"><b class="pre">$</b><input name="markup" type="number" inputmode="decimal" step="any" value="${it.markup ?? 0}"><b class="suf">%</b></span></label>
 ${mField('Quantity', `<input name="qty" type="number" inputmode="decimal" step="any" min="0" value="${esc(it.qty ?? 1)}">`)}
 ${kind === 'quote' && qHasOpts(d) ? mField('Option', `<select name="opt"><option value="">All options</option>${d.options.map((o) => `<option value="${esc(o.id)}" ${(i >= 0 ? it.opt : x.opt) === o.id ? 'selected' : ''}>${esc(o.name)}</option>`).join('')}</select>`) : ''}
+${canAddCatalog() ? '<label class="mnt-link m-tocat" hidden>Also save to Products &amp; services<input type="checkbox" name="toCatalog" checked></label>' : ''}
 <div class="m-total"><span>Total</span><strong class="m-tot"></strong></div>`, { full: true, foot: `${mSaveBtn('Save Line Item')}${i >= 0 ? `<button type="button" class="btn alt ms-more ms-del" data-act="mRmItem" aria-label="Delete line item" title="Delete line item">${svgIcon('<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/>', 22)}</button>` : ''}` });
     f._ctx = { kind, d, i };
     // unit price = cost plus markup (% of cost, or flat $ per unit), as on the desktop editor and the server
@@ -2482,13 +2517,18 @@ ${kind === 'quote' && qHasOpts(d) ? mField('Option', `<select name="opt"><option
     const tot = () => { $('.m-tot', f).textContent = money(round2(unit() * (Number(f.qty.value) || 0))); }; tot();
     f.addEventListener('input', tot);
     $('.mk-seg', f).addEventListener('change', () => { $('.mf-mk', f).classList.toggle('flat', f.markupType.value === 'flat'); tot(); });
-    f.desc.addEventListener('change', () => { const s = D.services.find((v) => v.name === f.desc.value.trim()); if (!s) return; if (!f.cost.value) f.cost.value = s.price; if (!f.details.value) f.details.value = s.description || ''; tot(); });
-    onSubmit(f, (fd) => {
+    const toCat = $('.m-tocat', f); const syncCat = () => { if (toCat) toCat.hidden = !newCatalogItems([{ desc: f.desc.value }]).length; }; // only for a name not in the catalog
+    syncCat(); f.desc.addEventListener('input', syncCat);
+    f.desc.addEventListener('change', () => { syncCat(); const s = D.services.find((v) => v.name === f.desc.value.trim()); if (!s) return; if (!f.cost.value) f.cost.value = s.price; if (!f.details.value) f.details.value = s.description || ''; tot(); });
+    onSubmit(f, async (fd) => {
       const desc = String(fd.get('desc')).trim(); if (!desc) throw new Error('Enter the item’s name');
       const cost = Math.max(0, Number(fd.get('cost')) || 0); const markup = Number(fd.get('markup')) || 0; const markupType = fd.get('markupType') === 'flat' ? 'flat' : 'percent';
       const item = { ...(i >= 0 ? it : {}), desc, details: String(fd.get('details')), qty: Number(fd.get('qty')) || 0, cost, markup, markupType, price: unit(), ...(fd.has('opt') ? { opt: String(fd.get('opt')) } : {}) };
       const items = [...(d.items || [])]; if (i >= 0) items[i] = item; else items.push(item);
-      return mSave(kind, d, { items }, i >= 0 ? 'Line item saved' : 'Line item added');
+      const cat = toCat && !toCat.hidden ? (f.toCatalog.checked ? 'add' : 'skip') : '';
+      await mSave(kind, d, { items }, i >= 0 ? 'Line item saved' : 'Line item added');
+      if (cat === 'skip') catSkipNames([item]); // unchecked: don't offer this name again
+      if (cat === 'add') { try { await addToCatalog([item]); toast('Line item saved and added to Products & services'); } catch (x) { toast(x.message, true); } }
     });
     if (i < 0 && !svc) setTimeout(() => f.desc.focus(), 260);
   },
@@ -3493,7 +3533,7 @@ ${paid ? `<div class="crow-line"><span>Deposit collected <span class="muted">· 
     const body = { title: fd.get('title'), clientId: fd.get('clientId'), status: fd.get('status'), address: fd.get('address') || (byId(D.clients, fd.get('clientId')) || {}).address || '', propertyId: fd.get('propertyId') || '', date: fd.get('date'), startTime: fd.get('startTime'), endTime: fd.get('endTime'), anytime: !!fd.get('anytime'), description: fd.get('description'), staffIds: fd.getAll('staff'), internalNotes: fd.get('internalNotes'), taxRate: fd.get('taxRate'), discountType: fd.get('discountType'), discountValue: fd.get('discountValue'), items: readItems(form).filter((i) => i.desc) };
     if (!jobScheduleOk(j.id, body)) return;
     const btn = e.submitter; if (btn) btn.disabled = true;
-    try { const saved = await saveJobWithRepeat(j, body, readRepeat(form)); if (!saved) return; if (j.id) refresh(); else navigate('/jobs/edit?id=' + saved.id); } catch (x) { toast(x.message, true); } finally { if (btn) btn.disabled = false; }
+    try { const saved = await saveJobWithRepeat(j, body, readRepeat(form)); if (!saved) return; if (j.id) await refresh(); else await navigate('/jobs/edit?id=' + saved.id); offerCatalog(body.items); } catch (x) { toast(x.message, true); } finally { if (btn) btn.disabled = false; }
   });
 }
 /* ===== client signature on a job: any team member can collect it (job page ⋯ More → Collect signature); managers / admins can remove it ===== */
