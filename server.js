@@ -2850,7 +2850,7 @@ function onlineMethods(kind, doc) {
 // card and bank (ACH) both on: a button each, so the client sees the bank option before Stripe's page (the button's method= picks it)
 const methodLabel = (m, amount, what = '') => (m === 'us_bank_account' ? `Pay ${what}${money(amount)} from your bank (ACH)` : `Pay ${what}${money(amount)} with card`);
 const payButtons = (methods, amount, what = '') => (methods.length > 1
-  ? methods.map((m, i) => `<button class="btn${i ? ' alt' : ''} payBtn" name="method" value="${m}" data-base="${esc(methodLabel(m, 0, what))}">${methodLabel(m, amount, what)}</button>`).join('')
+  ? methods.map((m) => `<button class="btn payBtn" name="method" value="${m}" data-base="${esc(methodLabel(m, 0, what))}">${methodLabel(m, amount, what)}</button>`).join('')
   : `<button class="btn payBtn" data-base="${esc(payButtonLabel(methods, 0, what))}">${payButtonLabel(methods, amount, what)}</button>`);
 const pickMethod = (methods, b) => (b && methods.includes(b.method) ? [b.method] : methods); // the button the client pressed, or every method
 const payButtonLabel = (methods, amount, what = '') => (methods.length > 1 ? `Pay ${what}${money(amount)} online` : methods[0] === 'us_bank_account' ? `Pay ${what}${money(amount)} from your bank` : `Pay ${what}${money(amount)} with card`);
