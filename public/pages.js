@@ -2535,10 +2535,17 @@ function stripeConn(integ) {
   if (!M.length) return { ...base, status: connChip('off', 'Not available yet'), button: '', body: '', desc: base.desc + ' Until card payments are switched on for this service, clients can’t pay by card.' };
   const steps = inApp ? '<li>Click <strong>Set up card payments</strong>.</li><li>Enter your business details and the bank account for payouts, right here. It takes about 10 minutes, and you don’t need a Stripe account.</li><li>Clients can pay you by card.</li>'
     : '<li>Click <strong>Connect with Stripe</strong>. You’ll go to Stripe’s secure site.</li><li>Set up your Stripe account: your business details and the bank account for payouts.</li><li>You come back here, and clients can pay you by card.</li>';
+  // both ways offered: two options side by side with "or" between them
+  if (inApp && viaStripe) return { ...base, desc: 'Let clients pay invoices and quote deposits by card. The money goes straight to your bank account. There are two ways to set it up: pick one.', status: connChip('off', 'Not connected'), button: 'Connect', body: `<div class="pay-opts">
+<div class="pay-opt"><div class="pay-opt-tag">Option 1 · Recommended</div><h3>Set up right here</h3><p class="muted">Enter your business details and the bank account for payouts in Worklio Pro. It takes about 10 minutes, and you don’t need a Stripe account.</p><a class="btn" href="/settings/card-payments" data-link>Set up card payments</a></div>
+<div class="pay-or"><span>or</span></div>
+<div class="pay-opt"><div class="pay-opt-tag">Option 2</div><h3>Already use Stripe?</h3><p class="muted">Link your own Stripe account. You’ll sign in on Stripe’s secure site and manage payments in your Stripe dashboard.</p><button type="button" class="btn alt" data-act="connectStripe">Connect with Stripe</button></div>
+</div>
+<p class="muted" style="font-size:13px">Stripe charges its standard card processing fees${S.feePercent ? `, plus a ${S.feePercent}% platform fee on each payment` : ''}. Until you set up card payments, clients can’t pay by card.</p>` };
   return { ...base, desc: inApp ? 'Let clients pay invoices and quote deposits by card. The money goes straight to your bank account.' : base.desc, status: connChip('off', 'Not connected'), button: 'Connect', body: `<ol class="pay-steps">${steps}</ol>
 <p class="muted" style="font-size:13px">Stripe charges its standard card processing fees${S.feePercent ? `, plus a ${S.feePercent}% platform fee on each payment` : ''}. Until you ${inApp ? 'set up card payments' : 'connect'}, clients can’t pay by card.</p>
 <div class="sms-test">${inApp ? '<a class="btn" href="/settings/card-payments" data-link>Set up card payments</a>' : ''}${viaStripe ? `<button type="button" class="btn ${inApp ? 'alt' : ''}" data-act="connectStripe">Connect with Stripe</button>` : ''}</div>
-${inApp && viaStripe ? '<p class="muted" style="font-size:13px;margin-top:8px">Already use Stripe? <strong>Connect with Stripe</strong> links your own Stripe account instead, and you manage payments in your Stripe dashboard.</p>' : ''}` };
+` };
 }
 async function connectionsPage(main) {
   const [integ, C] = await Promise.all([api('GET', '/api/integrations'), api('GET', '/api/connections')]);
