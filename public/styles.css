@@ -1964,7 +1964,10 @@ label.bk-auto input{width:auto;margin:0}
 .snap-add,.snap-talk{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 12px;font-size:13px}.snap-add label.btn{margin:0;cursor:pointer}
 .snap-mic[aria-pressed="true"]{border-color:var(--danger);color:var(--danger)}
 .snap-left{font-size:13px;margin:0 0 4px}
-.item-row.np-on{outline:2px solid var(--warn-fg);outline-offset:2px;border-radius:8px}
+/* a line the AI couldn't price: amber box drawn inside the row (never spills onto the next row), "Needs a price" tag on its top edge, room above for the tag */
+.item-row.np-on{position:relative;margin:14px 0 6px;padding-left:10px;padding-right:10px;border-top-color:transparent;border-radius:10px;box-shadow:inset 0 0 0 1.5px #f59e0b}
+.item-row.np-on::before{content:"Needs a price";position:absolute;top:-9px;left:12px;padding:1px 8px;border-radius:99px;background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn-fg);font-size:11px;font-weight:700;line-height:15px;pointer-events:none}
+.item-row.np-on+.item-row{border-top-color:transparent}
 .item-row.np-on .cost{background:var(--warn-bg)}
 .ms-snap{width:100%;margin-top:10px}
 /* batch invoicing (Invoices → Invoice completed jobs) and late fees (App Settings) */
