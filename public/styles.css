@@ -1745,7 +1745,6 @@ a.rpt-item:hover strong{color:var(--link)}
 .rpt-side li{display:flex;justify-content:space-between;gap:10px;padding:4px 0;font-size:13.5px}
 .rpt-side li em{font-style:normal;color:var(--muted)}.rpt-side li b{font-weight:500;font-variant-numeric:tabular-nums;white-space:nowrap}
 .rpt-side li.tot{border-top:1px solid var(--line);margin-top:6px;padding-top:8px;font-weight:600}.rpt-side li.tot b{font-weight:700}
-.rpt-ref dl{margin:8px 0 0;font-size:13px;line-height:1.45}.rpt-ref dt{font-weight:600;margin-top:8px}.rpt-ref dd{margin:1px 0 0;color:var(--muted)}
 .rpt-tools .rpt-q{width:200px}
 .rpt-sp{flex:1}
 .rpt-tbl{padding:0;overflow:hidden}

@@ -1241,9 +1241,7 @@ async function rptList(main, k) {
   const st = { q: '', status: '', sort: '', dir: 1, page: 0 };
   const statuses = r.columns.some((c) => c.k === 'status') ? [...new Set(r.rows.map((x) => x.status).filter(Boolean))].sort() : [];
   const when = !r.dated ? 'As of today' : all ? 'All time' : `${fmtDate(from)} – ${fmtDate(to)}`;
-  // the right-hand card: a breakdown (by status, method…), else a reference of what the report's terms mean
-  const side = r.ref ? `<div class="card rpt-side rpt-ref"><h3>Reference</h3><dl>${r.ref.map(([t, d]) => `<dt>${esc(t)}</dt><dd>${esc(d)}</dd>`).join('')}</dl></div>` : rptSide(r.side, when);
-  const top = (r.stats || []).length || r.chart ? `<div class="rpt-top ${side ? '' : 'one'}"><div class="card rpt-sum"><div class="rpt-stats">${(r.stats || []).map(([l, v, x]) => `<div><span class="l">${esc(l)}</span><strong>${esc(v)}</strong>${x ? `<small class="muted">${esc(x)}</small>` : ''}</div>`).join('')}</div>${rptChart(r.chart)}</div>${side}</div>` : '';
+  const top = (r.stats || []).length || r.chart ? `<div class="rpt-top ${r.side && r.side.rows.length ? '' : 'one'}"><div class="card rpt-sum"><div class="rpt-stats">${(r.stats || []).map(([l, v, x]) => `<div><span class="l">${esc(l)}</span><strong>${esc(v)}</strong>${x ? `<small class="muted">${esc(x)}</small>` : ''}</div>`).join('')}</div>${rptChart(r.chart)}</div>${rptSide(r.side, when)}</div>` : '';
   const range = r.dated ? `<select data-rpt="range" aria-label="Dates">${RPT_RANGES.map(([v, l]) => `<option value="${v}" ${rpt.range === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
 ${rpt.range === 'custom' ? `<input type="date" data-rpt="from" value="${from}" aria-label="From"><span class="muted">to</span><input type="date" data-rpt="to" value="${to}" aria-label="To">` : all ? '' : `<span class="muted rpt-dates">${fmtDate(from)} – ${fmtDate(to)}</span>`}` : '<span class="muted">As of today</span>';
   main.innerHTML = `<div class="head"><div>${rptBack}<h1>${esc(meta[1])}</h1><p class="sub">${esc(meta[2])}</p></div><div class="actions noprint"><button class="btn alt" onclick="window.print()">Print</button></div></div>
