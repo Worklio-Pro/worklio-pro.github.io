@@ -145,6 +145,14 @@ button.pill{padding:0 14px;font:inherit;font-size:14px}.pill.on{background:var(-
 .cat-offer{display:flex;flex-direction:column;margin:12px 0;border:1px solid var(--line);border-radius:10px;max-height:300px;overflow-y:auto}.cat-offer label{display:flex;align-items:center;gap:10px;margin:0;padding:10px 12px;border-top:1px solid var(--line);font-weight:400;cursor:pointer}.cat-offer label:first-child{border-top:0}.cat-offer input{width:18px;height:18px;margin:0;flex:none}.cat-offer label>span:nth-child(2){flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cat-offer .muted{flex:none;font-variant-numeric:tabular-nums}
 .cat-never{display:flex;align-items:center;gap:8px;font-weight:400;font-size:14px;color:var(--muted)}.cat-never input{margin:0}
 .m-tocat[hidden]{display:none}
+/* saved discounts: the ▾ menu beside the discount's name on documents, the editor dialog, the App Settings list, the phone quick pick */
+.disc-lbl{display:inline-flex;align-items:center;gap:2px;position:relative;min-width:0}.disc-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.disc-menu summary{display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:5px;color:var(--muted);font-size:12px;cursor:pointer;list-style:none}.disc-menu summary::-webkit-details-marker{display:none}
+.disc-menu summary:hover,.disc-menu[open] summary{background:var(--tint);color:var(--text)}.disc-menu[hidden]{display:none}
+.disc-menu .menu-list{left:0;right:auto;min-width:230px}.disc-menu .menu-list button:not([data-act=discManage]):not([data-act=discCustom]){display:flex;justify-content:space-between;gap:16px}
+.sd-list{display:flex;flex-direction:column;gap:8px;margin:12px 0 8px}.sd-row{display:flex;align-items:center;gap:8px}.sd-row>input[name=name]{flex:1;min-width:0;margin:0}.sd-row .unit{flex:none;width:150px}.sd-row .unit input{width:auto;min-width:0;flex:1;margin:0}.sd-row .unit select{width:auto;margin:0}.sd-row .t-rm{flex:none}
+.sd-view{display:flex;flex-direction:column;margin:0 0 12px;border:1px solid var(--line);border-radius:10px}.sd-view>div{display:flex;justify-content:space-between;gap:12px;padding:9px 12px;border-top:1px solid var(--line)}.sd-view>div:first-child{border-top:0}
+.m-disc{margin-bottom:8px}.m-disc button{display:flex;justify-content:space-between;align-items:center;gap:12px}
 .search-x{position:relative;width:100%;max-width:500px}.search-x input{padding-right:44px}
 .search-x .icon-btn{position:absolute;right:2px;top:2px;color:var(--muted)}.search-x .icon-btn[hidden]{display:none}.search-x .icon-btn:hover{background:var(--surface-2);color:var(--text)}
 .search-x input::-webkit-search-cancel-button{display:none}

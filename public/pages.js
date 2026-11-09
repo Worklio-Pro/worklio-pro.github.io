@@ -2125,10 +2125,15 @@ function wireLateFees() {
     try { const saved = await api('PUT', '/api/company', { lateFee: b }); company = { ...company, ...saved }; toast(b.on ? 'Late fees saved' : 'Late fees are off'); } catch (err) { toast(err.message, true); }
   });
 }
+// App Settings → General → Saved discounts: the list, and Edit (the dialog in app.js, also opened from a document's discount menu)
+const savedDiscCard = () => `<div class="card" id="saved-discounts"><h2>Saved discounts</h2><p class="muted" style="margin-top:0">Discounts you give often, each with a name. Pick one on a quote, job or invoice instead of typing it; its name shows to your client.</p>
+${savedDiscs().length ? `<div class="sd-view">${savedDiscs().map((x) => `<div><span>${esc(x.name)}</span><span class="muted">${discAmt(x)}</span></div>`).join('')}</div>` : '<p class="muted">None yet.</p>'}
+<button type="button" class="btn alt sm" data-act="sdEdit">${savedDiscs().length ? 'Edit saved discounts' : '+ Add a discount'}</button></div>`;
+A.sdEdit = () => savedDiscountsDialog(() => refresh());
 // App Settings tabs; the hash keeps the tab (links to #payments, #zelle or #late-fees open Payments). Every card stays in the page so form="cf" fields still save.
 const AS_TABS = [['general', 'General'], ['white-label', 'White Label'], ['payments', 'Payments']];
 function wireAsTabs(main) {
-  const tabOf = (h) => (['zelle', 'late-fees'].includes(h) ? 'payments' : AS_TABS.some(([t]) => t === h) ? h : 'general');
+  const tabOf = (h) => (h === 'saved-discounts' ? 'general' : ['zelle', 'late-fees'].includes(h) ? 'payments' : AS_TABS.some(([t]) => t === h) ? h : 'general');
   const show = (t, keep) => {
     $$('[data-as-tab]', main).forEach((b) => { const on = b.dataset.asTab === t; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); });
     $$('.as-panel', main).forEach((p) => { p.hidden = p.id !== 'as-' + t; });
@@ -2149,7 +2154,7 @@ async function companyPage(main, full) {
 <div class="row"><label>Zelle email or phone<input form="cf" name="zelleRecipient" value="${esc(c.zelleRecipient || '')}" placeholder="payments@yourbusiness.com or +17135550100"></label><label>Name registered with Zelle<input form="cf" name="zelleName" value="${esc(c.zelleName || '')}" placeholder="e.g. TLB Group LLC"></label></div></div>` : '';
   main.innerHTML = `<div class="head"><div><h1>${full ? 'App Settings' : 'Company settings'}</h1>${full ? '<p class="sub">Defaults, white label and payments for every quote and invoice. Business details, social media and tax settings are on <a href="/settings/company" data-link>Company Profile</a>.</p>' : ''}</div></div>
 ${full ? `<div class="as-tabs" role="tablist">${AS_TABS.map(([t, n]) => `<button type="button" role="tab" data-as-tab="${t}" aria-controls="as-${t}">${n}</button>`).join('')}</div>
-<div class="as-panel" id="as-general" role="tabpanel">${planCard(c.account)}<div class="as-cols"><div class="as-col">${regionalBox(c)}</div><div class="as-col">${defaultsBox}${prefixBox}</div></div></div>
+<div class="as-panel" id="as-general" role="tabpanel">${planCard(c.account)}<div class="as-cols"><div class="as-col">${regionalBox(c)}</div><div class="as-col">${defaultsBox}${savedDiscCard()}${prefixBox}</div></div></div>
 <div class="as-panel" id="as-white-label" role="tabpanel"><div class="as-cols"><div class="as-col">${webAddressCard(c.account)}</div><div class="as-col">${brandBox || `<div class="card"><h2>Branding</h2><p class="muted" style="margin:0">Your own brand and accent colors on quotes, invoices, emails and the client portal come with a plan that includes Branding.</p></div>`}</div></div></div>
 <div class="as-panel" id="as-payments" role="tabpanel"><div class="as-cols"><div class="as-col">${payCard(integ)}${zelleBox}</div><div class="as-col">${lateFeeCard(c)}</div></div></div>
 <form id="cf"></form>` :`<form id="cf" class="cs-form">${companySettingsHtml(c, logoBox)}</form>`}`;

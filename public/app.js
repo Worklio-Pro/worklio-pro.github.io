@@ -807,19 +807,63 @@ const itemsCard = (items, extra, t) => `<div class="qcard"><h2>Product / Service
 <div id="items">${(items && items.length ? items : [{}]).map(qItemRow).join('')}</div>
 <button type="button" class="btn alt sm" data-act="addItem">+ Add line item</button>
 <div class="totals qtotals"><div class="calc">${totalsRows(t || {})}</div>${extra}</div></div>`;
+// ---- saved discounts (App Settings → General → Saved discounts; company.savedDiscounts): a name, $ or %, and the amount ----
+// On quotes, jobs and invoices "Add Discount" opens them for a quick pick (or Custom amount); the ▾ beside the discount's name switches.
+// A picked one's name is saved with the document (discountName) and shows on it instead of "Discount"; typing your own amount drops the name.
+const savedDiscs = () => company.savedDiscounts || [];
+const discLabel = (d) => `${d.discountName || 'Discount'}${d.discountType === 'percent' ? ` (${d.discountValue}%)` : ''}`;
+const discAmt = (x) => (x.type === 'percent' ? `${x.value}%` : money(x.value));
+const discMenu = (on) => (savedDiscs().length || isAdminMe() ? `<details class="menu disc-menu"${on ? '' : ' hidden'}><summary aria-label="Saved discounts" title="Saved discounts">▾</summary><div class="menu-list"></div></details>` : '');
+const discMenuHtml = () => `${savedDiscs().map((x, i) => `<button type="button" data-act="discPick" data-i="${i}"><span>${esc(x.name)}</span><span class="muted">${discAmt(x)}</span></button>`).join('')}<button type="button" data-act="discCustom">Custom amount</button>${isAdminMe() ? '<hr class="mi-sep"><button type="button" data-act="discManage">Edit saved discounts…</button>' : ''}`;
+function discSetName(row, name) { const h = $('[name=discountName]', row); if (!h) return; h.value = name; $('.disc-name', row).textContent = name || 'Discount'; }
+const discShow = (row, on) => { $('.opt-edit', row).hidden = !on; $('.opt-amt', row).hidden = !on; $('.t-rm', row).hidden = !on; $('.opt-add', row).hidden = on; const m = $('.disc-menu', row); if (m) { m.hidden = !on; m.open = false; } };
+// Add Discount with saved ones: the same menu, opened beside the label
+A.discOpen = (d, el) => { const row = el.closest('.tl'); const m = $('.disc-menu', row); if (!m) return A.addOpt(d, el); m.hidden = false; setTimeout(() => { m.open = true; }, 0); }; // after this click, which closes open menus
+document.addEventListener('toggle', (e) => {
+  const m = e.target; if (!m.matches || !m.matches('.disc-menu')) return;
+  if (m.open) $('.menu-list', m).innerHTML = discMenuHtml(); else if (!Number($('[name=discountValue]', m.closest('.tl')).value) && $('.opt-edit', m.closest('.tl')).hidden) m.hidden = true;
+}, true);
+A.discPick = (d, el) => {
+  const x = savedDiscs()[Number(d.i)]; const row = el.closest('.tl'); if (!x) return;
+  $('[name=discountValue]', row).value = x.value; $('[name=discountType]', row).value = x.type; discSetName(row, x.name); discShow(row, true); recalc(el.closest('form'));
+};
+A.discCustom = (d, el) => { const row = el.closest('.tl'); discSetName(row, ''); discShow(row, true); $('[name=discountValue]', row).focus(); };
+A.discManage = (d, el) => { const m = el.closest('details'); if (m) m.open = false; savedDiscountsDialog(); };
+// typing an amount or switching $/% by hand: it's your own discount now, not the saved one
+document.addEventListener('input', (e) => { if (e.isTrusted && e.target.matches && e.target.matches('.qtotals [name=discountValue], .qtotals [name=discountType]')) discSetName(e.target.closest('.tl'), ''); });
+// the list's editor (App Settings card and the discount menu); owners and admins only (the server takes it through PUT /api/company)
+function savedDiscountsDialog(after) {
+  const rowHtml = (x = {}) => `<div class="sd-row"><input name="name" placeholder="Name, e.g. Senior discount" maxlength="60" value="${esc(x.name || '')}" aria-label="Discount name"><span class="unit"><input name="value" type="number" step="any" min="0" inputmode="decimal" value="${x.value ?? ''}" placeholder="0" aria-label="Amount"><select name="type" aria-label="Type"><option value="percent" ${x.type !== 'flat' ? 'selected' : ''}>%</option><option value="flat" ${x.type === 'flat' ? 'selected' : ''}>$</option></select></span><button type="button" class="t-rm" data-sd-rm aria-label="Remove" title="Remove">${TRASH}</button><input type="hidden" name="id" value="${esc(x.id || '')}"></div>`;
+  const mb = modal('Saved discounts', `<form><p class="muted" style="margin-top:0">Pick these on quotes, jobs and invoices instead of typing the amount. The name shows to your client, like “Senior discount (10%)”.</p>
+<div class="sd-list">${(savedDiscs().length ? savedDiscs() : [{}]).map(rowHtml).join('')}</div><button type="button" class="link-btn" data-sd-add>+ Add a discount</button>
+<p class="muted sm">Changes apply to what you pick from now on. Quotes and invoices already made keep their discount.</p>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save</button></div></form>`);
+  const f = $('form', mb); const list = $('.sd-list', f);
+  f.addEventListener('click', (e) => {
+    if (e.target.closest('[data-sd-add]')) { list.insertAdjacentHTML('beforeend', rowHtml()); $$('.sd-row', list).pop().querySelector('[name=name]').focus(); }
+    const rm = e.target.closest('[data-sd-rm]'); if (rm) rm.closest('.sd-row').remove();
+  });
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const rows = $$('.sd-row', list).map((r) => ({ id: $('[name=id]', r).value, name: $('[name=name]', r).value.trim(), value: Number($('[name=value]', r).value) || 0, type: $('[name=type]', r).value }));
+    const keep = rows.filter((x) => x.name || x.value); const bad = keep.find((x) => !x.name || !(x.value > 0));
+    if (bad) { toast(bad.name ? `Give “${bad.name}” an amount` : 'Give each discount a name', true); return; }
+    try { const saved = await api('PUT', '/api/company', { savedDiscounts: keep }); company = { ...company, ...saved }; closeModal(); toast('Saved discounts updated'); if (after) after(); } catch (x) { toast(x.message, true); }
+  });
+}
 // Subtotal / Discount / Tax / Total rows (layout modeled on Jobber's): discount and tax are optional; without one, its row is an "Add …" link.
 // The trash button on the tax row clears the rate (no tax); Add Tax fills in the company's default rate.
 const totalsRows = (d) => { const rate = Number(d.taxRate ?? company.taxRate ?? 0); const on = rate > 0; return `<div class="tl"><span>Subtotal</span><span></span><span class="t-sub"></span><span></span></div>
-${optRow({ label: 'Discount', name: 'discount', value: d.discountValue, type: d.discountType, pctLabel: '%' })}
+${optRow({ label: 'Discount', name: 'discount', value: d.discountValue, type: d.discountType, pctLabel: '%', dname: d.discountName })}
 <div class="tl opt-row"><span>Tax</span><span class="opt-edit" ${on ? '' : 'hidden'}><span class="unit tax-in"><input name="taxRate" type="number" step="any" min="0" value="${on ? esc(rate) : ''}" placeholder="0" aria-label="Tax rate"><span>%</span></span></span>
 <span class="opt-amt" ${on ? '' : 'hidden'}><span class="t-tax"></span></span><button type="button" class="link-btn opt-add" data-act="addOpt" data-fill="${Number(company.taxRate) > 0 ? esc(company.taxRate) : ''}" ${on ? 'hidden' : ''}>Add Tax</button>
 <span class="t-rm-c"><button type="button" class="t-rm" data-act="rmOpt" aria-label="Remove tax" title="Remove tax" ${on ? '' : 'hidden'}>${TRASH}</button></span></div>
 <div class="tl grand"><strong>Total</strong><span></span><strong class="t-total"></strong><span></span></div>`; };
 // an optional amount row (discount, deposit): "Add …" link until used, then amount + $/% picker + computed value + trash button.
 // Inputs are named ${name}Value / ${name}Type; recalc fills .t-${name}.
-const optRow = ({ label, name, value, type, pctLabel }) => { const on = Number(value) > 0; return `<div class="tl opt-row"><span>${label}</span><span class="opt-edit" ${on ? '' : 'hidden'}><span class="unit"><input name="${name}Value" type="number" step="any" min="0" value="${on ? esc(value) : ''}" placeholder="0" aria-label="${label} amount">
+const optRow = ({ label, name, value, type, pctLabel, dname }) => { const on = Number(value) > 0; const disc = name === 'discount'; return `<div class="tl opt-row"><span${disc ? ' class="disc-lbl"' : ''}>${disc ? `<span class="disc-name">${esc((on && dname) || label)}</span><input type="hidden" name="discountName" value="${esc((on && dname) || '')}">${discMenu(on)}` : label}</span><span class="opt-edit" ${on ? '' : 'hidden'}><span class="unit"><input name="${name}Value" type="number" step="any" min="0" value="${on ? esc(value) : ''}" placeholder="0" aria-label="${label} amount">
 <select name="${name}Type" aria-label="${label} type"><option value="flat" ${type !== 'percent' ? 'selected' : ''}>$</option><option value="percent" ${type === 'percent' ? 'selected' : ''}>${pctLabel}</option></select></span></span>
-<span class="opt-amt" ${on ? '' : 'hidden'}><span class="t-${name}"></span></span><button type="button" class="link-btn opt-add" data-act="addOpt" ${on ? 'hidden' : ''}>Add ${label}</button>
+<span class="opt-amt" ${on ? '' : 'hidden'}><span class="t-${name}"></span></span><button type="button" class="link-btn opt-add" data-act="${disc && savedDiscs().length ? 'discOpen' : 'addOpt'}" ${on ? 'hidden' : ''}>Add ${label}</button>
 <span class="t-rm-c"><button type="button" class="t-rm" data-act="rmOpt" aria-label="Remove ${label.toLowerCase()}" title="Remove ${label.toLowerCase()}" ${on ? '' : 'hidden'}>${TRASH}</button></span></div>`; };
 const TRASH = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg>';
 // invoice: take the quote deposit credit off this invoice (or put it back); saved with the invoice
@@ -830,7 +874,7 @@ A.addOpt = (d, el) => {
   if (!input.value && d.fill) { input.value = d.fill; recalc(el.closest('form')); } // tax: the company's default rate
   input.focus();
 };
-A.rmOpt = (d, el) => { const row = el.closest('.tl'); $('.opt-edit input', row).value = ''; $('.opt-edit', row).hidden = true; $('.opt-amt', row).hidden = true; el.hidden = true; $('.opt-add', row).hidden = false; recalc(el.closest('form')); };
+A.rmOpt = (d, el) => { const row = el.closest('.tl'); $('.opt-edit input', row).value = ''; discSetName(row, ''); $('.opt-edit', row).hidden = true; $('.opt-amt', row).hidden = true; el.hidden = true; $('.opt-add', row).hidden = false; recalc(el.closest('form')); };
 
 /* ===== send dialog ===== */
 function sendDialog(kind, doc, only) { // only: 'email' | 'sms' ticks just that channel; 'text' sends a text message and nothing else
@@ -2179,7 +2223,7 @@ const vt = (label, value, cls = '') => `<div class="vt ${cls}"><span>${label}</s
 const payLink = (rowId, label, date, extra = '') => `<a href="/payments/view?id=${encodeURIComponent(rowId)}" data-link class="pay-link">${label}</a> • ${fmtDate(String(date).slice(0, 10))}${extra}`;
 const viewItems = (d) => `<table class="vitems"><thead><tr><th>Line Item</th><th class="r">Quantity</th><th class="r">Unit Price</th><th class="r">Total</th></tr></thead><tbody>
 ${(d.items || []).map((i) => `<tr><td><strong>${esc(i.desc)}</strong>${i.details ? `<div class="vd">${esc(i.details)}</div>` : ''}</td><td class="r">${esc(i.qty)}</td><td class="r">${money(i.price)}</td><td class="r">${money(round2(i.qty * i.price))}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">No line items</td></tr>'}</tbody></table>`;
-const viewTotals = (d) => vt('Subtotal', money(d.subtotal || 0)) + (d.discount ? vt(`Discount${d.discountType === 'percent' ? ` (${d.discountValue}%)` : ''}`, '−' + money(d.discount)) : '')
+const viewTotals = (d) => vt('Subtotal', money(d.subtotal || 0)) + (d.discount ? vt(esc(discLabel(d)), '−' + money(d.discount)) : '')
   + vt(`Tax (${Number(d.taxRate) || 0}%)`, money(d.tax || 0)) + vt('<strong>Total</strong>', `<strong>${money(d.total || 0)}</strong>`, 'grand');
 const textCard = (kind, d, sec, title, text, empty) => `<div class="qcard"><div class="qcard-h"><h2>${title}</h2>${editBtn(kind, d, sec)}</div>${text ? `<p class="vtext">${esc(text)}</p>` : `<p class="muted" style="margin:0">${empty}</p>`}</div>`;
 const docCards = (kind, d) => textCard(kind, d, 'message', 'Client Message', d.notes, 'No message for the client')
@@ -2259,7 +2303,7 @@ ${b('delDoc', 'trash', 'Delete')}</div></details>`;
 // Create Similar Invoice: a new draft for the same client with the same subject, line items, terms and client view (not linked to the job, so no deposit credit twice)
 A.copyInvoice = async (x) => {
   const i = byId(D.invoices, x.id);
-  const keep = ['clientId', 'subject', 'items', 'taxRate', 'discountType', 'discountValue', 'notes', 'disclaimer', 'internalNotes', 'allowCard', 'allowZelle', 'lateFee', 'paymentTerms', 'showQty', 'showUnit', 'showLineTotals', 'showAccountBalance', 'showLateStamp'];
+  const keep = ['clientId', 'subject', 'items', 'taxRate', 'discountType', 'discountValue', 'discountName', 'notes', 'disclaimer', 'internalNotes', 'allowCard', 'allowZelle', 'lateFee', 'paymentTerms', 'showQty', 'showUnit', 'showLineTotals', 'showAccountBalance', 'showLateStamp'];
   const body = Object.fromEntries(keep.filter((k) => i[k] !== undefined).map((k) => [k, i[k]]));
   body.items = (body.items || []).filter((it) => !it.lateFee).map(({ job, ...it }) => it); // not its late fees, nor the batch invoice's job marks
   const today = ymd(new Date()); body.issueDate = today;
@@ -2271,7 +2315,7 @@ A.markInvoiceSent = async (x) => { await api('PUT', '/api/invoices/' + x.id, { s
 // Create Similar Quote: a new draft for the same client with the same title, line items, prices and messages
 A.copyQuote = async (x) => {
   const q = byId(D.quotes, x.id);
-  const keep = ['clientId', 'title', 'items', 'taxRate', 'discountType', 'discountValue', 'depositType', 'depositValue', 'notes', 'disclaimer', 'internalNotes', 'allowCard', 'allowZelle'];
+  const keep = ['clientId', 'title', 'items', 'taxRate', 'discountType', 'discountValue', 'discountName', 'depositType', 'depositValue', 'notes', 'disclaimer', 'internalNotes', 'allowCard', 'allowZelle'];
   const saved = await api('POST', '/api/quotes', Object.fromEntries(keep.filter((k) => q[k] !== undefined).map((k) => [k, q[k]])));
   toast(`Quote ${saved.number} created`); return navigate('/quotes/view?id=' + saved.id);
 };
@@ -2348,7 +2392,7 @@ const mField = (label, input) => `<label class="mf"><span>${label}</span>${input
 // a signed quote with a paid deposit: confirmed once (signature dialog) before its first change on this page
 let mUnsign = '';
 async function mSave(kind, d, patch, msg) {
-  if (d._fromQuote) patch = { items: d.items, taxRate: d.taxRate, discountType: d.discountType, discountValue: d.discountValue, ...patch };
+  if (d._fromQuote) patch = { items: d.items, taxRate: d.taxRate, discountType: d.discountType, discountValue: d.discountValue, discountName: d.discountName || '', ...patch };
   if (kind === 'job' && d.seriesId) { // a repeating job's visit: this visit only, or this and the following ones
     if (!(await saveJobWithRepeat(d, patch, repeatFromHere(d), null, msg || 'Saved'))) { const b = $('#msheet .ms-save'); if (b) b.disabled = false; return; }
     mClose(); return refresh();
@@ -2468,7 +2512,11 @@ function mAmount(kind, d, { title, label, type, value, name, pct }) {
   const sync = () => f.classList.toggle('pct', f[name + 'Type'].value === 'percent'); sync();
   f.addEventListener('change', sync); $('.mf-clear', f).addEventListener('click', () => { f[name + 'Value'].value = ''; f[name + 'Value'].focus(); });
   setTimeout(() => f[name + 'Value'].focus(), 260);
-  onSubmit(f, (fd) => mSave(kind, d, { [name + 'Type']: fd.get(name + 'Type'), [name + 'Value']: Math.max(0, Number(fd.get(name + 'Value')) || 0) }));
+  if (name === 'discount' && savedDiscs().length) { // quick pick: saves right away, with its name
+    f.insertAdjacentHTML('afterbegin', `<p class="mnt-sh">Saved discounts</p><div class="ms-list m-disc">${savedDiscs().map((x, i) => `<button type="button" data-i="${i}"><span>${esc(x.name)}</span><span class="muted">${discAmt(x)}</span></button>`).join('')}</div><p class="mnt-sh">Or enter an amount</p>`);
+    $('.m-disc', f).addEventListener('click', (e) => { const b = e.target.closest('[data-i]'); const x = b && savedDiscs()[Number(b.dataset.i)]; if (x) mSave(kind, d, { discountType: x.type, discountValue: x.value, discountName: x.name }, 'Discount added').catch((err) => toast(err.message, true)); });
+  }
+  onSubmit(f, (fd) => mSave(kind, d, { [name + 'Type']: fd.get(name + 'Type'), [name + 'Value']: Math.max(0, Number(fd.get(name + 'Value')) || 0), ...(name === 'discount' ? { discountName: '' } : {}) }));
 }
 function mText(kind, d, title, name, placeholder, extra = '') {
   const f = mSheet(title, `${mField(title, `<textarea name="${name}" rows="6" placeholder="${esc(placeholder)}">${esc(d[name] || '')}</textarea>`)}${extra}`, { full: true, foot: mSaveBtn() });
@@ -2613,7 +2661,7 @@ function mobileInvoicePreview(d) {
   const row = (l, v, cls = '') => `<div class="mp-row ${cls}"><span>${l}</span><span>${v}</span></div>`;
   const invoice = `<div class="mp-inv"><div class="mp-title"><h2>Invoice #${esc(d.number)}</h2>${iBadge(d.displayStatus || d.status)}</div>
 <p class="mp-meta">Billed to ${esc(c.name || 'no client')}${d.subject ? ` · ${esc(d.subject)}` : ''}<br>Issued ${fmtDate((d.issueDate || '').slice(0, 10))} · Due ${d.dueDate && d.dueDate > d.issueDate ? fmtDate(d.dueDate) : 'upon receipt'}</p>
-${items}<div class="mp-totals">${row('Subtotal', money(d.subtotal || 0))}${d.discount ? row('Discount', '−' + money(d.discount)) : ''}${d.tax ? row(`Tax${Number(d.taxRate) ? ` (${d.taxRate}%)` : ''}`, money(d.tax)) : ''}${row('Total', money(d.total || 0), 'b')}${d.status === 'paid' ? '' : row('Balance due', money(invBalance(d)), 'b')}</div>
+${items}<div class="mp-totals">${row('Subtotal', money(d.subtotal || 0))}${d.discount ? row(esc(discLabel(d)), '−' + money(d.discount)) : ''}${d.tax ? row(`Tax${Number(d.taxRate) ? ` (${d.taxRate}%)` : ''}`, money(d.tax)) : ''}${row('Total', money(d.total || 0), 'b')}${d.status === 'paid' ? '' : row('Balance due', money(invBalance(d)), 'b')}</div>
 ${d.notes ? `<p class="mp-note">${esc(d.notes)}</p>` : ''}${d.disclaimer ? `<p class="mp-note muted">${esc(d.disclaimer)}</p>` : ''}</div>`;
   const acc = (title, body) => `<details class="mp-acc"><summary>${title}${CHEV('M6 9l6 6 6-6')}</summary>${body}</details>`;
   const rcpt = receipts.map((r) => `<div class="mp-rcpt"><span>${money(r.amount)} on ${fmtDate(String(r.date).slice(0, 10))}</span><a class="btn alt" href="/invoices/view?id=${d.id}&preview=1&receipt=${encodeURIComponent(r.id)}" data-link>View</a></div>`).join('');
@@ -2645,7 +2693,7 @@ function mobileDocPage(kind, d) {
   const optSec = q && (planHas('quoteOptions') || opts) ? mTap(kind, d, 'options', `<span class="md-sh">Options${ARROW}</span><span class="md-text${opts ? '' : ' muted'}">${opts ? d.options.map((o) => esc(o.name)).join(' · ') : 'Offer Good / Better / Best options'}</span>`, 'md-sec') : '';
   const paid = q ? depositPaid(d) : 0; const pays = q ? [] : [...(d.payments || [])].sort((a, b) => a.date.localeCompare(b.date));
   const totals = (q && qHasOpts(d) ? mRow(d.chosenOption ? 'Client chose' : 'Totals for', esc(qShown(d).name)) : '') + mRow('Subtotal', money(d.subtotal || 0), 'b')
-    + mTapRow(kind, d, 'discount', `Discount${d.discount && d.discountType === 'percent' ? ` (${d.discountValue}%)` : ''}`, d.discount ? '−' + money(d.discount) : money(0))
+    + mTapRow(kind, d, 'discount', d.discount ? esc(discLabel(d)) : 'Discount', d.discount ? '−' + money(d.discount) : money(0))
     + mTapRow(kind, d, 'tax', `Tax${Number(d.taxRate) ? ` (${d.taxRate}%)` : ''}`, money(d.tax || 0))
     + mRow('Total', money(d.total || 0), 'grand')
     + (q ? mTapRow(kind, d, 'deposit', 'Required deposit', money(d.depositFee || 0))
@@ -2802,7 +2850,7 @@ A.mlOpen = (x) => navigate(x.href);
 function jobDoc(j) {
   if (j.items && j.items.length) return j;
   const q = byId(D.quotes, j.quoteId);
-  return q && quoteJobItems(q).length ? { ...j, items: quoteJobItems(q), taxRate: q.taxRate, discountType: q.discountType, discountValue: q.discountValue, subtotal: q.subtotal, discount: q.discount, tax: q.tax, total: q.total, _fromQuote: true } : j;
+  return q && quoteJobItems(q).length ? { ...j, items: quoteJobItems(q), taxRate: q.taxRate, discountType: q.discountType, discountValue: q.discountValue, discountName: q.discountName || '', subtotal: q.subtotal, discount: q.discount, tax: q.tax, total: q.total, _fromQuote: true } : j;
 }
 // the checks the job page makes before saving a visit: times, overlapping jobs, time off, working hours
 function jobScheduleOk(id, body) {
@@ -2879,7 +2927,7 @@ function mobileJobPage(j) {
   const items = (d.items || []).map((it, i) => tap('item', `<strong>${esc(it.desc)}</strong>${it.details ? `<span class="md-det">${esc(it.details)}</span>` : ''}<span class="md-qp"><span>${esc(it.qty)} × ${money(it.price)}</span><span>${money(round2(it.qty * it.price))}</span></span>`, 'md-item', `data-i="${i}"`)).join('');
   const paid = q ? depositPaid(q) : 0;
   const totals = (d.items || []).length ? mRow('Subtotal', money(d.subtotal || 0), 'b')
-    + tapRow('discount', `Discount${d.discount && d.discountType === 'percent' ? ` (${d.discountValue}%)` : ''}`, d.discount ? '−' + money(d.discount) : money(0))
+    + tapRow('discount', d.discount ? esc(discLabel(d)) : 'Discount', d.discount ? '−' + money(d.discount) : money(0))
     + tapRow('tax', `Tax${Number(d.taxRate) ? ` (${d.taxRate}%)` : ''}`, money(d.tax || 0)) + mRow('Total', money(d.total || 0), 'grand')
     + (q && q.depositFee > 0 ? mRow('Required deposit', money(q.depositFee)) + (q.depositPaidAt ? mRow(payLink('q-' + q.id, 'Deposit collected', q.depositPaidAt), '−' + money(paid)) : '') + mRow('Outstanding deposit', money(Math.max(0, round2(q.depositFee - paid)))) : '') : '';
   const sig = j.signature;
@@ -3452,7 +3500,7 @@ const askVisitScope = () => new Promise((done) => {
   mb.addEventListener('click', (e) => { const b = e.target.closest('[data-s]'); if (!b) return; closeModal(); done(b.dataset.s || null); });
 });
 // which of the fields a repeat copies to later visits this save changes
-const SERIES_KEYS = ['title', 'clientId', 'address', 'startTime', 'endTime', 'anytime', 'staffIds', 'description', 'items', 'taxRate', 'discountType', 'discountValue'];
+const SERIES_KEYS = ['title', 'clientId', 'address', 'startTime', 'endTime', 'anytime', 'staffIds', 'description', 'items', 'taxRate', 'discountType', 'discountValue', 'discountName'];
 const seriesNorm = (k, v) => JSON.stringify(k === 'items' ? (v || []).map((i) => [i.desc || '', Number(i.qty) || 0, Number(i.price) || 0, i.details || '']) : k === 'staffIds' ? [...(v || [])].sort() : k === 'anytime' ? !!v : ['taxRate', 'discountValue'].includes(k) ? Number(v) || 0 : String(v ?? ''));
 const seriesChanges = (j, body) => SERIES_KEYS.filter((k) => k in body && (k !== 'items' || canDo('jobs.prices')) && seriesNorm(k, j[k]) !== seriesNorm(k, body[k]));
 const ruleKey = (r) => (r ? JSON.stringify(Object.keys(r).filter((k) => r[k] !== undefined && !(k === 'count' && r.end !== 'count') && !(k === 'until' && r.end !== 'until')).sort().map((k) => [k, r[k]])) : 'null');
@@ -3530,7 +3578,7 @@ ${paid ? `<div class="crow-line"><span>Deposit collected <span class="muted">· 
   form.addEventListener('change', (e) => { if (e.target.name === 'clientId') contact(); });
   form.addEventListener('submit', async (e) => {
     e.preventDefault(); const fd = new FormData(form);
-    const body = { title: fd.get('title'), clientId: fd.get('clientId'), status: fd.get('status'), address: fd.get('address') || (byId(D.clients, fd.get('clientId')) || {}).address || '', propertyId: fd.get('propertyId') || '', date: fd.get('date'), startTime: fd.get('startTime'), endTime: fd.get('endTime'), anytime: !!fd.get('anytime'), description: fd.get('description'), staffIds: fd.getAll('staff'), internalNotes: fd.get('internalNotes'), taxRate: fd.get('taxRate'), discountType: fd.get('discountType'), discountValue: fd.get('discountValue'), items: readItems(form).filter((i) => i.desc) };
+    const body = { title: fd.get('title'), clientId: fd.get('clientId'), status: fd.get('status'), address: fd.get('address') || (byId(D.clients, fd.get('clientId')) || {}).address || '', propertyId: fd.get('propertyId') || '', date: fd.get('date'), startTime: fd.get('startTime'), endTime: fd.get('endTime'), anytime: !!fd.get('anytime'), description: fd.get('description'), staffIds: fd.getAll('staff'), internalNotes: fd.get('internalNotes'), taxRate: fd.get('taxRate'), discountType: fd.get('discountType'), discountValue: fd.get('discountValue'), discountName: fd.get('discountName') || '', items: readItems(form).filter((i) => i.desc) };
     if (!jobScheduleOk(j.id, body)) return;
     const btn = e.submitter; if (btn) btn.disabled = true;
     try { const saved = await saveJobWithRepeat(j, body, readRepeat(form)); if (!saved) return; if (j.id) await refresh(); else await navigate('/jobs/edit?id=' + saved.id); offerCatalog(body.items); } catch (x) { toast(x.message, true); } finally { if (btn) btn.disabled = false; }

@@ -190,6 +190,7 @@ function computeTotals(doc) {
   // optional discount before tax: a flat amount or a percentage of the subtotal
   doc.discountType = doc.discountType === 'percent' ? 'percent' : 'flat';
   doc.discountValue = Math.max(0, Number(doc.discountValue) || 0);
+  doc.discountName = doc.discountValue > 0 ? String(doc.discountName || '').trim().slice(0, 60) : ''; // a saved discount's name (Settings → Saved discounts), shown in place of "Discount"
   // deposit: a flat fee or a percentage of the total. Older quotes only have depositFee, treated as flat.
   doc.depositType = doc.depositType === 'percent' ? 'percent' : 'flat';
   doc.depositValue = Math.max(0, Number(doc.depositValue ?? doc.depositFee) || 0);
@@ -564,7 +565,7 @@ app.use('/api', (req, res, next) => {
 // without the "See prices on jobs" permission, jobs come without prices, totals or line items
 const isMemberReq = (req) => { const u = currentUser(req); return !!u && !can(u, 'jobs.prices'); };
 // what a team member may see/change on a job: no prices, totals or line items
-const MONEY_KEYS = ['items', 'subtotal', 'discount', 'discountType', 'discountValue', 'tax', 'total', 'taxRate', 'depositType', 'depositValue', 'depositFee'];
+const MONEY_KEYS = ['items', 'subtotal', 'discount', 'discountType', 'discountValue', 'discountName', 'tax', 'total', 'taxRate', 'depositType', 'depositValue', 'depositFee'];
 const jobForMember = (j) => Object.fromEntries(Object.entries(j).filter(([k]) => !MONEY_KEYS.includes(k)));
 // the portal link opens the client's quotes and invoices with prices, so only logins that can see prices get it (hides Log in as Client)
 const clientForMember = (c) => { const { portalToken, ...rest } = c; return rest; };
@@ -711,7 +712,7 @@ app.post('/api/time/approve', manageTime((req, res, u, b) => {
 // monthly) and the hourly tick tops them up while the series runs. Deleting one visit skips it; it doesn't come back.
 // db.jobSeries: { id, rule: { freq: day|week|month, every, days (weekly, 0 = Sunday), monthBy (monthly: date|weekday), end: never|count|until, count, until },
 //   start (first visit's date), through (latest visit made), made (visits made), template (job fields copied to new visits), ended, createdAt, createdBy }
-const SERIES_FIELDS = ['title', 'clientId', 'address', 'propertyId', 'startTime', 'endTime', 'anytime', 'staffIds', 'description', 'items', 'taxRate', 'discountType', 'discountValue', 'membershipId'];
+const SERIES_FIELDS = ['title', 'clientId', 'address', 'propertyId', 'startTime', 'endTime', 'anytime', 'staffIds', 'description', 'items', 'taxRate', 'discountType', 'discountValue', 'discountName', 'membershipId'];
 const seriesList = () => (db.jobSeries = db.jobSeries || []);
 const findSeries = (id) => id && seriesList().find((s) => s.id === id);
 const pickSeries = (j, keys = SERIES_FIELDS) => Object.fromEntries(keys.filter((k) => j[k] !== undefined).map((k) => [k, structuredClone(j[k])]));
@@ -832,6 +833,8 @@ function cleanPlan(b) {
   return { name, description: String(b.description || '').trim().slice(0, 1000), price, interval, visitsPerYear, visitTitle: String(b.visitTitle || '').trim().slice(0, 120), visitHours, discount, taxable: !!b.taxable, archived: !!b.archived };
 }
 // the biggest discount among a client's active plans (0 without the feature or a plan)
+// the discount's label on totals: its saved name (or "Discount"), plus the percentage. Plain text: escape it for HTML.
+const discLabel = (d) => `${d.discountName || 'Discount'}${d.discountType === 'percent' ? ` (${d.discountValue}%)` : ''}`;
 const memberDiscount = (clientId) => (tenancy.has('servicePlans') ? Math.max(0, ...memberships().filter((m) => m.clientId === clientId && m.status === 'active').map((m) => Number(m.discount) || 0)) : 0);
 const applyMemberDiscount = (doc) => { if (Number(doc.discountValue) > 0 || doc.membershipId) return; const pct = memberDiscount(doc.clientId); if (pct) { doc.discountType = 'percent'; doc.discountValue = pct; doc.memberDiscount = true; } };
 const nextVisit = (m) => { const today = localNow().date; return m.seriesId ? db.jobs.filter((j) => j.seriesId === m.seriesId && j.status === 'scheduled' && j.date >= today).sort((a, b) => a.date.localeCompare(b.date))[0] : null; };
@@ -1670,6 +1673,12 @@ app.put('/api/company', (req, res) => {
   if (b.lateFee && typeof b.lateFee === 'object') { try { db.company.lateFee = cleanLateFee(b.lateFee, db.company.lateFee); } catch (e) { return res.status(400).json({ error: e.message }); } }
   for (const k of ['addressPrivate', 'showHours']) if (k in b) db.company[k] = b[k] === true || b[k] === 'on' || b[k] === 'true';
   if (ADDRESS_PARTS.some((k) => k in b)) db.company.address = composeAddress(db.company); // the one-line address used everywhere else
+  if ('savedDiscounts' in b) { // Saved discounts for quick select on quotes, jobs and invoices: a name, $ or %, and the amount
+    const list = (Array.isArray(b.savedDiscounts) ? b.savedDiscounts : []).slice(0, 30).map((x) => ({ id: x && typeof x.id === 'string' && /^[a-z0-9]{4,16}$/.test(x.id) ? x.id : uid(), name: String((x && x.name) || '').trim().slice(0, 60), type: x && x.type === 'percent' ? 'percent' : 'flat', value: Math.round(Math.max(0, Number(x && x.value) || 0) * 100) / 100 }));
+    const bad = list.find((x) => !x.name || !(x.value > 0) || (x.type === 'percent' && x.value > 100));
+    if (bad) return res.status(400).json({ error: bad.name ? `Give “${bad.name}” an amount${bad.type === 'percent' ? ' from 0.01 to 100%' : ''}` : 'Give each saved discount a name' });
+    db.company.savedDiscounts = list;
+  }
   if ('timezone' in b) applyTimezone();
   save(); res.json({ ...db.company, account: accountInfo() });
 });
@@ -2158,7 +2167,7 @@ function signedPdf(kind, d) {
   pdf.line(L, y, R, y, { color: '#a3a3a3', w: 1.5 }); y += 8;
   if (!job) { // totals
     const row = (k, v, bold) => { if (y + 20 > 720) { pdf.addPage(); y = 64; } pdf.text(R - 130, y + 12, k, { size: 10, bold, color: INK }); pdf.text(R - 6, y + 12, v, { size: 10, bold, color: INK, align: 'right' }); y += 18; };
-    row('Subtotal', money(d.subtotal || 0)); if (d.discount > 0) row('Discount', '-' + money(d.discount)); if (Number(d.taxRate)) row(`Tax (${d.taxRate}%)`, money(d.tax || 0)); row('Total', money(d.total || 0), true);
+    row('Subtotal', money(d.subtotal || 0)); if (d.discount > 0) row(discLabel(d), '-' + money(d.discount)); if (Number(d.taxRate)) row(`Tax (${d.taxRate}%)`, money(d.tax || 0)); row('Total', money(d.total || 0), true);
     if (q && d.depositFee > 0) row('Required deposit', money(d.depositFee)); if (!q) row('Balance due', money(withStatus(d).balanceDue ?? d.total), true);
   }
   // terms on the left, the date and the signature on the right
@@ -2360,7 +2369,7 @@ app.post('/api/jobs/:id/create-invoice', (req, res) => {
   const j = db.jobs.find((x) => x.id === req.params.id);
   if (!j) return res.status(404).json({ error: 'Not found' });
   const l = jobLines(j);
-  const inv = computeTotals({ id: uid(), number: nextNumber('invoices'), clientId: j.clientId, jobId: j.id, subject: j.title, status: 'draft', issueDate: iso(new Date()), dueDate: iso(new Date()), paymentTerms: '0', paidAt: null, token: token(), createdAt: iso(new Date()), notes: '', items: l.items, taxRate: l.taxRate, discountType: l.discountType, discountValue: l.discountValue });
+  const inv = computeTotals({ id: uid(), number: nextNumber('invoices'), clientId: j.clientId, jobId: j.id, subject: j.title, status: 'draft', issueDate: iso(new Date()), dueDate: iso(new Date()), paymentTerms: '0', paidAt: null, token: token(), createdAt: iso(new Date()), notes: '', items: l.items, taxRate: l.taxRate, discountType: l.discountType, discountValue: l.discountValue, discountName: l.discountName });
   applyMemberDiscount(inv); computeTotals(inv); // a service plan member's discount, when the job had none
   db.invoices.push(inv); save(); res.status(201).json(withStatus(inv));
 });
@@ -2369,7 +2378,7 @@ function jobLines(j) {
   const q = j.quoteId && db.quotes.find((x) => x.id === j.quoteId); const own = !!(j.items && j.items.length);
   const items = own ? j.items : q && quoteItems(q).length ? quoteItems(q) : [{ desc: j.title, qty: 1, price: 0 }];
   const src = own ? j : q || {};
-  return { q, items: items.map((i) => ({ ...i })), taxRate: own ? j.taxRate : q ? q.taxRate : db.company.taxRate, discountType: src.discountType, discountValue: src.discountValue };
+  return { q, items: items.map((i) => ({ ...i })), taxRate: own ? j.taxRate : q ? q.taxRate : db.company.taxRate, discountType: src.discountType, discountValue: src.discountValue, discountName: src.discountName || '' };
 }
 
 // ---------- Batch invoicing (Invoices → Invoice completed jobs) ----------
@@ -2382,7 +2391,7 @@ const jobInvoiced = (j) => db.invoices.some((i) => i.jobId === j.id || (i.jobIds
 const batchJobs = () => db.jobs.filter((j) => j.status === 'completed' && !j.membershipId && findClient(j.clientId) && !jobInvoiced(j));
 const ownInvoice = (l) => !!(l.q && l.q.depositPaidAt) || Number(l.discountValue) > 0;
 app.get('/api/invoices/batch', (req, res) => res.json(batchJobs().map((j) => {
-  const l = jobLines(j); const c = findClient(j.clientId); const t = computeTotals({ clientId: j.clientId, items: l.items, taxRate: l.taxRate, discountType: l.discountType, discountValue: l.discountValue });
+  const l = jobLines(j); const c = findClient(j.clientId); const t = computeTotals({ clientId: j.clientId, items: l.items, taxRate: l.taxRate, discountType: l.discountType, discountValue: l.discountValue, discountName: l.discountName });
   applyMemberDiscount(t); computeTotals(t);
   return { id: j.id, number: j.number, title: j.title, date: j.date || '', clientId: c.id, client: c.company || c.name, email: !!c.email, total: t.total, taxRate: Number(l.taxRate) || 0, own: ownInvoice(l) };
 }).sort((a, b) => a.client.localeCompare(b.client) || a.date.localeCompare(b.date))));
@@ -2405,7 +2414,7 @@ app.post('/api/invoices/batch', async (req, res) => {
     const inv = computeTotals({ id: uid(), number: nextNumber('invoices'), clientId: c.id, jobId: j.id, ...(one ? {} : { jobIds: g.map((x) => x.j.id) }),
       subject: one ? j.title : `${g.length} jobs${first ? `, ${niceDate(first)}${last && last !== first ? ` – ${niceDate(last)}` : ''}` : ''}`,
       status: 'draft', issueDate: today, dueDate: addDaysYmd(today, terms), paymentTerms: String(terms), paidAt: null, token: token(), createdAt: iso(new Date()), notes: '',
-      disclaimer: db.company.invoiceDisclaimer ?? '', items, taxRate: l.taxRate, discountType: one ? l.discountType : 'flat', discountValue: one ? l.discountValue : 0 });
+      disclaimer: db.company.invoiceDisclaimer ?? '', items, taxRate: l.taxRate, discountType: one ? l.discountType : 'flat', discountValue: one ? l.discountValue : 0, discountName: one ? l.discountName : '' });
     applyMemberDiscount(inv); computeTotals(inv); db.invoices.push(inv); made.push(inv);
   }
   let sent = 0;
@@ -2588,7 +2597,7 @@ function docPdf(kind, d) {
     // totals
     y += 10;
     row('Subtotal', money(dd.subtotal || 0));
-    if (dd.discount > 0) row(`Discount${dd.discountType === 'percent' ? ` (${dd.discountValue}%)` : ''}`, '-' + money(dd.discount));
+    if (dd.discount > 0) row(discLabel(dd), '-' + money(dd.discount));
     if (Number(dd.taxRate)) row(`${Number(dd.taxRate) === Number(co.taxRate) && co.taxName ? co.taxName : 'Tax'} (${dd.taxRate}%)`, money(dd.tax || 0));
     row(part.opt && parts.length > 1 ? `${part.opt.name} total` : 'Total', money(dd.total || 0), true);
     if (q && dd.depositFee > 0) row(`Required deposit${dd.depositType === 'percent' ? ` (${dd.depositValue}%)` : ''}`, money(dd.depositFee));
@@ -2701,7 +2710,7 @@ function itemsTable(d, o = {}) {
   const qty = o.qty !== false; const unit = o.unit !== false; const line = o.line !== false; const span = 1 + qty + unit;
   const row = (label, value) => `<tr><td colspan="${span}" class="r">${label}</td><td class="r">${value}</td></tr>`;
   return `<table><tr><th>Description</th>${qty ? '<th class="r">Qty</th>' : ''}${unit ? '<th class="r">Price</th>' : ''}<th class="r">${line ? 'Amount' : ''}</th></tr>${d.items.map((i) => `<tr><td>${esc(i.desc)}${i.details ? `<div class="muted" style="white-space:pre-line">${esc(i.details)}</div>` : ''}</td>${qty ? `<td class="r">${i.qty}</td>` : ''}${unit ? `<td class="r">${money(i.price)}</td>` : ''}<td class="r">${line ? money(i.qty * i.price) : ''}</td></tr>`).join('')}
-${row('Subtotal', money(d.subtotal))}${d.discount > 0 ? row(`Discount${d.discountType === 'percent' ? ` (${d.discountValue}%)` : ''}`, '−' + money(d.discount)) : ''}${row(`${esc(Number(d.taxRate) === Number(db.company.taxRate) && db.company.taxName ? db.company.taxName : 'Tax')} (${d.taxRate}%)`, money(d.tax))}${row('<strong>Total</strong>', `<strong>${money(d.total)}</strong>`)}
+${row('Subtotal', money(d.subtotal))}${d.discount > 0 ? row(esc(discLabel(d)), '−' + money(d.discount)) : ''}${row(`${esc(Number(d.taxRate) === Number(db.company.taxRate) && db.company.taxName ? db.company.taxName : 'Tax')} (${d.taxRate}%)`, money(d.tax))}${row('<strong>Total</strong>', `<strong>${money(d.total)}</strong>`)}
 ${o.invoice ? (d.depositApplied > 0 ? row(`Deposit collected (quote ${esc(d.depositQuote)}, ${esc(niceDate(d.depositAppliedAt))})`, '−' + money(d.depositApplied)) + row('<strong>Balance due</strong>', `<strong>${money(d.balanceDue)}</strong>`) : '')
     : d.depositFee > 0 ? row(`Deposit${d.depositType === 'percent' ? ` (${d.depositValue}%)` : ''}`, money(d.depositFee)) + row('Balance after deposit', money(d.total - d.depositFee)) : ''}</table>`;
 }
@@ -3187,7 +3196,7 @@ function quoteView(q, c, { signed, depositSection, sent, preview, business }) {
   const addr = q.address || (c && c.address) || '';
   const taxName = Number(q.taxRate) === Number(co.taxRate) && co.taxName ? co.taxName : 'Tax';
   const row = (l, v) => `<div class="qv-row"><span>${l}</span><span>${v}</span></div>`;
-  const totalsOf = (d) => row('Subtotal', money(d.subtotal)) + (d.discount > 0 ? row(`Discount${d.discountType === 'percent' ? ` (${d.discountValue}%)` : ''}`, '−' + money(d.discount)) : '')
+  const totalsOf = (d) => row('Subtotal', money(d.subtotal)) + (d.discount > 0 ? row(esc(discLabel(d)), '−' + money(d.discount)) : '')
     + (Number(d.taxRate) ? row(`${esc(taxName)} (${d.taxRate}%)`, money(d.tax)) : '') + row('Total', money(d.total))
     + (d.depositFee > 0 ? row(`Deposit${d.depositType === 'percent' ? ` (${d.depositValue}%)` : ''}`, money(d.depositFee)) : '');
   const itemsOf = (d) => (d.items || []).map((i) => `<div class="qv-it"><div class="qv-it-d"><strong>${esc(i.desc)}</strong>${i.details ? `<p>${esc(i.details)}</p>` : ''}</div>
