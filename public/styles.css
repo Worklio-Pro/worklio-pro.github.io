@@ -1709,6 +1709,62 @@ table.pl th{background:none;font-size:14px;padding-top:16px}
 tr.pl-sum td{font-weight:600;border-top:1px solid var(--border)}
 tr.pl-net td{font-weight:700;font-size:16px;border-top:2px solid var(--text)}
 @media (max-width:640px){.rpt-bar .tabs{margin-left:0}}
+/* Reports: the page of report groups, and a report (summary, chart, side breakdown, table with search, sort, columns, pages) */
+.rpt-hub{columns:3 300px;column-gap:16px}
+.rpt-grp{break-inside:avoid;display:block;margin:0 0 16px;padding:0;overflow:hidden}
+#main:not(.portal) .card.rpt-grp>h2:first-child{margin:0} /* the usual card header bar, on a card with no padding */
+.rpt-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 18px;border-top:1px solid var(--line);color:var(--text);text-decoration:none}
+.rpt-grp h2+.rpt-item{border-top:0}
+.rpt-item[hidden],.rpt-grp[hidden]{display:none}
+.rpt-txt{min-width:0}.rpt-txt strong{display:block;font-size:14.5px;font-weight:600}.rpt-txt span{display:block;color:var(--muted);font-size:13px;line-height:1.4;margin-top:2px}
+a.rpt-item:hover{background:color-mix(in srgb,var(--brand) 7%,transparent)}
+a.rpt-item:hover strong{color:var(--link)}
+.rpt-go{color:var(--muted);font-size:20px;line-height:1}
+.rpt-item.off strong{color:var(--muted)}
+.rpt-more{font-size:13px;white-space:nowrap;font-weight:600}
+.rpt-find{width:240px}
+.rpt-back{display:inline-block;font-size:14px;font-weight:600;margin-bottom:4px;text-decoration:none;color:var(--link)}
+.rpt-top{display:grid;grid-template-columns:minmax(0,1fr) 290px;gap:16px;margin-bottom:16px}
+.rpt-top.one{grid-template-columns:minmax(0,1fr)}
+.rpt-top>.card{margin:0}
+.rpt-stats{display:flex;flex-wrap:wrap;gap:12px 40px}
+.rpt-stats .l{display:block;color:var(--muted);font-size:13px}
+.rpt-stats strong{display:block;font-size:24px;line-height:1.25;margin-top:2px;font-variant-numeric:tabular-nums}
+.rpt-stats small{display:block;font-size:12.5px}
+.rpt-legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:18px;font-size:12.5px;color:var(--muted)}
+.rpt-legend span{display:inline-flex;align-items:center;gap:6px}.rpt-legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.rpt-chart{display:flex;align-items:stretch;gap:2px;height:130px;margin:10px 0 22px;border-bottom:1px solid var(--line)}
+.rc-col{flex:1;min-width:0;position:relative}
+.rc-bars{display:flex;align-items:flex-end;justify-content:center;gap:2px;height:100%}
+.rc-bars i{flex:1;max-width:26px;border-radius:3px 3px 0 0}
+.rpt-chart i.s0,.rpt-legend i.s0{background:var(--brand)}
+.rpt-chart i.s1,.rpt-legend i.s1{background:color-mix(in srgb,var(--brand) 35%,#fff)}
+.rc-col span{position:absolute;top:calc(100% + 5px);left:50%;transform:translateX(-50%);font-size:11px;color:var(--muted);white-space:nowrap}
+.rpt-side h3{margin:0;font-size:15px}.rpt-side>p{margin:2px 0 0;font-size:12.5px}
+.rpt-side ul{list-style:none;margin:10px 0 0;padding:0}
+.rpt-side li{display:flex;justify-content:space-between;gap:10px;padding:4px 0;font-size:13.5px}
+.rpt-side li em{font-style:normal;color:var(--muted)}.rpt-side li b{font-weight:500;font-variant-numeric:tabular-nums;white-space:nowrap}
+.rpt-side li.tot{border-top:1px solid var(--line);margin-top:6px;padding-top:8px;font-weight:600}.rpt-side li.tot b{font-weight:700}
+.rpt-tools .rpt-q{width:200px}
+.rpt-sp{flex:1}
+.rpt-tbl{padding:0;overflow:hidden}
+.rpt-t th{white-space:nowrap;padding:10px 12px}.rpt-t td{white-space:nowrap;max-width:340px;overflow:hidden;text-overflow:ellipsis;padding:10px 12px;font-variant-numeric:tabular-nums}
+.rpt-t th.r .rpt-sort{flex-direction:row-reverse}
+.rpt-sort{all:unset;cursor:pointer;display:inline-flex;gap:5px;align-items:center}
+.rpt-sort:focus-visible{outline:2px solid var(--brand);outline-offset:2px;border-radius:3px}
+.rpt-sort i{font-style:normal;opacity:.35;font-size:10px}.rpt-sort.on{color:var(--text)}.rpt-sort.on i{opacity:1}
+.rpt-t tfoot td{font-weight:700;border-top:1px solid var(--border);border-bottom:0}
+.rpt-t tbody tr:hover td{background:color-mix(in srgb,var(--brand) 4%,transparent)}
+.rpt-pager{display:flex;align-items:center;gap:8px;justify-content:flex-end;padding:10px 14px;border-top:1px solid var(--line);font-size:13.5px}
+.rpt-pager .muted{margin-right:auto}
+.rpt-per{display:inline-flex;align-items:center;gap:6px;margin:0 8px 0 0;color:var(--muted);font-size:13.5px}.rpt-per select{width:auto}
+.rpt-colpick{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:4px 16px;margin-bottom:12px}
+.rpt-colpick label{display:flex;gap:8px;align-items:center;margin:0;font-size:14px;color:var(--text)}
+.rpt-note{margin-top:10px}
+@media (max-width:900px){.rpt-top{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:640px){.rpt-find{width:100%}.rpt-hub{columns:1}.rpt-tools .rpt-q{flex:1 1 100%;width:auto}.rpt-sp{display:none}.rpt-tools .btn{flex:1}
+  .rpt-stats{gap:12px 24px}.rpt-stats strong{font-size:20px}.rpt-pager{flex-wrap:wrap}.rpt-pager .muted{flex:1 1 100%}}
+@media print{.rpt-top{grid-template-columns:minmax(0,1fr) 260px}.rpt-t td{white-space:normal}}
 /* Settings → QuickBooks & Xero */
 .bk-h{font-size:15px;margin:18px 0 6px}
 .bk-cats{margin:12px 0}

@@ -4126,6 +4126,252 @@ app.get('/api/reports/profit-loss', (req, res) => { const [from, to] = reportRan
 app.get('/api/reports/jobs', (req, res) => { const [from, to] = reportRange(req); res.json({ from, to, jobs: jobProfit(from, to, wantCat(req)) }); });
 app.get('/api/reports/aging', (req, res) => res.json(receivablesAging(wantCat(req))));
 
+// ---------- Reports → every list report (GET /api/reports/list/<key>?from=&to=) ----------
+// Each report is { columns, rows, stats, note, dated }. A column is { k, l (label), t: text|money|num|hrs|date|pct, sum (total it) };
+// a row's "<k>$" is a link for that column (the app links it, the CSV leaves it out). dated: the from/to dates apply.
+const cName = (id) => (findClient(id) || {}).name || '';
+const staffName = (id) => (db.staff.find((s) => s.id === id) || {}).name || '';
+const day = (d) => String(d || '').slice(0, 10);
+const titleCase = (s) => String(s || '').replace(/[-_]/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
+const PAY_NAMES = { cash: 'Cash', check: 'Check', card: 'Credit/debit card', bank: 'Bank payment', zelle: 'Zelle', cashapp: 'Cash App', paypal: 'PayPal', venmo: 'Venmo', stripe: 'Online card (Stripe)', demo: 'Demo checkout', drawn: 'Client credit', other: 'Other', manual: 'Other' };
+const payName = (m) => PAY_NAMES[m] || (m ? titleCase(m) : 'Other');
+const invLink = (i) => '/invoices/view?id=' + i.id; const jobLink = (j) => '/jobs/edit?id=' + j.id; const qLink = (q) => '/quotes/edit?id=' + q.id; const clientLink = (id) => '/clients/view?id=' + id;
+const jobHours = (j) => { const t = (s) => { const m = /^(\d{1,2}):(\d{2})/.exec(s || ''); return m ? +m[1] + m[2] / 60 : null; }; const a = t(j.startTime); const b = t(j.endTime); return a !== null && b !== null && b > a ? b - a : 0; };
+const isWon = (q) => !!q.signedAt || ['approved', 'converted'].includes(q.status);
+const pct = (a, b) => (b ? Math.round(a / b * 1000) / 10 : null);
+const nOf = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+// where a client came from: a referral link, else their first request's source (online booking, business page, a social post), else added by the business
+function leadSource(c) {
+  if (c.referredBy) return 'Referral';
+  const r = (db.requests || []).filter((x) => x.clientId === c.id).sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))[0];
+  if (r && r.fromPost) return 'Social post';
+  if (r && r.source === 'booking') return r.site ? 'Website booking' : 'Online booking';
+  if (r && r.source === 'business page') return 'Business page';
+  if (r && r.referredBy) return 'Referral';
+  return 'Added by you';
+}
+// paid money in each client's name (payments and deposits less refunds), optionally within dates
+function paidByClient(from, to) { const out = {}; for (const m of cashMoves()) if (!from || inRange(m.date, from, to)) out[m.doc.clientId] = (out[m.doc.clientId] || 0) + m.amount; return out; }
+function freqText(rule) {
+  if (!rule) return ''; const n = Number(rule.every) || 1; const unit = { day: 'day', week: 'week', month: 'month' }[rule.freq] || rule.freq;
+  const D = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  return (n === 1 ? `Every ${unit}` : `Every ${n} ${unit}s`) + (rule.freq === 'week' && (rule.days || []).length ? ' on ' + rule.days.map((d) => D[d]).join(', ') : '');
+}
+const rMoney = (n) => '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const weekStart = (d) => { const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() - x.getUTCDay()); return x.toISOString().slice(0, 10); };
+// a bar chart's buckets (days, weeks or months by how long the dates are); series: [{ name, pts: [[date, value]] }]; money: the values are dollars
+function chartOf(from, to, series, money = true) {
+  const all = series.flatMap((x) => x.pts.map((p) => p[0])).filter(Boolean).sort(); if (!all.length) return null;
+  const today = iso(new Date()); const a = from > '1000' ? from : all[0]; const b = to < '9000' ? to : (all[all.length - 1] > today ? all[all.length - 1] : today);
+  const days = (Date.parse(b) - Date.parse(a)) / 864e5; const unit = days <= 31 ? 'day' : days <= 200 ? 'week' : 'month';
+  const keyOf = (d) => (unit === 'month' ? d.slice(0, 7) : unit === 'day' ? d : weekStart(d));
+  const keys = []; const cur = new Date((unit === 'week' ? weekStart(a) : unit === 'month' ? a.slice(0, 7) + '-01' : a) + 'T12:00:00Z'); const end = new Date(b + 'T12:00:00Z');
+  while (cur <= end && keys.length < 400) { keys.push(keyOf(cur.toISOString().slice(0, 10))); if (unit === 'day') cur.setUTCDate(cur.getUTCDate() + 1); else if (unit === 'week') cur.setUTCDate(cur.getUTCDate() + 7); else cur.setUTCMonth(cur.getUTCMonth() + 1); }
+  return { unit, money, labels: keys, series: series.map((x) => { const m = {}; x.pts.forEach(([d, v]) => { if (d) { const k = keyOf(d); m[k] = (m[k] || 0) + v; } }); return { name: x.name, total: round2(x.pts.reduce((t, p) => t + p[1], 0)), values: keys.map((k) => round2(m[k] || 0)) }; }) };
+}
+// a side card: each status (or method, category) with how many and how much
+function breakdown(title, rows, key, amt, fmt = 'money') { const by = {}; rows.forEach((r) => { const k = r[key] || '—'; const o = by[k] || (by[k] = { l: k, n: 0, v: 0 }); o.n++; o.v += amt ? Number(r[amt]) || 0 : 0; });
+  return { title, fmt: amt ? fmt : '', rows: Object.values(by).map((o) => ({ ...o, v: round2(o.v) })).sort((a, b) => b.v - a.v || b.n - a.n) }; }
+const REPORTS = {
+  transactions(from, to) {
+    const rows = [];
+    for (const m of cashMoves()) {
+      if (!inRange(m.date, from, to)) continue; const d = m.doc; const isQ = m.kind === 'quote';
+      const pay = isQ ? null : (d.payments || []).find((p) => day(p.date) === m.date && Math.abs((Number(p.amount) || 0) - m.amount) < 0.01);
+      const method = isQ ? d.depositMethod : pay ? pay.method : d.paidMethod || '';
+      rows.push({ date: m.date, type: m.amount < 0 ? 'Refund' : isQ ? 'Deposit' : 'Payment', client: cName(d.clientId), 'client$': clientLink(d.clientId), doc: d.number, 'doc$': isQ ? qLink(d) : invLink(d),
+        method: payName(method), reference: (pay && pay.reference) || (isQ ? d.depositReference : '') || '', tip: round2(Number(pay && pay.tip) || 0), amount: m.amount });
+    }
+    rows.sort((a, b) => b.date.localeCompare(a.date));
+    const inn = rows.filter((r) => r.amount > 0).reduce((s, r) => s + r.amount, 0); const out = -rows.filter((r) => r.amount < 0).reduce((s, r) => s + r.amount, 0);
+    return { dated: true, rows, chart: chartOf(from, to, [{ name: 'Money in', pts: rows.filter((r) => r.amount > 0).map((r) => [r.date, r.amount]) }, { name: 'Refunds', pts: rows.filter((r) => r.amount < 0).map((r) => [r.date, -r.amount]) }]), side: breakdown('By method', rows, 'method', 'amount'), stats: [['Money in', rMoney(inn), nOf(rows.filter((r) => r.amount > 0).length, 'payment or deposit', 'payments and deposits')], ['Refunds', rMoney(out)], ['Net received', rMoney(inn - out)]],
+      columns: [{ k: 'date', l: 'Date', t: 'date' }, { k: 'type', l: 'Type' }, { k: 'client', l: 'Client' }, { k: 'doc', l: 'Invoice / quote' }, { k: 'method', l: 'Method' }, { k: 'reference', l: 'Reference' }, { k: 'tip', l: 'Tip', t: 'money', sum: 1 }, { k: 'amount', l: 'Amount', t: 'money', sum: 1 }],
+      note: 'Every payment on an invoice, every quote deposit, and refunds (as minus amounts), by the date they were made. Amounts include sales tax.' };
+  },
+  invoices(from, to) {
+    const rows = db.invoices.filter((i) => inRange(i.issueDate || i.createdAt, from, to)).map((i) => { const c = invoiceCredits(i);
+      return { number: i.number, 'number$': invLink(i), client: cName(i.clientId), 'client$': clientLink(i.clientId), subject: i.subject || '', issued: day(i.issueDate || i.createdAt), due: day(i.dueDate), status: titleCase(invoiceStatus(i)),
+        subtotal: round2(Number(i.subtotal) || 0), discount: round2(Number(i.discount) || 0), tax: round2(Number(i.tax) || 0), total: round2(Number(i.total) || 0), paid: i.status === 'draft' ? 0 : round2((Number(i.total) || 0) - c.balanceDue), balance: i.status === 'draft' ? 0 : c.balanceDue }; })
+      .sort((a, b) => b.issued.localeCompare(a.issued));
+    const live = rows.filter((r) => r.status !== 'Draft'); const s = (k) => live.reduce((a, r) => a + r[k], 0);
+    return { dated: true, rows, chart: chartOf(from, to, [{ name: 'Invoices issued', pts: live.map((r) => [r.issued, r.total]) }, { name: 'Payments collected', pts: cashMoves().filter((m) => m.kind === 'invoice' && inRange(m.date, from, to)).map((m) => [m.date, m.amount]) }]), side: breakdown('Status overview', rows, 'status', 'total'), stats: [['Invoiced', rMoney(s('total')), nOf(live.length, 'invoice', 'invoices') + ' (drafts left out)'], ['Paid', rMoney(s('paid'))], ['Still owed', rMoney(s('balance')), live.filter((r) => r.status === 'Overdue').length + ' overdue']],
+      columns: [{ k: 'number', l: 'Invoice' }, { k: 'client', l: 'Client' }, { k: 'subject', l: 'Subject' }, { k: 'issued', l: 'Issued', t: 'date' }, { k: 'due', l: 'Due', t: 'date' }, { k: 'status', l: 'Status' },
+        { k: 'subtotal', l: 'Subtotal', t: 'money', sum: 1 }, { k: 'discount', l: 'Discount', t: 'money', sum: 1 }, { k: 'tax', l: 'Tax', t: 'money', sum: 1 }, { k: 'total', l: 'Total', t: 'money', sum: 1 }, { k: 'paid', l: 'Paid', t: 'money', sum: 1 }, { k: 'balance', l: 'Balance', t: 'money', sum: 1 }],
+      note: 'Invoices by issue date. Paid includes a quote deposit credited to the invoice.' };
+  },
+  projected() {
+    const today = iso(new Date()); const in30 = iso(new Date(Date.now() + 30 * 864e5)); const rows = [];
+    for (const i of db.invoices) { if (i.status === 'draft' || i.status === 'paid') continue; const bal = invoiceCredits(i).balanceDue; if (bal <= 0) continue;
+      const due = day(i.dueDate); rows.push({ due, when: !due || due <= today ? (due < today ? 'Overdue' : 'Due today') : due <= in30 ? 'Next 30 days' : 'Later', number: i.number, 'number$': invLink(i), client: cName(i.clientId), 'client$': clientLink(i.clientId), issued: day(i.issueDate), total: round2(Number(i.total) || 0), balance: bal }); }
+    rows.sort((a, b) => (a.due || '9').localeCompare(b.due || '9')); const s = (f) => rows.filter(f).reduce((a, r) => a + r.balance, 0);
+    return { rows, side: breakdown('When', rows, 'when', 'balance'), stats: [['Awaiting payment', rMoney(s(() => true)), nOf(rows.length, 'invoice', 'invoices')], ['Overdue', rMoney(s((r) => r.when === 'Overdue'))], ['Due in the next 30 days', rMoney(s((r) => r.when === 'Due today' || r.when === 'Next 30 days'))], ['Due later', rMoney(s((r) => r.when === 'Later'))]],
+      columns: [{ k: 'due', l: 'Due', t: 'date' }, { k: 'when', l: 'When' }, { k: 'number', l: 'Invoice' }, { k: 'client', l: 'Client' }, { k: 'issued', l: 'Issued', t: 'date' }, { k: 'total', l: 'Invoice total', t: 'money', sum: 1 }, { k: 'balance', l: 'Expected', t: 'money', sum: 1 }],
+      note: 'Money you can expect from invoices that have been sent and not paid in full, by due date.' };
+  },
+  balances() {
+    const by = {}; const paid = paidByClient(); const last = {};
+    for (const m of cashMoves()) if (m.amount > 0 && (!last[m.doc.clientId] || m.date > last[m.doc.clientId])) last[m.doc.clientId] = m.date;
+    for (const i of db.invoices) { if (i.status === 'draft') continue; const r = by[i.clientId] || (by[i.clientId] = { client: cName(i.clientId), 'client$': clientLink(i.clientId), invoices: 0, invoiced: 0, balance: 0, unpaid: 0 });
+      r.invoices++; r.invoiced += Number(i.total) || 0; const b = invoiceCredits(i).balanceDue; r.balance += b; if (b > 0) r.unpaid++; }
+    const rows = Object.entries(by).map(([id, r]) => ({ ...r, invoiced: round2(r.invoiced), paid: round2(paid[id] || 0), balance: round2(r.balance), last: last[id] || '' })).sort((a, b) => b.balance - a.balance || a.client.localeCompare(b.client));
+    return { rows, stats: [['Clients owing', rows.filter((r) => r.balance > 0).length], ['Total owed', rMoney(rows.reduce((s, r) => s + r.balance, 0))], ['Total paid to date', rMoney(rows.reduce((s, r) => s + r.paid, 0))]],
+      columns: [{ k: 'client', l: 'Client' }, { k: 'invoices', l: 'Invoices', t: 'num', sum: 1 }, { k: 'unpaid', l: 'Unpaid', t: 'num', sum: 1 }, { k: 'invoiced', l: 'Invoiced', t: 'money', sum: 1 }, { k: 'paid', l: 'Paid', t: 'money', sum: 1 }, { k: 'balance', l: 'Balance', t: 'money', sum: 1 }, { k: 'last', l: 'Last payment', t: 'date' }],
+      note: 'Every client with an invoice: what they’ve been invoiced, paid (deposits included, refunds taken off) and still owe, as of today.' };
+  },
+  visits(from, to) { return jobRows(db.jobs.filter((j) => inRange(j.date || j.createdAt, from, to)), 'Every job and visit by its scheduled date, including each visit of a repeating job.', from, to); },
+  oneoff(from, to) { return jobRows(db.jobs.filter((j) => !j.seriesId && inRange(j.date || j.createdAt, from, to)), 'Jobs that don’t repeat, by scheduled date.', from, to); },
+  recurring(from, to) {
+    const today = iso(new Date());
+    const rows = (db.jobSeries || []).map((s) => { const all = db.jobs.filter((j) => j.seriesId === s.id).sort((a, b) => String(a.date).localeCompare(String(b.date))); if (!all.length) return null;
+      const inR = all.filter((j) => inRange(j.date, from, to)); const first = all[0]; const next = all.find((j) => j.date >= today && j.status === 'scheduled');
+      const invoiced = round2(inR.reduce((sum, j) => sum + jobInvoices(j).filter((i) => !(i.jobIds || []).length).reduce((a, i) => a + (Number(i.subtotal) || 0) - (Number(i.discount) || 0), 0), 0));
+      return { title: first.title || 'Job', 'title$': jobLink(next || all[all.length - 1]), client: cName(first.clientId), 'client$': clientLink(first.clientId), repeats: freqText(s.rule), started: day(s.start || first.date), status: s.ended || !next ? 'Ended' : 'Active',
+        visits: inR.length, completed: inR.filter((j) => j.status === 'completed').length, next: next ? next.date : '', team: [...new Set(all.flatMap((j) => j.staffIds || []))].map(staffName).filter(Boolean).join(', '), invoiced }; }).filter(Boolean)
+      .sort((a, b) => (a.status === b.status ? a.client.localeCompare(b.client) : a.status === 'Active' ? -1 : 1));
+    return { dated: true, rows, stats: [['Repeating jobs', rows.length, rows.filter((r) => r.status === 'Active').length + ' active'], ['Visits in these dates', rows.reduce((s, r) => s + r.visits, 0)], ['Invoiced', rMoney(rows.reduce((s, r) => s + r.invoiced, 0)), 'Before sales tax']],
+      columns: [{ k: 'title', l: 'Job' }, { k: 'client', l: 'Client' }, { k: 'repeats', l: 'Repeats' }, { k: 'started', l: 'Started', t: 'date' }, { k: 'status', l: 'Status' }, { k: 'visits', l: 'Visits', t: 'num', sum: 1 }, { k: 'completed', l: 'Completed', t: 'num', sum: 1 }, { k: 'next', l: 'Next visit', t: 'date' }, { k: 'team', l: 'Team' }, { k: 'invoiced', l: 'Invoiced', t: 'money', sum: 1 }],
+      note: 'Each repeating job (service plans included). Visits, completed and invoiced count the visits in these dates.' };
+  },
+  requests(from, to) {
+    const rows = (db.requests || []).filter((r) => inRange(r.createdAt, from, to)).map((r) => ({ date: day(r.createdAt), client: cName(r.clientId), 'client$': clientLink(r.clientId), title: r.title || '', source: r.referredBy ? 'Referral' : r.fromPost ? 'Social post' : { booking: 'Online booking', 'business page': 'Business page', business: 'Taken by you', portal: 'Client portal' }[r.source] || titleCase(r.source || 'Client portal'),
+      status: titleCase(r.status), preferred: day(r.preferredDate), address: r.address || '' })).sort((a, b) => b.date.localeCompare(a.date));
+    return { dated: true, rows, chart: chartOf(from, to, [{ name: 'Requests', pts: rows.map((r) => [r.date, 1]) }], false), side: breakdown('Came from', rows, 'source'), stats: [['Requests', rows.length], ['New', rows.filter((r) => r.status === 'New').length, 'Not answered yet']],
+      columns: [{ k: 'date', l: 'Received', t: 'date' }, { k: 'client', l: 'Client' }, { k: 'title', l: 'Request' }, { k: 'source', l: 'Came from' }, { k: 'status', l: 'Status' }, { k: 'preferred', l: 'Preferred date', t: 'date' }, { k: 'address', l: 'Address' }],
+      note: 'Work requests from online booking, the client portal, referrals, your business page, and ones you took down yourself.' };
+  },
+  quotes(from, to) {
+    const rows = db.quotes.filter((q) => inRange(q.createdAt, from, to)).map((q) => ({ number: q.number, 'number$': qLink(q), client: cName(q.clientId), 'client$': clientLink(q.clientId), title: q.title || '', created: day(q.createdAt), status: titleCase(q.status), approved: day(q.signedAt),
+      subtotal: round2(Number(q.subtotal) || 0), total: round2(Number(q.total) || 0), deposit: round2(Number(q.depositFee) || 0), depositPaid: q.depositPaidAt ? round2(Number(q.depositPaidAmount ?? q.depositFee) || 0) : 0,
+      job: (db.jobs.find((j) => j.quoteId === q.id) || {}).number || '', won: isWon(q) })).sort((a, b) => b.created.localeCompare(a.created));
+    const sent = rows.filter((r) => r.status !== 'Draft'); const won = rows.filter((r) => r.won);
+    const wonPts = db.quotes.filter((q) => isWon(q) && inRange(q.signedAt || q.createdAt, from, to)).map((q) => [day(q.signedAt || q.createdAt), Number(q.total) || 0]); rows.forEach((r) => delete r.won);
+    return { dated: true, rows, chart: chartOf(from, to, [{ name: 'Quoted', pts: sent.map((r) => [r.created, r.total]) }, { name: 'Approved', pts: wonPts }]), side: breakdown('Status overview', rows, 'status', 'total'), stats: [['Quotes', rows.length, rMoney(sent.reduce((s, r) => s + r.total, 0)) + ' quoted (drafts left out)'], ['Approved', won.length, rMoney(won.reduce((s, r) => s + r.total, 0))], ['Approval rate', sent.length ? pct(won.length, sent.length) + '%' : '—', 'Of quotes sent']],
+      columns: [{ k: 'number', l: 'Quote' }, { k: 'client', l: 'Client' }, { k: 'title', l: 'Title' }, { k: 'created', l: 'Created', t: 'date' }, { k: 'status', l: 'Status' }, { k: 'approved', l: 'Approved', t: 'date' },
+        { k: 'subtotal', l: 'Subtotal', t: 'money', sum: 1 }, { k: 'total', l: 'Total', t: 'money', sum: 1 }, { k: 'deposit', l: 'Deposit asked', t: 'money', sum: 1 }, { k: 'depositPaid', l: 'Deposit paid', t: 'money', sum: 1 }, { k: 'job', l: 'Job' }],
+      note: 'Quotes by the date they were made. Totals are the chosen option’s (or the recommended one’s until the client picks).' };
+  },
+  productivity(from, to) {
+    const logged = {}; if (tenancy.has('timesheets')) for (const e of timeList()) if (e.end && inRange(e.start, from, to)) logged[e.staffId] = (logged[e.staffId] || 0) + entryHours(e);
+    const rows = db.staff.map((s) => { const J = db.jobs.filter((j) => (j.staffIds || []).includes(s.id) && j.status !== 'cancelled' && inRange(j.date, from, to)); const done = J.filter((j) => j.status === 'completed');
+      // a completed job's invoiced amount (before tax) is shared equally by its team
+      const revenue = done.reduce((sum, j) => sum + jobInvoices(j).filter((i) => !(i.jobIds || []).length).reduce((a, i) => a + (Number(i.subtotal) || 0) - (Number(i.discount) || 0), 0) / Math.max(1, (j.staffIds || []).length), 0);
+      return { name: s.name, role: s.role || '', jobs: J.length, completed: done.length, scheduled: Math.round(J.reduce((a, j) => a + jobHours(j), 0) * 100) / 100, logged: Math.round((logged[s.id] || 0) * 100) / 100, revenue: round2(revenue), perHour: logged[s.id] ? round2(revenue / logged[s.id]) : 0 }; })
+      .sort((a, b) => b.revenue - a.revenue || b.jobs - a.jobs);
+    const cols = [{ k: 'name', l: 'Team member' }, { k: 'role', l: 'Role' }, { k: 'jobs', l: 'Jobs & visits', t: 'num', sum: 1 }, { k: 'completed', l: 'Completed', t: 'num', sum: 1 }, { k: 'scheduled', l: 'Scheduled hours', t: 'hrs', sum: 1 }];
+    if (tenancy.has('timesheets')) cols.push({ k: 'logged', l: 'Hours logged', t: 'hrs', sum: 1 });
+    cols.push({ k: 'revenue', l: 'Revenue', t: 'money', sum: 1 }); if (tenancy.has('timesheets')) cols.push({ k: 'perHour', l: 'Revenue per hour', t: 'money' });
+    return { dated: true, rows, columns: cols, stats: [['Jobs & visits', rows.reduce((s, r) => s + r.jobs, 0)], ['Completed', rows.reduce((s, r) => s + r.completed, 0)], ['Revenue from completed work', rMoney(rows.reduce((s, r) => s + r.revenue, 0)), 'Before sales tax']],
+      note: `Each team member’s jobs and visits in these dates (cancelled ones left out). Scheduled hours come from each job’s start and end times.${tenancy.has('timesheets') ? ' Hours logged are their Timesheets entries.' : ''} Revenue is what completed jobs were invoiced (before tax), shared equally by the people on the job.` };
+  },
+  products(from, to) {
+    const by = {}; const row = (name, cat) => { const k = String(name || 'Other').trim().toLowerCase(); return by[k] || (by[k] = { name: String(name || 'Other').trim(), category: cat || '', quoted: 0, quotedAmt: 0, jobQty: 0, sold: 0, soldAmt: 0 }); };
+    for (const q of db.quotes) { if (q.status === 'draft' || !inRange(q.createdAt, from, to)) continue; const cats = lineCats(q); (q.items || []).forEach((i, k) => { const r = row(i.desc, cats[k]); r.quoted += Number(i.qty) || 0; r.quotedAmt += lineAmt(i); }); }
+    for (const j of db.jobs) { if (j.status === 'cancelled' || !inRange(j.date, from, to)) continue; const cats = lineCats(j); (j.items || []).forEach((i, k) => { row(i.desc, cats[k]).jobQty += Number(i.qty) || 0; }); }
+    for (const v of db.invoices) { if (v.status === 'draft' || !inRange(v.issueDate || v.createdAt, from, to)) continue; const cats = lineCats(v); (v.items || []).forEach((i, k) => { if (i.lateFee) return; const r = row(i.desc, cats[k]); r.sold += Number(i.qty) || 0; r.soldAmt += lineAmt(i); }); }
+    const rows = Object.values(by).map((r) => ({ ...r, quotedAmt: round2(r.quotedAmt), soldAmt: round2(r.soldAmt), avg: r.sold ? round2(r.soldAmt / r.sold) : 0 })).sort((a, b) => b.soldAmt - a.soldAmt || b.quotedAmt - a.quotedAmt);
+    return { dated: true, rows, stats: [['Items used', rows.length], ['Invoiced', rMoney(rows.reduce((s, r) => s + r.soldAmt, 0)), 'Before discounts and tax'], ['Quoted', rMoney(rows.reduce((s, r) => s + r.quotedAmt, 0))]],
+      columns: [{ k: 'name', l: 'Product / service' }, { k: 'category', l: 'Category' }, { k: 'quoted', l: 'Qty quoted', t: 'num', sum: 1 }, { k: 'quotedAmt', l: 'Quoted', t: 'money', sum: 1 }, { k: 'jobQty', l: 'Qty on jobs', t: 'num', sum: 1 }, { k: 'sold', l: 'Qty invoiced', t: 'num', sum: 1 }, { k: 'soldAmt', l: 'Invoiced', t: 'money', sum: 1 }, { k: 'avg', l: 'Avg price', t: 'money' }],
+      note: 'Every line on quotes (by date made), jobs (by scheduled date) and invoices (by issue date), grouped by name. Drafts, cancelled jobs and late fees are left out.' };
+  },
+  timesheets(from, to) {
+    const time = (s) => { const d = new Date(s); return isNaN(d) ? '' : d.toISOString(); };
+    const rows = timeList().filter((e) => inRange(e.start, from, to)).map((e) => { const j = e.jobId && db.jobs.find((x) => x.id === e.jobId);
+      return { date: day(e.start), name: staffName(e.staffId) || 'Former team member', job: j ? `${j.number} ${j.title || ''}`.trim() : '', ...(j ? { 'job$': jobLink(j) } : {}), client: j ? cName(j.clientId) : '', start: time(e.start), end: e.end ? time(e.end) : '', hours: Math.round(entryHours(e) * 100) / 100, approved: e.approvedAt ? 'Yes' : 'No', note: e.note || '' }; })
+      .sort((a, b) => b.start.localeCompare(a.start));
+    return { dated: true, rows, chart: chartOf(from, to, [{ name: 'Hours', pts: rows.map((r) => [r.date, r.hours]) }], false), side: breakdown('By team member', rows, 'name', 'hours', 'hrs'), stats: [['Hours logged', (Math.round(rows.reduce((s, r) => s + r.hours, 0) * 10) / 10) + ' h', nOf(rows.length, 'entry', 'entries')], ['Waiting for approval', rows.filter((r) => r.approved === 'No').length]],
+      columns: [{ k: 'date', l: 'Date', t: 'date' }, { k: 'name', l: 'Team member' }, { k: 'job', l: 'Job' }, { k: 'client', l: 'Client' }, { k: 'start', l: 'Start', t: 'time' }, { k: 'end', l: 'End', t: 'time' }, { k: 'hours', l: 'Hours', t: 'hrs', sum: 1 }, { k: 'approved', l: 'Approved' }, { k: 'note', l: 'Note' }],
+      note: 'Every time entry from Timesheets that started in these dates. An entry still on the clock counts up to now.' };
+  },
+  clients(from, to) {
+    const paid = paidByClient(); const owed = {}; for (const i of db.invoices) if (i.status !== 'draft') owed[i.clientId] = (owed[i.clientId] || 0) + invoiceCredits(i).balanceDue;
+    const rows = db.clients.filter((c) => inRange(c.createdAt, from, to)).map((c) => ({ name: c.name, 'name$': clientLink(c.id), company: c.company || '', source: leadSource(c), created: day(c.createdAt), tags: (c.tags || []).join(', '),
+      jobs: db.jobs.filter((j) => j.clientId === c.id && j.status !== 'cancelled').length, paid: round2(paid[c.id] || 0), balance: round2(owed[c.id] || 0) })).sort((a, b) => b.created.localeCompare(a.created) || a.name.localeCompare(b.name));
+    return { dated: true, rows, chart: chartOf(from, to, [{ name: 'New clients', pts: rows.map((r) => [r.created, 1]) }], false), side: breakdown('Lead source', rows, 'source'), stats: [['Clients added', rows.length], ['Paid to date', rMoney(rows.reduce((s, r) => s + r.paid, 0)), 'By these clients']],
+      columns: [{ k: 'name', l: 'Client' }, { k: 'company', l: 'Company' }, { k: 'source', l: 'Lead source' }, { k: 'created', l: 'Added', t: 'date' }, { k: 'tags', l: 'Tags' }, { k: 'jobs', l: 'Jobs', t: 'num', sum: 1 }, { k: 'paid', l: 'Paid to date', t: 'money', sum: 1 }, { k: 'balance', l: 'Owes', t: 'money', sum: 1 }],
+      note: 'Clients added in these dates, with where they came from. Pick “All time” for every client.' };
+  },
+  leadsource(from, to) {
+    const by = {}; const src = {}; db.clients.forEach((c) => { src[c.id] = leadSource(c); });
+    const row = (s) => by[s] || (by[s] = { source: s, clients: 0, requests: 0, quotes: 0, won: 0, jobs: 0, revenue: 0 });
+    for (const c of db.clients) if (inRange(c.createdAt, from, to)) row(src[c.id]).clients++;
+    for (const r of db.requests || []) if (src[r.clientId] && inRange(r.createdAt, from, to)) row(src[r.clientId]).requests++;
+    for (const q of db.quotes) if (src[q.clientId] && q.status !== 'draft' && inRange(q.createdAt, from, to)) { const r = row(src[q.clientId]); r.quotes++; if (isWon(q)) r.won++; }
+    for (const j of db.jobs) if (src[j.clientId] && j.status !== 'cancelled' && inRange(j.date, from, to)) row(src[j.clientId]).jobs++;
+    for (const m of cashMoves()) if (src[m.doc.clientId] && inRange(m.date, from, to)) row(src[m.doc.clientId]).revenue += m.amount;
+    const rows = Object.values(by).map((r) => ({ ...r, revenue: round2(r.revenue), rate: r.quotes ? pct(r.won, r.quotes) : null })).sort((a, b) => b.revenue - a.revenue || b.clients - a.clients);
+    return { dated: true, rows, side: { title: 'Revenue by lead source', fmt: 'money', rows: rows.map((r) => ({ l: r.source, n: r.clients, v: r.revenue })) }, stats: [['Revenue', rMoney(rows.reduce((s, r) => s + r.revenue, 0)), 'Received in these dates'], ['New clients', rows.reduce((s, r) => s + r.clients, 0)]],
+      columns: [{ k: 'source', l: 'Lead source' }, { k: 'clients', l: 'New clients', t: 'num', sum: 1 }, { k: 'requests', l: 'Requests', t: 'num', sum: 1 }, { k: 'quotes', l: 'Quotes', t: 'num', sum: 1 }, { k: 'won', l: 'Approved', t: 'num', sum: 1 }, { k: 'rate', l: 'Approval rate', t: 'pct' }, { k: 'jobs', l: 'Jobs & visits', t: 'num', sum: 1 }, { k: 'revenue', l: 'Revenue', t: 'money', sum: 1 }],
+      note: 'A client’s lead source is a referral link, else where their first request came from (online booking, your business page, a social post), else “Added by you”. Revenue is money received in these dates (tax included).' };
+  },
+  communications(from, to) {
+    const rows = (db.notifications || []).filter((n) => inRange(n.at, from, to)).map((n) => ({ at: n.at, client: n.clientName || cName(n.clientId), ...(n.clientId ? { 'client$': clientLink(n.clientId) } : {}), channel: n.channel === 'sms' ? 'Text' : titleCase(n.channel), kind: titleCase(n.kind), ref: n.refNumber || '', to: n.to || '', subject: n.subject || (n.body || '').slice(0, 80), status: titleCase(n.status) }))
+      .sort((a, b) => String(b.at).localeCompare(String(a.at)));
+    return { dated: true, rows, chart: chartOf(from, to, [{ name: 'Messages', pts: rows.map((r) => [day(r.at), 1]) }], false), side: breakdown('About', rows, 'kind'), stats: [['Messages', rows.length], ['Emails', rows.filter((r) => r.channel === 'Email').length], ['Texts', rows.filter((r) => r.channel === 'Text').length], ['Failed', rows.filter((r) => r.status === 'Failed').length]],
+      columns: [{ k: 'at', l: 'Sent', t: 'time' }, { k: 'client', l: 'Client' }, { k: 'channel', l: 'Channel' }, { k: 'kind', l: 'About' }, { k: 'ref', l: 'Number' }, { k: 'to', l: 'To' }, { k: 'subject', l: 'Subject' }, { k: 'status', l: 'Status' }],
+      note: 'Every email and text Worklio Pro sent for you, to clients and to your team. The Notifications Log shows each message in full.' };
+  },
+  contacts() {
+    const rows = db.clients.map((c) => ({ name: c.name, 'name$': clientLink(c.id), company: c.company || '', email: c.email || '', phone: c.phone || '', address: c.address || '', texts: c.smsConsent ? 'Yes' : 'No', portal: c.portalToken ? 'Yes' : 'No' })).sort((a, b) => a.name.localeCompare(b.name));
+    return { rows, stats: [['Clients', rows.length], ['With an email', rows.filter((r) => r.email).length], ['Agreed to texts', rows.filter((r) => r.texts === 'Yes').length]],
+      columns: [{ k: 'name', l: 'Client' }, { k: 'company', l: 'Company' }, { k: 'email', l: 'Email' }, { k: 'phone', l: 'Phone' }, { k: 'address', l: 'Address' }, { k: 'texts', l: 'Texts OK' }],
+      note: 'Every client and how to reach them. Texts OK: the client agreed to get text messages.' };
+  },
+  properties() {
+    const rows = [];
+    for (const c of db.clients) { const P = Array.isArray(c.properties) && c.properties.length ? c.properties : String(c.address || '').trim() ? [{ street1: c.address }] : [];
+      P.forEach((p) => rows.push({ client: c.name, 'client$': clientLink(c.id), name: p.name || '', street: [p.street1, p.street2].filter(Boolean).join(', '), city: p.city || '', state: p.state || '', zip: p.zip || '', contacts: (p.contacts || []).length,
+        jobs: db.jobs.filter((j) => j.clientId === c.id && (p.id ? j.propertyId === p.id : true) && j.status !== 'cancelled').length })); }
+    rows.sort((a, b) => a.client.localeCompare(b.client));
+    return { rows, stats: [['Properties', rows.length], ['Clients with more than one', new Set(rows.map((r) => r.client)).size < rows.length ? rows.length - new Set(rows.map((r) => r.client)).size : 0, 'Extra properties']],
+      columns: [{ k: 'client', l: 'Client' }, { k: 'name', l: 'Property' }, { k: 'street', l: 'Street' }, { k: 'city', l: 'City' }, { k: 'state', l: 'State' }, { k: 'zip', l: 'ZIP' }, { k: 'contacts', l: 'Contacts', t: 'num' }, { k: 'jobs', l: 'Jobs', t: 'num', sum: 1 }],
+      note: 'Every client property. A client without properties shows their address.' };
+  },
+  reengage() {
+    const today = iso(new Date()); const yearAgo = iso(new Date(Date.now() - 365 * 864e5)); const paid = paidByClient();
+    const rows = db.clients.map((c) => { const J = db.jobs.filter((j) => j.clientId === c.id); const done = J.filter((j) => j.status === 'completed').sort((a, b) => String(b.date).localeCompare(String(a.date)));
+      if (!done.length || done[0].date >= yearAgo || J.some((j) => j.status === 'scheduled' && j.date >= today)) return null;
+      return { name: c.name, 'name$': clientLink(c.id), email: c.email || '', phone: c.phone || '', last: done[0].date, lastJob: `${done[0].number} ${done[0].title || ''}`.trim(), 'lastJob$': jobLink(done[0]), jobs: done.length, paid: round2(paid[c.id] || 0) }; })
+      .filter(Boolean).sort((a, b) => b.paid - a.paid);
+    return { rows, stats: [['Clients to win back', rows.length], ['They’ve paid you', rMoney(rows.reduce((s, r) => s + r.paid, 0)), 'In all']],
+      columns: [{ k: 'name', l: 'Client' }, { k: 'email', l: 'Email' }, { k: 'phone', l: 'Phone' }, { k: 'last', l: 'Last job', t: 'date' }, { k: 'lastJob', l: 'Job' }, { k: 'jobs', l: 'Jobs done', t: 'num', sum: 1 }, { k: 'paid', l: 'Paid in all', t: 'money', sum: 1 }],
+      note: 'Clients you’ve done work for whose last completed job was over 12 months ago, with nothing scheduled. Good people to reach out to.' };
+  },
+  memberships() {
+    const rows = memberships().map((m) => ({ client: cName(m.clientId), 'client$': clientLink(m.clientId), plan: m.name || '', price: round2(Number(m.price) || 0), interval: titleCase(m.interval), start: day(m.start), status: titleCase(m.status), next: m.status === 'active' ? day(m.nextBill) : '', bills: (m.bills || []).length }))
+      .sort((a, b) => (a.status === b.status ? a.client.localeCompare(b.client) : a.status === 'Active' ? -1 : 1));
+    const act = rows.filter((r) => r.status === 'Active'); const yr = { Month: 12, Quarter: 4, Year: 1 };
+    return { rows, side: breakdown('By plan', rows.filter((r) => r.status === 'Active'), 'plan', 'price'), stats: [['Active members', act.length], ['Yearly value', rMoney(act.reduce((s, r) => s + r.price * (yr[r.interval] || 1), 0)), 'Of active plans']],
+      columns: [{ k: 'client', l: 'Client' }, { k: 'plan', l: 'Plan' }, { k: 'price', l: 'Price', t: 'money' }, { k: 'interval', l: 'Billed every' }, { k: 'start', l: 'Started', t: 'date' }, { k: 'status', l: 'Status' }, { k: 'next', l: 'Next bill', t: 'date' }, { k: 'bills', l: 'Invoices made', t: 'num', sum: 1 }],
+      note: 'Every client on a service plan.' };
+  },
+  expenses(from, to) {
+    const rows = db.expenses.filter((e) => inRange(e.date, from, to)).map((e) => { const j = e.jobId && db.jobs.find((x) => x.id === e.jobId);
+      return { date: day(e.date), category: e.category || 'Other', vendor: e.vendor || '', description: e.description || '', job: j ? `${j.number} ${j.title || ''}`.trim() : '', ...(j ? { 'job$': jobLink(j) } : {}), client: j ? cName(j.clientId) : '', amount: round2(Number(e.amount) || 0) }; })
+      .sort((a, b) => b.date.localeCompare(a.date));
+    const cats = {}; rows.forEach((r) => { cats[r.category] = (cats[r.category] || 0) + r.amount; }); const top = Object.entries(cats).sort((a, b) => b[1] - a[1])[0];
+    return { dated: true, rows, chart: chartOf(from, to, [{ name: 'Expenses', pts: rows.map((r) => [r.date, r.amount]) }]), side: breakdown('By category', rows, 'category', 'amount'), stats: [['Expenses', rMoney(rows.reduce((s, r) => s + r.amount, 0)), rows.length + ' logged'], ['On jobs', rMoney(rows.filter((r) => r.job).reduce((s, r) => s + r.amount, 0))], ['Biggest category', top ? top[0] : '—', top ? rMoney(top[1]) : '']],
+      columns: [{ k: 'date', l: 'Date', t: 'date' }, { k: 'category', l: 'Category' }, { k: 'vendor', l: 'Vendor' }, { k: 'description', l: 'Description' }, { k: 'job', l: 'Job' }, { k: 'client', l: 'Client' }, { k: 'amount', l: 'Amount', t: 'money', sum: 1 }],
+      note: 'Every expense logged in these dates.' };
+  },
+};
+function jobRows(list, note, from, to) {
+  const rows = list.map((j) => { const inv = jobInvoices(j); const own = inv.filter((i) => !(i.jobIds || []).length);
+    return { date: day(j.date || j.createdAt), time: j.startTime ? j.startTime + (j.endTime ? '–' + j.endTime : '') : 'Anytime', number: j.number, 'number$': jobLink(j), title: j.title || '', client: cName(j.clientId), 'client$': clientLink(j.clientId),
+      team: (j.staffIds || []).map(staffName).filter(Boolean).join(', '), status: titleCase(j.status), repeats: j.seriesId ? 'Yes' : 'No', address: j.address || '', total: round2(Number(j.total) || 0),
+      invoiced: round2(inv.reduce((s, i) => s + (Number(i.total) || 0) * ((i.jobIds || []).length && !own.includes(i) ? 0 : 1), 0)) }; }).sort((a, b) => b.date.localeCompare(a.date) || a.time.localeCompare(b.time));
+  const n = (s) => rows.filter((r) => r.status === s).length;
+  return { dated: true, rows, chart: chartOf(from, to, [{ name: 'Jobs & visits', pts: rows.map((r) => [r.date, 1]) }], false), side: breakdown('Status overview', rows, 'status', 'invoiced'), stats: [['Jobs & visits', rows.length], ['Completed', n('Completed')], ['Scheduled', n('Scheduled')], ['Invoiced', rMoney(rows.reduce((s, r) => s + r.invoiced, 0)), 'Invoices made for these jobs']],
+    columns: [{ k: 'date', l: 'Date', t: 'date' }, { k: 'time', l: 'Time' }, { k: 'number', l: 'Job' }, { k: 'title', l: 'Title' }, { k: 'client', l: 'Client' }, { k: 'team', l: 'Team' }, { k: 'status', l: 'Status' }, { k: 'repeats', l: 'Repeats' }, { k: 'address', l: 'Address' }, { k: 'total', l: 'Job total', t: 'money', sum: 1 }, { k: 'invoiced', l: 'Invoiced', t: 'money', sum: 1 }],
+    note };
+}
+const REPORT_FEATURE = { quotes: 'quotes', timesheets: 'timesheets', memberships: 'servicePlans', expenses: 'expenses', recurring: 'recurringJobs' };
+app.get('/api/reports/list/:key', (req, res) => {
+  const fn = Object.prototype.hasOwnProperty.call(REPORTS, req.params.key) && REPORTS[req.params.key]; if (!fn) return res.status(404).json({ error: 'No such report' });
+  const f = REPORT_FEATURE[req.params.key]; if (f && !tenancy.has(f)) return res.status(403).json({ error: 'This report isn’t in your plan' });
+  const [from, to] = req.query.from === 'all' ? ['0000-01-01', '9999-12-31'] : reportRange(req);
+  res.json({ key: req.params.key, from, to, ...fn(from, to) });
+});
+
 app.get('/api/tax-summary', (req, res) => {
   const year = String(req.query.year || new Date().getFullYear());
   const paid = db.invoices.filter((i) => i.status === 'paid' && String(i.paidAt).startsWith(year));

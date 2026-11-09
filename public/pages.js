@@ -1049,10 +1049,46 @@ ${svcCats().length || x.bizCat ? catField('bizCat', x.bizCat, 'Counts toward', '
 A.newExpense = () => expenseForm(); A.editExpense = (d) => expenseForm(byId(D.expenses, d.id));
 A.delExpense = async (d) => { if (!confirm('Delete this expense?')) return; await api('DELETE', '/api/expenses/' + d.id); closeModal(); refresh(); };
 
-/* ===== /reports ===== */
-// tabs: the overview, then accounting-style reports for a date range (profit & loss, job profit) and unpaid invoices by age
-const RPT_TABS = [['overview', 'Overview'], ['pl', 'Profit & loss'], ['jobs', 'Job profit'], ['aging', 'Unpaid invoices']];
-const RPT_RANGES = [['thisMonth', 'This month'], ['lastMonth', 'Last month'], ['thisQuarter', 'This quarter'], ['lastQuarter', 'Last quarter'], ['thisYear', 'This year'], ['lastYear', 'Last year'], ['last12', 'Last 12 months'], ['custom', 'Custom dates']];
+/* ===== /reports: every report in groups; each opens at /reports/view?r=<key> ===== */
+// [key, name, what it shows, { feature (plan feature it needs), href (a page of its own) }]. overview, pl, jobs and aging have their own layouts (RPT below);
+// the rest are list reports from /api/reports/list/<key>: summary numbers, a chart, a side breakdown, then a table to search, sort, pick columns for and export.
+const RPT_HUB = [
+  ['Financial reports', [
+    ['overview', 'Financial overview', 'Revenue by month, paid vs pending, and your most popular services'],
+    ['pl', 'Profit & loss', 'Income minus expenses, on a cash or accrual basis'],
+    ['transactions', 'Transaction list', 'All payments, deposits and refunds'],
+    ['invoices', 'Invoices', 'Invoices with totals, payments and balances'],
+    ['projected', 'Projected income', 'Projected income from invoices awaiting payment'],
+    ['aging', 'Aged receivables', 'Invoices that are late by 30, 60 and 90+ days'],
+    ['balances', 'Client balance summary', 'What each client has been invoiced, has paid and still owes'],
+    ['jobs', 'Job profit', 'What each job brought in against what it cost'],
+    ['tax', 'Taxation', 'Sales tax collected, by month and by invoice', { feature: 'taxSummary', href: '/tax-summary' }],
+  ]],
+  ['Work reports', [
+    ['visits', 'Visits', 'Every job and visit, with its team, status and invoices'],
+    ['oneoff', 'One-off jobs', 'Jobs that don’t repeat, with client and invoice details'],
+    ['recurring', 'Recurring jobs', 'Each repeating job, its visits and what it’s invoiced', { feature: 'recurringJobs' }],
+    ['requests', 'Requests', 'Work requests and where they came from'],
+    ['quotes', 'Quotes', 'Quotes with totals, approvals and deposits', { feature: 'quotes' }],
+    ['productivity', 'Team productivity', 'Jobs, hours and revenue for each team member'],
+    ['products', 'Products & services', 'How much each product and service is quoted, scheduled and invoiced'],
+    ['timesheets', 'Timesheets', 'All time tracked by the team', { feature: 'timesheets' }],
+  ]],
+  ['Client reports', [
+    ['clients', 'Clients', 'All clients, with the lead channel they came from'],
+    ['leadsource', 'Lead source', 'Clients, quotes and revenue by lead source'],
+    ['communications', 'Client communications', 'All emails and texts sent through Worklio Pro'],
+    ['contacts', 'Client contact info', 'All clients and their contact info'],
+    ['properties', 'Property list', 'All properties and their details'],
+    ['reengage', 'Client re-engagement', 'Clients who haven’t had a completed job in the past 12 months'],
+    ['memberships', 'Service plans', 'Every client on a service plan', { feature: 'servicePlans' }],
+  ]],
+  ['Expense reports', [
+    ['expenses', 'Expenses', 'All tracked expenses and their details', { feature: 'expenses' }],
+  ]],
+];
+const rptMeta = (k) => RPT_HUB.flatMap(([, L]) => L).find((x) => x[0] === k) || [k, 'Report', ''];
+const RPT_RANGES = [['thisMonth', 'This month'], ['lastMonth', 'Last month'], ['thisQuarter', 'This quarter'], ['lastQuarter', 'Last quarter'], ['thisYear', 'This year'], ['lastYear', 'Last year'], ['last12', 'Last 12 months'], ['all', 'All time'], ['custom', 'Custom dates']];
 const rpt = { tab: 'overview', range: 'thisYear', from: '', to: '', basis: 'cash', cat: '' }; // cat: one products & services category ('__none' = no category), '' = everything
 try { Object.assign(rpt, JSON.parse(localStorage.getItem('rptView') || '{}')); } catch (e) { /* no saved view */ }
 const rptSave = () => { try { localStorage.setItem('rptView', JSON.stringify(rpt)); } catch (e) { /* storage blocked */ } };
@@ -1065,6 +1101,7 @@ function rptDates() {
     case 'lastQuarter': return [d(y, q - 3, 1), d(y, q, 0)];
     case 'lastYear': return [d(y - 1, 0, 1), d(y - 1, 11, 31)];
     case 'last12': return [d(y, m - 11, 1), d(y, m + 1, 0)];
+    case 'all': return ['2000-01-01', ymd(n)];
     case 'custom': return [rpt.from || d(y, 0, 1), rpt.to || ymd(n)];
     default: return [d(y, 0, 1), d(y, 11, 31)];
   }
@@ -1075,14 +1112,13 @@ const rptCatQ = () => (rptCatOk().length && rpt.cat ? '&cat=' + encodeURICompone
 const rptCatName = () => (!rpt.cat ? '' : rpt.cat === '__none' ? 'No category' : (svcCats().find((c) => c.toLowerCase() === rpt.cat.toLowerCase()) || rpt.cat));
 const rptCatSel = () => { const cats = rptCatOk(); return cats.length ? `<select data-rpt="cat" aria-label="Category" class="rpt-cat"><option value="">All categories</option>${cats.map((c) => `<option value="${esc(c)}" ${rpt.cat.toLowerCase() === c.toLowerCase() ? 'selected' : ''}>${esc(c)}</option>`).join('')}<option value="__none" ${rpt.cat === '__none' ? 'selected' : ''}>No category</option></select>` : ''; };
 const rptRangeBar = (withBasis) => { const [from, to] = rptDates(); return `<div class="rpt-bar noprint">${rptCatSel()}<select data-rpt="range" aria-label="Dates">${RPT_RANGES.map(([k, l]) => `<option value="${k}" ${rpt.range === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
-${rpt.range === 'custom' ? `<input type="date" data-rpt="from" value="${from}" aria-label="From"><span class="muted">to</span><input type="date" data-rpt="to" value="${to}" aria-label="To">` : `<span class="muted">${fmtDate(from)} – ${fmtDate(to)}</span>`}
+${rpt.range === 'custom' ? `<input type="date" data-rpt="from" value="${from}" aria-label="From"><span class="muted">to</span><input type="date" data-rpt="to" value="${to}" aria-label="To">` : rpt.range === 'all' ? '' : `<span class="muted">${fmtDate(from)} – ${fmtDate(to)}</span>`}
 ${withBasis ? `<div class="tabs rpt-basis" role="group" aria-label="Accounting method">${[['cash', 'Cash basis'], ['accrual', 'Accrual basis']].map(([k, l]) => `<button type="button" class="${rpt.basis === k ? 'on' : ''}" data-act="rptBasis" data-b="${k}">${l}</button>`).join('')}</div>` : ''}</div>`; };
-A.rptTab = (d) => { rpt.tab = d.t; rptSave(); refresh(); };
 A.rptBasis = (d) => { rpt.basis = d.b; rptSave(); refresh(); };
 A.rptCat = (d) => { rpt.cat = d.c; rptSave(); refresh(); window.scrollTo(0, 0); };
 const rptCatSlug = () => { const n = rptCatName(); return n ? n.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).join('-') + '-' : ''; };
-const rptHead = (sub, csv) => `<div class="head"><div><h1>Financial Reports${rptCatName() ? ` <span class="rpt-cat-h">· ${esc(rptCatName())}</span>` : ''}</h1><p class="sub">${sub}</p></div><div class="actions noprint">${csv ? '<button class="btn alt" data-act="rptCsv">Export CSV</button>' : ''}<button class="btn alt" onclick="window.print()">Print</button></div></div>
-<div class="tabs noprint" role="tablist">${RPT_TABS.map(([k, l]) => `<button type="button" role="tab" aria-selected="${rpt.tab === k}" class="${rpt.tab === k ? 'on' : ''}" data-act="rptTab" data-t="${k}">${l}</button>`).join('')}</div>`;
+const rptBack = '<a class="rpt-back noprint" href="/reports" data-link>‹ Reports</a>';
+const rptHead = (sub, csv) => `<div class="head"><div>${rptBack}<h1>${esc(rptMeta(rpt.tab)[1])}${rptCatName() ? ` <span class="rpt-cat-h">· ${esc(rptCatName())}</span>` : ''}</h1><p class="sub">${sub}</p></div><div class="actions noprint"><button class="btn alt" onclick="window.print()">Print</button>${csv ? '<button class="btn" data-act="rptCsv">Export CSV</button>' : ''}</div></div>`;
 const signed = (n) => `<span class="${n < 0 ? 'neg' : ''}">${n < 0 ? '−' + money(-n) : money(n)}</span>`;
 const marginTxt = (m) => (m === null || m === undefined ? '—' : m + '%');
 const RPT = {
@@ -1121,11 +1157,7 @@ ${r.invoices.length ? `<div class="card"><h2>Invoices</h2><div class="tablewrap"
     A.rptCsv = () => downloadCsv(`unpaid-invoices-${rptCatSlug()}${r.asOf}.csv`, [['Invoice', 'Client', 'Issued', 'Due', 'Days past due', 'Balance', 'Invoice total'], ...r.invoices.map((i) => [i.number, i.client, i.issueDate, i.dueDate, i.daysOverdue, i.balance, i.total])]);
   },
 };
-PAGES['/reports'] = {
-  title: 'Financial Reports',
-  async render(main) {
-    const wire = () => $$('[data-rpt]', main).forEach((el) => el.addEventListener('change', (e) => { const k = e.target.dataset.rpt; if (k === 'range' && e.target.value === 'custom') { [rpt.from, rpt.to] = rptDates(); } rpt[k] = e.target.value; rptSave(); refresh(); }));
-    if (RPT[rpt.tab]) { await RPT[rpt.tab](main); return wire(); }
+RPT.overview = async (main) => {
     const r = await api('GET', '/api/reports?' + rptCatQ().slice(1)); const labels = r.revenueByMonth.map((m) => monthLabel(m.month));
     const totalAll = r.paidTotal + r.pendingTotal || 1; const maxSvc = Math.max(...r.popularServices.map((s) => s.count), 1);
     const maxCat = Math.max(...(r.byCategory || []).map((c) => c.revenue), 1);
@@ -1135,9 +1167,124 @@ PAGES['/reports'] = {
 <div class="card"><h2>Paid vs pending</h2><p>Paid <strong>${money(r.paidTotal)}</strong></p><div class="meter"><i style="width:${(r.paidTotal / totalAll) * 100}%"></i></div><p style="margin-top:14px">Pending <strong>${money(r.pendingTotal)}</strong></p><div class="meter"><i style="width:${(r.pendingTotal / totalAll) * 100}%;background:var(--warn)"></i></div><p class="muted" style="margin-top:14px">Drafts are excluded. Pending includes sent and overdue invoices.</p></div></div>
 ${!rpt.cat && (r.byCategory || []).length ? `<div class="card"><h2>Revenue by category (last 12 months)</h2><div class="tablewrap"><table class="m-pop rpt-bycat"><tr><th>Category</th><th class="r">Paid revenue</th><th style="width:30%"></th></tr>${r.byCategory.map((c) => `<tr><td><button type="button" class="link-btn" data-act="rptCat" data-c="${c.name ? esc(c.name) : '__none'}">${c.name ? esc(c.name) : 'No category'}</button></td><td class="r">${money(c.revenue)}</td><td><div class="meter"><i style="width:${(c.revenue / maxCat) * 100}%"></i></div></td></tr>`).join('')}</table></div><p class="muted">Each paid invoice is split across its lines’ categories (tax included). Pick a category to see all its reports on their own.</p></div>` : ''}
 <div class="card"><h2>Popular services</h2><div class="tablewrap"><table class="m-pop"><tr><th>Service</th><th class="r">Units sold</th><th class="r">Revenue</th><th style="width:30%"></th></tr>${r.popularServices.map((s) => `<tr><td>${esc(s.name)}</td><td class="r">${s.count}</td><td class="r">${money(s.revenue)}</td><td><div class="meter"><i style="width:${(s.count / maxSvc) * 100}%"></i></div></td></tr>`).join('') || '<tr><td colspan="4" class="empty">No invoiced services yet</td></tr>'}</table></div></div>`;
-    wire();
+};
+
+// the Reports page: a card for each group, a line for each report (greyed with a link to plans when it isn't in the plan)
+PAGES['/reports'] = {
+  title: 'Reports',
+  async render(main) {
+    const item = ([k, name, desc, o = {}]) => {
+      if (o.href && !memberCan(o.href) && planHas(o.feature)) return ''; // a page of its own this login can't open
+      const txt = `<span class="rpt-txt"><strong>${esc(name)}</strong><span>${esc(desc)}</span></span>`;
+      if (o.feature && !planHas(o.feature)) return `<div class="rpt-item off" data-find="${esc((name + ' ' + desc).toLowerCase())}">${txt}${memberCan('/settings/billing') ? '<a class="rpt-more" href="/settings/billing" data-link>See plans</a>' : '<span class="rpt-more muted">Not in your plan</span>'}</div>`;
+      return `<a class="rpt-item" href="${o.href || '/reports/view?r=' + k}" data-link data-find="${esc((name + ' ' + desc).toLowerCase())}">${txt}<span class="rpt-go" aria-hidden="true">›</span></a>`;
+    };
+    main.innerHTML = `<div class="head"><div><h1>Reports</h1><p class="sub">See how the business is doing, and export any report to a spreadsheet.</p></div><div class="actions"><input type="search" class="rpt-find" placeholder="Find a report" aria-label="Find a report"></div></div>
+<div class="rpt-hub">${RPT_HUB.map(([g, L]) => `<section class="card rpt-grp"><h2>${g}</h2>${L.map(item).join('')}</section>`).join('')}</div>
+<p class="muted rpt-none" hidden>No report matches your search.</p>`;
+    $('.rpt-find', main).addEventListener('input', (e) => { const q = e.target.value.trim().toLowerCase();
+      $$('.rpt-grp', main).forEach((g) => { let n = 0; $$('[data-find]', g).forEach((x) => { const on = !q || x.dataset.find.includes(q) || $('h2', g).textContent.toLowerCase().includes(q); x.hidden = !on; n += on; }); g.hidden = !n; });
+      $('.rpt-none', main).hidden = $$('.rpt-grp:not([hidden])', main).length > 0; });
   },
 };
+
+// one report: the four with their own layouts (RPT), else a list report
+PAGES['/reports/view'] = {
+  title: 'Reports',
+  async render(main) {
+    const k = qp('r') || 'overview'; const meta = rptMeta(k); const o = meta[3] || {}; rpt.tab = k;
+    if (o.href) return navigate(o.href);
+    if (o.feature && !planHas(o.feature)) { main.innerHTML = `<div class="head"><div>${rptBack}<h1>${esc(meta[1])}</h1></div></div><div class="card empty">This report isn’t in your plan.${memberCan('/settings/billing') ? ' <a href="/settings/billing" data-link>See plans</a>' : ''}</div>`; return; }
+    if (RPT[k]) await RPT[k](main); else await rptList(main, k);
+    $$('[data-rpt]', main).forEach((el) => el.addEventListener('change', (e) => { const f = e.target.dataset.rpt; if (f === 'range' && e.target.value === 'custom') { [rpt.from, rpt.to] = rptDates(); } rpt[f] = e.target.value; rptSave(); refresh(); }));
+  },
+};
+// a list report's look, remembered in this browser: rows per page, and the columns hidden on each report
+let rptPer = 25; try { rptPer = Number(localStorage.getItem('rptPer')) || 25; } catch (e) { /* storage blocked */ }
+const rptHiddenAll = () => { try { return JSON.parse(localStorage.getItem('rptCols') || '{}'); } catch (e) { return {}; } };
+const rptHidden = (k) => rptHiddenAll()[k] || [];
+const rptHide = (k, list) => { try { localStorage.setItem('rptCols', JSON.stringify({ ...rptHiddenAll(), [k]: list })); } catch (e) { /* storage blocked */ } };
+const RPT_NUM = ['money', 'num', 'hrs', 'pct'];
+const rptWhen = (v) => { const d = new Date(v); return isNaN(d) ? null : d; };
+function rptCell(c, r) {
+  const v = r[c.k]; if (v === '' || v === null || v === undefined) return '<span class="muted">—</span>';
+  let t;
+  if (c.t === 'money') t = v < 0 ? `<span class="neg">−${money(-v)}</span>` : money(v);
+  else if (c.t === 'date') t = fmtDate(v);
+  else if (c.t === 'time') { const d = rptWhen(v); t = d ? `${fmtDate(ymd(d))} ${fmtTime(`${d.getHours()}:${d.getMinutes()}`)}` : esc(v); }
+  else if (c.t === 'hrs') t = (Math.round(v * 100) / 100).toFixed(2);
+  else if (c.t === 'pct') t = v + '%';
+  else t = esc(v);
+  const href = r[c.k + '$']; return href ? `<a href="${esc(href)}" data-link>${t}</a>` : t;
+}
+const rptCsvVal = (c, v) => { if (c.t === 'time' && v) { const d = rptWhen(v); return d ? `${ymd(d)} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : v; } return v ?? ''; };
+// bars for each day, week or month (the server picks), one bar per series side by side
+function rptChart(c) {
+  if (!c || !c.labels.length || !c.series.some((s) => s.values.some(Boolean))) return '';
+  const max = Math.max(1, ...c.series.flatMap((s) => s.values)); const fv = (v) => (c.money ? money(v) : String(Math.round(v * 100) / 100));
+  const lbl = (l) => (c.unit === 'month' ? monthLabel(l) : parseD(l).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+  const step = Math.ceil(c.labels.length / 8);
+  return `<div class="rpt-legend">${c.series.map((s, i) => `<span><i class="s${i}"></i>${esc(s.name)}${c.unit === 'week' ? ' (by week)' : c.unit === 'month' ? ' (by month)' : ''}</span>`).join('')}</div>
+<div class="rpt-chart" role="img" aria-label="${esc(c.series.map((s) => `${s.name}: ${fv(s.total)}`).join(', '))}">${c.labels.map((l, i) => `<div class="rc-col" title="${esc(lbl(l) + ' · ' + c.series.map((s) => `${s.name} ${fv(s.values[i])}`).join(' · '))}"><div class="rc-bars">${c.series.map((s, k) => `<i class="s${k}" style="height:${(s.values[i] / max) * 100}%"></i>`).join('')}</div>${i % step === 0 ? `<span>${esc(lbl(l))}</span>` : ''}</div>`).join('')}</div>`;
+}
+// the side card: each status (method, category…) with how many and how much
+function rptSide(s, when) {
+  if (!s || !s.rows.length) return '';
+  const fv = (v) => (s.fmt === 'money' ? money(v) : s.fmt === 'hrs' ? (Math.round(v * 100) / 100).toFixed(2) + ' h' : '');
+  const top = s.rows.slice(0, 8); const rest = s.rows.length - top.length;
+  return `<div class="card rpt-side"><h3>${esc(s.title)}</h3>${when ? `<p class="muted">${when}</p>` : ''}<ul>${top.map((x) => `<li><span>${esc(x.l)} <em>(${x.n})</em></span><b>${fv(x.v)}</b></li>`).join('')}
+${rest > 0 ? `<li class="muted"><span>${rest} more</span></li>` : ''}<li class="tot"><span>Total <em>(${s.rows.reduce((a, x) => a + x.n, 0)})</em></span><b>${fv(s.rows.reduce((a, x) => a + x.v, 0))}</b></li></ul></div>`;
+}
+async function rptList(main, k) {
+  const all = rpt.range === 'all'; const [from, to] = rptDates(); const meta = rptMeta(k);
+  const r = await api('GET', `/api/reports/list/${k}?from=${all ? 'all' : from}&to=${all ? 'all' : to}`);
+  const st = { q: '', status: '', sort: '', dir: 1, page: 0 };
+  const statuses = r.columns.some((c) => c.k === 'status') ? [...new Set(r.rows.map((x) => x.status).filter(Boolean))].sort() : [];
+  const when = !r.dated ? 'As of today' : all ? 'All time' : `${fmtDate(from)} – ${fmtDate(to)}`;
+  const top = (r.stats || []).length || r.chart ? `<div class="rpt-top ${r.side && r.side.rows.length ? '' : 'one'}"><div class="card rpt-sum"><div class="rpt-stats">${(r.stats || []).map(([l, v, x]) => `<div><span class="l">${esc(l)}</span><strong>${esc(v)}</strong>${x ? `<small class="muted">${esc(x)}</small>` : ''}</div>`).join('')}</div>${rptChart(r.chart)}</div>${rptSide(r.side, when)}</div>` : '';
+  const range = r.dated ? `<select data-rpt="range" aria-label="Dates">${RPT_RANGES.map(([v, l]) => `<option value="${v}" ${rpt.range === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+${rpt.range === 'custom' ? `<input type="date" data-rpt="from" value="${from}" aria-label="From"><span class="muted">to</span><input type="date" data-rpt="to" value="${to}" aria-label="To">` : all ? '' : `<span class="muted rpt-dates">${fmtDate(from)} – ${fmtDate(to)}</span>`}` : '<span class="muted">As of today</span>';
+  main.innerHTML = `<div class="head"><div>${rptBack}<h1>${esc(meta[1])}</h1><p class="sub">${esc(meta[2])}</p></div><div class="actions noprint"><button class="btn alt" onclick="window.print()">Print</button></div></div>
+${top}<div class="rpt-bar rpt-tools noprint">${range}<input type="search" class="rpt-q" placeholder="Search" aria-label="Search this report">${statuses.length > 1 ? `<select class="rpt-st" aria-label="Status"><option value="">All statuses</option>${statuses.map((s) => `<option>${esc(s)}</option>`).join('')}</select>` : ''}
+<span class="rpt-sp"></span><button type="button" class="btn alt" data-act="rptCols">Edit columns</button><button type="button" class="btn" data-act="rptCsv">Export CSV</button></div>
+<div class="card rpt-tbl"><div class="tablewrap"></div><div class="rpt-pager noprint"></div></div>
+${r.note ? `<p class="muted rpt-note">${esc(r.note)}</p>` : ''}`;
+  const cols = () => { const h = rptHidden(k); const C = r.columns.filter((c) => !h.includes(c.k)); return C.length ? C : r.columns; };
+  const rows = () => {
+    const q = st.q.trim().toLowerCase();
+    const L = r.rows.filter((x) => (!st.status || x.status === st.status) && (!q || r.columns.some((c) => String(x[c.k] ?? '').toLowerCase().includes(q))));
+    const c = st.sort && r.columns.find((x) => x.k === st.sort); if (!c) return L; const num = RPT_NUM.includes(c.t);
+    return L.sort((a, b) => (num ? (Number(a[c.k]) || 0) - (Number(b[c.k]) || 0) : String(a[c.k] ?? '').localeCompare(String(b[c.k] ?? ''), undefined, { numeric: true })) * st.dir);
+  };
+  const tbl = $('.rpt-tbl', main);
+  const draw = () => {
+    const C = cols(); const L = rows(); const pages = Math.max(1, Math.ceil(L.length / rptPer)); st.page = Math.min(st.page, pages - 1);
+    const P = L.slice(st.page * rptPer, (st.page + 1) * rptPer); const cls = (c) => (RPT_NUM.includes(c.t) ? ' class="r"' : '');
+    const sums = L.length > 1 && C.some((c) => c.sum);
+    $('.tablewrap', tbl).innerHTML = `<table class="rpt-t"><thead><tr>${C.map((c) => `<th${cls(c)}><button type="button" class="rpt-sort ${st.sort === c.k ? 'on' : ''}" data-k="${c.k}">${esc(c.l)}<i aria-hidden="true">${st.sort === c.k ? (st.dir > 0 ? '▲' : '▼') : '↕'}</i></button></th>`).join('')}</tr></thead>
+<tbody>${P.map((x) => `<tr>${C.map((c) => `<td${cls(c)}>${rptCell(c, x)}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${C.length}" class="empty">${r.rows.length ? 'Nothing matches your search' : r.dated && !all ? 'Nothing in these dates' : 'Nothing to show yet'}</td></tr>`}</tbody>
+${sums ? `<tfoot><tr>${C.map((c, i) => `<td${cls(c)}>${c.sum ? rptCell(c, { [c.k]: Math.round(L.reduce((a, x) => a + (Number(x[c.k]) || 0), 0) * 100) / 100 }) : i === 0 ? 'Total' : ''}</td>`).join('')}</tr></tfoot>` : ''}</table>`;
+    $('.rpt-pager', tbl).innerHTML = `<span class="muted">${L.length ? `Showing ${st.page * rptPer + 1}–${st.page * rptPer + P.length} of ${L.length}` : 'No rows'}</span>
+<label class="rpt-per"><select aria-label="Rows per page">${[10, 25, 50, 100].map((n) => `<option ${n === rptPer ? 'selected' : ''}>${n}</option>`).join('')}</select> per page</label>
+<button type="button" class="btn alt" data-pg="-1" aria-label="Previous page" ${st.page ? '' : 'disabled'}>‹</button><button type="button" class="btn alt" data-pg="1" aria-label="Next page" ${st.page < pages - 1 ? '' : 'disabled'}>›</button>`;
+  };
+  tbl.addEventListener('click', (e) => {
+    const s = e.target.closest('.rpt-sort'); if (s) { if (st.sort === s.dataset.k) st.dir = -st.dir; else { st.sort = s.dataset.k; const c = r.columns.find((x) => x.k === st.sort); st.dir = RPT_NUM.includes(c.t) || c.t === 'date' || c.t === 'time' ? -1 : 1; } st.page = 0; draw(); return; }
+    const p = e.target.closest('[data-pg]'); if (p) { st.page += Number(p.dataset.pg); draw(); }
+  });
+  tbl.addEventListener('change', (e) => { if (e.target.closest('.rpt-per')) { rptPer = Number(e.target.value); try { localStorage.setItem('rptPer', rptPer); } catch (x) { /* storage blocked */ } st.page = 0; draw(); } });
+  $('.rpt-q', main).addEventListener('input', (e) => { st.q = e.target.value; st.page = 0; draw(); });
+  const sel = $('.rpt-st', main); if (sel) sel.addEventListener('change', (e) => { st.status = e.target.value; st.page = 0; draw(); });
+  A.rptCsv = () => { const C = cols(); downloadCsv(`${meta[1].toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).join('-')}-${r.dated && !all ? `${from}-to-${to}` : ymd(new Date())}.csv`, [C.map((c) => c.l), ...rows().map((x) => C.map((c) => rptCsvVal(c, x[c.k])))]); };
+  A.rptCols = () => {
+    const h = rptHidden(k);
+    const mb = modal('Edit columns', `<p class="muted" style="margin-top:0">Pick the columns to show. Export CSV includes the same ones.</p><div class="rpt-colpick">${r.columns.map((c) => `<label class="chk"><input type="checkbox" value="${c.k}" ${h.includes(c.k) ? '' : 'checked'}> ${esc(c.l)}</label>`).join('')}</div>
+<div class="foot"><button type="button" class="btn alt" data-all>Show all</button><button type="button" class="btn" data-act="closeModal">Done</button></div>`);
+    const save = () => { const off = $$('input', mb).filter((x) => !x.checked).map((x) => x.value); if (off.length === r.columns.length) { $$('input', mb)[0].checked = true; off.shift(); } rptHide(k, off); draw(); };
+    mb.addEventListener('change', save); $('[data-all]', mb).addEventListener('click', () => { $$('input', mb).forEach((x) => { x.checked = true; }); save(); });
+  };
+  draw();
+}
 
 /* ===== /tax-summary ===== */
 let taxYear = String(new Date().getFullYear());
