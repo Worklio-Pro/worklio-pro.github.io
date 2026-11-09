@@ -2847,6 +2847,12 @@ function onlineMethods(kind, doc) {
   const s = paySettings(); if (s.disabled || !tenancy.has('onlinePayments') || !stripeKey()) return []; // not set up yet: no online option for clients
   return [s[kind + 'Card'] && doc.allowCard !== 'off' && 'card', s[kind + 'Ach'] && doc.allowAch !== 'off' && 'us_bank_account'].filter(Boolean); // each has its own switch on the quote or invoice
 }
+// card and bank (ACH) both on: a button each, so the client sees the bank option before Stripe's page (the button's method= picks it)
+const methodLabel = (m, amount, what = '') => (m === 'us_bank_account' ? `Pay ${what}${money(amount)} from your bank (ACH)` : `Pay ${what}${money(amount)} with card`);
+const payButtons = (methods, amount, what = '') => (methods.length > 1
+  ? methods.map((m, i) => `<button class="btn${i ? ' alt' : ''} payBtn" name="method" value="${m}" data-base="${esc(methodLabel(m, 0, what))}">${methodLabel(m, amount, what)}</button>`).join('')
+  : `<button class="btn payBtn" data-base="${esc(payButtonLabel(methods, 0, what))}">${payButtonLabel(methods, amount, what)}</button>`);
+const pickMethod = (methods, b) => (b && methods.includes(b.method) ? [b.method] : methods); // the button the client pressed, or every method
 const payButtonLabel = (methods, amount, what = '') => (methods.length > 1 ? `Pay ${what}${money(amount)} online` : methods[0] === 'us_bank_account' ? `Pay ${what}${money(amount)} from your bank` : `Pay ${what}${money(amount)} with card`);
 // a Checkout page for one amount; meta = { invoiceId } or { quoteId }; methods = Stripe payment method types
 async function stripeCheckout({ amount, name, client, meta, successUrl, cancelUrl, methods = ['card'], tip = 0 }) {
@@ -3120,10 +3126,10 @@ function tipPicker(due, methods) {
 <fieldset class="tip"><legend>Add a tip?</legend><div class="tip-g">${opt('0', 'No tip', '', true)}${TIP_PCTS.map((p) => opt(p, p + '%', money(round2(due * p / 100)))).join('')}${opt('other', 'Other', '')}</div>
 <label class="tip-x" id="tipX">Tip amount<input name="tipAmount" type="text" inputmode="decimal" placeholder="$0.00" autocomplete="off"></label>
 <p class="muted" style="margin:8px 0 0">Tips go to ${esc(db.company.name)}.</p></fieldset>
-<script>(function(){var due=${due},max=${tipMax(due)},f=document.currentScript.closest('form'),x=f.querySelector('#tipX'),base=${JSON.stringify(payButtonLabel(methods, 0)).replace(/</g, '\\u003c')};
+<script>(function(){var due=${due},max=${tipMax(due)},f=document.currentScript.closest('form'),x=f.querySelector('#tipX'); 
 function m(v){return '$'+v.toFixed(2).replace(/\\B(?=(\\d{3})+(?!\\d))/g,',')}
 function tip(){var c=f.querySelector('[name=tipPct]:checked'),v=c?c.value:'0';x.classList.toggle('on',v==='other');if(v==='other'){var t=parseFloat(String(f.tipAmount.value).replace(/[$,\\s]/g,''));return t>0?Math.min(Math.round(t*100)/100,max):0}return Math.round(due*Number(v))/100}
-function up(){var t=tip(),b=f.querySelector('#payBtn');if(b)b.textContent=base.replace('$0.00',m(due+t))+(t>0?' (includes '+m(t)+' tip)':'')}
+function up(){var t=tip();f.querySelectorAll('.payBtn').forEach(function(b){b.textContent=b.getAttribute('data-base').replace('$0.00',m(due+t))+(t>0?' (includes '+m(t)+' tip)':'')})}
 f.addEventListener('change',function(e){up();if(e.target.value==='other')f.tipAmount.focus()});f.tipAmount.addEventListener('input',up);document.addEventListener('DOMContentLoaded',up);})();</script>`;
 }
 app.get('/pay/:token', (req, res) => {
@@ -3133,7 +3139,7 @@ app.get('/pay/:token', (req, res) => {
   const live = !!stripeKey(); const on = (k) => inv[k] !== 'off'; const methods = onlineMethods('invoice', inv);
   const account = db.invoices.filter((i) => i.clientId === inv.clientId && i.status !== 'paid' && i.status !== 'draft').reduce((s, i) => s + withStatus(i).balanceDue, 0);
   const card = !methods.length ? '' : live
-    ? `<form method="post" action="/pay/${esc(inv.token)}/checkout">${paySettings().tips && due > 0 ? tipPicker(due, methods) : ''}<button class="btn" id="payBtn">${payButtonLabel(methods, due)}</button></form>${methods.length > 1 ? '<p class="muted">Card or bank account (ACH)</p>' : ''}`
+    ? `<form method="post" action="/pay/${esc(inv.token)}/checkout">${paySettings().tips && due > 0 ? tipPicker(due, methods) : ''}<div style="display:flex;gap:8px;flex-wrap:wrap">${payButtons(methods, due)}</div></form>`
     : '';
   const zelle = offlineBox(inv, due, `Invoice ${inv.number}`, `/pay/${inv.token}`);
   const preview = !!currentUser(req); const payOff = (html) => (preview ? previewOff(html, 'opacity:.55') : html);
@@ -3166,7 +3172,7 @@ app.post('/pay/:token/checkout', async (req, res) => {
   if (inv.status === 'paid' || !(due > 0)) return res.redirect(`/pay/${inv.token}`);
   try {
     const tip = paySettings().tips ? readTip(req.body || {}, due) : 0;
-    const s = await stripeCheckout({ amount: due, tip, name: `Invoice ${inv.number}`, client: findClient(inv.clientId), meta: { invoiceId: inv.id }, successUrl: `${baseUrl()}/pay/${inv.token}/success`, cancelUrl: `${baseUrl()}/pay/${inv.token}`, methods: onlineMethods('invoice', inv) });
+    const s = await stripeCheckout({ amount: due, tip, name: `Invoice ${inv.number}`, client: findClient(inv.clientId), meta: { invoiceId: inv.id }, successUrl: `${baseUrl()}/pay/${inv.token}/success`, cancelUrl: `${baseUrl()}/pay/${inv.token}`, methods: pickMethod(onlineMethods('invoice', inv), req.body) });
     res.redirect(303, s.url);
   } catch (e) { res.status(502).send(shell('Payment error', `<h1>Payment error</h1><p>${esc(e.message)}</p><p><a href="/pay/${esc(inv.token)}">Back to the invoice</a></p>`)); }
 });
@@ -3192,8 +3198,8 @@ app.get('/p/quote/:token', (req, res) => {
       depositSection = `<div style="background:#fef3c7;padding:16px;border-radius:8px;margin-top:16px;border:1px solid #fcd34d">
 <h3 style="margin-top:0">Deposit required: ${money(q.depositFee)}</h3>
 <p>Your quote has been signed. A deposit of ${money(q.depositFee)} is required to proceed with the work.</p>
-${onlineMethods('quote', q).length ? `<form method="post" action="/p/quote/${esc(q.token)}/pay-deposit" style="display:flex;gap:8px">
-<button class="btn">${payButtonLabel(onlineMethods('quote', q), q.depositFee, 'deposit of ')}</button>
+${onlineMethods('quote', q).length ? `<form method="post" action="/p/quote/${esc(q.token)}/pay-deposit" style="display:flex;gap:8px;flex-wrap:wrap">
+${payButtons(onlineMethods('quote', q), q.depositFee, 'deposit of ')}
 </form>` : ''}
 ${offlineBox(q, q.depositFee, `Deposit for quote ${q.number}`, `/p/quote/${q.token}`)}
 ${!onlineMethods('quote', q).length && !offlineMethods(q).length ? `<p class="muted">Please contact ${esc(db.company.name)} at ${esc(db.company.phone || db.company.email)} to arrange your deposit payment.</p>` : ''}
@@ -3673,7 +3679,7 @@ app.post('/p/quote/:token/pay-deposit', (req, res) => {
   if (!q || !q.depositFee) return res.status(400).send('No deposit required');
   if (!onlineMethods('quote', q).length) return res.status(400).send('Online payment is not available for this quote'); // only once card payments are set up
   if (q.depositPaidAt) return res.redirect(`/p/quote/${q.token}`);
-  stripeCheckout({ amount: q.depositFee, name: `Deposit for Quote ${q.number}`, client: findClient(q.clientId), meta: { quoteId: q.id }, successUrl: `${baseUrl()}/p/quote/${q.token}/deposit-success`, cancelUrl: `${baseUrl()}/p/quote/${q.token}`, methods: onlineMethods('quote', q) })
+  stripeCheckout({ amount: q.depositFee, name: `Deposit for Quote ${q.number}`, client: findClient(q.clientId), meta: { quoteId: q.id }, successUrl: `${baseUrl()}/p/quote/${q.token}/deposit-success`, cancelUrl: `${baseUrl()}/p/quote/${q.token}`, methods: pickMethod(onlineMethods('quote', q), req.body) })
       .then((s) => res.redirect(303, s.url))
       .catch((e) => res.status(502).send(shell('Payment error', `<h1>Payment error</h1><p>${esc(e.message)}</p><p><a href="/p/quote/${esc(q.token)}">Back to the quote</a></p>`)));
 });
