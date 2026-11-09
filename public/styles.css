@@ -2085,3 +2085,32 @@ label.bk-auto input{width:auto;margin:0}
 .mx-tbl .mx-upr td,.mx-tbl .mx-upr th{border-bottom:1px solid var(--line);padding:4px 6px 10px;text-align:center;font-variant-numeric:tabular-nums;font-size:13px}
 .mx-tbl .mx-upr th{text-align:left;color:var(--muted)}
 .mx-tbl tbody tr:nth-child(2) td,.mx-tbl tbody tr:nth-child(2) th{padding-top:4px}.mx-tbl tbody tr:nth-child(3) td,.mx-tbl tbody tr:nth-child(3) th{padding-top:10px}
+/* App Settings → General: the matrix pricing add-on offer (before it's added) */
+.mx-offer{position:relative;overflow:hidden;border:1px solid var(--tint-border);background:linear-gradient(135deg,var(--tint) 0%,var(--card) 62%)}
+.mx-offer-top{display:grid;gap:16px;justify-items:start}
+.mx-offer h2{margin:6px 0 6px;font-size:20px}
+.mx-offer-copy p{margin:0;color:var(--muted);line-height:1.5}
+.mx-badge{display:inline-block;padding:3px 9px;border-radius:999px;background:var(--brand);color:#fff;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.mx-demo{padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--card);box-shadow:var(--shadow-lg);transform:rotate(1.5deg);font-size:12px;font-variant-numeric:tabular-nums}
+.mx-demo table{border-collapse:collapse}
+.mx-demo th,.mx-demo td{padding:3px 5px;text-align:center;text-transform:none;letter-spacing:0;border:0;font-size:12px}
+.mx-demo thead th{color:var(--muted);font-weight:600}
+.mx-demo tbody th{text-align:left;color:var(--muted);font-weight:500;padding-right:8px}
+.mx-demo-pr td{color:var(--tint-fg);font-weight:600}
+.mx-demo-pr td,.mx-demo-pr th{border-bottom:1px solid var(--line);padding-bottom:6px}
+.mx-demo tbody tr:nth-child(2) td,.mx-demo tbody tr:nth-child(2) th{padding-top:6px}
+.mx-demo td span{display:inline-block;min-width:26px;padding:2px 0;border:1px solid var(--border);border-radius:6px;background:var(--surface-2)}
+.mx-demo-tot{display:flex;justify-content:space-between;gap:12px;margin-top:6px;padding-top:6px;border-top:1px solid var(--line);color:var(--muted)}
+.mx-demo-tot b{color:var(--text);font-size:13px}
+.mx-perks{list-style:none;margin:16px 0 0;padding:0;display:grid;gap:7px}
+.mx-perks li{position:relative;padding-left:26px;line-height:1.4}
+.mx-perks li::before{content:'';position:absolute;left:0;top:1px;width:18px;height:18px;border-radius:50%;background:var(--ok-bg)}
+.mx-perks li::after{content:'';position:absolute;left:6px;top:4px;width:5px;height:9px;border:solid var(--ok-fg);border-width:0 2px 2px 0;transform:rotate(45deg)}
+.mx-buy{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px 18px;margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
+.mx-price b{font-size:28px;line-height:1}.mx-price span{color:var(--muted);margin-left:2px}
+.mx-price small{display:block;margin-top:3px;color:var(--muted);font-size:13px}
+.mx-buy-act{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.mx-how{margin-top:14px;padding:14px 16px;border-radius:10px;background:var(--surface-2);border:1px solid var(--line)}
+.mx-how ol{margin:0 0 10px;padding-left:20px;display:grid;gap:8px;line-height:1.45}
+.mx-how p{margin:0}
+@media (max-width:640px){.mx-demo{transform:none;max-width:100%;overflow-x:auto}.mx-buy-act{width:100%}.mx-buy-act .btn{flex:1}}

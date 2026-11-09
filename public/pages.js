@@ -2138,9 +2138,7 @@ const mxIntro = '<p class="muted" style="margin-top:0">For items sold in sizes a
 const mxOwner = () => !!(me && me.role === 'owner');
 const mxCard = () => {
   const x = mxAddon();
-  if (!mxAllowed()) return x && x.cents ? `<div class="card" id="matrix-items"><h2>Matrix line items</h2>${mxIntro}
-<div class="mx-addon"><p style="margin:0 0 8px"><strong>Matrix pricing is an add-on: ${mxPrice(x)}</strong>, added to your subscription. Free during a free trial. Remove it anytime; it stays on until the end of the period you’ve paid for.</p>
-${mxOwner() ? '<button type="button" class="btn sm" data-act="mxBuy">Add matrix pricing</button>' : '<p class="muted sm" style="margin:0">Ask your account owner to add it.</p>'}</div></div>` : '';
+  if (!mxAllowed()) return x && x.cents ? mxOffer(x) : '';
   const m = company.matrixItems || {};
   const foot = !x || x.state === 'included' ? '' : x.state === 'ending' ? `<p class="muted sm" style="margin:12px 0 0">Add-on removed: matrix pricing stays on until ${fmtDate(x.endsAt)}.${mxOwner() ? ' <button type="button" class="link-btn" data-act="mxBuy">Keep it</button>' : ''}</p>`
     : `<p class="muted sm" style="margin:12px 0 0">Matrix pricing add-on, ${mxPrice(x)}.${mxOwner() ? ' <button type="button" class="link-btn" data-act="mxRemove">Remove add-on</button>' : ''}</p>`;
@@ -2149,6 +2147,31 @@ ${mxOwner() ? '<button type="button" class="btn sm" data-act="mxBuy">Add matrix 
 <label>Sizes to start with<input name="sizes" value="${esc((m.sizes && m.sizes.length ? m.sizes : MX_SIZES).join(', '))}" placeholder="S, M, L, XL, 2XL"></label>
 <label>Colors to start with<input name="colors" value="${esc((m.colors || []).join(', '))}" placeholder="Optional, e.g. Black, White, Navy"></label>
 <p class="muted sm">Separate them with commas. You can change them on each item.</p></div></form>${foot}</div>`; };
+// the offer, before the add-on: what it does (a sample grid), the price, Add matrix pricing, and How it works (opens below)
+const MX_DEMO = { sizes: ['S', 'M', 'L', 'XL'], price: [12, 12, 12, 14], rows: [['Black', [10, 12, 8, 4]], ['White', [6, 8, 6, 2]]] };
+function mxOffer(x) {
+  const d = MX_DEMO; const n = d.rows.reduce((s, [, q]) => s + q.reduce((a, b) => a + b, 0), 0);
+  const total = d.rows.reduce((s, [, q]) => s + q.reduce((a, b, i) => a + b * d.price[i], 0), 0);
+  const trial = !!(company.account && company.account.expiry && company.account.expiry.trial);
+  const amt = money(x.cents / 100).replace(/\.00$/, '');
+  return `<div class="card mx-offer" id="matrix-items">
+<div class="mx-offer-top"><div class="mx-offer-copy"><span class="mx-badge">Add-on</span><h2>Price by size and color</h2>
+<p>Selling shirts, hats or uniforms? Build the whole order in one grid: a cost for each size, your markup, and how many of each color. Totals add up as you type.</p></div>
+<div class="mx-demo" aria-hidden="true"><table><thead><tr><th></th>${d.sizes.map((s) => `<th>${s}</th>`).join('')}</tr></thead><tbody>
+<tr class="mx-demo-pr"><th>Price</th>${d.price.map((p) => `<td>$${p}</td>`).join('')}</tr>
+${d.rows.map(([c, q]) => `<tr><th>${c}</th>${q.map((v) => `<td><span>${v}</span></td>`).join('')}</tr>`).join('')}</tbody></table>
+<div class="mx-demo-tot"><span>${n} pieces</span><b>${money(total).replace(/\.00$/, '')}</b></div></div></div>
+<ul class="mx-perks"><li>One line on the quote instead of a dozen</li><li>Your markup on every size, automatically</li><li>Each size and color listed on the client’s quote, invoice and PDF</li></ul>
+<div class="mx-buy"><div class="mx-price"><b>${amt}</b><span>/${x.interval}</span><small>${trial ? 'Free during your trial · ' : ''}Remove anytime</small></div>
+<div class="mx-buy-act">${mxOwner() ? '<button type="button" class="btn" data-act="mxBuy">Add matrix pricing</button>' : '<span class="muted sm">Ask your account owner to add it.</span>'}
+<button type="button" class="link-btn" data-act="mxHow" aria-expanded="false">How it works</button></div></div>
+<div class="mx-how" hidden><ol>
+<li><strong>Add it</strong> here. ${trial ? 'It’s free until your trial ends, then' : 'It’s'} ${amt}/${x.interval} on your subscription${trial ? '' : '; the part of this billing period that’s left goes on your next bill'}.</li>
+<li><strong>Set your sizes and colors</strong> on this card (like S–2XL, Black, White). You can change them on any item.</li>
+<li><strong>Click + Add matrix item</strong> on a quote, job or invoice. Enter each size’s cost and your markup (% or $ per piece), then the quantities.</li></ol>
+<p class="muted sm">Your regular line items don’t change. If you remove the add-on, it stays on until the end of the period you’ve paid for, and quotes and invoices that already have a grid keep it.</p></div></div>`;
+}
+A.mxHow = (_, b) => { const h = $('#matrix-items .mx-how'); if (!h) return; h.hidden = !h.hidden; if (b) { b.setAttribute('aria-expanded', String(!h.hidden)); b.textContent = h.hidden ? 'How it works' : 'Hide details'; } };
 async function mxAddonSet(on) {
   try { const r = await api('POST', '/api/account/addons/matrix', { on }); company.account = { ...company.account, ...r.account }; toast(r.message); refresh(); }
   catch (e) { toast(e.message, true); }
