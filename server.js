@@ -178,6 +178,8 @@ const catalogCat = (name) => {
 // ---- matrix line items: a heading line (item.matrix: sizes, each with a price; colors; a quantity per size and color) and its sub items
 // ("M · Navy", item.mx), rebuilt here from the grid every time so they always match it. App Settings → General turns the editor's button on.
 const mxList = (a) => [...new Set((Array.isArray(a) ? a : []).map((x) => String(x == null ? '' : x).replace(/\|/g, '/').trim().slice(0, 30)).filter((x) => x && x !== '__proto__'))].slice(0, 20);
+// who may use them: the default account always, others when Alpha turns on Matrix pricing for them (the business's page in the Alpha console)
+const matrixAllowed = (t = tenancy.current()) => tenancy.isDefault(t) || !!t.matrixPricing;
 function mxClean(m) {
   const sizes = mxList(m.sizes); const colors = mxList(m.colors); if (!sizes.length) return null;
   const p = m.price && typeof m.price === 'object' ? m.price : {}; const q = m.qty && typeof m.qty === 'object' ? m.qty : {}; const price = {}; const qty = {};
@@ -1644,6 +1646,7 @@ function accountInfo() {
     aiDescriptions: tenancy.aiOn('aiDescriptions'), aiRewrite: tenancy.aiOn('aiRewrite'), // Alpha → Settings → Integrations → AI
     navIcons: iconsLib.navIcons(), navOrder: iconsLib.order(), // the menu's icons, order and sections (Alpha → Settings → Menu)
     productName: tenancy.platform().settings.productName, product: brandLib.brand(), contactEmail: tenancy.platform().settings.contactEmail, helpUrl: tenancy.helpUrl(), ideasUrl: tenancy.ideasUrl(), managed: !tenancy.isDefault(),
+    matrixPricing: matrixAllowed(t), // matrix line items (Alpha turns them on per business)
     referrals: referrals.openTo(t), cardReady: !!stripeKey(), // card payments set up (App Settings → Payments → Card payments)
     // how: 'embedded' (set up in the app, payout bank changed in the app), 'standard' (own Stripe account), 'server' (the platform's own account), or null
     cardSetupType: secrets().stripeAccountId ? secrets().stripeAccountType || 'standard' : stripeKey() ? 'server' : null, payoutBank: secrets().stripeBank || null,
@@ -1702,6 +1705,7 @@ app.put('/api/company', (req, res) => {
     if (bad) return res.status(400).json({ error: bad.name ? `Give “${bad.name}” an amount${bad.type === 'percent' ? ' from 0.01 to 100%' : ''}` : 'Give each saved discount a name' });
     db.company.savedDiscounts = list;
   }
+  if (b.matrixItems && typeof b.matrixItems === 'object' && !matrixAllowed()) return res.status(403).json({ error: 'Matrix pricing isn’t available on this account. Contact us to turn it on.' });
   if (b.matrixItems && typeof b.matrixItems === 'object') db.company.matrixItems = { on: !!b.matrixItems.on, sizes: mxList(b.matrixItems.sizes), colors: mxList(b.matrixItems.colors) }; // matrix line items
   if ('timezone' in b) applyTimezone();
   save(); res.json({ ...db.company, account: accountInfo() });

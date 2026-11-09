@@ -821,7 +821,8 @@ const itemsCard = (items, extra, t) => `<div class="qcard"><h2>Product / Service
 // The line itself (item.matrix) is a heading; each box with a quantity becomes a sub item under it ("M · Navy", qty × that size's price; item.mx),
 // so totals, PDFs, the client's pages and quote → job → invoice work as for any line. The server rebuilds those sub items from the grid.
 const MX_SIZES = ['S', 'M', 'L', 'XL', '2XL'];
-const mxOn = () => !!(company.matrixItems && company.matrixItems.on);
+const mxAllowed = () => !!(company.account && company.account.matrixPricing); // Alpha turns them on per business (always on for the default account)
+const mxOn = () => mxAllowed() && !!(company.matrixItems && company.matrixItems.on);
 const mxDefaults = () => { const m = company.matrixItems || {}; return { sizes: m.sizes && m.sizes.length ? m.sizes : MX_SIZES, colors: m.colors || [], price: {}, qty: {} }; };
 const mxList = (v) => [...new Set(String(v || '').split(',').map((s) => s.replace(/\|/g, '/').trim().slice(0, 30)).filter((s) => s && s !== '__proto__'))].slice(0, 20);
 const mxKey = (s, c) => `${s}|${c}`;
