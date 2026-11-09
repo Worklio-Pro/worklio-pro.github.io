@@ -3098,8 +3098,15 @@ ${unpriced.length ? `<p class="snap-np"><strong>Set a price for:</strong> ${unpr
 ${(ai.questions || []).length ? `<details open><summary>Check before sending (${ai.questions.length})</summary><ul>${ai.questions.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></details>` : ''}</div>`;
   }
   if ((d.items || []).some((i) => i.desc) || !(planHas('snapQuote') || canDo('quotes'))) return '';
-  return `<div class="snap-bar"><span><strong>Snap to quote${planHas('snapQuote') ? '' : ' <span class="beta-tag">Unlimited</span>'}</strong> Take photos of the job and say what the client needs. AI drafts the line items from your price list.</span><button type="button" class="btn alt sm" data-act="snapQuote" data-quote-id="${esc(d.id || '')}">Draft from photos</button></div>`;
+  if (!planHas('snapQuote')) return snapAdHidden() ? '' : snapAd(); // not in the plan: highlighted, links to /quotes/snap-to-quote, ✕ hides it in this browser
+  return `<div class="snap-bar"><span><strong>Snap to quote</strong> Take photos of the job and say what the client needs. AI drafts the line items from your price list.</span><button type="button" class="btn alt sm" data-act="snapQuote" data-quote-id="${esc(d.id || '')}">Draft from photos</button></div>`;
 }
+const SNAP_AD_KEY = 'snapAd:hidden';
+const snapAdHidden = () => { try { return localStorage.getItem(SNAP_AD_KEY) === '1'; } catch (e) { return false; } };
+const SNAP_CAM = '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3.5"/>';
+const snapAd = () => `<div class="snap-bar snap-ad"><span class="snap-ad-ic" aria-hidden="true">${svgIcon(SNAP_CAM, 20)}</span><span class="snap-ad-txt"><strong>Snap to quote <span class="beta-tag">Unlimited</span></strong> Take photos of the job and say what the client needs. AI drafts the line items from your price list.</span>
+<a class="btn sm" href="/quotes/snap-to-quote" data-link>Get more details</a><button type="button" class="icon-btn snap-ad-x" data-act="snapAdHide" aria-label="Hide this">✕</button></div>`;
+A.snapAdHide = () => { try { localStorage.setItem(SNAP_AD_KEY, '1'); } catch (e) { /* stays hidden until the page reloads */ } document.querySelectorAll('.snap-ad').forEach((b) => b.remove()); };
 // put it above the first card (desktop) or at the top of the quote tab (phone)
 function placeSnap(root, d, inForm) {
   let html = snapBlock(d); if (!html) return; if (inForm) html = html.replace('data-act="snapQuote"', 'data-act="snapFromForm"'); // the editor: the form's client
@@ -3110,8 +3117,58 @@ function snapUpsell() {
   const owner = role() === 'owner';
   modal('Snap to quote', `<p><strong>Draft a quote from photos in about 30 seconds.</strong> Take photos of the job, say what the client needs, and AI builds the line items from your price list, with Good / Better / Best options when the job has choices.</p>
 <p class="muted">Snap to quote is on the Unlimited plan.${owner ? '' : ' Ask the account owner about moving up.'}</p>
-<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Not now</button>${owner ? '<a class="btn" href="/settings/billing" data-link>See plans</a>' : ''}</div>`);
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Not now</button><a class="btn${owner ? ' alt' : ''}" href="/quotes/snap-to-quote" data-link>Get more details</a>${owner ? '<a class="btn" href="/settings/billing" data-link>See plans</a>' : ''}</div>`);
 }
+/* /quotes/snap-to-quote: what Snap to quote does and what upgrading to Unlimited brings (the bar on an empty quote links here) */
+PAGES['/quotes/snap-to-quote'] = {
+  title: 'Snap to quote',
+  render(main) {
+    const has = planHas('snapQuote'); const billing = memberCan('/settings/billing');
+    const img = (f, alt) => `<img src="/img/industries/${f}.jpg" alt="${esc(alt)}" width="1200" height="900" loading="lazy">`;
+    const cta = has ? '<a class="btn" href="/quotes/new" data-link>Start a quote</a>'
+      : billing ? '<a class="btn" href="/settings/billing" data-link>Upgrade to Unlimited</a>' : '';
+    const ask = !has && !billing ? '<p class="muted sq-ask">Snap to quote is on the Unlimited plan. Ask the account owner about moving up.</p>' : '';
+    main.innerHTML = `<div class="sq">
+<p class="sq-back"><a href="/quotes" data-link>← Quotes</a></p>
+<section class="card sq-hero">
+  <div class="sq-hero-txt">
+    <span class="sq-kicker">${has ? 'In your plan' : 'Unlimited plan'} · Snap to quote</span>
+    <h1>Quote the job before you leave the driveway</h1>
+    <p class="sq-lead">Take a few photos, say what the client needs, and AI drafts the whole quote from <strong>your own price list</strong>, with Good / Better / Best options when the job has choices. You check it and send it. Nothing goes to the client on its own.</p>
+    ${has ? '<p class="sq-have">✓ Your plan includes Snap to quote. Start a quote, choose the client and tap <strong>Draft from photos</strong>.</p>' : ''}
+    <div class="sq-ctas">${cta}<a class="btn alt" href="/quote-from-photos" target="_blank" rel="noopener">See a sample quote</a></div>${ask}
+  </div>
+  <figure class="sq-hero-pic">${img('roofing', 'Two roofers working on a shingle roof')}<figcaption>3 photos + a 20-second voice note → a draft quote</figcaption></figure>
+</section>
+
+<h2 class="sq-h">How it pays for itself</h2>
+<div class="sq-why">
+  <div class="card"><b>Win more of the jobs you quote</b><p>Clients often go with the first good quote they get. Send yours from the job site while others are still “getting back to them.”</p></div>
+  <div class="card"><b>Get your evenings back</b><p>No more writing quotes at the kitchen table at night. A draft takes about 30 seconds, and checking it takes a couple of minutes.</p></div>
+  <div class="card"><b>Bigger tickets, without the hard sell</b><p>Good / Better / Best options let the client pick the upgrade themselves, side by side.</p></div>
+</div>
+
+<h2 class="sq-h">Made for the people doing the work</h2>
+<div class="sq-people">
+  <figure class="card">${img('electrical', 'An electrician in a hard hat testing a panel')}<figcaption><b>On the ladder, not the laptop</b><span>Snap the panel, say “upgrade to 200 amp, add two circuits for the garage,” and the line items come from your price list.</span></figcaption></figure>
+  <figure class="card">${img('painting', 'A painter rolling paint on a house from a ladder')}<figcaption><b>Talk, don’t type</b><span>Gloves on? Tap the mic and describe the job. Snap to quote turns what you say into the quote.</span></figcaption></figure>
+  <figure class="card">${img('plumbing', 'A plumber with a toolbox working in a bathroom')}<figcaption><b>Nothing missed</b><span>It lists what to check before sending (a part size, haul-away) and flags anything not on your price list so you can price it.</span></figcaption></figure>
+</div>
+
+<h2 class="sq-h">How it works</h2>
+<ol class="card sq-steps">
+  <li><b>Take photos</b><span>Up to ${SNAP_MAX} of the job, right from your phone.</span></li>
+  <li><b>Say what the client needs</b><span>Speak or type a quick note, the way you’d tell the office.</span></li>
+  <li><b>Check and send</b><span>The draft uses your services and prices. Change anything, then send it yourself.</span></li>
+</ol>
+
+${has ? '' : `<section class="card sq-end">
+  <div><h2>Ready to quote faster?</h2><p class="muted">Snap to quote comes with the Unlimited plan, with a monthly allowance of drafts that renews on the 1st.${billing ? ' You can change plans any time in Billing.' : ''}</p></div>
+  ${cta || ask}
+</section>`}
+</div>`;
+  },
+};
 // o: { quoteId } to fill a draft, or { clientId, address, propertyId, taxRate, title } for a new quote
 A.snapQuote = async (o = {}) => {
   if (!planHas('snapQuote')) return snapUpsell();
