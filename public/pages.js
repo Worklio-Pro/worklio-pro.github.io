@@ -1053,7 +1053,7 @@ A.delExpense = async (d) => { if (!confirm('Delete this expense?')) return; awai
 // [key, name, what it shows, { feature (plan feature it needs), href (a page of its own) }]. overview, pl, jobs and aging have their own layouts (RPT below);
 // the rest are list reports from /api/reports/list/<key>: summary numbers, a chart, a side breakdown, then a table to search, sort, pick columns for and export.
 const RPT_HUB = [
-  ['Financial reports', [
+  ['Money', [
     ['overview', 'Financial overview', 'Revenue by month, paid vs pending, and your most popular services'],
     ['pl', 'Profit & loss', 'Income minus expenses, on a cash or accrual basis'],
     ['transactions', 'Transaction list', 'All payments, deposits and refunds'],
@@ -1064,7 +1064,7 @@ const RPT_HUB = [
     ['jobs', 'Job profit', 'What each job brought in against what it cost'],
     ['tax', 'Taxation', 'Sales tax collected, by month and by invoice', { feature: 'taxSummary', href: '/tax-summary' }],
   ]],
-  ['Work reports', [
+  ['Work', [
     ['visits', 'Visits', 'Every job and visit, with its team, status and invoices'],
     ['oneoff', 'One-off jobs', 'Jobs that don’t repeat, with client and invoice details'],
     ['recurring', 'Recurring jobs', 'Each repeating job, its visits and what it’s invoiced', { feature: 'recurringJobs' }],
@@ -1074,7 +1074,7 @@ const RPT_HUB = [
     ['products', 'Products & services', 'How much each product and service is quoted, scheduled and invoiced'],
     ['timesheets', 'Timesheets', 'All time tracked by the team', { feature: 'timesheets' }],
   ]],
-  ['Client reports', [
+  ['Clients', [
     ['clients', 'Clients', 'All clients, with the lead channel they came from'],
     ['leadsource', 'Lead source', 'Clients, quotes and revenue by lead source'],
     ['communications', 'Client communications', 'All emails and texts sent through Worklio Pro'],
@@ -1083,10 +1083,30 @@ const RPT_HUB = [
     ['reengage', 'Client re-engagement', 'Clients who haven’t had a completed job in the past 12 months'],
     ['memberships', 'Service plans', 'Every client on a service plan', { feature: 'servicePlans' }],
   ]],
-  ['Expense reports', [
+  ['Expenses', [
     ['expenses', 'Expenses', 'All tracked expenses and their details', { feature: 'expenses' }],
   ]],
 ];
+// each group's color (a CSS class) and what's in it
+const RPT_GROUP = { Money: ['money', 'Income, profit, and what clients owe'], Work: ['work', 'Jobs, quotes, requests and your team'], Clients: ['clients', 'Who your clients are and where they come from'], Expenses: ['spend', 'What the business spends'] };
+// each report's icon (24×24 strokes)
+const RPT_ICON = {
+  overview: '<path d="M3 3v18h18"/><path d="M8 17v-5M13 17V8M18 17v-9"/>', pl: '<path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/>', transactions: '<path d="M4 8h14l-3-3M20 16H6l3 3"/>',
+  invoices: '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/>', projected: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M9 15h6"/>',
+  aging: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>', balances: '<rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18M16 15h2"/>', jobs: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 13h18"/>',
+  tax: '<path d="M19 5L5 19"/><circle cx="7" cy="7" r="2.5"/><circle cx="17" cy="17" r="2.5"/>', visits: '<path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/>',
+  oneoff: '<circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/>', recurring: '<path d="M4 12a8 8 0 0 1 14-5.3L20 8M20 4v4h-4M20 12a8 8 0 0 1-14 5.3L4 16M4 20v-4h4"/>',
+  requests: '<path d="M3 13l3-8h12l3 8v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M3 13h5l1 2h6l1-2h5"/>', quotes: '<path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h4"/>',
+  productivity: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M21.5 20a6.5 6.5 0 0 0-4-6"/>', products: '<path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="8" cy="8" r="1.5"/>',
+  timesheets: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M10 2h4"/>', clients: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>', leadsource: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
+  communications: '<path d="M4 5h16v11H8l-4 4z"/><path d="M8 9h8M8 12h5"/>', contacts: '<rect x="5" y="3" width="14" height="18" rx="2"/><circle cx="12" cy="10" r="2.5"/><path d="M8.5 17a3.5 3.5 0 0 1 7 0"/>',
+  properties: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>', reengage: '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
+  memberships: '<circle cx="12" cy="9" r="6"/><path d="M8.5 14L7 22l5-3 5 3-1.5-8"/>', expenses: '<path d="M5 3h14v18l-3-2-2 2-2-2-2 2-2-2-3 2z"/><path d="M9 8h6M9 12h6"/>',
+};
+// starred reports, shown first; kept in this browser
+const rptStars = () => { try { return JSON.parse(localStorage.getItem('rptStars') || '[]'); } catch (e) { return []; } };
+const rptStarSave = (L) => { try { localStorage.setItem('rptStars', JSON.stringify(L)); } catch (e) { /* storage blocked */ } };
+let rptGroupOn = 'all';
 const rptMeta = (k) => RPT_HUB.flatMap(([, L]) => L).find((x) => x[0] === k) || [k, 'Report', ''];
 const RPT_RANGES = [['thisMonth', 'This month'], ['lastMonth', 'Last month'], ['thisQuarter', 'This quarter'], ['lastQuarter', 'Last quarter'], ['thisYear', 'This year'], ['lastYear', 'Last year'], ['last12', 'Last 12 months'], ['all', 'All time'], ['custom', 'Custom dates']];
 const rpt = { tab: 'overview', range: 'thisYear', from: '', to: '', basis: 'cash', cat: '' }; // cat: one products & services category ('__none' = no category), '' = everything
@@ -1169,24 +1189,37 @@ ${!rpt.cat && (r.byCategory || []).length ? `<div class="card"><h2>Revenue by ca
 <div class="card"><h2>Popular services</h2><div class="tablewrap"><table class="m-pop"><tr><th>Service</th><th class="r">Units sold</th><th class="r">Revenue</th><th style="width:30%"></th></tr>${r.popularServices.map((s) => `<tr><td>${esc(s.name)}</td><td class="r">${s.count}</td><td class="r">${money(s.revenue)}</td><td><div class="meter"><i style="width:${(s.count / maxSvc) * 100}%"></i></div></td></tr>`).join('') || '<tr><td colspan="4" class="empty">No invoiced services yet</td></tr>'}</table></div></div>`;
 };
 
-// the Reports page: a card for each group, a line for each report (greyed with a link to plans when it isn't in the plan)
+// the Reports page: chips to pick a group, a search box, starred reports first, then each group's reports as tiles
+// (a tile is greyed with a lock when the report isn't in the plan)
 PAGES['/reports'] = {
   title: 'Reports',
   async render(main) {
-    const item = ([k, name, desc, o = {}]) => {
+    const stars = rptStars(); const all = RPT_HUB.flatMap(([g, L]) => L.map((x) => [g, x]));
+    const tile = (g, [k, name, desc, o = {}]) => {
       if (o.href && !memberCan(o.href) && planHas(o.feature)) return ''; // a page of its own this login can't open
-      const txt = `<span class="rpt-txt"><strong>${esc(name)}</strong><span>${esc(desc)}</span></span>`;
-      if (o.feature && !planHas(o.feature)) return `<div class="rpt-item off" data-find="${esc((name + ' ' + desc).toLowerCase())}">${txt}${memberCan('/settings/billing') ? '<a class="rpt-more" href="/settings/billing" data-link>See plans</a>' : '<span class="rpt-more muted">Not in your plan</span>'}</div>`;
-      return `<a class="rpt-item" href="${o.href || '/reports/view?r=' + k}" data-link data-find="${esc((name + ' ' + desc).toLowerCase())}">${txt}<span class="rpt-go" aria-hidden="true">›</span></a>`;
+      const locked = o.feature && !planHas(o.feature); const on = stars.includes(k);
+      return `<div class="rpt-tile rt-${RPT_GROUP[g][0]}${locked ? ' off' : ''}" data-g="${esc(g)}" data-find="${esc((name + ' ' + desc + ' ' + g).toLowerCase())}">
+<span class="rt-ic">${svgIcon(RPT_ICON[k] || RPT_ICON.overview, 20)}</span>
+<span class="rt-txt"><a href="${locked ? '/settings/billing' : o.href || '/reports/view?r=' + k}" data-link class="rt-name">${esc(name)}</a><span>${esc(desc)}</span>
+${locked ? `<small class="rt-lock">${svgIcon('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>', 13)} ${memberCan('/settings/billing') ? 'Upgrade to use' : 'Not in your plan'}</small>` : ''}</span>
+${locked ? '' : `<button type="button" class="rt-star ${on ? 'on' : ''}" data-act="rptStar" data-k="${k}" aria-pressed="${on}" aria-label="${on ? 'Unstar' : 'Star'} ${esc(name)}" title="${on ? 'Remove from Starred' : 'Add to Starred'}">${svgIcon('<path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z"/>', 17)}</button>`}</div>`;
     };
-    main.innerHTML = `<div class="head"><div><h1>Reports</h1><p class="sub">See how the business is doing, and export any report to a spreadsheet.</p></div><div class="actions"><input type="search" class="rpt-find" placeholder="Find a report" aria-label="Find a report"></div></div>
-<div class="rpt-hub">${RPT_HUB.map(([g, L]) => `<section class="card rpt-grp"><h2>${g}</h2>${L.map(item).join('')}</section>`).join('')}</div>
-<p class="muted rpt-none" hidden>No report matches your search.</p>`;
-    $('.rpt-find', main).addEventListener('input', (e) => { const q = e.target.value.trim().toLowerCase();
-      $$('.rpt-grp', main).forEach((g) => { let n = 0; $$('[data-find]', g).forEach((x) => { const on = !q || x.dataset.find.includes(q) || $('h2', g).textContent.toLowerCase().includes(q); x.hidden = !on; n += on; }); g.hidden = !n; });
-      $('.rpt-none', main).hidden = $$('.rpt-grp:not([hidden])', main).length > 0; });
+    const starred = stars.map((k) => all.find(([, x]) => x[0] === k)).filter(Boolean);
+    main.innerHTML = `<div class="head"><div><h1>Reports</h1><p class="sub">See how the business is doing, and export any report to a spreadsheet.</p></div></div>
+<div class="rpt-filter"><div class="rpt-chips" role="group" aria-label="Show">${[['all', 'All reports'], ...RPT_HUB.map(([g]) => [g, g])].map(([v, l]) => `<button type="button" class="rpt-chip ${rptGroupOn === v ? 'on' : ''}" data-act="rptGroup" data-g="${esc(v)}" aria-pressed="${rptGroupOn === v}">${esc(l)}</button>`).join('')}</div>
+<label class="rpt-findw">${svgIcon('<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>', 16)}<input type="search" class="rpt-find" placeholder="Search reports" aria-label="Search reports"></label></div>
+${starred.length ? `<section class="rpt-sec rpt-starred"><div class="rpt-sec-h"><h2>Starred</h2><span class="muted">Your go-to reports</span></div><div class="rpt-tiles">${starred.map(([g, x]) => tile(g, x)).join('')}</div></section>` : ''}
+${RPT_HUB.map(([g, L]) => `<section class="rpt-sec" data-g="${esc(g)}"><div class="rpt-sec-h"><h2><i class="rt-dot rt-${RPT_GROUP[g][0]}"></i>${esc(g)}</h2><span class="muted">${esc(RPT_GROUP[g][1])}</span></div><div class="rpt-tiles">${L.map((x) => tile(g, x)).join('')}</div></section>`).join('')}
+<p class="muted rpt-none" hidden>No report matches your search.</p>
+${starred.length ? '' : '<p class="muted rpt-tip">Tip: star the reports you use most to keep them at the top.</p>'}`;
+    const filter = () => { const q = $('.rpt-find', main).value.trim().toLowerCase();
+      $$('.rpt-sec', main).forEach((s) => { let n = 0; $$('.rpt-tile', s).forEach((t) => { const on = (rptGroupOn === 'all' || t.dataset.g === rptGroupOn) && (!q || t.dataset.find.includes(q)); t.hidden = !on; n += on; }); s.hidden = !n; });
+      $('.rpt-none', main).hidden = $$('.rpt-sec:not([hidden])', main).length > 0; };
+    $('.rpt-find', main).addEventListener('input', filter); filter();
   },
 };
+A.rptGroup = (d) => { rptGroupOn = d.g; refresh(); };
+A.rptStar = (d) => { const L = rptStars(); rptStarSave(L.includes(d.k) ? L.filter((k) => k !== d.k) : [...L, d.k]); refresh(); };
 
 // one report: the four with their own layouts (RPT), else a list report
 PAGES['/reports/view'] = {

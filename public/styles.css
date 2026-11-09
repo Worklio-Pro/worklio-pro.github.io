@@ -1710,19 +1710,34 @@ tr.pl-sum td{font-weight:600;border-top:1px solid var(--border)}
 tr.pl-net td{font-weight:700;font-size:16px;border-top:2px solid var(--text)}
 @media (max-width:640px){.rpt-bar .tabs{margin-left:0}}
 /* Reports: the page of report groups, and a report (summary, chart, side breakdown, table with search, sort, columns, pages) */
-.rpt-hub{columns:3 300px;column-gap:16px}
-.rpt-grp{break-inside:avoid;display:block;margin:0 0 16px;padding:0;overflow:hidden}
-#main:not(.portal) .card.rpt-grp>h2:first-child{margin:0} /* the usual card header bar, on a card with no padding */
-.rpt-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 18px;border-top:1px solid var(--line);color:var(--text);text-decoration:none}
-.rpt-grp h2+.rpt-item{border-top:0}
-.rpt-item[hidden],.rpt-grp[hidden]{display:none}
-.rpt-txt{min-width:0}.rpt-txt strong{display:block;font-size:14.5px;font-weight:600}.rpt-txt span{display:block;color:var(--muted);font-size:13px;line-height:1.4;margin-top:2px}
-a.rpt-item:hover{background:color-mix(in srgb,var(--brand) 7%,transparent)}
-a.rpt-item:hover strong{color:var(--link)}
-.rpt-go{color:var(--muted);font-size:20px;line-height:1}
-.rpt-item.off strong{color:var(--muted)}
-.rpt-more{font-size:13px;white-space:nowrap;font-weight:600}
-.rpt-find{width:240px}
+.rpt-filter{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 22px}
+.rpt-chips{display:flex;gap:6px;flex-wrap:wrap;padding:4px;border-radius:12px;background:var(--card);border:1px solid var(--line)}
+.rpt-chip{border:0;background:none;color:var(--muted);font:inherit;font-size:14px;font-weight:600;padding:7px 14px;border-radius:9px;cursor:pointer}
+.rpt-chip:hover{color:var(--text)}.rpt-chip.on{background:var(--brand);color:#fff}
+.rpt-findw{margin:0 0 0 auto;display:flex;align-items:center;gap:8px;padding:0 12px;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--muted);width:260px}
+.rpt-findw input{border:0;background:none;padding:9px 0;margin:0;width:100%;box-shadow:none;outline:none}
+.rpt-findw:focus-within{border-color:var(--brand)}
+.rpt-sec{margin:0 0 26px}.rpt-sec[hidden],.rpt-tile[hidden]{display:none}
+.rpt-sec-h{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:0 0 10px}
+.rpt-sec-h h2{margin:0;font-size:17px;display:flex;align-items:center;gap:8px}.rpt-sec-h .muted{font-size:13.5px}
+.rt-dot{width:9px;height:9px;border-radius:50%;background:var(--rc)}
+.rpt-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.rt-money{--rc:#16a34a}.rt-work{--rc:var(--brand)}.rt-clients{--rc:#9333ea}.rt-spend{--rc:#ea580c}
+.rpt-tile{position:relative;display:flex;gap:12px;align-items:flex-start;padding:14px 40px 14px 14px;border:1px solid var(--line);border-radius:14px;background:var(--card);transition:border-color .15s,box-shadow .15s,transform .15s}
+.rpt-tile:not(.off):hover{border-color:color-mix(in srgb,var(--rc) 55%,var(--line));box-shadow:0 6px 18px -10px color-mix(in srgb,var(--rc) 60%,transparent);transform:translateY(-1px)}
+.rpt-tile:focus-within{border-color:var(--rc)}
+.rt-ic{flex:none;width:38px;height:38px;border-radius:11px;display:grid;place-items:center;color:var(--rc);background:color-mix(in srgb,var(--rc) 14%,var(--card))}
+.rt-txt{min-width:0}.rt-txt>span{display:block;color:var(--muted);font-size:13px;line-height:1.4;margin-top:3px}
+.rt-name{font-weight:650;font-size:15px;color:var(--text);text-decoration:none}
+.rt-name::after{content:"";position:absolute;inset:0;border-radius:14px}
+.rt-name:focus-visible{outline:none}
+.rt-star{position:absolute;top:8px;right:8px;z-index:1;border:0;background:none;color:var(--muted);padding:5px;border-radius:8px;cursor:pointer;line-height:0;opacity:.45}
+.rpt-tile:hover .rt-star,.rt-star:focus-visible{opacity:1}.rt-star:hover{background:color-mix(in srgb,var(--text) 8%,transparent)}
+.rt-star.on{opacity:1;color:#f59e0b}.rt-star.on svg{fill:currentColor}
+.rpt-tile.off{background:none;border-style:dashed}.rpt-tile.off .rt-ic{filter:grayscale(1);opacity:.6}.rpt-tile.off .rt-name{color:var(--muted)}
+.rt-lock{display:inline-flex;align-items:center;gap:4px;margin-top:6px;font-size:12px;font-weight:600;color:var(--link)}
+.rpt-starred .rpt-tile{border-color:color-mix(in srgb,#f59e0b 35%,var(--line))}
+.rpt-tip{font-size:13px}
 .rpt-back{display:inline-block;font-size:14px;font-weight:600;margin-bottom:4px;text-decoration:none;color:var(--link)}
 .rpt-top{display:grid;grid-template-columns:minmax(0,1fr) 290px;gap:16px;margin-bottom:16px}
 .rpt-top.one{grid-template-columns:minmax(0,1fr)}
@@ -1762,7 +1777,7 @@ a.rpt-item:hover strong{color:var(--link)}
 .rpt-colpick label{display:flex;gap:8px;align-items:center;margin:0;font-size:14px;color:var(--text)}
 .rpt-note{margin-top:10px}
 @media (max-width:900px){.rpt-top{grid-template-columns:minmax(0,1fr)}}
-@media (max-width:640px){.rpt-find{width:100%}.rpt-hub{columns:1}.rpt-tools .rpt-q{flex:1 1 100%;width:auto}.rpt-sp{display:none}.rpt-tools .btn{flex:1}
+@media (max-width:640px){.rpt-findw{width:100%;margin:0}.rpt-chips{width:100%;justify-content:space-between}.rpt-chip{padding:7px 10px}.rpt-tools .rpt-q{flex:1 1 100%;width:auto}.rpt-sp{display:none}.rpt-tools .btn{flex:1}
   .rpt-stats{gap:12px 24px}.rpt-stats strong{font-size:20px}.rpt-pager{flex-wrap:wrap}.rpt-pager .muted{flex:1 1 100%}}
 @media print{.rpt-top{grid-template-columns:minmax(0,1fr) 260px}.rpt-t td{white-space:normal}}
 /* Settings → QuickBooks & Xero */
