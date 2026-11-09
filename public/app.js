@@ -698,7 +698,7 @@ function recalc(root) {
   if (!$('.calc', root)) return; // no Product / Service section (job page for technicians)
   if (root._optRows) root._optRows(); // quote options: every line item has its Option box
   const items = readItems(root); const rate = Number($('[name=taxRate]', root).value) || 0;
-  $$('.item-row', root).forEach((r, i) => { const its = rowItems(r, i); $('.amt', r).textContent = money(its.reduce((s, x) => s + x.qty * x.price, 0)); r.classList.toggle('np-on', its.some((x) => x.needsPrice)); if (r.classList.contains('mx')) mxSums(r); });
+  $$('.item-row', root).forEach((r, i) => { const its = rowItems(r, i); $('.amt', r).textContent = money(its.reduce((s, x) => s + x.qty * x.price, 0)); r.classList.toggle('np-on', its.some((x) => x.needsPrice)); if (r.classList.contains('mx')) { mxSums(r); mxShowPrices(r, mxRead(r, mxBase(r))); } });
   // discount comes off the subtotal before tax (the server computes it the same way)
   const dv = Math.max(0, Number($('[name=discountValue]', root).value) || 0); const dPct = $('[name=discountType]', root).value === 'percent';
   // late fee lines are in the subtotal but never discounted or taxed
@@ -823,12 +823,15 @@ const itemsCard = (items, extra, t) => `<div class="qcard"><h2>Product / Service
 const MX_SIZES = ['S', 'M', 'L', 'XL', '2XL'];
 const mxAllowed = () => !!(company.account && company.account.matrixPricing); // Alpha turns them on per business (always on for the default account)
 const mxOn = () => mxAllowed() && !!(company.matrixItems && company.matrixItems.on);
-const mxDefaults = () => { const m = company.matrixItems || {}; return { sizes: m.sizes && m.sizes.length ? m.sizes : MX_SIZES, colors: m.colors || [], price: {}, qty: {} }; };
+const mxDefaults = () => { const m = company.matrixItems || {}; return { sizes: m.sizes && m.sizes.length ? m.sizes : MX_SIZES, colors: m.colors || [], price: {}, qty: {}, markup: 0, markupType: 'percent' }; };
 const mxList = (v) => [...new Set(String(v || '').split(',').map((s) => s.replace(/\|/g, '/').trim().slice(0, 30)).filter((s) => s && s !== '__proto__'))].slice(0, 20);
 const mxKey = (s, c) => `${s}|${c}`;
+// m.price holds each size's cost (the name stayed from before markup); the client pays the cost plus the item's markup (% of cost, or $ per piece)
+const mxMt = (m) => (m.markupType === 'flat' ? 'flat' : 'percent');
+const mxUnit = (m, s) => { const c = Number(m.price[s]) || 0; const k = Number(m.markup) || 0; return round2(mxMt(m) === 'flat' ? c + k : c * (1 + k / 100)); };
 const mxLines = (m, opt) => (m.colors.length ? m.colors : ['']).flatMap((c) => m.sizes.map((s) => {
   const q = Number(m.qty[mxKey(s, c)]) || 0; const p = Number(m.price[s]) || 0;
-  return q > 0 ? { desc: [s, c].filter(Boolean).join(' · '), details: '', qty: q, cost: p, markup: 0, markupType: 'percent', price: p, sub: true, mx: true, ...(opt !== undefined ? { opt } : {}) } : null;
+  return q > 0 ? { desc: [s, c].filter(Boolean).join(' · '), details: '', qty: q, cost: p, markup: Number(m.markup) || 0, markupType: mxMt(m), price: mxUnit(m, s), sub: true, mx: true, ...(opt !== undefined ? { opt } : {}) } : null;
 }).filter(Boolean));
 // the sub items that belong to the matrix line at index i
 const mxGroup = (items, i) => { const out = []; for (let k = i + 1; items[k] && items[k].mx; k++) out.push(items[k]); return out; };
@@ -836,24 +839,27 @@ const mxSum = (items, i) => round2(mxGroup(items, i).reduce((s, x) => s + x.qty 
 const mxCount = (items, i) => mxGroup(items, i).reduce((s, x) => s + (Number(x.qty) || 0), 0);
 // the grid, shared by the computer editor and the phone page
 const mxTable = (m) => { const rows = m.colors.length ? m.colors : ['']; return `<div class="mx-scroll"><table class="mx-tbl"><thead><tr><th></th>${m.sizes.map((s) => `<th>${esc(s)}</th>`).join('')}<th class="mx-rt">Qty</th></tr></thead><tbody>
-<tr class="mx-pr"><th>Price</th>${m.sizes.map((s) => `<td><div class="affix"><i>$</i><input class="mx-p" type="number" step="any" min="0" inputmode="decimal" data-s="${esc(s)}" value="${m.price[s] ? esc(m.price[s]) : ''}" placeholder="0" aria-label="Price, ${esc(s)}"></div></td>`).join('')}<td></td></tr>
+<tr class="mx-pr"><th>Cost</th>${m.sizes.map((s) => `<td><div class="affix"><i>$</i><input class="mx-p" type="number" step="any" min="0" inputmode="decimal" data-s="${esc(s)}" value="${m.price[s] ? esc(m.price[s]) : ''}" placeholder="0" aria-label="Cost, ${esc(s)}"></div></td>`).join('')}<td></td></tr>
+<tr class="mx-upr"><th>Price</th>${m.sizes.map((s) => `<td class="mx-up" data-s="${esc(s)}">${money(mxUnit(m, s))}</td>`).join('')}<td></td></tr>
 ${rows.map((c) => `<tr><th>${c ? esc(c) : 'Quantity'}</th>${m.sizes.map((s) => `<td><input class="mx-q" type="number" step="any" min="0" inputmode="numeric" data-s="${esc(s)}" data-c="${esc(c)}" value="${m.qty[mxKey(s, c)] ? esc(m.qty[mxKey(s, c)]) : ''}" placeholder="0" aria-label="How many${c ? ` ${esc(c)}` : ''}, ${esc(s)}"></td>`).join('')}<td class="mx-rt mx-rq"></td></tr>`).join('')}</tbody>
 ${rows.length > 1 ? `<tfoot><tr><th>Qty</th>${m.sizes.map((s) => `<td class="mx-cq" data-s="${esc(s)}"></td>`).join('')}<td class="mx-rt mx-tq"></td></tr></tfoot>` : ''}</table></div>`; };
 const mxRead = (el, base) => {
-  const m = { sizes: base.sizes, colors: base.colors, price: {}, qty: {} };
+  const mk = $('.mx-mk', el); const t = $('select.mx-mt', el) || $('input.mx-mt:checked', el); // the markup: from the page when it's there
+  const m = { sizes: base.sizes, colors: base.colors, price: {}, qty: {}, markup: mk ? Number(mk.value) || 0 : Number(base.markup) || 0, markupType: t ? (t.value === 'flat' ? 'flat' : 'percent') : mxMt(base) };
   $$('.mx-p', el).forEach((i) => { m.price[i.dataset.s] = Math.max(0, Number(i.value) || 0); });
   $$('.mx-q', el).forEach((i) => { const n = Math.max(0, Number(i.value) || 0); if (n) m.qty[mxKey(i.dataset.s, i.dataset.c)] = n; });
   return m;
 };
 function mxSums(el) { // how many in each color row, each size column, and in all
   const v = (i) => Math.max(0, Number(i.value) || 0); const qs = $$('.mx-q', el); const fmt = (n) => (n ? String(round2(n)) : '');
-  $$('tbody tr:not(.mx-pr)', el).forEach((tr) => { $('.mx-rq', tr).textContent = fmt($$('.mx-q', tr).reduce((s, i) => s + v(i), 0)); });
+  $$('tbody tr:not(.mx-pr):not(.mx-upr)', el).forEach((tr) => { $('.mx-rq', tr).textContent = fmt($$('.mx-q', tr).reduce((s, i) => s + v(i), 0)); });
   $$('.mx-cq', el).forEach((td) => { td.textContent = fmt(qs.filter((i) => i.dataset.s === td.dataset.s).reduce((s, i) => s + v(i), 0)); });
   const t = $('.mx-tq', el); if (t) t.textContent = fmt(qs.reduce((s, i) => s + v(i), 0));
 }
+const mxShowPrices = (el, m) => $$('.mx-up', el).forEach((td) => { td.textContent = money(mxUnit(m, td.dataset.s)); }); // the Price row
 // keeps the prices and quantities still in the grid after its sizes or colors change
 const mxReshape = (m, sizes, colors) => {
-  const n = { sizes, colors, price: {}, qty: {} };
+  const n = { sizes, colors, price: {}, qty: {}, markup: Number(m.markup) || 0, markupType: mxMt(m) };
   for (const s of sizes) { if (m.price[s]) n.price[s] = m.price[s]; for (const c of colors.length ? colors : ['']) { const q = m.qty[mxKey(s, c)]; if (q) n.qty[mxKey(s, c)] = q; } }
   // colors added to a grid without any: its quantities go to the first color (and back when the last color is removed)
   if (!m.colors.length && colors.length) for (const s of sizes) { if (m.qty[mxKey(s, '')] && !n.qty[mxKey(s, colors[0])]) n.qty[mxKey(s, colors[0])] = m.qty[mxKey(s, '')]; }
@@ -870,7 +876,7 @@ function mxItemsOf(r) {
 function mxRow(it) {
   const m = it.matrix;
   return `<div class="item-row qi mx" data-opt="${esc(it.opt || '')}" data-sizes="${esc(JSON.stringify(m.sizes))}" data-colors="${esc(JSON.stringify(m.colors))}"><button type="button" class="drag-h" aria-label="Drag to reorder (or use the arrow keys)" title="Drag to reorder">${DRAG_DOTS}</button><label class="fl qi-name"><span>Matrix item</span><input class="mx-name" autocomplete="off" placeholder="Item name, e.g. Custom t-shirt" value="${esc(it.desc || '')}"></label>
-<div class="mx-info muted">A price for each size, and how many of each. Each one becomes a line under this one.</div>
+<label class="fl mk mx-mkf${mxMt(m) === 'flat' ? ' flat' : ''}"><span>Markup</span><div class="affix"><i class="pre">$</i><input class="mx-mk" type="number" step="any" inputmode="decimal" value="${Number(m.markup) || 0}" aria-label="Markup"><select class="mtype mx-mt" aria-label="Markup type"><option value="percent">%</option><option value="flat" ${mxMt(m) === 'flat' ? 'selected' : ''}>$</option></select></div></label>
 <div class="fl amt-box"><span>Total</span><div class="amt"></div></div>
 <details class="menu row-menu"><summary aria-label="Line item options" title="Line item options">⋯</summary><div class="menu-list">
 <button type="button" data-act="mxAxes">Edit sizes &amp; colors</button><button type="button" data-act="addItemBelow">Add line item below</button><button type="button" data-act="dupItem">Duplicate line item</button><button type="button" class="danger-text" data-act="rmItem">Remove line item</button></div></details>
@@ -913,16 +919,19 @@ function mMatrix(kind, d, i, x) {
 <label class="mf"><span>Description</span><textarea name="details" rows="3" placeholder="Shown to the client">${esc(it.details || '')}</textarea></label>
 ${mField('Sizes', `<input name="sizes" value="${esc(m.sizes.join(', '))}" placeholder="S, M, L, XL" autocomplete="off">`)}
 ${mField('Colors', `<input name="colors" value="${esc(m.colors.join(', '))}" placeholder="Optional, e.g. Navy, Black" autocomplete="off">`)}
-<p class="mnt-sh">Price for each size, and how many</p><div class="mx-grid m-mx">${mxTable(m)}</div>
+<div class="mseg mk-seg" role="radiogroup" aria-label="Markup type">${[['percent', 'Percent (%)'], ['flat', 'Fixed ($)']].map(([k, l]) => `<label><input type="radio" class="mx-mt" name="mxMarkupType" value="${k}" ${(mxMt(m) === 'flat') === (k === 'flat') ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div>
+<label class="mf mf-mk${mxMt(m) === 'flat' ? ' flat' : ''}"><span>Markup</span><span class="mf-in"><b class="pre">$</b><input class="mx-mk" name="mxMarkup" type="number" inputmode="decimal" step="any" value="${Number(m.markup) || 0}"><b class="suf">%</b></span></label>
+<p class="mnt-sh">Cost for each size, and how many</p><div class="mx-grid m-mx">${mxTable(m)}</div>
 ${kind === 'quote' && qHasOpts(d) ? mField('Option', `<select name="opt"><option value="">All options</option>${d.options.map((o) => `<option value="${esc(o.id)}" ${it.opt === o.id ? 'selected' : ''}>${esc(o.name)}</option>`).join('')}</select>`) : ''}
 <div class="m-total"><span>Total</span><strong class="m-tot"></strong></div>`, { full: true, foot: `${mSaveBtn('Save Line Item')}${i >= 0 ? `<button type="button" class="btn alt ms-more ms-del" data-act="mRmItem" aria-label="Delete line item" title="Delete line item">${svgIcon('<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/>', 22)}</button>` : ''}` });
   f._ctx = { kind, d, i };
   const grid = $('.mx-grid', f);
-  const tot = () => { mxSums(grid); $('.m-tot', f).textContent = money(round2(mxLines(mxRead(grid, m)).reduce((s, l) => s + l.qty * l.price, 0))); };
-  const regrid = () => { const sizes = mxList(f.sizes.value); const now = mxRead(grid, m); m = mxReshape(now, sizes.length ? sizes : m.sizes, mxList(f.colors.value)); grid.innerHTML = mxTable(m); tot(); };
-  f.sizes.addEventListener('change', regrid); f.colors.addEventListener('change', regrid); grid.addEventListener('input', tot); tot();
+  const tot = () => { const now = mxRead(f, m); mxSums(grid); mxShowPrices(grid, now); $('.m-tot', f).textContent = money(round2(mxLines(now).reduce((s, l) => s + l.qty * l.price, 0))); };
+  const regrid = () => { const sizes = mxList(f.sizes.value); const now = mxRead(f, m); m = mxReshape(now, sizes.length ? sizes : m.sizes, mxList(f.colors.value)); grid.innerHTML = mxTable(m); tot(); };
+  f.sizes.addEventListener('change', regrid); f.colors.addEventListener('change', regrid); grid.addEventListener('input', tot); f.mxMarkup.addEventListener('input', tot);
+  $('.mk-seg', f).addEventListener('change', () => { $('.mf-mk', f).classList.toggle('flat', f.mxMarkupType.value === 'flat'); tot(); }); tot();
   onSubmit(f, (fd) => {
-    regrid(); const mm = mxRead(grid, m); const desc = String(fd.get('desc')).trim(); if (!desc) throw new Error('Enter the item’s name');
+    regrid(); const mm = mxRead(f, m); const desc = String(fd.get('desc')).trim(); if (!desc) throw new Error('Enter the item’s name');
     const opt = fd.has('opt') ? String(fd.get('opt')) : undefined;
     const head = { desc, details: String(fd.get('details')), qty: 1, cost: 0, markup: 0, markupType: 'percent', price: 0, matrix: mm, ...(opt !== undefined ? { opt } : {}) };
     const items = [...(d.items || [])];

@@ -2077,3 +2077,11 @@ label.bk-auto input{width:auto;margin:0}
 .mx-tbl .affix{width:76px;height:36px;padding:0 8px;border:1px solid var(--border);border-radius:8px;background:var(--card);box-sizing:border-box}
 .mx-tbl .affix input{flex:1;width:auto;min-width:0;height:34px;padding:0;border:0;background:transparent;box-shadow:none}.mx-tbl .affix input:focus{outline:0}
 .mx-tbl .affix:focus-within{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand)}
+
+/* matrix item: its Markup box sits in the regular lines' markup column; the grid's Price row (cost plus markup) under Cost */
+.item-row.qi.mx .mx-mkf{grid-column:5}
+@media (max-width:1000px){.item-row.qi.mx .mx-mkf{grid-column:2}.item-row.qi.mx .amt-box{grid-column:3}}
+.mx-tbl .mx-pr td,.mx-tbl .mx-pr th{border-bottom:0;padding-bottom:4px}
+.mx-tbl .mx-upr td,.mx-tbl .mx-upr th{border-bottom:1px solid var(--line);padding:4px 6px 10px;text-align:center;font-variant-numeric:tabular-nums;font-size:13px}
+.mx-tbl .mx-upr th{text-align:left;color:var(--muted)}
+.mx-tbl tbody tr:nth-child(2) td,.mx-tbl tbody tr:nth-child(2) th{padding-top:4px}.mx-tbl tbody tr:nth-child(3) td,.mx-tbl tbody tr:nth-child(3) th{padding-top:10px}

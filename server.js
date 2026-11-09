@@ -184,9 +184,9 @@ function mxClean(m) {
   const sizes = mxList(m.sizes); const colors = mxList(m.colors); if (!sizes.length) return null;
   const p = m.price && typeof m.price === 'object' ? m.price : {}; const q = m.qty && typeof m.qty === 'object' ? m.qty : {}; const price = {}; const qty = {};
   for (const s of sizes) { price[s] = round2(Math.max(0, Number(p[s]) || 0)); for (const c of colors.length ? colors : ['']) { const n = round2(Math.max(0, Number(q[`${s}|${c}`]) || 0)); if (n) qty[`${s}|${c}`] = n; } }
-  return { sizes, colors, price, qty };
+  return { sizes, colors, price, qty, markup: round2(Number(m.markup) || 0), markupType: m.markupType === 'flat' ? 'flat' : 'percent' }; // price: each size's cost; the markup is the item's
 }
-const mxLines = (m) => (m.colors.length ? m.colors : ['']).flatMap((c) => m.sizes.map((s) => { const n = m.qty[`${s}|${c}`] || 0; return n ? { desc: [s, c].filter(Boolean).join(' · '), qty: n, cost: m.price[s], markup: 0, markupType: 'percent', sub: true, mx: true } : null; }).filter(Boolean));
+const mxLines = (m) => (m.colors.length ? m.colors : ['']).flatMap((c) => m.sizes.map((s) => { const n = m.qty[`${s}|${c}`] || 0; return n ? { desc: [s, c].filter(Boolean).join(' · '), qty: n, cost: m.price[s], markup: m.markup, markupType: m.markupType, sub: true, mx: true } : null; }).filter(Boolean));
 function mxExpand(items) {
   const out = [];
   for (const i of items || []) {
@@ -3635,7 +3635,7 @@ app.post('/api/quotes/:id/set-deposit', (req, res) => {
 // strip what clients must not see: internal notes and the business's cost/markup per line
 function forClient(doc) {
   const { internalNotes, noteEntries, ...rest } = doc;
-  return { ...rest, items: (doc.items || []).map(({ cost, markup, markupType, ...it }) => it) };
+  return { ...rest, items: (doc.items || []).map(({ cost, markup, markupType, matrix, ...it }) => it) };
 }
 // a client's visits: schedule details only (no internal notes, prices or line items)
 const PORTAL_JOB_FIELDS = ['id', 'number', 'title', 'description', 'date', 'startTime', 'endTime', 'address', 'status'];
