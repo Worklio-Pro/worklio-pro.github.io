@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Good / Better / Best quotes: let clients choose more</title>
+  <meta name="description" content="Offer repair, replace or premium on one quote. Clients compare the options side by side on their phone, approve one, sign and pay the deposit.">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="stylesheet" href="/styles.css?v=53">
+  <link rel="stylesheet" href="/theme.css">
+  <link rel="stylesheet" href="/home.css?v=14">
+  <link rel="stylesheet" href="/trial.css?v=1">
+  <style>
+    /* Good / Better / Best: the page's own pieces, on the site's theme colors (theme.css sets light and dark) */
+    .gb-art{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr);gap:28px;align-items:center;max-width:1000px;margin:44px auto 0;text-align:left}
+    .gb-phone{max-width:300px;margin:0 auto;background:#0f172a;border-radius:36px;padding:12px;box-shadow:0 24px 50px rgba(15,23,42,.28)}
+    .gb-screen{background:#f8fafc;color:#0f172a;border-radius:26px;padding:14px;font-size:13px}
+    .gb-co{display:flex;align-items:center;gap:8px;margin:0 0 4px;font-weight:700;font-size:13px}.gb-co i{width:22px;height:22px;border-radius:6px;background:#2563eb;display:block}
+    .gb-screen h4{margin:6px 0 2px;font-size:16px}.gb-screen .s{margin:0 0 10px;color:#64748b;font-size:12px}
+    .gb-o{position:relative;background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:10px 12px;margin:0 0 8px}
+    .gb-o.rec{border:2px solid #2563eb;box-shadow:0 6px 16px rgba(37,99,235,.18)}
+    .gb-o .tag{position:absolute;top:-9px;left:12px;padding:1px 8px;border-radius:99px;background:#2563eb;color:#fff;font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
+    .gb-o .r{display:flex;justify-content:space-between;align-items:baseline;gap:8px}.gb-o b{font-size:14px}.gb-o .t{font-size:17px;font-weight:800}
+    .gb-o small{display:block;color:#64748b;margin:2px 0 8px;line-height:1.35}
+    .gb-o .ap{display:block;text-align:center;padding:7px;border-radius:9px;border:1px solid #cbd5e1;font-weight:700;font-size:12.5px}
+    .gb-o.rec .ap{background:#2563eb;border-color:#2563eb;color:#fff}
+    .gb-side{display:grid;gap:14px}
+    .gb-note{display:flex;gap:12px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 16px;box-shadow:0 14px 34px rgba(15,23,42,.10)}
+    .gb-note .ic{flex:none;width:36px;height:36px;border-radius:10px;display:grid;place-items:center;background:var(--tint);color:var(--brand);font-size:18px}
+    .gb-note b{display:block}.gb-note span{color:var(--muted);font-size:14px;line-height:1.45}
+    .gb-lift{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 18px;box-shadow:0 14px 34px rgba(15,23,42,.10)}
+    .gb-lift h4{margin:0 0 10px;font-size:14px;color:var(--muted);font-weight:600}
+    .gb-bar{display:grid;grid-template-columns:110px 1fr auto;gap:10px;align-items:center;margin:0 0 8px;font-size:14px}
+    .gb-bar i{display:block;height:12px;border-radius:99px;background:var(--line)}.gb-bar.up i{background:var(--brand)}
+    .gb-bar b{font-variant-numeric:tabular-nums}
+    .gb-compare{max-width:860px;margin:0 auto;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--card)}
+    .gb-compare table{width:100%;border-collapse:collapse;font-size:15px}
+    .gb-compare th,.gb-compare td{padding:12px 16px;border-top:1px solid var(--line);text-align:left;vertical-align:top}
+    .gb-compare thead th{border-top:0;background:var(--tint);font-size:13px;text-transform:uppercase;letter-spacing:.05em}
+    .gb-compare td.y{color:var(--ok-fg,#15803d);font-weight:700}.gb-compare td.n{color:var(--muted)}
+    .gb-video{max-width:860px;margin:0 auto;border-radius:18px;overflow:hidden;border:1px solid var(--line);background:#0f172a;box-shadow:0 18px 40px rgba(15,23,42,.18)}
+    .gb-video video{display:block;width:100%;height:auto;aspect-ratio:16/9}
+    .gb-trades{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+    .gb-trade{border:1px solid var(--line);border-radius:18px;overflow:hidden;background:var(--card)}
+    .gb-trade img{display:block;width:100%;aspect-ratio:4/3;height:auto;object-fit:cover}
+    .gb-trade div{padding:14px 16px 16px}.gb-trade h3{margin:0 0 10px;font-size:17px}
+    .gb-trade ol{list-style:none;margin:0;padding:0;display:grid;gap:6px;font-size:14px}
+    .gb-trade li{display:flex;justify-content:space-between;gap:10px;padding:7px 10px;border-radius:9px;background:var(--surface-2,rgba(148,163,184,.12))}
+    .gb-trade li.rec{background:var(--tint);outline:1.5px solid var(--brand)}.gb-trade li b{font-variant-numeric:tabular-nums}
+    .gb-trade li span em{font-style:normal;color:var(--muted);font-size:12px;margin-right:6px;text-transform:uppercase;letter-spacing:.04em;font-weight:700}
+    .gb-snap{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 24px;padding:22px 26px;border-radius:20px;background:var(--tint);border:1px solid var(--line);border-left:5px solid var(--brand);color:inherit;text-decoration:none}
+    .gb-snap>span{flex:1 1 420px}.gb-snap b{display:block;font-size:22px;margin:6px 0 4px}.gb-snap span span{color:var(--muted)}
+    @media (max-width:860px){.gb-art{grid-template-columns:1fr}.gb-trades{grid-template-columns:1fr 1fr}.gb-compare th,.gb-compare td{padding:10px 12px;font-size:14px}}
+    @media (max-width:560px){.gb-trades{grid-template-columns:1fr}.gb-bar{grid-template-columns:90px 1fr auto}}
+  </style>
+</head>
+<body>
+  <header class="h-top h-has-drawer"><div class="h-wrap">
+    <a class="h-brand" href="/"><span class="pname">Worklio Pro</span></a>
+    <!-- on phones this slides out from the right (menu.js); on wider screens it sits inline in the header -->
+    <div class="h-panel" id="h-panel">
+      <button type="button" class="h-close" aria-label="Close menu"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      <nav class="h-links" aria-label="Site"><!--features-menu--><!--industries-menu--><a href="/#how" data-home="#how">How it works</a><a href="/#faq" data-home="#faq">FAQ</a><a href="/pricing">Pricing</a><a href="/sign-in">Log in</a></nav>
+      <a class="btn" href="/pricing" data-trial>Start 30-day trial</a>
+    </div>
+    <button type="button" class="h-burger" aria-expanded="false" aria-controls="h-panel" aria-label="Open menu"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    <div class="h-scrim" aria-hidden="true"></div>
+  </div></header>
+
+  <main>
+    <section class="f-hero"><div class="h-wrap">
+      <span class="h-eyebrow">New · Good / Better / Best quotes</span>
+      <h1>Stop sending one price. <em>Let clients choose more.</em></h1>
+      <p class="lead">Put repair, replace and premium on one quote. Your client compares them side by side on their phone, taps the one they want, signs and pays the deposit. Many pick the middle or top option when they can see them together, so the same visit turns into a bigger job.</p>
+      <div class="h-ctas"><a class="btn" href="/pricing" data-trial>Start your free 30-day trial</a><a class="btn alt" href="#video">Watch the 2-minute video</a></div>
+
+      <div class="gb-art" aria-label="A quote with three options on the client's phone, and the business told which one they approved">
+        <div class="gb-phone"><div class="gb-screen">
+          <p class="gb-co"><i></i>Bright Air Heating &amp; Cooling</p>
+          <h4>AC replacement</h4><p class="s">Choose the option that suits you</p>
+          <div class="gb-o"><div class="r"><b>Repair</b><span class="t">$389</span></div><small>Capacitor, refrigerant top-off. Keeps the old unit running.</small><span class="ap">Approve Repair</span></div>
+          <div class="gb-o rec"><span class="tag">Recommended</span><div class="r"><b>Replace</b><span class="t">$6,850</span></div><small>New 3-ton system, installed, old unit hauled away.</small><span class="ap">Approve Replace</span></div>
+          <div class="gb-o"><div class="r"><b>Premium</b><span class="t">$8,420</span></div><small>High-efficiency, quieter, with a smart thermostat.</small><span class="ap">Approve Premium</span></div>
+        </div></div>
+        <div class="gb-side">
+          <div class="gb-note"><span class="ic">✓</span><span><b>Quote approved: Replace</b>Signed on their phone, and the 20% deposit is paid. Only the Replace items go on the job.</span></div>
+          <div class="gb-lift"><h4>The same visit, two ways to quote it</h4>
+            <div class="gb-bar"><span>One price</span><i style="width:5%"></i><b>$389</b></div>
+            <div class="gb-bar up"><span>With options</span><i style="width:100%"></i><b>$6,850</b></div>
+            <p style="margin:6px 0 0;color:var(--muted);font-size:13px">An example: a client who sees only the repair price says yes or no to $389. Shown all three, they can choose the new system you recommended.</p></div>
+        </div>
+      </div>
+    </div></section>
+
+    <section class="h-sec" id="why"><div class="h-wrap">
+      <div class="h-sec-head"><span class="h-kicker">Why it works</span><h2>Clients compare. You just make it easy.</h2><p>With one price, the client’s only choices are yes, no, or calling someone else. With options, the question becomes which one.</p></div>
+      <div class="gb-compare"><table>
+        <thead><tr><th></th><th>One price</th><th>Good / Better / Best</th></tr></thead>
+        <tbody><tr><th scope="row">The client’s question</th><td class="n">“Should I go with them?”</td><td class="y">“Which option do I want?”</td></tr>
+          <tr><th scope="row">Price shoppers</th><td class="n">Call around to compare</td><td class="y">Compare your own options instead</td></tr>
+          <tr><th scope="row">The upgrade</th><td class="n">A sales pitch at the door</td><td class="y">Right there, for them to pick</td></tr>
+          <tr><th scope="row">Your paperwork</th><td class="n">Three separate quotes</td><td class="y">One quote, one link</td></tr></tbody>
+      </table></div>
+    </div></section>
+
+    <section class="h-sec h-steps-bg" id="how"><div class="h-wrap">
+      <div class="h-sec-head"><span class="h-kicker">How it works</span><h2>Three options in the time it takes to write one</h2><p>Built into the quotes you already send.</p></div>
+      <div class="h-steps">
+        <div class="h-step"><h3>Name your options</h3><p>Click Offer options on a quote and name two or three, like Repair, Replace and Premium. Mark one Recommended.</p></div>
+        <div class="h-step"><h3>Add the items</h3><p>Pick each line from your price list and choose its option. A service call can go in all of them at once.</p></div>
+        <div class="h-step"><h3>Send one link</h3><p>The client sees every option side by side, with an Approve button for each, on any phone.</p></div>
+        <div class="h-step"><h3>They pick, you’re told</h3><p>They sign and pay the deposit for their choice, and you’re told which one. Only that option goes on the job.</p></div>
+      </div>
+    </div></section>
+
+    <section class="h-sec" id="video"><div class="h-wrap">
+      <div class="h-sec-head"><span class="h-kicker">See it in the app</span><h2>Good / Better / Best in under 2 minutes</h2><p>Building the options, what your client sees, and what happens when they approve.</p></div>
+      <div class="gb-video"><video controls playsinline preload="metadata" poster="/video/help/quote-options.jpg" src="/video/help/quote-options.mp4"><track kind="captions" src="/video/help/quote-options.vtt" srclang="en" label="English"></video></div>
+    </div></section>
+
+    <div class="h-wrap f-list">
+      <section class="f-row" id="client">
+        <div class="f-copy"><span class="f-num">01</span><span class="h-kicker">What your client sees</span><h2>Side by side, on their phone</h2>
+          <p>Every option shows what’s included and its own total, with your recommended one highlighted. No login, no app, and no PDF to squint at. Once they approve, their quote shows just the option they chose.</p>
+          <ul><li><i>✓</i><span><b>An Approve button on each option</b>One tap to choose, then sign and pay the deposit.</span></li>
+            <li><i>✓</i><span><b>Your recommendation, front and center</b>Steer them toward the option you’d pick yourself.</span></li>
+            <li><i>✓</i><span><b>Deposits that fit their choice</b>A percentage deposit is worked out on the option they pick.</span></li></ul></div>
+        <figure class="f-shot t1" aria-label="Three options with totals"><div class="m-ui">
+          <h4>Water heater <span class="m-pill">3 options</span></h4><p class="m-sub">Recommended: 50-gal tank</p>
+          <table class="m-table"><tbody><tr><td>Repair (element and thermostat)</td><td class="n">$285</td></tr><tr><td><b>50-gal tank</b> (recommended)</td><td class="n pos">$1,890</td></tr><tr><td>Tankless</td><td class="n">$4,350</td></tr></tbody></table>
+        </div></figure>
+      </section>
+
+      <section class="f-row flip" id="build">
+        <div class="f-copy"><span class="f-num">02</span><span class="h-kicker">For you</span><h2>Built from the price list you already have</h2>
+          <p>Options use the same products and services as every other quote. Discount, tax and deposit apply to whichever option the client picks, so the numbers are always right.</p>
+          <ul><li><i>✓</i><span><b>Items in every option</b>Set a service call or haul-away to All options once.</span></li>
+            <li><i>✓</i><span><b>Two or three options</b>And back to a single price in one click, with every line kept.</span></li>
+            <li><i>✓</i><span><b>Choices made over the phone</b>Mark the quote approved and pick the option the client told you.</span></li></ul></div>
+        <figure class="f-shot t2" aria-label="Line items assigned to options"><div class="m-ui">
+          <h4>Line items <span class="m-pill">By option</span></h4><p class="m-sub">Lawn care · season</p>
+          <table class="m-table"><thead><tr><th>Item</th><th class="n">Option</th></tr></thead>
+            <tbody><tr><td>Weekly mowing</td><td class="n">All options</td></tr><tr><td>Fertilizer program</td><td class="n">Better, Best</td></tr><tr><td>Aeration and overseeding</td><td class="n">Best</td></tr></tbody></table>
+        </div></figure>
+      </section>
+
+      <section class="f-row" id="after">
+        <div class="f-copy"><span class="f-num">03</span><span class="h-kicker">After they say yes</span><h2>Nothing to retype</h2>
+          <p>Convert the approved quote to a job and only the chosen option’s items come along, then on to the invoice. The quote PDF lists every option with its totals, or just the chosen one once they’ve picked.</p>
+          <ul><li><i>✓</i><span><b>You’re told which option</b>So the right crew and materials are ready.</span></li>
+            <li><i>✓</i><span><b>At a glance in your quotes list</b>A quote still waiting shows “3 options from” its lowest total.</span></li></ul></div>
+        <figure class="f-shot t3" aria-label="The approved option going to a job"><div class="m-ui">
+          <h4>Approved <span class="m-pill">Replace</span></h4><p class="m-sub">Signed · deposit paid</p>
+          <table class="m-table"><tbody><tr><td>Service call</td><td class="n pos">$89</td></tr><tr><td>3-ton AC install</td><td class="n pos">$6,450</td></tr><tr><td>Haul-away</td><td class="n pos">$120</td></tr></tbody></table>
+          <p class="m-sub" style="margin:12px 0 0">Convert to job → only these items</p>
+        </div></figure>
+      </section>
+    </div>
+
+    <section class="h-sec" id="trades"><div class="h-wrap">
+      <div class="h-sec-head"><span class="h-kicker">For every trade</span><h2>Every job has a good, better and best</h2><p>A few ways businesses like yours can lay out their options. The prices are just examples.</p></div>
+      <div class="gb-trades">
+        <article class="gb-trade"><img src="/img/gbb/electrical.jpg" alt="An electrician in a face shield working on a breaker panel" width="800" height="600" loading="lazy"><div><h3>Electrical</h3><ol><li><span><em>Good</em>Replace breaker</span><b>$240</b></li><li class="rec"><span><em>Better</em>200-amp panel</span><b>$2,900</b></li><li><span><em>Best</em>+ EV charger</span><b>$4,100</b></li></ol></div></article>
+        <article class="gb-trade"><img src="/img/gbb/lawn.jpg" alt="A lawn care worker edging a lawn with a string trimmer" width="800" height="600" loading="lazy"><div><h3>Lawn care</h3><ol><li><span><em>Good</em>Mowing</span><b>$45/visit</b></li><li class="rec"><span><em>Better</em>+ Fertilizer</span><b>$62/visit</b></li><li><span><em>Best</em>+ Aeration</span><b>$78/visit</b></li></ol></div></article>
+        <article class="gb-trade"><img src="/img/gbb/roofing.jpg" alt="A roofer carrying a bundle of shingles across a roof" width="800" height="600" loading="lazy"><div><h3>Roofing</h3><ol><li><span><em>Good</em>Patch the leak</span><b>$650</b></li><li class="rec"><span><em>Better</em>Re-roof</span><b>$11,800</b></li><li><span><em>Best</em>Designer shingles</span><b>$14,900</b></li></ol></div></article>
+        <article class="gb-trade"><img src="/img/gbb/plumbing.jpg" alt="A plumber tightening a fitting on a water heater with a wrench" width="800" height="600" loading="lazy"><div><h3>Plumbing</h3><ol><li><span><em>Good</em>Repair heater</span><b>$285</b></li><li class="rec"><span><em>Better</em>50-gal tank</span><b>$1,890</b></li><li><span><em>Best</em>Tankless</span><b>$4,350</b></li></ol></div></article>
+        <article class="gb-trade"><img src="/img/gbb/cleaning.jpg" alt="A house cleaner mopping a bright living room floor" width="800" height="600" loading="lazy"><div><h3>Cleaning</h3><ol><li><span><em>Good</em>Standard clean</span><b>$140</b></li><li class="rec"><span><em>Better</em>Deep clean</span><b>$260</b></li><li><span><em>Best</em>Deep + windows</span><b>$340</b></li></ol></div></article>
+        <article class="gb-trade"><img src="/img/gbb/painting.jpg" alt="A painter on ropes painting a tall white wall" width="800" height="600" loading="lazy"><div><h3>Painting</h3><ol><li><span><em>Good</em>Trim only</span><b>$1,200</b></li><li class="rec"><span><em>Better</em>Full exterior</span><b>$5,400</b></li><li><span><em>Best</em>+ Premium paint</span><b>$6,600</b></li></ol></div></article>
+      </div>
+    </div></section>
+
+    <section class="h-wrap" style="padding:0 0 28px"><a class="gb-snap" href="/quote-from-photos"><span><span class="h-kicker">On Unlimited · Snap to quote</span><b>Let AI lay out the options for you</b><span>Take a few photos, say what the client needs, and the quote is drafted from your price list, with Good / Better / Best options when the job has choices.</span></span><span class="btn">See Snap to quote</span></a></section>
+
+    <section class="h-sec" id="faq" style="padding-top:0"><div class="h-wrap">
+      <div class="h-sec-head"><span class="h-kicker">Questions</span><h2>Good / Better / Best quotes: FAQ</h2></div>
+      <div class="h-faq">
+        <details><summary>Which plan includes it?</summary><p>Advanced and Unlimited, and every free trial. It’s new, and we’re improving it with feedback from the businesses using it.</p></details>
+        <details><summary>How many options can a quote have?</summary><p>Two or three. A simple job can still have a single price, and you can turn options off any time without losing a line.</p></details>
+        <details><summary>Does my client need an account or an app?</summary><p>No. They open the quote from the link in your email or text, compare the options, and approve one on any phone or computer.</p></details>
+        <details><summary>How do deposits work with options?</summary><p>The discount, tax and deposit apply to whichever option the client picks. A percentage deposit is a percentage of that option’s total.</p></details>
+        <details><summary>What if they tell me their choice on the phone?</summary><p>Open the quote, mark it approved and choose the option they picked. Collecting their signature on your phone asks for the option too.</p></details>
+        <details><summary>What goes on the job and the invoice?</summary><p>Only the chosen option’s line items. The quote PDF lists every option with its totals, or just the chosen one after they decide.</p></details>
+      </div>
+    </div></section>
+
+    <section class="h-wrap" style="padding-bottom:20px"><div class="h-cta">
+      <h2>Make your next quote worth more</h2>
+      <p>Start a free trial, add your price list, and send your first Good / Better / Best quote today.</p>
+      <a class="btn" href="/pricing" data-trial>Start your free 30-day trial</a>
+      <p class="h-cta-note">Free for 30 days · No credit card needed · <a href="/pricing">See plans &amp; pricing</a></p>
+    </div></section>
+  </main>
+
+  <footer class="h-foot"><div class="h-wrap">
+    <span>© <span id="yr"></span> <span class="pname">Worklio Pro</span><!--legal-owner--></span>
+    <nav aria-label="Footer"><a href="/pricing">Pricing</a><a href="/features">Features</a><a href="/marketing">Job marketing</a><a href="/quote-from-photos">Quote from photos</a><a href="/good-better-best">Good / Better / Best</a><a href="/industries">Industries</a><!--supporters-link--><a href="/terms">Terms of Service</a><a href="/privacy">Privacy Policy</a><a href="/sms-consent">Text Message Opt-In</a></nav>
+  </div></footer>
+  <script src="/brand.js?v=1"></script>
+  <script src="/menu.js?v=3"></script>
+  <script>
+    document.getElementById('yr').textContent = new Date().getFullYear();
+    // the product name and logo set in the platform console; while developing the home page is at /home
+    fetch('/api/site').then((r) => r.json()).then((s) => {
+      if (!s || !s.productName) return;
+      document.querySelectorAll('.pname').forEach((el) => { el.textContent = s.productName; });
+      if (s.home) { document.querySelectorAll('.h-brand').forEach((a) => { a.href = s.home; }); document.querySelectorAll('[data-home]').forEach((a) => { a.href = s.home + a.dataset.home; }); }
+      if (s.brand && s.brand.logo) document.querySelectorAll('.h-brand').forEach((a) => { a.insertAdjacentHTML('afterbegin', brandImg(s.brand)); a.querySelector('.pname').hidden = s.brand.logoHasName; });
+    }).catch(() => {});
+  </script>
+  <script src="/trial.js?v=6"></script>
+  <script src="/phone.js?v=2" defer></script>
+  <script src="/chat.js?v=6" data-where="site" defer></script>
+</body>
+</html>
