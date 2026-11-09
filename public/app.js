@@ -348,7 +348,7 @@ const FEATURE_WORDS = {
   '/quotes': 'estimates proposals', '/jobs': 'work orders visits', '/timesheets': 'time tracking clock in out hours payroll timecard labor', '/service-plans': 'memberships maintenance agreements contracts recurring billing subscriptions club', '/invoices': 'billing', '/payments': 'card online stripe', '/services': 'catalog products price list items',
   '/expenses': 'costs receipts spending', '/reports': 'financial revenue profit charts export csv invoices quotes visits clients lead source transactions timesheets expenses', '/tax-summary': 'sales tax', '/project-gallery': 'photos pictures', '/reviews': 'client google reviews ratings stars reply feedback', '/automations': 'automatic follow up reminder rules workflow messages overdue', '/social-posts': 'facebook instagram social media post marketing', '/notifications': 'emails texts sms sent messages log',
   '/requests': 'time off day off vacation sick leave request approve', '/settings/roles': 'roles permissions access manager technician what team can see do', '/settings/company': 'business details logo address phone social media facebook instagram tiktok tax', '/team': 'staff employees users access roles technicians', '/settings/emails': 'templates text messages sms reminders',
-  '/settings/booking': 'online booking book now button widget website embed form wix wordpress squarespace schedule appointment request leads', '/settings/job-forms': 'checklists checklist forms form inspection safety check templates job photos required', '/settings/preferences': 'appearance theme dark mode light system push notifications alerts phone calendar link google calendar outlook apple ical ics feed sync subscribe', '/settings': 'number prefixes branding brand color zelle defaults stripe card payments online payments regional time zone date format time format week', '/settings/connections': 'integrations google facebook instagram ai', '/settings/accounting': 'quickbooks xero accounting bookkeeping books sync accountant', '/settings/business-page': 'qr code business card digital card link in bio links save contact vcard scan limit expiry', '/marketplace': 'apps integrations connect quickbooks xero accounting home depot lowes supplies materials zapier chatgpt claude ai automation calendar slack gusto payroll', '/settings/billing': 'subscription plan upgrade payment method', '/settings/support-access': 'grant revoke help troubleshoot permission',
+  '/settings/booking': 'online booking book now button widget website embed form wix wordpress squarespace schedule appointment request leads', '/settings/job-forms': 'checklists checklist forms form inspection safety check templates job photos required', '/settings/preferences': 'appearance theme dark mode light system push notifications alerts phone calendar link google calendar outlook apple ical ics feed sync subscribe', '/settings': 'number prefixes branding brand color zelle venmo cash app cashapp cashtag paypal defaults stripe card payments online payments regional time zone date format time format week', '/settings/connections': 'integrations google facebook instagram ai', '/settings/accounting': 'quickbooks xero accounting bookkeeping books sync accountant', '/settings/business-page': 'qr code business card digital card link in bio links save contact vcard scan limit expiry', '/marketplace': 'apps integrations connect quickbooks xero accounting home depot lowes supplies materials zapier chatgpt claude ai automation calendar slack gusto payroll', '/settings/billing': 'subscription plan upgrade payment method', '/settings/support-access': 'grant revoke help troubleshoot permission',
 };
 const featureList = () => {
   const open = (p) => PAGES[p] && memberCan(p) && !planLocked(p) && !planLocked(p.split('/').slice(0, 2).join('/'));
@@ -1988,7 +1988,7 @@ function invoiceForm(main, doc, preset) {
   const st = d.id ? d.displayStatus : 'draft';
   const on = (k) => d[k] !== 'off';
   main.innerHTML = `<form class="qform iform sform"><div class="qpage"><div class="qmain">
-<div class="qtop"><div class="qtop-l"><a href="/invoices" data-link class="back">← Invoices</a>${iBadge(st)}${d.zelleSentAt && d.status !== 'paid' ? '<span class="badge zelle">Zelle sent</span>' : ''}</div></div>
+<div class="qtop"><div class="qtop-l"><a href="/invoices" data-link class="back">← Invoices</a>${iBadge(st)}${d.zelleSentAt && d.status !== 'paid' ? `<span class="badge zelle">${sentName(d)} sent</span>` : ''}</div></div>
 <input name="subject" class="qtitle" value="${esc(d.subject || '')}" placeholder="Invoice subject (e.g. Camera System Install)" aria-label="Invoice subject">
 <div class="qhead"><div class="qclient"><div class="qclient-pick"><select name="clientId" required aria-label="Client">${clientOptions(d.clientId || p.clientId)}</select>${clientMenu()}</div><div class="iclient"></div><input type="hidden" name="address" value="${esc(d.address || '')}"></div>
 <dl class="qmeta"><dt>Invoice #</dt><dd><input name="number" class="num-in" maxlength="30" value="${esc(d.number || '')}" placeholder="Automatic" aria-label="Invoice number" title="Leave blank for the next automatic number"></dd>
@@ -2002,7 +2002,7 @@ ${discCard('invoice', d.id ? d.disclaimer || '' : company.invoiceDisclaimer ?? '
 </div>
 <aside class="qside"><div class="qcard pay-c"><h3>Client payments</h3><p class="muted">How the client can pay this invoice.</p>
 ${planHas('onlinePayments') ? switchRow('allowCard', 'Card payments', on('allowCard') && cardReady(), cardReady() ? '' : cardHint(), !cardReady()) : ''}
-${planHas('zelle') ? switchRow('allowZelle', 'Zelle', on('allowZelle') && !!company.zelleRecipient, company.zelleRecipient ? '' : zelleHint(), !company.zelleRecipient) : ''}${lateSw(d)}</div>
+${planHas('zelle') ? switchRow('allowZelle', 'Zelle', on('allowZelle') && !!company.zelleRecipient, company.zelleRecipient ? '' : zelleHint(), !company.zelleRecipient) : ''}${payAppRows(d)}${lateSw(d)}</div>
 <div class="qcard view-c"><h3>Client view</h3><p class="muted">What the client sees on their invoice.</p>
 ${switchRow('showQty', 'Quantities', on('showQty'))}${switchRow('showUnit', 'Unit prices', on('showUnit'))}${switchRow('showLineTotals', 'Line item totals', on('showLineTotals'))}
 ${switchRow('showAccountBalance', 'Account balance', on('showAccountBalance'))}${switchRow('showLateStamp', 'Late stamp (if overdue)', on('showLateStamp'))}</div>
@@ -2146,6 +2146,14 @@ const cardReady = () => !!(company.account && company.account.cardReady);
 const cardHint = () => (['owner', 'admin'].includes(role()) ? 'Set up card payments in <a href="/settings#payments" data-link>App Settings</a>' : 'Not set up yet: ask your account owner');
 // Zelle needs the business's Zelle details (App Settings → Payments → Zelle payments)
 const zelleHint = () => (['owner', 'admin'].includes(role()) ? 'Add your Zelle details in <a href="/settings#zelle" data-link>App Settings</a>' : 'Not set up yet: ask your account owner');
+// Venmo, Cash App and PayPal (App Settings → Payments): a switch each on quotes and invoices, shown once the business has added that app
+const PAY_APPS = [['allowVenmo', 'Venmo', 'venmoHandle'], ['allowCashapp', 'Cash App', 'cashappTag'], ['allowPaypal', 'PayPal', 'paypalHandle']];
+const payAppsOn = () => (planHas('zelle') ? PAY_APPS.filter(([, , f]) => company[f]) : []);
+const payAppRows = (d, pre = '') => payAppsOn().map(([k, l]) => switchRow(k, pre + l, d[k] !== 'off')).join('');
+// the client said they paid outside the app (zelleSentAt is when, for any method; sentVia is how)
+const SENT_VIA = { zelle: 'Zelle', venmo: 'Venmo', cashapp: 'Cash App', paypal: 'PayPal' };
+const sentVia = (d) => (SENT_VIA[d.sentVia] ? d.sentVia : 'zelle');
+const sentName = (d) => SENT_VIA[sentVia(d)];
 // late fees (App Settings → Payments → Late fees): an invoice's switch, shown while they're turned on (inv.lateFee 'off' = none on this invoice)
 const lateFeesOn = () => !!(company.lateFee && company.lateFee.on);
 const lateFeeText = () => { const l = company.lateFee || {}; return l.type === 'percent' ? `${l.amount}% of the balance` : money(l.amount || 0); };
@@ -2274,7 +2282,7 @@ ${discCard('quote', d.id ? d.disclaimer || '' : company.quoteDisclaimer ?? DEFAU
 </div>
 <aside class="qside"><div class="qcard pay-c"><h3>Client payments</h3><p class="muted">How the client can pay this quote's deposit.</p>
 ${planHas('onlinePayments') ? switchRow('allowCard', 'Card payments', d.allowCard !== 'off' && cardReady(), cardReady() ? '' : cardHint(), !cardReady()) : ''}
-${planHas('zelle') ? switchRow('allowZelle', 'Zelle', d.allowZelle !== 'off' && !!company.zelleRecipient, company.zelleRecipient ? '' : zelleHint(), !company.zelleRecipient) : ''}</div>
+${planHas('zelle') ? switchRow('allowZelle', 'Zelle', d.allowZelle !== 'off' && !!company.zelleRecipient, company.zelleRecipient ? '' : zelleHint(), !company.zelleRecipient) : ''}${payAppRows(d)}</div>
 <div class="qcard"><h3>Notes</h3><textarea name="internalNotes" rows="6" placeholder="Leave an internal note for yourself or a team member. Clients never see this.">${esc(d.internalNotes || '')}</textarea></div></aside></div>
 <div class="qsave noprint"><a class="btn alt" href="/quotes${d.id ? '/view?id=' + d.id : ''}" data-link>Cancel</a><button class="btn">Save</button></div></form>`;
   const form = $('form', main); if (planHas('quoteOptions') || qHasOpts(d)) quoteOptionsEditor(form, d); wireItems(form);
@@ -2366,7 +2374,7 @@ const vopts = (rows, empty) => rows.map(([l, on]) => `<div class="vopt"><span>${
 // the right column: client payments, client view (invoices) and internal notes, each with its pencil
 const docSide = (kind, d) => {
   const on = (k) => d[k] !== 'off';
-  const pays = [planHas('onlinePayments') ? ['Card payments', on('allowCard') && cardReady()] : null, planHas('zelle') ? ['Zelle', on('allowZelle') && !!company.zelleRecipient] : null, kind === 'invoice' && lateFeesOn() ? ['Late fees', on('lateFee')] : null].filter(Boolean);
+  const pays = [planHas('onlinePayments') ? ['Card payments', on('allowCard') && cardReady()] : null, planHas('zelle') ? ['Zelle', on('allowZelle') && !!company.zelleRecipient] : null, ...payAppsOn().map(([k, l]) => [l, on(k)]), kind === 'invoice' && lateFeesOn() ? ['Late fees', on('lateFee')] : null].filter(Boolean);
   const view = [['showQty', 'Quantities'], ['showUnit', 'Unit prices'], ['showLineTotals', 'Line item totals'], ['showAccountBalance', 'Account balance'], ['showLateStamp', 'Late stamp (if overdue)']].map(([k, l]) => [l, on(k)]);
   return `<aside class="qside"><div class="qcard"><div class="qcard-h"><h2>Client payments</h2>${editBtn(kind, d, 'payments')}</div>${vopts(pays, 'No online payment options on your plan')}</div>
 ${kind === 'invoice' ? `<div class="qcard"><div class="qcard-h"><h2>Client view</h2>${editBtn(kind, d, 'clientView')}</div>${vopts(view)}</div>` : ''}
@@ -2407,7 +2415,7 @@ const QM = {
 function quoteMore(d, { job, canJob, c }) {
   const b = (act, icon, label, extra = '') => `<button type="button" class="mi" data-act="${act}" data-kind="quote" data-id="${d.id}" ${extra}>${QM[icon]}${label}</button>`;
   const marks = [d.status !== 'sent' ? b('markQuoteSent', 'awaiting', 'Awaiting Response') : '', d.status !== 'approved' ? b('approveQuote', 'approved', 'Approved') : '',
-    d.status !== 'declined' && d.depositFee > 0 && !d.depositPaidAt ? b('markDepositPaid', 'deposit', `Deposit Paid${d.zelleSentAt ? ' (Zelle sent)' : ''}`) : ''].join('');
+    d.status !== 'declined' && d.depositFee > 0 && !d.depositPaidAt ? b('markDepositPaid', 'deposit', `Deposit Paid${d.zelleSentAt ? ` (${sentName(d)} sent)` : ''}`) : ''].join('');
   return `<details class="menu more-menu"><summary class="btn alt"><span class="more-dots" aria-hidden="true">•••</span> More</summary><div class="menu-list">
 ${canJob ? b('quoteToJob', 'job', 'Convert to Job') : ''}${job ? `<a class="mi" href="/jobs/edit?id=${job.id}" data-link>${QM.goJob}Go to Job ${esc(job.number)}</a>` : ''}${b('copyQuote', 'copy', 'Create Similar Quote')}
 <hr class="mi-sep"><div class="mi-h">Send as…</div>${b('sendDoc', 'email', 'Email', 'data-ch="email"')}${planHas('sms') && c.phone && c.smsConsent ? b('sendDoc', 'text', 'Text Message', 'data-ch="text"') : ''}
@@ -2435,7 +2443,7 @@ ${b('delDoc', 'trash', 'Delete')}</div></details>`;
 // Create Similar Invoice: a new draft for the same client with the same subject, line items, terms and client view (not linked to the job, so no deposit credit twice)
 A.copyInvoice = async (x) => {
   const i = byId(D.invoices, x.id);
-  const keep = ['clientId', 'subject', 'items', 'taxRate', 'discountType', 'discountValue', 'discountName', 'notes', 'disclaimer', 'internalNotes', 'allowCard', 'allowZelle', 'lateFee', 'paymentTerms', 'showQty', 'showUnit', 'showLineTotals', 'showAccountBalance', 'showLateStamp'];
+  const keep = ['clientId', 'subject', 'items', 'taxRate', 'discountType', 'discountValue', 'discountName', 'notes', 'disclaimer', 'internalNotes', 'allowCard', 'allowZelle', 'allowVenmo', 'allowCashapp', 'allowPaypal', 'lateFee', 'paymentTerms', 'showQty', 'showUnit', 'showLineTotals', 'showAccountBalance', 'showLateStamp'];
   const body = Object.fromEntries(keep.filter((k) => i[k] !== undefined).map((k) => [k, i[k]]));
   body.items = (body.items || []).filter((it) => !it.lateFee).map(({ job, ...it }) => it); // not its late fees, nor the batch invoice's job marks
   const today = ymd(new Date()); body.issueDate = today;
@@ -2447,7 +2455,7 @@ A.markInvoiceSent = async (x) => { await api('PUT', '/api/invoices/' + x.id, { s
 // Create Similar Quote: a new draft for the same client with the same title, line items, prices and messages
 A.copyQuote = async (x) => {
   const q = byId(D.quotes, x.id);
-  const keep = ['clientId', 'title', 'items', 'taxRate', 'discountType', 'discountValue', 'discountName', 'depositType', 'depositValue', 'notes', 'disclaimer', 'internalNotes', 'allowCard', 'allowZelle'];
+  const keep = ['clientId', 'title', 'items', 'taxRate', 'discountType', 'discountValue', 'discountName', 'depositType', 'depositValue', 'notes', 'disclaimer', 'internalNotes', 'allowCard', 'allowZelle', 'allowVenmo', 'allowCashapp', 'allowPaypal'];
   const saved = await api('POST', '/api/quotes', Object.fromEntries(keep.filter((k) => q[k] !== undefined).map((k) => [k, q[k]])));
   toast(`Quote ${saved.number} created`); return navigate('/quotes/view?id=' + saved.id);
 };
@@ -2479,7 +2487,7 @@ function invoicePage(d) {
   const termsLabel = (TERMS.find(([k]) => k === String(d.paymentTerms)) || [, 'Custom date'])[1];
   const pays = [...(d.payments || [])].sort((a, b) => a.date.localeCompare(b.date));
   const others = D.invoices.filter((i) => i.clientId === d.clientId && i.id !== d.id && i.status !== 'paid' && i.status !== 'draft').reduce((s, i) => s + invBalance(i), 0);
-  return `<div class="qview"><div class="qpage"><div class="qmain"><div class="qtop"><div class="qtop-l"><a href="/invoices" data-link class="back">← Invoices</a>${iBadge(st)}${d.zelleSentAt && d.status !== 'paid' ? '<span class="badge zelle">Zelle sent</span>' : ''}</div>
+  return `<div class="qview"><div class="qpage"><div class="qmain"><div class="qtop"><div class="qtop-l"><a href="/invoices" data-link class="back">← Invoices</a>${iBadge(st)}${d.zelleSentAt && d.status !== 'paid' ? `<span class="badge zelle">${sentName(d)} sent</span>` : ''}</div>
 <div class="actions">${invoiceMore(d, c)}
 ${d.status !== 'paid' ? sendBtn('invoice', d) : ''}</div></div>
 <div class="vhead"><div class="vtitle-row"><h1 class="vtitle">${esc(d.subject || `Invoice ${d.number}`)}</h1>${editBtn('invoice', d, 'top')}</div>
@@ -2730,7 +2738,7 @@ ${canAddCatalog() ? '<label class="mnt-link m-tocat" hidden>Also save to Product
   },
   payments(kind, d) {
     const f = mSheet('Client payments', `<div class="ms-sw">${planHas('onlinePayments') ? switchRow('allowCard', 'Accept card payments', d.allowCard !== 'off' && cardReady(), cardReady() ? '' : cardHint(), !cardReady()) : ''}
-${planHas('zelle') ? switchRow('allowZelle', 'Accept Zelle', d.allowZelle !== 'off' && !!company.zelleRecipient, company.zelleRecipient ? '' : zelleHint(), !company.zelleRecipient) : ''}${kind === 'invoice' ? lateSw(d) : ''}</div>
+${planHas('zelle') ? switchRow('allowZelle', 'Accept Zelle', d.allowZelle !== 'off' && !!company.zelleRecipient, company.zelleRecipient ? '' : zelleHint(), !company.zelleRecipient) : ''}${payAppRows(d, 'Accept ')}${kind === 'invoice' ? lateSw(d) : ''}</div>
 <p class="muted ms-note">Changes here only apply to this ${kind}.</p>`, { foot: mSaveBtn() });
     onSubmit(f, (fd) => mSave(kind, d, Object.fromEntries(fd)));
   },
@@ -2766,7 +2774,7 @@ A.mMore = (x) => {
   const f = mSheet('More', `<div class="ms-list">${q ? `<a href="/p/quote/${d.token}">View as client</a>
 ${d.status === 'sent' ? item('approveQuote', 'Mark approved') : ''}
 ${['draft', 'sent', 'approved'].includes(d.status) ? item('mSignQuote', d.signedAt ? 'Collect another signature' : 'Collect signature') : ''}
-${d.status !== 'declined' && d.depositFee > 0 && !d.depositPaidAt ? item('markDepositPaid', `Record deposit payment${d.zelleSentAt ? ' (Zelle sent)' : ''}`) : ''}
+${d.status !== 'declined' && d.depositFee > 0 && !d.depositPaidAt ? item('markDepositPaid', `Record deposit payment${d.zelleSentAt ? ` (${sentName(d)} sent)` : ''}`) : ''}
 ${canJob ? item('quoteToJob', 'Create job') : ''}${job ? `<a href="/jobs/edit?id=${job.id}" data-link>Go to job ${esc(job.number)}</a>` : ''}`
     : `<a href="/invoices/view?id=${d.id}&preview=1" data-link>${d.status === 'paid' ? 'View receipt' : 'View invoice'}</a>${d.status !== 'paid' ? item('collectPayment', 'Collect payment') : ''}${planHas('signatures') ? item('mSignInvoice', d.signedAt ? 'Collect another signature' : 'Collect signature') : ''}`}
 <a href="/${x.kind}s/edit?id=${d.id}" data-link>Edit everything at once</a>
@@ -2839,7 +2847,7 @@ function mobileDocPage(kind, d) {
       + mRow('Balance due', money(invBalance(d)), 'b'));
   const yes = (v) => (v ? 'Yes' : 'No');
   const lateRow = !q && lateFeesOn();
-  const paySec = planHas('onlinePayments') || planHas('zelle') || lateRow ? mTap(kind, d, 'payments', `<span class="md-sh">Client payments${ARROW}</span>${planHas('onlinePayments') ? `<span class="md-kv"><small>Accept card payments</small>${yes(d.allowCard !== 'off' && cardReady())}</span>` : ''}${planHas('zelle') ? `<span class="md-kv"><small>Accept Zelle</small>${yes(d.allowZelle !== 'off' && !!company.zelleRecipient)}</span>` : ''}${lateRow ? `<span class="md-kv"><small>Late fees</small>${yes(d.lateFee !== 'off')}</span>` : ''}`, 'md-sec') : '';
+  const paySec = planHas('onlinePayments') || planHas('zelle') || lateRow ? mTap(kind, d, 'payments', `<span class="md-sh">Client payments${ARROW}</span>${planHas('onlinePayments') ? `<span class="md-kv"><small>Accept card payments</small>${yes(d.allowCard !== 'off' && cardReady())}</span>` : ''}${planHas('zelle') ? `<span class="md-kv"><small>Accept Zelle</small>${yes(d.allowZelle !== 'off' && !!company.zelleRecipient)}</span>` : ''}${payAppsOn().map(([k, l]) => `<span class="md-kv"><small>Accept ${l}</small>${yes(d[k] !== 'off')}</span>`).join('')}${lateRow ? `<span class="md-kv"><small>Late fees</small>${yes(d.lateFee !== 'off')}</span>` : ''}`, 'md-sec') : '';
   const on = (k) => d[k] !== 'off';
   const viewSec = q ? '' : mTap(kind, d, 'clientView', `<span class="md-sh">Client view${ARROW}</span><span class="md-text muted">${[['showQty', 'Quantities'], ['showUnit', 'Unit prices'], ['showLineTotals', 'Line totals'], ['showAccountBalance', 'Account balance'], ['showLateStamp', 'Late stamp']].filter(([k]) => on(k)).map(([, l]) => l).join(', ') || 'Totals only'}</span>`, 'md-sec');
   return `<div class="mdoc"><a href="/${kind}s" data-link class="md-back" aria-label="Back to ${kind}s">${CHEV('M15 18l-6-6 6-6')}</a>
@@ -3290,7 +3298,7 @@ ${quoteSel.size ? `<div class="bulk"><strong>${quoteSel.size} selected</strong><
 ${th('client', 'Client')}${th('number', 'Quote number')}<th>Property</th>${th('created', 'Created')}${th('status', 'Status')}${th('total', 'Total', 'r')}</tr>
 ${list.map((q) => { const c = byId(D.clients, q.clientId) || {}; return `<tr class="crow" data-id="${q.id}"><td><input type="checkbox" class="qsel" value="${q.id}" ${quoteSel.has(q.id) ? 'checked' : ''} aria-label="Select ${esc(q.number)}"></td>
 <td><strong>${esc(cname(q))}</strong></td><td>${esc(q.number)}${q.title ? `<div>${esc(q.title)}</div>` : ''}</td><td>${esc(c.address || '')}</td><td style="white-space:nowrap">${fmtDate(day(q.createdAt))}</td>
-<td>${qBadge(quoteStatus(q))}${q.zelleSentAt && !q.depositPaidAt ? ' <span class="badge zelle">Zelle sent</span>' : ''}</td><td class="r">${qHasOpts(q) && !q.chosenOption ? `<small class="muted qo-from">${q.options.length} options from</small><strong>${money(Math.min(...Object.values(q.optionTotals || {}).map((t) => t.total)))}</strong>` : `<strong>${money(q.total)}</strong>`}</td></tr>`; }).join('') || `<tr><td colspan="7" class="empty">${D.quotes.length ? 'No quotes match these filters' : 'No quotes yet'}</td></tr>`}</table></div></div>`;
+<td>${qBadge(quoteStatus(q))}${q.zelleSentAt && !q.depositPaidAt ? ` <span class="badge zelle">${sentName(q)} sent</span>` : ''}</td><td class="r">${qHasOpts(q) && !q.chosenOption ? `<small class="muted qo-from">${q.options.length} options from</small><strong>${money(Math.min(...Object.values(q.optionTotals || {}).map((t) => t.total)))}</strong>` : `<strong>${money(q.total)}</strong>`}</td></tr>`; }).join('') || `<tr><td colspan="7" class="empty">${D.quotes.length ? 'No quotes match these filters' : 'No quotes yet'}</td></tr>`}</table></div></div>`;
     $$('[data-qv]').forEach((s) => s.addEventListener('change', (e) => { quoteView[e.target.dataset.qv] = e.target.value; refresh(); }));
     let t; $('#qq').addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(async () => { quoteView.q = e.target.value; await refresh(); const q = $('#qq'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 250); });
     $('#qSelAll').addEventListener('change', (e) => { list.forEach((q) => (e.target.checked ? quoteSel.add(q.id) : quoteSel.delete(q.id))); refresh(); });
@@ -3330,8 +3338,8 @@ A.setDeposit = (d) => {
 };
 A.markDepositPaid = (d) => {
   const q = byId(D.quotes, d.id);
-  payDialog({ title: `Record deposit · ${q.number}`, amount: q.depositFee, max: q.total, method: q.zelleSentAt ? 'zelle' : '',
-    note: q.zelleSentAt ? 'The client reported sending the deposit by Zelle. Check your bank before recording it.' : '',
+  payDialog({ title: `Record deposit · ${q.number}`, amount: q.depositFee, max: q.total, method: q.zelleSentAt ? sentVia(q) : '',
+    note: q.zelleSentAt ? `The client reported sending the deposit by ${sentName(q)}. Check that it arrived before recording it.` : '',
     async save(body) { await api('POST', `/api/quotes/${q.id}/mark-deposit-paid`, body); toast('Deposit recorded'); refresh(); } });
 };
 A.quoteToJob = (d) => {
@@ -3397,7 +3405,7 @@ ${batchBanner()}<div class="cstats">
 <div class="card ctable"><div class="tablewrap"><table><tr>${th('client', 'Client')}${th('number', 'Invoice number')}${th('due', 'Due date')}<th>Subject</th>${th('status', 'Status')}${th('total', 'Total', 'r')}${th('balance', 'Balance', 'r')}</tr>
 ${list.map((i) => `<tr class="crow" data-id="${i.id}"><td><strong>${esc(cname(i))}</strong></td><td>${esc(i.number)}</td>
 <td style="white-space:nowrap">${i.status === 'paid' ? fmtDate(i.dueDate) : i.dueDate && i.dueDate <= i.issueDate ? 'Due upon receipt' : fmtDate(i.dueDate)}</td><td>${esc(invSubject(i))}</td>
-<td>${iBadge(i.displayStatus)}${i.zelleSentAt && i.status !== 'paid' ? ` <span class="badge zelle" title="Client reported a Zelle payment on ${fmtDate(i.zelleSentAt)}">Zelle sent</span>` : ''}</td>
+<td>${iBadge(i.displayStatus)}${i.zelleSentAt && i.status !== 'paid' ? ` <span class="badge zelle" title="Client reported a ${sentName(i)} payment on ${fmtDate(i.zelleSentAt)}">${sentName(i)} sent</span>` : ''}</td>
 <td class="r"><strong>${money(i.total)}</strong></td><td class="r"><strong>${money(invBalance(i))}</strong></td></tr>`).join('') || `<tr><td colspan="7" class="empty">${D.invoices.length ? 'No invoices match these filters' : 'No invoices yet'}</td></tr>`}</table></div></div>`;
     $$('[data-iv]').forEach((s) => s.addEventListener('change', (e) => { invView[e.target.dataset.iv] = e.target.value; refresh(); }));
     let t; $('#iq').addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(async () => { invView.q = e.target.value; await refresh(); const q = $('#iq'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 250); });
@@ -3450,8 +3458,8 @@ A.sendInvoice = (d) => sendDialog('invoice', byId(D.invoices, d.id));
 // record a payment received outside the app (cash, check, Zelle…) on an invoice; part payments allowed
 A.collectPayment = (d) => {
   const inv = byId(D.invoices, d.id); const owed = invBalance(inv);
-  payDialog({ title: `Collect payment · ${inv.number}`, amount: owed, max: owed, method: inv.zelleSentAt ? 'zelle' : '',
-    note: inv.zelleSentAt ? 'The client reported sending this by Zelle. Check your bank before recording it.' : '',
+  payDialog({ title: `Collect payment · ${inv.number}`, amount: owed, max: owed, method: inv.zelleSentAt ? sentVia(inv) : '',
+    note: inv.zelleSentAt ? `The client reported sending this by ${sentName(inv)}. Check that it arrived before recording it.` : '',
     async save(body) { const r = await api('POST', `/api/invoices/${inv.id}/payments`, body); toast(r.status === 'paid' ? `${inv.number} is paid in full` : `Payment recorded. ${money(r.balanceDue)} still owed`); refresh(); } });
 };
 A.markPaid = A.collectPayment;

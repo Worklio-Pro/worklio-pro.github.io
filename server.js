@@ -1699,7 +1699,10 @@ app.put('/api/company', (req, res) => {
   }
   const allowed = ['name', 'email', 'phone', 'website', 'address', 'logo', 'taxRate', 'paymentTermsDays', 'invoiceFooter', 'brandColor', 'accentColor', 'zelleRecipient', 'zelleName', 'quoteDisclaimer', 'invoiceDisclaimer', ...Object.keys(PREFIX_DEFAULTS),
     ...ADDRESS_PARTS, 'taxIdName', 'taxIdNumber', 'taxName', 'taxDescription', 'hours', ...Object.keys(REGIONAL)];
+  const handles = {}; // Venmo / Cash App / PayPal.me: a pasted link and a leading @ or $ are fine
+  for (const m of PAY_APPS) if (m.field in b) { const h = payHandle(b[m.field], m.host); if (h === null) return res.status(400).json({ error: `Enter your ${m.label} ${m.what}, like ${m.eg}` }); handles[m.field] = h; }
   for (const k of allowed) if (k in b) db.company[k] = k === 'taxRate' || k === 'paymentTermsDays' ? Number(b[k]) || 0 : typeof b[k] === 'string' ? b[k].trim().slice(0, 500) : b[k];
+  Object.assign(db.company, handles);
   if (b.lateFee && typeof b.lateFee === 'object') { try { db.company.lateFee = cleanLateFee(b.lateFee, db.company.lateFee); } catch (e) { return res.status(400).json({ error: e.message }); } }
   for (const k of ['addressPrivate', 'showHours']) if (k in b) db.company[k] = b[k] === true || b[k] === 'on' || b[k] === 'true';
   if (ADDRESS_PARTS.some((k) => k in b)) db.company.address = composeAddress(db.company); // the one-line address used everywhere else
@@ -2750,19 +2753,52 @@ ${o.invoice ? (d.depositApplied > 0 ? row(`Deposit collected (quote ${esc(d.depo
     : d.depositFee > 0 ? row(`Deposit${d.depositType === 'percent' ? ` (${d.depositValue}%)` : ''}`, money(d.depositFee)) + row('Balance after deposit', money(d.total - d.depositFee)) : ''}</table>`;
 }
 
-// Zelle has no API for receiving payments: show the business's Zelle details, let the client report they sent it,
-// and the business confirms it (Mark paid / Mark deposit paid) once it shows up in their bank.
-function zelleBox(amount, memo, action, sentAt) {
-  const z = db.company.zelleRecipient; if (!z || !tenancy.has('zelle')) return '';
-  return `<div style="background:#f5f3ff;padding:16px;border-radius:8px;margin-top:16px;border:1px solid #c4b5fd">
-<h3 style="margin-top:0">Pay with Zelle</h3>
+// Paying outside the app: Zelle, Venmo, Cash App and PayPal. None of them tells us a payment arrived, so the client says they sent it
+// (the business gets an email and a "… sent" badge) and the business records it (Collect payment / Record deposit) once it shows up.
+// Venmo, Cash App and PayPal.me take a link with the amount filled in; Zelle has no links, so the client copies the email or phone.
+const PAY_APPS = [
+  { key: 'venmo', label: 'Venmo', allow: 'allowVenmo', field: 'venmoHandle', host: /^venmo\.com\/(?:u\/)?/i, what: 'username', eg: '@YourBusiness', show: (h) => '@' + h,
+    link: (h, amt, memo) => `https://venmo.com/${encodeURIComponent(h)}?txn=pay&amount=${amt}&note=${encodeURIComponent(memo)}` },
+  { key: 'cashapp', label: 'Cash App', allow: 'allowCashapp', field: 'cashappTag', host: /^cash\.app\//i, what: '$Cashtag', eg: '$YourBusiness', show: (h) => '$' + h,
+    link: (h, amt) => `https://cash.app/$${encodeURIComponent(h)}/${amt}` },
+  { key: 'paypal', label: 'PayPal', allow: 'allowPaypal', field: 'paypalHandle', host: /^paypal\.me\//i, what: 'PayPal.me name', eg: 'paypal.me/YourBusiness', show: (h) => 'paypal.me/' + h,
+    link: (h, amt) => `https://paypal.me/${encodeURIComponent(h)}/${amt}` },
+];
+const PAY_VIA = { zelle: 'Zelle', ...Object.fromEntries(PAY_APPS.map((m) => [m.key, m.label])) };
+// '' clears it; null means it isn't a handle
+function payHandle(v, host) {
+  const h = String(v || '').trim().replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(host, '').replace(/^[@$]/, '').replace(/[/?#].*$/, '');
+  return !h ? '' : /^[A-Za-z0-9_.-]{1,40}$/.test(h) ? h : null;
+}
+// the ways this quote or invoice can be paid outside the app (each switched on or off per document, like card payments)
+function offlineMethods(doc) {
+  if (!tenancy.has('zelle')) return [];
+  const c = db.company; const on = (k) => doc[k] !== 'off';
+  return [c.zelleRecipient && on('allowZelle') ? { key: 'zelle', label: 'Zelle' } : null, ...PAY_APPS.filter((m) => c[m.field] && on(m.allow))].filter(Boolean);
+}
+// base: the page's address; "I've sent it" posts to base/sent/<method>
+function offlineBox(doc, amount, memo, base) {
+  const methods = offlineMethods(doc); if (!methods.length) return '';
+  const wrap = (html) => `<div style="background:#f5f3ff;padding:16px;border-radius:8px;margin-top:16px;border:1px solid #c4b5fd">${html}</div>`;
+  if (doc.zelleSentAt) return wrap(`<p style="margin:0">✓ You told us you sent this payment by ${esc(PAY_VIA[doc.sentVia] || 'Zelle')} on ${esc(niceDate(doc.zelleSentAt))}. We'll confirm it once it arrives.</p>`);
+  const amt = (Math.round(amount * 100) / 100).toFixed(2); const sm = 'padding:6px 12px;font-size:14px';
+  const sent = (m) => `<form method="post" action="${esc(`${base}/sent/${m.key}`)}" style="margin-top:10px"><button class="btn alt" style="${sm}">I've sent the payment by ${esc(m.label)}</button></form>`;
+  const box = (m) => {
+    if (m.key === 'zelle') {
+      const z = db.company.zelleRecipient;
+      return `<h3 style="margin-top:0">Pay with Zelle</h3>
 <p style="margin:0 0 6px">Send <strong>${money(amount)}</strong> with Zelle to:</p>
-<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><strong style="font-size:18px">${esc(z)}</strong><button type="button" class="btn alt" style="padding:6px 12px;font-size:14px" data-v="${esc(z)}" onclick="navigator.clipboard.writeText(this.dataset.v);this.textContent='Copied'">Copy</button></div>
+<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><strong style="font-size:18px">${esc(z)}</strong><button type="button" class="btn alt" style="${sm}" data-v="${esc(z)}" onclick="navigator.clipboard.writeText(this.dataset.v);this.textContent='Copied'">Copy</button></div>
 ${db.company.zelleName ? `<div class="muted">Registered to ${esc(db.company.zelleName)}. Check this name before you send.</div>` : ''}
-<p class="muted">Use your bank's app or the Zelle app, and put <strong>${esc(memo)}</strong> in the memo.</p>
-${sentAt ? `<p style="margin-bottom:0">✓ You told us you sent this payment on ${esc(niceDate(sentAt))}. We'll confirm it once it arrives.</p>`
-    : `<form method="post" action="${esc(action)}"><button class="btn alt">I've sent the payment by Zelle</button></form>`}
-</div>`;
+<p class="muted" style="margin-bottom:0">Use your bank's app or the Zelle app, and put <strong>${esc(memo)}</strong> in the memo.</p>${sent(m)}`;
+    }
+    const h = db.company[m.field];
+    return `<h3 style="margin-top:0">Pay with ${esc(m.label)}</h3>
+<p style="margin:0 0 10px">Send <strong>${money(amount)}</strong> to <strong>${esc(m.show(h))}</strong>.</p>
+<a class="btn" href="${esc(m.link(h, amt, memo))}" target="_blank" rel="noopener">Open ${esc(m.label)}</a>
+<p class="muted" style="margin-bottom:0">Check the amount, and put <strong>${esc(memo)}</strong> in the note.</p>${sent(m)}`;
+  };
+  return methods.map((m) => wrap(box(m))).join('');
 }
 // ---------- Stripe (online card payments) ----------
 // Each business takes card payments into its own Stripe account, connected with "Connect with Stripe" in App Settings (Stripe Connect):
@@ -3049,9 +3085,9 @@ app.post('/api/payment-detail/:id/receipt', async (req, res) => {
   res.json({ ok: true, to: c.email, status: n.status });
 });
 
-function tellBusinessZelle(what, amount, clientName) {
+function tellBusinessSent(via, what, amount, clientName) {
   if (!db.company.email) return;
-  sendTemplate('zelleReported', db.company.email, { client: clientName || 'A client', amount: money(amount), what, business: db.company.name, account_url: baseUrl() }).catch(() => {});
+  sendTemplate('zelleReported', db.company.email, { client: clientName || 'A client', amount: money(amount), what, method: PAY_VIA[via], business: db.company.name, account_url: baseUrl() }).catch(() => {});
 }
 
 // Add a tip: No tip / 10% / 15% / 20% / Other; the pay button shows the new total as they choose (Checkout gets a separate Tip line)
@@ -3080,7 +3116,7 @@ app.get('/pay/:token', (req, res) => {
   const card = !methods.length ? '' : live
     ? `<form method="post" action="/pay/${esc(inv.token)}/checkout">${paySettings().tips && due > 0 ? tipPicker(due, methods) : ''}<button class="btn" id="payBtn">${payButtonLabel(methods, due)}</button></form>${methods.length > 1 ? '<p class="muted">Card or bank account (ACH)</p>' : ''}`
     : '';
-  const zelle = on('allowZelle') ? zelleBox(due, `Invoice ${inv.number}`, `/pay/${inv.token}/zelle-sent`, inv.zelleSentAt) : '';
+  const zelle = offlineBox(inv, due, `Invoice ${inv.number}`, `/pay/${inv.token}`);
   const preview = !!currentUser(req); const payOff = (html) => (preview ? previewOff(html, 'opacity:.55') : html);
   const previewNote = preview ? `<p style="margin:12px 0;padding:12px 16px;border-radius:10px;background:#fdf2dc;color:#6b4a00;font-size:14px">${PREVIEW_NOTE}</p>` : '';
   res.send(shell(`Invoice ${inv.number}`, `<h1>Invoice ${esc(inv.number)} <span class="badge ${st === 'paid' ? 'paid' : ''}">${esc(st === 'overdue' ? 'past due' : st)}</span></h1>
@@ -3094,12 +3130,16 @@ ${previewNote}${st === 'paid' ? `<p>Paid on ${esc(niceDate(inv.paidAt))}. Thank 
 ${inv.disclaimer ? `<div style="margin:16px 0;padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px;white-space:pre-wrap" class="muted">${esc(inv.disclaimer)}</div>` : `<p class="muted">${esc(db.company.invoiceFooter)}</p>`}`));
 });
 app.use('/pay', express.urlencoded({ extended: false }));
-app.post('/pay/:token/zelle-sent', (req, res) => {
+// the client says they paid outside the app: zelleSentAt is when (for any method; the name is older than the others), sentVia is how.
+// /zelle-sent is the older address, still answered for pages already open.
+const invoiceSent = (req, res) => {
   const inv = db.invoices.find((x) => x.token === req.params.token);
   if (!inv) return res.status(404).send('Not found');
-  if (inv.status !== 'paid' && !inv.zelleSentAt) { inv.zelleSentAt = iso(new Date()); save(); tellBusinessZelle(`invoice ${inv.number}`, withStatus(inv).balanceDue, findClient(inv.clientId)?.name); }
+  const via = req.params.via || 'zelle';
+  if (inv.status !== 'paid' && !inv.zelleSentAt && offlineMethods(inv).some((m) => m.key === via)) { inv.zelleSentAt = iso(new Date()); inv.sentVia = via; save(); tellBusinessSent(via, `invoice ${inv.number}`, withStatus(inv).balanceDue, findClient(inv.clientId)?.name); }
   res.redirect(`/pay/${inv.token}`);
-});
+};
+app.post('/pay/:token/sent/:via', invoiceSent); app.post('/pay/:token/zelle-sent', invoiceSent);
 app.post('/pay/:token/checkout', async (req, res) => {
   const inv = db.invoices.find((x) => x.token === req.params.token);
   if (!inv || !stripeKey() || !onlineMethods('invoice', inv).length) return res.status(400).send('Payments unavailable');
@@ -3136,8 +3176,8 @@ app.get('/p/quote/:token', (req, res) => {
 ${onlineMethods('quote', q).length ? `<form method="post" action="/p/quote/${esc(q.token)}/pay-deposit" style="display:flex;gap:8px">
 <button class="btn">${payButtonLabel(onlineMethods('quote', q), q.depositFee, 'deposit of ')}</button>
 </form>` : ''}
-${q.allowZelle !== 'off' ? zelleBox(q.depositFee, `Deposit for quote ${q.number}`, `/p/quote/${q.token}/zelle-sent`, q.zelleSentAt) : ''}
-${!onlineMethods('quote', q).length && (q.allowZelle === 'off' || !db.company.zelleRecipient || !tenancy.has('zelle')) ? `<p class="muted">Please contact ${esc(db.company.name)} at ${esc(db.company.phone || db.company.email)} to arrange your deposit payment.</p>` : ''}
+${offlineBox(q, q.depositFee, `Deposit for quote ${q.number}`, `/p/quote/${q.token}`)}
+${!onlineMethods('quote', q).length && !offlineMethods(q).length ? `<p class="muted">Please contact ${esc(db.company.name)} at ${esc(db.company.phone || db.company.email)} to arrange your deposit payment.</p>` : ''}
 </div>`;
     } else {
       depositSection = `<div style="background:#f0fdf4;padding:16px;border-radius:8px;margin-top:16px;border:1px solid #86efac">
@@ -3593,12 +3633,14 @@ app.post('/p/quote/:token/sign', (req, res) => {
   addSignedNote('quote', q); save(); tellBusinessQuote(q, 'signed');
   res.redirect(`/p/quote/${q.token}`);
 });
-app.post('/p/quote/:token/zelle-sent', (req, res) => {
+const depositSent = (req, res) => {
   const q = db.quotes.find((x) => x.token === req.params.token);
   if (!q) return res.status(404).send('Not found');
-  if (q.depositFee > 0 && !q.depositPaidAt && !q.zelleSentAt) { q.zelleSentAt = iso(new Date()); save(); tellBusinessZelle(`the deposit on quote ${q.number}`, q.depositFee, findClient(q.clientId)?.name); }
+  const via = req.params.via || 'zelle';
+  if (q.depositFee > 0 && !q.depositPaidAt && !q.zelleSentAt && offlineMethods(q).some((m) => m.key === via)) { q.zelleSentAt = iso(new Date()); q.sentVia = via; save(); tellBusinessSent(via, `the deposit on quote ${q.number}`, q.depositFee, findClient(q.clientId)?.name); }
   res.redirect(`/p/quote/${q.token}`);
-});
+};
+app.post('/p/quote/:token/sent/:via', depositSent); app.post('/p/quote/:token/zelle-sent', depositSent);
 app.post('/api/quotes/:id/mark-deposit-paid', (req, res) => {
   const q = db.quotes.find((x) => x.id === req.params.id);
   if (!q) return res.status(404).json({ error: 'Not found' });
