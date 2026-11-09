@@ -2061,3 +2061,19 @@ label.bk-auto input{width:auto;margin:0}
 .item-row.qi .qi-name .svc-ac{left:86px}
 .item-row.qi .qi-opt{width:390px}
 @media (max-width:1000px){.item-row.qi .fl>span{width:78px}}
+/* matrix grid: not the app's table look; every box centered in its column, row names centered on their boxes, "$" beside the price */
+.mx-tbl{width:auto;min-width:0}
+.mx-tbl th,.mx-tbl td{vertical-align:middle;text-transform:none;letter-spacing:0;padding:5px 6px}
+.mx-tbl thead th{text-align:center;font-size:13px;font-weight:600}
+.mx-tbl tbody th,.mx-tbl tfoot th{text-align:left;font-size:13px;color:var(--muted)}
+.mx-tbl td>input{display:block;margin:0 auto;width:64px;height:36px}
+.mx-tbl .affix{display:flex;align-items:center;justify-content:center;gap:3px;width:max-content;margin:0 auto}
+.mx-tbl .affix i{font-style:normal;color:var(--muted)}
+.mx-tbl .affix input{width:72px;height:36px}
+.mx-tbl tbody td,.mx-tbl tbody th{border-bottom:0}
+.mx-tbl .mx-pr td,.mx-tbl .mx-pr th{border-bottom:1px solid var(--line)}
+.mx-tbl .mx-rt,.mx-tbl .mx-cq{text-align:center}
+.mx-tbl td>input{width:76px}
+.mx-tbl .affix{width:76px;height:36px;padding:0 8px;border:1px solid var(--border);border-radius:8px;background:var(--card);box-sizing:border-box}
+.mx-tbl .affix input{flex:1;width:auto;min-width:0;height:34px;padding:0;border:0;background:transparent;box-shadow:none}.mx-tbl .affix input:focus{outline:0}
+.mx-tbl .affix:focus-within{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand)}
