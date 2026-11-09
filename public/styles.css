@@ -2114,3 +2114,16 @@ label.bk-auto input{width:auto;margin:0}
 .mx-how ol{margin:0 0 10px;padding-left:20px;display:grid;gap:8px;line-height:1.45}
 .mx-how p{margin:0}
 @media (max-width:640px){.mx-demo{transform:none;max-width:100%;overflow-x:auto}.mx-buy-act{width:100%}.mx-buy-act .btn{flex:1}}
+/* Products & services: the matrix pricing add-on banner */
+.mx-promo{display:flex;align-items:center;gap:14px;margin:0 0 14px;padding:12px 14px;border:1px solid var(--tint-border);border-radius:12px;background:linear-gradient(100deg,var(--tint) 0%,var(--card) 75%)}
+.mx-promo-ic{flex:none;display:grid;grid-template-columns:repeat(3,18px);gap:3px;padding:6px;border-radius:9px;background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow-sm)}
+.mx-promo-ic i{display:block;height:14px;border-radius:3px;background:var(--surface-2);border:1px solid var(--line);font-style:normal;font-size:8px;line-height:12px;text-align:center;color:var(--muted);font-weight:600}
+.mx-promo-ic i.h{background:var(--brand);border-color:var(--brand);color:#fff}
+.mx-promo-txt{flex:1;min-width:0;display:grid;gap:2px;line-height:1.4}
+.mx-promo-txt span{color:var(--muted);font-size:14px}
+.mx-promo .btn{flex:none}
+.mx-promo-x{flex:none;color:var(--muted)}
+@media (max-width:640px){.mx-promo{flex-wrap:wrap;position:relative;padding-right:40px}.mx-promo-ic{display:none}.mx-promo .btn{width:100%}.mx-promo-x{position:absolute;top:6px;right:6px}}
+/* App Settings → General: the Matrix line items card, pointed out when opened from elsewhere */
+@keyframes mxFlash{0%,100%{box-shadow:var(--shadow-sm)}35%{box-shadow:0 0 0 4px color-mix(in srgb,var(--brand) 35%,transparent)}}
+#matrix-items.mx-flash{animation:mxFlash 1.6s ease 2}
