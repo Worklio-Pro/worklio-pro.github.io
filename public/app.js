@@ -654,10 +654,12 @@ A.setTheme = (d) => { applyTheme(d.t); $$('.ap-card').forEach((b) => { b.classLi
 /* ===== line items editor (quotes + invoices) ===== */
 const round2 = (n) => Math.round(n * 100) / 100;
 // price = unit price the client sees (cost plus markup as % of cost or flat $ per unit); the server recomputes it the same way
-const readItems = (root) => $$('.item-row', root).map((r, k) => {
+const itemOf = (r, k) => {
   const cost = Number($('.cost', r).value) || 0; const markup = Number($('.markup', r).value) || 0; const markupType = $('.mtype', r).value;
   return { desc: $('.desc', r).value.trim(), details: $('.details', r).value, qty: Number($('.qty', r).value) || 0, cost, markup, markupType, price: round2(markupType === 'flat' ? cost + markup : cost * (1 + markup / 100)), ...($('.iopt', r) ? { opt: $('.iopt', r).value } : {}), ...(r.dataset.np && !(Number($('.cost', r).value) > 0) ? { needsPrice: true } : {}), ...(r.dataset.fee ? { lateFee: true } : {}), ...(r.dataset.job ? { job: r.dataset.job } : {}), ...(k && r.classList.contains('sub') ? { sub: true } : {}) }; // Snap to quote: still to be priced; a late fee line; a combined invoice's job
-});
+};
+const rowItems = (r, k) => (r.classList.contains('mx') ? mxItemsOf(r) : [itemOf(r, k)]); // a matrix row (matrix line items) is several
+const readItems = (root) => $$('.item-row', root).flatMap(rowItems);
 // ---- line items not in Products & services yet: offered for the catalog after a quote, job or invoice is saved (phones: a checkbox on the line page) ----
 // Names you said no to, and "Don't ask me again", are kept in this browser; only people who can manage Products & services are asked.
 const CAT_SKIP = 'catalogSkip';
@@ -668,7 +670,7 @@ const canAddCatalog = () => planHas('services') && canDo('services') && !catSkip
 function newCatalogItems(items) {
   if (!canAddCatalog()) return [];
   const known = new Set([...(D.services || []).map((s) => catKey(s.name)), ...(catSkip().names || [])]); const out = [];
-  for (const i of items || []) { const k = catKey(i.desc); if (!k || i.lateFee || known.has(k)) continue; known.add(k); out.push(i); }
+  for (const i of items || []) { const k = catKey(i.desc); if (!k || i.lateFee || i.matrix || i.mx || known.has(k)) continue; known.add(k); out.push(i); }
   return out;
 }
 // a catalog item's price is what the line's Unit cost fills in from, so the line's unit cost is saved (its markup stays on the line)
@@ -696,7 +698,7 @@ function recalc(root) {
   if (!$('.calc', root)) return; // no Product / Service section (job page for technicians)
   if (root._optRows) root._optRows(); // quote options: every line item has its Option box
   const items = readItems(root); const rate = Number($('[name=taxRate]', root).value) || 0;
-  $$('.item-row', root).forEach((r, i) => { $('.amt', r).textContent = money(items[i].qty * items[i].price); r.classList.toggle('np-on', !!items[i].needsPrice); });
+  $$('.item-row', root).forEach((r, i) => { const its = rowItems(r, i); $('.amt', r).textContent = money(its.reduce((s, x) => s + x.qty * x.price, 0)); r.classList.toggle('np-on', its.some((x) => x.needsPrice)); if (r.classList.contains('mx')) mxSums(r); });
   // discount comes off the subtotal before tax (the server computes it the same way)
   const dv = Math.max(0, Number($('[name=discountValue]', root).value) || 0); const dPct = $('[name=discountType]', root).value === 'percent';
   // late fee lines are in the subtotal but never discounted or taxed
@@ -798,9 +800,9 @@ A.addItemBelow = (d, el) => {
 // ⋯ → Duplicate line item: an exact copy right below it (what's typed so far, its option on a quote with options), as an ordinary line (not a late fee)
 A.dupItem = (d, el) => {
   const root = el.closest('form'); const row = el.closest('.item-row'); const menu = el.closest('details'); if (menu) menu.open = false;
-  const { lateFee, ...it } = readItems(root)[$$('.item-row', root).indexOf(row)];
-  row.insertAdjacentHTML('afterend', qItemRow(it)); const copy = row.nextElementSibling;
-  recalc(root); flashRow(copy); $('.desc', copy).focus();
+  const { lateFee, ...it } = rowItems(row, $$('.item-row', root).indexOf(row))[0];
+  row.insertAdjacentHTML('afterend', it.matrix ? mxRow(it) : qItemRow(it)); const copy = row.nextElementSibling;
+  recalc(root); flashRow(copy); $('.desc, .mx-name', copy).focus();
 };
 // ⋯ → Make sub item: indented under the main line above it (still priced and counted on its own; at $0 the client sees "Included")
 A.subItem = (d, el) => {
@@ -811,9 +813,122 @@ A.subItem = (d, el) => {
 };
 // the Product / Service card shared by the quote and invoice editors; `extra` goes under the totals
 const itemsCard = (items, extra, t) => `<div class="qcard"><h2>Product / Service</h2>
-<div id="items">${(items && items.length ? items : [{}]).map(qItemRow).join('')}</div>
-<button type="button" class="btn alt sm" data-act="addItem">+ Add line item</button>
+<div id="items">${((items || []).filter((i) => !i.mx).length ? items.filter((i) => !i.mx) : [{}]).map((i) => (i.matrix ? mxRow(i) : qItemRow(i))).join('')}</div>
+<div class="add-items"><button type="button" class="btn alt sm" data-act="addItem">+ Add line item</button>${mxOn() ? '<button type="button" class="btn alt sm" data-act="addMx">+ Add matrix item</button>' : ''}</div>
 <div class="totals qtotals"><div class="calc">${totalsRows(t || {})}</div>${extra}</div></div>`;
+// ---- matrix line items (App Settings → General → Matrix line items; company.matrixItems { on, sizes, colors }) ----
+// A separate kind of line, beside the regular ones (which don't change): sizes across, each with its own price, colors down, a quantity in each box.
+// The line itself (item.matrix) is a heading; each box with a quantity becomes a sub item under it ("M · Navy", qty × that size's price; item.mx),
+// so totals, PDFs, the client's pages and quote → job → invoice work as for any line. The server rebuilds those sub items from the grid.
+const MX_SIZES = ['S', 'M', 'L', 'XL', '2XL'];
+const mxOn = () => !!(company.matrixItems && company.matrixItems.on);
+const mxDefaults = () => { const m = company.matrixItems || {}; return { sizes: m.sizes && m.sizes.length ? m.sizes : MX_SIZES, colors: m.colors || [], price: {}, qty: {} }; };
+const mxList = (v) => [...new Set(String(v || '').split(',').map((s) => s.replace(/\|/g, '/').trim().slice(0, 30)).filter((s) => s && s !== '__proto__'))].slice(0, 20);
+const mxKey = (s, c) => `${s}|${c}`;
+const mxLines = (m, opt) => (m.colors.length ? m.colors : ['']).flatMap((c) => m.sizes.map((s) => {
+  const q = Number(m.qty[mxKey(s, c)]) || 0; const p = Number(m.price[s]) || 0;
+  return q > 0 ? { desc: [s, c].filter(Boolean).join(' · '), details: '', qty: q, cost: p, markup: 0, markupType: 'percent', price: p, sub: true, mx: true, ...(opt !== undefined ? { opt } : {}) } : null;
+}).filter(Boolean));
+// the sub items that belong to the matrix line at index i
+const mxGroup = (items, i) => { const out = []; for (let k = i + 1; items[k] && items[k].mx; k++) out.push(items[k]); return out; };
+const mxSum = (items, i) => round2(mxGroup(items, i).reduce((s, x) => s + x.qty * x.price, 0));
+const mxCount = (items, i) => mxGroup(items, i).reduce((s, x) => s + (Number(x.qty) || 0), 0);
+// the grid, shared by the computer editor and the phone page
+const mxTable = (m) => { const rows = m.colors.length ? m.colors : ['']; return `<div class="mx-scroll"><table class="mx-tbl"><thead><tr><th></th>${m.sizes.map((s) => `<th>${esc(s)}</th>`).join('')}<th class="mx-rt">Qty</th></tr></thead><tbody>
+<tr class="mx-pr"><th>Price</th>${m.sizes.map((s) => `<td><div class="affix"><i>$</i><input class="mx-p" type="number" step="any" min="0" inputmode="decimal" data-s="${esc(s)}" value="${m.price[s] ? esc(m.price[s]) : ''}" placeholder="0" aria-label="Price, ${esc(s)}"></div></td>`).join('')}<td></td></tr>
+${rows.map((c) => `<tr><th>${c ? esc(c) : 'Quantity'}</th>${m.sizes.map((s) => `<td><input class="mx-q" type="number" step="any" min="0" inputmode="numeric" data-s="${esc(s)}" data-c="${esc(c)}" value="${m.qty[mxKey(s, c)] ? esc(m.qty[mxKey(s, c)]) : ''}" placeholder="0" aria-label="How many${c ? ` ${esc(c)}` : ''}, ${esc(s)}"></td>`).join('')}<td class="mx-rt mx-rq"></td></tr>`).join('')}</tbody>
+${rows.length > 1 ? `<tfoot><tr><th>Qty</th>${m.sizes.map((s) => `<td class="mx-cq" data-s="${esc(s)}"></td>`).join('')}<td class="mx-rt mx-tq"></td></tr></tfoot>` : ''}</table></div>`; };
+const mxRead = (el, base) => {
+  const m = { sizes: base.sizes, colors: base.colors, price: {}, qty: {} };
+  $$('.mx-p', el).forEach((i) => { m.price[i.dataset.s] = Math.max(0, Number(i.value) || 0); });
+  $$('.mx-q', el).forEach((i) => { const n = Math.max(0, Number(i.value) || 0); if (n) m.qty[mxKey(i.dataset.s, i.dataset.c)] = n; });
+  return m;
+};
+function mxSums(el) { // how many in each color row, each size column, and in all
+  const v = (i) => Math.max(0, Number(i.value) || 0); const qs = $$('.mx-q', el); const fmt = (n) => (n ? String(round2(n)) : '');
+  $$('tbody tr:not(.mx-pr)', el).forEach((tr) => { $('.mx-rq', tr).textContent = fmt($$('.mx-q', tr).reduce((s, i) => s + v(i), 0)); });
+  $$('.mx-cq', el).forEach((td) => { td.textContent = fmt(qs.filter((i) => i.dataset.s === td.dataset.s).reduce((s, i) => s + v(i), 0)); });
+  const t = $('.mx-tq', el); if (t) t.textContent = fmt(qs.reduce((s, i) => s + v(i), 0));
+}
+// keeps the prices and quantities still in the grid after its sizes or colors change
+const mxReshape = (m, sizes, colors) => {
+  const n = { sizes, colors, price: {}, qty: {} };
+  for (const s of sizes) { if (m.price[s]) n.price[s] = m.price[s]; for (const c of colors.length ? colors : ['']) { const q = m.qty[mxKey(s, c)]; if (q) n.qty[mxKey(s, c)] = q; } }
+  // colors added to a grid without any: its quantities go to the first color (and back when the last color is removed)
+  if (!m.colors.length && colors.length) for (const s of sizes) { if (m.qty[mxKey(s, '')] && !n.qty[mxKey(s, colors[0])]) n.qty[mxKey(s, colors[0])] = m.qty[mxKey(s, '')]; }
+  if (m.colors.length === 1 && !colors.length) for (const s of sizes) { if (m.qty[mxKey(s, m.colors[0])]) n.qty[mxKey(s, '')] = m.qty[mxKey(s, m.colors[0])]; }
+  return n;
+};
+const mxBase = (r) => ({ sizes: JSON.parse(r.dataset.sizes || '[]'), colors: JSON.parse(r.dataset.colors || '[]') });
+// a matrix line on the computer editor: [heading line, ...its sub items]
+function mxItemsOf(r) {
+  const m = mxRead(r, mxBase(r)); const opt = $('.iopt', r) ? $('.iopt', r).value : undefined; const lines = mxLines(m, opt);
+  const desc = $('.mx-name', r).value.trim() || (lines.length ? 'Item' : '');
+  return [{ desc, details: $('.details', r).value, qty: 1, cost: 0, markup: 0, markupType: 'percent', price: 0, matrix: m, ...(opt !== undefined ? { opt } : {}) }, ...lines];
+}
+function mxRow(it) {
+  const m = it.matrix;
+  return `<div class="item-row qi mx" data-opt="${esc(it.opt || '')}" data-sizes="${esc(JSON.stringify(m.sizes))}" data-colors="${esc(JSON.stringify(m.colors))}"><button type="button" class="drag-h" aria-label="Drag to reorder (or use the arrow keys)" title="Drag to reorder">${DRAG_DOTS}</button><label class="fl qi-name"><span>Matrix item</span><input class="mx-name" autocomplete="off" placeholder="Item name, e.g. Custom t-shirt" value="${esc(it.desc || '')}"></label>
+<div class="mx-info muted">A price for each size, and how many of each. Each one becomes a line under this one.</div>
+<div class="fl amt-box"><span>Total</span><div class="amt"></div></div>
+<details class="menu row-menu"><summary aria-label="Line item options" title="Line item options">⋯</summary><div class="menu-list">
+<button type="button" data-act="mxAxes">Edit sizes &amp; colors</button><button type="button" data-act="addItemBelow">Add line item below</button><button type="button" data-act="dupItem">Duplicate line item</button><button type="button" class="danger-text" data-act="rmItem">Remove line item</button></div></details>
+<label class="fl qi-desc"><span>Description</span><textarea class="details" rows="2" placeholder="Shown to the client, e.g. Printed on 3 sides">${esc(it.details || '')}</textarea></label>
+<div class="mx-grid">${mxTable(m)}</div></div>`;
+}
+function mxAxesDialog(m, done, title, okLabel) {
+  const mb = modal(title, `<form><p class="muted" style="margin-top:0">Separate them with commas. Each size has its own price. Colors are optional.</p>
+<label>Sizes<input name="sizes" value="${esc(m.sizes.join(', '))}" placeholder="S, M, L, XL, 2XL"></label>
+<label>Colors<input name="colors" value="${esc(m.colors.join(', '))}" placeholder="e.g. Navy, Black, White"></label>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">${okLabel || 'Done'}</button></div></form>`);
+  const f = $('form', mb);
+  f.addEventListener('submit', (e) => { e.preventDefault(); const sizes = mxList(f.sizes.value); if (!sizes.length) return toast('Enter at least one size', true); closeModal(); done(mxReshape(m, sizes, mxList(f.colors.value))); });
+  f.sizes.focus();
+}
+// + Add matrix item: choose the sizes and colors (the App Settings ones to start), then fill in the grid
+A.addMx = (d, el) => {
+  const root = el.closest('form');
+  mxAxesDialog(mxDefaults(), (m) => {
+    const rows = $$('.item-row', root); const only = rows.length === 1 && !rows[0].classList.contains('mx') && !$('.desc', rows[0]).value.trim() ? rows[0] : null; // replaces the empty starting line
+    const html = mxRow({ matrix: m }); if (only) only.outerHTML = html; else $('#items', root).insertAdjacentHTML('beforeend', html);
+    const row = $$('.item-row.mx', root).pop(); recalc(root); flashRow(row); $('.mx-name', row).focus();
+  }, 'Add matrix item', 'Add');
+};
+A.mxAxes = (d, el) => {
+  const row = el.closest('.item-row'); const menu = el.closest('details'); if (menu) menu.open = false;
+  mxAxesDialog(mxRead(row, mxBase(row)), (m) => {
+    row.dataset.sizes = JSON.stringify(m.sizes); row.dataset.colors = JSON.stringify(m.colors); $('.mx-grid', row).innerHTML = mxTable(m);
+    recalc(row.closest('form')); flashRow(row);
+  }, 'Sizes & colors');
+};
+// phones: a list line for a matrix item (its sizes' total) or one of its sub items
+const mItemInner = (items, it, i) => `<strong>${esc(it.desc)}</strong>${it.details ? `<span class="md-det">${esc(it.details)}</span>` : ''}<span class="md-qp">${it.matrix ? `<span>${mxCount(items, i)} in all</span><span>${money(mxSum(items, i))}</span>` : `<span>${esc(it.qty)} × ${money(it.price)}</span><span>${money(round2(it.qty * it.price))}</span>`}</span>`;
+const mxLineHtml = (items, it, i) => `<div class="md-tap md-item sub mx-ln">${mItemInner(items, it, i)}</div>`; // edited from its matrix line
+// phones: the matrix line's page (name, description, sizes, colors, the grid)
+function mMatrix(kind, d, i, x) {
+  const it = i >= 0 ? d.items[i] : { desc: '', details: '', matrix: mxDefaults(), opt: x.opt || '' };
+  let m = it.matrix;
+  const f = mSheet(i >= 0 ? 'Edit matrix item' : 'Add matrix item', `${mField('Name', `<input name="desc" value="${esc(it.desc || '')}" maxlength="200" autocomplete="off" placeholder="e.g. Custom t-shirt">`)}
+<label class="mf"><span>Description</span><textarea name="details" rows="3" placeholder="Shown to the client">${esc(it.details || '')}</textarea></label>
+${mField('Sizes', `<input name="sizes" value="${esc(m.sizes.join(', '))}" placeholder="S, M, L, XL" autocomplete="off">`)}
+${mField('Colors', `<input name="colors" value="${esc(m.colors.join(', '))}" placeholder="Optional, e.g. Navy, Black" autocomplete="off">`)}
+<p class="mnt-sh">Price for each size, and how many</p><div class="mx-grid m-mx">${mxTable(m)}</div>
+${kind === 'quote' && qHasOpts(d) ? mField('Option', `<select name="opt"><option value="">All options</option>${d.options.map((o) => `<option value="${esc(o.id)}" ${it.opt === o.id ? 'selected' : ''}>${esc(o.name)}</option>`).join('')}</select>`) : ''}
+<div class="m-total"><span>Total</span><strong class="m-tot"></strong></div>`, { full: true, foot: `${mSaveBtn('Save Line Item')}${i >= 0 ? `<button type="button" class="btn alt ms-more ms-del" data-act="mRmItem" aria-label="Delete line item" title="Delete line item">${svgIcon('<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/>', 22)}</button>` : ''}` });
+  f._ctx = { kind, d, i };
+  const grid = $('.mx-grid', f);
+  const tot = () => { mxSums(grid); $('.m-tot', f).textContent = money(round2(mxLines(mxRead(grid, m)).reduce((s, l) => s + l.qty * l.price, 0))); };
+  const regrid = () => { const sizes = mxList(f.sizes.value); const now = mxRead(grid, m); m = mxReshape(now, sizes.length ? sizes : m.sizes, mxList(f.colors.value)); grid.innerHTML = mxTable(m); tot(); };
+  f.sizes.addEventListener('change', regrid); f.colors.addEventListener('change', regrid); grid.addEventListener('input', tot); tot();
+  onSubmit(f, (fd) => {
+    regrid(); const mm = mxRead(grid, m); const desc = String(fd.get('desc')).trim(); if (!desc) throw new Error('Enter the item’s name');
+    const opt = fd.has('opt') ? String(fd.get('opt')) : undefined;
+    const head = { desc, details: String(fd.get('details')), qty: 1, cost: 0, markup: 0, markupType: 'percent', price: 0, matrix: mm, ...(opt !== undefined ? { opt } : {}) };
+    const items = [...(d.items || [])];
+    if (i >= 0) items.splice(i, 1 + mxGroup(items, i).length, head, ...mxLines(mm, opt)); else items.push(head, ...mxLines(mm, opt));
+    return mSave(kind, d, { items }, i >= 0 ? 'Line item saved' : 'Line item added');
+  });
+}
 // ---- saved discounts (App Settings → General → Saved discounts; company.savedDiscounts): a name, $ or %, and the amount ----
 // On quotes, jobs and invoices "Add Discount" opens them for a quick pick (or Custom amount); the ▾ beside the discount's name switches.
 // A picked one's name is saved with the document (discountName) and shows on it instead of "Discount"; typing your own amount drops the name.
@@ -2229,7 +2344,7 @@ const depositPaid = (q) => (q.depositPaidAt ? round2(Number(q.depositPaidAmount 
 const vt = (label, value, cls = '') => `<div class="vt ${cls}"><span>${label}</span><span>${value}</span></div>`;
 const payLink = (rowId, label, date, extra = '') => `<a href="/payments/view?id=${encodeURIComponent(rowId)}" data-link class="pay-link">${label}</a> • ${fmtDate(String(date).slice(0, 10))}${extra}`;
 const viewItems = (d) => `<table class="vitems"><thead><tr><th>Line Item</th><th class="r">Quantity</th><th class="r">Unit Price</th><th class="r">Total</th></tr></thead><tbody>
-${(d.items || []).map((i) => `<tr${i.sub ? ' class="sub"' : ''}><td><strong>${esc(i.desc)}</strong>${i.details ? `<div class="vd">${esc(i.details)}</div>` : ''}</td><td class="r">${esc(i.qty)}</td><td class="r">${money(i.price)}</td><td class="r">${money(round2(i.qty * i.price))}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">No line items</td></tr>'}</tbody></table>`;
+${(d.items || []).map((i) => `<tr${i.sub ? ' class="sub"' : ''}><td><strong>${esc(i.desc)}</strong>${i.details ? `<div class="vd">${esc(i.details)}</div>` : ''}</td>${i.matrix ? '<td></td><td></td><td></td>' : `<td class="r">${esc(i.qty)}</td><td class="r">${money(i.price)}</td><td class="r">${money(round2(i.qty * i.price))}</td>`}</tr>`).join('') || '<tr><td colspan="4" class="muted">No line items</td></tr>'}</tbody></table>`;
 const viewTotals = (d) => vt('Subtotal', money(d.subtotal || 0)) + (d.discount ? vt(esc(discLabel(d)), '−' + money(d.discount)) : '')
   + vt(`Tax (${Number(d.taxRate) || 0}%)`, money(d.tax || 0)) + vt('<strong>Total</strong>', `<strong>${money(d.total || 0)}</strong>`, 'grand');
 const textCard = (kind, d, sec, title, text, empty) => `<div class="qcard"><div class="qcard-h"><h2>${title}</h2>${editBtn(kind, d, sec)}</div>${text ? `<p class="vtext">${esc(text)}</p>` : `<p class="muted" style="margin:0">${empty}</p>`}</div>`;
@@ -2503,6 +2618,7 @@ function mItemPicker(kind, d, x) {
   const draw = () => { const q = f.q.value.trim().toLowerCase(); const list = svcGrouped(D.services.filter((s) => !q || [s.name, s.description, s.category].join(' ').toLowerCase().includes(q)));
     $('.mli-list', f).innerHTML = svcRows(list, (s) => `<button type="button" class="mli-row" data-svc="${esc(s.id)}"><strong>${esc(s.name)}</strong><span class="mli-sub"><span>${esc(s.description || '')}</span><span>${money(s.price || 0)}</span></span></button>`, (c) => `<p class="mli-cat">${esc(c)}</p>`) || `<p class="muted mli-none">${D.services.length ? 'No line items match' : 'No products or services saved yet. Tap + to add a line item.'}</p>`; };
   draw(); f.q.addEventListener('input', draw);
+  if (mxOn()) { $('.mli-list', f).insertAdjacentHTML('beforebegin', '<button type="button" class="mli-row mli-mx"><strong>+ Matrix item</strong><span class="mli-sub"><span>Sizes and colors, with a price for each size</span></span></button>'); $('.mli-mx', f).addEventListener('click', () => M_EDIT.item(kind, d, { ...x, chosen: true, mx: true })); }
   $('.mli-list', f).addEventListener('click', (e) => { const b = e.target.closest('[data-svc]'); if (b) open(b.dataset.svc); });
   $('#msheet .mli-new').addEventListener('click', () => open(''));
 }
@@ -2553,6 +2669,7 @@ ${mField('Due date', `<input type="date" name="dueDate" value="${esc(d.dueDate |
   },
   item(kind, d, x) {
     const i = x.i === '' || x.i === undefined ? -1 : Number(x.i);
+    if ((i >= 0 && d.items[i] && d.items[i].matrix) || (i < 0 && x.mx)) return mMatrix(kind, d, i, x); // matrix line items
     if (i < 0 && !x.chosen) return mItemPicker(kind, d, x); // a new line starts from the list of services
     const svc = x.svc && D.services.find((s) => s.id === x.svc);
     const it = i >= 0 ? d.items[i] : svc ? { qty: 1, desc: svc.name, details: svc.description || '', cost: svc.price } : { qty: 1 };
@@ -2665,7 +2782,7 @@ const invReceipts = (d) => {
 };
 function mobileInvoicePreview(d) {
   const c = byId(D.clients, d.clientId) || {}; const receipts = invReceipts(d); const on = (k) => d[k] !== 'off';
-  const items = (d.items || []).map((it) => `<div class="mp-item${it.sub ? ' sub' : ''}"><div><strong>${esc(it.desc)}</strong>${it.details ? `<small>${esc(it.details)}</small>` : ''}${on('showQty') || on('showUnit') ? `<small>${[on('showQty') ? `Qty ${esc(it.qty)}` : '', on('showUnit') ? money(it.price) : ''].filter(Boolean).join(' × ')}</small>` : ''}</div>${on('showLineTotals') ? `<span>${money(round2(it.qty * it.price))}</span>` : ''}</div>`).join('');
+  const items = (d.items || []).map((it) => `<div class="mp-item${it.sub ? ' sub' : ''}"><div><strong>${esc(it.desc)}</strong>${it.details ? `<small>${esc(it.details)}</small>` : ''}${!it.matrix && (on('showQty') || on('showUnit')) ? `<small>${[on('showQty') ? `Qty ${esc(it.qty)}` : '', on('showUnit') ? money(it.price) : ''].filter(Boolean).join(' × ')}</small>` : ''}</div>${on('showLineTotals') && !it.matrix ? `<span>${money(round2(it.qty * it.price))}</span>` : ''}</div>`).join('');
   const row = (l, v, cls = '') => `<div class="mp-row ${cls}"><span>${l}</span><span>${v}</span></div>`;
   const invoice = `<div class="mp-inv"><div class="mp-title"><h2>Invoice #${esc(d.number)}</h2>${iBadge(d.displayStatus || d.status)}</div>
 <p class="mp-meta">Billed to ${esc(c.name || 'no client')}${d.subject ? ` · ${esc(d.subject)}` : ''}<br>Issued ${fmtDate((d.issueDate || '').slice(0, 10))} · Due ${d.dueDate && d.dueDate > d.issueDate ? fmtDate(d.dueDate) : 'upon receipt'}</p>
@@ -2692,7 +2809,7 @@ function mobileDocPage(kind, d) {
   const btn = (act, label, cls = '') => `<button type="button" class="btn ${cls}" data-act="${act}" data-kind="${kind}" data-id="${d.id}">${label}</button>`;
   const acts = q ? [canJob ? btn('quoteToJob', 'Create Job') : '', btn('sendDoc', d.sentAt ? 'Resend' : 'Send')]
     : [d.status !== 'paid' ? btn('collectPayment', 'Collect Payment') : '', d.status !== 'paid' ? btn('sendDoc', d.sentAt ? 'Resend' : 'Send') : `<a class="btn" href="/invoices/view?id=${d.id}&preview=1" data-link>View Receipt</a>`];
-  const itemTap = (it, i) => mTap(kind, d, 'item', `<strong>${esc(it.desc)}</strong>${it.details ? `<span class="md-det">${esc(it.details)}</span>` : ''}<span class="md-qp"><span>${esc(it.qty)} × ${money(it.price)}</span><span>${money(round2(it.qty * it.price))}</span></span>`, `md-item${it.sub ? ' sub' : ''}`, `data-i="${i}"`);
+  const itemTap = (it, i) => (it.mx ? mxLineHtml(d.items, it, i) : mTap(kind, d, 'item', mItemInner(d.items, it, i), `md-item${it.sub ? ' sub' : ''}`, `data-i="${i}"`));
   const opts = q && qHasOpts(d); // Good / Better / Best: the items in every option, then each option's own with its total and its own +
   const items = !opts ? (d.items || []).map(itemTap).join('') : [['', 'In every option'], ...d.options.map((o) => [o.id, o.name])].map(([id, name]) => {
     const list = (d.items || []).map((it, i) => [it, i]).filter(([it]) => (it.opt || '') === id); if (!id && !list.length) return ''; const t = id && (d.optionTotals || {})[id];
@@ -2932,7 +3049,7 @@ function mobileJobPage(j) {
   const btn = (act, label, cls = '') => `<button type="button" class="btn ${cls}" data-act="${act}" data-id="${j.id}">${label}</button>`;
   const acts = [onThisJob(j) ? clockBtn(j) : '', ...(edit ? [j.status === 'scheduled' ? btn('completeJob', 'Mark Complete') : btn('reopenJob', 'Reopen', 'alt'), st === 'invoice' && planHas('invoices') ? btn('jobInvoice', 'Create Invoice', 'need-invoices') : ''] : [])];
   const team = (j.staffIds || []).map((id) => byId(D.staff, id)).filter(Boolean);
-  const items = (d.items || []).map((it, i) => tap('item', `<strong>${esc(it.desc)}</strong>${it.details ? `<span class="md-det">${esc(it.details)}</span>` : ''}<span class="md-qp"><span>${esc(it.qty)} × ${money(it.price)}</span><span>${money(round2(it.qty * it.price))}</span></span>`, `md-item${it.sub ? ' sub' : ''}`, `data-i="${i}"`)).join('');
+  const items = (d.items || []).map((it, i) => (it.mx ? mxLineHtml(d.items, it, i) : tap('item', mItemInner(d.items, it, i), `md-item${it.sub ? ' sub' : ''}`, `data-i="${i}"`))).join('');
   const paid = q ? depositPaid(q) : 0;
   const totals = (d.items || []).length ? mRow('Subtotal', money(d.subtotal || 0), 'b')
     + tapRow('discount', d.discount ? esc(discLabel(d)) : 'Discount', d.discount ? '−' + money(d.discount) : money(0))
@@ -3509,7 +3626,7 @@ const askVisitScope = () => new Promise((done) => {
 });
 // which of the fields a repeat copies to later visits this save changes
 const SERIES_KEYS = ['title', 'clientId', 'address', 'startTime', 'endTime', 'anytime', 'staffIds', 'description', 'items', 'taxRate', 'discountType', 'discountValue', 'discountName'];
-const seriesNorm = (k, v) => JSON.stringify(k === 'items' ? (v || []).map((i) => [i.desc || '', Number(i.qty) || 0, Number(i.price) || 0, i.details || '', !!i.sub]) : k === 'staffIds' ? [...(v || [])].sort() : k === 'anytime' ? !!v : ['taxRate', 'discountValue'].includes(k) ? Number(v) || 0 : String(v ?? ''));
+const seriesNorm = (k, v) => JSON.stringify(k === 'items' ? (v || []).map((i) => [i.desc || '', Number(i.qty) || 0, Number(i.price) || 0, i.details || '', !!i.sub, i.matrix ? JSON.stringify(i.matrix) : '']) : k === 'staffIds' ? [...(v || [])].sort() : k === 'anytime' ? !!v : ['taxRate', 'discountValue'].includes(k) ? Number(v) || 0 : String(v ?? ''));
 const seriesChanges = (j, body) => SERIES_KEYS.filter((k) => k in body && (k !== 'items' || canDo('jobs.prices')) && seriesNorm(k, j[k]) !== seriesNorm(k, body[k]));
 const ruleKey = (r) => (r ? JSON.stringify(Object.keys(r).filter((k) => r[k] !== undefined && !(k === 'count' && r.end !== 'count') && !(k === 'until' && r.end !== 'until')).sort().map((k) => [k, r[k]])) : 'null');
 const sameRule = (a, b) => ruleKey(a) === ruleKey(b);

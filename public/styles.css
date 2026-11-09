@@ -2021,3 +2021,23 @@ label.bk-auto input{width:auto;margin:0}
 .item-row.qi.sub{padding-left:26px;background:linear-gradient(var(--line),var(--line)) 8px 14px/2px calc(100% - 28px) no-repeat}
 .vitems tr.sub td:first-child{padding-left:28px}.vitems tr.sub td:first-child strong{font-weight:500}
 .md-item.sub,.mp-item.sub{padding-left:18px;border-left:2px solid var(--line)}
+
+/* matrix line items: the grid inside a line (computer editor) and on the phone page */
+.add-items{display:flex;flex-wrap:wrap;gap:8px}
+.item-row.qi.mx .mx-info{grid-column:3/6;align-self:center;font-size:13px;line-height:1.4}
+.item-row.qi.mx .mx-grid{grid-column:2/7;min-width:0}
+.mx-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.mx-tbl{border-collapse:collapse;font-size:14px;min-width:100%}
+.mx-tbl th,.mx-tbl td{padding:4px;text-align:center;white-space:nowrap}
+.mx-tbl thead th{font-weight:600;color:var(--muted);font-size:13px}
+.mx-tbl tbody th,.mx-tbl tfoot th{text-align:left;font-weight:500;padding-right:10px;max-width:140px;overflow:hidden;text-overflow:ellipsis}
+.mx-tbl input{width:64px;min-width:52px;text-align:center;padding:7px 4px}
+.mx-tbl .affix input{width:72px;text-align:left}
+.mx-tbl .mx-pr td,.mx-tbl .mx-pr th{padding-bottom:10px;border-bottom:1px solid var(--line)}
+.mx-tbl tbody tr:nth-child(2) td,.mx-tbl tbody tr:nth-child(2) th{padding-top:10px}
+.mx-tbl .mx-rt{color:var(--muted);font-variant-numeric:tabular-nums;min-width:40px}
+.mx-tbl tfoot td,.mx-tbl tfoot th{border-top:1px solid var(--line);color:var(--muted);font-variant-numeric:tabular-nums}
+@media (max-width:1000px){.item-row.qi.mx .mx-info{display:none}.item-row.qi.mx .amt-box,.item-row.qi.mx .qi-desc,.item-row.qi.mx .mx-grid,.item-row.qi.mx .qi-opt{grid-column:2/4}.item-row.qi.mx .row-menu{grid-column:4;grid-row:1}}
+.m-mx{margin:0 0 12px}.m-mx .mx-tbl input{font-size:16px}
+.md-item.mx-ln{cursor:default}
+.mli-mx{border-bottom:1px solid var(--line)}

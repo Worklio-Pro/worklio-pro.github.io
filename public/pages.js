@@ -2130,6 +2130,21 @@ const savedDiscCard = () => `<div class="card" id="saved-discounts"><h2>Saved di
 ${savedDiscs().length ? `<div class="sd-view">${savedDiscs().map((x) => `<div><span>${esc(x.name)}</span><span class="muted">${discAmt(x)}</span></div>`).join('')}</div>` : '<p class="muted">None yet.</p>'}
 <button type="button" class="btn alt sm" data-act="sdEdit">${savedDiscs().length ? 'Edit saved discounts' : '+ Add a discount'}</button></div>`;
 A.sdEdit = () => savedDiscountsDialog(() => refresh());
+// App Settings → General → Matrix line items: turns on "+ Add matrix item" (sizes × colors grid) beside "+ Add line item"; saves as you change it
+const mxCard = () => { const m = company.matrixItems || {}; return `<div class="card" id="matrix-items"><h2>Matrix line items</h2><p class="muted" style="margin-top:0">For items sold in sizes and colors, like custom t-shirts. Adds <strong>+ Add matrix item</strong> beside <strong>+ Add line item</strong> on quotes, jobs and invoices: a grid with a price for each size and how many of each size and color. Regular line items stay as they are.</p>
+<form id="mxf">${switchRow('on', 'Matrix line items', !!m.on)}<div class="mx-fields"${m.on ? '' : ' hidden'}>
+<label>Sizes to start with<input name="sizes" value="${esc((m.sizes && m.sizes.length ? m.sizes : MX_SIZES).join(', '))}" placeholder="S, M, L, XL, 2XL"></label>
+<label>Colors to start with<input name="colors" value="${esc((m.colors || []).join(', '))}" placeholder="Optional, e.g. Black, White, Navy"></label>
+<p class="muted sm">Separate them with commas. You can change them on each item.</p></div></form></div>`; };
+function wireMx() {
+  const f = $('#mxf'); if (!f) return;
+  f.addEventListener('submit', (e) => e.preventDefault());
+  f.addEventListener('change', async () => {
+    const fd = new FormData(f); const b = { on: fd.getAll('on').includes('on'), sizes: mxList(fd.get('sizes')), colors: mxList(fd.get('colors')) };
+    $('.mx-fields', f).hidden = !b.on;
+    try { const saved = await api('PUT', '/api/company', { matrixItems: b }); company = { ...company, ...saved }; toast(b.on ? 'Matrix line items saved' : 'Matrix line items are off'); } catch (err) { toast(err.message, true); }
+  });
+}
 // App Settings tabs; the hash keeps the tab (links to #payments, #zelle or #late-fees open Payments). Every card stays in the page so form="cf" fields still save.
 const AS_TABS = [['general', 'General'], ['white-label', 'White Label'], ['payments', 'Payments']];
 function wireAsTabs(main) {
@@ -2154,11 +2169,11 @@ async function companyPage(main, full) {
 <div class="row"><label>Zelle email or phone<input form="cf" name="zelleRecipient" value="${esc(c.zelleRecipient || '')}" placeholder="payments@yourbusiness.com or +17135550100"></label><label>Name registered with Zelle<input form="cf" name="zelleName" value="${esc(c.zelleName || '')}" placeholder="e.g. TLB Group LLC"></label></div></div>` : '';
   main.innerHTML = `<div class="head"><div><h1>${full ? 'App Settings' : 'Company settings'}</h1>${full ? '<p class="sub">Defaults, white label and payments for every quote and invoice. Business details, social media and tax settings are on <a href="/settings/company" data-link>Company Profile</a>.</p>' : ''}</div></div>
 ${full ? `<div class="as-tabs" role="tablist">${AS_TABS.map(([t, n]) => `<button type="button" role="tab" data-as-tab="${t}" aria-controls="as-${t}">${n}</button>`).join('')}</div>
-<div class="as-panel" id="as-general" role="tabpanel">${planCard(c.account)}<div class="as-cols"><div class="as-col">${regionalBox(c)}</div><div class="as-col">${defaultsBox}${savedDiscCard()}${prefixBox}</div></div></div>
+<div class="as-panel" id="as-general" role="tabpanel">${planCard(c.account)}<div class="as-cols"><div class="as-col">${regionalBox(c)}</div><div class="as-col">${defaultsBox}${savedDiscCard()}${mxCard()}${prefixBox}</div></div></div>
 <div class="as-panel" id="as-white-label" role="tabpanel"><div class="as-cols"><div class="as-col">${webAddressCard(c.account)}</div><div class="as-col">${brandBox || `<div class="card"><h2>Branding</h2><p class="muted" style="margin:0">Your own brand and accent colors on quotes, invoices, emails and the client portal come with a plan that includes Branding.</p></div>`}</div></div></div>
 <div class="as-panel" id="as-payments" role="tabpanel"><div class="as-cols"><div class="as-col">${payCard(integ)}${zelleBox}</div><div class="as-col">${lateFeeCard(c)}</div></div></div>
 <form id="cf"></form>` :`<form id="cf" class="cs-form">${companySettingsHtml(c, logoBox)}</form>`}`;
-  if (full) { wireLateFees(); wireAsTabs(main); }
+  if (full) { wireLateFees(); wireMx(); wireAsTabs(main); }
   $$('.prefix-row input').forEach((i) => i.addEventListener('input', () => { i.nextElementSibling.textContent = 'e.g. ' + i.value.trim() + i.dataset.sample; }));
   const ind = $('#cf select[name=industry]', main); if (ind) ind.addEventListener('change', () => { $('#cf [data-other]', main).hidden = ind.value !== 'other'; });
   if (!full) { // Company Profile saves on its own: a field as soon as it changes, the business hours with their pencil

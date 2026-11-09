@@ -175,16 +175,38 @@ const catalogCat = (name) => {
   if (!c || c.n !== list.length || Date.now() - c.at > 2000) { c = { at: Date.now(), n: list.length, map: new Map() }; for (const s of list) { const k = String(s.name || '').trim().toLowerCase(); if (k && s.category && !c.map.has(k)) c.map.set(k, cleanCat(s.category)); } catMaps.set(list, c); }
   return c.map.get(String(name || '').trim().toLowerCase()) || '';
 };
+// ---- matrix line items: a heading line (item.matrix: sizes, each with a price; colors; a quantity per size and color) and its sub items
+// ("M · Navy", item.mx), rebuilt here from the grid every time so they always match it. App Settings → General turns the editor's button on.
+const mxList = (a) => [...new Set((Array.isArray(a) ? a : []).map((x) => String(x == null ? '' : x).replace(/\|/g, '/').trim().slice(0, 30)).filter((x) => x && x !== '__proto__'))].slice(0, 20);
+function mxClean(m) {
+  const sizes = mxList(m.sizes); const colors = mxList(m.colors); if (!sizes.length) return null;
+  const p = m.price && typeof m.price === 'object' ? m.price : {}; const q = m.qty && typeof m.qty === 'object' ? m.qty : {}; const price = {}; const qty = {};
+  for (const s of sizes) { price[s] = round2(Math.max(0, Number(p[s]) || 0)); for (const c of colors.length ? colors : ['']) { const n = round2(Math.max(0, Number(q[`${s}|${c}`]) || 0)); if (n) qty[`${s}|${c}`] = n; } }
+  return { sizes, colors, price, qty };
+}
+const mxLines = (m) => (m.colors.length ? m.colors : ['']).flatMap((c) => m.sizes.map((s) => { const n = m.qty[`${s}|${c}`] || 0; return n ? { desc: [s, c].filter(Boolean).join(' · '), qty: n, cost: m.price[s], markup: 0, markupType: 'percent', sub: true, mx: true } : null; }).filter(Boolean));
+function mxExpand(items) {
+  const out = [];
+  for (const i of items || []) {
+    if (!i || i.mx) continue; // a matrix line's sub items come from its grid
+    const m = i.matrix && typeof i.matrix === 'object' ? mxClean(i.matrix) : null;
+    if (!m) { if (i.matrix) { const { matrix, ...rest } = i; out.push(rest); } else out.push(i); continue; }
+    if (!i.desc) continue;
+    const cat = catalogCat(i.desc) || cleanCat(i.cat);
+    out.push({ ...i, matrix: m, qty: 1, cost: 0, markup: 0, markupType: 'percent', sub: false, needsPrice: false }, ...mxLines(m).map((l) => ({ ...l, opt: i.opt, ...(cat ? { cat } : {}) })));
+  }
+  return out;
+}
 function computeTotals(doc) {
   // the options (quotes only): 2 or 3, each named; anything else means no options
   const opts = Array.isArray(doc.options) ? doc.options.slice(0, 3).map((o) => ({ id: /^[a-z0-9]{4,16}$/.test(o && o.id) ? o.id : uid(), name: String((o && o.name) || '').trim().slice(0, 60), desc: String((o && o.desc) || '').trim().slice(0, 500) })) : [];
   const ids = new Set(opts.map((o) => o.id));
   // price is the client-facing unit price: cost plus a markup (% of cost, or a flat $ per unit). Older items without a cost use their price as the cost.
-  doc.items = (doc.items || []).filter((i) => i.desc).map((i) => {
+  doc.items = mxExpand(doc.items).filter((i) => i.desc).map((i) => {
     const cost = Number(i.cost ?? i.price) || 0; const markup = Number(i.markup) || 0; const markupType = i.markupType === 'flat' ? 'flat' : 'percent';
     const price = round2(markupType === 'flat' ? cost + markup : cost * (1 + markup / 100));
     const cat = catalogCat(i.desc) || cleanCat(i.cat);
-    return { desc: String(i.desc), details: i.details ? String(i.details) : '', qty: Number(i.qty) || 0, cost, markup, markupType, price, ...(cat ? { cat } : {}), ...(i.needsPrice && !(price > 0) ? { needsPrice: true } : {}), ...(i.lateFee ? { lateFee: true } : {}), ...(typeof i.job === 'string' && /^[\w-]{1,40}$/.test(i.job) ? { job: i.job } : {}), ...(opts.length >= 2 ? { opt: ids.has(i.opt) ? i.opt : '' } : {}), ...(i.sub ? { sub: true } : {}) };
+    return { desc: String(i.desc), details: i.details ? String(i.details) : '', qty: Number(i.qty) || 0, cost, markup, markupType, price, ...(cat ? { cat } : {}), ...(i.needsPrice && !(price > 0) ? { needsPrice: true } : {}), ...(i.lateFee ? { lateFee: true } : {}), ...(typeof i.job === 'string' && /^[\w-]{1,40}$/.test(i.job) ? { job: i.job } : {}), ...(opts.length >= 2 ? { opt: ids.has(i.opt) ? i.opt : '' } : {}), ...(i.sub ? { sub: true } : {}), ...(i.matrix ? { matrix: i.matrix } : {}), ...(i.mx ? { mx: true } : {}) };
   });
   if (doc.items[0]) delete doc.items[0].sub; // a sub item sits under the line above it
   doc.taxRate = Number(doc.taxRate) || 0;
@@ -1680,6 +1702,7 @@ app.put('/api/company', (req, res) => {
     if (bad) return res.status(400).json({ error: bad.name ? `Give “${bad.name}” an amount${bad.type === 'percent' ? ' from 0.01 to 100%' : ''}` : 'Give each saved discount a name' });
     db.company.savedDiscounts = list;
   }
+  if (b.matrixItems && typeof b.matrixItems === 'object') db.company.matrixItems = { on: !!b.matrixItems.on, sizes: mxList(b.matrixItems.sizes), colors: mxList(b.matrixItems.colors) }; // matrix line items
   if ('timezone' in b) applyTimezone();
   save(); res.json({ ...db.company, account: accountInfo() });
 });
@@ -2162,8 +2185,8 @@ function signedPdf(kind, d) {
   head();
   for (const it of q && hasOptions(d) ? optionItems(d, shownOption(d).id) : d.items || []) { // a quote with options: the option signed for
     const need = Math.ceil(pdf.width(it.details || '', 10) / Math.max(40, descW)) + String(it.details || '').split('\n').length; if (y + 26 + need * 13 > 720) { pdf.addPage(); y = 64; head(); }
-    const tp = y + 16; const ind = it.sub ? 12 : 0; const inc = included(it); const a = pdf.para(L + 6 + ind, tp, it.desc, 128 - ind, { size: 10, color: INK, lineHeight: 13 }); let b = tp; for (const t of String(it.details || '').split('\n').filter((s) => s.trim())) b = pdf.para(cDesc + 6, b, t, descW, { size: 10, color: INK, lineHeight: 13 });
-    if (qtyOn && !inc) pdf.text(cQty, tp, String(it.qty), { size: 10, color: INK, align: 'right' }); if (unitOn && !inc) pdf.text(cUnit, tp, money(it.price), { size: 10, color: INK, align: 'right' }); if (lineOn) pdf.text(R - 6, tp, inc ? 'Included' : money(round2(it.qty * it.price)), { size: 10, color: INK, align: 'right' }); y = Math.max(a, b) + 4;
+    const tp = y + 16; const ind = it.sub ? 12 : 0; const inc = included(it); const hd = heading(it); const a = pdf.para(L + 6 + ind, tp, it.desc, 128 - ind, { size: 10, color: INK, lineHeight: 13 }); let b = tp; for (const t of String(it.details || '').split('\n').filter((s) => s.trim())) b = pdf.para(cDesc + 6, b, t, descW, { size: 10, color: INK, lineHeight: 13 });
+    if (qtyOn && !inc && !hd) pdf.text(cQty, tp, String(it.qty), { size: 10, color: INK, align: 'right' }); if (unitOn && !inc && !hd) pdf.text(cUnit, tp, money(it.price), { size: 10, color: INK, align: 'right' }); if (lineOn && !hd) pdf.text(R - 6, tp, inc ? 'Included' : money(round2(it.qty * it.price)), { size: 10, color: INK, align: 'right' }); y = Math.max(a, b) + 4;
   }
   pdf.line(L, y, R, y, { color: '#a3a3a3', w: 1.5 }); y += 8;
   if (!job) { // totals
@@ -2361,7 +2384,7 @@ app.post('/api/quotes/:id/convert-to-job', (req, res) => {
   if (!q) return res.status(404).json({ error: 'Not found' });
   if (hasOptions(q) && !q.chosenOption) return res.status(400).json({ error: 'Mark the quote approved with the option the client picked first' });
   const c = findClient(q.clientId); const qItems = quoteItems(q);
-  const job = { id: uid(), number: nextNumber('jobs'), clientId: q.clientId, title: q.title || 'Job from ' + q.number, description: qItems.map((i) => `${i.qty} x ${i.desc}`).join(', '), date: req.body.date || daysFromNow(1), startTime: req.body.startTime || '09:00', endTime: req.body.endTime || '11:00', staffIds: req.body.staffIds || [], status: 'scheduled', quoteId: q.id, address: q.address || (c ? c.address : ''), createdAt: iso(new Date()), items: qItems, taxRate: q.taxRate, discountType: q.discountType, discountValue: q.discountValue };
+  const job = { id: uid(), number: nextNumber('jobs'), clientId: q.clientId, title: q.title || 'Job from ' + q.number, description: qItems.map((i, k) => (i.matrix ? '' : `${i.qty} x ${i.mx ? `${(qItems.slice(0, k).reverse().find((h) => h.matrix) || {}).desc || ''} (${i.desc})`.trim() : i.desc}`)).filter(Boolean).join(', '), date: req.body.date || daysFromNow(1), startTime: req.body.startTime || '09:00', endTime: req.body.endTime || '11:00', staffIds: req.body.staffIds || [], status: 'scheduled', quoteId: q.id, address: q.address || (c ? c.address : ''), createdAt: iso(new Date()), items: qItems, taxRate: q.taxRate, discountType: q.discountType, discountValue: q.discountValue };
   computeTotals(job); autoForms(job, (currentUser(req) || {}).name);
   db.jobs.push(job); if (q.status !== 'approved') q.status = 'approved'; save(); pushScheduleChange(null, job, currentUser(req)); res.status(201).json(job);
 });
@@ -2588,11 +2611,11 @@ function docPdf(kind, d) {
     for (const i of dd.items || []) {
       const lines = Math.ceil(pdf.width(i.details || '', 9.5) / descW) + String(i.details || '').split('\n').length;
       if (y + 34 + (i.details ? lines * 13 : 0) > 740) { pdf.addPage(); y = 64; head(); }
-      const ind = i.sub ? 16 : 0; const inc = included(i); const top = y + 18; let yy = pdf.para(L + 8 + ind, top, i.desc, descW - ind, { size: 10.5, bold: !i.sub, lineHeight: 14 });
+      const ind = i.sub ? 16 : 0; const inc = included(i); const hd = heading(i); const top = y + 18; let yy = pdf.para(L + 8 + ind, top, i.desc, descW - ind, { size: 10.5, bold: !i.sub, lineHeight: 14 });
       for (const t of String(i.details || '').split('\n').filter((t) => t.trim())) yy = pdf.para(L + 8 + ind, yy + 1, t, descW - ind, { size: 9.5, color: gray, lineHeight: 13 });
-      if (showQty && !inc) pdf.text(cQty, top, String(i.qty), { size: 10.5, align: 'right' });
-      if (showUnit && !inc) pdf.text(cUnit, top, money(i.price), { size: 10.5, align: 'right' });
-      if (showLine) pdf.text(R - 8, top, inc ? 'Included' : money(round2(i.qty * i.price)), { size: 10.5, align: 'right' });
+      if (showQty && !inc && !hd) pdf.text(cQty, top, String(i.qty), { size: 10.5, align: 'right' });
+      if (showUnit && !inc && !hd) pdf.text(cUnit, top, money(i.price), { size: 10.5, align: 'right' });
+      if (showLine && !hd) pdf.text(R - 8, top, inc ? 'Included' : money(round2(i.qty * i.price)), { size: 10.5, align: 'right' });
       y = yy + 6; pdf.line(L, y, R, y);
     }
     // totals
@@ -2708,11 +2731,12 @@ input{padding:10px;border:1px solid #d1d5db;border-radius:8px;width:100%;box-siz
 }
 // a sub item at $0: the client sees "Included" instead of prices
 const included = (i) => !!i.sub && !(i.qty * i.price);
+const heading = (i) => !!i.matrix; // a matrix line: its sizes and colors are the priced lines under it
 // o.qty / o.unit / o.line = false hide those columns (invoice "Client view" switches); o.invoice shows the deposit credit
 function itemsTable(d, o = {}) {
   const qty = o.qty !== false; const unit = o.unit !== false; const line = o.line !== false; const span = 1 + qty + unit;
   const row = (label, value) => `<tr><td colspan="${span}" class="r">${label}</td><td class="r">${value}</td></tr>`;
-  return `<table><tr><th>Description</th>${qty ? '<th class="r">Qty</th>' : ''}${unit ? '<th class="r">Price</th>' : ''}<th class="r">${line ? 'Amount' : ''}</th></tr>${d.items.map((i) => { const inc = included(i); return `<tr><td${i.sub ? ' style="padding-left:28px"' : ''}>${esc(i.desc)}${i.details ? `<div class="muted" style="white-space:pre-line">${esc(i.details)}</div>` : ''}</td>${qty ? `<td class="r">${inc ? '' : i.qty}</td>` : ''}${unit ? `<td class="r">${inc ? '' : money(i.price)}</td>` : ''}<td class="r">${inc ? (line || !unit ? 'Included' : '') : line ? money(i.qty * i.price) : ''}</td></tr>`; }).join('')}
+  return `<table><tr><th>Description</th>${qty ? '<th class="r">Qty</th>' : ''}${unit ? '<th class="r">Price</th>' : ''}<th class="r">${line ? 'Amount' : ''}</th></tr>${d.items.map((i) => { const inc = included(i); const hd = heading(i); return `<tr><td${i.sub ? ' style="padding-left:28px"' : ''}>${hd ? `<strong>${esc(i.desc)}</strong>` : esc(i.desc)}${i.details ? `<div class="muted" style="white-space:pre-line">${esc(i.details)}</div>` : ''}</td>${qty ? `<td class="r">${inc || hd ? '' : i.qty}</td>` : ''}${unit ? `<td class="r">${inc || hd ? '' : money(i.price)}</td>` : ''}<td class="r">${hd ? '' : inc ? (line || !unit ? 'Included' : '') : line ? money(i.qty * i.price) : ''}</td></tr>`; }).join('')}
 ${row('Subtotal', money(d.subtotal))}${d.discount > 0 ? row(esc(discLabel(d)), '−' + money(d.discount)) : ''}${row(`${esc(Number(d.taxRate) === Number(db.company.taxRate) && db.company.taxName ? db.company.taxName : 'Tax')} (${d.taxRate}%)`, money(d.tax))}${row('<strong>Total</strong>', `<strong>${money(d.total)}</strong>`)}
 ${o.invoice ? (d.depositApplied > 0 ? row(`Deposit collected (quote ${esc(d.depositQuote)}, ${esc(niceDate(d.depositAppliedAt))})`, '−' + money(d.depositApplied)) + row('<strong>Balance due</strong>', `<strong>${money(d.balanceDue)}</strong>`) : '')
     : d.depositFee > 0 ? row(`Deposit${d.depositType === 'percent' ? ` (${d.depositValue}%)` : ''}`, money(d.depositFee)) + row('Balance after deposit', money(d.total - d.depositFee)) : ''}</table>`;
@@ -3203,7 +3227,7 @@ function quoteView(q, c, { signed, depositSection, sent, preview, business }) {
     + (Number(d.taxRate) ? row(`${esc(taxName)} (${d.taxRate}%)`, money(d.tax)) : '') + row('Total', money(d.total))
     + (d.depositFee > 0 ? row(`Deposit${d.depositType === 'percent' ? ` (${d.depositValue}%)` : ''}`, money(d.depositFee)) : '');
   const itemsOf = (d) => (d.items || []).map((i) => `<div class="qv-it${i.sub ? ' sub' : ''}"><div class="qv-it-d"><strong>${esc(i.desc)}</strong>${i.details ? `<p>${esc(i.details)}</p>` : ''}</div>
-${included(i) ? '<div class="qv-n"></div><div class="qv-n"></div><div class="qv-n"><span class="qv-l">Total</span>Included</div>' : `<div class="qv-n"><span class="qv-l">Qty.</span>${esc(String(i.qty))}</div><div class="qv-n"><span class="qv-l">Unit price</span>${money(i.price)}</div><div class="qv-n"><span class="qv-l">Total</span>${money(i.qty * i.price)}</div>`}</div>`).join('');
+${heading(i) ? '<div class="qv-n"></div><div class="qv-n"></div><div class="qv-n"></div>' : included(i) ? '<div class="qv-n"></div><div class="qv-n"></div><div class="qv-n"><span class="qv-l">Total</span>Included</div>' : `<div class="qv-n"><span class="qv-l">Qty.</span>${esc(String(i.qty))}</div><div class="qv-n"><span class="qv-l">Unit price</span>${money(i.price)}</div><div class="qv-n"><span class="qv-l">Total</span>${money(i.qty * i.price)}</div>`}</div>`).join('');
   // Good / Better / Best: each option with its own items and totals until one is chosen; then only that one
   const parts = quoteParts(q); const many = parts.length > 1;
   const optHead = (p) => (p.opt ? `<div class="qv-oh" id="opt-${esc(p.opt.id)}"><div class="qv-on"><h2>${p.chosen ? 'Your choice: ' : ''}${esc(p.opt.name)}</h2>${p.recommended ? '<span class="qv-rec">Recommended</span>' : ''}${many ? `<span class="qv-ot">${money(p.doc.total)}</span>` : ''}</div>${p.opt.desc ? `<p>${esc(p.opt.desc)}</p>` : ''}</div>` : '');
