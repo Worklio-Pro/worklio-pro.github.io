@@ -2786,20 +2786,36 @@ function offlineBox(doc, amount, memo, base) {
   const box = (m) => {
     if (m.key === 'zelle') {
       const z = db.company.zelleRecipient;
-      return `<h3 style="margin-top:0">Pay with Zelle</h3>
+      return `<h3 style="margin:0 32px 12px 0">Pay with Zelle</h3>
 <p style="margin:0 0 6px">Send <strong>${money(amount)}</strong> with Zelle to:</p>
 <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><strong style="font-size:18px">${esc(z)}</strong><button type="button" class="btn alt" style="${sm}" data-v="${esc(z)}" onclick="navigator.clipboard.writeText(this.dataset.v);this.textContent='Copied'">Copy</button></div>
 ${db.company.zelleName ? `<div class="muted">Registered to ${esc(db.company.zelleName)}. Check this name before you send.</div>` : ''}
 <p class="muted" style="margin-bottom:0">Use your bank's app or the Zelle app, and put <strong>${esc(memo)}</strong> in the memo.</p>${sent(m)}`;
     }
     const h = db.company[m.field];
-    return `<h3 style="margin-top:0">Pay with ${esc(m.label)}</h3>
+    return `<h3 style="margin:0 32px 12px 0">Pay with ${esc(m.label)}</h3>
 <p style="margin:0 0 10px">Send <strong>${money(amount)}</strong> to <strong>${esc(m.show(h))}</strong>.</p>
 <a class="btn" href="${esc(m.link(h, amt, memo))}" target="_blank" rel="noopener">Open ${esc(m.label)}</a>
 <p class="muted" style="margin-bottom:0">Check the amount, and put <strong>${esc(memo)}</strong> in the note.</p>${sent(m)}`;
   };
-  return methods.map((m) => wrap(box(m))).join('');
+  // one tile per app in its brand colors; tapping it opens that app's instructions in a pop-up (a <dialog>)
+  const tile = (m) => `<button type="button" class="pa-t pa-${m.key}" data-pay="${m.key}" aria-haspopup="dialog" aria-label="Pay with ${esc(m.label)}">${PAY_TILE[m.key]}</button>`;
+  const pop = (m) => `<dialog class="pa-d" id="pa-${m.key}" aria-label="Pay with ${esc(m.label)}"><button type="button" class="pa-x" data-close aria-label="Close">×</button>${box(m)}</dialog>`;
+  return `<style>.pa{margin-top:16px}.pa-h{font-weight:600;margin:0 0 8px}.pa-g{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px}
+.pa-t{display:flex;align-items:center;justify-content:center;gap:6px;height:54px;border-radius:10px;border:1px solid transparent;cursor:pointer;font:700 19px/1 system-ui,-apple-system,sans-serif;color:#fff;padding:0 10px}
+.pa-t:focus-visible{outline:3px solid #2563eb;outline-offset:2px}.pa-t:hover{filter:brightness(1.06)}
+.pa-zelle{background:#6d1ed4}.pa-venmo{background:#008cff;font-style:italic;letter-spacing:-.02em}.pa-cashapp{background:#00d64f}.pa-paypal{background:#fff;border-color:#d1d5db;font-style:italic}
+.pa-cashapp b{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:6px;background:#fff;color:#00d64f;font-size:17px}
+.pa-paypal b{color:#003087}.pa-paypal i{color:#009cde}
+.pa-d{border:0;border-radius:14px;padding:22px 20px 20px;width:min(420px,calc(100% - 32px));box-shadow:0 20px 50px rgba(0,0,0,.25)}.pa-d::backdrop{background:rgba(15,23,42,.5)}
+.pa-x{position:absolute;top:10px;right:12px;border:0;background:none;font-size:26px;line-height:1;cursor:pointer;color:#6b7280;padding:4px 8px}</style>
+<div class="pa"><p class="pa-h">Pay with an app</p><div class="pa-g">${methods.map(tile).join('')}</div>${methods.map(pop).join('')}</div>
+<script>(function(){var r=document.currentScript.previousElementSibling;
+r.addEventListener('click',function(e){var t=e.target.closest('[data-pay]');if(t){var d=r.querySelector('#pa-'+t.dataset.pay);if(d&&d.showModal)d.showModal();return}
+var d=e.target.closest('dialog');if(!d)return;var b=d.getBoundingClientRect(),out=e.target===d&&(e.clientX<b.left||e.clientX>b.right||e.clientY<b.top||e.clientY>b.bottom);
+if(out||e.target.closest('[data-close]'))d.close()});})();</script>`;
 }
+const PAY_TILE = { zelle: 'Zelle', venmo: 'venmo', cashapp: '<b>$</b>Cash App', paypal: '<b>Pay</b><i>Pal</i>' };
 // ---------- Stripe (online card payments) ----------
 // Each business takes card payments into its own Stripe account, connected with "Connect with Stripe" in App Settings (Stripe Connect):
 // the platform's key (BILLING_STRIPE_SECRET_KEY or STRIPE_SECRET_KEY) acts on the business's account, so the money goes straight to it.
