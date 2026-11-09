@@ -1865,6 +1865,38 @@ app.post('/api/services/import', (req, res) => {
   }
   save(); res.json({ added });
 });
+// bulk delete from Products & services (the checkboxes on /services); quotes and invoices that use an item keep their lines
+app.post('/api/services/delete', (req, res) => {
+  const ids = new Set((Array.isArray(req.body && req.body.ids) ? req.body.ids : []).map(String));
+  if (!ids.size) return res.status(400).json({ error: 'Select at least one item' });
+  let deleted = 0;
+  for (let i = db.services.length - 1; i >= 0; i--) if (ids.has(db.services[i].id)) { db.services.splice(i, 1); deleted++; }
+  catMaps.delete(db.services); save(); res.json({ deleted });
+});
+// bulk edit from Products & services: set the category (blank = none) and/or the type of the checked items; a field left out stays as it is
+app.post('/api/services/bulk-edit', (req, res) => {
+  const b = req.body || {}; const ids = new Set((Array.isArray(b.ids) ? b.ids : []).map(String));
+  if (!ids.size) return res.status(400).json({ error: 'Select at least one item' });
+  const setCat = typeof b.category === 'string'; const type = b.type === 'product' || b.type === 'service' ? b.type : '';
+  if (!setCat && !type) return res.status(400).json({ error: 'Nothing to change' });
+  let updated = 0;
+  for (const s of db.services) { if (!ids.has(s.id)) continue; if (setCat) s.category = cleanCat(b.category); if (type) s.type = type; updated++; }
+  catMaps.delete(db.services); save(); res.json({ updated });
+});
+// rename a category everywhere it's saved: catalog items, the category kept on quote/job/invoice lines (and repeating-job templates),
+// and expenses' "Counts toward", so reports keep one name. Matched ignoring case; renaming onto a category already used merges the two.
+app.post('/api/services/rename-category', (req, res) => {
+  const from = cleanCat(req.body && req.body.from); const to = cleanCat(req.body && req.body.to);
+  if (!from) return res.status(400).json({ error: 'Pick the category to rename' });
+  if (!to) return res.status(400).json({ error: 'Type the new name' });
+  const is = (c) => cleanCat(c).toLowerCase() === from.toLowerCase();
+  let items = 0;
+  for (const s of db.services) if (is(s.category)) { s.category = to; items++; }
+  if (!items) return res.status(404).json({ error: 'No items have that category' });
+  for (const col of ['quotes', 'jobs', 'invoices', 'jobSeries']) for (const d of db[col] || []) for (const i of (d && d.items) || []) if (i && i.cat && is(i.cat)) i.cat = to;
+  for (const e of db.expenses || []) if (e.bizCat && is(e.bizCat)) e.bizCat = to;
+  catMaps.delete(db.services); save(); res.json({ items, name: to });
+});
 app.post('/api/services/describe', async (req, res) => {
   const name = String(req.body.name || '').trim().slice(0, 200);
   const kind = req.body.type === 'product' ? 'product' : 'service';

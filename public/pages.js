@@ -708,6 +708,7 @@ A.delStaff = async (d) => {
 
 /* ===== /services ===== */
 let svcView = { q: '', sort: 'name', dir: 1, cat: '' }; // cat: one category ('__none' = items without one), '' = all
+const svcSel = new Set(); // checked items, for Edit (category, type) and Delete on the bar above the table
 const svcType = (s) => (s.type === 'product' ? 'Product' : 'Service');
 // the catalog's categories (Products & services → Category), A–Z, one per spelling ignoring case
 const svcCats = () => { const m = new Map(); (D.services || []).forEach((s) => { const c = String(s.category || '').trim(); if (c && !m.has(c.toLowerCase())) m.set(c.toLowerCase(), c); }); return [...m.values()].sort((a, b) => a.localeCompare(b)); };
@@ -720,18 +721,73 @@ PAGES['/services'] = {
     const list = D.services.filter((s) => svcCatIs(s, v.cat) && (!v.q || [s.name, s.description, svcType(s), s.category].join(' ').toLowerCase().includes(v.q.toLowerCase())));
     const key = { name: (s) => (s.name || '').toLowerCase(), type: (s) => svcType(s) + (s.name || '').toLowerCase(), cat: (s) => (s.category ? '0' + s.category.toLowerCase() : '1') + '|' + (s.name || '').toLowerCase(), price: (s) => Number(s.price) || 0 }[v.sort];
     list.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0) * v.dir);
+    { const shown = new Set(list.map((s) => s.id)); [...svcSel].forEach((id) => { if (!shown.has(id)) svcSel.delete(id); }); } // only what's on screen stays checked (a search or filter never leaves hidden items to delete)
     const th = (k, label, cls = '') => `<th class="${cls}"><button class="th-btn" data-act="svcSort" data-k="${k}">${label} <span class="sort ${v.sort === k ? 'on' : ''}">${v.sort === k ? (v.dir > 0 ? '▲' : '▼') : '⇅'}</span></button></th>`;
     main.innerHTML = `<div class="head"><div><h1>Products &amp; services</h1><p class="sub">Add and update your products and services to stay organized when creating quotes, jobs and invoices.</p></div></div>
 <div class="cfilters"><div class="search-x"><input id="sq" type="search" placeholder="Search" value="${esc(v.q)}" aria-label="Search products and services"><button type="button" class="icon-btn" data-act="svcClear" aria-label="Clear search" ${v.q ? '' : 'hidden'}>✕</button></div>
 ${cats.length ? `<select id="svcCat" aria-label="Category" style="width:auto"><option value="">All categories</option>${cats.map((c) => `<option value="${esc(c)}" ${v.cat.toLowerCase() === c.toLowerCase() ? 'selected' : ''}>${esc(c)}</option>`).join('')}<option value="__none" ${v.cat === '__none' ? 'selected' : ''}>No category</option></select>` : ''}
-<a class="btn alt" href="/services/import" data-link style="margin-left:auto">Import</a><button class="btn" data-act="newService">+ Add Item</button></div>
-<div class="card ctable"><div class="tablewrap"><table><tr>${th('name', 'Name')}<th class="svc-desc">Description</th>${cats.length ? th('cat', 'Category') : ''}${th('type', 'Type')}${th('price', 'Price', 'r')}</tr>
-${list.map((s) => `<tr class="crow" data-id="${s.id}"><td><strong>${esc(s.name)}</strong></td><td class="svc-desc">${esc(s.description)}</td>${cats.length ? `<td>${s.category ? `<span class="svc-cat">${esc(s.category)}</span>` : '<span class="muted">—</span>'}</td>` : ''}<td>${svcType(s)}</td><td class="r" style="white-space:nowrap">${money(s.price)}<span class="muted"> / ${esc(s.unit || (s.type === 'product' ? 'each' : 'job'))}</span></td></tr>`).join('')
-  || `<tr><td colspan="${cats.length ? 5 : 4}" class="empty">${D.services.length ? 'Nothing matches your search' : 'No products or services yet. Add your first one.'}</td></tr>`}</table></div></div>`;
+<span style="margin-left:auto"></span>${cats.length ? '<button type="button" class="btn alt" data-act="svcCatsEdit">Categories</button>' : ''}<a class="btn alt" href="/services/import" data-link>Import</a><button class="btn" data-act="newService">+ Add Item</button></div>
+${svcSel.size ? `<div class="bulk"><strong>${svcSel.size} selected</strong><button class="btn sm" data-act="svcBulkEdit">Edit</button><button class="btn danger sm" data-act="svcBulkDelete">Delete</button><button class="btn alt sm" data-act="svcClearSel">Clear selection</button></div>` : ''}
+<div class="card ctable"><div class="tablewrap"><table><tr><th class="sel-td"><input type="checkbox" id="svcSelAll" aria-label="Select all" ${list.length && list.every((s) => svcSel.has(s.id)) ? 'checked' : ''} ${list.length ? '' : 'disabled'}></th>${th('name', 'Name')}<th class="svc-desc">Description</th>${cats.length ? th('cat', 'Category') : ''}${th('type', 'Type')}${th('price', 'Price', 'r')}</tr>
+${list.map((s) => `<tr class="crow" data-id="${s.id}"><td class="sel-td"><input type="checkbox" class="svcsel" value="${s.id}" ${svcSel.has(s.id) ? 'checked' : ''} aria-label="Select ${esc(s.name)}"></td><td><strong>${esc(s.name)}</strong></td><td class="svc-desc">${esc(s.description)}</td>${cats.length ? `<td>${s.category ? `<span class="svc-cat">${esc(s.category)}</span>` : '<span class="muted">—</span>'}</td>` : ''}<td>${svcType(s)}</td><td class="r" style="white-space:nowrap">${money(s.price)}<span class="muted"> / ${esc(s.unit || (s.type === 'product' ? 'each' : 'job'))}</span></td></tr>`).join('')
+  || `<tr><td colspan="${cats.length ? 6 : 5}" class="empty">${D.services.length ? 'Nothing matches your search' : 'No products or services yet. Add your first one.'}</td></tr>`}</table></div></div>`;
+    $('#svcSelAll').addEventListener('change', (e) => { list.forEach((s) => (e.target.checked ? svcSel.add(s.id) : svcSel.delete(s.id))); refresh(); });
+    $$('.svcsel').forEach((b) => b.addEventListener('change', (e) => { e.target.checked ? svcSel.add(e.target.value) : svcSel.delete(e.target.value); refresh(); }));
     if ($('#svcCat')) $('#svcCat').addEventListener('change', (e) => { svcView.cat = e.target.value; refresh(); });
     let t; $('#sq').addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(async () => { svcView.q = e.target.value; await refresh(); const q = $('#sq'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 250); });
-    $$('.crow').forEach((r) => r.addEventListener('click', () => serviceForm(byId(D.services, r.dataset.id))));
+    $$('.crow').forEach((r) => r.addEventListener('click', (e) => {
+      const cell = e.target.closest('.sel-td'); if (!cell) return serviceForm(byId(D.services, r.dataset.id));
+      if (e.target.matches('input')) return; const b = $('input', cell); b.checked = !b.checked; b.dispatchEvent(new Event('change')); // a tap beside the box checks it instead of opening the item
+    }));
   },
+};
+A.svcClearSel = () => { svcSel.clear(); refresh(); };
+// Categories (by Import): each category with its item count and a box to rename it. The server renames it everywhere it's kept
+// (items, quote/job/invoice lines, expenses) so reports stay together; renaming onto a name already used merges the two.
+A.svcCatsEdit = () => {
+  const mb = modal('Categories', '<p class="muted">Rename a category on all its items. Quotes, jobs, invoices and expenses that use it change too, so reports keep it together.</p><div class="svc-cats"></div><div class="foot"><button type="button" class="btn alt" data-act="closeModal">Done</button></div>');
+  const box = $('.svc-cats', mb);
+  const draw = () => {
+    const n = (c) => D.services.filter((s) => svcCatIs(s, c)).length;
+    box.innerHTML = svcCats().map((c) => `<form class="svc-catrow" data-cat="${esc(c)}"><input name="to" value="${esc(c)}" maxlength="40" aria-label="Name of ${esc(c)}"><span class="muted">${n(c)} item${n(c) === 1 ? '' : 's'}</span><button class="btn alt sm" disabled>Rename</button></form>`).join('') || '<p class="muted">No categories left.</p>';
+  };
+  draw();
+  box.addEventListener('input', (e) => { const f = e.target.form; if (f) $('button', f).disabled = !f.to.value.trim() || f.to.value.trim() === f.dataset.cat; });
+  box.addEventListener('submit', async (e) => {
+    e.preventDefault(); const f = e.target; const from = f.dataset.cat; const to = f.to.value.trim(); if (!to || to === from) return;
+    const merge = svcCats().find((c) => c !== from && c.toLowerCase() === to.toLowerCase());
+    if (merge && !confirm(`“${merge}” is already a category. Put the items in “${from}” into “${merge}”?`)) return;
+    $('button', f).disabled = true;
+    try {
+      const r = await api('POST', '/api/services/rename-category', { from, to: merge || to });
+      if (svcView.cat && svcView.cat.toLowerCase() === from.toLowerCase()) svcView.cat = r.name;
+      toast(`Renamed to “${r.name}” on ${r.items} item${r.items === 1 ? '' : 's'}`); await refresh(); draw();
+    } catch (x) { toast(x.message, true); $('button', f).disabled = false; }
+  });
+};
+A.svcBulkDelete = async () => {
+  const n = svcSel.size; if (!n) return;
+  if (!confirm(`Delete ${n} item${n === 1 ? '' : 's'}? Quotes and invoices that already use ${n === 1 ? 'it' : 'them'} keep their lines. This can't be undone.`)) return;
+  try { const r = await api('POST', '/api/services/delete', { ids: [...svcSel] }); svcSel.clear(); toast(`Deleted ${r.deleted} item${r.deleted === 1 ? '' : 's'}`); refresh(); } catch (x) { toast(x.message, true); }
+};
+// Edit on the selection bar: set the category and/or type of every checked item at once ("Keep as is" leaves that field alone)
+A.svcBulkEdit = () => {
+  const n = svcSel.size; if (!n) return;
+  const mb = modal(`Edit ${n} item${n === 1 ? '' : 's'}`, `<form><label>Category<select name="catMode"><option value="keep">Keep as is</option><option value="set">Change to…</option><option value="none">No category</option></select></label>
+<div class="svc-bcat" hidden>${catField('category', '', 'New category', 'Typed exactly as you want it shown. Pick one already used, or type a new one.')}</div>
+<label>Type<select name="type"><option value="">Keep as is</option><option value="service">Service</option><option value="product">Product</option></select></label>
+<p class="muted">Prices, names and descriptions stay as they are. Quotes and invoices already made don't change.</p>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save</button></div></form>`);
+  const f = $('form', mb); const box = $('.svc-bcat', f);
+  f.catMode.addEventListener('change', () => { box.hidden = f.catMode.value !== 'set'; if (!box.hidden) f.category.focus(); });
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault(); const mode = f.catMode.value; const body = { ids: [...svcSel] };
+    if (mode === 'set') { if (!f.category.value.trim()) { toast('Type the new category, or choose No category', true); return f.category.focus(); } body.category = f.category.value; }
+    if (mode === 'none') body.category = '';
+    if (f.type.value) body.type = f.type.value;
+    if (!('category' in body) && !body.type) return toast('Choose what to change', true);
+    try { const r = await api('POST', '/api/services/bulk-edit', body); closeModal(); svcSel.clear(); toast(`Updated ${r.updated} item${r.updated === 1 ? '' : 's'}`); refresh(); } catch (x) { toast(x.message, true); }
+  });
 };
 A.svcSort = (d) => { svcView.dir = svcView.sort === d.k ? -svcView.dir : 1; svcView.sort = d.k; refresh(); };
 A.svcClear = () => { svcView.q = ''; refresh().then(() => $('#sq').focus()); };
