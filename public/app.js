@@ -3139,7 +3139,7 @@ function changesBlock(d, inForm) {
   const earlier = (d.changeRequests || []).filter((r) => r.at > chgAnswered(d)).slice(0, -1).reverse(); // more than one since the last answer
   return `<div class="chg-bar" role="status"><div class="chg-top"><strong>Changes requested</strong><span class="muted">${esc(c ? c.name : 'Client')} · ${when(last)}</span></div>
 <p class="chg-text">${esc(last.text)}</p>${earlier.length ? `<details class="chg-old"><summary>${earlier.length} earlier request${earlier.length === 1 ? '' : 's'}</summary>${earlier.map((r) => `<p><span class="muted">${when(r)}</span> ${esc(r.text)}</p>`).join('')}</details>` : ''}
-<div class="chg-acts">${inForm ? '' : `<a class="btn sm" href="/quotes/edit?id=${d.id}" data-link>Edit quote</a>`}<button type="button" class="btn alt sm" data-act="quoteChangesDone" data-id="${d.id}">Mark as handled</button><span class="muted chg-hint">Sending the quote again also clears this.</span></div></div>`;
+<div class="chg-acts">${inForm ? '' : `<a class="btn" href="/quotes/edit?id=${d.id}" data-link>Edit quote</a>`}<button type="button" class="btn alt" data-act="quoteChangesDone" data-id="${d.id}">Mark as handled</button><span class="muted chg-hint">Sending the quote again also clears this.</span></div></div>`;
 }
 A.quoteChangesDone = async (x) => { const q = await api('POST', `/api/quotes/${x.id}/changes-done`); const d = byId(D.quotes, x.id); if (d) Object.assign(d, q); document.querySelectorAll('.chg-bar').forEach((b) => b.remove()); toast('Marked as handled'); };
 function placeChanges(root, d, inForm) { // above the first card (desktop) or at the top of the quote tab (phone), above Snap to quote

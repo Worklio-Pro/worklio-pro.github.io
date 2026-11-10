@@ -2242,5 +2242,7 @@ label.bk-auto input{width:auto;margin:0}
 .chg-bar{margin:0 0 14px;padding:12px 14px;border:1px solid var(--warn-border);border-left:4px solid #d97706;border-radius:12px;background:var(--warn-bg);font-size:14px}
 .chg-top{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px}.chg-text{margin:6px 0 10px;white-space:pre-wrap;overflow-wrap:anywhere}
 .chg-old{margin:0 0 10px;font-size:13px}.chg-old summary{cursor:pointer;color:var(--link)}.chg-old p{margin:6px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
-.chg-acts{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px}.chg-hint{font-size:12px}
+.chg-acts{display:flex;flex-wrap:wrap;align-items:center;gap:10px 12px}.chg-hint{font-size:12px}
+.chg-acts .btn{min-height:44px;padding:0 22px;font-size:15px;font-weight:600}
+@media (max-width:600px){.chg-acts .btn{flex:1 1 140px;min-height:48px}.chg-hint{flex-basis:100%}}
 .badge.chg{background:var(--warn-bg);color:var(--warn-fg);white-space:nowrap}
