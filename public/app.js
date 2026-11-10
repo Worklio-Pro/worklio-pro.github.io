@@ -2447,7 +2447,7 @@ function invoiceMore(d, c) {
   const b = (act, icon, label, extra = '') => `<button type="button" class="mi" data-act="${act}" data-kind="invoice" data-id="${d.id}" ${extra}>${QM[icon]}${label}</button>`;
   const open = d.status !== 'paid';
   return `<details class="menu more-menu"><summary class="btn alt"><span class="more-dots" aria-hidden="true">•••</span> More</summary><div class="menu-list">
-${open ? b('collectPayment', 'pay', 'Collect Payment') : ''}${b('copyInvoice', 'copy', 'Create Similar Invoice')}
+${open ? b('collectPayment', 'pay', 'Collect Payment') : b('sendReceipt', 'email', 'Send Receipt')}${b('copyInvoice', 'copy', 'Create Similar Invoice')}
 ${open ? `<hr class="mi-sep"><div class="mi-h">Send as…</div>${b('sendDoc', 'email', 'Email', 'data-ch="email"')}${planHas('sms') && c.phone && c.smsConsent ? b('sendDoc', 'text', 'Text Message', 'data-ch="text"') : ''}` : ''}
 ${d.status === 'draft' ? `<hr class="mi-sep"><div class="mi-h">Mark as…</div>${b('markInvoiceSent', 'awaiting', 'Awaiting Payment')}` : ''}
 <hr class="mi-sep"><a class="mi" href="/pay/${d.token}" target="_blank">${QM.eye}${open ? 'Preview as Client' : 'View Receipt'}</a>
@@ -2841,7 +2841,7 @@ function mobileDocPage(kind, d) {
   const second = q ? (job && job.createdAt ? ['Converted', job.createdAt] : d.status === 'approved' && d.respondedAt ? ['Approved', d.respondedAt] : d.sentAt ? ['Sent', d.sentAt] : null) : ['Due', d.dueDate];
   const btn = (act, label, cls = '') => `<button type="button" class="btn ${cls}" data-act="${act}" data-kind="${kind}" data-id="${d.id}">${label}</button>`;
   const acts = q ? [canJob ? btn('quoteToJob', 'Create Job') : '', btn('sendDoc', d.sentAt ? 'Resend' : 'Send')]
-    : [d.status !== 'paid' ? btn('collectPayment', 'Collect Payment') : '', d.status !== 'paid' ? btn('sendDoc', d.sentAt ? 'Resend' : 'Send') : `<a class="btn" href="/invoices/view?id=${d.id}&preview=1" data-link>View Receipt</a>`];
+    : [d.status !== 'paid' ? btn('collectPayment', 'Collect Payment') : '', d.status !== 'paid' ? btn('sendDoc', d.sentAt ? 'Resend' : 'Send') : `<a class="btn" href="/invoices/view?id=${d.id}&preview=1" data-link>View Receipt</a>`, d.status === 'paid' ? btn('sendReceipt', 'Send Receipt') : ''];
   const itemTap = (it, i) => (it.mx ? mxLineHtml(d.items, it, i) : mTap(kind, d, 'item', mItemInner(d.items, it, i), `md-item${it.sub ? ' sub' : ''}`, `data-i="${i}"`));
   const opts = q && qHasOpts(d); // Good / Better / Best: the items in every option, then each option's own with its total and its own +
   const items = !opts ? (d.items || []).map(itemTap).join('') : [['', 'In every option'], ...d.options.map((o) => [o.id, o.name])].map(([id, name]) => {
@@ -3475,6 +3475,13 @@ A.batchInvoice = async () => {
 A.editInvoice = (d) => navigate('/invoices/view?id=' + d.id);
 A.sendInvoice = (d) => sendDialog('invoice', byId(D.invoices, d.id));
 // record a payment received outside the app (cash, check, Zelle…) on an invoice; part payments allowed
+// a paid invoice: email the client a receipt (the invoice PDF attached)
+A.sendReceipt = async (d) => {
+  const i = byId(D.invoices, d.id); const c = byId(D.clients, i.clientId) || {};
+  if (!c.email) { toast('This client has no email address. Add one to their client details first.', true); return; }
+  const r = await api('POST', `/api/invoices/${i.id}/receipt`, {});
+  toast(r.status === 'simulated' ? 'Receipt logged (no email provider connected)' : `Receipt sent to ${r.to}`);
+};
 A.collectPayment = (d) => {
   const inv = byId(D.invoices, d.id); const owed = invBalance(inv);
   payDialog({ title: `Collect payment · ${inv.number}`, amount: owed, max: owed, method: inv.zelleSentAt ? sentVia(inv) : '',
