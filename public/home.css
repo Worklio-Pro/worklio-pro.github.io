@@ -251,7 +251,7 @@ a.h-feat{display:block;color:inherit;text-decoration:none;transition:border-colo
 .h-feat-all{border-style:dashed}
 /* dark mode: break up the flat navy with soft color glows (hero, behind each feature row's picture, the section heads), a faint dot texture,
    and clearly lighter bands on alternating sections. Light mode gets clearly blue-gray bands on the same sections; the glow tokens are 'none'/transparent there */
-:root{--h-dots:none;--h-glow:none;--h-glow2:none;--h-band:#cad7ec;--h-band2:#cad7ec;--h-bandaccent:var(--brand);--h-bandmuted:var(--muted);--h-rowglow:transparent;--h-rowglow2:transparent}
+:root{--h-banddots:radial-gradient(rgba(30,58,138,.16) 1px,transparent 1.5px);--h-dots:none;--h-glow:none;--h-glow2:none;--h-band:#cad7ec;--h-band2:#cad7ec;--h-bandaccent:var(--brand);--h-bandmuted:var(--muted);--h-rowglow:transparent;--h-rowglow2:transparent}
 @media (prefers-color-scheme:dark){:root:not([data-theme=light]){--h-dots:radial-gradient(rgba(148,163,184,.10) 1px,transparent 1.5px);
 --h-glow:radial-gradient(760px 500px at 8% 0%,rgba(37,99,235,.42),transparent 70%),radial-gradient(660px 520px at 92% 40%,rgba(139,92,246,.30),transparent 70%);
 --h-glow2:radial-gradient(800px 360px at 50% 0%,rgba(37,99,235,.32),transparent 75%);--h-band:#e1e8f4;--h-band2:#e1e8f4;--h-bandaccent:#e8f0ff;--h-bandmuted:#cbd5e1;
@@ -262,9 +262,9 @@ a.h-feat{display:block;color:inherit;text-decoration:none;transition:border-colo
 --h-rowglow:rgba(37,99,235,.24);--h-rowglow2:rgba(139,92,246,.24)}
 body{background-color:var(--card);background-image:var(--h-dots);background-size:24px 24px}
 .h-hero{background:var(--h-glow),linear-gradient(180deg,var(--tint) 0%,transparent 100%)}
-.f-more{background:var(--h-glow2),var(--h-band)}
+.f-more{background:var(--h-glow2),var(--h-banddots),var(--h-band);background-size:100% 100%,24px 24px}
 .h-steps-bg{background:var(--h-glow2),var(--side)}
-.h-trades,#faq{background:var(--h-band2)}
+.h-trades,#faq{background:var(--h-banddots),var(--h-band2);background-size:24px 24px}
 .h-trades{padding-bottom:34px}
 .h-row{position:relative;isolation:isolate}
 .h-row::before{content:'';position:absolute;z-index:-1;top:-90px;bottom:-90px;left:-60px;width:60%;pointer-events:none;background:radial-gradient(closest-side,var(--h-rowglow),transparent)}
