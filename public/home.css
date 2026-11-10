@@ -254,11 +254,11 @@ a.h-feat{display:block;color:inherit;text-decoration:none;transition:border-colo
 :root{--h-dots:none;--h-glow:none;--h-glow2:none;--h-band:#cad7ec;--h-band2:#cad7ec;--h-bandaccent:var(--brand);--h-bandmuted:var(--muted);--h-rowglow:transparent;--h-rowglow2:transparent}
 @media (prefers-color-scheme:dark){:root:not([data-theme=light]){--h-dots:radial-gradient(rgba(148,163,184,.10) 1px,transparent 1.5px);
 --h-glow:radial-gradient(760px 500px at 8% 0%,rgba(37,99,235,.42),transparent 70%),radial-gradient(660px 520px at 92% 40%,rgba(139,92,246,.30),transparent 70%);
---h-glow2:radial-gradient(800px 360px at 50% 0%,rgba(37,99,235,.32),transparent 75%);--h-band:#3d5791;--h-band2:#3d5791;--h-bandaccent:#e8f0ff;--h-bandmuted:#cbd5e1;
+--h-glow2:radial-gradient(800px 360px at 50% 0%,rgba(37,99,235,.32),transparent 75%);--h-band:#e1e8f4;--h-band2:#e1e8f4;--h-bandaccent:#e8f0ff;--h-bandmuted:#cbd5e1;
 --h-rowglow:rgba(37,99,235,.24);--h-rowglow2:rgba(139,92,246,.24)}}
 :root[data-theme=dark]{--h-dots:radial-gradient(rgba(148,163,184,.10) 1px,transparent 1.5px);
 --h-glow:radial-gradient(760px 500px at 8% 0%,rgba(37,99,235,.42),transparent 70%),radial-gradient(660px 520px at 92% 40%,rgba(139,92,246,.30),transparent 70%);
---h-glow2:radial-gradient(800px 360px at 50% 0%,rgba(37,99,235,.32),transparent 75%);--h-band:#3d5791;--h-band2:#3d5791;--h-bandaccent:#e8f0ff;--h-bandmuted:#cbd5e1;
+--h-glow2:radial-gradient(800px 360px at 50% 0%,rgba(37,99,235,.32),transparent 75%);--h-band:#e1e8f4;--h-band2:#e1e8f4;--h-bandaccent:#e8f0ff;--h-bandmuted:#cbd5e1;
 --h-rowglow:rgba(37,99,235,.24);--h-rowglow2:rgba(139,92,246,.24)}
 body{background-color:var(--card);background-image:var(--h-dots);background-size:24px 24px}
 .h-hero{background:var(--h-glow),linear-gradient(180deg,var(--tint) 0%,transparent 100%)}
@@ -277,3 +277,6 @@ body{background-color:var(--card);background-image:var(--h-dots);background-size
 /* dark mode: brand-blue and gray text are hard to read on the light bands, so the section labels and FAQ +/− on them go light blue and the gray text lighter */
 .f-more .h-kicker,#faq .h-kicker,#faq .h-faq summary::after{color:var(--h-bandaccent)}
 .f-more .h-sec-head p,.h-trades p,#faq .h-faq p{color:var(--h-bandmuted)}
+/* dark mode: the bands are almost white with a hint of blue, so what's inside them uses the light theme's colors */
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]) .h-trades,:root:not([data-theme=light]) .f-more,:root:not([data-theme=light]) #faq{--link:var(--brand);--bg:#f1f5fb;--card:#fff;--text:#0f172a;--muted:#475569;--line:#cdd8e8;--border:#d1d5db;--surface-2:#f8fafc;--tint:#eef3fb;--tint-strong:#e0e7ff;--tint-border:#c7d2fe;--tint-fg:#1e3a8a;--ok:#16a34a;--ok-bg:#dcfce7;--ok-fg:#166534;--info-bg:#dbeafe;--info-fg:#1e40af;--bad-bg:#fee2e2;--bad-fg:#991b1b;--warn-bg:#fef3c7;--warn-fg:#92400e;--warn-border:#fde68a;--violet-bg:#ede9fe;--violet-fg:#5b21b6;--neutral-bg:#f1f5f9;--neutral-fg:#475569;--h-bandaccent:var(--brand);--h-bandmuted:#475569;color-scheme:light;color:var(--text)}}
+:root[data-theme=dark] .h-trades,:root[data-theme=dark] .f-more,:root[data-theme=dark] #faq{--link:var(--brand);--bg:#f1f5fb;--card:#fff;--text:#0f172a;--muted:#475569;--line:#cdd8e8;--border:#d1d5db;--surface-2:#f8fafc;--tint:#eef3fb;--tint-strong:#e0e7ff;--tint-border:#c7d2fe;--tint-fg:#1e3a8a;--ok:#16a34a;--ok-bg:#dcfce7;--ok-fg:#166534;--info-bg:#dbeafe;--info-fg:#1e40af;--bad-bg:#fee2e2;--bad-fg:#991b1b;--warn-bg:#fef3c7;--warn-fg:#92400e;--warn-border:#fde68a;--violet-bg:#ede9fe;--violet-fg:#5b21b6;--neutral-bg:#f1f5f9;--neutral-fg:#475569;--h-bandaccent:var(--brand);--h-bandmuted:#475569;color-scheme:light;color:var(--text)}
