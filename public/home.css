@@ -271,3 +271,6 @@ body{background-color:var(--card);background-image:var(--h-dots);background-size
 .h-row.flip::before{left:auto;right:-60px;background:radial-gradient(closest-side,var(--h-rowglow2),transparent)}
 @media (max-width:900px){.h-row::before,.h-row.flip::before{width:auto;left:-16px;right:-16px;bottom:40%}}
 #features{overflow-x:clip}
+/* the closing "Ready to…" box: the same space above it as a section (.h-sec) has, so it doesn't sit against a band above */
+.h-wrap:has(>.h-cta){padding-top:72px}
+@media (max-width:640px){.h-wrap:has(>.h-cta){padding-top:52px}}
