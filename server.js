@@ -3127,14 +3127,33 @@ function tipPicker(due, methods) {
 .tip-o span{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:52px;padding:6px 4px;border:1px solid #d1d5db;border-radius:8px;cursor:pointer;font-size:15px;text-align:center}.tip-o small{font-size:12px;color:#6b7280;font-weight:400}
 .tip-o input:checked+span{border-color:${c};box-shadow:0 0 0 1px ${c};font-weight:600}.tip-o input:focus-visible+span{outline:2px solid ${c};outline-offset:2px}
 .tip-x{display:none;margin-top:10px}.tip-x.on{display:block}@media(max-width:420px){.tip-g{grid-template-columns:repeat(3,1fr)}}</style>
-<fieldset class="tip"><legend>Add a tip?</legend><div class="tip-g">${opt('0', 'No tip', '', true)}${TIP_PCTS.map((p) => opt(p, p + '%', money(round2(due * p / 100)))).join('')}${opt('other', 'Other', '')}</div>
+<fieldset class="tip"><legend>Add a tip?</legend><div class="tip-g">${opt('0', 'No tip', '', true)}${TIP_PCTS.map((p) => opt(p, p + '%', `<i data-p="${p}" style="font-style:normal">${money(round2(due * p / 100))}</i>`)).join('')}${opt('other', 'Other', '')}</div>
 <label class="tip-x" id="tipX">Tip amount<input name="tipAmount" type="text" inputmode="decimal" placeholder="$0.00" autocomplete="off"></label>
 <p class="muted" style="margin:8px 0 0">Tips go to ${esc(db.company.name)}.</p></fieldset>
 <script>(function(){var due=${due},max=${tipMax(due)},f=document.currentScript.closest('form'),x=f.querySelector('#tipX'); 
 function m(v){return '$'+v.toFixed(2).replace(/\\B(?=(\\d{3})+(?!\\d))/g,',')}
-function tip(){var c=f.querySelector('[name=tipPct]:checked'),v=c?c.value:'0';x.classList.toggle('on',v==='other');if(v==='other'){var t=parseFloat(String(f.tipAmount.value).replace(/[$,\\s]/g,''));return t>0?Math.min(Math.round(t*100)/100,max):0}return Math.round(due*Number(v))/100}
-function up(){var t=tip();f.querySelectorAll('.payBtn').forEach(function(b){b.textContent=b.getAttribute('data-base').replace('$0.00',m(due+t))+(t>0?' (includes '+m(t)+' tip)':'')})}
+function tip(){var c=f.querySelector('[name=tipPct]:checked'),v=c?c.value:'0';x.classList.toggle('on',v==='other');if(v==='other'){var t=parseFloat(String(f.tipAmount.value).replace(/[$,\\s]/g,''));return t>0?Math.min(Math.round(t*100)/100,max):0}return Math.round(base()*Number(v))/100}
+function base(){return f._amt?f._amt():due}
+function up(){var a=base(),t=tip();f.querySelectorAll('[data-p]').forEach(function(i){i.textContent=m(Math.round(a*Number(i.getAttribute('data-p')))/100)});f.querySelectorAll('.payBtn').forEach(function(b){b.textContent=b.getAttribute('data-base').replace('$0.00',m(a+t))+(t>0?' (includes '+m(t)+' tip)':'')})}f._up=up;
 f.addEventListener('change',function(e){up();if(e.target.value==='other')f.tipAmount.focus()});f.tipAmount.addEventListener('input',up);document.addEventListener('DOMContentLoaded',up);})();</script>`;
+}
+// partial payments (the invoice's allowPartial 'on'): the client types how much to pay now, at least $1 (or the whole balance when it's less) and no more than the balance
+const partMin = (due) => Math.min(1, due);
+function readPart(b, due) {
+  const raw = String((b && b.payAmount) || '').replace(/[$,\s]/g, ''); if (!raw) return due;
+  const v = round2(Number(raw)); if (!(v > 0) || v < partMin(due) - 0.004) return null; return Math.min(v, due);
+}
+function partPicker(due) {
+  return `<label style="display:block;margin:0 0 14px;font-weight:600">Amount to pay now<input name="payAmount" type="text" inputmode="decimal" autocomplete="off" value="${due.toFixed(2)}" style="display:block;width:100%;margin-top:6px;font-weight:400"></label>
+<p class="muted" id="partNote" style="margin:-8px 0 14px">You can pay part of the ${money(due)} balance now and the rest later.</p>
+<script>(function(){var due=${due},min=${partMin(due)},f=document.currentScript.closest('form'),a=f.payAmount,n=f.querySelector('#partNote'),t=n.textContent;
+function m(v){return '$'+v.toFixed(2).replace(/\\B(?=(\\d{3})+(?!\\d))/g,',')}
+function val(){return parseFloat(String(a.value).replace(/[$,\\s]/g,''))}
+f._amt=function(){var v=val();return v>0?Math.min(Math.round(v*100)/100,due):due};
+function up(){if(f._up)return f._up();var v=f._amt();f.querySelectorAll('.payBtn').forEach(function(b){b.textContent=b.getAttribute('data-base').replace('$0.00',m(v))})}
+a.addEventListener('input',function(){var v=val();n.textContent=v>due?'That is more than the '+m(due)+' balance. You will pay '+m(due)+'.':v>0&&v<min?'Enter at least '+m(min)+'.':t;up()});
+f.addEventListener('submit',function(e){var v=val();if(String(a.value).trim()&&!(v>=min)){e.preventDefault();n.textContent='Enter at least '+m(min)+'.';a.focus()}});
+document.addEventListener('DOMContentLoaded',up);})();</script>`;
 }
 app.get('/pay/:token', (req, res) => {
   const inv = db.invoices.find((x) => x.token === req.params.token);
@@ -3143,7 +3162,7 @@ app.get('/pay/:token', (req, res) => {
   const live = !!stripeKey(); const on = (k) => inv[k] !== 'off'; const methods = onlineMethods('invoice', inv);
   const account = db.invoices.filter((i) => i.clientId === inv.clientId && i.status !== 'paid' && i.status !== 'draft').reduce((s, i) => s + withStatus(i).balanceDue, 0);
   const card = !methods.length ? '' : live
-    ? `<form method="post" action="/pay/${esc(inv.token)}/checkout">${paySettings().tips && due > 0 ? tipPicker(due, methods) : ''}<div style="display:flex;gap:8px;flex-wrap:wrap">${payButtons(methods, due)}</div></form>`
+    ? `<form method="post" action="/pay/${esc(inv.token)}/checkout">${inv.allowPartial === 'on' && due > 0 ? partPicker(due) : ''}${paySettings().tips && due > 0 ? tipPicker(due, methods) : ''}<div style="display:flex;gap:8px;flex-wrap:wrap">${payButtons(methods, due)}</div></form>`
     : '';
   const zelle = offlineBox(inv, due, `Invoice ${inv.number}`, `/pay/${inv.token}`);
   const preview = !!currentUser(req); const payOff = (html) => (preview ? previewOff(html, 'opacity:.55') : html);
@@ -3174,9 +3193,11 @@ app.post('/pay/:token/checkout', async (req, res) => {
   if (!inv || !stripeKey() || !onlineMethods('invoice', inv).length) return res.status(400).send('Payments unavailable');
   const due = withStatus(inv).balanceDue;
   if (inv.status === 'paid' || !(due > 0)) return res.redirect(`/pay/${inv.token}`);
+  const amount = inv.allowPartial === 'on' ? readPart(req.body, due) : due; // a partial payment: the amount the client typed
+  if (amount === null) return res.status(400).send(shell('Payment error', `<h1>Check the amount</h1><p>Enter at least ${money(partMin(due))}.</p><p><a href="/pay/${esc(inv.token)}">Back to the invoice</a></p>`));
   try {
-    const tip = paySettings().tips ? readTip(req.body || {}, due) : 0;
-    const s = await stripeCheckout({ amount: due, tip, name: `Invoice ${inv.number}`, client: findClient(inv.clientId), meta: { invoiceId: inv.id }, successUrl: `${baseUrl()}/pay/${inv.token}/success`, cancelUrl: `${baseUrl()}/pay/${inv.token}`, methods: pickMethod(onlineMethods('invoice', inv), req.body) });
+    const tip = paySettings().tips ? readTip(req.body || {}, amount) : 0;
+    const s = await stripeCheckout({ amount, tip, name: `Invoice ${inv.number}${amount < due ? ' (part payment)' : ''}`, client: findClient(inv.clientId), meta: { invoiceId: inv.id }, successUrl: `${baseUrl()}/pay/${inv.token}/success`, cancelUrl: `${baseUrl()}/pay/${inv.token}`, methods: pickMethod(onlineMethods('invoice', inv), req.body) });
     res.redirect(303, s.url);
   } catch (e) { res.status(502).send(shell('Payment error', `<h1>Payment error</h1><p>${esc(e.message)}</p><p><a href="/pay/${esc(inv.token)}">Back to the invoice</a></p>`)); }
 });

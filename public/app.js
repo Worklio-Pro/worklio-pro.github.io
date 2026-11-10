@@ -2009,7 +2009,7 @@ ${discCard('invoice', d.id ? d.disclaimer || '' : company.invoiceDisclaimer ?? '
 </div>
 <aside class="qside"><div class="qcard pay-c"><h3>Client payments</h3><p class="muted">How the client can pay this invoice.</p>
 ${planHas('onlinePayments') ? switchRow('allowCard', 'Card payments', on('allowCard') && cardReady(), cardReady() ? '' : cardHint(), !cardReady()) : ''}${achSw('invoice', d)}
-${planHas('zelle') ? switchRow('allowZelle', 'Zelle', on('allowZelle') && !!company.zelleRecipient, company.zelleRecipient ? '' : zelleHint(), !company.zelleRecipient) : ''}${payAppRows(d)}${lateSw(d)}</div>
+${planHas('zelle') ? switchRow('allowZelle', 'Zelle', on('allowZelle') && !!company.zelleRecipient, company.zelleRecipient ? '' : zelleHint(), !company.zelleRecipient) : ''}${payAppRows(d)}${partSw(d)}${lateSw(d)}</div>
 <div class="qcard view-c"><h3>Client view</h3><p class="muted">What the client sees on their invoice.</p>
 ${switchRow('showQty', 'Quantities', on('showQty'))}${switchRow('showUnit', 'Unit prices', on('showUnit'))}${switchRow('showLineTotals', 'Line item totals', on('showLineTotals'))}
 ${switchRow('showAccountBalance', 'Account balance', on('showAccountBalance'))}${switchRow('showLateStamp', 'Late stamp (if overdue)', on('showLateStamp'))}</div>
@@ -2154,6 +2154,9 @@ const cardReady = () => !!(company.account && company.account.cardReady);
 // in App Settings → Payments → Client payments (d.allowAch 'off' = no bank option on this one)
 const achOn = (kind) => { const p = company.paySettings || {}; return planHas('onlinePayments') && cardReady() && !p.disabled && !!p[kind + 'Ach']; };
 const achSw = (kind, d, pre = '') => (achOn(kind) ? switchRow('allowAch', pre + 'Bank payments (ACH)', d.allowAch !== 'off') : '');
+// partial payments: the client can pay part of an invoice's balance online (d.allowPartial 'on'; off by default), shown while online payments are set up
+const partOn = () => planHas('onlinePayments') && cardReady() && !(company.paySettings || {}).disabled;
+const partSw = (d, pre = '') => (partOn() ? switchRow('allowPartial', pre + 'Partial payments', d.allowPartial === 'on', 'Client can pay part of the balance online') : '');
 const cardHint = () => (['owner', 'admin'].includes(role()) ? 'Set up card payments in <a href="/settings#payments" data-link>App Settings</a>' : 'Not set up yet: ask your account owner');
 // Zelle needs the business's Zelle details (App Settings → Payments → Zelle payments)
 const zelleHint = () => (['owner', 'admin'].includes(role()) ? 'Add your Zelle details in <a href="/settings#zelle" data-link>App Settings</a>' : 'Not set up yet: ask your account owner');
@@ -2385,7 +2388,7 @@ const vopts = (rows, empty) => rows.map(([l, on]) => `<div class="vopt"><span>${
 // the right column: client payments, client view (invoices) and internal notes, each with its pencil
 const docSide = (kind, d) => {
   const on = (k) => d[k] !== 'off';
-  const pays = [planHas('onlinePayments') ? ['Card payments', on('allowCard') && cardReady()] : null, achOn(kind) ? ['Bank payments (ACH)', on('allowAch')] : null, planHas('zelle') ? ['Zelle', on('allowZelle') && !!company.zelleRecipient] : null, ...payAppsOn().map(([k, l]) => [l, on(k)]), kind === 'invoice' && lateFeesOn() ? ['Late fees', on('lateFee')] : null].filter(Boolean);
+  const pays = [planHas('onlinePayments') ? ['Card payments', on('allowCard') && cardReady()] : null, achOn(kind) ? ['Bank payments (ACH)', on('allowAch')] : null, planHas('zelle') ? ['Zelle', on('allowZelle') && !!company.zelleRecipient] : null, ...payAppsOn().map(([k, l]) => [l, on(k)]), kind === 'invoice' && partOn() ? ['Partial payments', d.allowPartial === 'on'] : null, kind === 'invoice' && lateFeesOn() ? ['Late fees', on('lateFee')] : null].filter(Boolean);
   const view = [['showQty', 'Quantities'], ['showUnit', 'Unit prices'], ['showLineTotals', 'Line item totals'], ['showAccountBalance', 'Account balance'], ['showLateStamp', 'Late stamp (if overdue)']].map(([k, l]) => [l, on(k)]);
   return `<aside class="qside"><div class="qcard"><div class="qcard-h"><h2>Client payments</h2>${editBtn(kind, d, 'payments')}</div>${vopts(pays, 'No online payment options on your plan')}</div>
 ${kind === 'invoice' ? `<div class="qcard"><div class="qcard-h"><h2>Client view</h2>${editBtn(kind, d, 'clientView')}</div>${vopts(view)}</div>` : ''}
@@ -2454,7 +2457,7 @@ ${b('delDoc', 'trash', 'Delete')}</div></details>`;
 // Create Similar Invoice: a new draft for the same client with the same subject, line items, terms and client view (not linked to the job, so no deposit credit twice)
 A.copyInvoice = async (x) => {
   const i = byId(D.invoices, x.id);
-  const keep = ['clientId', 'subject', 'items', 'taxRate', 'discountType', 'discountValue', 'discountName', 'notes', 'disclaimer', 'internalNotes', 'allowCard', 'allowAch', 'allowZelle', 'allowVenmo', 'allowCashapp', 'allowPaypal', 'lateFee', 'paymentTerms', 'showQty', 'showUnit', 'showLineTotals', 'showAccountBalance', 'showLateStamp'];
+  const keep = ['clientId', 'subject', 'items', 'taxRate', 'discountType', 'discountValue', 'discountName', 'notes', 'disclaimer', 'internalNotes', 'allowCard', 'allowAch', 'allowZelle', 'allowVenmo', 'allowCashapp', 'allowPaypal', 'allowPartial', 'lateFee', 'paymentTerms', 'showQty', 'showUnit', 'showLineTotals', 'showAccountBalance', 'showLateStamp'];
   const body = Object.fromEntries(keep.filter((k) => i[k] !== undefined).map((k) => [k, i[k]]));
   body.items = (body.items || []).filter((it) => !it.lateFee).map(({ job, ...it }) => it); // not its late fees, nor the batch invoice's job marks
   const today = ymd(new Date()); body.issueDate = today;
@@ -2750,7 +2753,7 @@ ${canAddCatalog() ? '<label class="mnt-link m-tocat" hidden>Also save to Product
   },
   payments(kind, d) {
     const f = mSheet('Client payments', `<div class="ms-sw">${planHas('onlinePayments') ? switchRow('allowCard', 'Accept card payments', d.allowCard !== 'off' && cardReady(), cardReady() ? '' : cardHint(), !cardReady()) : ''}${achSw(kind, d, 'Accept ')}
-${planHas('zelle') ? switchRow('allowZelle', 'Accept Zelle', d.allowZelle !== 'off' && !!company.zelleRecipient, company.zelleRecipient ? '' : zelleHint(), !company.zelleRecipient) : ''}${payAppRows(d, 'Accept ')}${kind === 'invoice' ? lateSw(d) : ''}</div>
+${planHas('zelle') ? switchRow('allowZelle', 'Accept Zelle', d.allowZelle !== 'off' && !!company.zelleRecipient, company.zelleRecipient ? '' : zelleHint(), !company.zelleRecipient) : ''}${payAppRows(d, 'Accept ')}${kind === 'invoice' ? partSw(d, 'Accept ') + lateSw(d) : ''}</div>
 <p class="muted ms-note">Changes here only apply to this ${kind}.</p>`, { foot: mSaveBtn() });
     onSubmit(f, (fd) => mSave(kind, d, Object.fromEntries(fd)));
   },
@@ -2859,7 +2862,7 @@ function mobileDocPage(kind, d) {
       + mRow('Balance due', money(invBalance(d)), 'b'));
   const yes = (v) => (v ? 'Yes' : 'No');
   const lateRow = !q && lateFeesOn();
-  const paySec = planHas('onlinePayments') || planHas('zelle') || lateRow ? mTap(kind, d, 'payments', `<span class="md-sh">Client payments${ARROW}</span>${planHas('onlinePayments') ? `<span class="md-kv"><small>Accept card payments</small>${yes(d.allowCard !== 'off' && cardReady())}</span>` : ''}${achOn(kind) ? `<span class="md-kv"><small>Accept bank payments (ACH)</small>${yes(d.allowAch !== 'off')}</span>` : ''}${planHas('zelle') ? `<span class="md-kv"><small>Accept Zelle</small>${yes(d.allowZelle !== 'off' && !!company.zelleRecipient)}</span>` : ''}${payAppsOn().map(([k, l]) => `<span class="md-kv"><small>Accept ${l}</small>${yes(d[k] !== 'off')}</span>`).join('')}${lateRow ? `<span class="md-kv"><small>Late fees</small>${yes(d.lateFee !== 'off')}</span>` : ''}`, 'md-sec') : '';
+  const paySec = planHas('onlinePayments') || planHas('zelle') || lateRow ? mTap(kind, d, 'payments', `<span class="md-sh">Client payments${ARROW}</span>${planHas('onlinePayments') ? `<span class="md-kv"><small>Accept card payments</small>${yes(d.allowCard !== 'off' && cardReady())}</span>` : ''}${achOn(kind) ? `<span class="md-kv"><small>Accept bank payments (ACH)</small>${yes(d.allowAch !== 'off')}</span>` : ''}${planHas('zelle') ? `<span class="md-kv"><small>Accept Zelle</small>${yes(d.allowZelle !== 'off' && !!company.zelleRecipient)}</span>` : ''}${payAppsOn().map(([k, l]) => `<span class="md-kv"><small>Accept ${l}</small>${yes(d[k] !== 'off')}</span>`).join('')}${!q && partOn() ? `<span class="md-kv"><small>Accept partial payments</small>${yes(d.allowPartial === 'on')}</span>` : ''}${lateRow ? `<span class="md-kv"><small>Late fees</small>${yes(d.lateFee !== 'off')}</span>` : ''}`, 'md-sec') : '';
   const on = (k) => d[k] !== 'off';
   const viewSec = q ? '' : mTap(kind, d, 'clientView', `<span class="md-sh">Client view${ARROW}</span><span class="md-text muted">${[['showQty', 'Quantities'], ['showUnit', 'Unit prices'], ['showLineTotals', 'Line totals'], ['showAccountBalance', 'Account balance'], ['showLateStamp', 'Late stamp']].filter(([k]) => on(k)).map(([, l]) => l).join(', ') || 'Totals only'}</span>`, 'md-sec');
   return `<div class="mdoc"><a href="/${kind}s" data-link class="md-back" aria-label="Back to ${kind}s">${CHEV('M15 18l-6-6 6-6')}</a>
