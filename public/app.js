@@ -3898,7 +3898,7 @@ A.newJobOn = (d) => !canDo('jobs.edit') || navigate('/jobs/new?date=' + d.date);
 A.editJob = (d) => { closeModal(); navigate('/jobs/edit?id=' + d.id); };
 A.delJob = async (d) => { if (!confirm('Delete this job?')) return; await api('DELETE', '/api/jobs/' + d.id); closeModal(); toast('Job deleted'); curPath() === '/jobs/edit' ? navigate('/jobs') : refresh(); };
 A.reopenJob = async (d) => { await api('PUT', '/api/jobs/' + d.id, { status: 'scheduled' }); toast('Job reopened'); refresh(); };
-A.jobInvoice = async (d) => { const inv = await api('POST', `/api/jobs/${d.id}/create-invoice`, {}); closeModal(); toast('Draft invoice created'); navigate('/invoices/view?id=' + inv.id); };
+A.jobInvoice = async (d) => { const inv = await api('POST', `/api/jobs/${d.id}/create-invoice`, {}); closeModal(); toast(inv.status === 'paid' ? 'Invoice created, paid in full by the deposit' : 'Draft invoice created'); navigate('/invoices/view?id=' + inv.id); };
 A.jobRemind = async (d) => { const r = await api('POST', `/api/jobs/${d.id}/remind`, {}); const x = r.results[0]; toast(x.status === 'simulated' ? 'Reminder logged (no message provider connected)' : x.status === 'failed' ? x.detail || 'Reminder failed' : `Reminder sent by ${x.channel === 'sms' ? 'text' : 'email'}`, x.status === 'failed'); }; // the server texts clients who agreed to texts, and emails the rest
 // Job status as shown on the Jobs page, derived from the stored status (scheduled/completed/cancelled), the date and invoices
 const J_STATUS = { late: 'Late', today: 'Today', upcoming: 'Upcoming', invoice: 'Requires invoicing', archived: 'Archived', cancelled: 'Cancelled' };

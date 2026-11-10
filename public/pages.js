@@ -3604,7 +3604,7 @@ function paymentRows() {
   const rows = [];
   for (const i of D.invoices) {
     for (const p of i.payments || []) rows.push({ id: p.id, clientId: i.clientId, doc: ['invoice', i], date: (p.date || '').slice(0, 10), method: p.method, amount: (Number(p.amount) || 0) + (Number(p.tip) || 0), tip: Number(p.tip) || 0, reference: p.reference || '', refunded: refundSum(p.refunds) });
-    if (!(i.payments || []).length && i.status === 'paid' && i.paidAt) rows.push({ id: 'i-' + i.id, clientId: i.clientId, doc: ['invoice', i], date: i.paidAt.slice(0, 10), method: i.paymentMethod || 'other', amount: Number(i.paidAmount || i.total) || 0, reference: '' });
+    if (!(i.payments || []).length && i.status === 'paid' && i.paidAt && !i.paidByDeposit) rows.push({ id: 'i-' + i.id, clientId: i.clientId, doc: ['invoice', i], date: i.paidAt.slice(0, 10), method: i.paymentMethod || 'other', amount: Number(i.paidAmount || i.total) || 0, reference: '' });
   }
   for (const q of D.quotes) if (q.depositPaidAt) rows.push({ id: 'q-' + q.id, clientId: q.clientId, doc: ['quote', q], date: q.depositPaidAt.slice(0, 10), method: q.depositMethod || 'other', amount: Number(q.depositPaidAmount ?? q.depositFee) || 0, reference: q.depositReference || '' });
   return rows;

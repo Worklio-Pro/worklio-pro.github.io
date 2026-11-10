@@ -251,7 +251,7 @@ const QUOTE_TERMS = ['title', 'clientId', 'number', 'status', 'notes', 'disclaim
 const quoteTerms = (q) => JSON.stringify(QUOTE_TERMS.map((k) => (typeof q[k] === 'string' ? q[k].replace(/\r\n/g, '\n') : q[k] ?? '')));
 // payments are recorded, paid online and refunded through their own endpoints; a quote or invoice edit can never change one
 const PAYMENT_FIELDS = { quotes: ['depositPaidAt', 'depositPaidAmount', 'depositMethod', 'depositReference', 'depositStatus', 'depositRefunds', 'depositPayment'],
-  invoices: ['payments', 'paidAt', 'paidAmount', 'paymentMethod', 'stripeSessionId', 'stripePaymentIntent'] };
+  invoices: ['payments', 'paidAt', 'paidAmount', 'paidByDeposit', 'paymentMethod', 'stripeSessionId', 'stripePaymentIntent'] };
 const money = (n) => '$' + Number(n).toFixed(2);
 const findClient = (id) => db.clients.find((c) => c.id === id);
 function invoiceStatus(inv) {
@@ -2407,7 +2407,11 @@ app.post('/api/jobs/:id/create-invoice', (req, res) => {
   const l = jobLines(j);
   const inv = computeTotals({ id: uid(), number: nextNumber('invoices'), clientId: j.clientId, jobId: j.id, subject: j.title, status: 'draft', issueDate: iso(new Date()), dueDate: iso(new Date()), paymentTerms: '0', paidAt: null, token: token(), createdAt: iso(new Date()), notes: '', items: l.items, taxRate: l.taxRate, discountType: l.discountType, discountValue: l.discountValue, discountName: l.discountName });
   applyMemberDiscount(inv); computeTotals(inv); // a service plan member's discount, when the job had none
-  db.invoices.push(inv); save(); res.status(201).json(withStatus(inv));
+  db.invoices.push(inv);
+  // the quote's deposit already covers the whole invoice: it starts paid in full (paidByDeposit: no money of its own, so cash reports don't count it twice)
+  const cr = invoiceCredits(inv, true);
+  if (inv.total > 0 && cr.depositApplied > 0 && cr.balanceDue <= 0.004) { const q = db.quotes.find((x) => x.id === cr.depositQuoteId) || {}; Object.assign(inv, { status: 'paid', paidAt: cr.depositAppliedAt, paymentMethod: q.depositMethod || 'other', paidByDeposit: true }); }
+  save(); res.status(201).json(withStatus(inv));
 });
 // what a job's invoice is made of: the job's own lines win (else its quote's, with options the chosen one's), with the same tax and discount
 function jobLines(j) {
@@ -4113,7 +4117,7 @@ function cashMoves() {
   const refunds = (doc, kind, list) => (list || []).filter((r) => r.status !== 'failed' && r.status !== 'canceled').forEach((r) => add(doc, kind, r.at, -(Number(r.amount) || 0)));
   for (const inv of db.invoices) {
     if ((inv.payments || []).length) inv.payments.forEach((p) => { add(inv, 'invoice', p.date, Number(p.amount) || 0); refunds(inv, 'invoice', p.refunds); });
-    else if (inv.status === 'paid' && inv.paidAt) add(inv, 'invoice', inv.paidAt, Number(inv.paidAmount || inv.total) || 0);
+    else if (inv.status === 'paid' && inv.paidAt && !inv.paidByDeposit) add(inv, 'invoice', inv.paidAt, Number(inv.paidAmount || inv.total) || 0);
   }
   for (const q of db.quotes) if (q.depositPaidAt) { add(q, 'quote', q.depositPaidAt, Number(q.depositPaidAmount ?? q.depositFee) || 0); refunds(q, 'quote', q.depositRefunds); }
   return out;
