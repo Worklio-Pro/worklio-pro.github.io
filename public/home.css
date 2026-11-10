@@ -249,16 +249,25 @@ a.h-feat{display:block;color:inherit;text-decoration:none;transition:border-colo
 /* "New in" on the home page: 8 cards, four across on wide screens (two across from 960px, as .h-grid does) */
 @media (min-width:961px){#new .h-grid{grid-template-columns:repeat(4,1fr)}}
 .h-feat-all{border-style:dashed}
-/* dark mode: break up the flat navy with soft color glows (hero, how-it-works), a faint dot texture, and lighter bands.
-   Light mode keeps its tinted bands; these tokens are 'none' there */
-:root{--h-dots:none;--h-glow:none;--h-glow2:none;--h-band:var(--surface-2)}
+/* dark mode: break up the flat navy with soft color glows (hero, behind each feature row's picture, the section heads), a faint dot texture,
+   and lighter bands on alternating sections. Light mode keeps its own tinted bands; these tokens are 'none'/transparent there */
+:root{--h-dots:none;--h-glow:none;--h-glow2:none;--h-band:var(--surface-2);--h-band2:transparent;--h-rowglow:transparent;--h-rowglow2:transparent}
 @media (prefers-color-scheme:dark){:root:not([data-theme=light]){--h-dots:radial-gradient(rgba(148,163,184,.10) 1px,transparent 1.5px);
---h-glow:radial-gradient(720px 460px at 8% 0%,rgba(37,99,235,.30),transparent 70%),radial-gradient(620px 480px at 92% 40%,rgba(139,92,246,.20),transparent 70%);
---h-glow2:radial-gradient(800px 360px at 50% 0%,rgba(37,99,235,.28),transparent 75%);--h-band:#16213a}}
+--h-glow:radial-gradient(760px 500px at 8% 0%,rgba(37,99,235,.42),transparent 70%),radial-gradient(660px 520px at 92% 40%,rgba(139,92,246,.30),transparent 70%);
+--h-glow2:radial-gradient(800px 360px at 50% 0%,rgba(37,99,235,.32),transparent 75%);--h-band:#16213a;--h-band2:#16213a;
+--h-rowglow:rgba(37,99,235,.24);--h-rowglow2:rgba(139,92,246,.24)}}
 :root[data-theme=dark]{--h-dots:radial-gradient(rgba(148,163,184,.10) 1px,transparent 1.5px);
---h-glow:radial-gradient(720px 460px at 8% 0%,rgba(37,99,235,.30),transparent 70%),radial-gradient(620px 480px at 92% 40%,rgba(139,92,246,.20),transparent 70%);
---h-glow2:radial-gradient(800px 360px at 50% 0%,rgba(37,99,235,.28),transparent 75%);--h-band:#16213a}
+--h-glow:radial-gradient(760px 500px at 8% 0%,rgba(37,99,235,.42),transparent 70%),radial-gradient(660px 520px at 92% 40%,rgba(139,92,246,.30),transparent 70%);
+--h-glow2:radial-gradient(800px 360px at 50% 0%,rgba(37,99,235,.32),transparent 75%);--h-band:#16213a;--h-band2:#16213a;
+--h-rowglow:rgba(37,99,235,.24);--h-rowglow2:rgba(139,92,246,.24)}
 body{background-color:var(--card);background-image:var(--h-dots);background-size:24px 24px}
 .h-hero{background:var(--h-glow),linear-gradient(180deg,var(--tint) 0%,transparent 100%)}
 .f-more{background:var(--h-glow2),var(--h-band)}
 .h-steps-bg{background:var(--h-glow2),var(--side)}
+.h-trades,#faq{background:var(--h-band2)}
+.h-trades{padding-bottom:34px}
+.h-row{position:relative;isolation:isolate}
+.h-row::before{content:'';position:absolute;z-index:-1;top:-90px;bottom:-90px;left:-60px;width:60%;pointer-events:none;background:radial-gradient(closest-side,var(--h-rowglow),transparent)}
+.h-row.flip::before{left:auto;right:-60px;background:radial-gradient(closest-side,var(--h-rowglow2),transparent)}
+@media (max-width:900px){.h-row::before,.h-row.flip::before{width:auto;left:-16px;right:-16px;bottom:40%}}
+#features{overflow-x:clip}
