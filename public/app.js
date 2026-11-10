@@ -3372,8 +3372,17 @@ A.markDepositPaid = (d) => {
   const q = byId(D.quotes, d.id);
   payDialog({ title: `Record deposit · ${q.number}`, amount: q.depositFee, max: q.total, method: q.zelleSentAt ? sentVia(q) : '',
     note: q.zelleSentAt ? `The client reported sending the deposit by ${sentName(q)}. Check that it arrived before recording it.` : '',
-    async save(body) { await api('POST', `/api/quotes/${q.id}/mark-deposit-paid`, body); toast('Deposit recorded'); refresh(); } });
+    async save(body) {
+      const r = await api('POST', `/api/quotes/${q.id}/mark-deposit-paid`, body); if (r) Object.assign(q, r); toast('Deposit recorded'); refresh();
+      if (q.status === 'approved' && !quoteJob(q)) setTimeout(() => askJobAfterDeposit(q.id), 0); // after this dialog closes
+    } });
 };
+// the deposit is in and the quote is approved: offer to schedule the job right away (Convert to Job's dialog)
+function askJobAfterDeposit(id) {
+  const q = byId(D.quotes, id); if (!q || quoteJob(q)) return; const c = byId(D.clients, q.clientId);
+  modal('Deposit recorded', `<p>The deposit for quote ${esc(q.number)}${q.title ? ` (${esc(q.title)})` : ''}${c ? ` from ${esc(c.name)}` : ''} is paid. Do you want to create the job now?</p>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Not now</button><button type="button" class="btn" data-act="quoteToJob" data-id="${q.id}">Create job</button></div>`);
+}
 A.quoteToJob = (d) => {
   const q = byId(D.quotes, d.id);
   const mb = modal(`Schedule job from ${q.number}`, `<form><div class="row3"><label>Date<input type="date" name="date" required value="${ymd(addDays(new Date(), 1))}"></label><label>Start<input type="time" name="startTime" value="09:00"></label><label>End<input type="time" name="endTime" value="11:00"></label></div>
