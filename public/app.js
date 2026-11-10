@@ -1025,22 +1025,22 @@ ${planHas('sms') ? `<label><input type="checkbox" name="ch" value="sms" ${c.phon
 const EMAIL_FILES_MAX = 10 * 1024 * 1024;
 const fileIco = (pdf) => `<span class="em-ic${pdf ? ' pdf' : ''}">${QI(pdf ? '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>' : '<path d="M21.4 11.1l-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/>')}</span>`;
 const fmtSize = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
-function emailDialog(kind, doc, c) {
+function emailDialog(kind, doc, c, receipt = false) { // receipt: a paid invoice's receipt (the Payment receipt template)
   const word = kind === 'invoice' ? 'invoice' : 'quote'; let files = []; let typed = false;
-  const mb = modal(`Email ${word} #${doc.number} to ${c.name || 'the client'}`, `<form class="em-form" data-sticky novalidate><div class="em-grid"><div class="em-main">
+  const mb = modal(`Email ${receipt ? 'receipt for ' : ''}${word} #${doc.number} to ${c.name || 'the client'}`, `<form class="em-form" data-sticky novalidate><div class="em-grid"><div class="em-main">
 <label class="fl"><span>To</span><input name="to" value="${esc(c.email || '')}" placeholder="Email address (separate several with commas)" autocomplete="off"></label>
 <label class="fl"><span>Subject</span><input name="subject" maxlength="200" placeholder="Loading…"></label>
 <label class="fl"><span>Message</span><textarea name="message" rows="11" placeholder="Loading…"></textarea></label>
-<p class="muted em-note">Under your message, your client sees a button to ${kind === 'invoice' ? 'view and pay this invoice online' : 'view and approve this quote online'}.</p>
+<p class="muted em-note">Under your message, your client sees a button to ${receipt ? 'view their receipt online' : kind === 'invoice' ? 'view and pay this invoice online' : 'view and approve this quote online'}.</p>
 <label class="em-copy" hidden><input type="checkbox" name="copy"> Send me a copy <span class="muted em-me"></span></label></div>
 <div class="em-side"><h3>Attachments</h3>
 <div class="em-drop"><button type="button" class="btn alt sm em-pick">Select</button><span>Select or drag files here to upload</span><input type="file" multiple hidden></div>
 <p class="em-use"></p><div class="em-bar"><i></i></div>
-<div class="em-files"><label class="em-file"><input type="checkbox" name="pdf">${fileIco(true)}<span><b>${esc(word)}_${esc(String(doc.number).replace(/[^\w-]+/g, ''))}.pdf</b><small><a href="/api/${kind}s/${doc.id}/pdf" target="_blank" title="${esc(word)} ${esc(doc.number)}">Preview</a></small></span></label><div class="em-up"></div></div></div></div>
+<div class="em-files"><label class="em-file"><input type="checkbox" name="pdf" ${receipt ? 'checked' : ''}>${fileIco(true)}<span><b>${esc(word)}_${esc(String(doc.number).replace(/[^\w-]+/g, ''))}.pdf</b><small><a href="/api/${kind}s/${doc.id}/pdf" target="_blank" title="${esc(word)} ${esc(doc.number)}">Preview</a></small></span></label><div class="em-up"></div></div></div></div>
 <div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Send Email</button></div></form>`, true);
   const f = $('form', mb); const picker = $('input[type=file]', mb); const drop = $('.em-drop', mb);
   f.message.addEventListener('input', () => { typed = true; }); f.subject.addEventListener('input', () => { typed = true; });
-  api('GET', `/api/${kind}s/${doc.id}/email-draft`).then((r) => {
+  api('GET', `/api/${kind}s/${doc.id}/email-draft${receipt ? '?receipt=1' : ''}`).then((r) => {
     if (!typed) { f.subject.value = r.subject; f.message.value = r.message; } f.subject.placeholder = ''; f.message.placeholder = '';
     if (r.me) { $('.em-me', mb).textContent = `(${r.me})`; $('.em-copy', mb).hidden = false; }
   }).catch((x) => toast(x.message, true));
@@ -1066,20 +1066,20 @@ function emailDialog(kind, doc, c) {
   return sendSubmit(kind, doc, mb, () => ['email'], () => {
     if (!f.message.value.trim()) throw new Error('Write a message first');
     return { email: { to: f.to.value, subject: f.subject.value, message: f.message.value, copy: f.copy.checked, pdf: f.pdf.checked, files: files.map(({ name, type, data }) => ({ name, type, data })) } };
-  });
+  }, receipt ? 'receipt' : 'send');
 }
 // Send Text (the button beside More): the client's mobile number, a message to edit and a preview of the text as it arrives,
 // with the link and opt-out the server adds (smsWithLink in server.js). Texts only go to a client who agreed to them.
 const TEXT_MAX = 160;
-function textDialog(kind, doc, c) {
+function textDialog(kind, doc, c, receipt = false) { // receipt: a paid invoice's receipt
   const word = kind === 'invoice' ? 'invoice' : 'quote'; const co = company.name || '';
-  const label = kind === 'invoice' ? 'View and pay your invoice here' : 'View your quote here';
+  const label = receipt ? 'View your receipt here' : kind === 'invoice' ? 'View and pay your invoice here' : 'View your quote here';
   const why = !c.phone ? 'There’s no mobile number on file for this client. Add one on their client page first.' : !c.smsConsent ? 'This client hasn’t agreed to get texts. Ask them first, then tick “Agreed to receive text messages” on their client page.' : '';
-  const mb = modal(`Send ${word} #${doc.number} to ${c.name || 'the client'} as a text message`, `<form class="tx-form">
+  const mb = modal(`Send ${receipt ? 'receipt for ' : ''}${word} #${doc.number} to ${c.name || 'the client'} as a text message`, `<form class="tx-form">
 <label class="fl tx-to"><span>To</span><input value="${c.phone ? esc(fmtUsPhone(c.phone)) : ''}" placeholder="No mobile number on file" readonly title="Texts go to the client’s mobile number on file"></label>
 ${why ? `<div class="notice">${why}</div>` : ''}
-<div class="tx-grid"><div><label class="fl"><span>Message</span><textarea name="message" rows="5" maxlength="${TEXT_MAX}">${esc(`Hi ${c.name || 'there'}, here's your ${word} from ${co}.`)}</textarea></label><span class="tx-left"></span></div>
-<div><div class="tx-bubble"></div><p class="muted tx-note">The link opens the ${word} so they can ${kind === 'invoice' ? 'view and pay it online' : 'view and approve it'}. Every text is recorded in the Notifications Log.</p></div></div>
+<div class="tx-grid"><div><label class="fl"><span>Message</span><textarea name="message" rows="5" maxlength="${TEXT_MAX}">${esc(receipt ? `Hi ${c.name || 'there'}, thank you for your payment to ${co}. Here's your receipt.` : `Hi ${c.name || 'there'}, here's your ${word} from ${co}.`)}</textarea></label><span class="tx-left"></span></div>
+<div><div class="tx-bubble"></div><p class="muted tx-note">The link opens the ${receipt ? 'receipt' : word} so they can ${receipt ? 'view it online' : kind === 'invoice' ? 'view and pay it online' : 'view and approve it'}. Every text is recorded in the Notifications Log.</p></div></div>
 <div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn" ${why ? 'disabled' : ''}>Send</button></div></form>`, true);
   const ta = $('textarea', mb); let link = '…';
   const show = () => {
@@ -1092,7 +1092,7 @@ ${why ? `<div class="notice">${why}</div>` : ''}
   return sendSubmit(kind, doc, mb, () => ['sms'], () => {
     if (!ta.value.trim()) throw new Error('Write a message first');
     return { message: ta.value.trim() };
-  });
+  }, receipt ? 'receipt' : 'send');
 }
 // a quote with Snap to quote items still at $0 (Needs a price): ask whether $0 is right. null = the business said no (go back and price them)
 const zeroOkAsk = (kind, doc) => {
@@ -1101,14 +1101,14 @@ const zeroOkAsk = (kind, doc) => {
   return confirm(`${z.join(', ')} ${z.length === 1 ? 'is' : 'are'} at $0. Is $0 right?\n\nOK goes ahead at $0. Cancel lets you set a price first.`) ? { zeroOk: true } : null;
 };
 // sends on the chosen channels (plus anything extra, like a text's message), then shows how each one went
-function sendSubmit(kind, doc, mb, pick, extra = () => ({})) {
+function sendSubmit(kind, doc, mb, pick, extra = () => ({}), path = 'send') { // path 'receipt': a paid invoice's receipt
   $('form', mb).addEventListener('submit', async (e) => {
     e.preventDefault();
     const channels = pick();
     if (!channels.length) return toast('Choose email, text, or both', true);
     const btn = e.submitter || $('.foot .btn:not(.alt)', mb); let r;
     const zero = zeroOkAsk(kind, doc); if (!zero) return;
-    try { if (btn) btn.disabled = true; r = await api('POST', `/api/${kind}s/${doc.id}/send`, { channels, ...zero, ...extra() }); } // extra() can refuse too (no message yet)
+    try { if (btn) btn.disabled = true; r = await api('POST', `/api/${kind}s/${doc.id}/${path}`, { channels, ...zero, ...extra() }); } // extra() can refuse too (no message yet)
     catch (x) { if (btn) btn.disabled = false; return toast(x.message, true); }
     const rows = r.results.map((x) => `<tr><td>${x.channel === 'email' ? 'Email' : 'Text'}</td><td>${esc(x.to || '—')}</td><td>${badge(x.status)}</td></tr>`).join('');
     const sim = r.results.some((x) => x.status === 'simulated');
@@ -3476,13 +3476,8 @@ A.editInvoice = (d) => navigate('/invoices/view?id=' + d.id);
 A.sendInvoice = (d) => sendDialog('invoice', byId(D.invoices, d.id));
 // record a payment received outside the app (cash, check, Zelle…) on an invoice; part payments allowed
 // a paid invoice: email the client a receipt (the invoice PDF attached)
-A.sendReceipt = async (d) => {
-  const i = byId(D.invoices, d.id); const c = byId(D.clients, i.clientId) || {};
-  const text = d.ch === 'text'; // Send receipt as… → Text Message (shown when texting is on and the client agreed to texts)
-  if (!text && !c.email) { toast('This client has no email address. Add one to their client details first.', true); return; }
-  const r = await api('POST', `/api/invoices/${i.id}/receipt`, { channel: text ? 'sms' : 'email' });
-  toast(r.status === 'simulated' ? `Receipt logged (no ${text ? 'text' : 'email'} provider connected)` : `Receipt ${text ? 'texted' : 'sent'} to ${r.to}`);
-};
+// a paid invoice: Send receipt as… → Email or Text Message opens the same box as sending the invoice, with the receipt's wording
+A.sendReceipt = (d) => { const i = byId(D.invoices, d.id); const c = byId(D.clients, i.clientId) || {}; return d.ch === 'text' ? textDialog('invoice', i, c, true) : emailDialog('invoice', i, c, true); };
 A.collectPayment = (d) => {
   const inv = byId(D.invoices, d.id); const owed = invBalance(inv);
   payDialog({ title: `Collect payment · ${inv.number}`, amount: owed, max: owed, method: inv.zelleSentAt ? sentVia(inv) : '',

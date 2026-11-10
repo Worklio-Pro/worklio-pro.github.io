@@ -2549,7 +2549,7 @@ app.post('/api/invoices/:id/send', async (req, res) => {
 [['quotes', 'quote'], ['invoices', 'invoice']].forEach(([col, kind]) => {
   app.get(`/api/${col}/:id/email-draft`, (req, res) => {
     const doc = db[col].find((x) => x.id === req.params.id); if (!doc) return res.status(404).json({ error: 'Not found' });
-    const u = currentUser(req); res.json({ ...emailDraft(kind, doc), me: (u && u.email) || '' });
+    const u = currentUser(req); res.json({ ...emailDraft(kind, doc, kind === 'invoice' && req.query.receipt === '1'), me: (u && u.email) || '' }); // ?receipt=1: a paid invoice's receipt
   });
   app.get(`/api/${col}/:id/pdf`, (req, res) => {
     const doc = db[col].find((x) => x.id === req.params.id); if (!doc) return res.status(404).json({ error: 'Not found' });
@@ -2565,28 +2565,34 @@ const docVars = (kind, d) => {
 const BUTTON_LINE = /^\s*\[([^\]]+)\]\(\{\{\s*link\s*\}\}\)\s*$/m; // the template's button: [View and approve quote]({{link}})
 const fillVars = (str, v) => String(str || '').replace(/\{\{\s*(\w+)\s*\}\}/g, (m, k) => (k in v ? v[k] : m));
 // the box's starting subject and message: the template's, without its heading and button (the email puts the button under the message)
-function emailDraft(kind, d) {
-  const t = emailTemplate(kind); const v = docVars(kind, d);
+// receipt: a paid invoice's receipt (the Payment receipt template; its button opens the receipt page)
+function emailDraft(kind, d, receipt = false) {
+  const t = emailTemplate(receipt ? 'receipt' : kind); const v = receipt ? receiptVars(d) : docVars(kind, d);
   const message = fillVars(t.body.replace(BUTTON_LINE, '').split('\n').filter((l) => !/^#\s/.test(l)).join('\n'), v).replace(/\*\*(.+?)\*\*/g, '$1').replace(/\n{3,}/g, '\n\n').trim();
-  return { to: findClient(d.clientId)?.email || '', subject: fillVars(t.subject, v), message, button: (t.body.match(BUTTON_LINE) || [])[1] || (kind === 'quote' ? 'View and approve quote' : 'View and pay invoice') };
+  return { to: findClient(d.clientId)?.email || '', subject: fillVars(t.subject, v), message, button: (t.body.match(BUTTON_LINE) || [])[1] || (receipt ? 'View receipt' : kind === 'quote' ? 'View and approve quote' : 'View and pay invoice') };
+}
+// the Payment receipt template's values for a whole paid invoice: everything it has paid (payments and a deposit credit), the paid date, the last payment's reference
+function receiptVars(inv) {
+  const x = withStatus(inv); const last = [...(inv.payments || [])].sort((a, b) => (a.date || '').localeCompare(b.date || '')).pop();
+  return { ...docVars('invoice', inv), amount: money(round2((x.amountPaid || 0) + (x.depositApplied || 0)) || inv.total || 0), paid_for: `invoice ${inv.number}`, date: niceDate(String(inv.paidAt || '').slice(0, 10)), reference: (last && last.reference) || inv.number };
 }
 const EMAIL_FILES_MAX = 10 * 1024 * 1024;
 const pdfName = (kind, d) => `${kind}_${String(d.number).replace(/[^\w-]+/g, '')}.pdf`;
 // sends what the Email box holds: to each address, the message with the button under it, any files (base64 from the browser) and the PDF;
 // "Send me a copy" sends the same email to the person sending it
-async function emailDoc(req, kind, d) {
-  const e = req.body.email; const draft = emailDraft(kind, d);
+async function emailDoc(req, kind, d, receipt = false) {
+  const e = req.body.email; const draft = emailDraft(kind, d, receipt);
   const to = [...new Set(String(e.to ?? draft.to).split(/[\s,;]+/).filter(Boolean))];
   if (!to.length) return { error: 'Enter an email address to send to' };
   if (to.length > 5) return { error: 'Send to 5 email addresses at most' };
   const bad = to.find((a) => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(a)); if (bad) return { error: `“${bad}” isn’t an email address` };
   const message = String(e.message ?? draft.message).trim().slice(0, 10000); if (!message) return { error: 'Write a message first' };
-  const mail = renderEmail(kind, docVars(kind, d), { subject: String(e.subject || draft.subject).slice(0, 200), body: `${message}\n\n[${draft.button}]({{link}})` });
+  const mail = renderEmail(receipt ? 'receipt' : kind, receipt ? receiptVars(d) : docVars(kind, d), { subject: String(e.subject || draft.subject).slice(0, 200), body: `${message}\n\n[${draft.button}]({{link}})` });
   const files = (Array.isArray(e.files) ? e.files : []).slice(0, 10).map((f) => ({ name: String(f.name || 'file').replace(/[\r\n"\\/]/g, '').slice(0, 120) || 'file', type: String(f.type || 'application/octet-stream').slice(0, 100), content: Buffer.from(String(f.data || ''), 'base64') }));
   if (files.reduce((n, f) => n + f.content.length, 0) > EMAIL_FILES_MAX) return { error: 'The attachments are over the 10 MB limit' };
   if (e.pdf) files.unshift({ name: pdfName(kind, d), type: 'application/pdf', content: docPdf(kind, d) });
   const results = [];
-  for (const addr of to) results.push(await notify({ clientId: d.clientId, channel: 'email', kind, refId: d.id, refNumber: d.number, subject: mail.subject, body: mail.body, html: mail.html, to: addr, attachments: files }));
+  for (const addr of to) results.push(await notify({ clientId: d.clientId, channel: 'email', kind: receipt ? 'receipt' : kind, refId: d.id, refNumber: d.number, subject: mail.subject, body: mail.body, html: mail.html, to: addr, attachments: files }));
   const u = currentUser(req);
   if (e.copy && u && u.email) results.push({ channel: 'email', to: `${u.email} (your copy)`, ...(await sendEmail(u.email, mail.subject, mail.body, { html: mail.html, attachments: files })) });
   return { results };
@@ -3113,26 +3119,20 @@ app.post('/api/payment-detail/:id/receipt', async (req, res) => {
   if (n.status === 'failed') return res.status(502).json({ error: n.detail || 'The receipt couldn’t be sent' });
   res.json({ ok: true, to: c.email, status: n.status });
 });
-// send (or resend) a receipt for a whole paid invoice (invoice page → Send as… on a paid invoice): by email with the invoice PDF attached,
-// or by text ({ channel: 'sms' }) with a link to the receipt page
+// send a receipt for a whole paid invoice (invoice page → Send receipt as…), from the same boxes as sending an invoice:
+// { channels: ['email'], email: {…} } as emailDoc reads it, or { channels: ['sms'], message } with the receipt link added
 app.post('/api/invoices/:id/receipt', async (req, res) => {
   const inv = db.invoices.find((x) => x.id === req.params.id); if (!inv) return res.status(404).json({ error: 'Not found' });
   if (inv.status !== 'paid') return res.status(400).json({ error: 'This invoice isn’t paid yet' });
-  const sms = (req.body || {}).channel === 'sms'; const c = findClient(inv.clientId);
-  if (!c) return res.status(400).json({ error: 'Client not found' });
-  if (sms && !c.phone) return res.status(400).json({ error: 'This client has no phone number. Add one to their client details first.' });
-  if (!sms && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email || '')) return res.status(400).json({ error: 'This client has no email address. Add one to their client details first.' });
-  const x = withStatus(inv); const last = [...(inv.payments || [])].sort((a, b) => (a.date || '').localeCompare(b.date || '')).pop();
-  const amount = money(round2((x.amountPaid || 0) + (x.depositApplied || 0)) || inv.total || 0); const date = niceDate(String(inv.paidAt || '').slice(0, 10));
-  let n;
-  if (sms) n = await notify({ clientId: c.id, channel: 'sms', kind: 'receipt', refId: inv.id, refNumber: inv.number, subject: '', body: `${db.company.name}: thank you! We received your payment of ${amount} for invoice ${inv.number} on ${date}. Your receipt: ${baseUrl()}/pay/${inv.token}` });
-  else {
-    const rm = renderEmail('receipt', { client_name: c.name, company_name: db.company.name, amount, paid_for: `invoice ${inv.number}`, date, reference: (last && last.reference) || inv.number });
-    n = await notify({ clientId: c.id, channel: 'email', kind: 'receipt', refId: inv.id, refNumber: inv.number, subject: rm.subject, body: rm.text, html: rm.html, attachments: [{ name: pdfName('invoice', inv), type: 'application/pdf', content: docPdf('invoice', inv) }] });
+  const results = [];
+  if ((req.body.channels || []).includes('sms')) {
+    const message = String(req.body.message || '').trim(); if (!message) return res.status(400).json({ error: 'Write a message first' });
+    results.push(await notify({ clientId: inv.clientId, channel: 'sms', kind: 'receipt', refId: inv.id, refNumber: inv.number, subject: '', body: smsWithLink(message, 'View your receipt here', invoiceLink(inv)) }));
+  } else {
+    if (!req.body.email) return res.status(400).json({ error: 'Nothing to send' });
+    const r = await emailDoc(req, 'invoice', inv, true); if (r.error) return res.status(400).json(r); results.push(...r.results);
   }
-  save();
-  if (n.status === 'failed') return res.status(502).json({ error: n.detail || 'The receipt couldn’t be sent' });
-  res.json({ ok: true, to: sms ? c.phone : c.email, status: n.status });
+  save(); res.json({ invoice: withStatus(inv), results });
 });
 
 function tellBusinessSent(via, what, amount, clientName) {
