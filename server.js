@@ -1437,7 +1437,7 @@ app.post('/api/auth/hours', (req, res) => {
   st.hours = hours; save(); res.json(profileOf(u));
 });
 // ---- push notifications (Gear → Preferences): each login picks what it gets; each browser or phone it turns them on for is saved on the login ----
-const PUSH_KINDS = ['overview', 'schedule', 'request', 'booking', 'quoteViewed', 'quoteApproved', 'review', 'automation', 'jobPost'];
+const PUSH_KINDS = ['overview', 'schedule', 'request', 'booking', 'quoteViewed', 'quoteChanges', 'quoteApproved', 'review', 'automation', 'jobPost'];
 const pushPrefs = (u) => Object.fromEntries(PUSH_KINDS.map((k) => [k, !u.pushPrefs || u.pushPrefs[k] !== false]));
 const isOwnerOrAdmin = (u) => u.role === 'owner' || u.role === 'admin';
 // never throws: a notification must not get in the way of the work that caused it. A subscription the browser has dropped is forgotten.
@@ -2362,6 +2362,7 @@ app.post('/api/quotes/:id/send', async (req, res) => {
       subject: email.subject, html: ch === 'email' ? email.html : '', body: ch === 'email' ? email.body : req.body.message ? smsWithLink(req.body.message, 'View your quote here', link) : `Quote ${q.number} (${money(q.total)}) is ready: ${shortLink(link)} Reply STOP to opt out.` }));
   }
   if (q.status === 'draft') q.status = 'sent'; if (!q.sentAt) q.sentAt = iso(new Date());
+  q.lastSentAt = new Date().toISOString(); // sending again after the client asked for changes answers the request (the app's "Changes requested" clears)
   save(); res.json({ quote: q, results });
 });
 
@@ -3339,7 +3340,7 @@ function quoteView(q, c, { signed, depositSection, sent, preview, business }) {
     + (tenancy.has('referrals') ? `<hr><a class="qv-nav qv-refer" href="${hub}#refer">${qvIcon('refer')}<span>Refer a Friend</span></a>` : '');
   const side = hub ? `<aside class="qv-side" id="qvMenu"><div class="qv-brand">${logo}</div><div class="qv-co">${esc(co.name)}</div>${business ? `<span class="qv-new" style="opacity:.5;cursor:not-allowed" title="Only your client can send a request">${qvIcon('plus', 18)} New Request</span>` : `<a class="qv-new" href="${hub}#new-request">${qvIcon('plus', 18)} New Request</a>`}<nav aria-label="Client hub">${nav}</nav></aside>` : '';
   const top = `<header class="qv-top">${hub ? `<button type="button" class="qv-burger" aria-expanded="false" aria-controls="qvMenu" onclick="var o=document.getElementById('qvMenu').classList.toggle('open');this.setAttribute('aria-expanded',o)">${qvIcon('menu', 30)}Menu</button>` : '<span></span>'}${logo}</header>`;
-  const open = q.status === 'sent' || q.status === 'draft'; const chg = open && q.changesRequestedAt && (q.changeRequests || []).length;
+  const open = q.status === 'sent' || q.status === 'draft'; const chg = open && q.changesRequestedAt && (q.changeRequests || []).length && !(q.lastSentAt > q.changesRequestedAt) && !(q.changesDoneAt > q.changesRequestedAt); // gone once the business sends it again or marks it handled
   const [label, tone] = chg ? ['Changes requested', 'chg'] : QV_STATUS[q.status] || [q.status, 'grey'];
   const addr = q.address || (c && c.address) || '';
   const taxName = Number(q.taxRate) === Number(co.taxRate) && co.taxName ? co.taxName : 'Tax';
@@ -3678,7 +3679,13 @@ app.post('/p/quote/:token/changes', (req, res) => {
     const subject = `${who} asked for changes to ${what}`; const body = `${who} asked for changes to ${what}:\n\n${text}\n\nUpdate the quote and send it again: ${baseUrl()}/quotes/edit?id=${q.id}`;
     sendEmail(db.company.email, subject, body).then((sent) => { db.notifications.unshift({ id: uid(), at: q.changesRequestedAt, clientId: q.clientId, clientName: c ? c.name : '', channel: 'email', kind: 'quote-status', refId: q.id, refNumber: q.number, to: db.company.email, subject, body, status: sent.status, detail: sent.detail }); save(); }).catch(() => {});
   }
+  pushTo(usersWhoCan('quotes'), 'quoteChanges', { title: 'Client asked for changes', body: `${who} on quote ${q.number}: ${text.slice(0, 120)}`, url: `/quotes/view?id=${q.id}` });
   res.redirect(`/p/quote/${q.token}?changes=sent`);
+});
+// "Mark as handled" on the app's Changes requested notice, for a request answered without sending the quote again
+app.post('/api/quotes/:id/changes-done', (req, res) => {
+  const q = db.quotes.find((x) => x.id === req.params.id); if (!q) return res.status(404).json({ error: 'Not found' });
+  q.changesDoneAt = new Date().toISOString(); save(); res.json(q);
 });
 app.post('/p/quote/:token/respond', (req, res) => {
   const q = db.quotes.find((x) => x.token === req.params.token);

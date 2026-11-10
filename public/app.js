@@ -2300,7 +2300,7 @@ ${planHas('zelle') ? switchRow('allowZelle', 'Zelle', d.allowZelle !== 'off' && 
 <div class="qcard"><h3>Notes</h3><textarea name="internalNotes" rows="6" placeholder="Leave an internal note for yourself or a team member. Clients never see this.">${esc(d.internalNotes || '')}</textarea></div></aside></div>
 <div class="qsave noprint"><a class="btn alt" href="/quotes${d.id ? '/view?id=' + d.id : ''}" data-link>Cancel</a><button class="btn">Save</button></div></form>`;
   const form = $('form', main); if (planHas('quoteOptions') || qHasOpts(d)) quoteOptionsEditor(form, d); wireItems(form);
-  form._doc = d; form._kind = 'quote'; placeSnap(form, d, true);
+  form._doc = d; form._kind = 'quote'; placeChanges(form, d, true); placeSnap(form, d, true);
   if (qp('unsign') === '1') form._removeSig = true; // confirmed on the quote page before opening the editor
   if (d.id && d.signedAt && d.depositPaidAt) guardSignature(form);
   form.addEventListener('change', (e) => {
@@ -2402,7 +2402,7 @@ function viewPage(kind) {
       if (!d) { main.innerHTML = `<div class="card"><h1>${kind === 'quote' ? 'Quote' : 'Invoice'} not found</h1><p><a href="/${kind}s" data-link>Back to the list</a></p></div>`; return; }
       if (kind === 'invoice' && phoneMq.matches && qp('preview')) { main.innerHTML = qp('receipt') ? mobileReceipt(d, qp('receipt')) : mobileInvoicePreview(d); mpStatusBar(); return; }
       main.innerHTML = phoneMq.matches ? mobileDocPage(kind, d) : (kind === 'quote' ? quotePage : invoicePage)(d);
-      if (kind === 'quote') placeSnap(main, d); // Snap to quote: the AI draft's banner, or Draft from photos
+      if (kind === 'quote') { placeChanges(main, d); placeSnap(main, d); } // the client's change request, then Snap to quote: the AI draft's banner, or Draft from photos
     },
   };
 }
@@ -3130,6 +3130,23 @@ const SNAP_CAM = '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2
 const snapAd = () => `<div class="snap-bar snap-ad"><span class="snap-ad-ic" aria-hidden="true">${svgIcon(SNAP_CAM, 20)}</span><span class="snap-ad-txt"><strong>Snap to quote <span class="beta-tag">Unlimited</span></strong> Take photos of the job and say what the client needs. AI drafts the line items from your price list.</span>
 <a class="btn sm" href="/quotes/snap-to-quote" data-link>Get more details</a><button type="button" class="icon-btn snap-ad-x" data-act="snapAdHide" aria-label="Hide this">✕</button></div>`;
 A.snapAdHide = () => { try { localStorage.setItem(SNAP_AD_KEY, '1'); } catch (e) { /* stays hidden until the page reloads */ } document.querySelectorAll('.snap-ad').forEach((b) => b.remove()); };
+// a client's Request Changes that hasn't been answered: the quote is still open and wasn't sent again or marked handled since
+const chgAnswered = (q) => [q.lastSentAt, q.changesDoneAt].filter(Boolean).sort().pop() || '';
+const quoteChg = (q) => { const at = q.changesRequestedAt; if (!at || !['sent', 'draft'].includes(q.status) || quoteJob(q) || chgAnswered(q) > at) return null; return (q.changeRequests || []).slice(-1)[0] || null; };
+function changesBlock(d, inForm) {
+  const last = quoteChg(d); if (!last) return '';
+  const c = byId(D.clients, d.clientId); const when = (r) => fmtDate(ymd(new Date(r.at)));
+  const earlier = (d.changeRequests || []).filter((r) => r.at > chgAnswered(d)).slice(0, -1).reverse(); // more than one since the last answer
+  return `<div class="chg-bar" role="status"><div class="chg-top"><strong>Changes requested</strong><span class="muted">${esc(c ? c.name : 'Client')} · ${when(last)}</span></div>
+<p class="chg-text">${esc(last.text)}</p>${earlier.length ? `<details class="chg-old"><summary>${earlier.length} earlier request${earlier.length === 1 ? '' : 's'}</summary>${earlier.map((r) => `<p><span class="muted">${when(r)}</span> ${esc(r.text)}</p>`).join('')}</details>` : ''}
+<div class="chg-acts">${inForm ? '' : `<a class="btn sm" href="/quotes/edit?id=${d.id}" data-link>Edit quote</a>`}<button type="button" class="btn alt sm" data-act="quoteChangesDone" data-id="${d.id}">Mark as handled</button><span class="muted chg-hint">Sending the quote again also clears this.</span></div></div>`;
+}
+A.quoteChangesDone = async (x) => { const q = await api('POST', `/api/quotes/${x.id}/changes-done`); const d = byId(D.quotes, x.id); if (d) Object.assign(d, q); document.querySelectorAll('.chg-bar').forEach((b) => b.remove()); toast('Marked as handled'); };
+function placeChanges(root, d, inForm) { // above the first card (desktop) or at the top of the quote tab (phone), above Snap to quote
+  const html = changesBlock(d, inForm); if (!html) return;
+  const pane = $('.md-pane[data-pane="doc"]', root); if (pane) return pane.insertAdjacentHTML('afterbegin', html);
+  const card = $('.qcard', root); if (card) card.insertAdjacentHTML('beforebegin', html);
+}
 // put it above the first card (desktop) or at the top of the quote tab (phone)
 function placeSnap(root, d, inForm) {
   let html = snapBlock(d); if (!html) return; if (inForm) html = html.replace('data-act="snapQuote"', 'data-act="snapFromForm"'); // the editor: the form's client
@@ -3295,7 +3312,7 @@ PAGES['/quotes'] = {
     [...quoteSel].forEach((id) => { if (!byId(D.quotes, id)) quoteSel.delete(id); });
     const th = (k, label, cls = '') => `<th class="${cls}"><button class="th-btn" data-act="quoteSort" data-k="${k}">${label} <span class="sort ${v.sort === k ? 'on' : ''}">${v.sort === k ? (v.dir > 0 ? '▲' : '▼') : '⇅'}</span></button></th>`;
     if (phoneMq.matches) return mobileList(main, { path: '/quotes', title: 'Quotes', plural: 'quotes', one: 'quote', list, q: v.q, status: v.status, statuses: order.map((s) => [s, Q_STATUS[s]]), date: (x) => x.createdAt,
-      row: (x) => ({ name: cname(x), date: mDay(x.createdAt), amount: mAmt(x.total), title: x.title, label: Q_STATUS[quoteStatus(x)], cls: 'q-' + quoteStatus(x), href: '/quotes/view?id=' + x.id }),
+      row: (x) => ({ name: cname(x), date: mDay(x.createdAt), amount: mAmt(x.total), title: x.title, label: quoteChg(x) ? 'Changes requested' : Q_STATUS[quoteStatus(x)], cls: 'q-' + quoteStatus(x), href: '/quotes/view?id=' + x.id }),
       onStatus: (k) => { quoteView = { ...quoteView, status: k }; }, onQ: (t) => { quoteView.q = t; }, newAct: 'newQuote' });
     main.innerHTML = `<div class="head"><h1>Quotes</h1><div class="actions"><button class="btn" data-act="newQuote">New Quote</button>
 <details class="menu"><summary class="btn alt">⋯ More Actions</summary><div class="menu-list"><button data-act="exportQuotes">Export to CSV</button></div></details></div></div>
@@ -3313,7 +3330,7 @@ ${quoteSel.size ? `<div class="bulk"><strong>${quoteSel.size} selected</strong><
 ${th('client', 'Client')}${th('number', 'Quote number')}<th>Property</th>${th('created', 'Created')}${th('status', 'Status')}${th('total', 'Total', 'r')}</tr>
 ${list.map((q) => { const c = byId(D.clients, q.clientId) || {}; return `<tr class="crow" data-id="${q.id}"><td><input type="checkbox" class="qsel" value="${q.id}" ${quoteSel.has(q.id) ? 'checked' : ''} aria-label="Select ${esc(q.number)}"></td>
 <td><strong>${esc(cname(q))}</strong></td><td>${esc(q.number)}${q.title ? `<div>${esc(q.title)}</div>` : ''}</td><td>${esc(c.address || '')}</td><td style="white-space:nowrap">${fmtDate(day(q.createdAt))}</td>
-<td>${qBadge(quoteStatus(q))}${q.zelleSentAt && !q.depositPaidAt ? ` <span class="badge zelle">${sentName(q)} sent</span>` : ''}</td><td class="r">${qHasOpts(q) && !q.chosenOption ? `<small class="muted qo-from">${q.options.length} options from</small><strong>${money(Math.min(...Object.values(q.optionTotals || {}).map((t) => t.total)))}</strong>` : `<strong>${money(q.total)}</strong>`}</td></tr>`; }).join('') || `<tr><td colspan="7" class="empty">${D.quotes.length ? 'No quotes match these filters' : 'No quotes yet'}</td></tr>`}</table></div></div>`;
+<td>${qBadge(quoteStatus(q))}${quoteChg(q) ? ' <span class="badge chg">Changes requested</span>' : ''}${q.zelleSentAt && !q.depositPaidAt ? ` <span class="badge zelle">${sentName(q)} sent</span>` : ''}</td><td class="r">${qHasOpts(q) && !q.chosenOption ? `<small class="muted qo-from">${q.options.length} options from</small><strong>${money(Math.min(...Object.values(q.optionTotals || {}).map((t) => t.total)))}</strong>` : `<strong>${money(q.total)}</strong>`}</td></tr>`; }).join('') || `<tr><td colspan="7" class="empty">${D.quotes.length ? 'No quotes match these filters' : 'No quotes yet'}</td></tr>`}</table></div></div>`;
     $$('[data-qv]').forEach((s) => s.addEventListener('change', (e) => { quoteView[e.target.dataset.qv] = e.target.value; refresh(); }));
     let t; $('#qq').addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(async () => { quoteView.q = e.target.value; await refresh(); const q = $('#qq'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 250); });
     $('#qSelAll').addEventListener('change', (e) => { list.forEach((q) => (e.target.checked ? quoteSel.add(q.id) : quoteSel.delete(q.id))); refresh(); });
