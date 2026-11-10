@@ -70,14 +70,14 @@
     @media (max-width:560px){.v-tbl th,.v-tbl td{padding:10px 8px;font-size:14px}}
     .ref-banner{max-width:760px;margin:0 auto 20px;padding:12px 18px;border-radius:12px;background:var(--ok-bg);color:var(--ok-fg);text-align:center;font-size:15px}
     /* dark mode, like the home page (home.css): blue and violet glows behind the heading, a soft glow behind the plans, a faint dot texture,
-       and lighter full-width bands on the comparison and the questions. Light mode is unchanged; these tokens are 'none'/transparent there */
-    :root{--h-dots:none;--h-glow:none;--h-glow2:none;--h-band2:transparent;--h-rowglow:transparent}
+       and clearly lighter full-width bands on the comparison and the questions. Light mode gets blue-gray bands there; the glow tokens are 'none'/transparent */
+    :root{--h-dots:none;--h-glow:none;--h-glow2:none;--h-band2:#e6edf7;--h-rowglow:transparent}
     @media (prefers-color-scheme:dark){:root:not([data-theme=light]){--h-dots:radial-gradient(rgba(148,163,184,.10) 1px,transparent 1.5px);
     --h-glow:radial-gradient(760px 500px at 8% 0%,rgba(37,99,235,.42),transparent 70%),radial-gradient(660px 520px at 92% 120px,rgba(139,92,246,.30),transparent 70%);
-    --h-glow2:radial-gradient(560px 300px at 50% 0%,rgba(37,99,235,.32),transparent 75%);--h-band2:#16213a;--h-rowglow:rgba(37,99,235,.22);--bg:#121b2f}}
+    --h-glow2:radial-gradient(560px 300px at 50% 0%,rgba(37,99,235,.32),transparent 75%);--h-band2:#1e2d4d;--h-rowglow:rgba(37,99,235,.22);--bg:#121b2f}}
     :root[data-theme=dark]{--h-dots:radial-gradient(rgba(148,163,184,.10) 1px,transparent 1.5px);
     --h-glow:radial-gradient(760px 500px at 8% 0%,rgba(37,99,235,.42),transparent 70%),radial-gradient(660px 520px at 92% 120px,rgba(139,92,246,.30),transparent 70%);
-    --h-glow2:radial-gradient(560px 300px at 50% 0%,rgba(37,99,235,.32),transparent 75%);--h-band2:#16213a;--h-rowglow:rgba(37,99,235,.22);--bg:#121b2f}
+    --h-glow2:radial-gradient(560px 300px at 50% 0%,rgba(37,99,235,.32),transparent 75%);--h-band2:#1e2d4d;--h-rowglow:rgba(37,99,235,.22);--bg:#121b2f}
     body{background-color:var(--bg);background-image:var(--h-glow),var(--h-dots);background-size:100% 900px,100% 900px,24px 24px;background-repeat:no-repeat,no-repeat,repeat;overflow-x:clip}
     .s-plans{position:relative;isolation:isolate}
     .s-plans::before{content:'';position:absolute;z-index:-1;inset:-60px 0;pointer-events:none;background:radial-gradient(closest-side,var(--h-rowglow),transparent)}

@@ -250,15 +250,15 @@ a.h-feat{display:block;color:inherit;text-decoration:none;transition:border-colo
 @media (min-width:961px){#new .h-grid{grid-template-columns:repeat(4,1fr)}}
 .h-feat-all{border-style:dashed}
 /* dark mode: break up the flat navy with soft color glows (hero, behind each feature row's picture, the section heads), a faint dot texture,
-   and lighter bands on alternating sections. Light mode keeps its own tinted bands; these tokens are 'none'/transparent there */
-:root{--h-dots:none;--h-glow:none;--h-glow2:none;--h-band:var(--surface-2);--h-band2:transparent;--h-rowglow:transparent;--h-rowglow2:transparent}
+   and clearly lighter bands on alternating sections. Light mode gets clearly blue-gray bands on the same sections; the glow tokens are 'none'/transparent there */
+:root{--h-dots:none;--h-glow:none;--h-glow2:none;--h-band:#e6edf7;--h-band2:#e6edf7;--h-rowglow:transparent;--h-rowglow2:transparent}
 @media (prefers-color-scheme:dark){:root:not([data-theme=light]){--h-dots:radial-gradient(rgba(148,163,184,.10) 1px,transparent 1.5px);
 --h-glow:radial-gradient(760px 500px at 8% 0%,rgba(37,99,235,.42),transparent 70%),radial-gradient(660px 520px at 92% 40%,rgba(139,92,246,.30),transparent 70%);
---h-glow2:radial-gradient(800px 360px at 50% 0%,rgba(37,99,235,.32),transparent 75%);--h-band:#16213a;--h-band2:#16213a;
+--h-glow2:radial-gradient(800px 360px at 50% 0%,rgba(37,99,235,.32),transparent 75%);--h-band:#1e2d4d;--h-band2:#1e2d4d;
 --h-rowglow:rgba(37,99,235,.24);--h-rowglow2:rgba(139,92,246,.24)}}
 :root[data-theme=dark]{--h-dots:radial-gradient(rgba(148,163,184,.10) 1px,transparent 1.5px);
 --h-glow:radial-gradient(760px 500px at 8% 0%,rgba(37,99,235,.42),transparent 70%),radial-gradient(660px 520px at 92% 40%,rgba(139,92,246,.30),transparent 70%);
---h-glow2:radial-gradient(800px 360px at 50% 0%,rgba(37,99,235,.32),transparent 75%);--h-band:#16213a;--h-band2:#16213a;
+--h-glow2:radial-gradient(800px 360px at 50% 0%,rgba(37,99,235,.32),transparent 75%);--h-band:#1e2d4d;--h-band2:#1e2d4d;
 --h-rowglow:rgba(37,99,235,.24);--h-rowglow2:rgba(139,92,246,.24)}
 body{background-color:var(--card);background-image:var(--h-dots);background-size:24px 24px}
 .h-hero{background:var(--h-glow),linear-gradient(180deg,var(--tint) 0%,transparent 100%)}
