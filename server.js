@@ -3113,16 +3113,26 @@ app.post('/api/payment-detail/:id/receipt', async (req, res) => {
   if (n.status === 'failed') return res.status(502).json({ error: n.detail || 'The receipt couldn’t be sent' });
   res.json({ ok: true, to: c.email, status: n.status });
 });
-// send (or resend) a receipt for a whole paid invoice (invoice page → Send Receipt), with the invoice PDF attached
+// send (or resend) a receipt for a whole paid invoice (invoice page → Send as… on a paid invoice): by email with the invoice PDF attached,
+// or by text ({ channel: 'sms' }) with a link to the receipt page
 app.post('/api/invoices/:id/receipt', async (req, res) => {
   const inv = db.invoices.find((x) => x.id === req.params.id); if (!inv) return res.status(404).json({ error: 'Not found' });
   if (inv.status !== 'paid') return res.status(400).json({ error: 'This invoice isn’t paid yet' });
-  const c = findClient(inv.clientId); if (!c || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email || '')) return res.status(400).json({ error: 'This client has no email address. Add one to their client details first.' });
+  const sms = (req.body || {}).channel === 'sms'; const c = findClient(inv.clientId);
+  if (!c) return res.status(400).json({ error: 'Client not found' });
+  if (sms && !c.phone) return res.status(400).json({ error: 'This client has no phone number. Add one to their client details first.' });
+  if (!sms && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email || '')) return res.status(400).json({ error: 'This client has no email address. Add one to their client details first.' });
   const x = withStatus(inv); const last = [...(inv.payments || [])].sort((a, b) => (a.date || '').localeCompare(b.date || '')).pop();
-  const rm = renderEmail('receipt', { client_name: c.name, company_name: db.company.name, amount: money(round2((x.amountPaid || 0) + (x.depositApplied || 0)) || inv.total || 0), paid_for: `invoice ${inv.number}`, date: niceDate(String(inv.paidAt || '').slice(0, 10)), reference: (last && last.reference) || inv.number });
-  const n = await notify({ clientId: c.id, channel: 'email', kind: 'receipt', refId: inv.id, refNumber: inv.number, subject: rm.subject, body: rm.text, html: rm.html, attachments: [{ name: pdfName('invoice', inv), type: 'application/pdf', content: docPdf('invoice', inv) }] }); save();
+  const amount = money(round2((x.amountPaid || 0) + (x.depositApplied || 0)) || inv.total || 0); const date = niceDate(String(inv.paidAt || '').slice(0, 10));
+  let n;
+  if (sms) n = await notify({ clientId: c.id, channel: 'sms', kind: 'receipt', refId: inv.id, refNumber: inv.number, subject: '', body: `${db.company.name}: thank you! We received your payment of ${amount} for invoice ${inv.number} on ${date}. Your receipt: ${baseUrl()}/pay/${inv.token}` });
+  else {
+    const rm = renderEmail('receipt', { client_name: c.name, company_name: db.company.name, amount, paid_for: `invoice ${inv.number}`, date, reference: (last && last.reference) || inv.number });
+    n = await notify({ clientId: c.id, channel: 'email', kind: 'receipt', refId: inv.id, refNumber: inv.number, subject: rm.subject, body: rm.text, html: rm.html, attachments: [{ name: pdfName('invoice', inv), type: 'application/pdf', content: docPdf('invoice', inv) }] });
+  }
+  save();
   if (n.status === 'failed') return res.status(502).json({ error: n.detail || 'The receipt couldn’t be sent' });
-  res.json({ ok: true, to: c.email, status: n.status });
+  res.json({ ok: true, to: sms ? c.phone : c.email, status: n.status });
 });
 
 function tellBusinessSent(via, what, amount, clientName) {

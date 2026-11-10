@@ -2447,8 +2447,8 @@ function invoiceMore(d, c) {
   const b = (act, icon, label, extra = '') => `<button type="button" class="mi" data-act="${act}" data-kind="invoice" data-id="${d.id}" ${extra}>${QM[icon]}${label}</button>`;
   const open = d.status !== 'paid';
   return `<details class="menu more-menu"><summary class="btn alt"><span class="more-dots" aria-hidden="true">•••</span> More</summary><div class="menu-list">
-${open ? b('collectPayment', 'pay', 'Collect Payment') : b('sendReceipt', 'email', 'Send Receipt')}${b('copyInvoice', 'copy', 'Create Similar Invoice')}
-${open ? `<hr class="mi-sep"><div class="mi-h">Send as…</div>${b('sendDoc', 'email', 'Email', 'data-ch="email"')}${planHas('sms') && c.phone && c.smsConsent ? b('sendDoc', 'text', 'Text Message', 'data-ch="text"') : ''}` : ''}
+${open ? b('collectPayment', 'pay', 'Collect Payment') : ''}${b('copyInvoice', 'copy', 'Create Similar Invoice')}
+<hr class="mi-sep"><div class="mi-h">${open ? 'Send as…' : 'Send receipt as…'}</div>${b(open ? 'sendDoc' : 'sendReceipt', 'email', 'Email', 'data-ch="email"')}${planHas('sms') && c.phone && c.smsConsent ? b(open ? 'sendDoc' : 'sendReceipt', 'text', 'Text Message', 'data-ch="text"') : ''}
 ${d.status === 'draft' ? `<hr class="mi-sep"><div class="mi-h">Mark as…</div>${b('markInvoiceSent', 'awaiting', 'Awaiting Payment')}` : ''}
 <hr class="mi-sep"><a class="mi" href="/pay/${d.token}" target="_blank">${QM.eye}${open ? 'Preview as Client' : 'View Receipt'}</a>
 <a class="mi" href="/api/invoices/${d.id}/pdf" target="_blank" title="Invoice ${esc(d.number)}">${QM.pdf}Print or Save PDF</a>
@@ -3478,9 +3478,10 @@ A.sendInvoice = (d) => sendDialog('invoice', byId(D.invoices, d.id));
 // a paid invoice: email the client a receipt (the invoice PDF attached)
 A.sendReceipt = async (d) => {
   const i = byId(D.invoices, d.id); const c = byId(D.clients, i.clientId) || {};
-  if (!c.email) { toast('This client has no email address. Add one to their client details first.', true); return; }
-  const r = await api('POST', `/api/invoices/${i.id}/receipt`, {});
-  toast(r.status === 'simulated' ? 'Receipt logged (no email provider connected)' : `Receipt sent to ${r.to}`);
+  const text = d.ch === 'text'; // Send receipt as… → Text Message (shown when texting is on and the client agreed to texts)
+  if (!text && !c.email) { toast('This client has no email address. Add one to their client details first.', true); return; }
+  const r = await api('POST', `/api/invoices/${i.id}/receipt`, { channel: text ? 'sms' : 'email' });
+  toast(r.status === 'simulated' ? `Receipt logged (no ${text ? 'text' : 'email'} provider connected)` : `Receipt ${text ? 'texted' : 'sent'} to ${r.to}`);
 };
 A.collectPayment = (d) => {
   const inv = byId(D.invoices, d.id); const owed = invBalance(inv);
