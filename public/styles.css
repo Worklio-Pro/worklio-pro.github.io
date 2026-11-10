@@ -91,8 +91,8 @@ input[type=file]{height:auto;padding:7px 12px;max-width:100%;min-width:0}
 .logo-side{flex:1 1 200px;min-width:0}
 input[type=color]{padding:4px 6px}
 /* Safari draws date/time text at the top of the box; give it a full-height line so it sits in the middle */
-input[type=date],input[type=time]{line-height:38px;display:block;min-width:0;max-width:100%;-webkit-appearance:none;appearance:none}
-input[type=date]::-webkit-date-and-time-value,input[type=time]::-webkit-date-and-time-value{margin:0;text-align:left;line-height:38px}
+input[type=date],input[type=time],input[type=datetime-local]{line-height:38px;display:block;min-width:0;max-width:100%;-webkit-appearance:none;appearance:none}
+input[type=date]::-webkit-date-and-time-value,input[type=time]::-webkit-date-and-time-value,input[type=datetime-local]::-webkit-date-and-time-value{margin:0;text-align:left;line-height:38px}
 input[type=date]::-webkit-datetime-edit,input[type=time]::-webkit-datetime-edit{padding:0;line-height:38px}
 label>input,label>select,label>textarea{margin-top:4px}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -1865,7 +1865,7 @@ label.bk-auto input{width:auto;margin:0}
  :where(#main,.modal,.mpage,.msheet) input:where(:not([type=checkbox],[type=radio],[type=range],[type=color],[type=file])),:where(#main,.modal,.mpage,.msheet) select{height:50px;padding-left:14px;font-size:16px;border-radius:12px}
  :where(#main,.modal,.mpage,.msheet) input:where(:not([type=checkbox],[type=radio],[type=range],[type=color],[type=file])){padding-right:14px}
  :where(#main,.modal,.mpage,.msheet) textarea{padding:12px 14px;font-size:16px;border-radius:12px}
- :where(#main,.modal,.mpage,.msheet) input:is([type=date],[type=time]):not(:where(.mf *,.fl *)),:where(#main,.modal,.mpage,.msheet) input:is([type=date],[type=time]):not(:where(.mf *,.fl *))::-webkit-date-and-time-value,:where(#main,.modal,.mpage,.msheet) input:is([type=date],[type=time]):not(:where(.mf *,.fl *))::-webkit-datetime-edit{line-height:48px} /* boxes inside a labeled field (.mf, .fl) keep their own size */
+ :where(#main,.modal,.mpage,.msheet) input:is([type=date],[type=time],[type=datetime-local]):not(:where(.mf *,.fl *)),:where(#main,.modal,.mpage,.msheet) input:is([type=date],[type=time],[type=datetime-local]):not(:where(.mf *,.fl *))::-webkit-date-and-time-value,:where(#main,.modal,.mpage,.msheet) input:is([type=date],[type=time],[type=datetime-local]):not(:where(.mf *,.fl *))::-webkit-datetime-edit{line-height:48px} /* boxes inside a labeled field (.mf, .fl) keep their own size */
 }
 
 /* phones: Roles & Permissions, one role at a time */
