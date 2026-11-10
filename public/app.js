@@ -2228,7 +2228,7 @@ function quoteOptionsEditor(form, d) {
   };
   const draw = () => {
     box.innerHTML = !opts ? '<button type="button" class="btn alt sm qo-on" data-q="on">Offer options (Good / Better / Best)</button>'
-      : `<div class="qo-list">${opts.map((o, i) => `<div class="qo-row" data-o="${o.id}"><span class="qo-n">${i + 1}</span><input class="qo-name" maxlength="60" value="${esc(o.name)}" placeholder="${OPT_NAMES[i]}" aria-label="Option ${i + 1} name">
+      : `<div class="qo-list">${opts.map((o, i) => `<div class="qo-row" data-o="${o.id}"><span class="qo-n">${i + 1}</span><input class="qo-name" maxlength="40" value="${esc(o.name)}" placeholder="${OPT_NAMES[i]}" aria-label="Option ${i + 1} name">
 <input class="qo-desc" maxlength="500" value="${esc(o.desc || '')}" placeholder="What’s included (optional)" aria-label="Option ${i + 1}: what’s included"><label class="qo-r"><input type="radio" name="qoRec" value="${o.id}" ${rec === o.id ? 'checked' : ''}> Recommended</label>
 ${opts.length > 2 ? `<button type="button" class="icon-btn qo-rm" data-q="rm" aria-label="Remove option ${i + 1}" title="Remove this option">${TRASH}</button>` : '<span></span>'}</div>`).join('')}</div>
 <div class="qo-acts">${opts.length < 3 ? '<button type="button" class="link-btn" data-q="add">+ Add option</button>' : ''}<button type="button" class="link-btn" data-q="off">Turn off options</button></div>
@@ -2259,7 +2259,7 @@ function mQuoteOptions(kind, d) {
   const box = $('.mqo', f);
   const draw = () => { box.innerHTML = `<p class="muted mqo-p">Offer the client ${opts.length} options, like Good, Better and Best. They pick one when they approve. Then give each line item its option.</p>
 ${opts.map((o, i) => `<div class="mqo-o" data-o="${o.id}"><div class="mqo-oh"><strong>Option ${i + 1}</strong>${opts.length > 2 ? `<button type="button" class="link-btn" data-q="rm">Remove</button>` : ''}</div>
-${mField('Name', `<input class="qo-name" maxlength="60" value="${esc(o.name)}" placeholder="${OPT_NAMES[i]}">`)}${mField('What’s included', `<textarea class="qo-desc" rows="2" maxlength="500" placeholder="Optional">${esc(o.desc || '')}</textarea>`)}
+${mField('Name', `<input class="qo-name" maxlength="40" value="${esc(o.name)}" placeholder="${OPT_NAMES[i]}">`)}${mField('What’s included', `<textarea class="qo-desc" rows="2" maxlength="500" placeholder="Optional">${esc(o.desc || '')}</textarea>`)}
 <label class="jf-share"><input type="radio" name="qoRec" value="${o.id}" ${rec === o.id ? 'checked' : ''}><span>Recommended</span></label></div>`).join('')}
 ${opts.length < 3 ? '<button type="button" class="btn alt" data-q="add">+ Add option</button>' : ''}
 ${(d.items || []).length ? `<h3 class="mqo-ih">Line items</h3><p class="muted mqo-p">Pick each item’s option. “All options” items are in every option.</p>${d.items.map((it, k) => mField(esc(it.desc), `<select class="mqo-io" data-k="${k}"><option value="">All options</option>${opts.map((o, i) => `<option value="${o.id}" ${itemOpt[k] === o.id ? 'selected' : ''}>${esc(o.name.trim() || OPT_NAMES[i])}</option>`).join('')}</select>`)).join('')}` : ''}`; };

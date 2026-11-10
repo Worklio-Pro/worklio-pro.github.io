@@ -206,7 +206,7 @@ function mxExpand(items) {
 }
 function computeTotals(doc) {
   // the options (quotes only): 2 or 3, each named; anything else means no options
-  const opts = Array.isArray(doc.options) ? doc.options.slice(0, 3).map((o) => ({ id: /^[a-z0-9]{4,16}$/.test(o && o.id) ? o.id : uid(), name: String((o && o.name) || '').trim().slice(0, 60), desc: String((o && o.desc) || '').trim().slice(0, 500) })) : [];
+  const opts = Array.isArray(doc.options) ? doc.options.slice(0, 3).map((o) => ({ id: /^[a-z0-9]{4,16}$/.test(o && o.id) ? o.id : uid(), name: String((o && o.name) || '').trim().slice(0, 40), desc: String((o && o.desc) || '').trim().slice(0, 500) })) : [];
   const ids = new Set(opts.map((o) => o.id));
   // price is the client-facing unit price: cost plus a markup (% of cost, or a flat $ per unit). Older items without a cost use their price as the cost.
   doc.items = mxExpand(doc.items).filter((i) => i.desc).map((i) => {
@@ -3321,7 +3321,7 @@ const QV_CSS = `.qv-biz{position:sticky;top:0;z-index:40;display:flex;align-item
  .qv-top{display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:31;height:73px;padding:0 16px;background:#fff;box-shadow:0 2px 8px rgba(3,43,58,.08)}
  .qv-burger{display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px;border:0;background:none;color:#032b3a;font:inherit;font-size:11px;font-weight:600;cursor:pointer}.qv-top img{max-height:40px;max-width:110px}.qv-top .qv-mono{width:40px;height:40px;font-size:16px;border-radius:10px}
  .qv-main{padding:24px 16px 40px}.qv-grid{display:flex;flex-direction:column;align-items:stretch;gap:16px}.qv-bar{display:none}
- .qv-act{order:-1;margin:0;padding:0;background:none;border:0}.qv-act .qv-btn{height:48px;font-size:17px}
+ .qv-act{order:-1;margin:0;padding:0;background:none;border:0}.qv-act .qv-btn{height:48px;font-size:17px}.qv-act .qv-btn.qv-obtn{height:auto;min-height:48px;padding:10px 14px} /* option buttons grow to fit a long name */
  .qv-doc>summary{display:flex;justify-content:space-between;align-items:center;padding:20px;font-weight:700;font-size:17px;cursor:pointer;list-style:none}.qv-doc>summary::-webkit-details-marker{display:none}
  .qv-doc>summary svg{color:var(--brand);transition:transform .15s}.qv-doc:not([open])>summary svg{transform:rotate(180deg)}.qv-doc[open]>summary{border-bottom:1px solid #e4e1dc}.qv-doc:not([open]) .qv-hide,.qv-doc[open] .qv-show{display:none}
  .qv-body{padding:20px 20px 28px}.qv-hd{display:block;border-bottom:1px solid #e4e1dc;margin:0 -20px;padding:0 20px 20px}.qv-hd-r{border:0;padding:12px 0 0;grid-template-columns:1fr 1fr;font-size:15px}
