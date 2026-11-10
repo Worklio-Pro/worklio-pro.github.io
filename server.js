@@ -2795,7 +2795,7 @@ function offlineBox(doc, amount, memo, base) {
   const methods = offlineMethods(doc); if (!methods.length) return '';
   const wrap = (html) => `<div style="background:#f5f3ff;padding:16px;border-radius:8px;margin-top:16px;border:1px solid #c4b5fd">${html}</div>`;
   if (doc.zelleSentAt) return wrap(`<p style="margin:0">✓ You told us you sent this payment by ${esc(PAY_VIA[doc.sentVia] || 'Zelle')} on ${esc(niceDate(doc.zelleSentAt))}. We'll confirm it once it arrives.</p>`);
-  const amt = (Math.round(amount * 100) / 100).toFixed(2); const sm = 'padding:6px 12px;font-size:14px';
+  const amt = (Math.round(amount * 100) / 100).toFixed(2); const sm = 'display:flex;align-items:center;justify-content:center;width:100%;box-sizing:border-box;min-height:50px;padding:12px 16px;font-size:16px;font-weight:600;line-height:1.3;text-align:center'; // big and full width, easy to tap
   const sent = (m) => `<form method="post" action="${esc(`${base}/sent/${m.key}`)}" style="margin-top:10px"><button class="btn alt" style="${sm}">I've sent the payment by ${esc(m.label)}</button></form>`;
   const box = (m) => {
     if (m.key === 'zelle') {
