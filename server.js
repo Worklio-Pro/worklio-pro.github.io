@@ -22,6 +22,7 @@ const seo = require('./lib/seo');
 const maintenance = require('./lib/maintenance');
 const stripeLib = require('./lib/stripe');
 const social = require('./lib/social');
+const signInWith = require('./lib/sign-in-with'); // Continue with Google / Apple (lib/platform.js has the routes)
 const bluesky = require('./lib/bluesky');
 const networks = require('./lib/networks'); // LinkedIn, Pinterest, Threads, TikTok and YouTube for Marketing
 const accounting = require('./lib/accounting'); // QuickBooks Online and Xero (Settings → QuickBooks & Xero)
@@ -1293,7 +1294,8 @@ app.post('/api/auth/accept-invite', (req, res) => {
   startSession(res, u); res.json(publicUser(u));
 });
 app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
-app.get('/api/auth/state', (req, res) => res.json({ needsSetup: !db.users.length, user: publicUser(currentUser(req)), company: { name: db.company.name, logo: db.company.logo }, product: brandLib.brand(), emailReady: !!emailProvider() }));
+app.get('/api/auth/state', (req, res) => res.json({ needsSetup: !db.users.length, user: publicUser(currentUser(req)), company: { name: db.company.name, logo: db.company.logo }, product: brandLib.brand(), emailReady: !!emailProvider(),
+  signInWith: { providers: signInWith.available(), start: `${tenancy.platformUrl()}/sign-in`, account: tenancy.current().id } })); // Continue with Google / Apple go through the platform address
 // what this login may open: its permissions, the pages they unlock, and which lists it can load
 const accessOf = (u) => { const rk = roleKey(u); const routes = rolesLib.routesFor(teamRoles(), rk); return { staffId: u.staffId || null, perms: rolesLib.permsOf(teamRoles(), rk), pages: rolesLib.isAdminRole(u.role) ? null : rolesLib.pagesFor(teamRoles(), rk), collections: rolesLib.isAdminRole(u.role) ? COLLECTIONS : COLLECTIONS.filter((c) => rolesLib.allows(routes, 'GET', '/api/' + c)) }; };
 // the app tour (public/tour.js) starts by itself once for logins made since it launched; finishing or skipping it marks it seen
@@ -5616,14 +5618,19 @@ app.get('*', (req, res) => {
 
 // ---------- platform console + pricing/sign-up (lib/platform.js) ----------
 // the owner login of a new account: with a password (self sign-up) or invited to choose one (created from the console). Runs inside the account.
-function createOwner(t, { name, email, password }) {
-  const user = { id: uid(), name, email: normEmail(email), role: 'owner', createdAt: iso(new Date()) };
+// verifiedBy: signed up with Google or Apple, which confirmed the email (so the welcome email goes out instead of "confirm your email")
+function createOwner(t, { name, email, password, verifiedBy }) {
+  const user = { id: uid(), name, email: normEmail(email), role: 'owner', createdAt: iso(new Date()), ...(verifiedBy ? { emailVerifiedAt: iso(new Date()), signedUpWith: verifiedBy, welcomeDue: true } : {}) };
   if (password) { const { salt, hash } = hashPassword(password); Object.assign(user, { salt, passwordHash: hash }); }
   db.users.push(user); ensureOwnerStaff(); save(); return user;
 }
 // self sign-ups confirm their email: the link (7 days) marks the owner's email confirmed and sends the welcome email. Runs inside the account.
 function sendVerifyEmail(t) {
-  const u = db.users.find((x) => x.role === 'owner'); if (!u || u.emailVerifiedAt) return Promise.resolve(null);
+  const u = db.users.find((x) => x.role === 'owner'); if (!u) return Promise.resolve(null);
+  if (u.emailVerifiedAt) { // confirmed by Google or Apple at sign-up: the welcome email, once
+    if (!u.welcomeDue) return Promise.resolve(null); delete u.welcomeDue; save();
+    return sendTemplate('welcome', u.email, { name: u.name, business: db.company.name || t.name, account_url: baseUrl() }, { server: true }).catch(() => null);
+  }
   const tok = crypto.randomBytes(32).toString('hex'); u.emailVerify = { hash: sha(tok), expires: Date.now() + 7 * 864e5 }; save();
   return sendTemplate('verifyEmail', u.email, { name: u.name, business: db.company.name || t.name, link: `${baseUrl()}/api/auth/verify-email?token=${tok}`, account_url: baseUrl() }, { server: true }).catch(() => null);
 }
@@ -5670,7 +5677,7 @@ const platformApp = require('./lib/platform')({
   dataImport, // Alpha → an account → Import data
 });
 // which app answers: the platform's (its own domain, or /alpha… while developing) or an account's
-const PLATFORM_PATHS = /^\/(alpha(\/.*)?|platform(\/.*)?|stripe\/go\/[a-z]+|oauth\/(google|meta|tiktok|linkedin|pinterest|threads|quickbooks|xero)\/callback|home|features|marketing|partners(\/[a-f0-9]+)?|go\/[A-Za-z0-9_-]+|quote-from-photos|good-better-best|pricing|signup|sign-in|supporters|industries(\/[a-z-]+)?|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;
+const PLATFORM_PATHS = /^\/(alpha(\/.*)?|platform(\/.*)?|stripe\/go\/[a-z]+|oauth\/(google|meta|tiktok|linkedin|pinterest|threads|quickbooks|xero)\/callback|home|features|marketing|partners(\/[a-f0-9]+)?|go\/[A-Za-z0-9_-]+|quote-from-photos|good-better-best|pricing|signup|sign-in(\/(google|apple)(\/callback)?)?|supporters|industries(\/[a-z-]+)?|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;
 function dispatch(req, res) {
   // www. → the bare domain, so search engines see one copy of each page (the canonical links name the bare domain). Page loads only: a form or webhook posted to www. still works
   if (!tenancy.devMode && /^(GET|HEAD)$/.test(req.method) && tenancy.hostOnly(req.headers.host) === 'www.' + tenancy.PLATFORM_DOMAIN) { res.writeHead(301, { Location: tenancy.platformUrl() + req.url }); return res.end(); }

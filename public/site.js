@@ -98,7 +98,7 @@ ${S.allowSignups ? `<a class="btn ${i === mid ? '' : 'alt'}" href="#signup" data
   try { if (ref) sessionStorage.setItem('ref', ref); else ref = sessionStorage.getItem('ref') || ''; } catch (e) { /* private mode */ }
   const root = S.rootDomain; const urlCode = (new URLSearchParams(location.search).get('code') || '').trim().slice(0, 30); // a shared link: /pricing?code=SPRING20
   // the sign-up form waits here (hidden) and moves into a pop-up when someone chooses a plan or clicks Get started
-  $('#signup').innerHTML = `<form id="sf" novalidate><div id="err"></div><input type="hidden" name="ref" value="${esc(ref)}"><label>Plan<select name="plan">${S.plans.map((p) => `<option value="${esc(p.id)}" ${p.id === S.signupPlan ? 'selected' : ''}>${esc(p.name)}${p.price ? ` (${esc(p.price)})` : ''}</option>`).join('')}</select></label>
+  $('#signup').innerHTML = `<form id="sf" novalidate><div id="err"></div><div id="oaTop"></div><input type="hidden" name="ref" value="${esc(ref)}"><label>Plan<select name="plan">${S.plans.map((p) => `<option value="${esc(p.id)}" ${p.id === S.signupPlan ? 'selected' : ''}>${esc(p.name)}${p.price ? ` (${esc(p.price)})` : ''}</option>`).join('')}</select></label>
 ${both ? `<label>Billing<select name="interval"><option value="month" ${period === 'month' ? 'selected' : ''}>Monthly</option><option value="year" ${period === 'year' ? 'selected' : ''}>Yearly${best > 0 ? ` (save up to ${best}%)` : ''}</option></select></label>` : ''}
 <label>Business name<input name="company" required maxlength="100" autocomplete="organization"></label>
 <label>What kind of work do you do?<select name="industry" required><option value="">Choose your industry</option>${(S.industries || []).map((i) => `<option value="${esc(i.slug)}" ${i.slug === qs.get('industry') ? 'selected' : ''}>${esc(i.name)}</option>`).join('')}</select></label>
@@ -106,7 +106,7 @@ ${both ? `<label>Billing<select name="interval"><option value="month" ${period =
 <label>Your web address<div class="slug"><input name="slug" required maxlength="32" autocomplete="off" spellcheck="false"><span>.${esc(root)}</span></div><div class="hint" id="hint"></div></label>
 <div class="c-row"><label>Your name<input name="name" required maxlength="100" autocomplete="name"></label>
 <label>Email<input name="email" type="email" required autocomplete="email"></label></div>
-<label>Password (8+ characters)<input name="password" type="password" required minlength="8" autocomplete="new-password"></label>
+<label id="pwRow">Password (8+ characters)<input name="password" type="password" required minlength="8" autocomplete="new-password"></label>
 <label id="codeRow">Discount or supporter code (optional)<input name="code" maxlength="30" autocomplete="off" autocapitalize="characters" spellcheck="false" style="text-transform:uppercase" value="${esc(urlCode)}"><div class="hint" id="codeHint"></div></label>
 <p class="muted" style="font-size:13px;margin:4px 0 10px">By creating an account, you agree to the <a href="/terms" target="_blank" rel="noopener">Terms of Service</a> and <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</p><button class="btn go">Create account</button><p class="muted" id="payNote" style="font-size:13px;margin:8px 0 0;text-align:center"></p></form>`;
   const f = $('#sf'); const slug = $('[name=slug]', f); const hint = $('#hint'); let t;
@@ -153,6 +153,30 @@ ${both ? `<label>Billing<select name="interval"><option value="month" ${period =
     o.addEventListener('click', (e) => { if (e.target.closest('[data-close]')) close(); });
     const first = [...f.querySelectorAll('input:not([type=hidden])')].find((x) => !x.value); (first || $('[name=company]', f)).focus();
   };
+  // Continue with Google / Apple: the sign-in comes back here (#signup) with the plan, billing and code kept in the address
+  const oaTop = $('#oaTop', f);
+  if (window.oauthButtons) oaTop.innerHTML = oauthButtons(S.providers, (p) => `/sign-in/${p}`, 'or sign up with email');
+  oaTop.addEventListener('click', (e) => { const a = e.target.closest('.oa-btn'); if (!a) return;
+    const q = new URLSearchParams(oauthClean().split('?')[1] || ''); q.set('plan', sel.value); if (iv) q.set('interval', iv.value); if (code.value.trim()) q.set('code', code.value.trim()); else q.delete('code');
+    for (const k of ['company', 'slug', 'industry']) { const v = $(`[name=${k}]`, f).value.trim(); if (v) q.set('f_' + k, v); }
+    a.href = `/sign-in/${a.classList.contains('apple') ? 'apple' : 'google'}?${new URLSearchParams({ intent: 'signup', back: `${location.pathname}?${q}#signup` })}`; });
+  if (location.hash === '#signup' && (qs.get('oauth') || qs.get('oauth_error'))) {
+    if (qs.get('plan') && S.plans.some((p) => p.id === qs.get('plan'))) { sel.value = qs.get('plan'); if (iv && qs.get('interval')) iv.value = qs.get('interval'); syncPlan(); }
+    for (const k of ['company', 'slug', 'industry']) { const v = qs.get('f_' + k); if (v) { $(`[name=${k}]`, f).value = v; if (k === 'slug') slug.dataset.touched = '1'; } }
+    if (qs.get('f_slug')) check(); $('#indOther').hidden = $('[name=industry]', f).value !== 'other';
+    const showErr = (m) => { $('#err').innerHTML = `<div class="msg err" role="alert">${esc(m)}</div>`; };
+    if (qs.get('oauth_error')) showErr(qs.get('oauth_error'));
+    else {
+      const r = await fetch('/api/site/oauth-signup').catch(() => null); const j = r ? await r.json().catch(() => ({})) : {};
+      if (r && r.ok) {
+        oaTop.innerHTML = oauthWho(j.provider, j.email);
+        const em = $('[name=email]', f); em.value = j.email; em.readOnly = true; const nm = $('[name=name]', f); if (!nm.value && j.name) nm.value = j.name;
+        const pw = $('#pwRow'); pw.hidden = true; $('input', pw).required = false; $('input', pw).disabled = true; // no password: they log in with Google or Apple
+        f.insertAdjacentHTML('afterbegin', '<input type="hidden" name="oauth" value="1">');
+      } else showErr(j.error || 'Your sign-in expired. Try again.');
+    }
+    history.replaceState(null, '', oauthClean().replace(/([?&])(plan|interval|f_company|f_slug|f_industry)=[^&]*/g, '$1').replace(/[?&]+$/, '').replace(/\?&+/, '?') + '#signup');
+  }
   if (urlCode) checkCode();
   if (urlCode || location.hash === '#signup') openSignup();
   if (ref) fetch('/api/site/ref/' + encodeURIComponent(ref)).then((r) => (r.ok ? r.json() : null)).then((L) => {

@@ -8,7 +8,11 @@ const params = new URLSearchParams(location.search);
 const nextUrl = () => { const n = params.get('next') || '/'; return n.startsWith('/') && !n.startsWith('//') ? n : '/'; };
 let state = {};
 const central = document.body.hasAttribute('data-central');
-let signIn = null; // central: the email and password while a business is chosen
+let signIn = null; // central: the email and password while a business is chosen ({ pick: true } after Continue with Google / Apple)
+// Continue with Google / Apple: always through the platform address; a business's own page says which business it is
+const oauthHref = (p) => central ? `/sign-in/${p}?${new URLSearchParams({ next: nextUrl() })}`
+  : `${state.signInWith.start}/${p}?${new URLSearchParams({ account: state.signInWith.account, next: nextUrl() })}`;
+const oauthRow = () => (window.oauthButtons ? oauthButtons(central ? state.providers : state.signInWith && state.signInWith.providers, oauthHref, 'or log in with email') : '');
 
 async function post(url, body) {
   const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -23,7 +27,7 @@ const msg = (text, kind = 'err') => (text ? `<p class="msg ${kind}" role="${kind
 function show(view, note) {
   const p = $('#panel');
   if (view === 'login') {
-    p.innerHTML = `<form id="f" novalidate>${msg(note && note.text, note && note.kind)}
+    p.innerHTML = `${msg(note && note.text, note && note.kind)}${oauthRow()}<form id="f" novalidate>
 ${field('email', 'Email address*', 'email', 'autocomplete="username" required autofocus')}${field('password', 'Password*', 'password', 'autocomplete="current-password" required')}
 <button type="button" class="linkish" data-go="forgot">Forgot password?</button>
 <button class="btn go">Log In</button></form>
@@ -31,7 +35,7 @@ ${field('email', 'Email address*', 'email', 'autocomplete="username" required au
     $('#f').addEventListener('submit', (e) => submit(e, central ? (b) => centralLogin(b) : async (b) => { await post('/api/auth/login', b); location.href = nextUrl(); }));
     if (params.get('email')) { $('#f [name=email]').value = params.get('email'); $('#f [name=password]').focus(); } // from sign-up
   } else if (view === 'choose') {
-    p.innerHTML = `<h1>Choose a business</h1><p class="lead">Your email logs in to more than one business.</p>${msg(note && note.text)}
+    p.innerHTML = `<h1>Choose a business</h1><p class="lead">${state.pickEmail ? `${esc(state.pickEmail)} logs in to more than one business.` : 'Your email logs in to more than one business.'}</p>${msg(note && note.text)}
 <div class="pick">${state.accounts.map((a) => `<button type="button" class="pick-row" data-account="${esc(a.id)}"><strong>${esc(a.name)}</strong><small>${esc(a.address)}</small></button>`).join('')}</div>
 <p class="alt"><button type="button" class="linkish" data-go="login">Use a different email</button></p>`;
   } else if (view === 'setup') {
@@ -72,7 +76,8 @@ async function submit(e, fn) {
   btn.disabled = true; btn.textContent = 'Please wait…';
   try { await fn(b); } catch (err) { flash(form, err.message); btn.disabled = false; btn.textContent = label; }
 }
-function flash(form, text) { const old = form.querySelector('.msg'); if (old) old.remove(); form.insertAdjacentHTML('afterbegin', msg(text)); }
+// clears every message on the panel, including a note above the Google / Apple buttons
+function flash(form, text) { document.querySelectorAll('#panel .msg').forEach((x) => x.remove()); form.insertAdjacentHTML('afterbegin', msg(text)); }
 
 document.addEventListener('click', (e) => {
   const go = e.target.closest('[data-go]'); if (go) { e.preventDefault(); signIn = null; return show(go.dataset.go); }
@@ -80,7 +85,7 @@ document.addEventListener('click', (e) => {
   if (acct && signIn) {
     document.querySelectorAll('[data-account]').forEach((x) => { x.disabled = true; }); acct.querySelector('small').textContent = 'Opening…';
     post('/api/site/sign-in', { ...signIn, account: acct.dataset.account, next: nextUrl() }).then((r) => { location.href = r.url; })
-      .catch((err) => { if (/match|Too many/.test(err.message)) { signIn = null; show('login', { text: err.message }); } else show('choose', { text: err.message }); });
+      .catch((err) => { if (/match|Too many|expired/.test(err.message)) { signIn = null; show('login', { text: err.message }); } else show('choose', { text: err.message }); });
   }
   const eye = e.target.closest('[data-eye]');
   if (eye) { const i = eye.parentElement.querySelector('input'); const showing = i.type === 'text'; i.type = showing ? 'password' : 'text'; eye.setAttribute('aria-label', showing ? 'Show password' : 'Hide password'); eye.style.color = showing ? '' : 'var(--link)'; i.focus(); }
@@ -93,7 +98,15 @@ document.addEventListener('click', (e) => {
     document.title = `Log in · ${name}`;
     $('#brand').innerHTML = `${brandImg(state.product)}${state.product.logoHasName ? '' : `<span>${esc(name)}</span>`}`;
     $('#promoCo').textContent = name;
-    return show('login');
+    const oauthError = params.get('oauth_error');
+    if (params.get('pick')) { // back from Google / Apple with an email in several businesses
+      const r = await fetch('/api/site/sign-in/pick'); const j = await r.json().catch(() => ({}));
+      history.replaceState(null, '', oauthClean());
+      if (r.ok && j.accounts.length) { signIn = { pick: true }; state.accounts = j.accounts; state.pickEmail = j.email; return show('choose'); }
+      return show('login', { text: j.error || 'That sign-in expired. Try again.' });
+    }
+    if (oauthError) history.replaceState(null, '', oauthClean());
+    return show('login', oauthError ? { text: oauthError } : undefined);
   }
   try { state = await (await fetch('/api/auth/state')).json(); } catch (e) { state = { company: {} }; }
   const co = state.company || {};
@@ -107,5 +120,6 @@ document.addEventListener('click', (e) => {
     return show('invite');
   }
   if (state.user && !params.get('reset')) { location.href = nextUrl(); return; }
+  if (params.get('oauth_error')) { const t = params.get('oauth_error'); history.replaceState(null, '', oauthClean()); if (!state.needsSetup && !params.get('reset')) return show('login', { text: t }); }
   show(params.get('reset') ? 'reset' : state.needsSetup ? 'setup' : 'login');
 })();

@@ -22,14 +22,15 @@
   const flag = (cc) => String.fromCodePoint(...[...cc].map((c) => 0x1f1a5 + c.charCodeAt(0)));
   const usPhone = (d) => (d.length > 6 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : d.length > 3 ? `(${d.slice(0, 3)}) ${d.slice(3)}` : d.length ? `(${d}` : '');
 
-  function open() {
+  // oa: back from Continue with Google / Apple ({ provider, email, name } or { error }), with step 1's answers kept in the address
+  function open(oa = {}) {
     const opener = document.activeElement; const old = $('#overlay'); if (old) old.remove();
     const o = document.createElement('div'); o.className = 'overlay'; o.id = 'overlay';
     o.innerHTML = `<div class="modal tr-modal" role="dialog" aria-modal="true" aria-labelledby="trTitle">
 <button type="button" class="x tr-x" data-close aria-label="Close">×</button>
 <h2 id="trTitle">Start your 30-day free trial</h2>
 <div class="tr-box"><ol class="tr-steps"><li class="on" data-step="1"><b>Step 1</b>Tell us about your business</li><li data-step="2"><b>Step 2</b>Trial details</li></ol>
-<form id="tr1" novalidate><div class="tr-err"></div>
+<form id="tr1" novalidate><div class="tr-err"></div><div class="tr-oa"></div>
 <input name="company" required maxlength="100" autocomplete="organization" placeholder="Business name" aria-label="Business name">
 <input name="name" required maxlength="100" autocomplete="name" placeholder="Full name" aria-label="Full name">
 <input name="email" type="email" required maxlength="200" autocomplete="email" placeholder="Email address" aria-label="Email address">
@@ -41,7 +42,7 @@ ${plans.map((p) => { const c = per(p); return `<label><input type="radio" name="
 <label>What kind of work do you do?<select name="industry" required><option value="">Choose your industry</option>${(S.industries || []).map((i) => `<option value="${esc(i.slug)}" ${i.slug === pageIndustry ? 'selected' : ''}>${esc(i.name)}</option>`).join('')}</select></label>
 <label class="tr-other" hidden>Your industry<input name="industryOther" maxlength="80" placeholder="e.g. Septic pumping"></label>
 <label>Your web address<div class="slug"><input name="slug" required maxlength="32" autocomplete="off" spellcheck="false"><span>.${esc(root)}</span></div><div class="hint"></div></label>
-<label>Password (8+ characters)<input name="password" type="password" required minlength="8" autocomplete="new-password"></label>
+<label class="tr-pw">Password (8+ characters)<input name="password" type="password" required minlength="8" autocomplete="new-password"></label>
 <p class="tr-sum"></p>
 <label class="tr-agree"><input type="checkbox" name="agree"> <span>I agree to the <a href="/terms" target="_blank" rel="noopener">Terms of Service</a> and <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</span></label>
 <button class="btn tr-go" disabled>Start my 30-day free trial</button><p class="tr-note">No credit card needed. Add one in Account and billing before your trial ends to keep your account.</p></form></div></div>`;
@@ -56,6 +57,19 @@ ${plans.map((p) => { const c = per(p); return `<label><input type="radio" name="
       const first = [...(n === 1 ? f1 : f2).querySelectorAll('input:not([type=radio]):not([type=checkbox]),select')].find((x) => !x.value); if (first) first.focus(); };
     $('[name=company]', f1).focus();
     const phone = $('[name=phone]', f1); const country = $('[name=country]', f1);
+    const oaBox = $('.tr-oa', f1);
+    if (oa.email) { // signed in with Google or Apple: their confirmed email, and no password to choose
+      oaBox.innerHTML = oauthWho(oa.provider, oa.email); const em = $('[name=email]', f1); em.value = oa.email; em.readOnly = true;
+      if (oa.name) $('[name=name]', f1).value = oa.name;
+      const pw = $('.tr-pw', f2); pw.hidden = true; $('input', pw).disabled = true; f2.insertAdjacentHTML('afterbegin', '<input type="hidden" name="oauth" value="1">');
+    } else if (window.oauthButtons) oaBox.innerHTML = oauthButtons(S.providers, (p) => `/sign-in/${p}`, 'or enter your details');
+    if (oa.company) $('[name=company]', f1).value = oa.company; if (oa.phone) phone.value = oa.phone;
+    if (oa.country && [...country.options].some((x) => x.value === oa.country)) country.value = oa.country;
+    if (oa.error) err(f1, esc(oa.error));
+    const firstEmpty = [...f1.querySelectorAll('input')].find((x) => !x.value); if (firstEmpty) firstEmpty.focus();
+    oaBox.addEventListener('click', (e) => { const a = e.target.closest('.oa-btn'); if (!a) return; // step 1's answers ride along, so they're still filled in after
+      const q = new URLSearchParams(oauthClean().split('?')[1] || ''); for (const k of ['company', 'phone', 'country']) { const v = $(`[name=${k}]`, f1).value.trim(); if (v) q.set('f_' + k, v); }
+      a.href = `/sign-in/${a.classList.contains('apple') ? 'apple' : 'google'}?${new URLSearchParams({ intent: 'signup', back: `${location.pathname}${q.toString() ? '?' + q : ''}#trial` })}`; });
     const dial = () => country.selectedOptions[0].dataset.code;
     const fmt = () => { const d = phone.value.replace(/\D/g, ''); phone.value = dial() === '1' ? usPhone(d.replace(/^1(?=\d{10})/, '').slice(0, 10)) : d.slice(0, 14); };
     phone.addEventListener('input', (e) => { if (e.inputType !== 'deleteContentBackward') fmt(); }); // formatted as it's typed; backspace isn't fought
@@ -84,7 +98,7 @@ ${plans.map((p) => { const c = per(p); return `<label><input type="radio" name="
       e.preventDefault(); const b = { ...Object.fromEntries(new FormData(f1)), ...Object.fromEntries(new FormData(f2)) };
       if (!b.industry) return err(f2, 'Choose the kind of work you do.');
       if (!b.slug.trim()) return err(f2, 'Choose your web address.');
-      if (b.password.length < 8) return err(f2, 'Use a password with at least 8 characters.');
+      if (!b.oauth && String(b.password || '').length < 8) return err(f2, 'Use a password with at least 8 characters.');
       if (!b.agree) return err(f2, 'Agree to the Terms of Service and Privacy Policy to start your trial.');
       const p = plans.find((x) => x.id === b.plan); b.interval = per(p).per; b.slug = b.slug.trim().toLowerCase(); b.trial = true; delete b.agree;
       const n = b.phone.replace(/\D/g, ''); b.phone = dial() === '1' ? usPhone(n) : `+${dial()} ${n}`; delete b.country; // +1 numbers are saved as (123) 456-7890
@@ -97,5 +111,15 @@ ${plans.map((p) => { const c = per(p); return `<label><input type="radio" name="
     });
   }
   document.addEventListener('click', (e) => { if (e.target.closest('[data-trial]')) { e.preventDefault(); open(); } }); // also the pricing page's button, which site.js turns on
-  if (location.hash === '#trial') open();
+  if (location.hash === '#trial') {
+    const qs = new URLSearchParams(location.search); const oa = {};
+    if (qs.get('oauth_error')) oa.error = qs.get('oauth_error');
+    else if (qs.get('oauth')) {
+      const r = await fetch('/api/site/oauth-signup').catch(() => null); const j = r ? await r.json().catch(() => ({})) : {};
+      if (r && r.ok) Object.assign(oa, j); else oa.error = j.error || 'Your sign-in expired. Try again.';
+    }
+    for (const k of ['company', 'phone', 'country']) oa[k] = qs.get('f_' + k) || '';
+    if (qs.has('oauth') || qs.has('oauth_error')) { ['f_company', 'f_phone', 'f_country'].forEach((k) => qs.delete(k)); ['oauth', 'oauth_error'].forEach((k) => qs.delete(k)); history.replaceState(null, '', location.pathname + (qs.toString() ? '?' + qs : '') + '#trial'); }
+    open(oa);
+  }
 })();
