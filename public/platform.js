@@ -1480,7 +1480,9 @@ async function lcConv() {
     });
   }
   $('#lcMeta').innerHTML = [c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : 'No email', c.business || LC_WHERE[c.where], c.page ? `<a href="${esc(c.page)}" target="_blank" rel="noopener">page</a>` : '', c.visitorOnline ? '<span class="lc-on">online now</span>' : ''].filter(Boolean).join(' · ');
-  $('#lcSt').innerHTML = `<span class="cstatus ${LC_ST[c.status][1]}">${LC_ST[c.status][0]}</span>`; $('#lcEnd').hidden = c.status === 'closed';
+  $('#lcSt').innerHTML = `<span class="cstatus ${LC_ST[c.status][1]}">${LC_ST[c.status][0]}</span>`;
+  const en = c.emailNote; const warn = $('#lcMail', box) || $('.lc-msgs', box).insertAdjacentElement('beforebegin', Object.assign(document.createElement('div'), { id: 'lcMail', className: 'lc-mailwarn' }));
+  warn.hidden = !en; if (en) warn.textContent = `⚠ The email about this chat${en.to ? ` to ${en.to}` : ''} wasn’t sent (${en.status === 'simulated' ? 'email isn’t set up on this server' : 'failed'}): ${en.detail}`; $('#lcEnd').hidden = c.status === 'closed';
   if (lcShown === sig) return; lcShown = sig;
   const m = $('.lc-msgs', box);
   m.innerHTML = c.messages.map((x) => x.from === 'system' ? `<div class="lc-sys">${esc(x.text)}</div>`
