@@ -2259,3 +2259,30 @@ label.bk-auto input{width:auto;margin:0}
 .chg-acts .btn{display:inline-flex;align-items:center;justify-content:center;text-align:center;min-height:44px;padding:0 22px;font-size:15px;font-weight:600;line-height:1.2}
 @media (max-width:600px){.chg-acts .btn{flex:1 1 140px;min-height:48px}.chg-hint{flex-basis:100%}}
 .badge.chg{background:var(--warn-bg);color:var(--warn-fg);white-space:nowrap}
+/* Home: notice, getting-started checklist, Today and Needs attention (pages.js /business-overview) */
+.hm-notice{display:flex;gap:12px;align-items:flex-start;border-left:4px solid var(--brand);margin-bottom:16px}
+.hm-n-main{flex:1;min-width:0}.hm-n-main p{margin:6px 0 0}.hm-n-main .btn{margin-top:10px}
+.hm-x{flex:none;margin-left:auto;border:0;background:transparent;color:var(--muted);font:inherit;font-size:14px;width:28px;height:28px;border-radius:50%;cursor:pointer;display:grid;place-items:center}.hm-x:hover{background:var(--tint);color:var(--text)}
+.hm-h{display:flex;align-items:baseline;gap:10px;margin-bottom:10px}.hm-h h2{margin:0}.hm-h .hm-x{align-self:center}
+.hm-more{margin-left:auto;font-size:13px;font-weight:600;text-decoration:none;color:var(--brand)}
+.hm-setup{margin-bottom:16px}
+.hm-bar{height:6px;border-radius:99px;background:var(--tint);overflow:hidden;margin-bottom:12px}.hm-bar i{display:block;height:100%;background:var(--ok);border-radius:99px}
+.hm-steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.hm-step{display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font-size:14px;color:var(--text);text-decoration:none}
+a.hm-step:hover{border-color:var(--brand)}
+.hm-step i{flex:none;width:18px;height:18px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;font-style:normal;font-size:11px;font-weight:700}
+.hm-step.ok{color:var(--muted);text-decoration:line-through;background:var(--tint);border-color:transparent}.hm-step.ok i{background:var(--ok);border-color:var(--ok);color:#fff}
+.hm-step .hm-go{margin-left:auto}
+.hm-top{margin-bottom:16px}.hm-top>.card{margin:0}
+.hm-list{display:flex;flex-direction:column}
+.hm-row{display:flex;align-items:center;gap:12px;padding:10px 4px;border:0;border-top:1px solid var(--line);background:transparent;font:inherit;color:var(--text);text-align:left;text-decoration:none;cursor:pointer;width:100%}
+.hm-row:first-child{border-top:0}.hm-row:hover{background:var(--tint)}.hm-row.done .hm-what strong{color:var(--muted);text-decoration:line-through}
+.hm-time{flex:none;width:72px;font-size:13px;font-weight:600;color:var(--muted)}
+.hm-what{flex:1;min-width:0;display:flex;flex-direction:column}.hm-what strong,.hm-what .muted{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.hm-what .muted{font-size:13px}
+.hm-who{flex:none;display:flex;gap:3px}.hm-dot{display:inline-block;width:10px;height:10px;border-radius:50%}
+.hm-go{flex:none;color:var(--muted);font-size:18px}
+.hm-flag{flex:none;width:10px;height:10px;border-radius:50%;background:var(--info-fg)}.hm-flag.bad{background:var(--danger)}.hm-flag.warn{background:var(--warn)}
+.hm-empty{margin:4px 0 8px}.hm-foot{font-size:13px;border-top:1px solid var(--line);padding-top:10px;margin-top:6px}
+.hm-sec{margin-top:8px}
+@media (max-width:900px){.hm-steps{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:600px){.hm-steps{grid-template-columns:1fr}.hm-time{width:60px}}

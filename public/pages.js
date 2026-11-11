@@ -25,14 +25,92 @@ async function resizeImage(file, max) {
   return file.type === 'image/png' || file.type === 'image/webp' ? c.toDataURL(file.type, 0.85) : c.toDataURL('image/jpeg', 0.85);
 }
 
-/* ===== /business-overview ===== */
+/* ===== /business-overview (Home): the notice from Alpha, the getting-started checklist, today's work and what needs attention, then the numbers ===== */
+const homeGet = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+const homeSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* private mode */ } };
+// Alpha → Settings → Home page notice; each person can close it until it's edited (its stamp changes)
+function homeNoticeHtml(N) {
+  if (!N || !N.show || (!N.title && !N.body) || homeGet('homeNotice') === N.stamp) return '';
+  const ext = /^https?:/i.test(N.buttonUrl);
+  return `<div class="card hm-notice" id="hmNotice"><div class="hm-n-main">${N.tag ? `<span class="badge sent">${esc(N.tag)}</span> ` : ''}${N.title ? `<strong>${esc(N.title)}</strong>` : ''}${N.body ? `<p class="muted">${esc(N.body).replace(/\n/g, '<br>')}</p>` : ''}
+${N.buttonLabel ? `<a class="btn sm" href="${esc(N.buttonUrl)}" ${ext ? 'target="_blank" rel="noopener"' : 'data-link'}>${esc(N.buttonLabel)}</a>` : ''}</div><button type="button" class="hm-x" data-act="homeNoticeClose" data-s="${esc(N.stamp)}" aria-label="Close">✕</button></div>`;
+}
+A.homeNoticeClose = (d) => { homeSet('homeNotice', d.s); const n = $('#hmNotice'); if (n) n.remove(); };
+// owners and admins of a new account: the first steps, until they're all done or the list is hidden
+function homeSetupHtml(setup) {
+  if (!isAdminMe() || !setup || homeGet('homeSetupHidden')) return '';
+  const steps = [
+    [setup.logo, 'Add your logo and business details', '/settings/company'],
+    [D.services.length > 0, 'Add the services you offer', '/services'],
+    [D.clients.length > 0, 'Add your first client', '/clients'],
+    [D.quotes.some((q) => q.status !== 'draft'), 'Send a quote', '/quotes'],
+    [D.jobs.length > 0, 'Schedule a job', '/calendar'],
+    [setup.payments, 'Set up how clients pay you', '/payments/settings'],
+    [D.invoices.some((i) => i.status !== 'draft'), 'Send an invoice', '/invoices'],
+    [setup.team, 'Invite your team', '/team'],
+  ];
+  const done = steps.filter((s) => s[0]).length; if (done === steps.length) return '';
+  return `<div class="card hm-setup" id="hmSetup"><div class="hm-h"><h2>Get set up</h2><span class="muted">${done} of ${steps.length} done</span><button type="button" class="hm-x" data-act="homeSetupHide" aria-label="Hide" title="Hide this list">✕</button></div>
+<div class="hm-bar"><i style="width:${Math.round((done / steps.length) * 100)}%"></i></div>
+<div class="hm-steps">${steps.map(([ok, label, href]) => (ok ? `<span class="hm-step ok"><i>✓</i>${label}</span>` : `<a class="hm-step" href="${href}" data-link><i></i>${label}<span class="hm-go">›</span></a>`)).join('')}</div></div>`;
+}
+A.homeSetupHide = () => { homeSet('homeSetupHidden', '1'); const n = $('#hmSetup'); if (n) n.remove(); toast('Hidden. Settings and Help still have everything.'); };
+// today's jobs and tasks, and who's off
+function homeTodayHtml() {
+  const today = ymd(new Date()); const tomorrow = ymd(addDays(new Date(), 1));
+  const items = [...D.jobs.filter((j) => j.date === today && j.status !== 'cancelled').map((j) => ({ kind: 'job', href: '/jobs/edit?id=' + j.id, title: j.title || 'Job ' + j.number, sub: clientName(j.clientId), start: j.anytime ? '' : j.startTime, staffIds: j.staffIds, done: j.status === 'completed' })),
+    ...(D.tasks || []).filter((t) => t.date === today).map((t) => ({ kind: 'task', href: '/calendar', title: t.title, sub: t.clientId ? clientName(t.clientId) : t.address || '', start: t.anytime ? '' : t.startTime, staffIds: t.staffIds, done: !!t.done }))]
+    .sort((a, b) => (a.start || '99').localeCompare(b.start || '99'));
+  const off = D.staff.filter((s) => offOn(s.id, today)).map((s) => s.name.split(' ')[0]);
+  const next = D.jobs.filter((j) => j.date === tomorrow && j.status !== 'cancelled').length;
+  const who = (ids) => (ids || []).map((id) => byId(D.staff, id)).filter(Boolean).map((s) => `<i class="hm-dot" style="background:${esc(s.color)}" title="${esc(s.name)}"></i>`).join('');
+  const day = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  return `<div class="card hm-today"><div class="hm-h"><h2>Today</h2><span class="muted">${esc(day)}</span><a class="hm-more" href="/calendar" data-link>Calendar ›</a></div>
+${items.length ? `<div class="hm-list">${items.map((x) => `<a class="hm-row${x.done ? ' done' : ''}" href="${x.href}" data-link><span class="hm-time">${x.start ? esc(fmtTime(x.start)) : 'Anytime'}</span><span class="hm-what"><strong>${esc(x.title)}</strong><span class="muted">${esc(x.sub)}</span></span><span class="hm-who">${who(x.staffIds)}</span>${x.done ? '<span class="badge completed">Done</span>' : x.kind === 'task' ? '<span class="badge">Task</span>' : ''}</a>`).join('')}</div>`
+    : '<p class="muted hm-empty">Nothing scheduled today.</p>'}
+<div class="muted hm-foot">${off.length ? `Off today: ${esc(off.join(', '))} · ` : ''}Tomorrow: ${next ? `${next} job${next === 1 ? '' : 's'}` : 'nothing scheduled yet'}</div></div>`;
+}
+// what needs doing: each line only when there's something, and each opens the list it's about
+function homeAttentionHtml() {
+  const ago = (n) => ymd(addDays(new Date(), -n));
+  const sum = (l, f) => l.reduce((s, x) => s + (f(x) || 0), 0);
+  const prices = canDo('jobs.prices');
+  const sees = (n) => !(me && me.collections) || me.collections.includes(n); // a login that can't see invoices can't tell which jobs were billed
+  const overdue = sees('invoices') ? D.invoices.filter((i) => i.displayStatus === 'overdue') : [];
+  const drafts = sees('invoices') ? D.invoices.filter((i) => i.displayStatus === 'draft') : [];
+  const toInvoice = sees('invoices') ? D.jobs.filter((j) => jobStatus(j) === 'invoice') : [];
+  const late = D.jobs.filter((j) => jobStatus(j) === 'late');
+  const quiet = D.quotes.filter((q) => quoteStatus(q) === 'sent' && (q.sentAt || String(q.createdAt || '').slice(0, 10)) <= ago(7));
+  const n = (l, one, many) => `${l.length} ${l.length === 1 ? one : many}`;
+  const rows = [
+    overdue.length && ['bad', n(overdue, 'invoice is past due', 'invoices are past due'), money(sum(overdue, invBalance)) + ' still owed', 'inv', 'overdue'],
+    toInvoice.length && ['warn', n(toInvoice, 'completed job isn’t invoiced', 'completed jobs aren’t invoiced'), prices && sum(toInvoice, jobTotal) ? 'About ' + moneyShort(sum(toInvoice, jobTotal)) + ' to bill' : 'Bill them so you get paid', 'job', 'invoice'],
+    late.length && ['warn', n(late, 'job from an earlier day isn’t', 'jobs from earlier days aren’t') + ' marked complete', 'Finish or reschedule them', 'job', 'late'],
+    quiet.length && ['info', n(quiet, 'quote has', 'quotes have') + ' had no answer for a week', 'A quick call often wins the job', 'quote', 'sent'],
+    drafts.length && ['info', n(drafts, 'draft invoice hasn’t', 'draft invoices haven’t') + ' been sent', money(sum(drafts, (i) => i.total)), 'inv', 'draft'],
+    D.timeOffWaiting && ['info', `${D.timeOffWaiting} time off request${D.timeOffWaiting === 1 ? ' is' : 's are'} waiting for you`, 'Approve or decline', 'link', '/requests'],
+  ].filter(Boolean);
+  return `<div class="card hm-attn"><div class="hm-h"><h2>Needs attention</h2></div>
+${rows.length ? `<div class="hm-list">${rows.map(([tone, title, sub, kind, s]) => `<button type="button" class="hm-row" data-act="homeGo" data-k="${kind}" data-s="${esc(s)}"><i class="hm-flag ${tone}"></i><span class="hm-what"><strong>${esc(title)}</strong><span class="muted">${esc(sub)}</span></span><span class="hm-go">›</span></button>`).join('')}</div>`
+    : '<p class="hm-empty"><strong>You’re all caught up.</strong><br><span class="muted">Nothing past due, unbilled or waiting on you.</span></p>'}</div>`;
+}
+A.homeGo = (d) => {
+  if (d.k === 'inv') { invView = { ...invView, status: d.s, date: 'all' }; return navigate('/invoices'); }
+  if (d.k === 'job') { jobView = { ...jobView, status: d.s, staff: '', q: '' }; return navigate('/jobs'); }
+  if (d.k === 'quote') { quoteView = { ...quoteView, status: d.s, date: 'all' }; return navigate('/quotes'); }
+  navigate(d.s);
+};
 PAGES['/business-overview'] = {
   title: 'Home',
   async render(main) {
     const o = await api('GET', '/api/overview'); const labels = o.months.map(monthLabel);
     const last = o.revenue.length - 1;
-    main.innerHTML = `<div class="head"><div><h1>Home</h1><p class="sub">Revenue growth, client acquisition and team productivity.</p></div>
+    const hour = new Date().getHours(); const first = ((me && me.name) || '').split(' ')[0];
+    main.innerHTML = `<div class="head"><div><h1>Good ${hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening'}${first ? ', ' + esc(first) : ''}</h1><p class="sub">Here’s what’s happening today and what needs your attention.</p></div>
 <div class="actions"><button class="btn alt" data-act="newQuote">+ Quote</button><button class="btn alt" data-act="newJob">+ Job</button><button class="btn" data-act="newInvoice">+ Invoice</button></div></div>
+${homeNoticeHtml(o.notice)}${homeSetupHtml(o.setup)}
+<div class="grid g2 hm-top">${homeTodayHtml()}${homeAttentionHtml()}</div>
+<h2 class="ftitle hm-sec">How the business is doing</h2>
 <div class="grid g4">${stat('Revenue this month', money(o.revenue[last]), 'vs last month ' + pct(o.growth[last]))}${stat('New clients this month', o.newClients[last], o.totalClients + ' total clients')}${stat('Jobs this month', o.jobsThisMonth)}${stat('Quotes awaiting approval', o.openQuotes)}</div>
 <div class="grid g2" style="margin-top:16px"><div class="card"><h2>Monthly revenue (paid invoices)</h2>${bars(o.revenue, labels, (v) => (v >= 1000 ? '$' + (v / 1000).toFixed(1) + 'k' : '$' + Math.round(v)))}
 <div class="muted">Growth: ${o.growth.map((g, i) => (i ? `${labels[i]} ${pct(g)}` : '')).filter(Boolean).join(' · ')}</div></div>

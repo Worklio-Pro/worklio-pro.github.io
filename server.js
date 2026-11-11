@@ -4509,7 +4509,10 @@ app.get('/api/overview', (req, res) => {
   const growth = revenue.map((r, i) => (i === 0 ? null : revenue[i - 1] > 0 ? round2(((r - revenue[i - 1]) / revenue[i - 1]) * 100) : null));
   const newClients = months.map((m) => db.clients.filter((c) => monthKey(c.createdAt) === m).length);
   const productivity = db.staff.map((s) => ({ id: s.id, name: s.name, color: s.color, completedByMonth: months.map((m) => db.jobs.filter((j) => j.status === 'completed' && j.staffIds.includes(s.id) && monthKey(j.date) === m).length), upcoming: db.jobs.filter((j) => j.status === 'scheduled' && j.staffIds.includes(s.id) && j.date >= iso(new Date())).length }));
-  res.json({ months, revenue, growth, newClients, totalClients: db.clients.length, productivity, openQuotes: db.quotes.filter((q) => q.status === 'sent').length, jobsThisMonth: db.jobs.filter((j) => monthKey(j.date) === months[months.length - 1]).length });
+  res.json({ months, revenue, growth, newClients, totalClients: db.clients.length, productivity, openQuotes: db.quotes.filter((q) => q.status === 'sent').length, jobsThisMonth: db.jobs.filter((j) => monthKey(j.date) === months[months.length - 1]).length,
+    // Home's getting-started checklist: what the browser can't tell from the records it loads
+    setup: { logo: !!db.company.logo, payments: !!stripeKey() || !!db.company.zelleRecipient || PAY_APPS.some((m) => db.company[m.field]), team: db.users.length > 1 },
+    notice: brandLib.homeNotice() });
 });
 
 // bulk client import (rows are parsed and column-matched in the browser on /clients/import)

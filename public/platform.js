@@ -635,7 +635,7 @@ let igTab = ''; // '' shows the cards
 // Integrations is one page (setTab 'integrations'): a grid of cards, or one service's settings (igTab) with a link back to the cards.
 // Links elsewhere open a service directly with data-k="integrations:<service>".
 const SET_GROUPS = [
-  ['Product', [['product', 'Your product'], ['colors', 'Website colors'], ['icons', 'Menu'], ['login', 'Login page'], ['seo', 'SEO'], ['terms', 'Terms and privacy']]],
+  ['Product', [['product', 'Your product'], ['colors', 'Website colors'], ['icons', 'Menu'], ['login', 'Login page'], ['home', 'Home page notice'], ['seo', 'SEO'], ['terms', 'Terms and privacy']]],
   ['Team & access', [['team', 'Alpha team'], ['expiry', 'Access end dates'], ['reserved', 'Reserved addresses']]],
   ['System', [['integrations', 'Integrations'], ['maintenance', 'Maintenance mode']]],
 ];
@@ -676,7 +676,7 @@ function settingsView(main) {
 <div class="row"><label>Show a banner in their app (days before)<input name="expiryBannerDays" type="number" min="0" max="60" value="${esc(s.expiryBannerDays ?? 7)}"></label><label>Email the owner a reminder (days before)<input name="expiryReminderDays" type="number" min="0" max="60" value="${esc(s.expiryReminderDays ?? 3)}"></label></div>
 <p class="muted" style="font-size:13px;margin-top:-4px">For accounts you gave a last day of access (e.g. trials). Owners and admins see the banner; owners can choose a plan from it, which removes the end date. The reminder is sent once per end date; edit its wording in Messages → Email templates → Access ending soon. 0 means on the last day itself.</p>
 <div class="card-save"><span class="as-status">Changes save automatically</span></div></div></form>
-<div class="set-pair" id="lpCard" data-set="login"></div><div class="card" id="reserved" data-set="reserved"></div><div class="card" id="seoCard" data-set="seo"></div></div></div>`;
+<div class="set-pair" id="lpCard" data-set="login"></div><div class="set-pair" id="hnCard" data-set="home"></div><div class="card" id="reserved" data-set="reserved"></div><div class="card" id="seoCard" data-set="seo"></div></div></div>`;
   $('.set-pick select', main).addEventListener('change', (e) => A.setTab({ k: e.target.value }));
   $$('[data-set]', main).forEach((c) => { c.hidden = c.dataset.set !== setTab; });
   $$('#sf, #sf2, #sf3', main).forEach((f) => autosave(f, async (b) => {
@@ -684,7 +684,7 @@ function settingsView(main) {
     const name = D.settings.productName; D.settings = await api('PUT', '/api/platform/settings', b);
     if (D.settings.productName !== name) { $('.pf-brand').innerHTML = brandHtml(); logoCard($('#logoCard', main)); iconCard($('#iconCard', main)); } // a new name: the header and previews show it
   }));
-  maintenanceCard($('#mtCard', main)); logoCard($('#logoCard', main)); iconCard($('#iconCard', main)); colorsCard($('#colorsCard', main)); reservedCard($('#reserved', main)); teamCard($('#teamCard', main)); if (setTab === 'icons') iconsCard($('#iconsCard', main)); if (setTab === 'seo') seoCard($('#seoCard', main)); if (setTab === 'login') loginPanelCard($('#lpCard', main));
+  maintenanceCard($('#mtCard', main)); logoCard($('#logoCard', main)); iconCard($('#iconCard', main)); colorsCard($('#colorsCard', main)); reservedCard($('#reserved', main)); teamCard($('#teamCard', main)); if (setTab === 'icons') iconsCard($('#iconsCard', main)); if (setTab === 'seo') seoCard($('#seoCard', main)); if (setTab === 'login') loginPanelCard($('#lpCard', main)); if (setTab === 'home') homeNoticeCard($('#hnCard', main));
   integrationsCard($('#integ', main)); // always, so the list shows which services are set up
 }
 // Settings → Login page (lib/brand.js loginPanel): the panel beside the login form on every business's login and on /sign-in.
@@ -717,6 +717,29 @@ A.loginPanelReset = async () => {
   try { D.settings = await api('PUT', '/api/platform/settings', { loginPanel: { show: true, headline: 'Everything for your service business, in one place', title: 'What you can do here', bullets: ['Send quotes and collect deposits', 'Schedule jobs and assign your team', 'Invoice and get paid by card or Zelle', 'Text and email clients automatically'] } });
     D.loginPanel = D.settings.loginPanel; loginPanelCard($('#lpCard')); toast('Login page panel reset'); } catch (x) { toast(x.message, true); }
 };
+// Settings → Home page notice (lib/brand.js homeNotice): a card at the top of every business's Home page, for owners and their team.
+// Use it for a new feature, a tip or a notice. Each person can close it; editing it shows it to everyone again.
+const hnHtml = (N) => `<div style="display:flex;gap:12px;align-items:flex-start;border:1px solid var(--line);border-left:4px solid var(--brand,#2563eb);border-radius:12px;padding:14px 16px;background:var(--card)">
+<div style="flex:1">${N.tag ? `<span class="badge" style="margin-right:8px">${esc(N.tag)}</span>` : ''}${N.title ? `<strong>${esc(N.title)}</strong>` : ''}${N.body ? `<p class="muted" style="margin:6px 0 0">${esc(N.body).replace(/\n/g, '<br>')}</p>` : ''}
+${N.buttonLabel ? `<span class="btn sm" style="margin-top:10px;display:inline-block">${esc(N.buttonLabel)}</span>` : ''}</div><span class="muted" aria-hidden="true">✕</span></div>`;
+function homeNoticeCard(box) {
+  if (!box) return;
+  const N = D.homeNotice || {};
+  box.innerHTML = `<div class="card"><h2>Home page notice</h2><form id="hnf" class="set-form">
+<p class="muted" style="font-size:13px;margin-top:0">A card at the top of every business’s Home page. Use it for a new feature, a tip or a notice (e.g. planned maintenance). Each person can close it; when you edit it, it shows again for everyone.</p>
+<label class="switchline"><input type="checkbox" name="show" ${N.show ? 'checked' : ''}> Show the notice</label>
+<div class="row"><label>Tag<input name="tag" value="${esc(N.tag || '')}" maxlength="24" placeholder="e.g. New, Tip, Notice"></label></div>
+<label>Title<input name="title" value="${esc(N.title || '')}" maxlength="120" placeholder="e.g. Automations can now send to your team"></label>
+<label>Message<textarea name="body" rows="3" maxlength="600" placeholder="A sentence or two">${esc(N.body || '')}</textarea></label>
+<div class="row"><label>Button text<input name="buttonLabel" value="${esc(N.buttonLabel || '')}" maxlength="40" placeholder="e.g. Learn more"></label><label>Button link<input name="buttonUrl" value="${esc(N.buttonUrl || '')}" maxlength="500" placeholder="https://… or /help/…"></label></div>
+<div class="card-save"><span class="as-status">Changes save automatically</span></div></form></div>
+<div class="card lp-prev"><h2>Preview</h2><div id="hnPrev"></div></div>`;
+  const f = $('#hnf', box);
+  const read = () => ({ show: f.elements.show.checked, tag: f.elements.tag.value, title: f.elements.title.value, body: f.elements.body.value, buttonLabel: f.elements.buttonLabel.value, buttonUrl: f.elements.buttonUrl.value });
+  const draw = () => { const v = read(); $('#hnPrev', box).innerHTML = v.show ? hnHtml(v) : '<p class="muted">Off: Home pages don’t show a notice.</p>'; };
+  f.addEventListener('input', draw); f.addEventListener('change', draw); draw();
+  autosave(f, async () => { D.settings = await api('PUT', '/api/platform/settings', { homeNotice: read() }); D.homeNotice = D.settings.homeNotice; });
+}
 // Settings → SEO: each public page's title and description (with a search-result preview), indexing, verification, the share image and social profiles (lib/seo.js)
 let SEO = null; let seoDraft = null;
 const SEO_LIMITS = { title: 60, description: 155 };
