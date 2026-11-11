@@ -1484,7 +1484,7 @@ async function lcConv() {
   if (lcShown === sig) return; lcShown = sig;
   const m = $('.lc-msgs', box);
   m.innerHTML = c.messages.map((x) => x.from === 'system' ? `<div class="lc-sys">${esc(x.text)}</div>`
-    : `<div class="lc-m ${x.from}"><span class="lc-who">${x.from === 'visitor' ? esc(c.name || 'Visitor') : x.from === 'bot' ? 'Bot' : esc(x.agent || 'You')} · ${new Date(x.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>${x.file ? lcFile(c.id, x.file) : lcLink(x.text)}${x.links ? `<ul>${x.links.map((l) => `<li><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.title)}</a></li>`).join('')}</ul>` : ''}</div>`).join('');
+    : `<div class="lc-m ${x.from}"><span class="lc-who">${x.from === 'visitor' ? esc(c.name || 'Visitor') : x.from === 'bot' ? esc((LC.settings && LC.settings.botName || 'Bot') + ' (AI)') : esc(x.agent || 'You')} · ${new Date(x.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>${x.file ? lcFile(c.id, x.file) : lcLink(x.text)}${x.links ? `<ul>${x.links.map((l) => `<li><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.title)}</a></li>`).join('')}</ul>` : ''}</div>`).join('');
   m.scrollTop = m.scrollHeight; m.querySelectorAll('img').forEach((i) => i.addEventListener('load', () => { m.scrollTop = m.scrollHeight; }, { once: true })); // pictures load after the scroll
 }
 A.lcAttach = () => $('#lcFile').click();
@@ -1502,7 +1502,13 @@ A.lcSettings = () => {
 <label>Answer<textarea name="a" rows="2" maxlength="1500" placeholder="Use {site} for your site address and {product} for the product name">${esc(x.a || '')}</textarea></label><button type="button" class="link-btn" data-act="lcAnsRm">Remove</button></div>`;
   const m = modal('Chat settings', `<form id="lcsf"><label class="switchline"><input type="checkbox" name="on" ${s.on ? 'checked' : ''}> Show the chat button</label>
 <p class="muted" style="font-size:13px;margin:4px 0 6px">Show it on:</p><div class="lc-where">${Object.entries(LC_WHERE).map(([k, l]) => `<label class="switchline"><input type="checkbox" name="where" value="${k}" ${s.where.includes(k) ? 'checked' : ''}> ${k === 'site' ? 'Your website (home and pricing pages)' : k === 'help' ? 'The help center' : 'Inside the business app'}</label>`).join('')}</div>
+<h3 style="margin:8px 0 4px;font-size:15px">The AI assistant</h3>
+<p class="muted" style="font-size:13px;margin:0 0 8px">Visitors see this name and photo on the bot’s messages, marked “AI”. If someone asks, it says it’s an AI assistant and offers a person.</p>
+<div class="row"><label>Name<input name="botName" value="${esc(s.botName || '')}" maxlength="40" placeholder="Maya"></label><label>Photo link<input name="botPhoto" value="${esc(s.botPhoto || '')}" maxlength="300" placeholder="/img/chat/assistant.jpg" spellcheck="false"></label></div>
+<label>Personality<textarea name="botPersonality" rows="3" maxlength="600" placeholder="Warm, upbeat and down to earth…">${esc(s.botPersonality || '')}</textarea></label>
+<p class="muted" style="font-size:13px;margin:-4px 0 12px">How the AI talks. It still answers only from your articles, plans and saved answers.</p>
 <label>Greeting<textarea name="greeting" rows="2" maxlength="500">${esc(s.greeting)}</textarea></label>
+<p class="muted" style="font-size:13px;margin:-4px 0 12px"><code>{name}</code> is the assistant’s name, <code>{product}</code> the product name.</p>
 <h3 style="margin:8px 0 4px;font-size:15px">When no one is available</h3>
 <p class="muted" style="font-size:13px;margin:0 0 8px">No one is available when Live chat isn’t open in Alpha (here or in the pop-out window), or it’s outside the business hours below. People then see this message and can leave one with their email; you get an email${D.settings.contactEmail ? ` at ${esc(D.settings.contactEmail)}` : ' (add a contact email in Settings)'}.</p>
 <label>Message<textarea name="offline" rows="3" maxlength="500">${esc(s.offline)}</textarea></label>
@@ -1527,7 +1533,7 @@ A.lcSettings = () => {
   $('#lcsf', m).addEventListener('submit', async (e) => {
     e.preventDefault(); const f = e.target;
     // without an AI key the AI switch is greyed out, so the saved choice is kept
-    const b = { on: f.on.checked, ai: LC.ai ? f.ai.checked : LC.settings.ai, where: [...f.querySelectorAll('[name=where]:checked')].map((x) => x.value), greeting: f.greeting.value, offline: f.offline.value, contactUrl: f.contactUrl.value, files: f.files.checked, fileDays: f.fileDays.value,
+    const b = { on: f.on.checked, ai: LC.ai ? f.ai.checked : LC.settings.ai, where: [...f.querySelectorAll('[name=where]:checked')].map((x) => x.value), botName: f.botName.value, botPhoto: f.botPhoto.value, botPersonality: f.botPersonality.value, greeting: f.greeting.value, offline: f.offline.value, contactUrl: f.contactUrl.value, files: f.files.checked, fileDays: f.fileDays.value,
       hours: { on: f.hoursOn.checked, tz: f.tz.value, open: f.open.value, close: f.close.value, days: [...f.querySelectorAll('[name=day]:checked')].map((x) => +x.value) },
       answers: [...f.querySelectorAll('.lc-ans')].map((r) => ({ q: r.querySelector('[name=q]').value, keywords: r.querySelector('[name=keywords]').value, a: r.querySelector('[name=a]').value })) };
     try { await api('PUT', '/api/platform/chat-settings', b); closeModal(); toast('Chat settings saved'); chatCard($('#chat')); } catch (x) { toast(x.message, true); }

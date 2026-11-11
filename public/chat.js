@@ -15,6 +15,7 @@
   const who = () => { try { return typeof me !== 'undefined' && me ? { name: me.name || '', email: me.email || '' } : {}; } catch (e) { return {}; } }; // the logged-in person in the business app
 
   let C = null; let S = null; let msgs = []; let open = false; let timer = null; let unread = 0; let handoff = false;
+  let photoOk = false; // the assistant's photo loaded (otherwise her first initial shows)
   let primed = false; // new replies chime only after the first load, not for a whole saved chat coming back
   const SOUND = 'chat:sound'; const soundOn = () => { try { return localStorage.getItem(SOUND) !== 'off'; } catch (e) { return true; } };
   let typing = 0; // bot answers on their way ("Typing…")
@@ -65,7 +66,11 @@ textarea:focus,input:focus{outline:2px solid var(--brand,#2563eb);outline-offset
 .human{display:block;margin:8px auto 0;background:none;border:0;color:var(--brand,#2563eb);font-size:13px;font-weight:600;cursor:pointer;text-decoration:underline}
 .ho{display:grid;gap:8px}.away{margin:0 0 8px;padding:8px 10px;border-radius:10px;background:var(--c-soft);border:1px solid var(--c-line);font-size:13px;line-height:1.45;color:var(--c-text)}.alt-link{display:block;text-align:center;font-size:13px;margin-top:6px;color:var(--brand,#2563eb)}.ho p{margin:0;font-size:13px;color:var(--c-muted)}.ho .row{display:flex;gap:8px}
 .err{color:#dc2626;font-size:12px;min-height:0}
-.typing{align-self:flex-start;font-size:12px;color:var(--c-muted)}
+.typing{align-self:flex-start;font-size:12px;color:var(--c-muted);display:flex;align-items:center;gap:8px}
+.r{display:flex;gap:8px;align-items:flex-end;align-self:flex-start;max-width:92%}.r .m{max-width:none;min-width:0}
+.av{flex:none;width:28px;height:28px;border-radius:50%;overflow:hidden;background:#dbe5ff;color:var(--brand,#2563eb);font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center}.av img{width:100%;height:100%;object-fit:cover;display:block}
+.top .av{width:40px;height:40px;font-size:17px;border:2px solid rgba(255,255,255,.7);background:#fff}
+.ai{font-size:10px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;background:rgba(255,255,255,.22);border-radius:6px;padding:1px 6px;margin-left:6px;vertical-align:2px}
 .attach{flex:none;width:38px;height:38px;border:1px solid var(--c-line);border-radius:10px;background:var(--c-bg);color:var(--c-muted);cursor:pointer;display:flex;align-items:center;justify-content:center}.attach:hover{color:var(--brand,#2563eb);border-color:var(--brand,#2563eb)}.attach svg{width:18px;height:18px}
 .m.has-file{padding:4px}.m.has-file .who{padding:4px 8px 0}
 .fimg{display:block;max-width:220px;max-height:220px;border-radius:10px}
@@ -78,13 +83,15 @@ textarea:focus,input:focus{outline:2px solid var(--brand,#2563eb);outline-offset
 @media (max-width:480px){.panel{right:0;bottom:0;width:100vw;max-width:100vw;height:100%;max-height:100%;border-radius:0}.btn{bottom:${where === 'app' ? '84px' : '16px'};right:16px}}
 </style>
 <button class="btn" type="button" aria-label="Chat with us"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 3h14a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3h-7.6l-4.7 3.8A1 1 0 0 1 5 21v-3a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3z"/><path d="M7.5 8.5h9M7.5 12h6" stroke="var(--brand,#2563eb)" stroke-width="1.8" stroke-linecap="round"/></svg><span class="badge" hidden></span></button>
-<section class="panel" hidden role="dialog" aria-label="Chat"><div class="top"><div><strong>${esc(C.product)}</strong><small><i class="dot"></i><span class="st"></span></small></div><div class="tools"><button class="more" type="button" aria-label="Chat options" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></button><div class="menu" hidden role="menu"><button class="opt snd" type="button" role="menuitemcheckbox" aria-checked="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>Chat sound<i class="sw"></i></button></div><button class="x" type="button" aria-label="Close chat">×</button></div></div>
+<section class="panel" hidden role="dialog" aria-label="Chat"><div class="top"><span class="av hav"></span><div><strong>${esc(C.bot.name)}<span class="ai">AI</span></strong><small><i class="dot"></i><span class="st"></span></small></div><div class="tools"><button class="more" type="button" aria-label="Chat options" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></button><div class="menu" hidden role="menu"><button class="opt snd" type="button" role="menuitemcheckbox" aria-checked="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>Chat sound<i class="sw"></i></button></div><button class="x" type="button" aria-label="Close chat">×</button></div></div>
 <div class="list" aria-live="polite"></div><div class="drop" hidden>Drop files to send</div><div class="chips"></div><div class="foot"></div></section>`;
     // colors follow the page's light or dark theme
     const theme = () => { const dark = document.documentElement.dataset.theme === 'dark' || (document.documentElement.dataset.theme !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
       host.style.cssText = dark ? '--c-bg:#121b2f;--c-soft:#0b1220;--c-text:#e2e8f0;--c-muted:#94a3b8;--c-line:#2a3a5a' : '--c-bg:#fff;--c-soft:#f6f8fc;--c-text:#0f172a;--c-muted:#5b6b82;--c-line:#dfe6f0'; };
     theme(); matchMedia('(prefers-color-scheme: dark)').addEventListener('change', theme); new MutationObserver(theme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     document.body.appendChild(host);
+    if (C.bot.photo) { const im = new Image(); im.onload = () => { photoOk = true; shown = ''; $('.hav').innerHTML = av(true); if (open) draw(); }; im.src = C.bot.photo; }
+    $('.hav').innerHTML = av(true);
     $('.btn').addEventListener('click', () => (open ? hide() : show()));
     $('.x').addEventListener('click', hide);
     const menu = $('.menu'); const more = $('.more'); const snd = $('.snd');
@@ -133,13 +140,13 @@ textarea:focus,input:focus{outline:2px solid var(--brand,#2563eb);outline-offset
     draw();
   }
   function draw() {
-    const st = !S || S.status === 'bot' ? 'Ask us anything' : S.status === 'closed' ? 'Chat ended' : C.online ? 'We’re online' : 'Away · leave a message';
+    const st = !S || S.status === 'bot' ? (C.online ? 'AI assistant · team online' : 'AI assistant') : S.status === 'closed' ? 'Chat ended' : C.online ? 'We’re online' : 'Away · leave a message';
     $('.st').textContent = st; $('.dot').classList.toggle('off', !C.online);
     const sig = msgs.map((m) => m.id).join() + '|' + (S ? S.status : '') + '|' + typing;
     if (sig !== shown) { shown = sig;
     $('.list').innerHTML = msgs.map((m) => m.from === 'system' ? `<div class="sys">${esc(m.text)}${stamp(m)}</div>`
-      : `<div class="m ${m.from}${m.file ? ' has-file' : ''}">${m.from === 'agent' ? `<span class="who">${esc(m.agent || 'Support')}</span>` : m.from === 'bot' && S && S.status !== 'bot' ? '<span class="who">Assistant</span>' : ''}${m.file ? fileHtml(m.file) : linkify(m.text)}${m.links ? `<ul>${m.links.map((l) => `<li><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.title)}</a></li>`).join('')}</ul>` : ''}${stamp(m)}</div>`).join('');
-    if (typing && S && S.status === 'bot') $('.list').insertAdjacentHTML('beforeend', '<div class="typing">Typing…</div>');
+      : (m.from === 'bot' ? `<div class="r"><span class="av">${av()}</span>` : '') + `<div class="m ${m.from}${m.file ? ' has-file' : ''}">${m.from === 'agent' ? `<span class="who">${esc(m.agent || 'Support')}</span>` : m.from === 'bot' && S && S.status !== 'bot' ? `<span class="who">${esc(C.bot.name)}</span>` : ''}${m.file ? fileHtml(m.file) : linkify(m.text)}${m.links ? `<ul>${m.links.map((l) => `<li><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.title)}</a></li>`).join('')}</ul>` : ''}${stamp(m)}</div>` + (m.from === 'bot' ? '</div>' : '')).join('');
+    if (typing && S && S.status === 'bot') $('.list').insertAdjacentHTML('beforeend', `<div class="typing"><span class="av">${av()}</span>${esc(C.bot.name)} is typing…</div>`);
     const l = $('.list'); l.scrollTop = l.scrollHeight; l.querySelectorAll('img').forEach((i) => i.addEventListener('load', () => { l.scrollTop = l.scrollHeight; }, { once: true })); // pictures load after the scroll
     $('.chips').innerHTML = !msgs.some((m) => m.from === 'visitor') && C.suggestions.length ? C.suggestions.map((q) => `<button class="chip" type="button">${esc(q)}</button>`).join('') : '';
     root.querySelectorAll('.chip').forEach((b) => b.addEventListener('click', () => sendText(b.textContent)));
@@ -177,6 +184,8 @@ textarea:focus,input:focus{outline:2px solid var(--brand,#2563eb);outline-offset
     if (pick) { f.querySelector('.attach').addEventListener('click', () => pick.click()); pick.addEventListener('change', () => { sendFiles([...pick.files]); pick.value = ''; }); }
     ta.addEventListener('paste', (e) => { const files = [...(e.clipboardData ? e.clipboardData.files : [])]; if (files.length && C.files) { e.preventDefault(); sendFiles(files); } }); // a pasted screenshot
   }
+  // the assistant's photo, or her first initial until it loads (or when there's none)
+  const av = () => (photoOk ? `<img src="${esc(C.bot.photo)}" alt="">` : esc((C.bot.name || 'A').charAt(0).toUpperCase()));
   // the time under each message: "7:25 AM" today, "Nov 10, 7:25 AM" before that
   function stamp(m) {
     const d = m.at ? new Date(m.at) : null; if (!d || isNaN(d)) return '';
