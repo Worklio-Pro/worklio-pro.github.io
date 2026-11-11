@@ -3142,7 +3142,7 @@ A.bpResetScans = async () => {
 // apps that connect today open the page they're set up on; the rest take "I want this", which Alpha counts
 CONN_ICONS.claude = '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#D97757"/><path stroke="#fff" stroke-width="3.4" stroke-linecap="round" d="M24 12v24M12 24h24M15.5 15.5l17 17M32.5 15.5l-17 17"/></svg>';
 let MKT = null; const mktView = { cat: '', q: '' };
-const mktLogo = (a) => (a.icon && CONN_ICONS[a.icon] ? `<span class="mkt-logo">${CONN_ICONS[a.icon]}</span>` : `<span class="mkt-logo mono" style="background:${esc(a.bg)};color:${esc(a.fg)}${a.mono.length > 2 ? ';font-size:13px' : ''}">${esc(a.mono)}</span>`);
+const mktLogo = (a) => (a.logo ? `<span class="mkt-logo img${a.logoPad ? ' pad' : ''}"><img src="${esc(a.logo)}" alt="" loading="lazy"></span>` : a.icon && CONN_ICONS[a.icon] ? `<span class="mkt-logo">${CONN_ICONS[a.icon]}</span>` : `<span class="mkt-logo mono" style="background:${esc(a.bg)};color:${esc(a.fg)}${a.mono.length > 2 ? ';font-size:13px' : ''}">${esc(a.mono)}</span>`);
 function mktState(a) {
   if (!a.live) return a.requested ? { chip: connChip('wait', 'Requested'), btn: `<button type="button" class="btn alt sm" data-act="mktWant" data-id="${a.id}" data-on="" aria-pressed="true">✓ Requested</button>` }
     : { chip: connChip('off', 'Coming soon'), btn: `<button type="button" class="btn sm" data-act="mktWant" data-id="${a.id}" data-on="1">I want this</button>` };
