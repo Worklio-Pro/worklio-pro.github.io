@@ -703,7 +703,7 @@ function loginPanelCard(box) {
 <label>Message<textarea name="body" rows="3" maxlength="600" placeholder="A sentence or two">${esc(L.body)}</textarea></label>
 <label>Bullet points, one per line (up to 8)<textarea name="bullets" rows="5">${esc(L.bullets.join('\n'))}</textarea></label>
 <div class="row"><label>Button text<input name="buttonLabel" value="${esc(L.buttonLabel)}" maxlength="40" placeholder="e.g. See what’s new"></label><label>Button link<input name="buttonUrl" value="${esc(L.buttonUrl)}" maxlength="500" placeholder="https://… or /changelog"></label></div>
-<div class="card-save"><button type="button" class="btn alt sm" data-act="loginPanelReset">Use the default panel</button><span class="as-status">Changes save automatically</span></div></form></div>
+<div class="card-save lp-foot"><button type="button" class="btn alt sm" data-act="loginPanelReset">Use the default panel</button><span class="as-status">Changes save automatically</span></div></form></div>
 <div class="card lp-prev"><h2>Preview</h2><div id="lpPrev"></div></div>`;
   const f = $('#lpf', box);
   const read = () => ({ show: f.elements.show.checked, tag: f.elements.tag.value, headline: f.elements.headline.value, title: f.elements.title.value, body: f.elements.body.value,
