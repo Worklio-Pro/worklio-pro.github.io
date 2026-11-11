@@ -79,7 +79,7 @@ function home() {
   return { title: `${hcName()}`, html: `<section class="hc-hero"><div class="wrap"><h1>How can we help?</h1>${searchBox()}
 <div class="hc-suggest">${SUGGESTED.map((q) => `<a href="/search?q=${encodeURIComponent(q)}" data-link>${esc(q)}</a>`).join('')}</div></div></section>
 <div class="wrap"><section class="hc-sec hc-pop" aria-label="Popular articles"><div class="grid g3">${POPULAR.map(articleOf).filter(Boolean).map(articleCard).join('')}</div></section>
-${latest(9).length ? `<section class="hc-sec"><h2>Latest articles</h2><div class="grid g3">${latest(9).map(latestCard).join('')}</div></section>` : ''}
+${latest(8).length ? `<section class="hc-sec"><h2>Latest articles</h2><div class="grid g4">${latest(8).map(latestCard).join('')}</div></section>` : ''}
 <section class="hc-sec"><h2>What do you want to get done?</h2><div class="grid g3">${TOPICS.map((t) => `<a class="card" href="/topics/${t.slug}" data-link><span class="topic-ic">${ic(ICONS[t.icon])}</span><h3>${esc(t.title)}</h3><p>${fill(t.desc)}</p><span class="meta">${inTopic(t.slug).length} article${inTopic(t.slug).length === 1 ? '' : 's'}</span></a>`).join('')}</div></section>
 ${helpBand()}</div>` };
 }
