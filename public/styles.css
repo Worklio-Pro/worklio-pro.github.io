@@ -2314,3 +2314,9 @@ a.hm-step:hover{border-color:var(--brand)}
 @media (max-width:900px){.hm-steps{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .hm-attn .hm-what strong{white-space:normal}
 @media (max-width:600px){.hm-steps{grid-template-columns:1fr}.hm-step.ok{display:none}.hm-time{width:60px}.hm-row{gap:10px}.hm-h{flex-wrap:wrap;row-gap:2px}}
+/* Quotes, Jobs and Invoices lists: the filter-icon button that picks which columns show */
+.col-pick summary.pill{display:flex;width:40px;padding:0;align-items:center;justify-content:center;gap:0;color:var(--muted)}.col-pick summary.pill svg{display:block;flex:none}.col-pick summary.pill:hover,.col-pick[open] summary.pill{color:var(--text);background:var(--surface-2)}
+.col-pick .menu-list{min-width:210px}.col-pick .col-h{padding:6px 12px 4px;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.col-pick .col-opt{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:6px;font-size:14px;font-weight:400;cursor:pointer;margin:0}.col-pick .col-opt:hover{background:var(--surface-2)}
+.col-pick .col-opt input{width:16px;height:16px;margin:0;flex:none}
+.col-pick .menu-list button{border-top:1px solid var(--line);border-radius:0 0 6px 6px;margin-top:4px;color:var(--link)}

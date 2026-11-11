@@ -3278,6 +3278,26 @@ A.newQuoteFor = (d) => { closeModal(); navigate('/quotes/new?client=' + d.id); }
 
 
 
+/* ===== list columns (Quotes, Jobs, Invoices): the Columns pill picks which columns show. Remembered on this device; off = hidden until picked ===== */
+const colMem = {}; // used when the browser blocks storage
+const listCols = (key, cols) => {
+  let on = colMem[key]; if (!on) { try { on = JSON.parse(localStorage.getItem('cols:' + key) || 'null'); } catch (e) { /* storage blocked: defaults */ } }
+  const shown = Array.isArray(on) ? cols.filter((c) => on.includes(c.k)) : []; return shown.length ? shown : cols.filter((c) => !c.off);
+};
+const colPicker = (key, cols, shown) => `<details class="menu col-pick"><summary class="pill" title="Choose columns (${shown.length} of ${cols.length} shown)" aria-label="Choose columns"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h18l-7 8.5V18l-4 2v-7.5z"/></svg></summary><div class="menu-list"><div class="col-h">Show columns</div>
+${cols.map((c) => `<label class="col-opt"><input type="checkbox" data-col="${key}" value="${c.k}" ${shown.includes(c) ? 'checked' : ''}>${c.label}</label>`).join('')}<button type="button" data-act="colReset" data-key="${key}">Reset to default</button></div></details>`;
+const colSave = async (key, on) => {
+  colMem[key] = on; try { on ? localStorage.setItem('cols:' + key, JSON.stringify(on)) : localStorage.removeItem('cols:' + key); } catch (e) { /* this visit only */ }
+  await refresh(); const d = $('.col-pick'); if (d) d.open = true; // keep the picker open while choosing
+};
+document.addEventListener('change', (e) => {
+  const b = e.target.closest && e.target.closest('[data-col]'); if (!b) return;
+  const on = $$(`[data-col="${b.dataset.col}"]`).filter((x) => x.checked).map((x) => x.value);
+  if (!on.length) { b.checked = true; return toast('Keep at least one column', true); }
+  colSave(b.dataset.col, on);
+});
+A.colReset = (d) => colSave(d.key, null);
+
 // Converted = a job was created from the quote; otherwise the stored status (sent shows as "Awaiting response")
 const Q_STATUS = { draft: 'Draft', sent: 'Awaiting response', approved: 'Approved', converted: 'Converted', declined: 'Declined' };
 const quoteJob = (q) => D.jobs.find((j) => j.quoteId === q.id);
@@ -3308,10 +3328,23 @@ PAGES['/quotes'] = {
     });
     const cname = (q) => { const c = byId(D.clients, q.clientId); return c ? c.company || c.name : '—'; };
     const order = Object.keys(Q_STATUS);
-    const key = { client: (q) => cname(q).toLowerCase(), number: (q) => Number(String(q.number).replace(/\D/g, '')) || 0, created: (q) => q.createdAt || '', status: (q) => order.indexOf(quoteStatus(q)), total: (q) => q.total || 0 }[v.sort];
+    const key = { client: (q) => cname(q).toLowerCase(), number: (q) => Number(String(q.number).replace(/\D/g, '')) || 0, created: (q) => q.createdAt || '', sent: (q) => q.sentAt || '', status: (q) => order.indexOf(quoteStatus(q)), total: (q) => q.total || 0 }[v.sort];
     list.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0) * v.dir);
     [...quoteSel].forEach((id) => { if (!byId(D.quotes, id)) quoteSel.delete(id); });
     const th = (k, label, cls = '') => `<th class="${cls}"><button class="th-btn" data-act="quoteSort" data-k="${k}">${label} <span class="sort ${v.sort === k ? 'on' : ''}">${v.sort === k ? (v.dir > 0 ? '▲' : '▼') : '⇅'}</span></button></th>`;
+    const addr = (q) => esc(q.address || (byId(D.clients, q.clientId) || {}).address || ''); const nowrap = (s) => `<td style="white-space:nowrap">${s}</td>`;
+    const QCOLS = [
+      { k: 'client', label: 'Client', th: th('client', 'Client'), td: (q) => `<td><strong>${esc(cname(q))}</strong></td>` },
+      { k: 'number', label: 'Quote number', th: th('number', 'Quote number'), td: (q) => `<td>${esc(q.number)}${q.title && !titleCol ? `<div>${esc(q.title)}</div>` : ''}</td>` },
+      { k: 'title', label: 'Title', off: true, th: '<th>Title</th>', td: (q) => `<td>${esc(q.title || '')}</td>` },
+      { k: 'property', label: 'Property', th: '<th>Property</th>', td: (q) => `<td>${addr(q)}</td>` },
+      { k: 'created', label: 'Created', th: th('created', 'Created'), td: (q) => nowrap(fmtDate(day(q.createdAt))) },
+      { k: 'sent', label: 'Sent', off: true, th: th('sent', 'Sent'), td: (q) => nowrap(q.sentAt ? fmtDate(day(q.sentAt)) : '<span class="muted">—</span>') },
+      { k: 'status', label: 'Status', th: th('status', 'Status'), td: (q) => `<td>${qBadge(quoteStatus(q))}${quoteChg(q) ? ' <span class="badge chg">Changes requested</span>' : ''}${q.zelleSentAt && !q.depositPaidAt ? ` <span class="badge zelle">${sentName(q)} sent</span>` : ''}</td>` },
+      { k: 'deposit', label: 'Deposit', off: true, th: '<th class="r">Deposit</th>', td: (q) => `<td class="r">${q.depositFee ? `${money(q.depositFee)}${q.depositPaidAt ? '<div class="muted">Paid</div>' : ''}` : '<span class="muted">—</span>'}</td>` },
+      { k: 'total', label: 'Total', th: th('total', 'Total', 'r'), td: (q) => `<td class="r">${qHasOpts(q) && !q.chosenOption ? `<small class="muted qo-from">${q.options.length} options from</small><strong>${money(Math.min(...Object.values(q.optionTotals || {}).map((t) => t.total)))}</strong>` : `<strong>${money(q.total)}</strong>`}</td>` },
+    ];
+    const cols = listCols('quotes', QCOLS); const titleCol = cols.some((c) => c.k === 'title');
     if (phoneMq.matches) return mobileList(main, { path: '/quotes', title: 'Quotes', plural: 'quotes', one: 'quote', list, q: v.q, status: v.status, statuses: order.map((s) => [s, Q_STATUS[s]]), date: (x) => x.createdAt,
       row: (x) => ({ name: cname(x), date: mDay(x.createdAt), amount: mAmt(x.total), title: x.title, label: quoteChg(x) ? 'Changes requested' : Q_STATUS[quoteStatus(x)], cls: 'q-' + quoteStatus(x), href: '/quotes/view?id=' + x.id }),
       onStatus: (k) => { quoteView = { ...quoteView, status: k }; }, onQ: (t) => { quoteView.q = t; }, newAct: 'newQuote' });
@@ -3325,13 +3358,12 @@ PAGES['/quotes'] = {
 <h2 class="ftitle">All quotes <span class="muted">(${list.length} result${list.length === 1 ? '' : 's'})</span></h2>
 <div class="cfilters"><label class="pill">Status<select data-qv="status"><option value="all">All</option>${order.map((s) => `<option value="${s}" ${v.status === s ? 'selected' : ''}>${Q_STATUS[s]}</option>`).join('')}</select></label>
 <label class="pill">📅 Date<select data-qv="date">${[['all', 'All'], ['30', 'Past 30 days'], ['90', 'Past 90 days'], ['year', 'This year']].map(([k, l]) => `<option value="${k}" ${v.date === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-<input id="qq" class="csearch" type="search" placeholder="Search quotes…" value="${esc(v.q)}"></div>
+<input id="qq" class="csearch" type="search" placeholder="Search quotes…" value="${esc(v.q)}">${colPicker('quotes', QCOLS, cols)}</div>
 ${quoteSel.size ? `<div class="bulk"><strong>${quoteSel.size} selected</strong><button class="btn danger sm" data-act="deleteSelQuotes">Delete</button><button class="btn alt sm" data-act="quoteClearSel">Clear selection</button></div>` : ''}
 <div class="card ctable"><div class="tablewrap"><table><tr><th style="width:36px"><input type="checkbox" id="qSelAll" aria-label="Select all" ${list.length && list.every((q) => quoteSel.has(q.id)) ? 'checked' : ''}></th>
-${th('client', 'Client')}${th('number', 'Quote number')}<th>Property</th>${th('created', 'Created')}${th('status', 'Status')}${th('total', 'Total', 'r')}</tr>
-${list.map((q) => { const c = byId(D.clients, q.clientId) || {}; return `<tr class="crow" data-id="${q.id}"><td><input type="checkbox" class="qsel" value="${q.id}" ${quoteSel.has(q.id) ? 'checked' : ''} aria-label="Select ${esc(q.number)}"></td>
-<td><strong>${esc(cname(q))}</strong></td><td>${esc(q.number)}${q.title ? `<div>${esc(q.title)}</div>` : ''}</td><td>${esc(c.address || '')}</td><td style="white-space:nowrap">${fmtDate(day(q.createdAt))}</td>
-<td>${qBadge(quoteStatus(q))}${quoteChg(q) ? ' <span class="badge chg">Changes requested</span>' : ''}${q.zelleSentAt && !q.depositPaidAt ? ` <span class="badge zelle">${sentName(q)} sent</span>` : ''}</td><td class="r">${qHasOpts(q) && !q.chosenOption ? `<small class="muted qo-from">${q.options.length} options from</small><strong>${money(Math.min(...Object.values(q.optionTotals || {}).map((t) => t.total)))}</strong>` : `<strong>${money(q.total)}</strong>`}</td></tr>`; }).join('') || `<tr><td colspan="7" class="empty">${D.quotes.length ? 'No quotes match these filters' : 'No quotes yet'}</td></tr>`}</table></div></div>`;
+${cols.map((c) => c.th).join('')}</tr>
+${list.map((q) => `<tr class="crow" data-id="${q.id}"><td><input type="checkbox" class="qsel" value="${q.id}" ${quoteSel.has(q.id) ? 'checked' : ''} aria-label="Select ${esc(q.number)}"></td>
+${cols.map((c) => c.td(q)).join('')}</tr>`).join('') || `<tr><td colspan="${cols.length + 1}" class="empty">${D.quotes.length ? 'No quotes match these filters' : 'No quotes yet'}</td></tr>`}</table></div></div>`;
     $$('[data-qv]').forEach((s) => s.addEventListener('change', (e) => { quoteView[e.target.dataset.qv] = e.target.value; refresh(); }));
     let t; $('#qq').addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(async () => { quoteView.q = e.target.value; await refresh(); const q = $('#qq'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 250); });
     $('#qSelAll').addEventListener('change', (e) => { list.forEach((q) => (e.target.checked ? quoteSel.add(q.id) : quoteSel.delete(q.id))); refresh(); });
@@ -3341,7 +3373,7 @@ ${list.map((q) => { const c = byId(D.clients, q.clientId) || {}; return `<tr cla
 };
 A.quoteFilter = (d) => { quoteView = { ...quoteView, status: d.s }; refresh(); };
 A.quoteCard = (d) => { quoteView = { ...quoteView, date: '30', status: d.k === 'converted' ? 'converted' : 'all' }; refresh(); };
-A.quoteSort = (d) => { quoteView.dir = quoteView.sort === d.k ? -quoteView.dir : (['created', 'total', 'number'].includes(d.k) ? -1 : 1); quoteView.sort = d.k; refresh(); };
+A.quoteSort = (d) => { quoteView.dir = quoteView.sort === d.k ? -quoteView.dir : (['created', 'sent', 'total', 'number'].includes(d.k) ? -1 : 1); quoteView.sort = d.k; refresh(); };
 A.quoteClearSel = () => { quoteSel.clear(); refresh(); };
 A.deleteSelQuotes = async () => {
   if (!confirm(`Delete ${quoteSel.size} quote${quoteSel.size === 1 ? '' : 's'}? This can't be undone.`)) return;
@@ -3431,9 +3463,22 @@ PAGES['/invoices'] = {
       return !v.q || [i.number, invSubject(i), c.name, c.company, money(i.total)].join(' ').toLowerCase().includes(v.q.toLowerCase());
     });
     const order = Object.keys(I_STATUS);
-    const key = { client: (i) => cname(i).toLowerCase(), number: (i) => Number(String(i.number).replace(/\D/g, '')) || 0, due: (i) => i.dueDate || '', issued: (i) => i.issueDate || '', status: (i) => order.indexOf(i.displayStatus), total: (i) => i.total || 0, balance: invBalance }[v.sort];
+    const key = { client: (i) => cname(i).toLowerCase(), number: (i) => Number(String(i.number).replace(/\D/g, '')) || 0, due: (i) => i.dueDate || '', issued: (i) => i.issueDate || '', paid: (i) => (i.status === 'paid' && i.paidAt) || '', status: (i) => order.indexOf(i.displayStatus), total: (i) => i.total || 0, balance: invBalance }[v.sort];
     list.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0) * v.dir);
     const th = (k, label, cls = '') => `<th class="${cls}"><button class="th-btn" data-act="invSort" data-k="${k}">${label} <span class="sort ${v.sort === k ? 'on' : ''}">${v.sort === k ? (v.dir > 0 ? '▲' : '▼') : '⇅'}</span></button></th>`;
+    const nowrap = (s) => `<td style="white-space:nowrap">${s}</td>`; const dash = '<span class="muted">—</span>';
+    const ICOLS = [
+      { k: 'client', label: 'Client', th: th('client', 'Client'), td: (i) => `<td><strong>${esc(cname(i))}</strong></td>` },
+      { k: 'number', label: 'Invoice number', th: th('number', 'Invoice number'), td: (i) => `<td>${esc(i.number)}</td>` },
+      { k: 'issued', label: 'Issued', off: true, th: th('issued', 'Issued'), td: (i) => nowrap(i.issueDate ? fmtDate(i.issueDate) : dash) },
+      { k: 'due', label: 'Due date', th: th('due', 'Due date'), td: (i) => nowrap(i.status === 'paid' ? fmtDate(i.dueDate) : i.dueDate && i.dueDate <= i.issueDate ? 'Due upon receipt' : fmtDate(i.dueDate)) },
+      { k: 'subject', label: 'Subject', th: '<th>Subject</th>', td: (i) => `<td>${esc(invSubject(i))}</td>` },
+      { k: 'status', label: 'Status', th: th('status', 'Status'), td: (i) => `<td>${iBadge(i.displayStatus)}${i.zelleSentAt && i.status !== 'paid' ? ` <span class="badge zelle" title="Client reported a ${sentName(i)} payment on ${fmtDate(i.zelleSentAt)}">${sentName(i)} sent</span>` : ''}</td>` },
+      { k: 'paid', label: 'Paid on', off: true, th: th('paid', 'Paid on'), td: (i) => nowrap(i.status === 'paid' && i.paidAt ? `${fmtDate(day(i.paidAt))}${i.paymentMethod ? `<div class="muted">${esc(payLabel(i.paymentMethod))}</div>` : ''}` : dash) },
+      { k: 'total', label: 'Total', th: th('total', 'Total', 'r'), td: (i) => `<td class="r"><strong>${money(i.total)}</strong></td>` },
+      { k: 'balance', label: 'Balance', th: th('balance', 'Balance', 'r'), td: (i) => `<td class="r"><strong>${money(invBalance(i))}</strong></td>` },
+    ];
+    const cols = listCols('invoices', ICOLS);
     if (phoneMq.matches) return mobileList(main, { path: '/invoices', title: 'Invoices', plural: 'invoices', one: 'invoice', list, q: v.q, status: v.status, statuses: order.map((s) => [s, I_STATUS[s]]), date: (x) => x.issueDate,
       row: (x) => ({ name: cname(x), date: mDay(x.issueDate), amount: mAmt(x.total), title: invSubject(x), label: I_STATUS[x.displayStatus], cls: I_CLASS[x.displayStatus], href: '/invoices/view?id=' + x.id }),
       onStatus: (k) => { invView = { ...invView, status: k }; }, onQ: (t) => { invView.q = t; }, newAct: 'newInvoice', banner: batchBanner() });
@@ -3447,12 +3492,9 @@ ${batchBanner()}<div class="cstats">
 <h2 class="ftitle">All invoices <span class="muted">(${list.length} result${list.length === 1 ? '' : 's'})</span></h2>
 <div class="cfilters"><label class="pill">Status<select data-iv="status"><option value="all">All</option>${order.map((s) => `<option value="${s}" ${v.status === s ? 'selected' : ''}>${I_STATUS[s]}</option>`).join('')}</select></label>
 <label class="pill">📅 Date<select data-iv="date">${[['all', 'All'], ['30', 'Issued past 30 days'], ['90', 'Issued past 90 days'], ['year', 'Issued this year']].map(([k, l]) => `<option value="${k}" ${v.date === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-<input id="iq" class="csearch" type="search" placeholder="Search invoices…" value="${esc(v.q)}"></div>
-<div class="card ctable"><div class="tablewrap"><table><tr>${th('client', 'Client')}${th('number', 'Invoice number')}${th('due', 'Due date')}<th>Subject</th>${th('status', 'Status')}${th('total', 'Total', 'r')}${th('balance', 'Balance', 'r')}</tr>
-${list.map((i) => `<tr class="crow" data-id="${i.id}"><td><strong>${esc(cname(i))}</strong></td><td>${esc(i.number)}</td>
-<td style="white-space:nowrap">${i.status === 'paid' ? fmtDate(i.dueDate) : i.dueDate && i.dueDate <= i.issueDate ? 'Due upon receipt' : fmtDate(i.dueDate)}</td><td>${esc(invSubject(i))}</td>
-<td>${iBadge(i.displayStatus)}${i.zelleSentAt && i.status !== 'paid' ? ` <span class="badge zelle" title="Client reported a ${sentName(i)} payment on ${fmtDate(i.zelleSentAt)}">${sentName(i)} sent</span>` : ''}</td>
-<td class="r"><strong>${money(i.total)}</strong></td><td class="r"><strong>${money(invBalance(i))}</strong></td></tr>`).join('') || `<tr><td colspan="7" class="empty">${D.invoices.length ? 'No invoices match these filters' : 'No invoices yet'}</td></tr>`}</table></div></div>`;
+<input id="iq" class="csearch" type="search" placeholder="Search invoices…" value="${esc(v.q)}">${colPicker('invoices', ICOLS, cols)}</div>
+<div class="card ctable"><div class="tablewrap"><table><tr>${cols.map((c) => c.th).join('')}</tr>
+${list.map((i) => `<tr class="crow" data-id="${i.id}">${cols.map((c) => c.td(i)).join('')}</tr>`).join('') || `<tr><td colspan="${cols.length}" class="empty">${D.invoices.length ? 'No invoices match these filters' : 'No invoices yet'}</td></tr>`}</table></div></div>`;
     $$('[data-iv]').forEach((s) => s.addEventListener('change', (e) => { invView[e.target.dataset.iv] = e.target.value; refresh(); }));
     let t; $('#iq').addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(async () => { invView.q = e.target.value; await refresh(); const q = $('#iq'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 250); });
     $$('.crow').forEach((r) => r.addEventListener('click', () => navigate('/invoices/view?id=' + r.dataset.id)));
@@ -3970,6 +4012,19 @@ PAGES['/jobs'] = {
     list.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0) * v.dir);
     const th = (k, label, cls = '') => `<th class="${cls}"><button class="th-btn" data-act="jobSort" data-k="${k}">${label} <span class="sort ${v.sort === k ? 'on' : ''}">${v.sort === k ? (v.dir > 0 ? '▲' : '▼') : '⇅'}</span></button></th>`;
     const team = (j) => (j.staffIds || []).map((id) => byId(D.staff, id)).filter(Boolean).map((s) => s.name).join(', ');
+    const dash = '<span class="muted">—</span>';
+    const JCOLS = [
+      { k: 'client', label: 'Client', th: th('client', 'Client'), td: (j) => `<td><strong>${esc(cname(j))}</strong></td>` },
+      { k: 'number', label: 'Job number', th: th('number', 'Job number'), td: (j) => `<td>${esc(j.number)}${j.seriesId ? ' ' + RP_ICON : ''}${j.title && !has('title') ? `<div>${esc(j.title)}</div>` : ''}</td>` },
+      { k: 'title', label: 'Title', off: true, th: '<th>Title</th>', td: (j) => `<td>${esc(j.title || '')}</td>` },
+      { k: 'property', label: 'Property', th: '<th>Property</th>', td: (j) => `<td>${esc(j.address || (byId(D.clients, j.clientId) || {}).address || '')}</td>` },
+      { k: 'schedule', label: 'Schedule', th: th('schedule', 'Schedule'), td: (j) => `<td>${j.status === 'completed' ? '<div class="sched-done">Completed</div>' : ''}${fmtDate(j.date)}${j.status !== 'completed' ? `<div class="muted">${esc(fmtTime(j.startTime))} – ${esc(fmtTime(j.endTime))}</div>` : ''}${team(j) && !has('team') ? `<div class="muted">${esc(team(j))}</div>` : ''}</td>` },
+      { k: 'team', label: 'Team', off: true, th: '<th>Team</th>', td: (j) => `<td>${team(j) ? esc(team(j)) : dash}</td>` },
+      { k: 'status', label: 'Status', th: th('status', 'Status'), td: (j) => { const st = jobStatus(j); return `<td><span class="cstatus ${J_CLASS[st]}">${J_STATUS[st]}</span></td>`; } },
+      { k: 'invoiced', label: 'Invoiced', off: true, th: '<th>Invoiced</th>', td: (j) => { const inv = jobInvoices(j); return `<td>${inv.length ? inv.map((i) => esc(i.number)).join(', ') : dash}</td>`; } },
+      { k: 'total', label: 'Total', cls: 'money', th: th('total', 'Total', 'r money'), td: (j) => { const t = jobTotal(j); return `<td class="r money"><strong>${t === null ? dash : money(t)}</strong></td>`; } },
+    ];
+    const jobCols = JCOLS.filter((c) => c.k !== 'total' || canDo('jobs.prices')); const cols = listCols('jobs', jobCols); const has = (k) => cols.some((c) => c.k === k);
     if (phoneMq.matches) return mobileList(main, { path: '/jobs', title: 'Jobs', plural: 'jobs', one: 'job', list, q: v.q, status: v.status, statuses: order.map((s) => [s, J_STATUS[s]]), date: (x) => (x.date || '') + (x.startTime || ''),
       row: (x) => ({ name: cname(x), date: mDay(x.date) + (x.anytime || !x.startTime ? '' : ' ' + fmtTime(x.startTime)), amount: canDo('jobs.prices') && jobTotal(x) !== null ? mAmt(jobTotal(x)) : '', title: x.title, label: J_STATUS[jobStatus(x)], cls: J_CLASS[jobStatus(x)], href: '/jobs/edit?id=' + x.id }),
       onStatus: (k) => { jobView = { ...jobView, status: k }; }, onQ: (t) => { jobView.q = t; }, newAct: 'newJob', newCls: 'need-jobs-edit' });
@@ -3983,11 +4038,9 @@ PAGES['/jobs'] = {
 <h2 class="ftitle">All jobs <span class="muted">(${list.length} result${list.length === 1 ? '' : 's'})</span></h2>
 <div class="cfilters"><label class="pill">Status<select data-jv="status"><option value="all">All</option>${order.map((s) => `<option value="${s}" ${v.status === s ? 'selected' : ''}>${J_STATUS[s]}</option>`).join('')}</select></label>
 <label class="pill">Team member<select data-jv="staff"><option value="">All</option>${D.staff.map((s) => `<option value="${s.id}" ${v.staff === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>
-<input id="jq" class="csearch" type="search" placeholder="Search jobs…" value="${esc(v.q)}"></div>
-<div class="card ctable"><div class="tablewrap"><table><tr>${th('client', 'Client')}${th('number', 'Job number')}<th>Property</th>${th('schedule', 'Schedule')}${th('status', 'Status')}${th('total', 'Total', 'r money')}</tr>
-${list.map((j) => { const st = jobStatus(j); const t = jobTotal(j); return `<tr class="crow" data-id="${j.id}"><td><strong>${esc(cname(j))}</strong></td><td>${esc(j.number)}${j.seriesId ? ' ' + RP_ICON : ''}${j.title ? `<div>${esc(j.title)}</div>` : ''}</td><td>${esc(j.address || (byId(D.clients, j.clientId) || {}).address || '')}</td>
-<td>${j.status === 'completed' ? '<div class="sched-done">Completed</div>' : ''}${fmtDate(j.date)}${j.status !== 'completed' ? `<div class="muted">${esc(fmtTime(j.startTime))} – ${esc(fmtTime(j.endTime))}</div>` : ''}${team(j) ? `<div class="muted">${esc(team(j))}</div>` : ''}</td>
-<td><span class="cstatus ${J_CLASS[st]}">${J_STATUS[st]}</span></td><td class="r money"><strong>${t === null ? '<span class="muted">—</span>' : money(t)}</strong></td></tr>`; }).join('') || `<tr><td colspan="6" class="empty">${D.jobs.length ? 'No jobs match these filters' : 'No jobs yet'}</td></tr>`}</table></div></div>`;
+<input id="jq" class="csearch" type="search" placeholder="Search jobs…" value="${esc(v.q)}">${colPicker('jobs', jobCols, cols)}</div>
+<div class="card ctable"><div class="tablewrap"><table><tr>${cols.map((c) => c.th).join('')}</tr>
+${list.map((j) => `<tr class="crow" data-id="${j.id}">${cols.map((c) => c.td(j)).join('')}</tr>`).join('') || `<tr><td colspan="${cols.length}" class="empty">${D.jobs.length ? 'No jobs match these filters' : 'No jobs yet'}</td></tr>`}</table></div></div>`;
     $$('[data-jv]').forEach((s) => s.addEventListener('change', (e) => { jobView[e.target.dataset.jv] = e.target.value; refresh(); }));
     let tm; $('#jq').addEventListener('input', (e) => { clearTimeout(tm); tm = setTimeout(async () => { jobView.q = e.target.value; await refresh(); const q = $('#jq'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 250); });
     $$('.crow').forEach((r) => r.addEventListener('click', () => navigate('/jobs/edit?id=' + r.dataset.id)));
