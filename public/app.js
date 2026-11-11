@@ -673,8 +673,9 @@ function newCatalogItems(items) {
   for (const i of items || []) { const k = catKey(i.desc); if (!k || i.lateFee || i.matrix || i.mx || known.has(k)) continue; known.add(k); out.push(i); }
   return out;
 }
-// a catalog item's price is what the line's Unit cost fills in from, so the line's unit cost is saved (its markup stays on the line)
-const addToCatalog = async (items) => { const r = await api('POST', '/api/services/import', { services: items.map((i) => ({ name: i.desc.trim(), description: i.details || '', price: Number(i.cost ?? i.price) || 0, type: 'service' })) }); await refresh(); return r.added; };
+// a catalog item's price is what the line's Unit cost fills in from, so the line's unit cost is saved (its markup stays on the line).
+// The line's description isn't saved: what's typed on one quote, job or invoice stays on it; a catalog item's description is set on Products & services.
+const addToCatalog = async (items) => { const r = await api('POST', '/api/services/import', { services: items.map((i) => ({ name: i.desc.trim(), price: Number(i.cost ?? i.price) || 0, type: 'service' })) }); await refresh(); return r.added; };
 const catSkipNames = (items) => { const s = catSkip(); s.names = [...new Set([...(s.names || []), ...items.map((i) => catKey(i.desc))])].slice(-300); catSkipSave(s); };
 function offerCatalog(items) {
   const list = newCatalogItems(items); if (!list.length) return;
