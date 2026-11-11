@@ -62,6 +62,15 @@ ${field('password', 'Password* (8+ characters)', 'password', 'autocomplete="new-
   }
   const first = p.querySelector('[autofocus]'); if (first && !(view === 'login' && params.get('email'))) first.focus();
 }
+// the panel beside the form: an ad, update or notice set in Alpha → Settings → Login page
+function promo(L) {
+  if (!L || !L.show) { $('.auth').classList.add('solo'); return; }
+  $('#promoHead').textContent = L.headline || '';
+  const tag = $('#promoTag'); tag.textContent = L.tag || ''; tag.hidden = !L.tag;
+  const link = L.buttonUrl && L.buttonLabel ? `<a class="btn" href="${esc(L.buttonUrl)}"${/^https?:/i.test(L.buttonUrl) ? ' target="_blank" rel="noopener"' : ''}>${esc(L.buttonLabel)}</a>` : '';
+  $('#promoBody').innerHTML = `${L.title ? `<h2>${esc(L.title)}</h2>` : ''}${L.body ? `<p>${esc(L.body).replace(/\n/g, '<br>')}</p>` : ''}${(L.bullets || []).length ? `<ul>${L.bullets.map((b) => `<li>${esc(b)}</li>`).join('')}</ul>` : ''}${link}`;
+  $('.auth-side').hidden = false;
+}
 // central: one business opens straight away; several show the list
 async function centralLogin(b) {
   const r = await post('/api/site/sign-in', { ...b, next: nextUrl() }); // e.g. Create Post on ideas.<domain> opens the Board with the post filled in
@@ -97,7 +106,7 @@ document.addEventListener('click', (e) => {
     state.product = state.product || {}; const name = state.product.name || 'Worklio Pro';
     document.title = `Log in · ${name}`;
     $('#brand').innerHTML = `${brandImg(state.product)}${state.product.logoHasName ? '' : `<span>${esc(name)}</span>`}`;
-    $('#promoCo').textContent = name;
+    $('#promoCo').textContent = name; promo(state.loginPanel);
     const oauthError = params.get('oauth_error');
     if (params.get('pick')) { // back from Google / Apple with an email in several businesses
       const r = await fetch('/api/site/sign-in/pick'); const j = await r.json().catch(() => ({}));
@@ -114,6 +123,7 @@ document.addEventListener('click', (e) => {
   $('#brand').innerHTML = `${co.logo ? `<img src="${esc(co.logo)}" alt="">` : ''}<span>${esc(co.name || 'Worklio Pro')}</span>`;
   const product = state.product || {}; // the Worklio Pro logo from the platform console, on the panel beside the form
   $('#promoCo').innerHTML = `${brandImg(product, 'dark')}${product.logoHasName ? '' : `<span>${esc(product.name || 'Worklio Pro')}</span>`}`;
+  promo(state.loginPanel);
   if (params.get('invite')) {
     const r = await fetch('/api/auth/invite?token=' + encodeURIComponent(params.get('invite'))); const j = await r.json().catch(() => ({}));
     if (r.ok) state.invite = j; else state.inviteError = j.error;

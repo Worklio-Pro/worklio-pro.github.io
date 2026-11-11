@@ -300,6 +300,13 @@
     .pl-row input{width:22px;height:22px;margin:0;flex:none;accent-color:var(--brand)}
     .pl-card .savebar{margin:12px -16px -16px;padding:12px 16px}
     .switchline{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text);margin:6px 0 14px}
+    /* Settings → Login page: the preview matches the panel on login.html */
+    #lpf textarea{width:100%;resize:vertical}.lp-prev .promo{max-width:360px;border-radius:14px;overflow:hidden;border:1px solid var(--line);background:var(--card)}
+    .lp-prev .promo-art{background:linear-gradient(135deg,var(--brand),#0f1f3d);color:#fff;padding:28px 24px;min-height:180px;display:flex;flex-direction:column;gap:10px}
+    .lp-prev .promo-art strong{margin-top:auto;font-size:28px;line-height:1.1;font-weight:800;letter-spacing:-.01em}.lp-prev .promo-art small{opacity:.8;font-size:12px;letter-spacing:.08em;text-transform:uppercase}
+    .promo-tag{align-self:flex-start;background:rgba(255,255,255,.18);color:#fff;font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px}
+    .lp-prev .promo-body{padding:18px 20px}.lp-prev .promo-body h2{font-size:18px;margin:0 0 8px;padding:0;background:none;border:0}.lp-prev .promo-body p{margin:0 0 10px;color:var(--muted);font-size:14px;line-height:1.5}
+    .lp-prev .promo-body ul{margin:0;padding-left:18px;color:var(--muted);font-size:14px;line-height:1.7}.lp-prev .promo-btn{margin-top:14px;pointer-events:none}
     .acc .btn.danger{color:#fff;font-size:13px} /* .acc .sm greys small text; not a red button's */
     .sub-box{border:1px solid var(--line);border-radius:10px;padding:12px 14px}.sub-dl{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;margin:0 0 12px}.sub-dl dt{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}.sub-dl dd{margin:2px 0 0;font-size:14px}
     .sub-acts{justify-content:flex-start;flex-wrap:wrap;gap:6px;margin-bottom:6px}.sub-h{font-size:13px;margin:14px 0 4px}.sub-pay td{padding:6px 4px;vertical-align:middle}.sub-log{margin-top:10px;font-size:13px}.sub-log ul{margin:6px 0 0;padding-left:18px}.sub-log li{margin:3px 0}
@@ -406,7 +413,7 @@
   <script src="/hc-editor.js?v=3"></script>
   <script src="/brand.js?v=1"></script>
   <script src="/cancelflow.js?v=1"></script>
-  <script src="/platform.js?v=101"></script>
+  <script src="/platform.js?v=102"></script>
   <script src="/alpha-creators.js?v=4"></script>
   <script src="/alpha-import.js?v=3"></script>
 </body>

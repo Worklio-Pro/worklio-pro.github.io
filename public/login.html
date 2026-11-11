@@ -45,10 +45,12 @@
     .pick-row strong{font-size:15px}.pick-row small{font-size:13px;color:var(--muted)}
     .auth-side{justify-self:start;max-width:360px;width:100%}
     .promo{border-radius:14px;overflow:hidden;border:1px solid var(--line);background:var(--card)}
-    .promo-art{background:linear-gradient(135deg,var(--brand),#0f1f3d);color:#fff;padding:28px 24px;min-height:180px;display:flex;flex-direction:column;justify-content:space-between}
-    .promo-art strong{font-size:28px;line-height:1.1;font-weight:800;letter-spacing:-.01em}
+    .promo-art{background:linear-gradient(135deg,var(--brand),#0f1f3d);color:#fff;padding:28px 24px;min-height:180px;display:flex;flex-direction:column;justify-content:flex-start}
+    .promo-art strong{margin-top:auto;font-size:28px;line-height:1.1;font-weight:800;letter-spacing:-.01em}
     .promo-art small{opacity:.8;font-size:12px;letter-spacing:.08em;text-transform:uppercase}#promoCo{--logo-h:36px;display:flex;align-items:center;gap:10px;margin-bottom:18px}#promoCo:has(img){opacity:1}
-    .promo-body{padding:18px 20px}
+    .promo-tag{align-self:flex-start;margin:0 0 10px;background:rgba(255,255,255,.18);color:#fff;font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px}
+    .promo-body{padding:18px 20px}.promo-body:empty{display:none}.promo-body p{margin:0 0 10px;color:var(--muted);font-size:14px;line-height:1.5}.promo-body .btn{margin-top:14px;text-decoration:none}
+    .auth.solo{grid-template-columns:1fr}.auth.solo .auth-form{justify-self:center}.auth.solo .auth-side{display:none}.auth-side[hidden]{display:none}
     .promo-body h2{font-size:18px;margin:0 0 8px}
     .promo-body ul{margin:0;padding-left:18px;color:var(--muted);font-size:14px;line-height:1.7}
     @media (max-width:800px){.auth{grid-template-columns:1fr;gap:32px}.auth-form,.auth-side{justify-self:center}}
@@ -61,16 +63,15 @@
       <div id="panel" aria-live="polite"><p class="muted" style="text-align:center">Loading…</p></div>
       <p class="auth-legal"><a href="/terms">Terms of Service</a> · <a href="/privacy">Privacy Policy</a></p>
     </section>
-    <aside class="auth-side">
+    <aside class="auth-side" hidden>
       <div class="promo">
-        <div class="promo-art"><small id="promoCo">Worklio Pro</small><strong>Everything for your service business, in one place</strong></div>
-        <div class="promo-body"><h2>What you can do here</h2>
-          <ul><li>Send quotes and collect deposits</li><li>Schedule jobs and assign your team</li><li>Invoice and get paid by card or Zelle</li><li>Text and email clients automatically</li></ul></div>
+        <div class="promo-art"><small id="promoCo">Worklio Pro</small><span class="promo-tag" id="promoTag" hidden></span><strong id="promoHead"></strong></div>
+        <div class="promo-body" id="promoBody"></div>
       </div>
     </aside>
   </main>
   <script src="/brand.js?v=1"></script>
   <script src="/oauth-buttons.js?v=1"></script>
-  <script src="/login.js?v=10"></script>
+  <script src="/login.js?v=11"></script>
 </body>
 </html>

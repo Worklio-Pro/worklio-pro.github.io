@@ -1294,7 +1294,7 @@ app.post('/api/auth/accept-invite', (req, res) => {
   startSession(res, u); res.json(publicUser(u));
 });
 app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
-app.get('/api/auth/state', (req, res) => res.json({ needsSetup: !db.users.length, user: publicUser(currentUser(req)), company: { name: db.company.name, logo: db.company.logo }, product: brandLib.brand(), emailReady: !!emailProvider(),
+app.get('/api/auth/state', (req, res) => res.json({ needsSetup: !db.users.length, user: publicUser(currentUser(req)), company: { name: db.company.name, logo: db.company.logo }, product: brandLib.brand(), loginPanel: brandLib.loginPanel(), emailReady: !!emailProvider(),
   signInWith: { providers: signInWith.available(), start: `${tenancy.platformUrl()}/sign-in`, account: tenancy.current().id } })); // Continue with Google / Apple go through the platform address
 // what this login may open: its permissions, the pages they unlock, and which lists it can load
 const accessOf = (u) => { const rk = roleKey(u); const routes = rolesLib.routesFor(teamRoles(), rk); return { staffId: u.staffId || null, perms: rolesLib.permsOf(teamRoles(), rk), pages: rolesLib.isAdminRole(u.role) ? null : rolesLib.pagesFor(teamRoles(), rk), collections: rolesLib.isAdminRole(u.role) ? COLLECTIONS : COLLECTIONS.filter((c) => rolesLib.allows(routes, 'GET', '/api/' + c)) }; };

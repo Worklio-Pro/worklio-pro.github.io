@@ -635,7 +635,7 @@ let igTab = ''; // '' shows the cards
 // Integrations is one page (setTab 'integrations'): a grid of cards, or one service's settings (igTab) with a link back to the cards.
 // Links elsewhere open a service directly with data-k="integrations:<service>".
 const SET_GROUPS = [
-  ['Product', [['product', 'Your product'], ['colors', 'Website colors'], ['icons', 'Menu'], ['seo', 'SEO'], ['terms', 'Terms and privacy']]],
+  ['Product', [['product', 'Your product'], ['colors', 'Website colors'], ['icons', 'Menu'], ['login', 'Login page'], ['seo', 'SEO'], ['terms', 'Terms and privacy']]],
   ['Team & access', [['team', 'Alpha team'], ['expiry', 'Access end dates'], ['reserved', 'Reserved addresses']]],
   ['System', [['integrations', 'Integrations'], ['maintenance', 'Maintenance mode']]],
 ];
@@ -676,7 +676,7 @@ function settingsView(main) {
 <div class="row"><label>Show a banner in their app (days before)<input name="expiryBannerDays" type="number" min="0" max="60" value="${esc(s.expiryBannerDays ?? 7)}"></label><label>Email the owner a reminder (days before)<input name="expiryReminderDays" type="number" min="0" max="60" value="${esc(s.expiryReminderDays ?? 3)}"></label></div>
 <p class="muted" style="font-size:13px;margin-top:-4px">For accounts you gave a last day of access (e.g. trials). Owners and admins see the banner; owners can choose a plan from it, which removes the end date. The reminder is sent once per end date; edit its wording in Messages → Email templates → Access ending soon. 0 means on the last day itself.</p>
 <div class="card-save"><span class="as-status">Changes save automatically</span></div></div></form>
-<div class="card" id="reserved" data-set="reserved"></div><div class="card" id="seoCard" data-set="seo"></div></div></div>`;
+<div class="set-pair" id="lpCard" data-set="login"></div><div class="card" id="reserved" data-set="reserved"></div><div class="card" id="seoCard" data-set="seo"></div></div></div>`;
   $('.set-pick select', main).addEventListener('change', (e) => A.setTab({ k: e.target.value }));
   $$('[data-set]', main).forEach((c) => { c.hidden = c.dataset.set !== setTab; });
   $$('#sf, #sf2, #sf3', main).forEach((f) => autosave(f, async (b) => {
@@ -684,9 +684,39 @@ function settingsView(main) {
     const name = D.settings.productName; D.settings = await api('PUT', '/api/platform/settings', b);
     if (D.settings.productName !== name) { $('.pf-brand').innerHTML = brandHtml(); logoCard($('#logoCard', main)); iconCard($('#iconCard', main)); } // a new name: the header and previews show it
   }));
-  maintenanceCard($('#mtCard', main)); logoCard($('#logoCard', main)); iconCard($('#iconCard', main)); colorsCard($('#colorsCard', main)); reservedCard($('#reserved', main)); teamCard($('#teamCard', main)); if (setTab === 'icons') iconsCard($('#iconsCard', main)); if (setTab === 'seo') seoCard($('#seoCard', main));
+  maintenanceCard($('#mtCard', main)); logoCard($('#logoCard', main)); iconCard($('#iconCard', main)); colorsCard($('#colorsCard', main)); reservedCard($('#reserved', main)); teamCard($('#teamCard', main)); if (setTab === 'icons') iconsCard($('#iconsCard', main)); if (setTab === 'seo') seoCard($('#seoCard', main)); if (setTab === 'login') loginPanelCard($('#lpCard', main));
   integrationsCard($('#integ', main)); // always, so the list shows which services are set up
 }
+// Settings → Login page (lib/brand.js loginPanel): the panel beside the login form on every business's login and on /sign-in.
+// Use it for an ad, an update or a notice. Saves as you type; the preview beside it shows what people will see.
+const lpHtml = (L, name) => `<div class="promo"><div class="promo-art"><small>${esc(name)}</small>${L.tag ? `<span class="promo-tag">${esc(L.tag)}</span>` : ''}<strong>${esc(L.headline)}</strong></div>
+<div class="promo-body">${L.title ? `<h2>${esc(L.title)}</h2>` : ''}${L.body ? `<p>${esc(L.body).replace(/\n/g, '<br>')}</p>` : ''}${L.bullets.length ? `<ul>${L.bullets.map((b) => `<li>${esc(b)}</li>`).join('')}</ul>` : ''}${L.buttonLabel ? `<span class="btn promo-btn">${esc(L.buttonLabel)}</span>` : ''}</div></div>`;
+function loginPanelCard(box) {
+  if (!box) return;
+  const L = D.loginPanel;
+  box.innerHTML = `<div class="card"><h2>Login page</h2><form id="lpf" class="set-form">
+<p class="muted" style="font-size:13px;margin-top:0">The panel beside the login form, on every business’s login page and on <a href="/sign-in" target="_blank" rel="noopener">/sign-in</a>. Use it for an ad, a product update or a notice (e.g. planned maintenance). Leave a field blank to leave it out.</p>
+<label class="switchline"><input type="checkbox" name="show" ${L.show ? 'checked' : ''}> Show the panel (when off, the login form is centered on its own)</label>
+<div class="row"><label>Tag<input name="tag" value="${esc(L.tag)}" maxlength="24" placeholder="e.g. New, Update, Notice"></label></div>
+<label>Headline<textarea name="headline" rows="2" maxlength="120">${esc(L.headline)}</textarea></label>
+<label>Heading<input name="title" value="${esc(L.title)}" maxlength="80"></label>
+<label>Message<textarea name="body" rows="3" maxlength="600" placeholder="A sentence or two">${esc(L.body)}</textarea></label>
+<label>Bullet points, one per line (up to 8)<textarea name="bullets" rows="5">${esc(L.bullets.join('\n'))}</textarea></label>
+<div class="row"><label>Button text<input name="buttonLabel" value="${esc(L.buttonLabel)}" maxlength="40" placeholder="e.g. See what’s new"></label><label>Button link<input name="buttonUrl" value="${esc(L.buttonUrl)}" maxlength="500" placeholder="https://… or /changelog"></label></div>
+<div class="card-save"><button type="button" class="btn alt sm" data-act="loginPanelReset">Use the default panel</button><span class="as-status">Changes save automatically</span></div></form></div>
+<div class="card lp-prev"><h2>Preview</h2><div id="lpPrev"></div></div>`;
+  const f = $('#lpf', box);
+  const read = () => ({ show: f.elements.show.checked, tag: f.elements.tag.value, headline: f.elements.headline.value, title: f.elements.title.value, body: f.elements.body.value,
+    bullets: f.elements.bullets.value.split('\n').map((x) => x.trim()).filter(Boolean), buttonLabel: f.elements.buttonLabel.value, buttonUrl: f.elements.buttonUrl.value });
+  const draw = () => { const v = read(); $('#lpPrev', box).innerHTML = v.show ? lpHtml(v, D.settings.productName) : '<p class="muted">Hidden: the login page shows only the form.</p>'; };
+  f.addEventListener('input', draw); f.addEventListener('change', draw); draw();
+  autosave(f, async () => { D.settings = await api('PUT', '/api/platform/settings', { loginPanel: read() }); D.loginPanel = { ...D.loginPanel, ...D.settings.loginPanel }; });
+}
+A.loginPanelReset = async () => {
+  if (!confirm('Put the login page panel back to the default wording?')) return;
+  try { D.settings = await api('PUT', '/api/platform/settings', { loginPanel: { show: true, headline: 'Everything for your service business, in one place', title: 'What you can do here', bullets: ['Send quotes and collect deposits', 'Schedule jobs and assign your team', 'Invoice and get paid by card or Zelle', 'Text and email clients automatically'] } });
+    D.loginPanel = D.settings.loginPanel; loginPanelCard($('#lpCard')); toast('Login page panel reset'); } catch (x) { toast(x.message, true); }
+};
 // Settings → SEO: each public page's title and description (with a search-result preview), indexing, verification, the share image and social profiles (lib/seo.js)
 let SEO = null; let seoDraft = null;
 const SEO_LIMITS = { title: 60, description: 155 };
