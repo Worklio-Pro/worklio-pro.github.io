@@ -373,7 +373,8 @@ async function sendEmail(to, subject, body, { server = false, replyTo: replyOver
   return { status: 'simulated', detail: server ? 'No email provider set up (Alpha → Settings → Integrations, or GMAIL_* / SENDGRID_* in .env)' : 'Email isn’t set up on this service yet' };
 }
 // the platform's own emails (lib/emails.js; edited in the platform console under Messages → Email templates)
-async function sendTemplate(key, to, vars, opts = {}) { const m = emails.render(key, vars); return { ...(await sendEmail(to, m.subject, m.text, { ...opts, html: m.html })), subject: m.subject, text: m.text }; }
+// opts.tag goes on the end of the subject (e.g. a chat's "[Chat …]", so a reply to the email finds its way back), whatever the template's subject says
+async function sendTemplate(key, to, vars, opts = {}) { const m = emails.render(key, vars); if (opts.tag) m.subject = `${m.subject} ${opts.tag}`; return { ...(await sendEmail(to, m.subject, m.text, { ...opts, html: m.html })), subject: m.subject, text: m.text }; }
 // Twilio needs E.164 numbers (+17135550100); assume US/Canada for bare 10-digit numbers
 function toE164(phone) {
   const s = String(phone || '').trim(); const digits = s.replace(/\D/g, '');

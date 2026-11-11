@@ -1520,6 +1520,14 @@ A.lcSettings = () => {
 <div class="lc-hours"><label>Time zone<select name="tz">${LC_TZ.map(([z, l]) => `<option value="${z}" ${s.hours.tz === z ? 'selected' : ''}>${l}</option>`).join('')}${LC_TZ.some(([z]) => z === s.hours.tz) ? '' : `<option value="${esc(s.hours.tz)}" selected>${esc(s.hours.tz)}</option>`}</select></label>
 <label>Opens<input type="time" name="open" value="${esc(s.hours.open)}"></label><label>Closes<input type="time" name="close" value="${esc(s.hours.close)}"></label></div>
 <div class="lc-days">${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d, i) => `<label><input type="checkbox" name="day" value="${i}" ${s.hours.days.includes(i) ? 'checked' : ''}> ${d}</label>`).join('')}</div>
+<h3 style="margin:8px 0 4px;font-size:15px">Answer by email</h3>
+<p class="muted" style="font-size:13px;margin:0 0 8px">When someone asks for a person, you get an email${D.settings.contactEmail ? ` at ${esc(D.settings.contactEmail)}` : ''}. With this on, replying to it answers in the chat, and anything else they write while Live chat isn’t open is emailed to you too. Replies go to the address below, which is checked every minute, so use a mailbox you can sign in to by IMAP (most email services; Gmail needs an app password).</p>
+<label class="switchline"><input type="checkbox" name="inOn" ${s.inbox.on ? 'checked' : ''}> Answer chats by replying to the email</label>
+<div class="lc-inbox"><label>Reply address<input name="inAddress" type="email" value="${esc(s.inbox.address)}" maxlength="200" placeholder="chat@yourdomain.com" spellcheck="false"></label>
+<label>Mail server (IMAP)<input name="inHost" value="${esc(s.inbox.host)}" maxlength="200" placeholder="imap.gmail.com" spellcheck="false"></label><label>Port<input name="inPort" type="number" min="1" max="65535" value="${esc(s.inbox.port || 993)}"></label>
+<label>Username<input name="inUser" value="${esc(s.inbox.user)}" maxlength="200" placeholder="Usually the full email address" spellcheck="false" autocomplete="off"></label>
+<label>Password<input name="inPass" type="password" value="" maxlength="300" placeholder="${s.inbox.hasPass ? 'Saved (type to change)' : 'Password or app password'}" autocomplete="new-password"></label></div>
+<p style="margin:-2px 0 12px"><button type="button" class="btn alt sm" data-act="lcInTest">Test</button> <span class="muted" id="lcInMsg" style="font-size:13px"></span></p>
 <h3 style="margin:8px 0 4px;font-size:15px">Files</h3>
 <label class="switchline"><input type="checkbox" name="files" ${s.files !== false ? 'checked' : ''}> Let people attach photos and files (up to 10 MB: photos, PDFs, Word, Excel, CSV, text)</label>
 <label style="max-width:320px">Delete files after (days; 0 keeps them)<input type="number" name="fileDays" min="0" max="3650" value="${esc(s.fileDays ?? 90)}"></label>
@@ -1542,12 +1550,16 @@ A.lcSettings = () => {
       } catch (x) { toast(x.message && !/decode|source/i.test(x.message) ? x.message : 'That photo couldn’t be read. Try a JPG or PNG.', true); } };
     i.click(); };
   A.lcPhotoRm = () => { $('#lcsf', m).botPhoto.value = ''; bav(); };
+  A.lcInTest = async (d, el) => { const f = $('#lcsf', m); const msg = $('#lcInMsg', m); el.disabled = true; msg.textContent = 'Signing in…'; msg.style.color = '';
+    try { await api('POST', '/api/platform/chat-inbox-test', { host: f.inHost.value, port: f.inPort.value, user: f.inUser.value, pass: f.inPass.value }); msg.textContent = '✓ Signed in. Save to turn it on.'; msg.style.color = 'var(--ok,#16a34a)'; }
+    catch (x) { msg.textContent = x.message; msg.style.color = 'var(--bad,#dc2626)'; } finally { el.disabled = false; } };
   A.lcAnsAdd = () => { $('#lcAns').insertAdjacentHTML('beforeend', ans()); $('#lcAns .lc-ans:last-child input').focus(); };
   A.lcAnsRm = (d, el) => el.closest('.lc-ans').remove();
   $('#lcsf', m).addEventListener('submit', async (e) => {
     e.preventDefault(); const f = e.target;
     // without an AI key the AI switch is greyed out, so the saved choice is kept
     const b = { on: f.on.checked, ai: LC.ai ? f.ai.checked : LC.settings.ai, where: [...f.querySelectorAll('[name=where]:checked')].map((x) => x.value), botName: f.botName.value, botPhoto: f.botPhoto.value, botPersonality: f.botPersonality.value, greeting: f.greeting.value, offline: f.offline.value, contactUrl: f.contactUrl.value, files: f.files.checked, fileDays: f.fileDays.value,
+      inbox: { on: f.inOn.checked, address: f.inAddress.value, host: f.inHost.value, port: f.inPort.value, user: f.inUser.value, pass: f.inPass.value },
       hours: { on: f.hoursOn.checked, tz: f.tz.value, open: f.open.value, close: f.close.value, days: [...f.querySelectorAll('[name=day]:checked')].map((x) => +x.value) },
       answers: [...f.querySelectorAll('.lc-ans')].map((r) => ({ q: r.querySelector('[name=q]').value, keywords: r.querySelector('[name=keywords]').value, a: r.querySelector('[name=a]').value })) };
     try { await api('PUT', '/api/platform/chat-settings', b); closeModal(); toast('Chat settings saved'); chatCard($('#chat')); } catch (x) { toast(x.message, true); }
