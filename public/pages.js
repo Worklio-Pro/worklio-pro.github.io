@@ -1626,14 +1626,19 @@ A.revDelete = async (d, el) => {
 /* ===== /automations: the business's own rules that message clients and the team (lib/business-automations.js) ===== */
 let AB = null;
 const abHour = (h) => `${h % 12 || 12}:00 ${h < 12 ? 'AM' : 'PM'}`;
+// a template: the trigger and conditions, then its branches (each with its own wait, who gets it and actions)
 const AB_STARTERS = {
-  quote: { name: 'Quote follow-up', trigger: 'quoteSent', days: 3, hour: 9, to: 'client', channels: ['email'], subject: 'Any questions about your quote?', body: 'Hello {{first_name}},\n\nWe sent you quote {{number}} a few days ago and wanted to check if you have any questions.\n\n[View your quote]({{link}})\n\nThank you,\n{{company_name}}', smsBody: '{{company_name}}: Any questions about quote {{number}}? View it here: {{link}}' },
-  overdue: { name: 'Overdue invoice reminder', trigger: 'invoiceOverdue', days: 3, hour: 9, to: 'client', channels: ['email'], subject: 'Invoice {{number}} is overdue', body: 'Hello {{first_name}},\n\nInvoice {{number}} was due {{due_date}} and {{balance}} is still open.\n\n[View and pay]({{link}})\n\nThank you,\n{{company_name}}', smsBody: '{{company_name}}: Invoice {{number}} is overdue, with {{balance}} open. Pay here: {{link}}' },
-  visit: { name: 'Job reminder', trigger: 'jobUpcoming', days: 1, hour: 9, to: 'client', channels: ['email'], subject: 'Your appointment on {{date}}', body: 'Hello {{first_name}},\n\nThis is a reminder that we’ll be there on {{date}} at {{time}} for {{title}}.\n\nNeed to change it? Call us at {{company_phone}}.\n\n{{company_name}}', smsBody: '{{company_name}}: Reminder of your appointment on {{date}} at {{time}}.' },
-  thanks: { name: 'Thank you after a job', trigger: 'jobCompleted', days: 1, hour: 10, to: 'client', channels: ['email'], subject: 'Thank you, {{first_name}}', body: 'Hello {{first_name}},\n\nThank you for choosing {{company_name}}. If anything isn’t right with {{title}}, reply to this email and we’ll fix it.', smsBody: '' },
-  quiet: { name: 'Win back quiet clients', trigger: 'clientQuiet', days: 180, hour: 10, to: 'client', channels: ['email'], subject: 'It’s been a while, {{first_name}}', body: 'Hello {{first_name}},\n\nIt’s been a while since our last visit. If there’s anything we can help with, we’d love to hear from you.\n\n[Request work]({{portal_link}})\n\n{{company_name}}', smsBody: '' },
-  team: { name: 'Tell the team about overdue invoices', trigger: 'invoiceOverdue', days: 14, hour: 8, to: 'team', channels: ['push', 'email'], subject: '{{client_name}}: invoice {{number}} is 14 days overdue', body: 'Invoice {{number}} for {{client_name}} still has {{balance}} open. It was due {{due_date}}.', smsBody: '' },
+  quote: { name: 'Quote follow-up', trigger: 'quoteSent', branches: [
+    { days: 3, hour: 9, to: 'client', channels: ['email'], subject: 'Any questions about your quote?', body: 'Hello {{first_name}},\n\nWe sent you quote {{number}} a few days ago and wanted to check if you have any questions.\n\n[View your quote]({{link}})\n\nThank you,\n{{company_name}}', smsBody: '{{company_name}}: Any questions about quote {{number}}? View it here: {{link}}' },
+    { days: 7, hour: 9, to: 'team', channels: ['push'], subject: '{{client_name}} hasn’t answered quote {{number}}', body: 'Quote {{number}} ({{total}}) was sent a week ago and is still unanswered. Give {{first_name}} a call.', smsBody: '' }] },
+  overdue: { name: 'Overdue invoice reminder', trigger: 'invoiceOverdue', branches: [{ days: 3, hour: 9, to: 'client', channels: ['email'], subject: 'Invoice {{number}} is overdue', body: 'Hello {{first_name}},\n\nInvoice {{number}} was due {{due_date}} and {{balance}} is still open.\n\n[View and pay]({{link}})\n\nThank you,\n{{company_name}}', smsBody: '{{company_name}}: Invoice {{number}} is overdue, with {{balance}} open. Pay here: {{link}}' }] },
+  visit: { name: 'Job reminder', trigger: 'jobUpcoming', branches: [{ days: 1, hour: 9, to: 'client', channels: ['email'], subject: 'Your appointment on {{date}}', body: 'Hello {{first_name}},\n\nThis is a reminder that we’ll be there on {{date}} at {{time}} for {{title}}.\n\nNeed to change it? Call us at {{company_phone}}.\n\n{{company_name}}', smsBody: '{{company_name}}: Reminder of your appointment on {{date}} at {{time}}.' }] },
+  thanks: { name: 'Thank you after a job', trigger: 'jobCompleted', branches: [{ days: 1, hour: 10, to: 'client', channels: ['email'], subject: 'Thank you, {{first_name}}', body: 'Hello {{first_name}},\n\nThank you for choosing {{company_name}}. If anything isn’t right with {{title}}, reply to this email and we’ll fix it.', smsBody: '' }] },
+  quiet: { name: 'Win back quiet clients', trigger: 'clientQuiet', branches: [{ days: 180, hour: 10, to: 'client', channels: ['email'], subject: 'It’s been a while, {{first_name}}', body: 'Hello {{first_name}},\n\nIt’s been a while since our last visit. If there’s anything we can help with, we’d love to hear from you.\n\n[Request work]({{portal_link}})\n\n{{company_name}}', smsBody: '' }] },
+  team: { name: 'Tell the team about overdue invoices', trigger: 'invoiceOverdue', branches: [{ days: 14, hour: 8, to: 'team', channels: ['push', 'email'], subject: '{{client_name}}: invoice {{number}} is 14 days overdue', body: 'Invoice {{number}} for {{client_name}} still has {{balance}} open. It was due {{due_date}}.', smsBody: '' }] },
 };
+// an automation saved before branches has one set of fields: that's its one branch
+const abBranches = (a) => (a.branches && a.branches.length ? a.branches : [{ days: a.days, hour: a.hour, to: a.to, channels: a.channels, subject: a.subject, body: a.body, smsBody: a.smsBody }]);
 const abBadge = (a) => `<span class="badge ${a.enabled ? 'approved' : 'draft'}">${a.enabled ? 'Active' : 'Not active'}</span>`;
 const abChannel = { email: 'Email', sms: 'Text', push: 'App notification' };
 PAGES['/automations'] = {
@@ -1641,8 +1646,9 @@ PAGES['/automations'] = {
   async render(main) {
     AB = await api('GET', '/api/automations');
     const t = AB.triggers;
-    const row = (a) => `<a class="ab-row ${a.enabled ? '' : 'off'}" href="/automations/edit?id=${a.id}" data-link><div class="ab-main"><strong>${esc(a.name)}</strong><div class="muted">${esc(t[a.trigger].label)}: ${a.days} ${esc(t[a.trigger].when)}, at ${abHour(a.hour)}</div><div class="muted">To ${a.to === 'team' ? 'your team' : 'the client'} by ${a.channels.map((c) => abChannel[c].toLowerCase()).join(' and ')} · ${a.sentCount || 0} sent</div></div>${abBadge(a)}<span class="ab-go" aria-hidden="true">›</span></a>`;
-    const starters = Object.entries(AB_STARTERS).map(([k, s]) => `<a class="ab-starter" href="/automations/edit?k=${k}" data-link><strong>${esc(s.name)}</strong><span class="muted">${esc(t[s.trigger].label)}</span></a>`).join('');
+    const line = (a, b) => `<div class="muted">${b.days} ${esc(t[a.trigger].when)}, at ${abHour(b.hour)}: to ${b.to === 'team' ? 'your team' : 'the client'} by ${(b.channels || []).map((c) => abChannel[c].toLowerCase()).join(' and ')}</div>`.replace(/>1 days/, '>1 day');
+    const row = (a) => `<a class="ab-row ${a.enabled ? '' : 'off'}" href="/automations/edit?id=${a.id}" data-link><div class="ab-main"><strong>${esc(a.name)}</strong><div class="muted">${esc(t[a.trigger].label)}${abBranches(a).length > 1 ? ` · ${abBranches(a).length} branches` : ''} · ${a.sentCount || 0} sent</div>${abBranches(a).map((b) => line(a, b)).join('')}</div>${abBadge(a)}<span class="ab-go" aria-hidden="true">›</span></a>`;
+    const starters = Object.entries(AB_STARTERS).map(([k, s]) => `<a class="ab-starter" href="/automations/edit?k=${k}" data-link><strong>${esc(s.name)}</strong><span class="muted">${esc(t[s.trigger].label)}${s.branches.length > 1 ? ` · ${s.branches.length} branches` : ''}</span></a>`).join('');
     main.innerHTML = `<div class="head"><div><h1>Automations</h1><p class="sub">Send follow-ups and reminders on their own. Turning one on only affects what comes due from that day on, so it won’t message old quotes or invoices.</p></div><div class="actions"><a class="btn" href="/automations/edit" data-link>New automation</a></div></div>
 <div class="card"><h2>Your automations</h2>${AB.automations.length ? `<div class="ab-list">${AB.automations.map(row).join('')}</div>` : '<p class="muted">None yet. Start with a template below.</p>'}</div>
 <div class="card"><h2>Start from a template</h2><div class="ab-starters">${starters}</div></div>
@@ -1655,26 +1661,30 @@ PAGES['/automations/edit'] = {
     AB = await api('GET', '/api/automations');
     const id = qp('id'); const found = id && AB.automations.find((x) => x.id === id);
     if (id && !found) { main.innerHTML = '<a class="back" href="/automations" data-link>← Automations</a><div class="card"><h2>Automation not found</h2><p class="muted">It may have been deleted.</p></div>'; return; }
-    abEditor(main, structuredClone(found || AB_STARTERS[qp('k')] || { name: '', trigger: 'quoteSent', days: 3, hour: 9, to: 'client', channels: ['email'], subject: '', body: '', smsBody: '' }));
+    abEditor(main, structuredClone(found || AB_STARTERS[qp('k')] || { name: '', trigger: 'quoteSent', branches: [{ days: 3, hour: 9, to: 'client', channels: ['email'], subject: '', body: '', smsBody: '' }] }));
   },
 };
-// the editor is a visual flow (trigger → wait → who → actions) on a canvas; tapping a step opens its settings in the panel on the right
+// the editor is a visual flow on a canvas: trigger → conditions, then one or more branches side by side (wait → who → actions);
+// tapping a step opens its settings in the panel on the right. The wait / who / message fields show the branch that's open.
 const AB_IC = {
   trigger: '<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>',
+  filter: '<path d="M3 5h18l-7 8v6l-4 2v-8z"/>',
   wait: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
-  who: '<path d="M3 5h18l-7 8v6l-4 2v-8z"/>',
+  who: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
   email: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
   sms: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',
   push: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  branch: '<circle cx="12" cy="4" r="2"/><circle cx="5" cy="20" r="2"/><circle cx="19" cy="20" r="2"/><path d="M12 6v5M5 18v-2a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v2"/>',
   preview: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
 };
 const abIco = (d, s = 18) => `<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 function abEditor(main, a) {
   const t = AB.triggers; const groups = { quote: 'Quotes', invoice: 'Invoices', job: 'Jobs', client: 'Clients' };
   const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  const br = abBranches(a).map((b) => ({ ...b, channels: [...(b.channels || [])] })); let cur = 0; // the branches, and the one whose fields are in the panel
   const trigOpts = Object.entries(groups).map(([k, g]) => `<h5 class="wf-g">${g}</h5>${Object.entries(t).filter(([, x]) => x.kind === k).map(([id, x]) => `<label class="wf-opt"><input type="radio" name="trigger" value="${id}" ${a.trigger === id ? 'checked' : ''}><span><strong>${esc(x.label)}</strong><small>${esc(cap(x.when))}</small></span></label>`).join('')}`).join('');
-  const hours = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].map((h) => `<option value="${h}" ${a.hour === h ? 'selected' : ''}>${abHour(h)}</option>`).join('');
+  const hours = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].map((h) => `<option value="${h}">${abHour(h)}</option>`).join('');
   const tags = AB.tags.length ? `<div class="ab-checks"><span>Only clients tagged</span>${AB.tags.map((g) => `<label><input type="checkbox" name="tags" value="${esc(g)}" ${(a.tags || []).includes(g) ? 'checked' : ''}> ${esc(g)}</label>`).join('')}</div>` : '';
   main.innerHTML = `<div class="head wf-head"><div class="wf-title"><a class="back" href="/automations" data-link>← Automations</a><input class="wf-name" name="name" form="abf" maxlength="80" required placeholder="Name this automation" value="${esc(a.name)}" aria-label="Automation name"><p class="sub" id="abState">${a.id ? '' : 'Save it first. You can activate it after that.'}</p></div><div class="actions">${a.id ? '<button type="button" class="btn alt" id="abDelete">Delete</button><button type="button" class="btn alt" id="abToggle"></button>' : ''}<button class="btn" type="submit" form="abf">Save</button></div></div>
 <form id="abf" class="wf">
@@ -1684,72 +1694,101 @@ function abEditor(main, a) {
 <div class="wf-ph"><span class="wf-ic" id="wfIc"></span><div class="wf-pt"><small id="wfKind"></small><h3 id="wfTitle"></h3></div><button type="button" class="wf-x" id="wfClose" aria-label="Close">×</button></div>
 <div class="wf-pb" id="wfBody">
 <section data-p="trigger"><p class="muted wf-lead">What starts this automation.</p>${trigOpts}</section>
-<section data-p="wait"><div class="row"><label>Days<input name="days" type="number" min="0" max="365" value="${a.days}"></label><label>Send at<select name="hour">${hours}</select></label></div><p class="muted ab-when" id="abWhen"></p></section>
-<section data-p="who"><h4 class="ab-h">Send to</h4><div class="ab-checks"><label><input type="radio" name="to" value="client" ${a.to !== 'team' ? 'checked' : ''}> The client</label><label><input type="radio" name="to" value="team" ${a.to === 'team' ? 'checked' : ''}> Your team</label></div><p class="muted" id="abNote"></p><h4 class="ab-h">Only if</h4>${tags}<label id="abMinW">The amount is at least<input name="minAmount" type="number" min="0" step="0.01" value="${a.minAmount || ''}" placeholder="Any amount"></label>${tags ? '' : '<p class="muted wf-lead" id="abNoTags">Tag clients to send this to only some of them.</p>'}</section>
-<section data-p="msg"><p class="muted wf-lead" id="abMsgNote"></p><label><span id="abSubjL">Subject</span><input name="subject" maxlength="200" value="${esc(a.subject)}"></label><label>Message<textarea name="body" rows="10" maxlength="10000">${esc(a.body)}</textarea></label><div class="ab-vars"></div></section>
-<section data-p="sms"><p class="muted wf-lead">Only goes to clients who agreed to texts. “Reply STOP to opt out.” is added if it isn’t there.</p><label>Text<textarea name="smsBody" rows="4" maxlength="480">${esc(a.smsBody)}</textarea></label><div class="ab-vars"></div></section>
-<section data-p="add"><p class="muted wf-lead">Choose what this automation does. You can add more than one.</p><div class="wf-adds" id="abAdd"></div></section>
+<section data-p="filter"><p class="muted wf-lead">Which ones it runs for. These apply to every branch.</p>${tags}<label id="abMinW">The amount is at least<input name="minAmount" type="number" min="0" step="0.01" value="${a.minAmount || ''}" placeholder="Any amount"></label>${tags ? '' : '<p class="muted wf-lead" id="abNoTags">Tag clients to send this to only some of them.</p>'}</section>
+<section data-p="wait"><div class="row"><label>Days<input name="days" type="number" min="0" max="365"></label><label>Send at<select name="hour">${hours}</select></label></div><p class="muted ab-when" id="abWhen"></p></section>
+<section data-p="who"><div class="ab-checks"><label><input type="radio" name="to" value="client"> The client</label><label><input type="radio" name="to" value="team"> Your team</label></div><p class="muted" id="abNote"></p></section>
+<section data-p="msg"><p class="muted wf-lead" id="abMsgNote"></p><label><span id="abSubjL">Subject</span><input name="subject" maxlength="200"></label><label>Message<textarea name="body" rows="10" maxlength="10000"></textarea></label><div class="ab-vars"></div></section>
+<section data-p="sms"><p class="muted wf-lead">Only goes to clients who agreed to texts. “Reply STOP to opt out.” is added if it isn’t there.</p><label>Text<textarea name="smsBody" rows="4" maxlength="480"></textarea></label><div class="ab-vars"></div></section>
+<section data-p="add"><p class="muted wf-lead">Choose what this branch does. You can add more than one.</p><div class="wf-adds" id="abAdd"></div></section>
 <section data-p="preview"><div id="abWho"></div></section>
 </div>
-<div class="wf-pf"><button type="button" class="btn alt wf-rm" id="abRemove">Remove action</button><button type="button" class="btn wf-done" id="wfDone">Done</button></div>
+<div class="wf-pf"><button type="button" class="btn alt wf-rm" id="abRemove">Remove action</button><button type="button" class="btn alt wf-rm" id="abRemoveB">Remove branch</button><button type="button" class="btn wf-done" id="wfDone">Done</button></div>
 </aside></form>`;
-  const f = $('#abf', main); const panel = $('#wfPanel', f); let last = f.elements.body;
-  let ch = [...(a.channels || [])]; let sel = 'trigger';
+  const f = $('#abf', main); const E = f.elements; const panel = $('#wfPanel', f); let last = E.body; let sel = 'trigger';
   const chosen = (name) => $$(`[name="${name}"]:checked`, f).map((x) => x.value);
-  const tr = () => t[f.elements.trigger.value]; const to = () => f.elements.to.value;
-  const allowed = () => (to() === 'team' ? ['push', 'email'] : ['email', ...(tr().sms && AB.sms ? ['sms'] : [])]);
-  const actTitle = (c) => (c === 'email' ? (to() === 'team' ? 'Email your team' : 'Send email') : c === 'sms' ? 'Send text' : 'App notification');
-  const waitText = () => `${Number(f.elements.days.value) || 0} ${tr().when}`.replace(/^1 days/, '1 day');
-  const miss = (c) => (c === 'sms' ? !f.elements.smsBody.value.trim() : !f.elements.subject.value.trim() || !f.elements.body.value.trim());
-  const sum = (c) => (miss(c) ? 'Write the message' : c === 'sms' ? f.elements.smsBody.value.trim() : f.elements.subject.value.trim());
+  const tr = () => t[E.trigger.value]; const B = () => br[cur]; const many = () => br.length > 1;
+  const allowedFor = (to) => (to === 'team' ? ['push', 'email'] : ['email', ...(tr().sms && AB.sms ? ['sms'] : [])]);
+  // the panel's fields ↔ the open branch
+  const stash = () => { const b = B(); b.days = Number(E.days.value) || 0; b.hour = Number(E.hour.value) || 9; b.to = E.to.value; b.subject = E.subject.value; b.body = E.body.value; b.smsBody = E.smsBody.value; };
+  const load = (i) => { cur = i; const b = B(); E.days.value = b.days ?? 0; E.hour.value = String(b.hour || 9); E.to.value = b.to === 'team' ? 'team' : 'client'; E.subject.value = b.subject || ''; E.body.value = b.body || ''; E.smsBody.value = b.smsBody || ''; };
+  const pick = (i) => { if (i !== cur && br[i]) { stash(); load(i); refresh(false); } };
+  const actTitle = (b, c) => (c === 'email' ? (b.to === 'team' ? 'Email your team' : 'Send email') : c === 'sms' ? 'Send text' : 'App notification');
+  const miss = (b, c) => (c === 'sms' ? !String(b.smsBody || '').trim() : !String(b.subject || '').trim() || !String(b.body || '').trim());
+  const sum = (b, c) => (miss(b, c) ? 'Write the message' : c === 'sms' ? b.smsBody.trim() : b.subject.trim());
   const why = (c) => {
-    if (ch.includes(c)) return 'Already added';
-    if (allowed().includes(c)) return '';
+    const b = B();
+    if (b.channels.includes(c)) return 'Already added';
+    if (allowedFor(b.to).includes(c)) return '';
     if (c === 'push') return 'App notifications go to your team. Change Send to.';
-    return to() === 'team' ? 'Texts go to clients only' : !AB.sms ? 'Text messages aren’t in your plan' : 'Clients agree to texts about their quotes, invoices and appointments, not promotions';
+    return b.to === 'team' ? 'Texts go to clients only' : !AB.sms ? 'Text messages aren’t in your plan' : 'Clients agree to texts about their quotes, invoices and appointments, not promotions';
   };
-  const ADDS = { email: ['Send email', () => (to() === 'team' ? 'To your company email' : 'With an unsubscribe link at the bottom')], sms: ['Send text', () => 'A text message to the client’s mobile'], push: ['App notification', () => 'To the owner, admins and the job’s crew'] };
-  const node = (id, ic, kind, title, sub, cls = '') => `<div class="wf-step"><button type="button" class="wf-node ${cls} ${sel === id ? 'on' : ''}" data-n="${id}"><span class="wf-ic ic-${ic}">${abIco(AB_IC[ic])}</span><span class="wf-nt"><small>${kind}</small><strong>${esc(title)}</strong>${sub ? `<span>${esc(sub)}</span>` : ''}</span>${cls === 'warn' ? '<span class="wf-warn" title="Needs a message">!</span>' : ''}</button>${ch.includes(id) ? `<button type="button" class="wf-del" data-del="${id}" aria-label="Remove ${esc(title)}" title="Remove">×</button>` : ''}</div>`;
+  const ADDS = { email: ['Send email', () => (B().to === 'team' ? 'To your company email' : 'With an unsubscribe link at the bottom')], sms: ['Send text', () => 'A text message to the client’s mobile'], push: ['App notification', () => 'To the owner, admins and the job’s crew'] };
+  const node = (id, ic, kind, title, sub, cls = '', del = false) => `<div class="wf-step"><button type="button" class="wf-node ${cls} ${sel === id ? 'on' : ''}" data-n="${id}"><span class="wf-ic ic-${ic}">${abIco(AB_IC[ic])}</span><span class="wf-nt"><small>${kind}</small><strong>${esc(title)}</strong>${sub ? `<span>${esc(sub)}</span>` : ''}</span>${cls === 'warn' ? '<span class="wf-warn" title="Needs a message">!</span>' : ''}</button>${del ? `<button type="button" class="wf-del" data-del="${id}" aria-label="Remove ${esc(title)}" title="Remove">×</button>` : ''}</div>`;
+  const L = '<i class="wf-line"></i>';
   const draw = () => {
-    const x = tr(); const min = Number(f.elements.minAmount.value) || 0; const tg = chosen('tags');
-    const filt = [tg.length ? `Tagged ${tg.join(', ')}` : '', min > 0 && x.kind !== 'client' ? `${money(min)} or more` : ''].filter(Boolean).join(' · ') || (to() === 'team' ? 'Owner, admins and job crew' : 'Every client');
-    $('#wfFlow', f).innerHTML = [
-      node('trigger', 'trigger', 'Trigger', x.label, groups[x.kind]),
-      node('wait', 'wait', 'Wait', `${Number(f.elements.days.value) || 0} day${Number(f.elements.days.value) == 1 ? '' : 's'}, at ${abHour(Number(f.elements.hour.value))}`, cap(x.when.replace(/^days /, ''))),
-      node('who', 'who', 'Send to', to() === 'team' ? 'Your team' : 'The client', filt),
-      ...ch.map((c) => node(c, c, 'Action', actTitle(c), sum(c), miss(c) ? 'warn' : '')),
-    ].join('<i class="wf-line"></i>') + `<i class="wf-line"></i><button type="button" class="wf-plus ${sel === 'add' ? 'on' : ''}" data-n="add" title="Add an action" aria-label="Add an action">${abIco(AB_IC.plus, 16)}</button>${ch.length ? '' : '<span class="wf-hint">Add an action</span>'}<i class="wf-line"></i><span class="wf-end">End</span>`;
+    stash(); const x = tr(); const min = Number(E.minAmount.value) || 0; const tg = chosen('tags');
+    const filt = [tg.length ? `Tagged ${tg.join(', ')}` : '', min > 0 && x.kind !== 'client' ? `${money(min)} or more` : ''].filter(Boolean).join(' · ');
+    const col = (b, i) => {
+      const d = Number(b.days) || 0;
+      const steps = [
+        node(`${i}:wait`, 'wait', 'Wait', `${d} day${d === 1 ? '' : 's'}, at ${abHour(Number(b.hour) || 9)}`, cap(x.when.replace(/^days /, ''))),
+        node(`${i}:who`, 'who', 'Send to', b.to === 'team' ? 'Your team' : 'The client', b.to === 'team' ? 'Owner, admins and job crew' : ''),
+        ...b.channels.map((c) => node(`${i}:${c}`, c, 'Action', actTitle(b, c), sum(b, c), miss(b, c) ? 'warn' : '', true)),
+      ].join(L);
+      const head = many() ? `<div class="wf-bl ${i === cur && sel.includes(':') ? 'on' : ''}"><span>Branch ${i + 1}</span><button type="button" data-delb="${i}" aria-label="Remove branch ${i + 1}" title="Remove branch">×</button></div>` : '';
+      return `<div class="wf-col ${i === cur ? 'cur' : ''}">${head}${steps}${L}<button type="button" class="wf-plus ${sel === `${i}:add` ? 'on' : ''}" data-n="${i}:add" title="Add an action" aria-label="Add an action">${abIco(AB_IC.plus, 16)}</button>${b.channels.length ? '' : '<span class="wf-hint">Add an action</span>'}${L}<span class="wf-end">End</span></div>`;
+    };
+    // on a phone the branches don't fit side by side: tabs pick the one shown (hidden on wider screens)
+    const tabs = many() ? `<div class="wf-tabs" role="tablist" aria-label="Branches">${br.map((b, i) => `<button type="button" role="tab" aria-selected="${i === cur}" class="${i === cur ? 'on' : ''}" data-tab="${i}">Branch ${i + 1}${!b.channels.length || b.channels.some((c) => miss(b, c)) ? '<span class="wf-tw" title="Needs a message">!</span>' : ''}</button>`).join('')}</div>` : '';
+    $('#wfFlow', f).innerHTML = [node('trigger', 'trigger', 'Trigger', x.label, groups[x.kind]), node('filter', 'filter', 'Only if', filt || `Every ${x.kind}`, filt ? '' : 'No conditions')].join(L)
+      + L + (br.length < 10 ? `<button type="button" class="wf-branch" data-addb title="Branch off to another wait and actions">${abIco(AB_IC.branch, 14)} Add a branch</button>${L}` : '')
+      + `${tabs}<div class="wf-split ${many() ? 'many' : ''}">${br.map(col).join('')}</div>`;
   };
-  const META = { trigger: ['trigger', 'Trigger', 'When it starts'], wait: ['wait', 'Wait', 'When it sends'], who: ['who', 'Send to', 'Who gets it'], add: ['plus', 'Actions', 'Add an action'], preview: ['preview', 'Preview', 'Who would get this?'] };
+  // a wide flow scrolls sideways: start centered, and bring the open branch into view (a new one is added off to the right)
+  const center = () => { const sc = $('#wfScroll', f); sc.scrollLeft = (sc.scrollWidth - sc.clientWidth) / 2; };
+  const reveal = () => {
+    const sc = $('#wfScroll', f); const c = $$('.wf-col', f)[cur]; if (!many() || !c || sc.scrollWidth <= sc.clientWidth) return;
+    const r = c.getBoundingClientRect(); const s = sc.getBoundingClientRect(); if (r.left >= s.left && r.right <= s.right) return;
+    sc.scrollTo({ left: sc.scrollLeft + r.left + r.width / 2 - (s.left + s.width / 2), behavior: 'smooth' });
+  };
+  const META = { trigger: ['trigger', 'Trigger', 'When it starts'], filter: ['filter', 'Only if', 'Conditions'], wait: ['wait', 'Wait', 'When it sends'], who: ['who', 'Send to', 'Who gets it'], add: ['plus', 'Actions', 'Add an action'], preview: ['preview', 'Preview', 'Who would get this?'] };
+  // id: 'trigger', 'filter', 'preview', or '<branch>:<step>' (wait, who, add, email, sms, push)
   const show = (id, open = true) => {
-    sel = id; const sec = id === 'email' || id === 'push' ? 'msg' : id;
-    const [ic, kind, title] = META[id] || [id, 'Action', actTitle(id)];
+    const [bi, step] = id.includes(':') ? id.split(':') : [null, id];
+    if (bi !== null) pick(Number(bi));
+    sel = bi !== null ? `${cur}:${step}` : step; const b = B(); const sec = step === 'email' || step === 'push' ? 'msg' : step;
+    const [ic, kind, title] = META[step] || [step, 'Action', actTitle(b, step)];
     $$('[data-p]', f).forEach((s) => { s.hidden = s.dataset.p !== sec; });
     $('#wfIc', f).className = `wf-ic ic-${ic}`; $('#wfIc', f).innerHTML = abIco(AB_IC[ic]);
-    $('#wfKind', f).textContent = kind; $('#wfTitle', f).textContent = title;
-    $('#abRemove', f).hidden = !ch.includes(id);
+    $('#wfKind', f).textContent = bi !== null && many() ? `Branch ${cur + 1} · ${kind}` : kind; $('#wfTitle', f).textContent = title;
+    $('#abRemove', f).hidden = bi === null || !b.channels.includes(step);
+    $('#abRemoveB', f).hidden = bi === null || !many() || !['wait', 'who', 'add'].includes(step);
     if (sec === 'msg') {
-      $('#abSubjL', f).textContent = id === 'push' && !ch.includes('email') ? 'Title' : 'Subject';
-      $('#abMsgNote', f).textContent = id === 'push' ? `Goes to the owner and admins, and to the crew on a job. Shortened to fit.${ch.includes('email') ? ' Uses the same subject and message as the email.' : ''}` : to() === 'team' ? `Goes to your company email.${ch.includes('push') ? ' The app notification uses this subject and message too.' : ''}` : 'Every email has an unsubscribe link at the bottom.';
-      last = f.elements.body;
+      $('#abSubjL', f).textContent = step === 'push' && !b.channels.includes('email') ? 'Title' : 'Subject';
+      $('#abMsgNote', f).textContent = step === 'push' ? `Goes to the owner and admins, and to the crew on a job. Shortened to fit.${b.channels.includes('email') ? ' Uses the same subject and message as the email.' : ''}` : b.to === 'team' ? `Goes to your company email.${b.channels.includes('push') ? ' The app notification uses this subject and message too.' : ''}` : 'Every email has an unsubscribe link at the bottom.';
+      last = E.body;
     }
-    if (sec === 'sms') last = f.elements.smsBody;
+    if (sec === 'sms') last = E.smsBody;
     if (sec === 'add') $('#abAdd', f).innerHTML = Object.entries(ADDS).map(([c, [label, desc]]) => { const w = why(c); return `<button type="button" class="wf-add" data-add="${c}" ${w ? 'disabled' : ''}><span class="wf-ic ic-${c}">${abIco(AB_IC[c])}</span><span><strong>${label}</strong><small>${esc(w || desc())}</small></span></button>`; }).join('');
     $('#wfBody', f).scrollTop = 0;
     panel.classList.toggle('open', open); $('#wfScrim', f).classList.toggle('open', open);
-    draw();
+    draw(); if (bi !== null) reveal();
   };
   const close = () => { panel.classList.remove('open'); $('#wfScrim', f).classList.remove('open'); };
-  const refresh = () => {
+  function refresh(redraw = true) {
     const x = tr();
-    $('#abWhen', f).textContent = `${cap(waitText())}. Times are in your business’s time zone.`;
+    $('#abWhen', f).textContent = `${cap(`${Number(E.days.value) || 0} ${x.when}`.replace(/^1 days/, '1 day'))}. Times are in your business’s time zone.`;
     $('#abMinW', f).hidden = x.kind === 'client';
-    $('#abNote', f).textContent = to() === 'team' ? 'App notifications go to the owner and admins, and to the crew on a job. Email goes to your company email.' : x.sms ? (AB.sms ? 'Texts only go to clients who agreed to them. Every email has an unsubscribe link.' : 'Every email has an unsubscribe link.') : 'Email only: clients agree to texts about their quotes, invoices and appointments, not promotions. Every email has an unsubscribe link.';
-    const vars = `<span class="muted">Insert:</span>${Object.entries(AB.vars[f.elements.trigger.value]).map(([k, l]) => `<button type="button" class="ab-var" data-v="${k}" title="${esc(l)}">${esc(l)}</button>`).join('')}`;
+    $('#abNote', f).textContent = E.to.value === 'team' ? 'App notifications go to the owner and admins, and to the crew on a job. Email goes to your company email.' : x.sms ? (AB.sms ? 'Texts only go to clients who agreed to them. Every email has an unsubscribe link.' : 'Every email has an unsubscribe link.') : 'Email only: clients agree to texts about their quotes, invoices and appointments, not promotions. Every email has an unsubscribe link.';
+    const vars = `<span class="muted">Insert:</span>${Object.entries(AB.vars[E.trigger.value]).map(([k, l]) => `<button type="button" class="ab-var" data-v="${k}" title="${esc(l)}">${esc(l)}</button>`).join('')}`;
     $$('.ab-vars', f).forEach((v) => { v.innerHTML = vars; });
-    draw();
-  };
-  const read = () => ({ id: a.id || '', name: f.elements.name.value, trigger: f.elements.trigger.value, days: f.elements.days.value, hour: f.elements.hour.value, tags: chosen('tags'), minAmount: $('#abMinW', f).hidden ? 0 : f.elements.minAmount.value, to: to(), channels: ch, subject: f.elements.subject.value, body: f.elements.body.value, smsBody: f.elements.smsBody.value });
+    if (redraw) draw();
+  }
+  const removeBranch = (i) => { if (!many()) return; stash(); br.splice(i, 1); load(Math.min(cur > i ? cur - 1 : cur, br.length - 1)); refresh(false); show('filter', false); center(); };
+  const read = () => { stash(); return { id: a.id || '', name: E.name.value, trigger: E.trigger.value, tags: chosen('tags'), minAmount: $('#abMinW', f).hidden ? 0 : E.minAmount.value, testBranch: cur,
+    branches: br.map((b) => ({ id: b.id, days: b.days, hour: b.hour, to: b.to, channels: b.channels, subject: b.subject, body: b.body, smsBody: b.smsBody })) }; };
+  // after a save, a new branch has the id the server gave it, so the next save keeps its history
+  const syncIds = (r) => { const s = r.automations.find((x) => x.id === a.id); if (s) s.branches.forEach((b, i) => { if (br[i]) br[i].id = b.id; }); };
   // zoom, for a long flow: the buttons, or ctrl/⌘ + scroll on the canvas
   const flow = $('#wfFlow', f); let zoom = 1;
   const setZoom = (z) => { zoom = Math.round(Math.max(0.3, Math.min(1.5, z)) * 100) / 100; flow.style.zoom = zoom; $('#wfZl', f).textContent = `${Math.round(zoom * 100)}%`; };
@@ -1758,45 +1797,54 @@ function abEditor(main, a) {
   $('#wfScroll', f).addEventListener('wheel', (e) => { if (!e.ctrlKey && !e.metaKey) return; e.preventDefault(); setZoom(zoom - Math.sign(e.deltaY) * 0.1); }, { passive: false });
   f.addEventListener('focusin', (e) => { if (['subject', 'body', 'smsBody'].includes(e.target.name)) last = e.target; });
   f.addEventListener('change', (e) => {
-    if (e.target.name === 'to') ch = e.target.value === 'team' ? ['push', 'email'] : ['email'];
-    if (e.target.name === 'trigger') ch = ch.filter((c) => allowed().includes(c));
+    if (e.target.name === 'to') B().channels = e.target.value === 'team' ? ['push', 'email'] : ['email'];
+    if (e.target.name === 'trigger') { stash(); br.forEach((b) => { b.channels = b.channels.filter((c) => allowedFor(b.to).includes(c)); }); }
     refresh();
   });
   f.addEventListener('input', (e) => { if (e.target.name === 'days') refresh(); else if (['subject', 'body', 'smsBody', 'minAmount'].includes(e.target.name)) draw(); });
   f.addEventListener('click', (e) => {
     const n = e.target.closest('[data-n]'); if (n) return show(n.dataset.n);
-    const d = e.target.closest('[data-del]'); if (d) { ch = ch.filter((c) => c !== d.dataset.del); return show('add', false); }
-    const ad = e.target.closest('[data-add]'); if (ad) { ch = allowed().filter((c) => ch.includes(c) || c === ad.dataset.add); return show(ad.dataset.add); }
-    const b = e.target.closest('[data-v]'); if (!b) return;
-    const s = last.selectionStart ?? last.value.length; last.setRangeText(`{{${b.dataset.v}}}`, s, last.selectionEnd ?? s, 'end'); last.focus(); draw();
+    const tb = e.target.closest('[data-tab]'); if (tb) return show(`${tb.dataset.tab}:wait`, false);
+    if (e.target.closest('[data-addb]')) { stash(); const p = br[br.length - 1]; br.push({ days: p.days, hour: p.hour, to: 'client', channels: [], subject: '', body: '', smsBody: '' }); return show(`${br.length - 1}:wait`); }
+    const rb = e.target.closest('[data-delb]'); if (rb) return removeBranch(Number(rb.dataset.delb));
+    const d = e.target.closest('[data-del]'); if (d) { const [i, c] = d.dataset.del.split(':'); pick(Number(i)); B().channels = B().channels.filter((x) => x !== c); return show(`${cur}:add`, false); }
+    const ad = e.target.closest('[data-add]'); if (ad) { const b = B(); b.channels = allowedFor(b.to).filter((c) => b.channels.includes(c) || c === ad.dataset.add); return show(`${cur}:${ad.dataset.add}`); }
+    const v = e.target.closest('[data-v]'); if (!v) return;
+    const s = last.selectionStart ?? last.value.length; last.setRangeText(`{{${v.dataset.v}}}`, s, last.selectionEnd ?? s, 'end'); last.focus(); draw();
   });
-  $('#abRemove', f).addEventListener('click', () => { ch = ch.filter((c) => c !== sel); show('add'); });
+  $('#abRemove', f).addEventListener('click', () => { const step = sel.split(':')[1]; B().channels = B().channels.filter((c) => c !== step); show(`${cur}:add`); });
+  $('#abRemoveB', f).addEventListener('click', () => { removeBranch(cur); close(); });
   [$('#wfClose', f), $('#wfDone', f), $('#wfScrim', f)].forEach((b) => b.addEventListener('click', close));
   $('#abPreview', f).addEventListener('click', async () => {
     try { const r = await api('POST', '/api/automations/preview', read());
-      $('#abWho', f).innerHTML = r.total ? `<p><strong>${r.total} in the next 30 days</strong></p><ul class="wf-who">${r.rows.map((x) => `<li><span>${esc(x.client)}${x.ref ? ` <span class="muted">${esc(x.ref)}</span>` : ''}</span><span class="muted">${esc(new Date(x.due + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }))}</span>${x.skip ? `<small>Won’t send: ${esc(x.skip)}</small>` : ''}</li>`).join('')}</ul>` : '<p class="muted">Nobody in the next 30 days.</p>';
+      $('#abWho', f).innerHTML = r.total ? `<p><strong>${r.total} in the next 30 days</strong></p><ul class="wf-who">${r.rows.map((x) => `<li><span>${esc(x.client)}${x.ref ? ` <span class="muted">${esc(x.ref)}</span>` : ''}${x.branch ? ` <span class="muted">· Branch ${x.branch}</span>` : ''}</span><span class="muted">${esc(new Date(x.due + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }))}</span>${x.skip ? `<small>Won’t send: ${esc(x.skip)}</small>` : ''}</li>`).join('')}</ul>` : '<p class="muted">Nobody in the next 30 days.</p>';
       show('preview');
-    } catch (x) { toast(x.message, true); }
+    } catch (x) { failed(x); }
   });
-  $('#abTest', f).addEventListener('click', async () => { try { const r = await api('POST', '/api/automations/test', read()); toast(r.status === 'simulated' ? `Test logged for ${r.to} (no email provider set up)` : `Test sent to ${r.to}`); } catch (x) { toast(x.message, true); } });
-  // a save error opens the step it's about
-  const stepFor = (m) => (/subject and a message/.test(m) ? (ch.includes('email') ? 'email' : 'push') : /text message/.test(m) ? 'sms' : /how to send/.test(m) ? 'add' : /\{\{/.test(m) ? ch.find((c) => c !== 'sms') || 'sms' : /quiet/.test(m) ? 'wait' : /when it should/.test(m) ? 'trigger' : '');
-  const failed = (x) => { toast(x.message, true); const s = stepFor(x.message); if (s) show(s); else if (/name/.test(x.message)) f.elements.name.focus(); };
+  $('#abTest', f).addEventListener('click', async () => { try { const r = await api('POST', '/api/automations/test', read()); toast(r.status === 'simulated' ? `Test logged for ${r.to} (no email provider set up)` : `Test sent to ${r.to}`); } catch (x) { failed(x); } });
+  // a save error opens the step it's about; "Branch 2: …" opens that branch first
+  const stepFor = (m) => { const c = B().channels; return /subject and a message/.test(m) ? (c.includes('email') ? 'email' : 'push') : /text message/.test(m) ? 'sms' : /how to send/.test(m) ? 'add' : /\{\{/.test(m) ? c.find((x) => x !== 'sms') || 'sms' : /quiet/.test(m) ? 'wait' : ''; };
+  function failed(x) {
+    toast(x.message, true); let m = x.message; const bm = /^Branch (\d+): /.exec(m);
+    if (bm) { pick(Number(bm[1]) - 1); m = m.slice(bm[0].length); }
+    if (/when it should/.test(m)) return show('trigger');
+    const s = stepFor(m); if (s) show(`${cur}:${s}`); else if (/name/.test(m)) E.name.focus();
+  }
   f.addEventListener('submit', async (e) => {
     e.preventDefault();
     try {
       const r = await api(a.id ? 'PUT' : 'POST', a.id ? `/api/automations/${a.id}` : '/api/automations', read());
-      if (a.id) { a.name = f.elements.name.value.trim(); toast('Automation saved'); return; }
+      if (a.id) { a.name = E.name.value.trim(); syncIds(r); toast('Automation saved'); return; }
       toast('Saved. Activate it when you’re ready.'); navigate(`/automations/edit?id=${r.automations[r.automations.length - 1].id}`);
     } catch (x) { failed(x); }
   });
-  refresh(); show('trigger', false);
+  load(0); refresh(); show('trigger', false); center();
   if (!a.id) return;
   const showState = () => { $('#abState', main).innerHTML = `${abBadge(a)} ${a.sentCount || 0} sent`; $('#abToggle', main).textContent = a.enabled ? 'Deactivate' : 'Activate'; };
   showState();
   $('#abToggle', main).addEventListener('click', async () => {
     try { // activating saves first, so what goes live is what's on screen
-      if (!a.enabled) await api('PUT', `/api/automations/${a.id}`, read());
+      if (!a.enabled) syncIds(await api('PUT', `/api/automations/${a.id}`, read()));
       const r = await api('POST', `/api/automations/${a.id}`, { on: !a.enabled });
       a.enabled = r.automations.find((x) => x.id === a.id).enabled; showState(); toast(a.enabled ? 'Automation activated' : 'Automation deactivated');
     } catch (x) { failed(x); }
