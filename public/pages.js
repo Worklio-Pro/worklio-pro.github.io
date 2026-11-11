@@ -1282,12 +1282,13 @@ PAGES['/reports'] = {
 ${locked ? `<small class="rt-lock">${svgIcon('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>', 13)} ${memberCan('/settings/billing') ? 'Upgrade to use' : 'Not in your plan'}</small>` : ''}</span>
 ${locked ? '' : `<button type="button" class="rt-star ${on ? 'on' : ''}" data-act="rptStar" data-k="${k}" aria-pressed="${on}" aria-label="${on ? 'Unstar' : 'Star'} ${esc(name)}" title="${on ? 'Remove from Starred' : 'Add to Starred'}">${svgIcon('<path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z"/>', 17)}</button>`}</div>`;
     };
-    const starred = stars.map((k) => all.find(([, x]) => x[0] === k)).filter(Boolean);
+    const az = (a, b) => a[1].localeCompare(b[1], undefined, { sensitivity: 'base', numeric: true }); // cards A–Z by name in every section
+    const starred = stars.map((k) => all.find(([, x]) => x[0] === k)).filter(Boolean).sort((a, b) => az(a[1], b[1]));
     main.innerHTML = `<div class="head"><div><h1>Reports</h1><p class="sub">See how the business is doing, and export any report to a spreadsheet.</p></div></div>
 <div class="rpt-filter"><div class="rpt-chips" role="group" aria-label="Show">${[['all', 'All reports'], ...RPT_HUB.map(([g]) => [g, g])].map(([v, l]) => `<button type="button" class="rpt-chip ${rptGroupOn === v ? 'on' : ''}" data-act="rptGroup" data-g="${esc(v)}" aria-pressed="${rptGroupOn === v}">${esc(l)}</button>`).join('')}</div>
 <label class="rpt-findw">${svgIcon('<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>', 16)}<input type="search" class="rpt-find" placeholder="Search reports" aria-label="Search reports"></label></div>
 ${starred.length ? `<section class="rpt-sec rpt-starred"><div class="rpt-sec-h"><h2>Starred</h2><span class="muted">Your go-to reports</span></div><div class="rpt-tiles">${starred.map(([g, x]) => tile(g, x)).join('')}</div></section>` : ''}
-${RPT_HUB.map(([g, L]) => `<section class="rpt-sec" data-g="${esc(g)}"><div class="rpt-sec-h"><h2><i class="rt-dot rt-${RPT_GROUP[g][0]}"></i>${esc(g)}</h2><span class="muted">${esc(RPT_GROUP[g][1])}</span></div><div class="rpt-tiles">${L.map((x) => tile(g, x)).join('')}</div></section>`).join('')}
+${RPT_HUB.map(([g, L]) => `<section class="rpt-sec" data-g="${esc(g)}"><div class="rpt-sec-h"><h2><i class="rt-dot rt-${RPT_GROUP[g][0]}"></i>${esc(g)}</h2><span class="muted">${esc(RPT_GROUP[g][1])}</span></div><div class="rpt-tiles">${[...L].sort(az).map((x) => tile(g, x)).join('')}</div></section>`).join('')}
 <p class="muted rpt-none" hidden>No report matches your search.</p>
 ${starred.length ? '' : '<p class="muted rpt-tip">Tip: star the reports you use most to keep them at the top.</p>'}`;
     const filter = () => { const q = $('.rpt-find', main).value.trim().toLowerCase();
