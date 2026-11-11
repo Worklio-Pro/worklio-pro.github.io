@@ -765,18 +765,18 @@ const flashRow = (row) => { row.classList.remove('moved'); void row.offsetWidth;
 document.addEventListener('pointerdown', (e) => {
   const h = e.target.closest('.item-row .drag-h'); if (!h || e.button !== 0) return;
   e.preventDefault(); const row = h.closest('.item-row'); const list = row.parentElement; const start = row.nextElementSibling;
-  row.classList.add('dragging'); document.body.classList.add('row-drag'); h.setPointerCapture(e.pointerId);
+  row.classList.add('dragging'); document.body.classList.add('row-drag'); // listened for on the window: moving the row would drop a pointer capture on the handle
   const move = (ev) => { // put the row before the first other row whose middle is below the pointer
     const next = [...list.children].filter((r) => r !== row).find((r) => { const b = r.getBoundingClientRect(); return ev.clientY < b.top + b.height / 2; });
     if ((next || null) !== row.nextElementSibling) list.insertBefore(row, next || null);
     if (ev.clientY < 60) window.scrollBy(0, -12); else if (ev.clientY > innerHeight - 60) window.scrollBy(0, 12);
   };
   const end = () => {
-    h.removeEventListener('pointermove', move); h.removeEventListener('pointerup', end); h.removeEventListener('pointercancel', end);
+    removeEventListener('pointermove', move); removeEventListener('pointerup', end); removeEventListener('pointercancel', end);
     row.classList.remove('dragging'); document.body.classList.remove('row-drag');
     if (row.nextElementSibling !== start) { flashRow(row); recalc(row.closest('form')); }
   };
-  h.addEventListener('pointermove', move); h.addEventListener('pointerup', end); h.addEventListener('pointercancel', end);
+  addEventListener('pointermove', move); addEventListener('pointerup', end); addEventListener('pointercancel', end);
 });
 document.addEventListener('keydown', (e) => {
   const h = e.target.closest('.item-row .drag-h'); if (!h || !['ArrowUp', 'ArrowDown'].includes(e.key)) return;
