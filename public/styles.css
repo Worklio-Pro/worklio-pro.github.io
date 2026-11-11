@@ -2273,7 +2273,7 @@ a.hm-step:hover{border-color:var(--brand)}
 .hm-step i{flex:none;width:18px;height:18px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;font-style:normal;font-size:11px;font-weight:700}
 .hm-step.ok{color:var(--muted);text-decoration:line-through;background:var(--tint);border-color:transparent}.hm-step.ok i{background:var(--ok);border-color:var(--ok);color:#fff}
 .hm-step .hm-go{margin-left:auto}
-.hm-top{margin-bottom:16px}.hm-top>.card{margin:0}
+.hm-top{margin-bottom:16px}.hm-top>.card{margin:0;min-width:0}
 .hm-list{display:flex;flex-direction:column}
 .hm-row{display:flex;align-items:center;gap:12px;padding:10px 4px;border:0;border-top:1px solid var(--line);background:transparent;font:inherit;color:var(--text);text-align:left;text-decoration:none;cursor:pointer;width:100%}
 .hm-row:first-child{border-top:0}.hm-row:hover{background:var(--tint)}.hm-row.done .hm-what strong{color:var(--muted);text-decoration:line-through}
@@ -2285,4 +2285,5 @@ a.hm-step:hover{border-color:var(--brand)}
 .hm-empty{margin:4px 0 8px}.hm-foot{font-size:13px;border-top:1px solid var(--line);padding-top:10px;margin-top:6px}
 .hm-sec{margin-top:8px}
 @media (max-width:900px){.hm-steps{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media (max-width:600px){.hm-steps{grid-template-columns:1fr}.hm-time{width:60px}}
+.hm-attn .hm-what strong{white-space:normal}
+@media (max-width:600px){.hm-steps{grid-template-columns:1fr}.hm-step.ok{display:none}.hm-time{width:60px}.hm-row{gap:10px}.hm-h{flex-wrap:wrap;row-gap:2px}}
