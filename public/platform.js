@@ -1504,7 +1504,8 @@ A.lcSettings = () => {
 <p class="muted" style="font-size:13px;margin:4px 0 6px">Show it on:</p><div class="lc-where">${Object.entries(LC_WHERE).map(([k, l]) => `<label class="switchline"><input type="checkbox" name="where" value="${k}" ${s.where.includes(k) ? 'checked' : ''}> ${k === 'site' ? 'Your website (home and pricing pages)' : k === 'help' ? 'The help center' : 'Inside the business app'}</label>`).join('')}</div>
 <h3 style="margin:8px 0 4px;font-size:15px">The AI assistant</h3>
 <p class="muted" style="font-size:13px;margin:0 0 8px">Visitors see this name and photo on the bot’s messages, marked “AI”. If someone asks, it says it’s an AI assistant and offers a person.</p>
-<div class="row"><label>Name<input name="botName" value="${esc(s.botName || '')}" maxlength="40" placeholder="Maya"></label><label>Photo link<input name="botPhoto" value="${esc(s.botPhoto || '')}" maxlength="300" placeholder="/img/chat/assistant.jpg" spellcheck="false"></label></div>
+<div class="lc-bot"><span class="lc-bav" id="lcBav"></span><div class="lc-bot-f"><label>Name<input name="botName" value="${esc(s.botName || '')}" maxlength="40" placeholder="Maya"></label>
+<div class="lc-bot-b"><button type="button" class="btn alt sm" data-act="lcPhoto">Upload photo</button><button type="button" class="link-btn" data-act="lcPhotoRm" id="lcPhotoRm">Remove</button><span class="muted" style="font-size:12px">A square headshot works best. Large photos are shrunk.</span></div><input type="hidden" name="botPhoto" value="${esc(s.botPhoto || '')}"></div></div>
 <label>Personality<textarea name="botPersonality" rows="3" maxlength="600" placeholder="Warm, upbeat and down to earth…">${esc(s.botPersonality || '')}</textarea></label>
 <p class="muted" style="font-size:13px;margin:-4px 0 12px">How the AI talks. It still answers only from your articles, plans and saved answers.</p>
 <label>Greeting<textarea name="greeting" rows="2" maxlength="500">${esc(s.greeting)}</textarea></label>
@@ -1528,6 +1529,19 @@ A.lcSettings = () => {
 <h3 style="margin:8px 0 4px;font-size:15px">Saved answers</h3><p class="muted" style="font-size:13px;margin:0 0 8px">The first four questions show as buttons when a chat starts.</p>
 <div id="lcAns">${s.answers.map(ans).join('')}</div><button type="button" class="btn alt sm" data-act="lcAnsAdd">Add an answer</button>
 <div class="acts" style="margin-top:16px"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save</button></div></form>`, { wide: true });
+  // the assistant's photo: a preview circle (her first initial when there's no photo, or it can't be loaded)
+  const bav = () => { const f = $('#lcsf', m); const u = f.botPhoto.value; const n = (f.botName.value.trim() || 'Maya').charAt(0).toUpperCase(); const b = $('#lcBav', m);
+    b.textContent = n; $('#lcPhotoRm', m).hidden = !u; if (u) { const im = new Image(); im.alt = ''; im.onload = () => { b.textContent = ''; b.appendChild(im); }; im.src = u; } };
+  bav(); $('#lcsf', m).botName.addEventListener('input', () => { if (!$('#lcBav img', m)) bav(); });
+  A.lcPhoto = () => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*';
+    i.onchange = async () => { const f = i.files[0]; if (!f) return;
+      try { // cropped to a centered square and shrunk to 400×400, so a phone photo uploads fast and stays under the 2 MB limit
+        const img = await createImageBitmap(f); const side = Math.min(img.width, img.height); const c = document.createElement('canvas'); c.width = c.height = Math.min(400, side);
+        const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, c.width, c.height);
+        const x = await api('POST', '/api/platform/media', { dataUrl: c.toDataURL('image/jpeg', 0.88) }); $('#lcsf', m).botPhoto.value = x.url; bav(); toast('Photo uploaded. Save to use it.');
+      } catch (x) { toast(x.message && !/decode|source/i.test(x.message) ? x.message : 'That photo couldn’t be read. Try a JPG or PNG.', true); } };
+    i.click(); };
+  A.lcPhotoRm = () => { $('#lcsf', m).botPhoto.value = ''; bav(); };
   A.lcAnsAdd = () => { $('#lcAns').insertAdjacentHTML('beforeend', ans()); $('#lcAns .lc-ans:last-child input').focus(); };
   A.lcAnsRm = (d, el) => el.closest('.lc-ans').remove();
   $('#lcsf', m).addEventListener('submit', async (e) => {
