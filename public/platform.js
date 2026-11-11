@@ -121,7 +121,7 @@ function render() {
   const badge = (k) => (k === 'messages' && D.chatWaiting ? ` <span class="msg-n" title="Chats waiting for you">${D.chatWaiting}</span>` : k === 'help' && D.forumNew ? ` <span class="msg-n" title="New forum posts">${D.forumNew}</span>` : '');
   document.title = `${cur.l} · ${D.settings.productName} Alpha`;
   $('#root').innerHTML = `<header class="pf-top"><div class="pf-bar"><div class="pf-brand">${brandHtml()}</div>
-<nav class="pf-tabs">${secs.map((n) => `<a href="#${n.pages[0]}" class="${n === cur ? 'on' : ''}">${n.l}${badge(n.k)}</a>`).join('')}</nav>
+<nav class="pf-tabs">${secs.map((n) => `<a href="#${n.pages[0]}" data-k="${n.k}" class="${n === cur ? 'on' : ''}">${n.l}${badge(n.k)}</a>`).join('')}</nav>
 <details class="pf-user pf-menu"><summary>${esc(D.admin.name)}${isSupport() ? ' <small class="pf-role">Support</small>' : ''} <span aria-hidden="true">▾</span></summary><div class="pf-menu-list"><div class="pf-menu-who">${esc(D.admin.email)}</div><button type="button" data-act="myEmail">Change email</button><button type="button" data-act="myPassword">Change password</button><button type="button" data-act="logout">Log out</button></div></details></div></header>
 ${D.maintenance && D.maintenance.on ? `<div class="mt-bar" role="status"><strong>Maintenance mode is on.</strong> Visitors and businesses see the maintenance page; you can still use everything. ${isSupport() ? 'The owner can turn it off in Settings.' : '<a href="#settings" data-act="goMaint">Turn it off in Settings</a>'}</div>` : ''}
 <main class="pf-main" id="main"></main>
@@ -1093,6 +1093,15 @@ const pickImage = () => new Promise((resolve) => {
     const r = new FileReader(); r.onload = () => api('POST', '/api/platform/media', { dataUrl: r.result }).then((x) => resolve(x.url), (x) => { toast(x.message, true); resolve(''); }); r.readAsDataURL(f); };
   i.click();
 });
+// the "chats waiting" count on Messages (top bar and side list), kept up to date every 30 seconds on any page of Alpha
+function setChatCount(n) {
+  D.chatWaiting = n;
+  const side = $('.side-src [data-k=chat] .msg-n'); if (side) { side.textContent = n; side.hidden = !n; }
+  const top = $('.pf-tabs a[data-k=messages]'); if (!top) return; let b = top.querySelector('.msg-n[title="Chats waiting for you"]');
+  if (!b && n) { top.insertAdjacentHTML('beforeend', ' <span class="msg-n" title="Chats waiting for you"></span>'); b = top.querySelector('.msg-n[title="Chats waiting for you"]'); }
+  if (b) { b.textContent = n; b.hidden = !n; }
+}
+setInterval(async () => { if (!D || document.hidden) return; try { const r = await api('GET', '/api/platform/chats/waiting'); if (r.waiting !== D.chatWaiting) setChatCount(r.waiting); } catch (x) { /* signed out or offline */ } }, 30e3);
 let rfDraft = null; // the program form's milestones and images, while editing
 function referralProgramView(box) {
   const p = RF.program; if (!rfDraft) rfDraft = { heroImage: p.heroImage, milestones: structuredClone(p.milestones) };
@@ -1428,7 +1437,7 @@ async function lcLoad() {
   try { LC = await api('GET', '/api/platform/chats'); } catch (x) { return; }
   lcAlert(LC.chats); const L = $('#lcList'); if (!L) return;
   const waiting = LC.chats.filter((c) => c.status === 'waiting' || (c.status === 'live' && c.unread)).length;
-  if (D.chatWaiting !== waiting) { D.chatWaiting = waiting; const n = $('.side-src [data-k=chat] .msg-n'); if (n) { n.textContent = waiting; n.hidden = !waiting; } }
+  setChatCount(waiting);
   L.innerHTML = LC.chats.length ? LC.chats.map((c) => `<button type="button" class="lc-row ${c.id === lcSel ? 'on' : ''} ${c.unread ? 'new' : ''}" data-act="lcOpen" data-id="${c.id}">
 <span class="lc-r1"><strong>${esc(c.name || 'Visitor')}</strong><span class="sm">${lcAgo(c.updatedAt)}</span></span>
 <span class="lc-r2 sm">${c.business ? esc(c.business) : LC_WHERE[c.where]}${c.visitorOnline && c.status !== 'closed' ? ' · <span class="lc-on">online</span>' : ''}</span>
@@ -1523,7 +1532,9 @@ A.lcSettings = () => {
 <label>Opens<input type="time" name="open" value="${esc(s.hours.open)}"></label><label>Closes<input type="time" name="close" value="${esc(s.hours.close)}"></label></div>
 <div class="lc-days">${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d, i) => `<label><input type="checkbox" name="day" value="${i}" ${s.hours.days.includes(i) ? 'checked' : ''}> ${d}</label>`).join('')}</div>
 <h3 style="margin:8px 0 4px;font-size:15px">Answer by email</h3>
-<p class="muted" style="font-size:13px;margin:0 0 8px">When someone asks for a person, you get an email${D.settings.contactEmail ? ` at ${esc(D.settings.contactEmail)}` : ''}. With this on, replying to it answers in the chat, and anything else they write while Live chat isn’t open is emailed to you too. Replies go to the address below, which is checked every minute, so use a mailbox you can sign in to by IMAP (most email services; Gmail needs an app password).</p>
+<label>Send chat emails to<input name="notifyTo" type="email" value="${esc(s.notifyTo || '')}" maxlength="200" placeholder="${esc(D.settings.contactEmail || 'you@yourdomain.com')}" spellcheck="false"></label>
+<p class="muted" style="font-size:13px;margin:-4px 0 10px">The inbox you read. Blank uses the contact email in Settings${D.settings.contactEmail ? ` (${esc(D.settings.contactEmail)})` : ''}. It can’t be the reply address below.</p>
+<p class="muted" style="font-size:13px;margin:0 0 8px">When someone asks for a person, you get an email there. With this on, replying to it answers in the chat, and anything else they write while Live chat isn’t open is emailed to you too. Replies go to the address below, which is checked every minute, so use a mailbox you can sign in to by IMAP (most email services; Gmail needs an app password).</p>
 <label class="switchline"><input type="checkbox" name="inOn" ${s.inbox.on ? 'checked' : ''}> Answer chats by replying to the email</label>
 <div class="lc-inbox"><label>Reply address<input name="inAddress" type="email" value="${esc(s.inbox.address)}" maxlength="200" placeholder="chat@yourdomain.com" spellcheck="false"></label>
 <label>Incoming mail server (IMAP)<input name="inHost" value="${esc(s.inbox.host)}" maxlength="200" placeholder="imap.gmail.com" spellcheck="false"></label><label>Incoming port (SSL, usually 993)<input name="inPort" type="number" min="1" max="65535" value="${esc(s.inbox.port || 993)}"></label>
@@ -1561,6 +1572,7 @@ A.lcSettings = () => {
     e.preventDefault(); const f = e.target;
     // without an AI key the AI switch is greyed out, so the saved choice is kept
     const b = { on: f.on.checked, ai: LC.ai ? f.ai.checked : LC.settings.ai, where: [...f.querySelectorAll('[name=where]:checked')].map((x) => x.value), botName: f.botName.value, botPhoto: f.botPhoto.value, botPersonality: f.botPersonality.value, greeting: f.greeting.value, offline: f.offline.value, contactUrl: f.contactUrl.value, files: f.files.checked, fileDays: f.fileDays.value,
+      notifyTo: f.notifyTo.value,
       inbox: { on: f.inOn.checked, address: f.inAddress.value, host: f.inHost.value, port: f.inPort.value, user: f.inUser.value, pass: f.inPass.value },
       hours: { on: f.hoursOn.checked, tz: f.tz.value, open: f.open.value, close: f.close.value, days: [...f.querySelectorAll('[name=day]:checked')].map((x) => +x.value) },
       answers: [...f.querySelectorAll('.lc-ans')].map((r) => ({ q: r.querySelector('[name=q]').value, keywords: r.querySelector('[name=keywords]').value, a: r.querySelector('[name=a]').value })) };
