@@ -15,6 +15,8 @@
   const who = () => { try { return typeof me !== 'undefined' && me ? { name: me.name || '', email: me.email || '' } : {}; } catch (e) { return {}; } }; // the logged-in person in the business app
 
   let C = null; let S = null; let msgs = []; let open = false; let timer = null; let unread = 0; let handoff = false;
+  let primed = false; // new replies chime only after the first load, not for a whole saved chat coming back
+  const SOUND = 'chat:sound'; const soundOn = () => { try { return localStorage.getItem(SOUND) !== 'off'; } catch (e) { return true; } };
   let typing = 0; // bot answers on their way ("Typing…")
   let shown = ''; let footMode = ''; // what's on screen, so checking for new messages doesn't redraw (and steal the typing box) when nothing changed
   const host = document.createElement('div'); host.id = 'chat-root';
@@ -34,12 +36,20 @@
 .top{background:var(--brand,#2563eb);color:#fff;padding:14px 16px;display:flex;align-items:center;gap:10px}
 .top strong{display:block;font-size:16px}.top small{display:flex;align-items:center;gap:6px;font-size:12px;opacity:.9}
 .dot{width:8px;height:8px;border-radius:50%;background:#4ade80}.dot.off{background:#cbd5e1}
-.x{margin-left:auto;background:none;border:0;color:#fff;font-size:24px;line-height:1;cursor:pointer;padding:4px 6px;border-radius:8px}.x:hover{background:rgba(255,255,255,.15)}
+.tools{margin-left:auto;display:flex;align-items:center;gap:2px;position:relative}
+.x{background:none;border:0;color:#fff;font-size:24px;line-height:1;cursor:pointer;padding:4px 6px;border-radius:8px}.x:hover{background:rgba(255,255,255,.15)}
+.more{background:none;border:0;color:#fff;cursor:pointer;padding:6px;border-radius:8px;display:flex}.more:hover{background:rgba(255,255,255,.15)}.more svg{width:20px;height:20px}
+.menu{position:absolute;top:calc(100% + 6px);right:0;z-index:3;min-width:200px;background:var(--c-bg);color:var(--c-text);border:1px solid var(--c-line);border-radius:12px;box-shadow:0 12px 30px rgba(15,23,42,.25);padding:6px}
+.menu[hidden]{display:none}
+.opt{display:flex;align-items:center;gap:10px;width:100%;background:none;border:0;color:inherit;font-size:14px;padding:9px 10px;border-radius:8px;cursor:pointer;text-align:left}.opt:hover{background:var(--c-soft)}.opt svg{width:18px;height:18px;flex:none;color:var(--c-muted)}
+.sw{margin-left:auto;flex:none;width:36px;height:20px;border-radius:10px;background:#cbd5e1;position:relative;transition:background .15s}.sw::after{content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .15s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.opt[aria-checked=true] .sw{background:var(--brand,#2563eb)}.opt[aria-checked=true] .sw::after{transform:translateX(16px)}
 .list{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:8px;background:var(--c-soft)}
 .m{max-width:85%;padding:9px 12px;border-radius:14px;font-size:14px;line-height:1.45;word-wrap:break-word;overflow-wrap:anywhere}
 .m a{color:inherit;text-decoration:underline}
 .m.visitor{align-self:flex-end;background:var(--brand,#2563eb);color:#fff;border-bottom-right-radius:4px}
 .m.bot,.m.agent{align-self:flex-start;background:var(--c-bg);border:1px solid var(--c-line);border-bottom-left-radius:4px}
+.m .t{display:block;text-align:right;font-size:11px;opacity:.65;margin-top:3px;white-space:nowrap}.m.has-file .t{padding:0 8px 4px}.sys .t{display:block;font-size:11px;opacity:.8}
 .m .who{display:block;font-size:11px;font-weight:700;color:var(--c-muted);margin-bottom:2px}
 .m ul{margin:6px 0 0;padding-left:18px}.m li{margin:3px 0}
 .sys{align-self:center;text-align:center;font-size:12px;color:var(--c-muted);max-width:90%}
@@ -67,8 +77,8 @@ textarea:focus,input:focus{outline:2px solid var(--brand,#2563eb);outline-offset
 .drop[hidden]{display:none}
 @media (max-width:480px){.panel{right:0;bottom:0;width:100vw;max-width:100vw;height:100%;max-height:100%;border-radius:0}.btn{bottom:${where === 'app' ? '84px' : '16px'};right:16px}}
 </style>
-<button class="btn" type="button" aria-label="Chat with us"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.4A8 8 0 1 1 21 12z"/></svg><span class="badge" hidden></span></button>
-<section class="panel" hidden role="dialog" aria-label="Chat"><div class="top"><div><strong>${esc(C.product)}</strong><small><i class="dot"></i><span class="st"></span></small></div><button class="x" type="button" aria-label="Close chat">×</button></div>
+<button class="btn" type="button" aria-label="Chat with us"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 3h14a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3h-7.6l-4.7 3.8A1 1 0 0 1 5 21v-3a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3z"/><path d="M7.5 8.5h9M7.5 12h6" stroke="var(--brand,#2563eb)" stroke-width="1.8" stroke-linecap="round"/></svg><span class="badge" hidden></span></button>
+<section class="panel" hidden role="dialog" aria-label="Chat"><div class="top"><div><strong>${esc(C.product)}</strong><small><i class="dot"></i><span class="st"></span></small></div><div class="tools"><button class="more" type="button" aria-label="Chat options" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></button><div class="menu" hidden role="menu"><button class="opt snd" type="button" role="menuitemcheckbox" aria-checked="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>Chat sound<i class="sw"></i></button></div><button class="x" type="button" aria-label="Close chat">×</button></div></div>
 <div class="list" aria-live="polite"></div><div class="drop" hidden>Drop files to send</div><div class="chips"></div><div class="foot"></div></section>`;
     // colors follow the page's light or dark theme
     const theme = () => { const dark = document.documentElement.dataset.theme === 'dark' || (document.documentElement.dataset.theme !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
@@ -77,6 +87,13 @@ textarea:focus,input:focus{outline:2px solid var(--brand,#2563eb);outline-offset
     document.body.appendChild(host);
     $('.btn').addEventListener('click', () => (open ? hide() : show()));
     $('.x').addEventListener('click', hide);
+    const menu = $('.menu'); const more = $('.more'); const snd = $('.snd');
+    const setMenu = (on) => { menu.hidden = !on; more.setAttribute('aria-expanded', String(on)); };
+    snd.setAttribute('aria-checked', String(soundOn()));
+    more.addEventListener('click', (e) => { e.stopPropagation(); setMenu(menu.hidden); });
+    snd.addEventListener('click', (e) => { e.stopPropagation(); const on = !soundOn(); try { localStorage.setItem(SOUND, on ? 'on' : 'off'); } catch (x) { /* private mode */ } snd.setAttribute('aria-checked', String(on)); if (on) chime(); });
+    root.addEventListener('click', () => setMenu(false)); document.addEventListener('click', () => setMenu(false));
+    root.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menu.hidden) { setMenu(false); more.focus(); } });
     const panel = $('.panel'); let depth = 0; const drop = (on) => { $('.drop').hidden = !on; };
     panel.addEventListener('dragenter', (e) => { if (!C.files || !e.dataTransfer.types.includes('Files') || (S && S.status === 'closed')) return; e.preventDefault(); depth++; drop(true); });
     panel.addEventListener('dragover', (e) => { if (C.files && e.dataTransfer.types.includes('Files')) e.preventDefault(); });
@@ -88,7 +105,7 @@ textarea:focus,input:focus{outline:2px solid var(--brand,#2563eb);outline-offset
   const $ = (s) => root.querySelector(s);
   function show() {
     open = true; unread = 0; badge(); $('.panel').hidden = false; $('.btn').setAttribute('aria-expanded', 'true');
-    if (!S) { msgs = [{ id: 'g', from: 'bot', text: C.greeting }]; draw(); } else refresh();
+    if (!S) { msgs = [{ id: 'g', from: 'bot', text: C.greeting, at: new Date().toISOString() }]; draw(); } else refresh();
     poll(3000); setTimeout(() => { const t = $('textarea'); if (t) t.focus(); }, 50);
   }
   function hide() { open = false; $('.panel').hidden = true; $('.btn').setAttribute('aria-expanded', 'false'); poll(S && ['waiting', 'live'].includes(S.status) ? 15000 : 0); }
@@ -100,7 +117,7 @@ textarea:focus,input:focus{outline:2px solid var(--brand,#2563eb);outline-offset
       const last = msgs.length && msgs[msgs.length - 1].at;
       const r = await api('GET', `/api/chat/${S.id}?token=${encodeURIComponent(S.token)}${last && msgs[0].id !== 'g' ? '&after=' + encodeURIComponent(last) : ''}`);
       merge(r);
-    } catch (e) { if (e.status === 404) { S = null; store.set(null); msgs = []; if (open) show(); } }
+    } catch (e) { if (e.status === 404) { primed = false; S = null; store.set(null); msgs = []; if (open) show(); } }
   }
   function merge(r) {
     const fresh = r.messages.filter((m) => !msgs.some((x) => x.id === m.id));
@@ -110,6 +127,8 @@ textarea:focus,input:focus{outline:2px solid var(--brand,#2563eb);outline-offset
     msgs = msgs.filter((x) => !(/^(tmp|up)/.test(x.id) && saved.some((m) => (x.file ? m.file && m.file.name === x.file.name : m.text === x.text))));
     msgs.push(...fresh.filter((m) => !msgs.some((x) => x.id === m.id))); msgs.sort((a, b) => (a.at < b.at ? -1 : 1));
     S = { ...S, status: r.status, email: r.email }; C.online = r.online; store.set({ id: S.id, token: S.token, status: r.status });
+    if (primed && fresh.some((m) => m.from === 'agent' || m.from === 'bot')) chime();
+    primed = true;
     if (!open && fresh.some((m) => m.from === 'agent')) { unread += fresh.filter((m) => m.from === 'agent').length; badge(); }
     draw();
   }
@@ -118,8 +137,8 @@ textarea:focus,input:focus{outline:2px solid var(--brand,#2563eb);outline-offset
     $('.st').textContent = st; $('.dot').classList.toggle('off', !C.online);
     const sig = msgs.map((m) => m.id).join() + '|' + (S ? S.status : '') + '|' + typing;
     if (sig !== shown) { shown = sig;
-    $('.list').innerHTML = msgs.map((m) => m.from === 'system' ? `<div class="sys">${esc(m.text)}</div>`
-      : `<div class="m ${m.from}${m.file ? ' has-file' : ''}">${m.from === 'agent' ? `<span class="who">${esc(m.agent || 'Support')}</span>` : m.from === 'bot' && S && S.status !== 'bot' ? '<span class="who">Assistant</span>' : ''}${m.file ? fileHtml(m.file) : linkify(m.text)}${m.links ? `<ul>${m.links.map((l) => `<li><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.title)}</a></li>`).join('')}</ul>` : ''}</div>`).join('');
+    $('.list').innerHTML = msgs.map((m) => m.from === 'system' ? `<div class="sys">${esc(m.text)}${stamp(m)}</div>`
+      : `<div class="m ${m.from}${m.file ? ' has-file' : ''}">${m.from === 'agent' ? `<span class="who">${esc(m.agent || 'Support')}</span>` : m.from === 'bot' && S && S.status !== 'bot' ? '<span class="who">Assistant</span>' : ''}${m.file ? fileHtml(m.file) : linkify(m.text)}${m.links ? `<ul>${m.links.map((l) => `<li><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.title)}</a></li>`).join('')}</ul>` : ''}${stamp(m)}</div>`).join('');
     if (typing && S && S.status === 'bot') $('.list').insertAdjacentHTML('beforeend', '<div class="typing">Typing…</div>');
     const l = $('.list'); l.scrollTop = l.scrollHeight; l.querySelectorAll('img').forEach((i) => i.addEventListener('load', () => { l.scrollTop = l.scrollHeight; }, { once: true })); // pictures load after the scroll
     $('.chips').innerHTML = !msgs.some((m) => m.from === 'visitor') && C.suggestions.length ? C.suggestions.map((q) => `<button class="chip" type="button">${esc(q)}</button>`).join('') : '';
@@ -134,7 +153,7 @@ textarea:focus,input:focus{outline:2px solid var(--brand,#2563eb);outline-offset
     const f = $('.foot'); const old = f.querySelector('textarea'); const draft = old ? old.value : ''; const focused = old && root.activeElement === old;
     footMode = mode;
     if (mode === 'live' || mode === 'bot') setTimeout(() => { const t = f.querySelector('textarea'); if (t && draft) t.value = draft; if (t && focused) t.focus(); });
-    if (S && S.status === 'closed') { f.innerHTML = '<button class="go" type="button" style="width:100%">Start a new chat</button>'; f.querySelector('.go').addEventListener('click', () => { S = null; store.set(null); msgs = []; show(); }); return; }
+    if (S && S.status === 'closed') { f.innerHTML = '<button class="go" type="button" style="width:100%">Start a new chat</button>'; f.querySelector('.go').addEventListener('click', () => { S = null; primed = false; store.set(null); msgs = []; show(); }); return; }
     const contact = C.contactUrl ? `<a class="alt-link" href="${esc(C.contactUrl)}" target="_blank" rel="noopener">Or use our contact form</a>` : '';
     if (handoff) {
       const p = who(); const need = !C.online;
@@ -157,6 +176,28 @@ textarea:focus,input:focus{outline:2px solid var(--brand,#2563eb);outline-offset
     const pick = f.querySelector('input[type=file]');
     if (pick) { f.querySelector('.attach').addEventListener('click', () => pick.click()); pick.addEventListener('change', () => { sendFiles([...pick.files]); pick.value = ''; }); }
     ta.addEventListener('paste', (e) => { const files = [...(e.clipboardData ? e.clipboardData.files : [])]; if (files.length && C.files) { e.preventDefault(); sendFiles(files); } }); // a pasted screenshot
+  }
+  // the time under each message: "7:25 AM" today, "Nov 10, 7:25 AM" before that
+  function stamp(m) {
+    const d = m.at ? new Date(m.at) : null; if (!d || isNaN(d)) return '';
+    const t = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    const same = d.toDateString() === new Date().toDateString();
+    const txt = same ? t : d.toLocaleDateString([], { month: 'short', day: 'numeric', ...(d.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}) }) + ', ' + t;
+    return `<time class="t" datetime="${esc(m.at)}">${esc(txt)}</time>`;
+  }
+  // a soft two-note chime for a new reply, made in the browser (no sound file); turned off from ⋮ → Chat sound, remembered on this device
+  let actx = null;
+  function chime() {
+    if (!soundOn()) return;
+    try {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume();
+      const now = actx.currentTime;
+      [[880, 0], [1320, 0.11]].forEach(([f, d]) => {
+        const o = actx.createOscillator(); const g = actx.createGain(); o.type = 'sine'; o.frequency.value = f;
+        g.gain.setValueAtTime(0.0001, now + d); g.gain.exponentialRampToValueAtTime(0.18, now + d + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, now + d + 0.35);
+        o.connect(g).connect(actx.destination); o.start(now + d); o.stop(now + d + 0.4);
+      });
+    } catch (e) { /* no audio here */ }
   }
   // ---------- files: photos are shrunk to a JPEG on the device first (fast on a phone connection); up to 3 at a time, 10 MB each ----------
   const ACCEPT = '.jpg,.jpeg,.png,.webp,.gif,.heic,.heif,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt';
