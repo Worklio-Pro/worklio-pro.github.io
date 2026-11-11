@@ -540,8 +540,10 @@ document.addEventListener('keydown', (e) => {
   if (((e.key === '/' && !typing) || (e.key.toLowerCase() === 'k' && (e.metaKey || e.ctrlKey))) && $('#featSearch') && $('#topbar').style.display !== 'none' && !$('#overlay')) { e.preventDefault(); focusSearch(); }
   if (e.key === 'Escape') closeHelp();
 });
+let renderedPath = '';
 async function render() {
   const path = curPath();
+  if (path !== renderedPath) { $$('.qc').forEach((el) => el.remove()); renderedPath = path; } // the calendar's add/edit box floats on the page: it goes when the page changes (a refresh keeps it)
   const mpT = document.getElementById('mpTheme'); if (mpT) mpT.remove();
   mPagesClose();
   const isPortal = path === '/client-portal' && new URLSearchParams(location.search).get('c');
