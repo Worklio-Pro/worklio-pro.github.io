@@ -3284,7 +3284,8 @@ const listCols = (key, cols) => {
   let on = colMem[key]; if (!on) { try { on = JSON.parse(localStorage.getItem('cols:' + key) || 'null'); } catch (e) { /* storage blocked: defaults */ } }
   const shown = Array.isArray(on) ? cols.filter((c) => on.includes(c.k)) : []; return shown.length ? shown : cols.filter((c) => !c.off);
 };
-const colPicker = (key, cols, shown) => `<details class="menu col-pick"><summary class="pill" title="Choose columns (${shown.length} of ${cols.length} shown)" aria-label="Choose columns"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h18l-7 8.5V18l-4 2v-7.5z"/></svg></summary><div class="menu-list"><div class="col-h">Show columns</div>
+const COL_ICON = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h18l-7 8.5V18l-4 2v-7.5z"/></svg>'; // also on each list report (pages.js)
+const colPicker = (key, cols, shown) => `<details class="menu col-pick"><summary class="pill" title="Choose columns (${shown.length} of ${cols.length} shown)" aria-label="Choose columns">${COL_ICON}</summary><div class="menu-list"><div class="col-h">Show columns</div>
 ${cols.map((c) => `<label class="col-opt"><input type="checkbox" data-col="${key}" value="${c.k}" ${shown.includes(c) ? 'checked' : ''}>${c.label}</label>`).join('')}<button type="button" data-act="colReset" data-key="${key}">Reset to default</button></div></details>`;
 const colSave = async (key, on) => {
   colMem[key] = on; try { on ? localStorage.setItem('cols:' + key, JSON.stringify(on)) : localStorage.removeItem('cols:' + key); } catch (e) { /* this visit only */ }

@@ -1357,7 +1357,8 @@ async function rptList(main, k) {
 ${rpt.range === 'custom' ? `<input type="date" data-rpt="from" value="${from}" aria-label="From"><span class="muted">to</span><input type="date" data-rpt="to" value="${to}" aria-label="To">` : all ? '' : `<span class="muted rpt-dates">${fmtDate(from)} – ${fmtDate(to)}</span>`}` : '<span class="muted">As of today</span>';
   main.innerHTML = `<div class="head"><div>${rptBack}<h1>${esc(meta[1])}</h1><p class="sub">${esc(meta[2])}</p></div><div class="actions noprint"><button class="btn alt" onclick="window.print()">Print</button></div></div>
 ${top}<div class="rpt-bar rpt-tools noprint">${range}<input type="search" class="rpt-q" placeholder="Search" aria-label="Search this report">${statuses.length > 1 ? `<select class="rpt-st" aria-label="Status"><option value="">All statuses</option>${statuses.map((s) => `<option>${esc(s)}</option>`).join('')}</select>` : ''}
-<span class="rpt-sp"></span><button type="button" class="btn alt" data-act="rptCols">Edit columns</button><button type="button" class="btn" data-act="rptCsv">Export CSV</button></div>
+<span class="rpt-sp"></span><details class="menu col-pick"><summary class="pill" title="Choose columns (Export CSV includes the same ones)" aria-label="Choose columns">${COL_ICON}</summary><div class="menu-list"><div class="col-h">Show columns</div>
+${r.columns.map((c) => `<label class="col-opt"><input type="checkbox" data-rcol value="${c.k}" ${rptHidden(k).includes(c.k) ? '' : 'checked'}>${esc(c.l)}</label>`).join('')}<button type="button" data-rcol-all>Show all</button></div></details><button type="button" class="btn" data-act="rptCsv">Export CSV</button></div>
 <div class="card rpt-tbl"><div class="tablewrap"></div><div class="rpt-pager noprint"></div></div>
 ${r.note ? `<p class="muted rpt-note">${esc(r.note)}</p>` : ''}`;
   const cols = () => { const h = rptHidden(k); const C = r.columns.filter((c) => !h.includes(c.k)); return C.length ? C : r.columns; };
@@ -1387,13 +1388,11 @@ ${sums ? `<tfoot><tr>${C.map((c, i) => `<td${cls(c)}>${c.sum ? rptCell(c, { [c.k
   $('.rpt-q', main).addEventListener('input', (e) => { st.q = e.target.value; st.page = 0; draw(); });
   const sel = $('.rpt-st', main); if (sel) sel.addEventListener('change', (e) => { st.status = e.target.value; st.page = 0; draw(); });
   A.rptCsv = () => { const C = cols(); downloadCsv(`${meta[1].toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).join('-')}-${r.dated && !all ? `${from}-to-${to}` : ymd(new Date())}.csv`, [C.map((c) => c.l), ...rows().map((x) => C.map((c) => rptCsvVal(c, x[c.k])))]); };
-  A.rptCols = () => {
-    const h = rptHidden(k);
-    const mb = modal('Edit columns', `<p class="muted" style="margin-top:0">Pick the columns to show. Export CSV includes the same ones.</p><div class="rpt-colpick">${r.columns.map((c) => `<label class="chk"><input type="checkbox" value="${c.k}" ${h.includes(c.k) ? '' : 'checked'}> ${esc(c.l)}</label>`).join('')}</div>
-<div class="foot"><button type="button" class="btn alt" data-all>Show all</button><button type="button" class="btn" data-act="closeModal">Done</button></div>`);
-    const save = () => { const off = $$('input', mb).filter((x) => !x.checked).map((x) => x.value); if (off.length === r.columns.length) { $$('input', mb)[0].checked = true; off.shift(); } rptHide(k, off); draw(); };
-    mb.addEventListener('change', save); $('[data-all]', mb).addEventListener('click', () => { $$('input', mb).forEach((x) => { x.checked = true; }); save(); });
-  };
+  // the filter-icon button (same as the Quotes, Jobs and Invoices lists): ticking a column redraws the table and leaves the list open
+  const pick = $('.col-pick', main); const boxes = () => $$('[data-rcol]', pick);
+  const saveCols = (e) => { const off = boxes().filter((x) => !x.checked).map((x) => x.value); if (off.length === r.columns.length) { if (e && e.target.matches('[data-rcol]')) e.target.checked = true; toast('Keep at least one column', true); return; } rptHide(k, off); draw(); };
+  pick.addEventListener('change', saveCols);
+  $('[data-rcol-all]', pick).addEventListener('click', () => { boxes().forEach((x) => { x.checked = true; }); saveCols(); });
   draw();
 }
 
