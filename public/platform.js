@@ -1698,6 +1698,8 @@ ${[['aiDescriptions', 'Descriptions', 'Write with AI on products and services, a
 ${env('<code>ANTHROPIC_API_KEY</code>.')}`)}
 ${ig('App Marketplace', on(D.settings.marketplace !== false, 'On', 'Off'), `<p class="ig-d">Settings → App Marketplace in every account: owners and admins browse apps, connect the ones that work today and vote for the rest (see Messages → App requests).</p>
 <label class="switchline"><input type="checkbox" id="mkOn" ${D.settings.marketplace !== false ? 'checked' : ''}> Show the App Marketplace in every account</label>
+<label class="switchline"><input type="checkbox" id="mkBeta" ${D.settings.marketplaceBeta ? 'checked' : ''}> Mark the App Marketplace as Beta <span class="beta-tag">Beta</span></label>
+<p class="muted ig-p">Businesses see a Beta banner at the top of the page.</p>
 <p class="muted ig-p">Turned off, the page is hidden and Home Depot search stops in the product and service form. Google, Facebook, Instagram, Stripe and AI keep working: they’re set up on their own pages.</p>
 <h4>Home Depot prices ${on(I.homeDepot)}</h4><p class="muted ig-p">Businesses that turn on The Home Depot can search Home Depot products and prices from the product and service form. Home Depot has no public API, so searches go through <a href="https://serpapi.com/home-depot-search-api" target="_blank" rel="noopener">SerpApi</a>: each new search uses one SerpApi credit (repeat searches within an hour are free), up to 60 an hour per business.</p>${env('<code>SERPAPI_API_KEY</code> (from your SerpApi dashboard).')}`)}
 </div><div class="ig-col">${socialGroups(I, ig, on, copy)}${soonGroup(I, ig, on)}</div></div>
@@ -1736,6 +1738,12 @@ ${I.localhost ? '<p class="muted ig-p" style="margin-top:8px">Stripe can’t rea
     const want = e.target.checked; e.target.disabled = true;
     try { D.settings = await api('PUT', '/api/platform/settings', { marketplace: want }); toast(want ? 'App Marketplace is on' : 'App Marketplace is off in every account'); integrationsCard(box); }
     catch (x) { e.target.checked = !want; e.target.disabled = false; toast(x.message, true); }
+  });
+  $('#mkBeta', box).addEventListener('change', async (e) => {
+    const want = e.target.checked; e.target.disabled = true;
+    try { D.settings = await api('PUT', '/api/platform/settings', { marketplaceBeta: want }); toast(want ? 'App Marketplace is marked Beta' : 'App Marketplace is no longer marked Beta'); }
+    catch (x) { e.target.checked = !want; toast(x.message, true); }
+    e.target.disabled = false;
   });
   $('#mailForm', box).addEventListener('submit', async (e) => {
     e.preventDefault(); try { await api('PUT', '/api/platform/mail-server', Object.fromEntries(new FormData(e.target))); toast('Mail server saved. Send a test email to check it.'); integrationsCard(box); } catch (x) { toast(x.message, true); }
