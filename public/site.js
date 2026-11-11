@@ -1,5 +1,7 @@
 'use strict';
 // Public pricing page: the plans you sell (from the platform console), and self sign-up when you turn it on.
+// spam protection (lib/human-check.js): the server's stamp of when the page opened, and whether a real tap or keypress happened; sent with the form
+window.HC = window.HC || (() => { const o = { hc: '', hi: 0 }; fetch('/api/hc').then((r) => r.json()).then((j) => { o.hc = j.t; }).catch(() => {}); ['pointerdown', 'keydown', 'input'].forEach((n) => addEventListener(n, (e) => { if (e.isTrusted) o.hi = 1; }, true)); return o; })();
 const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const slugify = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32).replace(/-+$/, '');
@@ -189,7 +191,7 @@ ${both ? `<label>Billing<select name="interval"><option value="month" ${period =
   f.addEventListener('submit', async (e) => {
     e.preventDefault(); const btn = $('.go', f); const b = Object.fromEntries(new FormData(f)); b.slug = b.slug.trim().toLowerCase();
     btn.disabled = true; btn.textContent = 'Creating your account…';
-    const r = await fetch('/api/site/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+    const r = await fetch('/api/site/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...b, ...window.HC }) });
     const j = await r.json().catch(() => ({}));
     if (r.ok) { location.href = j.url; return; }
     $('#err').innerHTML = `<div class="msg err" role="alert">${esc(j.error || 'Something went wrong. Try again.')}${j.signIn ? ` <a href="/sign-in">Log in</a>` : ''}</div>`; // Log in: the email already has a login
@@ -220,7 +222,7 @@ function openContact(S, planId) {
     if (!b.name.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(b.email.trim())) { $('#cErr').innerHTML = '<div class="msg err" role="alert">Enter your name and a valid email address.</div>'; return; }
     if (!b.message.trim()) { $('#cErr').innerHTML = '<div class="msg err" role="alert">Write a short message.</div>'; return; }
     btn.disabled = true; btn.textContent = 'Sending…';
-    const r = await fetch('/api/site/contact', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }).catch(() => null);
+    const r = await fetch('/api/site/contact', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...b, ...window.HC }) }).catch(() => null);
     const j = r ? await r.json().catch(() => ({})) : {};
     if (r && r.ok) { $('.mb', o).innerHTML = `<div class="c-done" role="status"><div class="c-ok">✓</div><h3>Thanks, ${esc(b.name.trim().split(/\s+/)[0])}!</h3><p class="muted">Your message is on its way. We’ll reply to ${esc(b.email.trim())}.</p><div class="foot" style="justify-content:center"><button type="button" class="btn" data-close>Close</button></div></div>`; $('[data-close]', $('.mb', o)).focus(); return; }
     $('#cErr').innerHTML = `<div class="msg err" role="alert">${esc(j.error || 'Your message couldn’t be sent. Check your connection and try again.')}</div>`; btn.disabled = false; btn.textContent = 'Send message';

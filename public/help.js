@@ -1,4 +1,6 @@
 'use strict';
+// spam protection (lib/human-check.js): the server's stamp of when the page opened, and whether a real tap or keypress happened; sent with the form
+window.HC = window.HC || (() => { const o = { hc: '', hi: 0 }; fetch('/api/hc').then((r) => r.json()).then((j) => { o.hc = j.t; }).catch(() => {}); ['pointerdown', 'keydown', 'input'].forEach((n) => addEventListener(n, (e) => { if (e.isTrusted) o.hi = 1; }, true)); return o; })();
 // Help center: home, topic pages, articles, search and the contact form. Content comes from /api/help/content
 // (edited in the platform console → Help Center).
 const $ = (s, el = document) => el.querySelector(s);
@@ -195,7 +197,7 @@ function wirePage() {
     const btn = $('[type=submit]', f); btn.disabled = true; btn.textContent = 'Sending…';
     const body = { ...Object.fromEntries(new FormData(f)), page: document.referrer && /^https?:/.test(document.referrer) ? document.referrer : location.href };
     try {
-      const r = await fetch('/api/help/contact', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const r = await fetch('/api/help/contact', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, ...window.HC }) });
       const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'Something went wrong. Try again.');
       f.outerHTML = `<div class="card sent"><h2>Message sent</h2><p class="lead" style="margin:0 0 18px">Thanks, ${esc(body.name.split(' ')[0])}. We’ll reply to ${esc(body.email)} as soon as we can.</p><a class="btn alt" href="/" data-link>Back to the Help Center</a></div>`;
     } catch (x) { err.textContent = x.message; err.hidden = false; btn.disabled = false; btn.textContent = 'Send message'; }
@@ -206,7 +208,7 @@ function wirePage() {
 const votes = () => { try { return JSON.parse(localStorage.getItem('hc-voted') || '{}'); } catch (e) { return {}; } };
 const votedOn = (slug) => !!votes()[slug];
 const markVoted = (slug) => { try { localStorage.setItem('hc-voted', JSON.stringify({ ...votes(), [slug]: Date.now() })); } catch (e) { /* private mode */ } };
-const sendFeedback = (body) => fetch('/api/help/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).catch(() => {});
+const sendFeedback = (body) => fetch('/api/help/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, ...window.HC }) }).catch(() => {});
 
 /* ===== theme + product name ===== */
 const THEMES = ['system', 'light', 'dark'];

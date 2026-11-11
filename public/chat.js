@@ -14,6 +14,7 @@
   };
   const who = () => { try { return typeof me !== 'undefined' && me ? { name: me.name || '', email: me.email || '' } : {}; } catch (e) { return {}; } }; // the logged-in person in the business app
 
+  let hi = 0; ['pointerdown', 'keydown', 'input'].forEach((n) => addEventListener(n, (e) => { if (e.isTrusted) hi = 1; }, true)); // a real tap or keypress: chats start only from a person (lib/human-check.js)
   let C = null; let S = null; let msgs = []; let open = false; let timer = null; let unread = 0; let handoff = false;
   let photoOk = false; // the assistant's photo loaded (otherwise her first initial shows)
   let primed = false; // new replies chime only after the first load, not for a whole saved chat coming back
@@ -248,7 +249,7 @@ textarea:focus,input:focus{outline:2px solid var(--brand,#2563eb);outline-offset
       } catch (x) { msgs = msgs.filter((m) => m.id !== tmp); draw(); err(x.message); }
     }
   }
-  async function start() { const p = who(); const r = await api('POST', '/api/chat/start', { where, page: location.href, ...p }); S = { id: r.id, token: r.token, status: r.status }; store.set(S); msgs = []; merge(r); }
+  async function start() { const p = who(); const r = await api('POST', '/api/chat/start', { where, page: location.href, ...p, hc: C.hc, hi }); S = { id: r.id, token: r.token, status: r.status }; store.set(S); msgs = []; merge(r); }
   // the box empties as soon as a message is sent, so the next one can be typed while this one goes out
   async function sendText(text) {
     const ta = $('textarea'); if (ta) { ta.value = ''; ta.style.height = 'auto'; } const er = root.querySelector('.err'); if (er) er.textContent = '';

@@ -34,6 +34,7 @@ const rolesLib = require('./lib/roles');
 const iconsLib = require('./lib/icons');
 const { createPdf } = require('./lib/pdf');
 const chat = require('./lib/chat');
+const humanCheck = require('./lib/human-check'); // spam protection for the public forms
 const forum = require('./lib/forum');
 const industries = require('./lib/industries');
 const marketplace = require('./lib/marketplace');
@@ -3816,7 +3817,7 @@ ${smsConsentBox(values)}
 <label>Service address<input name="address" maxlength="300" value="${v('address')}" autocomplete="street-address"></label>
 <label>What do you need done?*<input name="title" required maxlength="120" value="${v('title')}"></label>
 <label>Details<textarea name="details" rows="4" maxlength="4000" style="padding:10px;border:1px solid #d1d5db;border-radius:8px;width:100%;box-sizing:border-box;margin:4px 0 10px;font:inherit">${v('details')}</textarea></label>
-<input name="website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">
+<input name="website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">${humanCheck.fields()}
 <button class="btn">Send request</button></form>`);
 }
 app.get('/refer/:code', (req, res) => {
@@ -3829,7 +3830,9 @@ app.post('/refer/:code', async (req, res) => {
   if (!c) return res.status(404).send(shell('Link not found', '<h1>Link not found</h1>'));
   const b = req.body || {}; const clip = (k, n) => String(b[k] || '').trim().slice(0, n);
   const done = shell('Request sent', `<h1>Thanks${clip('name', 100) ? ', ' + esc(clip('name', 100).split(/\s+/)[0]) : ''}!</h1><p class="muted">We got your request and will be in touch soon.</p>${smsSignedUp(b, clip('phone', 40))}`);
-  if (b.website) return res.send(done); // honeypot: bots fill every field
+  const spam = humanCheck.check(b, { form: 'referral form', ip: req.socket.remoteAddress, texts: ['title', 'details'] }); // lib/human-check.js
+  if (spam && spam.bot) return res.send(done);
+  if (spam) return res.status(400).send(referPage(c, { error: spam.error, values: b }));
   const ip = req.socket.remoteAddress; const now = Date.now(); const hits = (referHits.get(ip) || []).filter((t) => now - t < 3600e3);
   if (hits.length >= 5) return res.status(429).send(referPage(c, { error: 'Too many requests from this connection. Please call or email us instead.', values: b }));
   const name = clip('name', 100); const title = clip('title', 120); const email = clip('email', 120).toLowerCase(); const phone = clip('phone', 40);
@@ -3936,16 +3939,18 @@ ${smsConsentBox(values)}
 <label>Details<textarea name="details" rows="4" maxlength="4000" style="${field}">${v('details')}</textarea></label>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px"><label>Preferred day<input name="preferredDate" type="date" min="${iso(new Date())}" value="${v('preferredDate')}"></label>
 <label>Preferred time<select name="preferredTime" style="${field}"><option value="any">Any time</option><option value="morning"${sel('preferredTime', 'morning')}>Morning</option><option value="afternoon"${sel('preferredTime', 'afternoon')}>Afternoon</option><option value="evening"${sel('preferredTime', 'evening')}>Evening</option></select></label></div>
-<input name="website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">
+<input name="website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">${humanCheck.fields()}
 <button class="btn">Send booking request</button></form>`, embed);
 }
 app.get('/book', (req, res) => { if (req.query.ref) jobPosts.visit(String(req.query.ref)); res.send(bookPage({ embed: bookEmbed(req) })); }); // ?ref=<post>: opened from a job's social post
 app.post('/book', async (req, res) => {
   const b = req.body || {}; const clip = (k, n) => String(b[k] || '').trim().slice(0, n); const embed = bookEmbed(req);
   const done = bookShell('Booking request sent', `<h1>Thanks${clip('name', 100) ? ', ' + esc(clip('name', 100).split(/\s+/)[0]) : ''}!</h1><p class="muted">We got your request and will be in touch soon to confirm a time.</p>${smsSignedUp(b, clip('phone', 40))}`, embed);
-  if (b.website) return res.send(done); // honeypot: bots fill every field
   const ip = req.socket.remoteAddress; const now = Date.now(); const hits = (bookHits.get(ip) || []).filter((t) => now - t < 3600e3);
   const again = (status, error) => res.status(status).send(bookPage({ error, values: b, embed }));
+  const spam = humanCheck.check(b, { form: 'booking form', ip, texts: ['title', 'details'] }); // lib/human-check.js
+  if (spam && spam.bot) return res.send(done);
+  if (spam) return again(400, spam.error);
   if (hits.length >= 5) return again(429, 'Too many requests from this connection. Please call or email us instead.');
   const name = clip('name', 100); const title = clip('title', 120); const email = normEmail(clip('email', 120)); const phone = clip('phone', 40);
   if (!name || !title) return again(400, 'Please enter your name and what you need done.');
@@ -3999,7 +4004,9 @@ app.post('/card/exchange', async (req, res) => {
   const p = bizPage(); const b = req.body || {}; const clip = (k, n) => String(b[k] || '').trim().slice(0, n);
   const again = (status, error) => res.status(status).send(businessPage.render(p, { book: pageBook(), error, values: b }));
   if (!p.exchange) return res.redirect('/card');
-  if (b.website) return res.send(businessPage.render(p, { book: pageBook(), done: true, values: b })); // honeypot: bots fill every field
+  const spam = humanCheck.check(b, { form: 'business page', ip: req.socket.remoteAddress }); // lib/human-check.js
+  if (spam && spam.bot) return res.send(businessPage.render(p, { book: pageBook(), done: true, values: b }));
+  if (spam) return again(400, spam.error);
   const ip = req.socket.remoteAddress; const now = Date.now(); const hits = (bookHits.get(ip) || []).filter((t) => now - t < 3600e3);
   if (hits.length >= 5) return again(429, 'Too many messages from this connection. Please call or email us instead.');
   const name = clip('name', 100); const email = normEmail(clip('email', 120)); const phone = clip('phone', 40);
@@ -5699,6 +5706,7 @@ function dispatch(req, res) {
   // robots.txt, sitemap.xml, and no search results for account apps, client links or Alpha (lib/seo.js)
   if (seo.handle(req, res, tenancy.isHelpHost(req.headers.host) ? 'help' : r.kind === 'platform' ? 'platform' : 'account')) return;
   if ((r.kind === 'platform' || tenancy.isHelpHost(req.headers.host) || tenancy.isIdeasHost(req.headers.host)) && brandLib.serveIcon(req, res)) return; // the app icon (Settings → Your product); accounts use it too, through their /favicon.ico
+  if (humanCheck.serve(req, res)) return; // the page stamp the public forms send (lib/human-check.js), on every address
   if (chat.handle(req, res, { tenant: r.kind === 'tenant' ? r.tenant : null })) return; // the chat button (lib/chat.js), on every address
   // pages and API replies depend on who is logged in: hosting caches (e.g. SiteGround's dynamic cache) must never store or share them
   if (!/\.(js|css|png|jpe?g|gif|webp|svg|ico|woff2?)$/i.test(p)) res.setHeader('Cache-Control', 'private, no-store');

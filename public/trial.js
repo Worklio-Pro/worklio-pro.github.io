@@ -1,4 +1,6 @@
 'use strict';
+// spam protection (lib/human-check.js): the server's stamp of when the page opened, and whether a real tap or keypress happened; sent with the form
+window.HC = window.HC || (() => { const o = { hc: '', hi: 0 }; fetch('/api/hc').then((r) => r.json()).then((j) => { o.hc = j.t; }).catch(() => {}); ['pointerdown', 'keydown', 'input'].forEach((n) => addEventListener(n, (e) => { if (e.isTrusted) o.hi = 1; }, true)); return o; })();
 // "Start 30-day trial" on the home page: a two-step sign-up pop-up. Step 1 is the business and how to reach them,
 // step 2 the plan, web address and password. The account opens right away on the chosen plan, free for 30 days with no card
 // (lib/platform.js, SITE_TRIAL). Used on the home, pricing, features and industry pages; without self sign-up their buttons stay links to the pricing page.
@@ -103,7 +105,7 @@ ${plans.map((p) => { const c = per(p); return `<label><input type="radio" name="
       const p = plans.find((x) => x.id === b.plan); b.interval = per(p).per; b.slug = b.slug.trim().toLowerCase(); b.trial = true; delete b.agree;
       const n = b.phone.replace(/\D/g, ''); b.phone = dial() === '1' ? usPhone(n) : `+${dial()} ${n}`; delete b.country; // +1 numbers are saved as (123) 456-7890
       const btn = $('.tr-go', f2); btn.disabled = true; btn.textContent = 'Starting your trial…'; err(f2, '');
-      const r = await fetch('/api/site/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }).catch(() => null);
+      const r = await fetch('/api/site/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...b, ...window.HC }) }).catch(() => null);
       const j = r ? await r.json().catch(() => ({})) : {};
       if (r && r.ok) { location.href = j.url; return; }
       err(f2, `${esc(j.error || 'Something went wrong. Check your connection and try again.')}${j.signIn ? ' <a href="/sign-in">Log in</a>' : ''}`); // the email already has a login
