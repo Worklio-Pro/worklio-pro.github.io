@@ -74,7 +74,25 @@ const crumbs = (items) => `<div class="crumbs"><a href="/" data-link>Help Center
 // Latest articles: the most recently added or updated (added / updated are YYYY-MM-DD from the server)
 const niceDay = (d) => new Date(d + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 const latest = (n) => ARTICLES.filter((a) => a.updated).map((a, i) => ({ a, i })).sort((x, y) => (y.a.updated > x.a.updated ? 1 : y.a.updated < x.a.updated ? -1 : x.i - y.i)).slice(0, n).map((x) => x.a);
-const latestCard = (a) => `<a class="card" href="/articles/${a.slug}" data-link><span class="hc-when">${a.added === a.updated ? '<b class="hc-tag new">New</b>' : '<b class="hc-tag">Updated</b>'} ${esc(niceDay(a.updated))}</span><h3>${fill(a.title)}</h3><p>${fill(a.summary)}</p><span class="meta">${esc(topicOf(a.topic).title)}</span></a>`;
+// every card the same height: the title is cut at 2 lines and the summary at 3; See more (only when something was cut) opens the card in place.
+// The title's link covers the whole card, so a click anywhere else on it opens the article
+const latestCard = (a) => `<div class="card lt-card"><span class="hc-when">${a.added === a.updated ? '<b class="hc-tag new">New</b>' : '<b class="hc-tag">Updated</b>'} ${esc(niceDay(a.updated))}</span>
+<h3><a class="lt-link" href="/articles/${a.slug}" data-link>${fill(a.title)}</a></h3><p class="lt-sum">${fill(a.summary)}</p>
+<button type="button" class="lt-more off" aria-expanded="false" tabindex="-1">See more</button><span class="meta">${esc(topicOf(a.topic).title)}</span></div>`;
+// See more shows only on cards whose title or summary doesn’t fit; on the others its line is kept but invisible
+function fitLatest() {
+  $$('.lt-card').forEach((c) => {
+    if (c.classList.contains('open')) return;
+    const cut = [$('h3', c), $('.lt-sum', c)].some((el) => el.scrollHeight > el.clientHeight + 1);
+    const b = $('.lt-more', c); b.classList.toggle('off', !cut); b.tabIndex = cut ? 0 : -1; // the line stays, so every card is the same height
+  });
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('.lt-more'); if (!b) return;
+  const c = b.closest('.lt-card'); const open = c.classList.toggle('open');
+  b.textContent = open ? 'See less' : 'See more'; b.setAttribute('aria-expanded', String(open));
+});
+window.addEventListener('resize', () => fitLatest());
 function home() {
   return { title: `${hcName()}`, html: `<section class="hc-hero"><div class="wrap"><h1>How can we help?</h1>${searchBox()}
 <div class="hc-suggest">${SUGGESTED.map((q) => `<a href="/search?q=${encodeURIComponent(q)}" data-link>${esc(q)}</a>`).join('')}</div></div></section>
@@ -128,7 +146,7 @@ function render() {
   if (rendered) document.title = view.title; rendered = true; // the first page keeps the title the server wrote for search engines
   $('#main').innerHTML = view.html;
   $$('.hc-search', $('#main')).forEach(wireSearch);
-  wirePage(); $('.hc-topics').open = false;
+  wirePage(); fitLatest(); $('.hc-topics').open = false;
 }
 function go(url) { history.pushState({}, '', url); window.scrollTo(0, 0); render(); $('#main').focus({ preventScroll: true }); }
 window.addEventListener('popstate', render);

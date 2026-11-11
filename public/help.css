@@ -69,6 +69,14 @@ a.card h3{margin:0 0 6px;font-size:17px}a.card p{margin:0;color:var(--muted);fon
 .alist a{display:block;padding:16px 18px;background:var(--card);border:1px solid var(--line);border-radius:12px;color:var(--text);text-decoration:none}.alist a:hover{border-color:var(--brand)}
 .hc-tag{display:inline-block;font-size:12px;font-weight:700;padding:1px 7px;margin-right:4px;border-radius:4px;border:1px solid currentColor;color:var(--muted)}.hc-tag.new{color:var(--brand)}
 .hc-when{display:block;color:var(--muted);font-size:13px;margin:0 0 8px}
+/* Latest articles: same-height cards; title 2 lines, summary 3, See more opens the card */
+.lt-card{position:relative;display:flex;flex-direction:column;padding:20px;transition:border-color .15s,transform .15s}.lt-card:hover{border-color:var(--brand);transform:translateY(-1px)}
+.lt-card h3{margin:0 0 6px;font-size:17px;line-height:1.35;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;min-height:2.7em}
+.lt-link{color:var(--text);text-decoration:none}.lt-link::after{content:"";position:absolute;inset:0;border-radius:inherit}.lt-link:focus-visible{outline:none}.lt-card:has(.lt-link:focus-visible){outline:2px solid var(--brand);outline-offset:2px}
+.lt-sum{margin:0;color:var(--muted);font-size:14px;line-height:1.5;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;min-height:4.5em}
+.lt-card.open h3,.lt-card.open .lt-sum{-webkit-line-clamp:unset;display:block}
+.lt-more{position:relative;z-index:1;align-self:flex-start;margin:6px 0 0;padding:0;border:0;background:none;color:var(--brand);font:inherit;font-size:13px;font-weight:600;cursor:pointer}.lt-more:hover{text-decoration:underline}.lt-more.off{visibility:hidden}
+.lt-card .meta{margin-top:auto;padding-top:12px}
 .alist strong{display:block;font-size:16px}.alist span{display:block;color:var(--muted);font-size:14px;margin-top:2px}
 .side{position:sticky;top:20px}.side h3{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 8px}
 .side nav{display:flex;flex-direction:column;gap:2px;margin-bottom:24px}
