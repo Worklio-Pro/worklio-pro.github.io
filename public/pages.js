@@ -1427,12 +1427,14 @@ A.crvDelete = async (d, el) => {
 async function renderClientReviews(box) {
   const R = await api('GET', '/api/reviews/client'); const S = R.settings; revState.questions = R.questions; revState.clients = R.reviews;
   const sw = (k, label, note) => `<label class="sw-row"><span>${label}<small class="muted">${note}</small></span><input type="checkbox" class="sw" data-rvset="${k}" ${S[k] ? 'checked' : ''}><i></i></label>`;
-  box.innerHTML = `<div class="card rv-sum"><div class="rv-avg"><strong>${R.average.toFixed(1)}</strong>${starRow(R.average, 20)}<span class="muted">${R.total} review${R.total === 1 ? '' : 's'}${R.waiting ? `, ${R.waiting} waiting` : ''}</span></div>
+  box.innerHTML = `<div class="rv-top"><div class="rv-left"><div class="card rv-sum"><div class="rv-avg"><strong>${R.average.toFixed(1)}</strong>${starRow(R.average, 20)}<span class="muted">${R.total} review${R.total === 1 ? '' : 's'}${R.waiting ? `, ${R.waiting} waiting` : ''}</span></div>
 <div class="rv-ask"><h3>Ask clients automatically</h3><p class="muted">Clients with an email address get a private review link. A job and its invoice count as one request, and a client is asked at most once every ${R.gapDays} days.</p>
 ${sw('afterJob', 'When a job is completed', 'The email goes out as soon as the job is marked complete')}${sw('afterInvoice', 'When an invoice is paid', 'Also adds a Leave a review button to the paid invoice page')}${sw('notifyEmail', 'Email me new reviews', `Sent to ${esc(company.email || 'your company email')}`)}</div></div>
-<div class="card"><h2>Your questions</h2><p class="muted">Clients see these on the review form, after the star rating. Choose which modules ask each one.</p><div id="rvQs"></div><div class="rv-acts"><button type="button" class="btn alt" data-act="rvqAdd">Add question</button><button type="button" class="btn" data-act="rvqSave">Save questions</button></div></div>
+<div class="card"><h2>Your questions</h2><p class="muted">Clients see these on the review form, after the star rating. Choose which modules ask each one.</p><div id="rvQs"></div><div class="rv-acts"><button type="button" class="btn alt" data-act="rvqAdd">Add question</button><button type="button" class="btn" data-act="rvqSave">Save questions</button></div></div></div>
+<div class="card rv-prev"><div class="rv-prev-h"><h2>What clients see</h2><div class="seg" role="tablist" aria-label="Review form for">${[['job', 'After a job'], ['invoice', 'After an invoice']].map(([k, l]) => `<button type="button" role="tab" class="${(revState.prevKind || 'job') === k ? 'on' : ''}" data-act="rvPrevKind" data-k="${k}">${l}</button>`).join('')}</div></div><p class="muted">An example of the review form with your questions. It changes as you edit them.</p><div id="rvPrev" class="rv-prev-form" aria-hidden="true"></div></div></div>
 ${R.reviews.length ? R.reviews.map(clientReviewCard).join('') : '<div class="card"><p class="muted" style="margin:0">No client reviews yet. They’ll show here as clients answer.</p></div>'}`;
   drawReviewQuestions();
+  const qs = $('#rvQs', box); ['input', 'change'].forEach((ev) => qs.addEventListener(ev, drawReviewPreview));
   box.addEventListener('change', async (e) => {
     const c = e.target.closest('[data-rvset]'); if (!c) return;
     try { await api('PUT', '/api/reviews/settings', { [c.dataset.rvset]: c.checked }); toast('Saved'); } catch (x) { c.checked = !c.checked; toast(x.message, true); }
@@ -1443,7 +1445,20 @@ function drawReviewQuestions() {
   box.innerHTML = Q.length ? Q.map((q, i) => `<div class="rvq" data-i="${i}" data-id="${esc(q.id || '')}"><input name="text" maxlength="200" placeholder="e.g. Did we arrive on time?" aria-label="Question" value="${esc(q.text)}">
 <select name="type" aria-label="Answer type">${[['stars', 'Star rating'], ['yesno', 'Yes or no'], ['text', 'Written answer']].map(([k, l]) => `<option value="${k}" ${q.type === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
 <span class="rvq-opts"><label><input type="checkbox" name="job" ${q.modules.includes('job') ? 'checked' : ''}> Jobs</label><label><input type="checkbox" name="invoice" ${q.modules.includes('invoice') ? 'checked' : ''}> Invoices</label><label><input type="checkbox" name="required" ${q.required ? 'checked' : ''}> Required</label><button type="button" class="link-btn danger" data-act="rvqRm">Remove</button></span></div>`).join('') : '<p class="muted" style="margin:0">No questions yet. Clients are asked for a star rating and a comment.</p>';
+  drawReviewPreview();
 }
+// the right-hand example: the client's review form as it looks with the questions on screen (saved or not), for a job or an invoice
+function drawReviewPreview() {
+  const box = $('#rvPrev'); if (!box) return; const kind = revState.prevKind || 'job';
+  const Q = ($('#rvQs .rvq') ? readReviewQuestions() : revState.questions).filter((q) => q.text.trim() && q.modules.includes(kind));
+  const stars = () => '<div class="rvp-stars">' + '<i>★</i>'.repeat(5) + '</div>';
+  const field = (q) => `<div class="rvp-q"><div class="rvp-l">${esc(q.text)}${q.required ? '' : ' <span class="muted">(optional)</span>'}</div>${q.type === 'stars' ? stars() : q.type === 'yesno' ? '<div class="rvp-yn"><span><i></i>Yes</span><span><i></i>No</span></div>' : '<div class="rvp-box sm"></div>'}</div>`;
+  const biz = esc(company.name || 'us');
+  box.innerHTML = `<h3>How did we do?</h3><p class="muted">Jane, tell ${biz} about ${kind === 'job' ? 'your recent job' : 'invoice INV-1024'}. Your review goes to the business and isn’t posted publicly.</p>
+<div class="rvp-q"><div class="rvp-l">Your overall rating</div>${stars()}</div>${Q.map(field).join('')}
+<div class="rvp-box"><span class="muted">Share details of your own experience with ${biz}</span></div><div class="rvp-add">Add photos &amp; videos</div><div class="rvp-btn">Send review</div>`;
+}
+A.rvPrevKind = (d) => { revState.prevKind = d.k; $$('.rv-prev .seg button').forEach((b) => b.classList.toggle('on', b.dataset.k === d.k)); drawReviewPreview(); };
 const readReviewQuestions = () => $$('#rvQs .rvq').map((el) => ({ id: el.dataset.id, text: $('[name=text]', el).value, type: $('[name=type]', el).value, modules: ['job', 'invoice'].filter((m) => $(`[name=${m}]`, el).checked), required: $('[name=required]', el).checked }));
 A.rvqAdd = () => { revState.questions = [...readReviewQuestions(), { id: '', text: '', type: 'stars', modules: ['job', 'invoice'], required: false }]; drawReviewQuestions(); const all = $$('#rvQs [name=text]'); all[all.length - 1].focus(); };
 A.rvqRm = (d, el) => { const i = Number(el.closest('.rvq').dataset.i); revState.questions = readReviewQuestions().filter((q, n) => n !== i); drawReviewQuestions(); };
