@@ -1533,7 +1533,7 @@ A.lcSettings = () => {
 <div class="lc-days">${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d, i) => `<label><input type="checkbox" name="day" value="${i}" ${s.hours.days.includes(i) ? 'checked' : ''}> ${d}</label>`).join('')}</div>
 <h3 style="margin:8px 0 4px;font-size:15px">Answer by email</h3>
 <label>Send chat emails to<input name="notifyTo" type="email" value="${esc(s.notifyTo || '')}" maxlength="200" placeholder="${esc(D.settings.contactEmail || 'you@yourdomain.com')}" spellcheck="false"></label>
-<p class="muted" style="font-size:13px;margin:-4px 0 10px">The inbox you read. Blank uses the contact email in Settings${D.settings.contactEmail ? ` (${esc(D.settings.contactEmail)})` : ''}. It can’t be the reply address below.</p>
+<p class="muted" style="font-size:13px;margin:-4px 0 10px">The inbox you read. Blank uses the contact email in Settings${D.settings.contactEmail ? ` (${esc(D.settings.contactEmail)})` : ''}. It can be the same as the reply address below.</p>
 <p class="muted" style="font-size:13px;margin:0 0 8px">When someone asks for a person, you get an email there. With this on, replying to it answers in the chat, and anything else they write while Live chat isn’t open is emailed to you too. Replies go to the address below, which is checked every minute, so use a mailbox you can sign in to by IMAP (most email services; Gmail needs an app password).</p>
 <label class="switchline"><input type="checkbox" name="inOn" ${s.inbox.on ? 'checked' : ''}> Answer chats by replying to the email</label>
 <div class="lc-inbox"><label>Reply address<input name="inAddress" type="email" value="${esc(s.inbox.address)}" maxlength="200" placeholder="chat@yourdomain.com" spellcheck="false"></label>
