@@ -71,10 +71,15 @@ const helpBand = () => `<div class="card hc-help"><div><h2>Still need help?</h2>
 const topicNav = (cur) => `<h3>Topics</h3><nav>${TOPICS.map((t) => `<a href="/topics/${t.slug}" data-link class="${t.slug === cur ? 'on' : ''}">${esc(t.title)}</a>`).join('')}</nav>`;
 const crumbs = (items) => `<div class="crumbs"><a href="/" data-link>Help Center</a>${items.map(([href, l]) => ` › ${href ? `<a href="${href}" data-link>${esc(l)}</a>` : esc(l)}`).join('')}</div>`;
 
+// Latest articles: the most recently added or updated (added / updated are YYYY-MM-DD from the server)
+const niceDay = (d) => new Date(d + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+const latest = (n) => ARTICLES.filter((a) => a.updated).map((a, i) => ({ a, i })).sort((x, y) => (y.a.updated > x.a.updated ? 1 : y.a.updated < x.a.updated ? -1 : x.i - y.i)).slice(0, n).map((x) => x.a);
+const latestRow = (a) => `<a href="/articles/${a.slug}" data-link><strong>${fill(a.title)}</strong><span>${a.added === a.updated ? '<b class="hc-tag new">New</b>' : '<b class="hc-tag">Updated</b>'} ${esc(niceDay(a.updated))} · ${esc(topicOf(a.topic).title)} · ${fill(a.summary)}</span></a>`;
 function home() {
   return { title: `${hcName()}`, html: `<section class="hc-hero"><div class="wrap"><h1>How can we help?</h1>${searchBox()}
 <div class="hc-suggest">${SUGGESTED.map((q) => `<a href="/search?q=${encodeURIComponent(q)}" data-link>${esc(q)}</a>`).join('')}</div></div></section>
 <div class="wrap"><section class="hc-sec hc-pop" aria-label="Popular articles"><div class="grid g3">${POPULAR.map(articleOf).filter(Boolean).map(articleCard).join('')}</div></section>
+${latest(6).length ? `<section class="hc-sec"><h2>Latest articles</h2><div class="alist">${latest(6).map(latestRow).join('')}</div></section>` : ''}
 <section class="hc-sec"><h2>What do you want to get done?</h2><div class="grid g3">${TOPICS.map((t) => `<a class="card" href="/topics/${t.slug}" data-link><span class="topic-ic">${ic(ICONS[t.icon])}</span><h3>${esc(t.title)}</h3><p>${fill(t.desc)}</p><span class="meta">${inTopic(t.slug).length} article${inTopic(t.slug).length === 1 ? '' : 's'}</span></a>`).join('')}</div></section>
 ${helpBand()}</div>` };
 }
