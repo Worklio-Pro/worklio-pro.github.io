@@ -1442,9 +1442,9 @@ ${R.reviews.length ? R.reviews.map(clientReviewCard).join('') : '<div class="car
 }
 function drawReviewQuestions() {
   const box = $('#rvQs'); if (!box) return; const Q = revState.questions;
-  box.innerHTML = Q.length ? Q.map((q, i) => `<div class="rvq" data-i="${i}" data-id="${esc(q.id || '')}"><input name="text" maxlength="200" placeholder="e.g. Did we arrive on time?" aria-label="Question" value="${esc(q.text)}">
+  box.innerHTML = Q.length ? Q.map((q, i) => `<div class="rvq" data-i="${i}" data-id="${esc(q.id || '')}"><button type="button" class="drag-h rvq-drag" aria-label="Drag to reorder (or use the arrow keys)" title="Drag to reorder">${DRAG_DOTS}</button><input name="text" maxlength="200" placeholder="e.g. Did we arrive on time?" aria-label="Question" value="${esc(q.text)}">
 <select name="type" aria-label="Answer type">${[['stars', 'Star rating'], ['yesno', 'Yes or no'], ['text', 'Written answer']].map(([k, l]) => `<option value="${k}" ${q.type === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
-<span class="rvq-opts"><label><input type="checkbox" name="job" ${q.modules.includes('job') ? 'checked' : ''}> Jobs</label><label><input type="checkbox" name="invoice" ${q.modules.includes('invoice') ? 'checked' : ''}> Invoices</label><label><input type="checkbox" name="required" ${q.required ? 'checked' : ''}> Required</label><button type="button" class="link-btn danger" data-act="rvqRm">Remove</button></span></div>`).join('') : '<p class="muted" style="margin:0">No questions yet. Clients are asked for a star rating and a comment.</p>';
+<span class="rvq-opts"><label><input type="checkbox" name="job" ${q.modules.includes('job') ? 'checked' : ''}> Jobs</label><label><input type="checkbox" name="invoice" ${q.modules.includes('invoice') ? 'checked' : ''}> Invoices</label><label><input type="checkbox" name="required" ${q.required ? 'checked' : ''}> Required</label><button type="button" class="icon-btn rvq-rm" data-act="rvqRm" title="Remove question" aria-label="Remove question">${TRASH}</button></span></div>`).join('') : '<p class="muted" style="margin:0">No questions yet. Clients are asked for a star rating and a comment.</p>';
   drawReviewPreview();
 }
 // the right-hand example: the client's review form as it looks with the questions on screen (saved or not), for a job or an invoice
@@ -1462,6 +1462,30 @@ A.rvPrevKind = (d) => { revState.prevKind = d.k; $$('.rv-prev .seg button').forE
 const readReviewQuestions = () => $$('#rvQs .rvq').map((el) => ({ id: el.dataset.id, text: $('[name=text]', el).value, type: $('[name=type]', el).value, modules: ['job', 'invoice'].filter((m) => $(`[name=${m}]`, el).checked), required: $('[name=required]', el).checked }));
 A.rvqAdd = () => { revState.questions = [...readReviewQuestions(), { id: '', text: '', type: 'stars', modules: ['job', 'invoice'], required: false }]; drawReviewQuestions(); const all = $$('#rvQs [name=text]'); all[all.length - 1].focus(); };
 A.rvqRm = (d, el) => { const i = Number(el.closest('.rvq').dataset.i); revState.questions = readReviewQuestions().filter((q, n) => n !== i); drawReviewQuestions(); };
+// questions reorder by dragging the dotted handle (mouse or touch), or with the arrow keys while it has focus; the order is kept on Save questions
+const rvqMoved = (row) => { $$('#rvQs .rvq').forEach((r, i) => { r.dataset.i = i; }); row.classList.remove('moved'); void row.offsetWidth; row.classList.add('moved'); drawReviewPreview(); };
+document.addEventListener('pointerdown', (e) => {
+  const h = e.target.closest('.rvq .rvq-drag'); if (!h || e.button !== 0) return;
+  e.preventDefault(); const row = h.closest('.rvq'); const list = row.parentElement; const start = row.nextElementSibling;
+  row.classList.add('dragging'); document.body.classList.add('row-drag'); // listened for on the window: moving the row would drop a pointer capture on the handle
+  const move = (ev) => {
+    const next = [...list.children].filter((r) => r !== row).find((r) => { const b = r.getBoundingClientRect(); return ev.clientY < b.top + b.height / 2; });
+    if ((next || null) !== row.nextElementSibling) list.insertBefore(row, next || null);
+    if (ev.clientY < 60) window.scrollBy(0, -12); else if (ev.clientY > innerHeight - 60) window.scrollBy(0, 12);
+  };
+  const end = () => {
+    removeEventListener('pointermove', move); removeEventListener('pointerup', end); removeEventListener('pointercancel', end);
+    row.classList.remove('dragging'); document.body.classList.remove('row-drag');
+    if (row.nextElementSibling !== start) rvqMoved(row);
+  };
+  addEventListener('pointermove', move); addEventListener('pointerup', end); addEventListener('pointercancel', end);
+});
+document.addEventListener('keydown', (e) => {
+  const h = e.target.closest('.rvq .rvq-drag'); if (!h || !['ArrowUp', 'ArrowDown'].includes(e.key)) return;
+  e.preventDefault(); const row = h.closest('.rvq'); const other = e.key === 'ArrowUp' ? row.previousElementSibling : row.nextElementSibling; if (!other) return;
+  if (e.key === 'ArrowUp') other.before(row); else other.after(row);
+  h.focus(); rvqMoved(row);
+});
 A.rvqSave = async (d, el) => {
   el.disabled = true;
   try { revState.questions = await api('PUT', '/api/reviews/questions', { questions: readReviewQuestions() }); drawReviewQuestions(); toast('Questions saved'); } catch (x) { toast(x.message, true); }
