@@ -2428,6 +2428,7 @@ const QM = {
   deposit: QI('<path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>'),
   eye: QI('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
   sign: QI('<path d="M17 3a2.85 2.85 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5z"/><path d="M15 5l4 4"/>'),
+  qr: QI('<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 17h4v4h-4"/>', 'ok'),
   pdf: QI('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9.5 17.5c1.5-1 3-4 3.2-6.5.1-1.2-1.3-1.4-1.5-.3-.4 2.2 2.6 5.5 4.6 5.3 1.1-.1.9-1.5-.4-1.4-2.1.2-4.5 1.7-5.9 2.9z"/>', 'pdf'),
   trash: QI('<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/>', 'bad'),
 };
@@ -2452,7 +2453,7 @@ function invoiceMore(d, c) {
   const b = (act, icon, label, extra = '') => `<button type="button" class="mi" data-act="${act}" data-kind="invoice" data-id="${d.id}" ${extra}>${QM[icon]}${label}</button>`;
   const open = d.status !== 'paid';
   return `<details class="menu more-menu"><summary class="btn alt"><span class="more-dots" aria-hidden="true">•••</span> More</summary><div class="menu-list">
-${open ? b('collectPayment', 'pay', 'Collect Payment') : ''}${b('copyInvoice', 'copy', 'Create Similar Invoice')}
+${open ? b('collectPayment', 'pay', 'Collect Payment') + (invBalance(d) > 0 ? b('payQr', 'qr', 'Show Pay QR Code') : '') : ''}${b('copyInvoice', 'copy', 'Create Similar Invoice')}
 <hr class="mi-sep"><div class="mi-h">${open ? 'Send as…' : 'Send receipt as…'}</div>${b(open ? 'sendDoc' : 'sendReceipt', 'email', 'Email', 'data-ch="email"')}${planHas('sms') && c.phone && c.smsConsent ? b(open ? 'sendDoc' : 'sendReceipt', 'text', 'Text Message', 'data-ch="text"') : ''}
 ${d.status === 'draft' ? `<hr class="mi-sep"><div class="mi-h">Mark as…</div>${b('markInvoiceSent', 'awaiting', 'Awaiting Payment')}` : ''}
 <hr class="mi-sep"><a class="mi" href="/pay/${d.token}" target="_blank">${QM.eye}${open ? 'Preview as Client' : 'View Receipt'}</a>
@@ -2796,7 +2797,7 @@ ${d.status === 'sent' ? item('approveQuote', 'Mark approved') : ''}
 ${['draft', 'sent', 'approved'].includes(d.status) ? item('mSignQuote', d.signedAt ? 'Collect another signature' : 'Collect signature') : ''}
 ${d.status !== 'declined' && d.depositFee > 0 && !d.depositPaidAt ? item('markDepositPaid', `Record deposit payment${d.zelleSentAt ? ` (${sentName(d)} sent)` : ''}`) : ''}
 ${canJob ? item('quoteToJob', 'Create job') : ''}${job ? `<a href="/jobs/edit?id=${job.id}" data-link>Go to job ${esc(job.number)}</a>` : ''}`
-    : `<a href="/invoices/view?id=${d.id}&preview=1" data-link>${d.status === 'paid' ? 'View receipt' : 'View invoice'}</a>${d.status !== 'paid' ? item('collectPayment', 'Collect payment') : ''}${planHas('signatures') ? item('mSignInvoice', d.signedAt ? 'Collect another signature' : 'Collect signature') : ''}`}
+    : `<a href="/invoices/view?id=${d.id}&preview=1" data-link>${d.status === 'paid' ? 'View receipt' : 'View invoice'}</a>${d.status !== 'paid' ? item('collectPayment', 'Collect payment') : ''}${d.status !== 'paid' && invBalance(d) > 0 ? item('payQr', 'Show pay QR code') : ''}${planHas('signatures') ? item('mSignInvoice', d.signedAt ? 'Collect another signature' : 'Collect signature') : ''}`}
 <a href="/${x.kind}s/edit?id=${d.id}" data-link>Edit everything at once</a>
 ${item('delDoc', `Delete ${x.kind}`, `data-kind="${x.kind}" class="danger-text"`)}</div>`);
   f.addEventListener('click', (e) => { if (e.target.closest('a, button[data-act]')) mClose(true); });
@@ -3557,8 +3558,35 @@ A.collectPayment = (d) => {
   payDialog({ title: `Collect payment · ${inv.number}`, amount: owed, max: owed, method: inv.zelleSentAt ? sentVia(inv) : '',
     note: inv.zelleSentAt ? `The client reported sending this by ${sentName(inv)}. Check that it arrived before recording it.` : '',
     async save(body) { const r = await api('POST', `/api/invoices/${inv.id}/payments`, body); toast(r.status === 'paid' ? `${inv.number} is paid in full` : `Payment recorded. ${money(r.balanceDue)} still owed`); refresh(); } });
+  // paying by card with no reader: the client scans the invoice's QR code and pays on their own phone
+  const f = $('#overlay .pay-form'); if (f && owed > 0) f.insertAdjacentHTML('afterbegin', `<button type="button" class="pq-offer" data-act="payQr" data-id="${inv.id}">${QM.qr}<span><strong>Client paying by card?</strong> Show a QR code they scan to pay on their phone</span></button>`);
 };
 A.markPaid = A.collectPayment;
+// Show Pay QR Code: the client scans the invoice's pay link with their own phone and pays there (card, bank, Zelle… whatever the invoice offers),
+// so a business can take a card in person with no reader. The box checks back every few seconds and shows when the payment arrives.
+A.payQr = async (d) => {
+  const inv = byId(D.invoices, d.id); const c = byId(D.clients, inv.clientId) || {};
+  const body = modal(`Pay by QR code · ${inv.number}`, `<div class="qr-pop pay-qr"><h2>${esc(c.name || inv.number)}</h2><p class="pq-due"><span class="muted">Amount due</span><strong id="pqDue">${money(invBalance(inv))}</strong></p>
+<div class="qr-img" id="pqImg"><div class="pq-wait muted">Making the code…</div></div><p class="pq-how muted" id="pqHow">Ask your client to point their phone’s camera at the code and tap the link to pay.</p>
+<div class="qr-acts"><button type="button" data-act="pqCopy">${svgIcon(ICONS.link)}<span>Copy link</span></button><button type="button" data-act="closeModal">${svgIcon('<path d="M20 6L9 17l-5-5"/>')}<span>Done</span></button></div></div>`);
+  const box = body.closest('.modal'); box.classList.add('qr-modal');
+  let r; try { r = await api('GET', `/api/invoices/${inv.id}/short-link`); } catch (x) { $('#pqImg').innerHTML = `<p class="muted">${esc(x.message)}</p>`; return; }
+  A.pqCopy = async () => { await navigator.clipboard.writeText(r.url); toast('Link copied'); };
+  $('#pqImg').innerHTML = qrSvg(r.url);
+  const paid = () => { $('#pqImg').innerHTML = `<div class="pq-paid">${svgIcon('<path d="M20 6L9 17l-5-5"/>', 64)}<strong>Paid in full</strong></div>`; $('#pqDue').textContent = money(0); $('#pqHow').textContent = 'The payment came through. The invoice is marked paid.'; refresh(); };
+  if (r.status === 'paid' || !(r.balanceDue > 0)) return paid();
+  let last = r.balanceDue;
+  const tick = async () => {
+    if (!document.body.contains(box)) return; // closed: stop checking
+    try {
+      const s = await api('GET', `/api/invoices/${inv.id}/short-link?status=1`);
+      if (s.status === 'paid' || !(s.balanceDue > 0)) return paid();
+      if (s.balanceDue !== last) { last = s.balanceDue; $('#pqDue').textContent = money(last); toast(`Part payment received. ${money(last)} still owed`); refresh(); }
+    } catch (x) { /* a dropped connection: try again next time */ }
+    setTimeout(tick, 4000);
+  };
+  setTimeout(tick, 4000);
+};
 
 /* ===== jobs ===== */
 function jobConflicts(job) { return D.jobs.filter((j) => j.id !== job.id && j.status !== 'completed' && j.date === job.date && j.staffIds.some((s) => (job.staffIds || []).includes(s)) && j.startTime < job.endTime && job.startTime < j.endTime); }

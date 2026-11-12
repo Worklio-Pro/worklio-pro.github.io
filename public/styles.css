@@ -693,6 +693,11 @@ table.domains td{vertical-align:middle}.dom-acts{display:flex;gap:6px;justify-co
 .qr-acts{display:flex;justify-content:space-around;gap:8px;padding-top:14px;border-top:1px solid var(--line)}
 .qr-acts a,.qr-acts button{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 4px;border:0;border-radius:10px;background:none;color:var(--text);font:inherit;font-size:14px;font-weight:600;text-decoration:none;cursor:pointer}
 .qr-acts a:hover,.qr-acts button:hover{background:var(--surface-2)}
+.pay-qr .pq-due{display:flex;flex-direction:column;gap:2px;margin:-6px 0 14px;font-size:14px}.pay-qr .pq-due strong{font-size:30px;line-height:1.1}
+.pay-qr .qr-img{background:#fff;padding:10px;border-radius:12px}.pay-qr .pq-wait{padding:90px 0;font-size:14px}
+.pay-qr .pq-paid{display:flex;flex-direction:column;align-items:center;gap:8px;padding:50px 0;color:#15803d;font-size:20px}
+.pay-qr .pq-how{margin:12px 0 18px;font-size:14px}
+.pq-offer{display:flex;align-items:center;gap:10px;width:100%;margin:0 0 14px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);color:var(--text);font:inherit;font-size:14px;text-align:left;cursor:pointer}.pq-offer:hover{border-color:var(--brand,#2563eb)}.pq-offer strong{display:block}
 .menu-h{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:8px 12px 4px}
 .menu-list a.on{background:var(--tint);color:var(--tint-fg);font-weight:600}
 /* help panel: slides in from the right */

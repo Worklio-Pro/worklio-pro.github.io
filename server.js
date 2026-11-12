@@ -2633,7 +2633,9 @@ app.post('/api/invoices/:id/send', async (req, res) => {
 [['quotes', quoteLink], ['invoices', invoiceLink]].forEach(([col, linkFor]) => app.get(`/api/${col}/:id/short-link`, (req, res) => {
   const doc = db[col].find((x) => x.id === req.params.id);
   if (!doc) return res.status(404).json({ error: 'Not found' });
-  res.json({ url: shortLink(linkFor(doc)) });
+  // an invoice's QR code (Show Pay QR Code) checks back with ?status=1 to see when the client has paid
+  const owed = col === 'invoices' ? (({ status, balanceDue }) => ({ status, balanceDue }))(withStatus(doc)) : {};
+  res.json(req.query.status ? owed : { url: shortLink(linkFor(doc)), ...owed });
 }));
 // the Email box starts from the email template; Print or Save PDF (and the box's PDF attachment) is the quote or invoice as a PDF
 [['quotes', 'quote'], ['invoices', 'invoice']].forEach(([col, kind]) => {
