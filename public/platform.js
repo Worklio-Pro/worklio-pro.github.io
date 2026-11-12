@@ -2441,7 +2441,7 @@ async function compareView(main) {
   const box = (h, list, none) => `<div class="card cmp-box"><h3>${h}</h3>${list.length ? `<ul>${list.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : `<p class="muted" style="margin:0">${none}</p>`}</div>`;
   const out = []; let group = null;
   for (const r of CMP_ROWS) {
-    if (r.length === 1) { group = `<tr class="cmp-g"><td colspan="${CMP_COLS.length + 2}">${esc(r[0])}</td></tr>`; continue; }
+    if (r.length === 1) { group = `<tr class="cmp-g"><td colspan="${CMP_COLS.length + 2}"><span>${esc(r[0])}</span></td></tr>`; continue; }
     const us = cmpUs(r); if (cmpGaps && !CMP_GAP.includes(us.s)) continue;
     if (group) { out.push(group); group = null; }
     const usCell = us.id ? `<button type="button" class="link-btn" data-act="frOpen" data-id="${esc(us.id)}" title="Open the Board post">${frChip('s-' + us.s, us.l)}</button>` : frChip(us.s === 'have' ? 's-done' : 's-missing', us.l);
