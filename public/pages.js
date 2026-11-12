@@ -1021,7 +1021,7 @@ A.runSvcImport = async (d, el) => {
 A.svcImportTemplate = () => downloadCsv('products-services-sample.csv', [['Name', 'Description', 'Type', 'Price', 'Unit', 'Category'], ['Service call', 'Diagnose the problem on site', 'Service', '89', 'visit', 'Repairs'], ['Outlet cover', 'White duplex wall plate', 'Product', '4.50', 'each', 'Parts']]);
 
 /* ===== /expenses ===== */
-let expJob = '';
+let expJob = ''; let expView = { cat: 'all', date: 'all', q: '', sort: 'date', dir: -1 };
 const CATS = ['Materials', 'Subcontractor', 'Fuel', 'Equipment', 'Software', 'Insurance', 'Other'];
 /* ===== /settings/import-export (Settings → Other Settings): every import and export in one place. Reports keep their own Export CSV. ===== */
 PAGES['/settings/import-export'] = {
@@ -1147,16 +1147,43 @@ A.tsRates = () => {
 
 PAGES['/expenses'] = {
   title: 'Expense Tracker',
+  // same look as the other lists: the totals on one line, a tab per category (count and amount), filters, then the expenses grouped by month
   async render(main) {
-    const list = D.expenses.filter((e) => !expJob || (expJob === 'none' ? !e.jobId : e.jobId === expJob)).sort((a, b) => b.date.localeCompare(a.date));
-    const total = list.reduce((s, e) => s + e.amount, 0);
-    const byCat = {}; D.expenses.forEach((e) => { byCat[e.category] = (byCat[e.category] || 0) + e.amount; });
-    const jobLabel = (id) => { const j = byId(D.jobs, id); return j ? esc(`${j.number} · ${j.title}`) : '<span class="muted">General</span>'; };
+    const v = expView; const day = ymd(new Date()); const mStart = day.slice(0, 8) + '01'; const yStart = day.slice(0, 5) + '01-01';
+    const lmStart = ymd(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1));
+    const sum = (l) => l.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+    const thisMonth = sum(D.expenses.filter((e) => e.date >= mStart)); const lastMonth = sum(D.expenses.filter((e) => e.date >= lmStart && e.date < mStart));
+    const general = D.expenses.filter((e) => !e.jobId);
+    const since = { month: mStart, last: lmStart, year: yStart }[v.date] || ''; const until = v.date === 'last' ? mStart : '';
+    const jobLabel = (id) => { const j = byId(D.jobs, id); return j ? `<a href="/jobs/edit?id=${j.id}" data-link>${esc(`${j.number} · ${j.title}`)}</a>` : '<span class="muted">General</span>'; };
+    const base = D.expenses.filter((e) => (!expJob || (expJob === 'none' ? !e.jobId : e.jobId === expJob)) && (!since || e.date >= since) && (!until || e.date < until)
+      && (!v.q || [e.vendor, e.description, e.category, e.bizCat, (byId(D.jobs, e.jobId) || {}).number, money(e.amount)].join(' ').toLowerCase().includes(v.q.toLowerCase())));
+    const list = base.filter((e) => v.cat === 'all' || e.category === v.cat);
+    const key = { date: (e) => e.date, category: (e) => e.category || '', vendor: (e) => (e.vendor || '').toLowerCase(), amount: (e) => Number(e.amount) || 0 }[v.sort];
+    list.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0) * v.dir || b.date.localeCompare(a.date));
+    const th = (k, label, cls = '') => `<th class="${cls}"><button class="th-btn" data-act="expSort" data-k="${k}">${label} <span class="sort ${v.sort === k ? 'on' : ''}">${v.sort === k ? (v.dir > 0 ? '▲' : '▼') : '⇅'}</span></button></th>`;
+    const cats = [...new Set([...CATS, ...D.expenses.map((e) => e.category)])].filter((c) => c && (c === v.cat || base.some((e) => e.category === c)));
+    const row = (e) => `<tr class="crow" data-act="editExpense" data-id="${e.id}" title="Edit expense"><td class="cl-nowrap">${fmtDate(e.date)}</td><td><span class="tag">${esc(e.category)}</span></td>
+<td><strong>${esc(e.vendor || '—')}</strong>${e.description ? `<div class="muted sm-l">${esc(e.description)}</div>` : ''}</td><td>${jobLabel(e.jobId)}${e.bizCat ? ` <span class="svc-cat">${esc(e.bizCat)}</span>` : ''}</td><td class="r"><strong>${money(e.amount)}</strong></td></tr>`;
+    // newest first: a heading for each month with its total
+    let body = '';
+    if (v.sort === 'date' && v.dir < 0) { let m = ''; list.forEach((e) => { const k = e.date.slice(0, 7); if (k !== m) { m = k; const inM = list.filter((x) => x.date.slice(0, 7) === k);
+      body += `<tr class="lgrp"><td colspan="5"><div><strong>${parseD(k + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</strong><span class="muted">${inM.length} expense${inM.length === 1 ? '' : 's'} · ${money(sum(inM))}</span></div></td></tr>`; } body += row(e); }); } else body = list.map(row).join('');
+    const chg = lastMonth ? `<span class="chg ${thisMonth <= lastMonth ? 'up' : 'down'}">${thisMonth >= lastMonth ? '↑' : '↓'} ${Math.abs(Math.round(((thisMonth - lastMonth) / lastMonth) * 100))}%</span>` : '';
     main.innerHTML = `<div class="head"><div><h1>Expense Tracker</h1><p class="sub">Log material costs, subcontractor fees and other spending against specific projects.</p></div><button class="btn" data-act="newExpense">+ Log expense</button></div>
-<div class="grid g3">${stat('Total shown', money(total), list.length + ' expenses')}${stat('All expenses', money(D.expenses.reduce((s, e) => s + e.amount, 0)))}<div class="card"><div class="l muted">By category</div>${Object.entries(byCat).map(([k, v]) => `<div style="display:flex;justify-content:space-between"><span>${esc(k)}</span><span>${money(v)}</span></div>`).join('') || '<span class="muted">None yet</span>'}</div></div>
-<div class="card" style="margin-top:16px"><label style="max-width:360px">Filter by project<select id="expJob"><option value="">All projects</option><option value="none" ${expJob === 'none' ? 'selected' : ''}>General (no project)</option>${D.jobs.map((j) => `<option value="${j.id}" ${expJob === j.id ? 'selected' : ''}>${esc(j.number + ' · ' + j.title)}</option>`).join('')}</select></label>
-<div class="tablewrap"><table class="m-exp"><tr><th>Date</th><th>Category</th><th>Vendor</th><th>Description</th><th>Project</th><th class="r">Amount</th></tr>${list.map((e) => `<tr class="crow" data-act="editExpense" data-id="${e.id}" title="Edit expense"><td>${fmtDate(e.date)}</td><td>${esc(e.category)}</td><td>${esc(e.vendor)}</td><td>${esc(e.description)}</td><td>${jobLabel(e.jobId)}${e.bizCat ? ` <span class="svc-cat">${esc(e.bizCat)}</span>` : ''}</td><td class="r">${money(e.amount)}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">No expenses logged</td></tr>'}</table></div></div>`;
+<div class="lstrip ls-all"><span>This month <strong>${money(thisMonth)}</strong> ${chg}</span><span>Last month <strong>${money(lastMonth)}</strong></span><span>This year <strong>${money(sum(D.expenses.filter((e) => e.date >= yStart)))}</strong></span>
+<span>Not on a job <strong>${general.length}</strong>${general.length ? ` · ${money(sum(general))}` : ''}</span><a href="/reports/view?r=pl" data-link>Profit &amp; loss →</a></div>
+<div class="ltabs" role="tablist" aria-label="Expense category">${['all', ...cats].map((c) => { const l = c === 'all' ? base : base.filter((e) => e.category === c);
+  return `<button type="button" role="tab" aria-selected="${v.cat === c}" class="ltab${v.cat === c ? ' on' : ''}" data-act="expCat" data-c="${esc(c)}"><span class="lt-t">${c === 'all' ? 'All expenses' : esc(c)}<span class="lt-n">${l.length}</span></span><span class="lt-m">${l.length ? moneyShort(sum(l)) : ''}</span></button>`; }).join('')}</div>
+<div class="cfilters"><label class="pill">📅 Date<select data-ev="date">${[['all', 'All'], ['month', 'This month'], ['last', 'Last month'], ['year', 'This year']].map(([k, l]) => `<option value="${k}" ${v.date === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+<label class="pill">Project<select id="expJob"><option value="">All</option><option value="none" ${expJob === 'none' ? 'selected' : ''}>General (no project)</option>${D.jobs.map((j) => `<option value="${j.id}" ${expJob === j.id ? 'selected' : ''}>${esc(j.number + ' · ' + j.title)}</option>`).join('')}</select></label>
+<input id="eq" class="csearch" type="search" placeholder="Search expenses…" value="${esc(v.q)}"></div>
+<div class="card ctable"><div class="tablewrap"><table class="m-exp"><tr>${th('date', 'Date')}${th('category', 'Category')}${th('vendor', 'Vendor · Description')}<th>Project</th>${th('amount', 'Amount', 'r')}</tr>
+${body || `<tr><td colspan="5" class="empty">${D.expenses.length ? 'No expenses match these filters' : 'No expenses logged yet. Click Log expense to add your first one.'}</td></tr>`}</table></div>
+${list.length ? `<div class="lmore"><span>${list.length} expense${list.length === 1 ? '' : 's'} shown</span><strong>${money(sum(list))}</strong></div>` : ''}</div>`;
     $('#expJob').addEventListener('change', (e) => { expJob = e.target.value; refresh(); });
+    $$('[data-ev]').forEach((s) => s.addEventListener('change', (e) => { expView[e.target.dataset.ev] = e.target.value; refresh(); }));
+    let t; $('#eq').addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(async () => { expView.q = e.target.value; await refresh(); const q = $('#eq'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 250); });
   },
 };
 function expenseForm(x) {
@@ -1170,6 +1197,8 @@ ${svcCats().length || x.bizCat ? catField('bizCat', x.bizCat, 'Counts toward', '
   $('form', mb).addEventListener('submit', async (e) => { e.preventDefault(); const b = Object.fromEntries(new FormData(e.target)); b.jobId = b.jobId || null; x.id ? await api('PUT', '/api/expenses/' + x.id, b) : await api('POST', '/api/expenses', b); closeModal(); toast('Expense saved'); refresh(); });
 }
 A.newExpense = () => expenseForm(); A.editExpense = (d) => expenseForm(byId(D.expenses, d.id));
+A.expCat = (d) => { expView = { ...expView, cat: d.c }; refresh(); };
+A.expSort = (d) => { expView.dir = expView.sort === d.k ? -expView.dir : (['date', 'amount'].includes(d.k) ? -1 : 1); expView.sort = d.k; refresh(); };
 A.delExpense = async (d) => { if (!confirm('Delete this expense?')) return; await api('DELETE', '/api/expenses/' + d.id); closeModal(); refresh(); };
 
 /* ===== /reports: every report in groups; each opens at /reports/view?r=<key> ===== */
