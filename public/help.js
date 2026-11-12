@@ -135,8 +135,10 @@ function contactPage() {
 <label class="hp" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label>
 <p class="err" id="formErr" role="alert" hidden></p><button class="btn" type="submit">Send message</button></form><div style="height:48px"></div></div>` };
 }
+// the server answers unknown addresses with Yoya's Page not found (lib/not-found.js); reached from inside the help center, load it from there
 function notFound() {
-  return { title: `Page not found · ${hcName()}`, html: `<div class="wrap"><div class="card hc-help" style="margin-top:40px"><div><h2>We couldn’t find that page</h2><p>It may have moved. Try searching, or start from the help center home.</p></div><a class="btn" href="/" data-link>Help Center home</a></div></div>` };
+  location.replace(location.href);
+  return { title: `Page not found · ${hcName()}`, html: '' };
 }
 
 /* ===== router ===== */
