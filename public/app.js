@@ -2883,7 +2883,7 @@ ${mTextSec(kind, d, 'message', 'Client message', d.notes, 'Add a message for the
 ${mTextSec(kind, d, 'terms', 'Contract / disclaimer', d.disclaimer, 'Add a contract or disclaimer')}</div>
 <div class="md-pane" data-pane="notes" hidden>${mNotesPane(kind, d, d.internalNotes ? mTextSec(kind, d, 'notes', 'Internal notes', d.internalNotes, '') : '')}</div></div>`;
 }
-phoneMq.addEventListener('change', () => { if (/^\/(quotes|invoices|jobs|clients\/view|notifications|settings\/roles)(\/|$)/.test(curPath()) && !mOpenNow()) refresh(); });
+phoneMq.addEventListener('change', () => { if (/^\/(quotes|invoices|jobs|services|clients\/view|notifications|settings\/roles)(\/|$)/.test(curPath()) && !mOpenNow()) refresh(); });
 // phones: Add client, a full-screen chooser: search, Create New Client, then clients by most recent activity (person or building
 // icon, last activity and street, Lead marked). Its own layer, so it can open over a phone edit sheet without closing it.
 function clientSheet({ onPick, onNew, current = '' }) {

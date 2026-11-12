@@ -1892,8 +1892,6 @@ label.bk-auto input{width:auto;margin:0}
 .leaflet-popup-content a{color:var(--link,#0f766e)}
 @media (max-width:900px){.dm-body{grid-template-columns:1fr}.dm-map{order:-1;height:55vh;min-height:300px;position:static}.dm-list{max-height:none;overflow:visible;padding:0}}
 
-/* products & services: the description column is too narrow to read on a phone */
-@media (max-width:600px){.svc-desc{display:none}}
 
 /* phones: lists drop their less important columns so they fit without scrolling sideways */
 @media (max-width:760px){
