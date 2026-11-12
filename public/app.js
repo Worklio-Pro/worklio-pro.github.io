@@ -3312,75 +3312,118 @@ const quoteJob = (q) => D.jobs.find((j) => j.quoteId === q.id);
 const quoteStatus = (q) => (quoteJob(q) ? 'converted' : q.status);
 const qBadge = (s) => `<span class="cstatus q-${s}">${Q_STATUS[s] || esc(s)}</span>`;
 const moneyShort = (n) => (n >= 1000 ? '$' + (n / 1000).toFixed(n >= 1e5 ? 0 : 1) + 'k' : money(n));
-let quoteView = { status: 'all', date: 'all', q: '', sort: 'created', dir: -1 }; const quoteSel = new Set();
+// The Quotes page opens on Needs action: the client asked for changes, a deposit the client says they sent, approved with no job yet,
+// and quotes sent 7 or more days ago with no answer. Same layout as Invoices: status tabs, a one-line stats strip, rows grouped by why.
+let quoteView = { status: 'action', date: 'all', q: '', sort: 'urgent', dir: 1 }; const quoteSel = new Set(); let quoteStaleIds = [];
+const qDay = (s) => (s || '').slice(0, 10);
+const qSentOn = (q) => qDay(q.sentAt || (q.status !== 'draft' ? q.createdAt : ''));
+const daysSince = (d) => (d ? Math.max(0, Math.round((parseD(ymd(new Date())) - parseD(d)) / 864e5)) : 0);
+const agoTxt = (n) => (n === 0 ? 'today' : n === 1 ? 'yesterday' : `${n} days ago`);
+const qDepClaimed = (q) => !!q.zelleSentAt && !q.depositPaidAt && quoteStatus(q) !== 'converted';
+// why a quote needs action: chg = changes requested, dep = deposit to check, job = approved with no job, stale = no reply in 7+ days
+const quoteWhy = (q) => { const s = quoteStatus(q);
+  return quoteChg(q) ? 'chg' : qDepClaimed(q) ? 'dep' : s === 'approved' ? 'job' : s === 'sent' && daysSince(qSentOn(q)) >= 7 ? 'stale' : ''; };
+const quoteInTab = (q, s) => s === 'all' || (s === 'action' ? !!quoteWhy(q) : quoteStatus(q) === s);
+const quoteUrgency = (a, b) => {
+  const rank = (q) => ({ chg: 0, dep: 1, job: 2, stale: 3 }[quoteWhy(q)] ?? { sent: 4, draft: 5, approved: 6, converted: 7, declined: 8 }[quoteStatus(q)] ?? 9);
+  const done = (q) => ['converted', 'declined'].includes(quoteStatus(q)); const at = (q) => qSentOn(q) || qDay(q.createdAt);
+  return rank(a) - rank(b) || (done(a) ? String(b.createdAt || '').localeCompare(String(a.createdAt || '')) : at(a).localeCompare(at(b)));
+};
 PAGES['/quotes'] = {
   title: 'Quotes',
   async render(main) {
-    const v = quoteView; const day = (s) => (s || '').slice(0, 10);
+    const v = quoteView; const day = qDay;
     const ago = (n) => ymd(addDays(new Date(), -n)); const tomorrow = ymd(addDays(new Date(), 1));
-    const sentOn = (q) => day(q.sentAt || (q.status !== 'draft' ? q.createdAt : ''));
     const convOn = (q) => day((quoteJob(q) || {}).createdAt);
     const inWin = (d, from, to) => d && d >= from && d < to;
-    const sentNow = D.quotes.filter((q) => inWin(sentOn(q), ago(30), tomorrow)); const sentPrev = D.quotes.filter((q) => inWin(sentOn(q), ago(60), ago(30)));
+    const sentNow = D.quotes.filter((q) => inWin(qSentOn(q), ago(30), tomorrow)); const sentPrev = D.quotes.filter((q) => inWin(qSentOn(q), ago(60), ago(30)));
     const convNow = D.quotes.filter((q) => inWin(convOn(q), ago(30), tomorrow)); const convPrev = D.quotes.filter((q) => inWin(convOn(q), ago(60), ago(30)));
-    const rate = (list) => (list.length ? Math.round((list.filter(quoteJob).length / list.length) * 100) : 0);
-    const sum = (list) => list.reduce((s, q) => s + (q.total || 0), 0);
-    const change = (now, prev, pts) => (prev ? `<span class="chg ${now >= prev ? 'up' : 'down'}">${now >= prev ? '↑' : '↓'} ${pts ? Math.abs(now - prev) : Math.abs(Math.round(((now - prev) / prev) * 100))}%</span>` : '');
-    const counts = {}; D.quotes.forEach((q) => { const s = quoteStatus(q); counts[s] = (counts[s] || 0) + 1; });
+    const rate = (l) => (l.length ? Math.round((l.filter(quoteJob).length / l.length) * 100) : 0);
+    const sum = (l) => l.reduce((s, q) => s + (q.total || 0), 0);
+    const change = (now, prev, pts) => (prev ? `<span class="chg ${now >= prev ? 'up' : 'down'}">${now >= prev ? '↑' : '↓'} ${pts ? Math.abs(now - prev) + ' pts' : Math.abs(Math.round(((now - prev) / prev) * 100)) + '%'}</span>` : '');
     const since = { '30': ago(30), '90': ago(90), year: new Date().getFullYear() + '-01-01' }[v.date] || '';
+    const cname = (q) => { const c = byId(D.clients, q.clientId); return c ? c.company || c.name : '—'; };
     const list = D.quotes.filter((q) => {
-      if (v.status !== 'all' && quoteStatus(q) !== v.status) return false;
+      if (!quoteInTab(q, v.status)) return false;
       if (since && day(q.createdAt) < since) return false;
       const c = byId(D.clients, q.clientId) || {};
       return !v.q || [q.number, q.title, c.name, c.company, c.address, money(q.total)].join(' ').toLowerCase().includes(v.q.toLowerCase());
     });
-    const cname = (q) => { const c = byId(D.clients, q.clientId); return c ? c.company || c.name : '—'; };
     const order = Object.keys(Q_STATUS);
-    const key = { client: (q) => cname(q).toLowerCase(), number: (q) => Number(String(q.number).replace(/\D/g, '')) || 0, created: (q) => q.createdAt || '', sent: (q) => q.sentAt || '', status: (q) => order.indexOf(quoteStatus(q)), total: (q) => q.total || 0 }[v.sort];
-    list.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0) * v.dir);
+    if (v.sort === 'urgent') list.sort(quoteUrgency);
+    else {
+      const key = { client: (q) => cname(q).toLowerCase(), number: (q) => Number(String(q.number).replace(/\D/g, '')) || 0, created: (q) => q.createdAt || '', sent: (q) => q.sentAt || '', status: (q) => order.indexOf(quoteStatus(q)), total: (q) => q.total || 0 }[v.sort];
+      list.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0) * v.dir);
+    }
     [...quoteSel].forEach((id) => { if (!byId(D.quotes, id)) quoteSel.delete(id); });
     const th = (k, label, cls = '') => `<th class="${cls}"><button class="th-btn" data-act="quoteSort" data-k="${k}">${label} <span class="sort ${v.sort === k ? 'on' : ''}">${v.sort === k ? (v.dir > 0 ? '▲' : '▼') : '⇅'}</span></button></th>`;
     const addr = (q) => esc(q.address || (byId(D.clients, q.clientId) || {}).address || ''); const nowrap = (s) => `<td style="white-space:nowrap">${s}</td>`;
+    const sub = (s) => (s ? `<div class="muted sm-l">${s}</div>` : '');
+    const stCell = (q) => { const s = quoteStatus(q);
+      return `${s === 'sent' ? `<span class="cstatus q-sent">Sent ${agoTxt(daysSince(qSentOn(q)))}</span>` : qBadge(s)}${quoteChg(q) ? ' <span class="badge chg">Changes requested</span>' : ''}${q.zelleSentAt && !q.depositPaidAt ? ` <span class="badge zelle">${sentName(q)} sent</span>` : ''}${s === 'approved' && q.depositPaidAt ? sub('Deposit paid') : ''}`; };
+    let cols = []; const has = (k) => cols.some((c) => c.k === k);
     const QCOLS = [
-      { k: 'client', label: 'Client', th: th('client', 'Client'), td: (q) => `<td><strong>${esc(cname(q))}</strong></td>` },
-      { k: 'number', label: 'Quote number', th: th('number', 'Quote number'), td: (q) => `<td>${esc(q.number)}${q.title && !titleCol ? `<div>${esc(q.title)}</div>` : ''}</td>` },
+      { k: 'client', label: 'Client', th: th('client', 'Client'), td: (q) => `<td><strong>${esc(cname(q))}</strong>${q.title && !has('title') ? sub(esc(q.title)) : ''}</td>` },
+      { k: 'number', label: 'Quote number', th: th('number', 'Quote'), td: (q) => `<td style="white-space:nowrap">${esc(q.number)}${qSentOn(q) ? (has('sent') ? '' : sub('Sent ' + esc(fmtDate(qSentOn(q))))) : has('created') ? '' : sub('Created ' + esc(fmtDate(day(q.createdAt))))}</td>` },
       { k: 'title', label: 'Title', off: true, th: '<th>Title</th>', td: (q) => `<td>${esc(q.title || '')}</td>` },
-      { k: 'property', label: 'Property', th: '<th>Property</th>', td: (q) => `<td>${addr(q)}</td>` },
-      { k: 'created', label: 'Created', th: th('created', 'Created'), td: (q) => nowrap(fmtDate(day(q.createdAt))) },
+      { k: 'property', label: 'Property', off: true, th: '<th>Property</th>', td: (q) => `<td>${addr(q)}</td>` },
+      { k: 'created', label: 'Created', off: true, th: th('created', 'Created'), td: (q) => nowrap(fmtDate(day(q.createdAt))) },
       { k: 'sent', label: 'Sent', off: true, th: th('sent', 'Sent'), td: (q) => nowrap(q.sentAt ? fmtDate(day(q.sentAt)) : '<span class="muted">—</span>') },
-      { k: 'status', label: 'Status', th: th('status', 'Status'), td: (q) => `<td>${qBadge(quoteStatus(q))}${quoteChg(q) ? ' <span class="badge chg">Changes requested</span>' : ''}${q.zelleSentAt && !q.depositPaidAt ? ` <span class="badge zelle">${sentName(q)} sent</span>` : ''}</td>` },
+      { k: 'status', label: 'Status', th: th('status', 'Status'), td: (q) => `<td>${stCell(q)}</td>` },
       { k: 'deposit', label: 'Deposit', off: true, th: '<th class="r">Deposit</th>', td: (q) => `<td class="r">${q.depositFee ? `${money(q.depositFee)}${q.depositPaidAt ? '<div class="muted">Paid</div>' : ''}` : '<span class="muted">—</span>'}</td>` },
       { k: 'total', label: 'Total', th: th('total', 'Total', 'r'), td: (q) => `<td class="r">${qHasOpts(q) && !q.chosenOption ? `<small class="muted qo-from">${q.options.length} options from</small><strong>${money(Math.min(...Object.values(q.optionTotals || {}).map((t) => t.total)))}</strong>` : `<strong>${money(q.total)}</strong>`}</td>` },
     ];
-    const cols = listCols('quotes', QCOLS); const titleCol = cols.some((c) => c.k === 'title');
-    if (phoneMq.matches) return mobileList(main, { path: '/quotes', title: 'Quotes', plural: 'quotes', one: 'quote', list, q: v.q, status: v.status, statuses: order.map((s) => [s, Q_STATUS[s]]), date: (x) => x.createdAt,
+    cols = listCols('quotes', QCOLS);
+    if (phoneMq.matches) return mobileList(main, { path: '/quotes', title: 'Quotes', plural: 'quotes', one: 'quote', list, q: v.q, status: v.status, statuses: [['action', 'Needs action'], ...order.map((s) => [s, Q_STATUS[s]])], date: (x) => x.createdAt,
       row: (x) => ({ name: cname(x), date: mDay(x.createdAt), amount: mAmt(x.total), title: x.title, label: quoteChg(x) ? 'Changes requested' : Q_STATUS[quoteStatus(x)], cls: 'q-' + quoteStatus(x), href: '/quotes/view?id=' + x.id }),
       onStatus: (k) => { quoteView = { ...quoteView, status: k }; }, onQ: (t) => { quoteView.q = t; }, newAct: 'newQuote' });
+    // the buttons on a row (shown on hover): what you'd do next with that quote
+    const acts = (q) => { const b = (act, label, alt, cls = '') => `<button type="button" class="btn${alt ? ' alt' : ''}${cls}" data-act="${act}" data-id="${q.id}">${label}</button>`; const w = quoteWhy(q); const s = quoteStatus(q);
+      if (w === 'chg') return b('editQuote', 'Revise quote');
+      if (w === 'dep') return b('markDepositPaid', 'Record deposit');
+      if (s === 'approved') return b('quoteToJob', 'Convert to job', false, ' need-jobs-edit');
+      if (s === 'sent') return b('sendQuote', 'Follow up', true) + b('approveQuote', 'Mark approved');
+      if (s === 'draft') return b('sendQuote', 'Send');
+      const j = s === 'converted' && quoteJob(q); return j ? `<a class="btn alt" href="/jobs/edit?id=${j.id}" data-link>Open job</a>` : ''; };
+    const ncol = cols.length + 2;
+    const row = (q) => `<tr class="crow" data-id="${q.id}"><td class="sel-td"><input type="checkbox" class="qsel" value="${q.id}" ${quoteSel.has(q.id) ? 'checked' : ''} aria-label="Select ${esc(q.number)}"></td>
+${cols.map((c) => c.td(q)).join('')}<td class="racts"><div>${acts(q)}</div></td></tr>`;
+    const grp = (dot, title, note, btn = '') => `<tr class="lgrp"><td colspan="${ncol}"><div><i class="dot ${dot}"></i><strong>${title}</strong><span class="muted">${note}</span>${btn}</div></td></tr>`;
+    const stale = list.filter((q) => quoteWhy(q) === 'stale'); quoteStaleIds = stale.map((q) => q.id);
+    let body;
+    if (v.status === 'action' && v.sort === 'urgent') { // grouped by why it needs action
+      const of = (w) => list.filter((q) => quoteWhy(q) === w); const s = (n) => (n === 1 ? '' : 's');
+      const part = (l, head) => (l.length ? head + l.map(row).join('') : '');
+      body = part(of('chg'), grp('i-claim', 'Changes requested', 'The client asked for a revision'))
+        + part(of('dep'), grp('i-claim', 'Client says they paid the deposit', 'Check that it arrived, then record it'))
+        + part(of('job'), grp('q-approved', 'Approved, no job yet', 'Schedule the work'))
+        + part(stale, grp('q-sent', 'No reply in 7+ days', `${stale.length} quote${s(stale.length)} · ${money(sum(stale))}`, stale.length > 1 ? `<button type="button" class="btn alt" data-act="quoteFollowAll">Follow up all ${stale.length}</button>` : ''));
+    } else body = list.map(row).join('');
+    const waiting = D.quotes.filter((q) => quoteStatus(q) === 'sent' && !quoteWhy(q)).length;
+    const tabs = [['action', 'Needs action', D.quotes.filter((q) => quoteWhy(q))], ...order.map((s) => [s, Q_STATUS[s], ['converted', 'declined'].includes(s) ? null : D.quotes.filter((q) => quoteStatus(q) === s)]), ['all', 'All', null]];
+    const tabM = (s, l) => (l ? (l.length ? moneyShort(sum(l)) : '') : s === 'converted' && convNow.length ? `${moneyShort(sum(convNow))} past 30 days` : '');
     main.innerHTML = `<div class="head"><h1>Quotes</h1><div class="actions"><button class="btn" data-act="newQuote">New Quote</button></div></div>
-<div class="cstats">
-<div class="cstat"><strong class="cs-h">Overview</strong><div class="qov">${order.map((s) => `<button data-act="quoteFilter" data-s="${s}"><i class="dot q-${s}"></i>${Q_STATUS[s]} (${counts[s] || 0})</button>`).join('')}</div></div>
-<button class="cstat" data-act="quoteCard" data-k="rate"><div class="cs-h"><strong>Conversion rate</strong><span>↗</span></div><div class="muted">Sent in the past 30 days that became jobs</div><div class="cs-v">${rate(sentNow)}% ${change(rate(sentNow), rate(sentPrev), true)}</div></button>
-<button class="cstat" data-act="quoteCard" data-k="sent"><div class="cs-h"><strong>Sent</strong><span>↗</span></div><div class="muted">Past 30 days</div><div class="cs-v">${sentNow.length} ${change(sentNow.length, sentPrev.length)}</div><div class="muted">${moneyShort(sum(sentNow))}</div></button>
-<button class="cstat" data-act="quoteCard" data-k="converted"><div class="cs-h"><strong>Converted</strong><span>↗</span></div><div class="muted">Past 30 days</div><div class="cs-v">${convNow.length} ${change(convNow.length, convPrev.length)}</div><div class="muted">${moneyShort(sum(convNow))}</div></button></div>
-<h2 class="ftitle">All quotes <span class="muted">(${list.length} result${list.length === 1 ? '' : 's'})</span></h2>
-<div class="cfilters"><label class="pill">Status<select data-qv="status"><option value="all">All</option>${order.map((s) => `<option value="${s}" ${v.status === s ? 'selected' : ''}>${Q_STATUS[s]}</option>`).join('')}</select></label>
-<label class="pill">📅 Date<select data-qv="date">${[['all', 'All'], ['30', 'Past 30 days'], ['90', 'Past 90 days'], ['year', 'This year']].map(([k, l]) => `<option value="${k}" ${v.date === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+<div class="lstrip"><span class="ls-l">Past 30 days</span><span>Sent <strong>${sentNow.length} · ${moneyShort(sum(sentNow))}</strong> ${change(sentNow.length, sentPrev.length)}</span>
+<span>Converted <strong>${convNow.length} · ${moneyShort(sum(convNow))}</strong> ${change(convNow.length, convPrev.length)}</span><span>Conversion rate <strong>${rate(sentNow)}%</strong> ${change(rate(sentNow), rate(sentPrev), true)}</span><a href="/reports" data-link>Full report →</a></div>
+<div class="ltabs" role="tablist" aria-label="Quote status">${tabs.map(([s, label, l]) => `<button type="button" role="tab" aria-selected="${v.status === s}" class="ltab${v.status === s ? ' on' : ''}" data-act="quoteTab" data-s="${s}"><span class="lt-t">${Q_STATUS[s] ? `<i class="dot q-${s}"></i>` : ''}${label}${l ? `<span class="lt-n">${l.length}</span>` : ''}</span><span class="lt-m">${tabM(s, l)}</span></button>`).join('')}</div>
+<div class="cfilters"><label class="pill">📅 Date<select data-qv="date">${[['all', 'All'], ['30', 'Past 30 days'], ['90', 'Past 90 days'], ['year', 'This year']].map(([k, l]) => `<option value="${k}" ${v.date === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
 <input id="qq" class="csearch" type="search" placeholder="Search quotes…" value="${esc(v.q)}">${colPicker('quotes', QCOLS, cols)}</div>
-${quoteSel.size ? `<div class="bulk"><strong>${quoteSel.size} selected</strong><button class="btn danger sm" data-act="deleteSelQuotes">Delete</button><button class="btn alt sm" data-act="quoteClearSel">Clear selection</button></div>` : ''}
-<div class="card ctable"><div class="tablewrap"><table><tr><th style="width:36px"><input type="checkbox" id="qSelAll" aria-label="Select all" ${list.length && list.every((q) => quoteSel.has(q.id)) ? 'checked' : ''}></th>
-${cols.map((c) => c.th).join('')}</tr>
-${list.map((q) => `<tr class="crow" data-id="${q.id}"><td><input type="checkbox" class="qsel" value="${q.id}" ${quoteSel.has(q.id) ? 'checked' : ''} aria-label="Select ${esc(q.number)}"></td>
-${cols.map((c) => c.td(q)).join('')}</tr>`).join('') || `<tr><td colspan="${cols.length + 1}" class="empty">${D.quotes.length ? 'No quotes match these filters' : 'No quotes yet'}</td></tr>`}</table></div></div>`;
+${quoteSel.size ? `<div class="bulk"><strong>${quoteSel.size} selected</strong><button class="btn sm" data-act="quoteFollowSel">Send follow-ups</button><button class="btn danger sm" data-act="deleteSelQuotes">Delete</button><button class="btn alt sm" data-act="quoteClearSel">Clear selection</button></div>` : ''}
+<div class="card ctable"><div class="tablewrap"><table><tr><th class="sel-td"><input type="checkbox" id="qSelAll" aria-label="Select all" ${list.length && list.every((q) => quoteSel.has(q.id)) ? 'checked' : ''}></th>${cols.map((c) => c.th).join('')}<th aria-label="Actions"></th></tr>
+${body || `<tr><td colspan="${ncol}" class="empty">${v.status === 'action' && !v.q && v.date === 'all' && D.quotes.length ? 'Nothing needs action: no changes requested, nothing waiting on a reply for a week.' : D.quotes.length ? 'No quotes match these filters' : 'No quotes yet'}</td></tr>`}</table></div>
+${v.status === 'action' && waiting ? `<div class="lmore"><span>${waiting} more quote${waiting === 1 ? ' is' : 's are'} awaiting a reply, sent less than 7 days ago.</span><button type="button" class="link-btn" data-act="quoteTab" data-s="sent">Awaiting response →</button></div>` : ''}</div>`;
     $$('[data-qv]').forEach((s) => s.addEventListener('change', (e) => { quoteView[e.target.dataset.qv] = e.target.value; refresh(); }));
     let t; $('#qq').addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(async () => { quoteView.q = e.target.value; await refresh(); const q = $('#qq'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 250); });
     $('#qSelAll').addEventListener('change', (e) => { list.forEach((q) => (e.target.checked ? quoteSel.add(q.id) : quoteSel.delete(q.id))); refresh(); });
     $$('.qsel').forEach((b) => b.addEventListener('change', (e) => { e.target.checked ? quoteSel.add(e.target.value) : quoteSel.delete(e.target.value); refresh(); }));
-    $$('.crow').forEach((r) => r.addEventListener('click', (e) => { if (!e.target.closest('input')) navigate('/quotes/view?id=' + r.dataset.id); }));
+    $$('.crow').forEach((r) => r.addEventListener('click', (e) => { if (!e.target.closest('input, button, a')) navigate('/quotes/view?id=' + r.dataset.id); }));
   },
 };
-A.quoteFilter = (d) => { quoteView = { ...quoteView, status: d.s }; refresh(); };
-A.quoteCard = (d) => { quoteView = { ...quoteView, date: '30', status: d.k === 'converted' ? 'converted' : 'all' }; refresh(); };
+A.quoteTab = (d) => { quoteView = { ...quoteView, status: d.s, sort: 'urgent', dir: 1 }; quoteSel.clear(); refresh(); };
 A.quoteSort = (d) => { quoteView.dir = quoteView.sort === d.k ? -quoteView.dir : (['created', 'sent', 'total', 'number'].includes(d.k) ? -1 : 1); quoteView.sort = d.k; refresh(); };
+const quoteFollowUp = (ids) => resendMany('quote', ids.map((id) => byId(D.quotes, id)).filter((q) => q && quoteStatus(q) === 'sent'), 'follow-up', () => quoteSel.clear());
+A.quoteFollowAll = () => quoteFollowUp(quoteStaleIds);
+A.quoteFollowSel = () => quoteFollowUp([...quoteSel]);
 A.quoteClearSel = () => { quoteSel.clear(); refresh(); };
 A.deleteSelQuotes = async () => {
   if (!confirm(`Delete ${quoteSel.size} quote${quoteSel.size === 1 ? '' : 's'}? This can't be undone.`)) return;
@@ -3552,15 +3595,16 @@ A.invTab = (d) => { invView = { ...invView, status: d.s, sort: 'urgent', dir: 1 
 A.invSort = (d) => { invView.dir = invView.sort === d.k ? -invView.dir : (['client', 'status'].includes(d.k) ? 1 : -1); invView.sort = d.k; refresh(); };
 A.invClearSel = () => { invSel.clear(); refresh(); };
 // payment reminders by email, one after another: the invoice email again, with its pay-online link (texts are left out)
-async function invRemind(ids) {
-  const list = ids.map((id) => byId(D.invoices, id)).filter((i) => i && i.status !== 'paid' && i.status !== 'draft');
-  const ok = list.filter((i) => (byId(D.clients, i.clientId) || {}).email); const skip = list.length - ok.length; const s = (n) => (n === 1 ? '' : 's');
-  if (!ok.length) return toast(list.length ? 'None of these clients has an email address' : 'Choose unpaid invoices that were already sent', true);
-  if (!confirm(`Email a payment reminder for ${ok.length} invoice${s(ok.length)}?${skip ? ` ${skip} client${skip === 1 ? ' has' : 's have'} no email address and will be skipped.` : ''}`)) return;
+// email several quotes or invoices again, one after another: the same email as Send, with the client’s link (texts are left out)
+async function resendMany(kind, list, what, done) {
+  const ok = list.filter((d) => (byId(D.clients, d.clientId) || {}).email); const skip = list.length - ok.length; const s = (n) => (n === 1 ? '' : 's');
+  if (!ok.length) return toast(list.length ? 'None of these clients has an email address' : `Choose ${kind}s that were already sent`, true);
+  if (!confirm(`Email a ${what} for ${ok.length} ${kind}${s(ok.length)}?${skip ? ` ${skip} client${skip === 1 ? ' has' : 's have'} no email address and will be skipped.` : ''}`)) return;
   let sent = 0; let failed = 0;
-  for (const i of ok) { try { const r = await api('POST', `/api/invoices/${i.id}/send`, { channels: ['email'] }); (r.results || []).some((x) => x.status === 'failed') ? failed++ : sent++; } catch (x) { failed++; } }
-  toast(failed ? `${sent} reminder${s(sent)} sent, ${failed} failed` : `${sent} reminder${s(sent)} sent`, !!failed); invSel.clear(); refresh();
+  for (const d of ok) { try { const r = await api('POST', `/api/${kind}s/${d.id}/send`, { channels: ['email'] }); (r.results || []).some((x) => x.status === 'failed') ? failed++ : sent++; } catch (x) { failed++; } }
+  toast(failed ? `${sent} ${what}${s(sent)} sent, ${failed} failed` : `${sent} ${what}${s(sent)} sent`, !!failed); done(); refresh();
 }
+const invRemind = (ids) => resendMany('invoice', ids.map((id) => byId(D.invoices, id)).filter((i) => i && i.status !== 'paid' && i.status !== 'draft'), 'payment reminder', () => invSel.clear());
 A.invRemindAll = () => invRemind(invLateIds);
 A.invRemindSel = () => invRemind([...invSel]);
 A.exportInvoices = () => downloadCsv('invoices.csv', [['Invoice', 'Client', 'Company', 'Subject', 'Issued', 'Due', 'Status', 'Subtotal', 'Tax', 'Total', 'Balance', 'Paid on', 'Paid by'],
@@ -4074,7 +4118,16 @@ function jobStatus(j) {
 }
 // value of a job: its invoices, or the quote it came from when not invoiced yet
 const jobTotal = (j) => { const inv = jobInvoices(j); if (inv.length) return inv.reduce((s, i) => s + (i.total || 0), 0); if (j.items && j.items.length) return j.total || 0; const q = byId(D.quotes, j.quoteId); return q ? q.total || 0 : null; };
-let jobView = { status: 'all', staff: '', q: '', sort: 'schedule', dir: -1 };
+// The Jobs page opens on Needs action: late visits and completed jobs that need an invoice. Same layout as Invoices and Quotes.
+let jobView = { status: 'action', staff: '', q: '', sort: 'urgent', dir: 1 };
+const jobNeedsAction = (j) => ['late', 'invoice'].includes(jobStatus(j));
+const jobInTab = (j, s) => s === 'all' || (s === 'action' ? jobNeedsAction(j) : jobStatus(j) === s);
+// most urgent first: late (oldest first), requires invoicing, today, upcoming (soonest first), then archived and cancelled (newest first)
+const jobUrgency = (a, b) => {
+  const rank = { late: 0, invoice: 1, today: 2, upcoming: 3, archived: 4, cancelled: 5 }; const ra = rank[jobStatus(a)] ?? 6; const rb = rank[jobStatus(b)] ?? 6;
+  const when = (j) => (j.date || '') + (j.startTime || '');
+  return ra - rb || (ra >= 4 ? when(b).localeCompare(when(a)) : when(a).localeCompare(when(b)));
+};
 PAGES['/jobs'] = {
   title: 'Jobs',
   async render(main) {
@@ -4086,55 +4139,74 @@ PAGES['/jobs'] = {
     const upcoming = D.jobs.filter((j) => j.status === 'scheduled' && j.date >= today && j.date <= ahead(30));
     const sum = (l) => l.reduce((s, j) => s + (jobTotal(j) || 0), 0);
     const change = (now, prev) => (prev ? `<span class="chg ${now >= prev ? 'up' : 'down'}">${now >= prev ? '↑' : '↓'} ${Math.abs(Math.round(((now - prev) / prev) * 100))}%</span>` : '');
-    const count = (s) => D.jobs.filter((j) => jobStatus(j) === s).length;
     const cname = (j) => { const c = byId(D.clients, j.clientId); return c ? c.company || c.name : '—'; };
     const list = D.jobs.filter((j) => {
-      if (v.status !== 'all' && jobStatus(j) !== v.status) return false;
+      if (!jobInTab(j, v.status)) return false;
       if (v.staff && !(j.staffIds || []).includes(v.staff)) return false;
       const c = byId(D.clients, j.clientId) || {};
       return !v.q || [j.number, j.title, j.address, c.name, c.company].join(' ').toLowerCase().includes(v.q.toLowerCase());
     });
     const order = Object.keys(J_STATUS);
-    const key = { client: (j) => cname(j).toLowerCase(), number: (j) => Number(String(j.number).replace(/\D/g, '')) || 0, schedule: (j) => (j.date || '') + (j.startTime || ''), status: (j) => order.indexOf(jobStatus(j)), total: (j) => jobTotal(j) ?? -1 }[v.sort];
-    list.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0) * v.dir);
+    if (v.sort === 'urgent') list.sort(jobUrgency);
+    else {
+      const key = { client: (j) => cname(j).toLowerCase(), number: (j) => Number(String(j.number).replace(/\D/g, '')) || 0, schedule: (j) => (j.date || '') + (j.startTime || ''), status: (j) => order.indexOf(jobStatus(j)), total: (j) => jobTotal(j) ?? -1 }[v.sort];
+      list.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0) * v.dir);
+    }
     const th = (k, label, cls = '') => `<th class="${cls}"><button class="th-btn" data-act="jobSort" data-k="${k}">${label} <span class="sort ${v.sort === k ? 'on' : ''}">${v.sort === k ? (v.dir > 0 ? '▲' : '▼') : '⇅'}</span></button></th>`;
     const team = (j) => (j.staffIds || []).map((id) => byId(D.staff, id)).filter(Boolean).map((s) => s.name).join(', ');
-    const dash = '<span class="muted">—</span>';
+    const dash = '<span class="muted">—</span>'; const sub = (s) => (s ? `<div class="muted sm-l">${s}</div>` : '');
+    const when = (j) => (j.status === 'completed' ? 'Completed ' + fmtDate(j.date) : fmtDate(j.date) + (j.anytime || !j.startTime ? ' · Anytime' : ` · ${fmtTime(j.startTime)} – ${fmtTime(j.endTime)}`));
+    const stCell = (j) => { const st = jobStatus(j); const n = st === 'late' ? daysSince(j.date) : 0;
+      return `<span class="cstatus ${J_CLASS[st]}">${st === 'late' ? (n === 1 ? '1 day late' : `${n} days late`) : J_STATUS[st]}</span>`; };
+    let cols = []; const has = (k) => cols.some((c) => c.k === k);
     const JCOLS = [
-      { k: 'client', label: 'Client', th: th('client', 'Client'), td: (j) => `<td><strong>${esc(cname(j))}</strong></td>` },
-      { k: 'number', label: 'Job number', th: th('number', 'Job number'), td: (j) => `<td>${esc(j.number)}${j.seriesId ? ' ' + RP_ICON : ''}${j.title && !has('title') ? `<div>${esc(j.title)}</div>` : ''}</td>` },
+      { k: 'client', label: 'Client', th: th('client', 'Client'), td: (j) => `<td><strong>${esc(cname(j))}</strong>${j.title && !has('title') ? sub(esc(j.title)) : ''}</td>` },
+      { k: 'number', label: 'Job number', th: th('number', 'Job'), td: (j) => `<td style="white-space:nowrap">${esc(j.number)}${j.seriesId ? ' ' + RP_ICON : ''}${has('schedule') ? '' : sub(esc(when(j))) + (team(j) && !has('team') ? sub(esc(team(j))) : '')}</td>` },
       { k: 'title', label: 'Title', off: true, th: '<th>Title</th>', td: (j) => `<td>${esc(j.title || '')}</td>` },
-      { k: 'property', label: 'Property', th: '<th>Property</th>', td: (j) => `<td>${esc(j.address || (byId(D.clients, j.clientId) || {}).address || '')}</td>` },
-      { k: 'schedule', label: 'Schedule', th: th('schedule', 'Schedule'), td: (j) => `<td>${j.status === 'completed' ? '<div class="sched-done">Completed</div>' : ''}${fmtDate(j.date)}${j.status !== 'completed' ? `<div class="muted">${esc(fmtTime(j.startTime))} – ${esc(fmtTime(j.endTime))}</div>` : ''}${team(j) && !has('team') ? `<div class="muted">${esc(team(j))}</div>` : ''}</td>` },
+      { k: 'property', label: 'Property', off: true, th: '<th>Property</th>', td: (j) => `<td>${esc(j.address || (byId(D.clients, j.clientId) || {}).address || '')}</td>` },
+      { k: 'schedule', label: 'Schedule', off: true, th: th('schedule', 'Schedule'), td: (j) => `<td>${j.status === 'completed' ? '<div class="sched-done">Completed</div>' : ''}${fmtDate(j.date)}${j.status !== 'completed' ? `<div class="muted">${esc(fmtTime(j.startTime))} – ${esc(fmtTime(j.endTime))}</div>` : ''}${team(j) && !has('team') ? `<div class="muted">${esc(team(j))}</div>` : ''}</td>` },
       { k: 'team', label: 'Team', off: true, th: '<th>Team</th>', td: (j) => `<td>${team(j) ? esc(team(j)) : dash}</td>` },
-      { k: 'status', label: 'Status', th: th('status', 'Status'), td: (j) => { const st = jobStatus(j); return `<td><span class="cstatus ${J_CLASS[st]}">${J_STATUS[st]}</span></td>`; } },
+      { k: 'status', label: 'Status', th: th('status', 'Status'), td: (j) => `<td>${stCell(j)}</td>` },
       { k: 'invoiced', label: 'Invoiced', off: true, th: '<th>Invoiced</th>', td: (j) => { const inv = jobInvoices(j); return `<td>${inv.length ? inv.map((i) => esc(i.number)).join(', ') : dash}</td>`; } },
       { k: 'total', label: 'Total', cls: 'money', th: th('total', 'Total', 'r money'), td: (j) => { const t = jobTotal(j); return `<td class="r money"><strong>${t === null ? dash : money(t)}</strong></td>`; } },
     ];
-    const jobCols = JCOLS.filter((c) => c.k !== 'total' || canDo('jobs.prices')); const cols = listCols('jobs', jobCols); const has = (k) => cols.some((c) => c.k === k);
-    if (phoneMq.matches) return mobileList(main, { path: '/jobs', title: 'Jobs', plural: 'jobs', one: 'job', list, q: v.q, status: v.status, statuses: order.map((s) => [s, J_STATUS[s]]), date: (x) => (x.date || '') + (x.startTime || ''),
+    const jobCols = JCOLS.filter((c) => c.k !== 'total' || canDo('jobs.prices')); cols = listCols('jobs', jobCols);
+    if (phoneMq.matches) return mobileList(main, { path: '/jobs', title: 'Jobs', plural: 'jobs', one: 'job', list, q: v.q, status: v.status, statuses: [['action', 'Needs action'], ...order.map((s) => [s, J_STATUS[s]])], date: (x) => (x.date || '') + (x.startTime || ''),
       row: (x) => ({ name: cname(x), date: mDay(x.date) + (x.anytime || !x.startTime ? '' : ' ' + fmtTime(x.startTime)), amount: canDo('jobs.prices') && jobTotal(x) !== null ? mAmt(jobTotal(x)) : '', title: x.title, label: J_STATUS[jobStatus(x)], cls: J_CLASS[jobStatus(x)], href: '/jobs/edit?id=' + x.id }),
       onStatus: (k) => { jobView = { ...jobView, status: k }; }, onQ: (t) => { jobView.q = t; }, newAct: 'newJob', newCls: 'need-jobs-edit' });
+    // the buttons on a row (shown on hover): what you'd do next with that job
+    const acts = (j) => { const b = (act, label, alt, cls = '') => `<button type="button" class="btn${alt ? ' alt' : ''}${cls}" data-act="${act}" data-id="${j.id}">${label}</button>`; const st = jobStatus(j);
+      if (st === 'late') return b('editJob', 'Reschedule', true, ' need-jobs-edit') + b('completeJob', 'Complete', false, ' need-jobs-edit');
+      if (st === 'today') return b('onMyWay', 'On my way', true) + b('completeJob', 'Complete', false, ' need-jobs-edit');
+      if (st === 'invoice') return b('jobInvoice', 'Create invoice', false, ' need-invoices');
+      return ''; };
+    const ncol = cols.length + 1;
+    const row = (j) => `<tr class="crow" data-id="${j.id}">${cols.map((c) => c.td(j)).join('')}<td class="racts"><div>${acts(j)}</div></td></tr>`;
+    const grp = (dot, title, note, btn = '') => `<tr class="lgrp"><td colspan="${ncol}"><div><i class="dot ${dot}"></i><strong>${title}</strong><span class="muted">${note}</span>${btn}</div></td></tr>`;
+    let body;
+    if (v.status === 'action' && v.sort === 'urgent') { // grouped by why it needs action
+      const late = list.filter((j) => jobStatus(j) === 'late'); const inv = list.filter((j) => jobStatus(j) === 'invoice'); const s = (n) => (n === 1 ? '' : 's');
+      body = (late.length ? grp('q-declined', 'Late', 'Scheduled in the past, not completed') + late.map(row).join('') : '')
+        + (inv.length ? grp('q-sent', 'Requires invoicing', `${inv.length} completed job${s(inv.length)}<span class="money"> · ${money(sum(inv))}</span>`, inv.length > 1 ? `<button type="button" class="btn alt need-invoices" data-act="batchInvoice">Invoice all ${inv.length}</button>` : '') + inv.map(row).join('') : '');
+    } else body = list.map(row).join('');
+    const todayN = D.jobs.filter((j) => jobStatus(j) === 'today').length;
+    const tabs = [['action', 'Needs action', D.jobs.filter(jobNeedsAction)], ...order.map((s) => [s, J_STATUS[s], ['archived', 'cancelled'].includes(s) ? null : D.jobs.filter((j) => jobStatus(j) === s)]), ['all', 'All', null]];
     main.innerHTML = `<div class="head"><h1>Jobs</h1><div class="actions"><button class="btn need-jobs-edit" data-act="newJob">New Job</button>
 <details class="menu">${MORE_SUM}<div class="menu-list"><a href="/calendar" data-link>Open calendar</a></div></details></div></div>
-<div class="cstats">
-<div class="cstat"><strong class="cs-h">Overview</strong><div class="qov">${[['late', 'q-declined'], ['invoice', 'q-sent'], ['today', 'q-converted'], ['upcoming', 'q-approved']].map(([s, c]) => `<button data-act="jobFilter" data-s="${s}"><i class="dot ${c}"></i>${J_STATUS[s]} (${count(s)})</button>`).join('')}</div></div>
-<button class="cstat" data-act="jobCard" data-k="recent"><div class="cs-h"><strong>Recent visits</strong><span>↗</span></div><div class="muted">Past 30 days</div><div class="cs-v">${recNow.length} ${change(recNow.length, recPrev.length)}</div><div class="muted money">${moneyShort(sum(recNow))}</div></button>
-<button class="cstat" data-act="jobCard" data-k="upcoming"><div class="cs-h"><strong>Visits scheduled</strong><span>↗</span></div><div class="muted">Next 30 days</div><div class="cs-v">${upcoming.length}</div><div class="muted money">${moneyShort(sum(upcoming))}</div></button>
-<div class="cstat need-invoices"><div class="cs-h"><strong>Requires invoicing</strong></div><div class="muted">Completed, not invoiced yet</div><div class="cs-v">${count('invoice')}</div><div class="muted">${moneyShort(sum(D.jobs.filter((j) => jobStatus(j) === 'invoice')))}</div></div></div>
-<h2 class="ftitle">All jobs <span class="muted">(${list.length} result${list.length === 1 ? '' : 's'})</span></h2>
-<div class="cfilters"><label class="pill">Status<select data-jv="status"><option value="all">All</option>${order.map((s) => `<option value="${s}" ${v.status === s ? 'selected' : ''}>${J_STATUS[s]}</option>`).join('')}</select></label>
-<label class="pill">Team member<select data-jv="staff"><option value="">All</option>${D.staff.map((s) => `<option value="${s.id}" ${v.staff === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>
+<div class="lstrip"><span class="ls-l">Visits</span><span>Past 30 days <strong>${recNow.length}<span class="money"> · ${moneyShort(sum(recNow))}</span></strong> ${change(recNow.length, recPrev.length)}</span>
+<span>Next 30 days <strong>${upcoming.length} scheduled<span class="money"> · ${moneyShort(sum(upcoming))}</span></strong></span><a href="/reports" data-link>Full report →</a></div>
+<div class="ltabs" role="tablist" aria-label="Job status">${tabs.map(([s, label, l]) => `<button type="button" role="tab" aria-selected="${v.status === s}" class="ltab${v.status === s ? ' on' : ''}" data-act="jobTab" data-s="${s}"><span class="lt-t">${J_CLASS[s] ? `<i class="dot ${J_CLASS[s]}"></i>` : ''}${label}${l ? `<span class="lt-n">${l.length}</span>` : ''}</span><span class="lt-m money">${l && l.length ? moneyShort(sum(l)) : ''}</span></button>`).join('')}</div>
+<div class="cfilters"><label class="pill">Team member<select data-jv="staff"><option value="">All</option>${D.staff.map((s) => `<option value="${s.id}" ${v.staff === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>
 <input id="jq" class="csearch" type="search" placeholder="Search jobs…" value="${esc(v.q)}">${colPicker('jobs', jobCols, cols)}</div>
-<div class="card ctable"><div class="tablewrap"><table><tr>${cols.map((c) => c.th).join('')}</tr>
-${list.map((j) => `<tr class="crow" data-id="${j.id}">${cols.map((c) => c.td(j)).join('')}</tr>`).join('') || `<tr><td colspan="${cols.length}" class="empty">${D.jobs.length ? 'No jobs match these filters' : 'No jobs yet'}</td></tr>`}</table></div></div>`;
+<div class="card ctable"><div class="tablewrap"><table><tr>${cols.map((c) => c.th).join('')}<th aria-label="Actions"></th></tr>
+${body || `<tr><td colspan="${ncol}" class="empty">${v.status === 'action' && !v.q && !v.staff && D.jobs.length ? 'Nothing needs action: no late visits, and every completed job is invoiced.' : D.jobs.length ? 'No jobs match these filters' : 'No jobs yet'}</td></tr>`}</table></div>
+${v.status === 'action' && todayN ? `<div class="lmore"><span>${todayN} visit${todayN === 1 ? ' is' : 's are'} on today’s schedule.</span><button type="button" class="link-btn" data-act="jobTab" data-s="today">Today →</button></div>` : ''}</div>`;
     $$('[data-jv]').forEach((s) => s.addEventListener('change', (e) => { jobView[e.target.dataset.jv] = e.target.value; refresh(); }));
     let tm; $('#jq').addEventListener('input', (e) => { clearTimeout(tm); tm = setTimeout(async () => { jobView.q = e.target.value; await refresh(); const q = $('#jq'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 250); });
-    $$('.crow').forEach((r) => r.addEventListener('click', () => navigate('/jobs/edit?id=' + r.dataset.id)));
+    $$('.crow').forEach((r) => r.addEventListener('click', (e) => { if (!e.target.closest('input, button, a')) navigate('/jobs/edit?id=' + r.dataset.id); }));
   },
 };
-A.jobFilter = (d) => { jobView = { ...jobView, status: d.s }; refresh(); };
-A.jobCard = (d) => { jobView = { ...jobView, status: d.k === 'upcoming' ? 'upcoming' : 'all', sort: 'schedule', dir: d.k === 'upcoming' ? 1 : -1 }; refresh(); };
+A.jobTab = (d) => { jobView = { ...jobView, status: d.s, sort: 'urgent', dir: 1 }; refresh(); };
 A.jobSort = (d) => { jobView.dir = jobView.sort === d.k ? -jobView.dir : (['client', 'status'].includes(d.k) ? 1 : -1); jobView.sort = d.k; refresh(); };
 A.exportJobs = () => downloadCsv('jobs.csv', [['Job', 'Title', 'Client', 'Company', 'Property', 'Date', 'Start', 'End', 'Team', 'Status', 'Total'],
   ...D.jobs.map((j) => { const c = byId(D.clients, j.clientId) || {}; return [j.number, j.title, c.name || '', c.company || '', j.address || '', j.date, j.startTime, j.endTime, (j.staffIds || []).map((id) => (byId(D.staff, id) || {}).name).filter(Boolean).join('; '), J_STATUS[jobStatus(j)], jobTotal(j) ?? '']; })]);
