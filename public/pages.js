@@ -1106,7 +1106,7 @@ PAGES['/expenses'] = {
     const list = D.expenses.filter((e) => !expJob || (expJob === 'none' ? !e.jobId : e.jobId === expJob)).sort((a, b) => b.date.localeCompare(a.date));
     const total = list.reduce((s, e) => s + e.amount, 0);
     const byCat = {}; D.expenses.forEach((e) => { byCat[e.category] = (byCat[e.category] || 0) + e.amount; });
-    const jobLabel = (id) => { const j = byId(D.jobs, id); return j ? `${j.number} · ${j.title}` : '<span class="muted">General</span>'; };
+    const jobLabel = (id) => { const j = byId(D.jobs, id); return j ? esc(`${j.number} · ${j.title}`) : '<span class="muted">General</span>'; };
     main.innerHTML = `<div class="head"><div><h1>Expense Tracker</h1><p class="sub">Log material costs, subcontractor fees and other spending against specific projects.</p></div><button class="btn" data-act="newExpense">+ Log expense</button></div>
 <div class="grid g3">${stat('Total shown', money(total), list.length + ' expenses')}${stat('All expenses', money(D.expenses.reduce((s, e) => s + e.amount, 0)))}<div class="card"><div class="l muted">By category</div>${Object.entries(byCat).map(([k, v]) => `<div style="display:flex;justify-content:space-between"><span>${esc(k)}</span><span>${money(v)}</span></div>`).join('') || '<span class="muted">None yet</span>'}</div></div>
 <div class="card" style="margin-top:16px"><label style="max-width:360px">Filter by project<select id="expJob"><option value="">All projects</option><option value="none" ${expJob === 'none' ? 'selected' : ''}>General (no project)</option>${D.jobs.map((j) => `<option value="${j.id}" ${expJob === j.id ? 'selected' : ''}>${esc(j.number + ' · ' + j.title)}</option>`).join('')}</select></label>

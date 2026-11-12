@@ -1606,7 +1606,11 @@ app.get('/cal/:token.ics', (req, res) => {
   res.end(calendarFeed(u));
 });
 
-app.use('/uploads', (req, res, next) => express.static(uploadDir())(req, res, next)); // each account's own uploads folder
+app.use('/uploads', (req, res, next) => { // each account's own uploads folder
+  // an SVG (e.g. a logo) can hold a script: opened on its own it runs nothing, and pictures that use it in <img> still show
+  if (/\.svg$/i.test(req.path)) res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
+  express.static(uploadDir())(req, res, next);
+});
 app.use(express.static(path.join(__dirname, 'public')));
 
 const COLLECTIONS = ['clients', 'services', 'staff', 'quotes', 'jobs', 'invoices', 'expenses', 'photos', 'tasks', 'events'];
@@ -5697,6 +5701,12 @@ const platformApp = require('./lib/platform')({
 // which app answers: the platform's (its own domain, or /alpha… while developing) or an account's
 const PLATFORM_PATHS = /^\/(alpha(\/.*)?|platform(\/.*)?|stripe\/go\/[a-z]+|oauth\/(google|meta|tiktok|linkedin|pinterest|threads|quickbooks|xero)\/callback|home|features|marketing|partners(\/[a-f0-9]+)?|go\/[A-Za-z0-9_-]+|quote-from-photos|good-better-best|pricing|signup|sign-in(\/(google|apple)(\/callback)?)?|supporters|industries(\/[a-z-]+)?|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;
 function dispatch(req, res) {
+  // browser safety on every reply: files are only treated as the type we say (an upload can't pass itself off as a script),
+  // other websites can't show our pages in a hidden frame to trick clicks (except the booking form, which business websites embed),
+  // and links out don't carry full addresses (which can hold client tokens)
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  if (!/^\/book\/?(\?|$)/.test(req.url)) { res.setHeader('X-Frame-Options', 'SAMEORIGIN'); res.setHeader('Content-Security-Policy', "frame-ancestors 'self'"); }
   // www. → the bare domain, so search engines see one copy of each page (the canonical links name the bare domain). Page loads only: a form or webhook posted to www. still works
   if (!tenancy.devMode && /^(GET|HEAD)$/.test(req.method) && tenancy.hostOnly(req.headers.host) === 'www.' + tenancy.PLATFORM_DOMAIN) { res.writeHead(301, { Location: tenancy.platformUrl() + req.url }); return res.end(); }
   if (brandLib.serve(req, res) || brandLib.serveTheme(req, res)) return; // the application logo and website colors (lib/brand.js), on every address
