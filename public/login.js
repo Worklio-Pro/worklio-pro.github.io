@@ -32,7 +32,7 @@ ${field('email', 'Email address*', 'email', 'autocomplete="username" required au
 <button type="button" class="linkish" data-go="forgot">Forgot password?</button>
 <button class="btn go">Log In</button></form>
 <p class="alt">Team member without an account? Ask the account owner to set you up.</p>${central ? `<p class="alt">New to ${esc(state.product.name || 'Worklio Pro')}? <a href="/pricing">Get started</a></p>` : ''}`;
-    $('#f').addEventListener('submit', (e) => submit(e, central ? (b) => centralLogin(b) : async (b) => { await post('/api/auth/login', b); location.href = nextUrl(); }));
+    $('#f').addEventListener('submit', (e) => submit(e, central ? (b) => centralLogin(b) : async (b) => after(await post('/api/auth/login', b), nextUrl())));
     if (params.get('email')) { $('#f [name=email]').value = params.get('email'); $('#f [name=password]').focus(); } // from sign-up
   } else if (view === 'choose') {
     p.innerHTML = `<h1>Choose a business</h1><p class="lead">${state.pickEmail ? `${esc(state.pickEmail)} logs in to more than one business.` : 'Your email logs in to more than one business.'}</p>${msg(note && note.text)}
@@ -54,11 +54,32 @@ ${field('email', 'Email address*', 'email', 'autocomplete="username" required au
 <form id="f" novalidate>${msg(note && note.text)}<label class="of"><span>Email address</span><input value="${esc(state.invite.email)}" readonly autocomplete="username"></label>
 ${field('password', 'Password* (8+ characters)', 'password', 'autocomplete="new-password" minlength="8" required autofocus')}<button class="btn go">Set password and log in</button></form>`
       : `<h1>Invite link expired</h1>${msg(state.inviteError || 'This invite link has expired or was replaced.')}<p class="lead">Ask the account owner to send you a new invite.</p><p class="alt"><button type="button" class="linkish" data-go="login">Go to log in</button></p>`;
-    const f = $('#f'); if (f) f.addEventListener('submit', (e) => submit(e, async (b) => { await post('/api/auth/accept-invite', { token: params.get('invite'), password: b.password }); location.href = '/'; }));
+    const f = $('#f'); if (f) f.addEventListener('submit', (e) => submit(e, async (b) => { after(await post('/api/auth/accept-invite', { token: params.get('invite'), password: b.password }), '/'); }));
   } else if (view === 'reset') {
     p.innerHTML = `<h1>Choose a new password</h1><p class="lead">You'll be logged in once it's saved, and signed out on other devices.</p>
 <form id="f" novalidate>${msg(note && note.text)}${field('password', 'New password* (8+ characters)', 'password', 'autocomplete="new-password" minlength="8" required autofocus')}<button class="btn go">Save password</button></form>`;
-    $('#f').addEventListener('submit', (e) => submit(e, async (b) => { await post('/api/auth/reset', { token: params.get('reset'), password: b.password }); location.href = '/'; }));
+    $('#f').addEventListener('submit', (e) => submit(e, async (b) => { after(await post('/api/auth/reset', { token: params.get('reset'), password: b.password }), '/'); }));
+  } else if (view === 'twoStep') { // the second step: the code from the app, or (first time, when the company requires it) set up the app
+    const T = state.twoStep; const setup = T.need === 'setup' && T.setup;
+    p.innerHTML = `<h1>${setup ? 'Set up two-step login' : 'Two-step login'}</h1>
+${setup ? `<p class="lead">${esc(state.company.name || 'Your company')} requires a code from an authenticator app on your phone (Google Authenticator, Microsoft Authenticator, Authy, 1Password…) each time you log in. Open the app, add an account, and scan this QR code.</p>
+<div class="ts-qr">${window.qrSvg ? qrSvg(setup.uri) : ''}</div><details class="ts-key"><summary>Can’t scan it?</summary><p>In the app, add an account by hand (time-based) with this key:</p><code>${esc(setup.secret.replace(/(.{4})/g, '$1 ').trim())}</code></details>`
+    : '<p class="lead">Enter the 6-digit code your authenticator app shows. Don’t have your phone? Enter one of your backup codes.</p>'}
+<form id="f" novalidate>${msg(note && note.text)}<label class="of"><span>${setup ? 'The 6-digit code the app now shows*' : 'Code*'}</span><input name="otp" class="ts-otp" required autofocus autocomplete="one-time-code" ${setup ? 'inputmode="numeric" maxlength="6"' : 'maxlength="12" autocapitalize="off" spellcheck="false"'} placeholder="123456"></label>
+<button class="btn go">${setup ? 'Turn on and log in' : 'Log In'}</button></form>
+<p class="alt"><button type="button" class="linkish" data-go="startOver">Back to log in</button></p>`;
+    $('#f').addEventListener('submit', (e) => submit(e, async (b) => {
+      if (!String(b.otp || '').trim()) throw new Error('Enter the code');
+      let r; try { r = await post('/api/auth/two-step', { otp: b.otp }); } catch (err) { if (/expired/.test(err.message)) { state.twoStep = null; return show('login', { text: err.message }); } throw err; }
+      if (r.backupCodes) { state.backupCodes = r.backupCodes; return show('backup'); }
+      location.href = state.after || nextUrl();
+    }));
+  } else if (view === 'backup') { // shown once, right after it's turned on
+    const codes = state.backupCodes;
+    p.innerHTML = `<h1>Two-step login is on</h1><p class="lead">If you lose your phone, each of these codes logs you in once instead of the app’s code. Keep them somewhere safe, like a password manager. They won’t be shown again.</p>
+<ol class="ts-codes">${codes.map((c) => `<li><code>${esc(c)}</code></li>`).join('')}</ol>
+<p class="alt" style="text-align:left"><button type="button" class="linkish" data-copy-codes>Copy</button> · <button type="button" class="linkish" data-save-codes>Download</button></p>
+<button type="button" class="btn go" data-codes-done>I’ve saved them</button>`;
   }
   const first = p.querySelector('[autofocus]'); if (first && !(view === 'login' && params.get('email'))) first.focus();
 }
@@ -77,6 +98,8 @@ async function centralLogin(b) {
   if (r.url) { location.href = r.url; return; }
   signIn = { email: b.email, password: b.password }; state.accounts = r.accounts; show('choose');
 }
+// a reply from login, invite or reset: logged in (go on), or { twoStep } (ask for the code)
+function after(r, to) { if (r && r.twoStep) { state.twoStep = r.twoStep; state.after = to; return show('twoStep'); } location.href = to; }
 async function submit(e, fn) {
   e.preventDefault(); const form = e.target; const btn = form.querySelector('.go'); const label = btn.textContent;
   const b = Object.fromEntries(new FormData(form));
@@ -89,7 +112,13 @@ async function submit(e, fn) {
 function flash(form, text) { document.querySelectorAll('#panel .msg').forEach((x) => x.remove()); form.insertAdjacentHTML('afterbegin', msg(text)); }
 
 document.addEventListener('click', (e) => {
-  const go = e.target.closest('[data-go]'); if (go) { e.preventDefault(); signIn = null; return show(go.dataset.go); }
+  const go = e.target.closest('[data-go]');
+  if (go && go.dataset.go === 'startOver') { e.preventDefault(); state.twoStep = null; fetch('/api/auth/logout', { method: 'POST' }).catch(() => {}); return show('login'); } // drops the half-done login
+  if (go) { e.preventDefault(); signIn = null; return show(go.dataset.go); }
+  const codesText = () => `${state.company && state.company.name ? state.company.name + ' – ' : ''}backup codes for two-step login (each works once)\n\n${(state.backupCodes || []).join('\n')}\n`;
+  if (e.target.closest('[data-copy-codes]')) navigator.clipboard.writeText(codesText()).then(() => { e.target.textContent = 'Copied'; }).catch(() => {});
+  if (e.target.closest('[data-save-codes]')) { const u = URL.createObjectURL(new Blob([codesText()], { type: 'text/plain' })); const l = document.createElement('a'); l.href = u; l.download = 'backup-codes.txt'; l.click(); setTimeout(() => URL.revokeObjectURL(u), 1000); }
+  if (e.target.closest('[data-codes-done]')) location.href = state.after || nextUrl();
   const acct = e.target.closest('[data-account]');
   if (acct && signIn) {
     document.querySelectorAll('[data-account]').forEach((x) => { x.disabled = true; }); acct.querySelector('small').textContent = 'Opening…';
@@ -130,6 +159,7 @@ document.addEventListener('click', (e) => {
     return show('invite');
   }
   if (state.user && !params.get('reset')) { location.href = nextUrl(); return; }
+  if (state.twoStep && !params.get('reset')) return show('twoStep');
   if (params.get('oauth_error')) { const t = params.get('oauth_error'); history.replaceState(null, '', oauthClean()); if (!state.needsSetup && !params.get('reset')) return show('login', { text: t }); }
   show(params.get('reset') ? 'reset' : state.needsSetup ? 'setup' : 'login');
 })();

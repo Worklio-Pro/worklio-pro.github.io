@@ -699,7 +699,8 @@ async function renderLoginCard(s, note) {
   else if (!u) body = `<p class="muted">${esc(s.name)} can't log in yet. Send an invite to <strong>${esc(s.email)}</strong> so they can set a password.</p>${roleSelect(null)}<div class="foot" style="justify-content:flex-start"><button type="button" class="btn" data-act="tmInvite" data-id="${s.id}">Invite to log in</button></div>`;
   else body = `<p>${u.status === 'invited' ? `Invited ${fmtDate((u.invitedAt || '').slice(0, 10))}. Waiting for them to set a password.` : `Logs in as <strong>${esc(u.email)}</strong>${u.lastLoginAt ? ` · last login ${fmtDate(u.lastLoginAt.slice(0, 10))}` : ''}.`}</p>
 ${staffActive(s) ? '' : '<p class="notice">This team member is deactivated, so their login is turned off until you reactivate them.</p>'}${roleSelect(u)}
-<div class="foot" style="justify-content:flex-start">${u.status === 'invited' ? `<button type="button" class="btn alt" data-act="tmInvite" data-id="${s.id}">Resend invite</button>` : ''}<button type="button" class="btn danger" data-act="tmRevoke" data-id="${s.id}">Remove login access</button></div>`;
+${u.status === 'invited' ? '' : `<p class="muted" style="font-size:13px">Two-step login: ${u.twoStep ? 'on' : 'off'}.</p>`}
+<div class="foot" style="justify-content:flex-start;flex-wrap:wrap">${u.status === 'invited' ? `<button type="button" class="btn alt" data-act="tmInvite" data-id="${s.id}">Resend invite</button>` : ''}${u.twoStep ? `<button type="button" class="btn alt" data-act="tmTwoStepReset" data-id="${s.id}">Reset two-step login</button>` : ''}<button type="button" class="btn danger" data-act="tmRevoke" data-id="${s.id}">Remove login access</button></div>`;
   box.innerHTML = `<div class="qcard-h"><h2>Login access</h2>${loginBadge(u)}</div>${body}${note || ''}`;
   const sel = $('#loginRole', box);
   if (sel && u && u.role !== 'owner') sel.addEventListener('change', async () => { await api('PUT', '/api/users/' + u.id, { role: sel.value }); toast(`${s.name}’s role is now ${sel.options[sel.selectedIndex].text.split(':')[0]}`); renderLoginCard(s); });
@@ -719,6 +720,11 @@ A.tmInvite = async (d) => {
     : `<div class="notice" style="margin-top:12px">The invite email couldn't be sent (${esc(r.detail || 'email not set up')}). Send ${esc(s.name)} this link yourself, by text for example. It works for 7 days:
 <div class="copy-row"><input readonly value="${esc(r.link)}" onclick="this.select()" aria-label="Invite link"><button type="button" class="btn alt sm" data-act="copyInput">Copy</button></div></div>`;
   toast(r.emailed ? 'Invite sent' : 'Invite link created'); renderLoginCard(s, note);
+};
+A.tmTwoStepReset = async (d) => { // a team member lost their phone and backup codes
+  const s = byId(D.staff, d.id); const u = userFor(s); if (!u) return;
+  if (!confirm(`Reset ${s.name}'s two-step login? They're signed out, and their next login ${'works with just their password, unless your team requires two-step login (then they set it up again)'}.`)) return;
+  try { await api('POST', `/api/users/${u.id}/two-step/reset`, {}); toast('Two-step login reset'); renderLoginCard(s); } catch (e) { toast(e.message, true); }
 };
 A.tmRevoke = async (d) => {
   const s = byId(D.staff, d.id); const u = userFor(s); if (!u) return;
@@ -3614,7 +3620,9 @@ ${autoHoursHtml(staffHours(p), 'Not working')}${hoursFoot}</div></form>` : ''}
 <form class="tmform" id="pfPass"><div class="qcard login-card"><h2>Change password</h2><p class="muted">Use at least 8 characters. Changing it signs you out on your other devices.</p>
 <div class="pf-pw"><input type="email" name="username" value="${esc(p.email)}" autocomplete="username" hidden>
 ${pw('currentPassword', 'Current password', 'current-password')}${pw('newPassword', 'New password', 'new-password')}${pw('confirm', 'Confirm new password', 'new-password')}</div>
-<div class="foot"><button class="btn">Update password</button></div></div></form></div>`;
+<div class="foot"><button class="btn">Update password</button></div></div></form>
+<div class="qcard login-card" id="pfTwoStep"></div></div>`;
+    renderTwoStepCard();
     const info = $('#pfInfo'); const email = $('[name=email]', info);
     email.addEventListener('input', () => { $('#pfEmailPw').hidden = email.value.trim().toLowerCase() === p.email; });
     $('#pfPhoto').addEventListener('change', async (e) => {
@@ -3658,6 +3666,64 @@ ${pw('currentPassword', 'Current password', 'current-password')}${pw('newPasswor
   },
 };
 A.pfPhotoRemove = (d, el) => el.closest('form')._clearPhoto();
+// ----- My profile → Two-step login: a code from an authenticator app after the password. Owners and admins can require it for the whole team -----
+async function renderTwoStepCard() {
+  const box = $('#pfTwoStep'); if (!box) return;
+  let v; try { v = await api('GET', '/api/auth/two-step'); } catch (e) { box.hidden = true; return; } // e.g. a support session
+  let team = null; if (me && (me.role === 'owner' || me.role === 'admin')) team = await api('GET', '/api/team/two-step').catch(() => null);
+  box.innerHTML = `<h2>Two-step login</h2>${v.on
+    ? `<p>On${v.since ? ` since ${fmtDate(v.since.slice(0, 10))}` : ''}. Each login asks for a code from your authenticator app. <strong>${v.backupLeft}</strong> backup code${v.backupLeft === 1 ? '' : 's'} left.</p>
+<div class="foot" style="justify-content:flex-start;flex-wrap:wrap"><button type="button" class="btn alt" data-act="tsNewCodes">New backup codes</button><button type="button" class="btn alt" data-act="tsNewPhone">Move to a new phone</button>${v.required ? '' : '<button type="button" class="btn alt" data-act="tsOff">Turn off</button>'}</div>`
+    : `<p class="muted">Protect your login with a code from an authenticator app on your phone (Google Authenticator, Microsoft Authenticator, Authy, 1Password…), so a stolen password isn’t enough on its own.</p>
+<div class="foot" style="justify-content:flex-start"><button type="button" class="btn" data-act="tsOn">Turn on</button></div>`}
+${team ? `<div class="chk" style="margin-top:14px"><label><input type="checkbox" id="tsRequire" ${team.required ? 'checked' : ''}> Require two-step login for everyone on the team</label></div>
+<p class="muted" style="font-size:13px;margin-top:4px">${team.on} of ${team.total} login${team.total === 1 ? ' has' : 's have'} it on. ${team.required ? 'Anyone without it sets it up at their next login.' : 'Once required, anyone without it sets it up at their next login.'}</p>` : ''}`;
+  const rq = $('#tsRequire', box);
+  if (rq) rq.addEventListener('change', async () => {
+    try { await api('PUT', '/api/team/two-step', { required: rq.checked }); toast(rq.checked ? 'Two-step login is now required for everyone' : 'Two-step login is now optional'); }
+    catch (e) { rq.checked = !rq.checked; toast(e.message, true); }
+    renderTwoStepCard();
+  });
+}
+const tsCodeField = '<label class="fl"><span>Code from your app (or a backup code)</span><input name="otp" required autocomplete="one-time-code" maxlength="12" autocapitalize="off" spellcheck="false" placeholder="123456" style="font-size:20px;letter-spacing:.2em;text-align:center"></label>';
+// asks for a current code, then runs fn(otp)
+function tsAskCode(title, lead, button, fn) {
+  const m = modal(title, `<form id="tsc"><p class="muted" style="margin-top:0">${lead}</p>${tsCodeField}<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">${button}</button></div></form>`);
+  $('[name=otp]', m).focus();
+  $('#tsc', m).addEventListener('submit', async (e) => { e.preventDefault(); const btn = $('.btn:not(.alt)', e.target); btn.disabled = true; try { await fn(new FormData(e.target).get('otp')); } catch (x) { btn.disabled = false; toast(x.message, true); } });
+}
+function tsSetup(setup, lead) {
+  const m = modal('Scan with your authenticator app', `<form id="tss" data-sticky><p class="muted" style="margin-top:0">${lead}</p>
+<div style="width:190px;max-width:100%;margin:6px auto 10px;padding:10px;background:#fff;border-radius:10px;border:1px solid var(--line);box-sizing:border-box">${window.qrSvg ? qrSvg(setup.uri).replace('<svg', '<svg style="width:100%;height:auto;display:block"') : ''}</div>
+<details style="margin-bottom:12px;font-size:13px"><summary style="cursor:pointer">Can’t scan it?</summary><p class="muted">In the app, add an account by hand (time-based) with this key:</p><code style="display:block;padding:8px;word-break:break-all;user-select:all">${esc(setup.secret.replace(/(.{4})/g, '$1 ').trim())}</code></details>
+<label class="fl"><span>The 6-digit code the app now shows</span><input name="otp" required inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="123456" style="font-size:20px;letter-spacing:.2em;text-align:center"></label>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Turn on</button></div></form>`);
+  $('#tss', m).addEventListener('submit', async (e) => {
+    e.preventDefault(); const btn = $('.btn:not(.alt)', e.target); btn.disabled = true;
+    try { const r = await api('POST', '/api/auth/two-step/confirm', { otp: new FormData(e.target).get('otp') }); tsShowCodes(r.backupCodes, 'Two-step login is on'); renderTwoStepCard(); }
+    catch (x) { btn.disabled = false; toast(x.message, true); if (/expired/.test(x.message)) closeModal(); }
+  });
+}
+function tsShowCodes(codes, title) {
+  const text = `Backup codes for two-step login (each works once)\n\n${codes.join('\n')}\n`;
+  const m = modal(title, `<div data-sticky><p class="muted" style="margin-top:0">If you lose your phone, each of these codes logs you in once instead of the app’s code. Keep them somewhere safe, like a password manager. They won’t be shown again, and any older backup codes no longer work.</p>
+<ol style="columns:2;gap:16px;padding-left:24px;font-size:15px">${codes.map((c) => `<li><code style="user-select:all">${esc(c)}</code></li>`).join('')}</ol>
+<p><button type="button" class="btn alt sm" data-act="tsCopy">Copy</button> <button type="button" class="btn alt sm" data-act="tsSave">Download</button></p>
+<div class="foot"><button type="button" class="btn" data-act="closeModal">I’ve saved them</button></div></div>`);
+  A.tsCopy = (d, el) => navigator.clipboard.writeText(text).then(() => { el.textContent = 'Copied'; }).catch(() => toast('Couldn’t copy: select the codes instead', true));
+  A.tsSave = () => { const u = URL.createObjectURL(new Blob([text], { type: 'text/plain' })); const l = document.createElement('a'); l.href = u; l.download = 'backup-codes.txt'; l.click(); setTimeout(() => URL.revokeObjectURL(u), 1000); };
+  void m;
+}
+A.tsOn = async () => { try { const r = await api('POST', '/api/auth/two-step/start', {}); tsSetup(r.setup, 'Open an authenticator app on your phone, add an account, and scan this QR code. Then enter the code it shows.'); } catch (x) { toast(x.message, true); } };
+A.tsNewPhone = () => tsAskCode('Move to a new phone', 'Enter a code from your current app (or a backup code). Then you’ll scan a new QR code with the new phone; the old phone’s codes stop working.', 'Continue', async (otp) => {
+  const r = await api('POST', '/api/auth/two-step/start', { otp }); tsSetup(r.setup, 'In the authenticator app on your new phone, add an account and scan this QR code. Then enter the code it shows.');
+});
+A.tsNewCodes = () => tsAskCode('New backup codes', 'Enter a code from your app (or a backup code). Your old backup codes stop working.', 'Make new codes', async (otp) => {
+  const r = await api('POST', '/api/auth/two-step/backup-codes', { otp }); tsShowCodes(r.backupCodes, 'New backup codes'); renderTwoStepCard();
+});
+A.tsOff = () => tsAskCode('Turn off two-step login', 'Enter a code from your app (or a backup code). Your login will need only your password.', 'Turn off', async (otp) => {
+  await api('POST', '/api/auth/two-step/off', { otp }); closeModal(); toast('Two-step login is off'); renderTwoStepCard();
+});
 A.pfEye = (d, el) => { const i = el.parentElement.querySelector('input'); const showing = i.type === 'text'; i.type = showing ? 'password' : 'text'; el.textContent = showing ? 'Show' : 'Hide'; el.setAttribute('aria-label', showing ? 'Show password' : 'Hide password'); i.focus(); };
 
 /* ===== /payments: payment history, payouts and payment settings ===== */

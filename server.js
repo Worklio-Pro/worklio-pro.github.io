@@ -33,6 +33,7 @@ const tiktokLib = require('./lib/tiktok'); tiktokLib.init(); // Alpha → Social
 const rolesLib = require('./lib/roles');
 const iconsLib = require('./lib/icons');
 const { createPdf } = require('./lib/pdf');
+const twoStep = require('./lib/two-step'); // two-step login (an authenticator app's codes): Alpha, and business logins that turn it on
 const chat = require('./lib/chat');
 const humanCheck = require('./lib/human-check'); // spam protection for the public forms
 const forum = require('./lib/forum');
@@ -519,17 +520,40 @@ function cookies(req) { return Object.fromEntries(String(req.headers.cookie || '
 function currentUser(req) {
   if (req._user !== undefined) return req._user;
   const s = db.sessions[sha(cookies(req).sid || '')];
+  if (s && s.pending) { req._user = null; req._support = null; return null; } // password checked, two-step code still to come (see /api/auth/two-step)
   const u = s && s.expires > Date.now() && (!s.support || support.sessionOk(tenancy.current(), s.support)) ? db.users.find((x) => x.id === s.userId) : null;
   req._user = u && u.passwordHash && !staffBlocked(u) ? u : null; // invited-but-unfinished and deactivated members can't use sessions
   req._support = req._user && s.support ? s.support : null; // a platform admin in the account through Support Access
   return req._user;
 }
+// Two-step login (optional; the owner can require it for everyone): a login that has it on, or must set it up, gets a pending session
+// that counts as logged out until /api/auth/two-step gets the code. Every way in (this login page, the central /sign-in, Google / Apple,
+// reset and invite links) starts its session here, so none skips it. Support Access sessions don't ask: the Alpha login already did.
+const twoStepRequired = () => db.company.requireTwoStep === true;
+const needsTwoStep = (u) => twoStep.isOn(u) || twoStepRequired();
+const PENDING_MINUTES = 15;
+// returns true when the session is pending (the code is still to come)
 function startSession(res, user, { expires = Date.now() + SESSION_DAYS * 864e5, support: sup } = {}) {
   const token = crypto.randomBytes(32).toString('hex');
   const now = Date.now(); for (const [k, s] of Object.entries(db.sessions)) if (s.expires < now) delete db.sessions[k]; // prune old ones
-  db.sessions[sha(token)] = { userId: user.id, expires, ...(sup ? { support: sup } : {}) }; save();
+  const pending = !sup && needsTwoStep(user);
+  db.sessions[sha(token)] = pending ? { userId: user.id, expires: now + PENDING_MINUTES * 60e3, pending: true, fullExpires: expires } : { userId: user.id, expires, ...(sup ? { support: sup } : {}) }; save();
   res.setHeader('Set-Cookie', `sid=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.round((expires - now) / 1000)}${BASE_URL.startsWith('https') && !plainLocal(res.req) ? '; Secure' : ''}`);
+  return pending;
 }
+// the login waiting for its code (pending session), or null
+function pendingSession(req) {
+  const s = db.sessions[sha(cookies(req).sid || '')]; if (!s || !s.pending || s.expires < Date.now()) return null;
+  const u = db.users.find((x) => x.id === s.userId); return u && u.passwordHash && !staffBlocked(u) ? { s, u } : null;
+}
+// what the login page shows next: the code, or (first time, when the owner requires it) a QR code to set it up
+function twoStepAsk(u) {
+  if (twoStep.isOn(u)) return { need: 'code' };
+  const p = twoStep.pending(u); save();
+  return { need: 'setup', setup: { secret: p.secret, uri: twoStep.uri(`${db.company.name || tenancy.current().name || 'Worklio Pro'} (Worklio Pro)`, u.email, p.secret) } };
+}
+// the reply after a password, reset or invite: the login, or what the second step needs
+const loginReply = (res, user, pending) => res.json(pending ? { twoStep: twoStepAsk(user) } : publicUser(user));
 // ideas.<domain> uses the same login: while someone is logged in at <business>.<domain>, a cookie on the whole domain names the business (nothing secret),
 // so ideas.<domain> knows where to ask for a one-time pass (GET /ideas/sso). Not on custom domains or while developing (no shared parent domain there)
 const IDEAS_HINT = 'wp_acct';
@@ -605,7 +629,7 @@ const MEMBER_JOB_FIELDS = ['title', 'clientId', 'address', 'propertyId', 'date',
 
 // ---------- team logins (owner/admin only; the /api guard above blocks members) ----------
 const INVITE_DAYS = 7;
-const userRow = (u) => ({ ...publicUser(u), staffId: u.staffId || null, status: u.passwordHash ? 'active' : 'invited', invitedAt: u.invitedAt || null, lastLoginAt: u.lastLoginAt || null });
+const userRow = (u) => ({ ...publicUser(u), twoStep: twoStep.isOn(u), staffId: u.staffId || null, status: u.passwordHash ? 'active' : 'invited', invitedAt: u.invitedAt || null, lastLoginAt: u.lastLoginAt || null });
 app.get('/api/users', (req, res) => res.json(db.users.map(userRow)));
 // ---------- Time off (a plan feature): team members ask for time off; the owner, admins and anyone who can edit jobs approve it ----------
 // A request covers whole days (from–to) or some hours of one day. Approving can take the person off the jobs they're assigned to then.
@@ -1269,6 +1293,20 @@ app.put('/api/users/:id', (req, res) => {
   if (!roleValid(req.body && req.body.role)) return res.status(400).json({ error: req.body && req.body.role === 'admin' ? 'The Admin role comes with Custom roles, which isn’t in your plan' : 'Choose one of your roles' });
   u.role = req.body.role; save(); res.json(userRow(u));
 });
+// a team member lost their phone: their two-step login is cleared and they're signed out; their next login sets it up again (if it's required) or goes without
+app.post('/api/users/:id/two-step/reset', (req, res) => {
+  const u = db.users.find((x) => x.id === req.params.id); if (!u) return res.status(404).json({ error: 'Not found' });
+  if (u.role === 'owner' && currentUser(req).role !== 'owner') return res.status(403).json({ error: 'Only the owner can reset the owner’s two-step login' });
+  delete u.twoStep; delete u.twoStepPending; for (const [k, s] of Object.entries(db.sessions)) if (s.userId === u.id) delete db.sessions[k];
+  save(); res.json(userRow(u));
+});
+// Manage Team: require two-step login for every login. Whoever turns it on must have it on themselves, so nobody locks the account out by surprise
+app.get('/api/team/two-step', (req, res) => res.json({ required: twoStepRequired(), mine: twoStep.isOn(currentUser(req)), on: db.users.filter((u) => u.passwordHash && twoStep.isOn(u)).length, total: db.users.filter((u) => u.passwordHash).length }));
+app.put('/api/team/two-step', (req, res) => {
+  const on = !!(req.body && req.body.required);
+  if (on && !twoStep.isOn(currentUser(req))) return res.status(400).json({ error: 'Turn on two-step login for yourself first (My profile → Two-step login)' });
+  db.company.requireTwoStep = on; save(); res.json({ required: on });
+});
 function removeUser(u) {
   db.users = db.users.filter((x) => x.id !== u.id);
   for (const [k, s] of Object.entries(db.sessions)) if (s.userId === u.id) delete db.sessions[k]; // signs them out right away
@@ -1293,10 +1331,10 @@ app.post('/api/auth/accept-invite', (req, res) => {
   if (String((req.body && req.body.password) || '').length < 8) return res.status(400).json({ error: 'Use a password with at least 8 characters' });
   if (staffBlocked(u)) return res.status(403).json({ error: 'Your login access is turned off. Ask the account owner.' });
   const { salt, hash } = hashPassword(req.body.password); Object.assign(u, { salt, passwordHash: hash, lastLoginAt: new Date().toISOString() }); delete db.resetTokens[k];
-  startSession(res, u); res.json(publicUser(u));
+  loginReply(res, u, startSession(res, u));
 });
 app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
-app.get('/api/auth/state', (req, res) => res.json({ needsSetup: !db.users.length, user: publicUser(currentUser(req)), company: { name: db.company.name, logo: db.company.logo }, product: brandLib.brand(), loginPanel: brandLib.loginPanel(), emailReady: !!emailProvider(),
+app.get('/api/auth/state', (req, res) => res.json({ needsSetup: !db.users.length, user: publicUser(currentUser(req)), twoStep: (() => { const p = pendingSession(req); return p ? twoStepAsk(p.u) : null; })(), company: { name: db.company.name, logo: db.company.logo }, product: brandLib.brand(), loginPanel: brandLib.loginPanel(), emailReady: !!emailProvider(),
   signInWith: { providers: signInWith.available(), start: `${tenancy.platformUrl()}/sign-in`, account: tenancy.current().id } })); // Continue with Google / Apple go through the platform address
 // what this login may open: its permissions, the pages they unlock, and which lists it can load
 const accessOf = (u) => { const rk = roleKey(u); const routes = rolesLib.routesFor(teamRoles(), rk); return { staffId: u.staffId || null, perms: rolesLib.permsOf(teamRoles(), rk), pages: rolesLib.isAdminRole(u.role) ? null : rolesLib.pagesFor(teamRoles(), rk), collections: rolesLib.isAdminRole(u.role) ? COLLECTIONS : COLLECTIONS.filter((c) => rolesLib.allows(routes, 'GET', '/api/' + c)) }; };
@@ -1330,7 +1368,7 @@ app.post('/api/auth/login', (req, res) => {
   const user = db.users.find((u) => u.email === email);
   if (!user || !user.passwordHash || !checkPassword(String((req.body && req.body.password) || ''), user)) { recordFailure(key); return res.status(401).json({ error: 'That email and password don’t match an account' }); }
   if (staffBlocked(user)) return res.status(403).json({ error: 'Your login access is turned off. Ask the account owner.' });
-  failures.delete(key); user.lastLoginAt = new Date().toISOString(); startSession(res, user); res.json(publicUser(user));
+  failures.delete(key); user.lastLoginAt = new Date().toISOString(); loginReply(res, user, startSession(res, user));
 });
 app.post('/api/auth/logout', (req, res) => {
   const s = db.sessions[sha(cookies(req).sid || '')]; delete db.sessions[sha(cookies(req).sid || '')]; save();
@@ -1378,7 +1416,8 @@ app.get('/login/handoff', (req, res) => {
   const k = sha(String(req.query.token || '')); const x = handoffs.get(k); handoffs.delete(k);
   const user = x && x.expires > Date.now() && x.tenantId === tenancy.current().id && db.users.find((u) => u.id === x.userId);
   if (!user || !user.passwordHash || staffBlocked(user)) return res.redirect('/login');
-  user.lastLoginAt = new Date().toISOString(); startSession(res, user); res.redirect(x.next || '/');
+  user.lastLoginAt = new Date().toISOString(); const pending = startSession(res, user);
+  res.redirect(pending ? `/login?next=${encodeURIComponent(x.next || '/')}` : x.next || '/'); // the login page asks for the two-step code
 });
 // ideas.<domain> asks who is logged in here: back to it with a one-time pass (1 minute), or with none=1 when nobody is
 const ideasPasses = new Map(); // pass hash -> { tenantId, userId, expires }
@@ -1390,6 +1429,48 @@ app.get('/ideas/sso', (req, res) => {
   ideasPasses.set(sha(tok), { tenantId: tenancy.current().id, userId: u.id, expires: now + 60e3 });
   res.redirect(`${tenancy.ideasUrl()}/sso?token=${tok}&r=${encodeURIComponent(back)}`);
 });
+// ---- two-step login: the code after the password (pending session), and each login's own settings (My profile) ----
+const tfaKey = (u) => 'tfa|' + tenancy.current().id + '|' + u.id;
+const badCode = 'That code isn’t right. Use the newest code in your app, or one of your backup codes.';
+app.post('/api/auth/two-step', (req, res) => {
+  const p = pendingSession(req); if (!p) return res.status(401).json({ error: 'That login expired. Log in again.', expired: true });
+  const { s, u } = p; const key = tfaKey(u); const otp = String((req.body && req.body.otp) || '').trim();
+  if (tooMany(key)) return res.status(429).json({ error: 'Too many wrong codes. Try again in 15 minutes.' });
+  let backupCodes = null;
+  if (twoStep.isOn(u)) { if (!twoStep.verify(u, otp)) { recordFailure(key); save(); return res.status(400).json({ error: badCode }); } }
+  else { backupCodes = twoStep.confirm(u, otp); if (!backupCodes) { recordFailure(key); return res.status(400).json({ error: 'That code isn’t right. Enter the 6-digit code your app shows now.' }); } }
+  failures.delete(key); s.expires = s.fullExpires || Date.now() + SESSION_DAYS * 864e5; delete s.pending; delete s.fullExpires; save();
+  ideasHint(req, res, true); res.json({ ...publicUser(u), backupCodes });
+});
+const myTwoStepRoute = (fn) => (req, res) => { const u = currentUser(req); if (!u) return res.status(401).json({ error: 'Please log in' }); if (req._support) return res.status(403).json({ error: 'Support sessions can’t change this. Ask the account owner.' }); fn(req, res, u); };
+const myCode = (req, res, u) => { // a code from the app (or a backup code) before changing anything
+  const key = tfaKey(u); if (tooMany(key)) { res.status(429).json({ error: 'Too many wrong codes. Try again in 15 minutes.' }); return false; }
+  if (!twoStep.verify(u, req.body && req.body.otp)) { recordFailure(key); save(); res.status(400).json({ error: badCode }); return false; }
+  failures.delete(key); return true;
+};
+app.get('/api/auth/two-step', myTwoStepRoute((req, res, u) => res.json({ ...twoStep.view(u), required: twoStepRequired() })));
+// turn it on, or move it to a new phone (a code from the current app first): a QR code to scan; /confirm with the app's first code switches it on
+app.post('/api/auth/two-step/start', myTwoStepRoute((req, res, u) => {
+  if (twoStep.isOn(u) && !myCode(req, res, u)) return;
+  delete u.twoStepPending; const a = twoStepAsk({ ...u, twoStep: null, twoStepPending: null }); u.twoStepPending = { secret: a.setup.secret, expires: Date.now() + 15 * 60e3 }; save(); res.json({ setup: a.setup });
+}));
+app.post('/api/auth/two-step/confirm', myTwoStepRoute((req, res, u) => {
+  const key = tfaKey(u); if (tooMany(key)) return res.status(429).json({ error: 'Too many wrong codes. Try again in 15 minutes.' });
+  if (!u.twoStepPending || u.twoStepPending.expires < Date.now()) return res.status(400).json({ error: 'That QR code has expired. Start again.' });
+  const codes = twoStep.confirm(u, req.body && req.body.otp); if (!codes) { recordFailure(key); return res.status(400).json({ error: 'That code isn’t right. Enter the 6-digit code your app shows now.' }); }
+  failures.delete(key); save(); res.json({ backupCodes: codes, ...twoStep.view(u) });
+}));
+app.post('/api/auth/two-step/backup-codes', myTwoStepRoute((req, res, u) => {
+  if (!twoStep.isOn(u)) return res.status(400).json({ error: 'Two-step login isn’t on' });
+  if (!myCode(req, res, u)) return;
+  const codes = twoStep.renewBackup(u); save(); res.json({ backupCodes: codes, ...twoStep.view(u) });
+}));
+app.post('/api/auth/two-step/off', myTwoStepRoute((req, res, u) => {
+  if (!twoStep.isOn(u)) return res.json(twoStep.view(u));
+  if (twoStepRequired()) return res.status(400).json({ error: 'Your company requires two-step login, so it can’t be turned off. To use a new phone, choose Move to a new phone.' });
+  if (!myCode(req, res, u)) return;
+  delete u.twoStep; delete u.twoStepPending; save(); res.json(twoStep.view(u));
+}));
 app.post('/api/auth/reset', (req, res) => {
   const k = sha((req.body && req.body.token) || ''); const t = db.resetTokens[k];
   if (!t || t.expires < Date.now()) return res.status(400).json({ error: 'This reset link has expired. Ask for a new one.' });
@@ -1397,7 +1478,7 @@ app.post('/api/auth/reset', (req, res) => {
   const user = db.users.find((u) => u.id === t.userId); if (!user) return res.status(400).json({ error: 'Account not found' });
   const { salt, hash } = hashPassword(req.body.password); user.salt = salt; user.passwordHash = hash; delete db.resetTokens[k];
   for (const [sk, s] of Object.entries(db.sessions)) if (s.userId === user.id) delete db.sessions[sk]; // sign out everywhere
-  startSession(res, user); res.json(publicUser(user));
+  loginReply(res, user, startSession(res, user)); // a reset link alone doesn't skip two-step login
 });
 
 // ---- my profile: any logged-in user edits their own name, contact info, photo and password ----
@@ -5758,6 +5839,16 @@ if (rp > 0) { // emergency reset from the terminal: node server.js --reset-passw
     const u = db.users.find((x) => x.email === normEmail(process.argv[rp + 1])); const pw = process.argv[rp + 2] || '';
     if (!u || pw.length < 8) { console.error(u ? 'Password must be at least 8 characters' : `No login with that email in ${t.name}`); process.exit(1); }
     Object.assign(u, (({ salt, hash }) => ({ salt, passwordHash: hash }))(hashPassword(pw))); save(); console.log(`Password updated for ${u.email} (${t.name})`); process.exit(0);
+  });
+}
+const rts2 = process.argv.indexOf('--reset-two-step');
+if (rts2 > 0) { // a business login lost its phone and backup codes (e.g. the owner, who has nobody above them): node server.js --reset-two-step you@example.com [account-address]
+  const slug = process.argv[rts2 + 2]; const t = slug ? tenancy.platform().tenants.find((x) => x.slug === slug) : tenancy.platform().tenants.find((x) => tenancy.isDefault(x));
+  if (!t) { console.error(`No account with the address ${slug}`); process.exit(1); }
+  tenancy.run(t, () => {
+    const u = db.users.find((x) => x.email === normEmail(process.argv[rts2 + 1])); if (!u) { console.error(`No login with that email in ${t.name}`); process.exit(1); }
+    delete u.twoStep; delete u.twoStepPending; for (const [k, x] of Object.entries(db.sessions)) if (x.userId === u.id) delete db.sessions[k];
+    save(); console.log(`Two-step login reset for ${u.email} (${t.name})${db.company.requireTwoStep ? ': the next login sets it up again (the company requires it)' : ''}`); process.exit(0);
   });
 }
 const rpp = process.argv.indexOf('--reset-platform-password');

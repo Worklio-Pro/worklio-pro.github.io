@@ -34,6 +34,10 @@
     .of.pw input{padding-right:48px}
     .linkish{background:none;border:0;padding:0;font:inherit;font-size:14px;color:var(--link);cursor:pointer;text-decoration:none}
     .linkish:hover{text-decoration:underline}
+    .ts-qr{width:190px;max-width:100%;box-sizing:border-box;margin:4px auto 12px;padding:10px;background:#fff;border-radius:10px;border:1px solid var(--line)}.ts-qr svg{width:100%;height:auto;display:block}
+    .ts-key{margin:0 0 16px;font-size:13px}.ts-key summary{cursor:pointer;color:var(--link)}.ts-key code{display:block;margin-top:6px;padding:8px 10px;background:var(--surface-2,#f3f4f6);border-radius:8px;font-size:14px;word-break:break-all;user-select:all}
+    .ts-codes{columns:2;gap:16px;margin:8px 0 12px;padding-left:24px;font-size:15px}.ts-codes li{margin:3px 0}.ts-codes code{user-select:all}
+    .ts-otp{font-size:22px!important;letter-spacing:.3em;text-align:center;font-variant-numeric:tabular-nums}
     .auth .go{width:100%;height:50px;margin-top:20px;font-size:16px;font-weight:600;border-radius:8px}
     .auth .msg{margin:0 0 16px;padding:10px 12px;border-radius:8px;font-size:14px}
     .msg.err{background:var(--bad-bg);color:var(--bad-fg)}.msg.ok{background:var(--ok-bg);color:var(--ok-fg)}
@@ -72,6 +76,7 @@
   </main>
   <script src="/brand.js?v=1"></script>
   <script src="/oauth-buttons.js?v=1"></script>
-  <script src="/login.js?v=11"></script>
+  <script src="/qr.js?v=2"></script>
+  <script src="/login.js?v=12"></script>
 </body>
 </html>
