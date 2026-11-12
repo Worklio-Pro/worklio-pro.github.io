@@ -1541,6 +1541,8 @@ A.lcSettings = () => {
 <label>Username<input name="inUser" value="${esc(s.inbox.user)}" maxlength="200" placeholder="Usually the full email address" spellcheck="false" autocomplete="off"></label>
 <label>Password<input name="inPass" type="password" value="" maxlength="300" placeholder="${s.inbox.hasPass ? 'Saved (type to change)' : 'Password or app password'}" autocomplete="new-password"></label></div>
 <p style="margin:-2px 0 12px"><button type="button" class="btn alt sm" data-act="lcInTest">Test</button> <span class="muted" id="lcInMsg" style="font-size:13px"></span></p>
+${(() => { const l = s.inbox.last; if (!s.inbox.on || !l) return ''; const t = (x) => new Date(x).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return `<p class="${l.error || l.note ? 'lc-mailwarn' : 'muted'}" style="font-size:13px;margin:-6px 0 12px">Last checked ${t(l.at)}: ${l.error ? 'couldn’t read the mailbox: ' + esc(l.error) : 'OK'}${l.lastTook ? `. Last reply taken ${t(l.lastTook)}` : ''}${l.note ? '. ' + esc(l.note) : ''}</p>`; })()}
 <h3 style="margin:8px 0 4px;font-size:15px">Files</h3>
 <label class="switchline"><input type="checkbox" name="files" ${s.files !== false ? 'checked' : ''}> Let people attach photos and files (up to 10 MB: photos, PDFs, Word, Excel, CSV, text)</label>
 <label style="max-width:320px">Delete files after (days; 0 keeps them)<input type="number" name="fileDays" min="0" max="3650" value="${esc(s.fileDays ?? 90)}"></label>
