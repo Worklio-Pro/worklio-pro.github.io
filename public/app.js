@@ -577,7 +577,6 @@ const P404_YORKIE = `<svg class="p404-dog" viewBox="0 0 300 300" role="img" aria
 const page404Html = () => `<div class="p404">${P404_YORKIE}<div class="p404-code">Error 404</div><h1>Ruh-roh! This page ran off.</h1>
 <p class="muted">Our Yorkie sniffed under every couch cushion, but couldn’t find the page you’re looking for. It may have moved, or the link might be a little off.</p>
 <div class="p404-acts"><a class="btn" href="/business-overview" data-link>Take me home</a><button type="button" class="btn alt" data-act="p404Back">Go back</button></div></div>`;
-A.p404Back = () => (history.length > 1 ? history.back() : navigate('/business-overview'));
 async function render() {
   const path = curPath();
   if (path !== renderedPath) { $$('.qc').forEach((el) => el.remove()); renderedPath = path; } // the calendar's add/edit box floats on the page: it goes when the page changes (a refresh keeps it)
@@ -638,6 +637,7 @@ function textsBar(path, portal) {
 }
 
 const A = {}; // click actions
+A.p404Back = () => (history.length > 1 ? history.back() : navigate('/business-overview'));
 document.addEventListener('click', (e) => {
   // phones: a table row with an Edit or View button (.row-edit, hidden there) opens it when tapped anywhere
   if (phoneMq.matches && !e.target.closest('a, button, input, select, textarea, label, summary, details')) { const b = e.target.closest('tr')?.querySelector('.row-edit'); if (b) { e.preventDefault(); b.click(); return; } }
