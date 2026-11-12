@@ -545,11 +545,14 @@ document.addEventListener('keydown', (e) => {
 let renderedPath = '';
 /* ===== Page not found: Yoya, the Worklio Pro Yorkie (public/img/yoya-404.webp, background cut out), who sniffed everywhere and came up empty. Styles: .p404-* ===== */
 const P404_YORKIE = `<img class="p404-dog" src="/img/yoya-404.webp" width="800" height="800" alt="Yoya, the Worklio Pro Yorkie, in a Worklio Pro polo shirt with a laptop">`;
-const page404Html = () => `<div class="p404">${P404_YORKIE}<div class="p404-code">Error 404</div><h1>Ruh-roh! This page ran off.</h1>
+// only the Worklio Pro logo above Yoya (the product's logo, not the business's), linking home
+const page404Logo = () => { const p = (company.account && company.account.product) || {}; const img = window.brandImg ? brandImg(p) : '';
+  return `<a href="/" data-link class="p404-logo" aria-label="${esc(p.name || 'Worklio Pro')} home">${img}${img && p.logoHasName ? '' : `<span>${esc(p.name || 'Worklio Pro')}</span>`}</a>`; };
+const page404Html = () => `<div class="p404">${page404Logo()}${P404_YORKIE}<div class="p404-code">Error 404</div><h1>Ruh-roh! This page ran off.</h1>
 <p class="muted">Yoya sniffed under every couch cushion, but couldn’t find the page you’re looking for. It may have moved, or the link might be a little off.</p>
 <div class="p404-acts"><a class="btn" href="/business-overview" data-link>Take me home</a><button type="button" class="btn alt" data-act="p404Back">Go back</button></div></div>`;
 async function render() {
-  const path = curPath();
+  const path = curPath(); document.body.classList.remove('p404-only'); // the 404 page hides the menus; every other page shows them
   if (path !== renderedPath) { $$('.qc').forEach((el) => el.remove()); renderedPath = path; } // the calendar's add/edit box floats on the page: it goes when the page changes (a refresh keeps it)
   const mpT = document.getElementById('mpTheme'); if (mpT) mpT.remove();
   mPagesClose();
@@ -584,7 +587,7 @@ async function render() {
   if (pausedNow() && !portal && isAdminMe() && /\/(new|edit|import)$/.test(path)) { toast('Your account is paused. Choose a plan to make changes again.', true); history.replaceState({}, '', '/settings/billing'); return render(); }
   if (page && !memberCan(path)) { document.title = 'No access'; main.innerHTML = `<div class="card"><h1>You don't have access to this page</h1><p class="muted">Your access level doesn't include this page. Ask the account owner if you need more access.</p><p><a href="/calendar" data-link>Go to the job calendar</a></p></div>`; return; }
   if (page && planLocked(path)) { document.title = page.title; main.innerHTML = `<div class="card upgrade-card"><h1>${esc(page.title)} isn’t in your plan</h1><p class="muted">You’re on the ${esc(company.account.plan.name)} plan. Upgrade to get ${esc(page.title)} and more.</p><p><a href="/settings" data-link class="btn alt">See your plan</a></p></div>`; return; }
-  if (!page) { document.title = 'Page not found'; main.innerHTML = page404Html(); return; }
+  if (!page) { document.title = 'Page not found'; document.body.classList.add('p404-only'); main.innerHTML = page404Html(); return; } // p404-only: no menus, bars or chat
   document.title = `${page.title} · ${company.name || (company.account && company.account.productName) || 'Worklio Pro'}`;
   try { D = portal ? {} : await loadAll(); timeOffBadge(); await page.render(main); if (betaPage(path)) main.insertAdjacentHTML('afterbegin', BETA_BAR); }
   catch (e) { main.innerHTML = `<div class="card"><h2>Something went wrong</h2><p>${esc(e.message)}</p></div>`; }

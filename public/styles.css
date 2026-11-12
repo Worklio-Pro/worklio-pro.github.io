@@ -2377,3 +2377,6 @@ tr:hover>.racts>div,tr:focus-within>.racts>div,.racts>div:has(details[open]){opa
 .p404 p{margin:0 0 22px;font-size:16px;line-height:1.5}
 .p404-acts{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
 .p404-acts a.btn{text-decoration:none}
+/* Page not found shows nothing but the Worklio Pro logo, Yoya and the message: no menus, bars or chat */
+body.p404-only :is(#side,#sideMiniBtn,#menuBtn,#topbar,#bnav,#installBar,#supportBar,#expiryBar,#textsBar,#chat-root){display:none!important}
+.p404-logo{display:inline-flex;align-items:center;gap:10px;margin:8px 0 18px;--logo-h:44px;--logo-w:240px;font-size:24px;font-weight:800;color:var(--text);text-decoration:none}
