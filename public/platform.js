@@ -539,7 +539,7 @@ function plansView(main) {
   const rmBtn = (p, i) => (P.length > 1 ? `<button type="button" class="rm-plan" data-act="rmPlan" data-i="${i}" ${used(p.id) ? `disabled title="Move its accounts to another plan first"` : ''}>Remove plan</button>` : '');
   const dirty = plansDirty();
   planIx = Math.min(planIx, P.length - 1);
-  const head = `<div class="head"><div><h1>Pricing</h1><p class="sub" style="margin:4px 0 0">Tick what each plan includes. Accounts get changes as soon as you save. Raising a price, or lowering the logins, is for new accounts: the ones already on that plan keep what they have.</p></div><button class="btn alt" data-act="addPlan">Add plan</button></div>${pricingSeg()}`;
+  const head = `<div class="head"><div><h1>Pricing</h1><p class="sub" style="margin:4px 0 0">Tick what each plan includes. Accounts get changes as soon as you save. Raising a price, or lowering the logins, is for new accounts: the ones already on that plan keep what they have.</p></div><button class="btn alt" data-act="addPlan" style="margin-left:auto">Add plan</button></div>${pricingSeg()}`;
   const savebar = `<div class="savebar"><span class="muted">${dirty ? 'Unsaved changes' : 'All changes saved'}</span>${dirty ? '<button type="button" class="btn alt" data-act="discardPlans">Discard</button>' : ''}<button type="button" class="btn" data-act="savePlans" ${dirty ? '' : 'disabled'}>Save plans</button></div>`;
   if (narrow.matches) {
     const i = planIx; const p = P[i];
