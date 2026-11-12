@@ -1426,7 +1426,7 @@ const LC_ST = { waiting: ['Waiting', 'q-sent'], live: ['Live', 'active'], bot: [
 const lcAgo = (s) => { const m = Math.round((Date.now() - new Date(s)) / 60000); return m < 1 ? 'now' : m < 60 ? m + 'm' : m < 1440 ? Math.round(m / 60) + 'h' : new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); };
 const lcLink = (t) => esc(t).replace(/https?:\/\/[^\s<]+[^\s<.,;:!?)'"]/g, (u) => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`).replace(/\n/g, '<br>');
 function chatCard(box) {
-  box.innerHTML = `<div class="lc-head"><h2>Live chat</h2><div class="acts">${POPOUT ? `<button type="button" class="btn alt sm" data-act="lcNotify" id="lcNotify" ${'Notification' in window && Notification.permission === 'default' ? '' : 'hidden'}>Turn on alerts</button>` : '<button type="button" class="btn alt sm" data-act="lcPopout" title="Open Live chat in its own window">Pop out ↗</button>'}<button type="button" class="btn alt sm" data-act="lcSettings">Chat settings</button></div></div>
+  box.innerHTML = `<div class="lc-head"><h2>Live chat</h2><div class="acts">${POPOUT ? `<button type="button" class="btn alt sm" data-act="lcNotify" id="lcNotify" ${'Notification' in window && Notification.permission === 'default' ? '' : 'hidden'}>Turn on alerts</button>` : '<button type="button" class="btn alt sm" data-act="lcPopout" title="Open Live chat in its own window">Pop out ↗</button>'}<button type="button" class="btn alt sm" data-act="lcSound" id="lcSound" title="A chime when a visitor writes">${lcSoundOn() ? '🔔 Sound on' : '🔕 Sound off'}</button><button type="button" class="btn alt sm" data-act="lcSettings">Chat settings</button></div></div>
 ${LC && !LC.settings.on ? '<div class="note">The chat button is off. Turn it on in <strong>Chat settings</strong> to show it on your site, help center and in the app.</div>' : ''}
 ${LC && LC.settings.on && LC.settings.hours.on && !LC.inHours ? `<div class="note">It’s outside your business hours (${esc(LC.hoursText)}), so people see your “no one is available” message and can leave one.</div>` : ''}
 <div class="lc"><div class="lc-list" id="lcList"><p class="muted">Loading…</p></div><div class="lc-conv" id="lcConv"><p class="muted lc-empty">Choose a chat to read it and reply.</p></div></div>`;
@@ -1452,11 +1452,28 @@ A.lcPopout = () => {
 };
 A.lcNotify = async () => { const p = await Notification.requestPermission(); $('#lcNotify').hidden = true; if (p === 'granted') toast('You’ll get an alert when someone wants to talk to a person'); };
 // the pop-out window: the number waiting in its title, and an alert (if allowed) when someone new asks for a person
-let lcKnown = null;
+let lcKnown = null; let lcHeard = null;
+// a soft chime when a visitor writes (or asks for a person). Browsers allow sound only after a click or key on the page, so it's switched on at the first one.
+const lcSoundOn = () => { try { return localStorage.getItem('alpha:chatSound') !== 'off'; } catch (e) { return true; } };
+let lcActx = null;
+const lcUnlock = () => { try { lcActx = lcActx || new (window.AudioContext || window.webkitAudioContext)(); if (lcActx.state !== 'running') lcActx.resume(); } catch (e) { /* no audio */ } };
+['pointerdown', 'keydown'].forEach((ev) => window.addEventListener(ev, lcUnlock, { capture: true, passive: true }));
+function lcChime() {
+  if (!lcSoundOn()) return; lcUnlock(); if (!lcActx || lcActx.state !== 'running') return;
+  const now = lcActx.currentTime;
+  [[660, 0], [990, 0.12]].forEach(([f, d]) => { const o = lcActx.createOscillator(); const g = lcActx.createGain(); o.type = 'sine'; o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, now + d); g.gain.exponentialRampToValueAtTime(0.2, now + d + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, now + d + 0.4);
+    o.connect(g).connect(lcActx.destination); o.start(now + d); o.stop(now + d + 0.45); });
+}
+A.lcSound = () => { const on = !lcSoundOn(); try { localStorage.setItem('alpha:chatSound', on ? 'on' : 'off'); } catch (e) { /* private mode */ } const b = $('#lcSound'); if (b) b.textContent = on ? '🔔 Sound on' : '🔕 Sound off'; if (on) lcChime(); };
 function lcAlert(chats) {
   const waiting = chats.filter((c) => c.status === 'waiting'); const n = chats.filter((c) => c.status === 'waiting' || (c.status === 'live' && c.unread)).length;
   if (POPOUT) document.title = `${n ? `(${n}) ` : ''}Live chat · ${D.settings.productName} Alpha`;
   const fresh = lcKnown ? waiting.filter((c) => !lcKnown.has(c.id)) : []; lcKnown = new Set(waiting.map((c) => c.id));
+  // chime: a new person waiting, or a new visitor message in a chat with you (not ones with the AI)
+  const heard = new Map(chats.filter((c) => c.status === 'waiting' || c.status === 'live').map((c) => [c.id, c.last && c.last.from === 'visitor' ? c.updatedAt : '']));
+  if (lcHeard && (fresh.length || [...heard].some(([id, at]) => at && at !== lcHeard.get(id)))) lcChime();
+  lcHeard = heard;
   if (fresh.length && document.hidden && 'Notification' in window && Notification.permission === 'granted') {
     const c = fresh[0]; const note = new Notification(`${c.name || 'A visitor'} wants to talk to a person`, { body: c.last ? c.last.text : '', tag: 'chat-' + c.id });
     note.onclick = () => { window.focus(); A.lcOpen({ id: c.id }); note.close(); };

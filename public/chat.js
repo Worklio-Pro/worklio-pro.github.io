@@ -196,11 +196,25 @@ textarea:focus,input:focus{outline:2px solid var(--brand,#2563eb);outline-offset
     return `<time class="t" datetime="${esc(m.at)}">${esc(txt)}</time>`;
   }
   // a soft two-note chime for a new reply, made in the browser (no sound file); turned off from ⋮ → Chat sound, remembered on this device
+  // browsers only let a page start sound after a tap or keypress, so the audio is switched on at the first one (with a silent blip for iPhones)
   let actx = null;
+  function unlock() {
+    try {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state !== 'running') actx.resume();
+      const b = actx.createBuffer(1, 1, 22050); const s = actx.createBufferSource(); s.buffer = b; s.connect(actx.destination); s.start(0);
+    } catch (e) { /* no audio here */ }
+  }
+  ['pointerdown', 'touchend', 'keydown'].forEach((ev) => window.addEventListener(ev, unlock, { capture: true, passive: true }));
   function chime() {
     if (!soundOn()) return;
     try {
-      actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume();
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      if (actx.state !== 'running') { actx.resume().then(() => { if (actx.state === 'running') ring(); }).catch(() => {}); return; }
+      ring();
+    } catch (e) { /* no audio here */ }
+  }
+  function ring() {
+    try {
       const now = actx.currentTime;
       [[880, 0], [1320, 0.11]].forEach(([f, d]) => {
         const o = actx.createOscillator(); const g = actx.createGain(); o.type = 'sine'; o.frequency.value = f;
