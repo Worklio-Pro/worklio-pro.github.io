@@ -3443,7 +3443,19 @@ const I_CLASS = { overdue: 'q-declined', sent: 'q-sent', partial: 'q-converted',
 const iBadge = (s) => `<span class="cstatus ${I_CLASS[s] || ''}">${I_STATUS[s] || esc(s)}</span>`;
 const invBalance = (i) => (i.status === 'paid' ? 0 : i.balanceDue ?? i.total ?? 0);
 const invSubject = (i) => i.subject || (byId(D.jobs, i.jobId) || {}).title || ((i.items || [])[0] || {}).desc || '';
-let invView = { status: 'all', date: 'all', q: '', sort: 'issued', dir: -1 };
+// The Invoices page opens on Needs action: past due, and invoices the client says they paid (Zelle, Venmo…) that aren't recorded yet.
+// Status tabs (count and amount owed) replace the old Overview card and Status dropdown; the 30-day stats are one line above them.
+let invView = { status: 'action', date: 'all', q: '', sort: 'urgent', dir: 1 };
+const invSel = new Set(); let invLateIds = [];
+const invClaimed = (i) => !!i.zelleSentAt && i.status !== 'paid';
+const invNeedsAction = (i) => i.displayStatus === 'overdue' || invClaimed(i);
+const invDaysLate = (i) => Math.max(0, Math.round((parseD(ymd(new Date())) - parseD(i.dueDate)) / 864e5));
+// most urgent first: past due (oldest due date first), client says they paid, awaiting payment by due date, drafts, then paid (newest first)
+const invUrgency = (a, b) => {
+  const rank = (i) => (i.displayStatus === 'overdue' && !invClaimed(i) ? 0 : invClaimed(i) ? 1 : { partial: 2, sent: 2, draft: 3, paid: 4 }[i.displayStatus] ?? 5);
+  return rank(a) - rank(b) || (a.displayStatus === 'paid' ? String(b.paidAt || '').localeCompare(String(a.paidAt || '')) : String(a.dueDate || '').localeCompare(String(b.dueDate || '')));
+};
+const invInTab = (i, s) => s === 'all' || (s === 'action' ? invNeedsAction(i) : i.displayStatus === s);
 PAGES['/invoices'] = {
   title: 'Invoices',
   async render(main) {
@@ -3453,61 +3465,102 @@ PAGES['/invoices'] = {
     const issued = (from, to) => D.invoices.filter((i) => i.status !== 'draft' && inWin(day(i.issueDate), from, to));
     const issNow = issued(ago(30), tomorrow); const issPrev = issued(ago(60), ago(30));
     const sum = (l) => l.reduce((s, i) => s + (i.total || 0), 0); const avg = (l) => (l.length ? sum(l) / l.length : 0);
-    const change = (now, prev, lowerIsBetter) => { if (!prev) return ''; const up = now >= prev; const good = lowerIsBetter ? !up : up; return `<span class="chg ${good ? 'up' : 'down'}">${up ? '↑' : '↓'} ${Math.abs(Math.round(((now - prev) / prev) * 100))}%</span>`; };
-    // average days from issue to payment, for invoices paid in the window; commercial = client has a company name
-    const payDays = (from, to, commercial) => { const l = D.invoices.filter((i) => i.status === 'paid' && inWin(day(i.paidAt), from, to) && !!(byId(D.clients, i.clientId) || {}).company === commercial); return l.length ? Math.round(l.reduce((s, i) => s + Math.max(0, (parseD(day(i.paidAt)) - parseD(day(i.issueDate))) / 864e5), 0) / l.length) : null; };
-    const pt = (commercial, label) => { const now = payDays(ago(30), tomorrow, commercial); const prev = payDays(ago(60), ago(30), commercial);
-      return `<div class="pt"><div class="cs-v sm">${now === null ? '—' : now + (now === 1 ? ' day' : ' days')} ${now !== null && prev ? change(now, prev, true) : ''}</div><div class="muted">${label}</div></div>`; };
+    const bal = (l) => l.reduce((s, i) => s + invBalance(i), 0);
+    const change = (now, prev) => (prev ? `<span class="chg ${now >= prev ? 'up' : 'down'}">${now >= prev ? '↑' : '↓'} ${Math.abs(Math.round(((now - prev) / prev) * 100))}%</span>` : '');
+    // average days from issue to payment, for invoices paid in the past 30 days; commercial = client has a company name
+    const payDays = (commercial) => { const l = D.invoices.filter((i) => i.status === 'paid' && inWin(day(i.paidAt), ago(30), tomorrow) && !!(byId(D.clients, i.clientId) || {}).company === commercial); return l.length ? Math.round(l.reduce((s, i) => s + Math.max(0, (parseD(day(i.paidAt)) - parseD(day(i.issueDate))) / 864e5), 0) / l.length) : null; };
+    const daysTxt = (n) => `<strong>${n} day${n === 1 ? '' : 's'}</strong>`;
+    const paidIn = [[payDays(false), 'residential'], [payDays(true), 'commercial']].filter(([n]) => n !== null).map(([n, l]) => `${daysTxt(n)} ${l}`).join(' · ');
     const group = (s) => D.invoices.filter((i) => i.displayStatus === s);
     const since = { '30': ago(30), '90': ago(90), year: new Date().getFullYear() + '-01-01' }[v.date] || '';
     const cname = (i) => { const c = byId(D.clients, i.clientId); return c ? c.company || c.name : '—'; };
     const list = D.invoices.filter((i) => {
-      if (v.status !== 'all' && i.displayStatus !== v.status) return false;
+      if (!invInTab(i, v.status)) return false;
       if (since && day(i.issueDate) < since) return false;
       const c = byId(D.clients, i.clientId) || {};
       return !v.q || [i.number, invSubject(i), c.name, c.company, money(i.total)].join(' ').toLowerCase().includes(v.q.toLowerCase());
     });
     const order = Object.keys(I_STATUS);
-    const key = { client: (i) => cname(i).toLowerCase(), number: (i) => Number(String(i.number).replace(/\D/g, '')) || 0, due: (i) => i.dueDate || '', issued: (i) => i.issueDate || '', paid: (i) => (i.status === 'paid' && i.paidAt) || '', status: (i) => order.indexOf(i.displayStatus), total: (i) => i.total || 0, balance: invBalance }[v.sort];
-    list.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0) * v.dir);
+    if (v.sort === 'urgent') list.sort(invUrgency);
+    else {
+      const key = { client: (i) => cname(i).toLowerCase(), number: (i) => Number(String(i.number).replace(/\D/g, '')) || 0, due: (i) => i.dueDate || '', issued: (i) => i.issueDate || '', paid: (i) => (i.status === 'paid' && i.paidAt) || '', status: (i) => order.indexOf(i.displayStatus), total: (i) => i.total || 0, balance: invBalance }[v.sort];
+      list.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0) * v.dir);
+    }
+    [...invSel].forEach((id) => { if (!byId(D.invoices, id)) invSel.delete(id); });
     const th = (k, label, cls = '') => `<th class="${cls}"><button class="th-btn" data-act="invSort" data-k="${k}">${label} <span class="sort ${v.sort === k ? 'on' : ''}">${v.sort === k ? (v.dir > 0 ? '▲' : '▼') : '⇅'}</span></button></th>`;
     const nowrap = (s) => `<td style="white-space:nowrap">${s}</td>`; const dash = '<span class="muted">—</span>';
+    const dueTxt = (i) => (i.dueDate && i.dueDate <= i.issueDate ? 'Due upon receipt' : i.dueDate ? 'Due ' + fmtDate(i.dueDate) : '');
+    const sub = (s) => (s ? `<div class="muted sm-l">${s}</div>` : '');
+    const stCell = (i) => { const s = i.displayStatus; const n = s === 'overdue' ? invDaysLate(i) : 0;
+      return `<span class="cstatus ${I_CLASS[s] || ''}">${s === 'overdue' ? (n === 1 ? '1 day late' : `${n} days late`) : esc(I_STATUS[s] || s)}</span>${invClaimed(i) ? ` <span class="badge zelle" title="Client reported a ${sentName(i)} payment on ${fmtDate(day(i.zelleSentAt))}">${sentName(i)} sent ${esc(mDay(i.zelleSentAt))}</span>` : ''}`; };
+    let cols = []; const has = (k) => cols.some((c) => c.k === k);
     const ICOLS = [
-      { k: 'client', label: 'Client', th: th('client', 'Client'), td: (i) => `<td><strong>${esc(cname(i))}</strong></td>` },
-      { k: 'number', label: 'Invoice number', th: th('number', 'Invoice number'), td: (i) => `<td>${esc(i.number)}</td>` },
+      { k: 'client', label: 'Client', th: th('client', 'Client'), td: (i) => `<td><strong>${esc(cname(i))}</strong>${has('subject') ? '' : sub(esc(invSubject(i)))}</td>` },
+      { k: 'number', label: 'Invoice number', th: th('number', 'Invoice'), td: (i) => `<td style="white-space:nowrap">${esc(i.number)}${i.status === 'paid' ? (has('paid') || !i.paidAt ? '' : sub('Paid ' + esc(fmtDate(day(i.paidAt))))) : has('due') ? '' : sub(esc(dueTxt(i)))}</td>` },
       { k: 'issued', label: 'Issued', off: true, th: th('issued', 'Issued'), td: (i) => nowrap(i.issueDate ? fmtDate(i.issueDate) : dash) },
-      { k: 'due', label: 'Due date', th: th('due', 'Due date'), td: (i) => nowrap(i.status === 'paid' ? fmtDate(i.dueDate) : i.dueDate && i.dueDate <= i.issueDate ? 'Due upon receipt' : fmtDate(i.dueDate)) },
-      { k: 'subject', label: 'Subject', th: '<th>Subject</th>', td: (i) => `<td>${esc(invSubject(i))}</td>` },
-      { k: 'status', label: 'Status', th: th('status', 'Status'), td: (i) => `<td>${iBadge(i.displayStatus)}${i.zelleSentAt && i.status !== 'paid' ? ` <span class="badge zelle" title="Client reported a ${sentName(i)} payment on ${fmtDate(i.zelleSentAt)}">${sentName(i)} sent</span>` : ''}</td>` },
+      { k: 'due', label: 'Due date', off: true, th: th('due', 'Due date'), td: (i) => nowrap(i.status === 'paid' ? fmtDate(i.dueDate) : i.dueDate && i.dueDate <= i.issueDate ? 'Due upon receipt' : fmtDate(i.dueDate)) },
+      { k: 'subject', label: 'Subject', off: true, th: '<th>Subject</th>', td: (i) => `<td>${esc(invSubject(i))}</td>` },
+      { k: 'status', label: 'Status', th: th('status', 'Status'), td: (i) => `<td>${stCell(i)}</td>` },
       { k: 'paid', label: 'Paid on', off: true, th: th('paid', 'Paid on'), td: (i) => nowrap(i.status === 'paid' && i.paidAt ? `${fmtDate(day(i.paidAt))}${i.paymentMethod ? `<div class="muted">${esc(payLabel(i.paymentMethod))}</div>` : ''}` : dash) },
-      { k: 'total', label: 'Total', th: th('total', 'Total', 'r'), td: (i) => `<td class="r"><strong>${money(i.total)}</strong></td>` },
-      { k: 'balance', label: 'Balance', th: th('balance', 'Balance', 'r'), td: (i) => `<td class="r"><strong>${money(invBalance(i))}</strong></td>` },
+      { k: 'total', label: 'Total', off: true, th: th('total', 'Total', 'r'), td: (i) => `<td class="r"><strong>${money(i.total)}</strong></td>` },
+      { k: 'balance', label: 'Balance', th: th('balance', 'Balance', 'r'), td: (i) => { const b = invBalance(i); return `<td class="r"><strong>${money(b)}</strong>${i.status !== 'paid' && b < (i.total || 0) && !has('total') ? sub('of ' + money(i.total)) : ''}</td>`; } },
     ];
-    const cols = listCols('invoices', ICOLS);
-    if (phoneMq.matches) return mobileList(main, { path: '/invoices', title: 'Invoices', plural: 'invoices', one: 'invoice', list, q: v.q, status: v.status, statuses: order.map((s) => [s, I_STATUS[s]]), date: (x) => x.issueDate,
+    cols = listCols('invoices', ICOLS);
+    if (phoneMq.matches) return mobileList(main, { path: '/invoices', title: 'Invoices', plural: 'invoices', one: 'invoice', list, q: v.q, status: v.status, statuses: [['action', 'Needs action'], ...order.map((s) => [s, I_STATUS[s]])], date: (x) => x.issueDate,
       row: (x) => ({ name: cname(x), date: mDay(x.issueDate), amount: mAmt(x.total), title: invSubject(x), label: I_STATUS[x.displayStatus], cls: I_CLASS[x.displayStatus], href: '/invoices/view?id=' + x.id }),
       onStatus: (k) => { invView = { ...invView, status: k }; }, onQ: (t) => { invView.q = t; }, newAct: 'newInvoice', banner: batchBanner() });
+    // the buttons on a row (shown on hover): what you'd do next with that invoice
+    const acts = (i) => { const b = (act, label, alt) => `<button type="button" class="btn sm${alt ? ' alt' : ''}" data-act="${act}" data-id="${i.id}">${label}</button>`; const s = i.displayStatus;
+      return s === 'paid' ? b('sendReceipt', 'Send receipt', true) : s === 'draft' ? b('sendInvoice', 'Send') : invClaimed(i) ? b('collectPayment', 'Record payment') : b('sendInvoice', 'Send reminder', true) + b('collectPayment', 'Record payment'); };
+    const ncol = cols.length + 2;
+    const row = (i) => `<tr class="crow" data-id="${i.id}"><td class="sel-td"><input type="checkbox" class="isel" value="${i.id}" ${invSel.has(i.id) ? 'checked' : ''} aria-label="Select ${esc(i.number)}"></td>
+${cols.map((c) => c.td(i)).join('')}<td class="racts"><div>${acts(i)}</div></td></tr>`;
+    const grp = (dot, title, note, btn = '') => `<tr class="lgrp"><td colspan="${ncol}"><div><i class="dot ${dot}"></i><strong>${title}</strong><span class="muted">${note}</span>${btn}</div></td></tr>`;
+    const late = list.filter((i) => i.displayStatus === 'overdue' && !invClaimed(i)); invLateIds = late.map((i) => i.id);
+    let body;
+    if (v.status === 'action' && v.sort === 'urgent') { // grouped by why it needs action
+      const claimed = list.filter(invClaimed); const s = (n) => (n === 1 ? '' : 's');
+      body = (late.length ? grp('q-declined', 'Past due', `${late.length} invoice${s(late.length)} · ${money(bal(late))} owed`, late.length > 1 ? `<button type="button" class="btn sm alt" data-act="invRemindAll">Remind all ${late.length}</button>` : '') + late.map(row).join('') : '')
+        + (claimed.length ? grp('i-claim', 'Client says they paid', 'Check that it arrived, then record it') + claimed.map(row).join('') : '');
+    } else body = list.map(row).join('');
+    const waiting = D.invoices.filter((i) => ['sent', 'partial'].includes(i.displayStatus) && !invClaimed(i)).length;
+    const paid30 = D.invoices.filter((i) => i.status === 'paid' && inWin(day(i.paidAt), ago(30), tomorrow));
+    const tabs = [['action', 'Needs action', D.invoices.filter(invNeedsAction)], ...['overdue', 'sent', 'partial', 'draft'].map((s) => [s, I_STATUS[s], group(s)]), ['paid', 'Paid', null], ['all', 'All', null]]
+      .filter(([s, , l]) => s !== 'partial' || l.length || v.status === 'partial');
+    const tabM = (s, l) => (l ? (l.length ? moneyShort(bal(l)) : '') : s === 'paid' && paid30.length ? `${moneyShort(sum(paid30))} past 30 days` : '');
     main.innerHTML = `<div class="head"><h1>Invoices</h1><div class="actions"><button class="btn" data-act="newInvoice">New Invoice</button>
 <details class="menu"><summary class="btn alt">⋯ More Actions</summary><div class="menu-list"><button data-act="batchInvoice">Invoice completed jobs</button></div></details></div></div>
-${batchBanner()}<div class="cstats">
-<div class="cstat"><strong class="cs-h">Overview</strong><div class="qov">${[['overdue', 'q-declined'], ['sent', 'q-sent'], ['draft', 'q-draft']].map(([s, c]) => `<button data-act="invFilter" data-s="${s}"><i class="dot ${c}"></i><span class="grow">${I_STATUS[s]} (${group(s).length})</span><span>${moneyShort(sum(group(s)))}</span></button>`).join('')}</div></div>
-<button class="cstat" data-act="invCard"><div class="cs-h"><strong>Issued</strong><span>↗</span></div><div class="muted">Past 30 days</div><div class="cs-v">${issNow.length} ${change(issNow.length, issPrev.length)}</div><div class="muted">${moneyShort(sum(issNow))}</div></button>
-<div class="cstat"><div class="cs-h"><strong>Average invoice</strong></div><div class="muted">Past 30 days</div><div class="cs-v">${avg(issNow) >= 1000 ? moneyShort(avg(issNow)) : "$" + Math.round(avg(issNow))} ${change(avg(issNow), avg(issPrev))}</div></div>
-<div class="cstat"><div class="cs-h"><strong>Invoice payment time</strong></div><div class="muted">Issue to payment, past 30 days</div><div class="pts">${pt(false, 'Residential')}${pt(true, 'Commercial')}</div></div></div>
-<h2 class="ftitle">All invoices <span class="muted">(${list.length} result${list.length === 1 ? '' : 's'})</span></h2>
-<div class="cfilters"><label class="pill">Status<select data-iv="status"><option value="all">All</option>${order.map((s) => `<option value="${s}" ${v.status === s ? 'selected' : ''}>${I_STATUS[s]}</option>`).join('')}</select></label>
-<label class="pill">📅 Date<select data-iv="date">${[['all', 'All'], ['30', 'Issued past 30 days'], ['90', 'Issued past 90 days'], ['year', 'Issued this year']].map(([k, l]) => `<option value="${k}" ${v.date === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+${batchBanner()}<div class="lstrip"><span class="ls-l">Past 30 days</span><span>Issued <strong>${issNow.length} · ${moneyShort(sum(issNow))}</strong> ${change(issNow.length, issPrev.length)}</span>
+<span>Average invoice <strong>${avg(issNow) >= 1000 ? moneyShort(avg(issNow)) : '$' + Math.round(avg(issNow))}</strong> ${change(avg(issNow), avg(issPrev))}</span>${paidIn ? `<span>Paid in ${paidIn}</span>` : ''}<a href="/reports" data-link>Full report →</a></div>
+<div class="ltabs" role="tablist" aria-label="Invoice status">${tabs.map(([s, label, l]) => `<button type="button" role="tab" aria-selected="${v.status === s}" class="ltab${v.status === s ? ' on' : ''}" data-act="invTab" data-s="${s}"><span class="lt-t">${I_CLASS[s] ? `<i class="dot ${I_CLASS[s]}"></i>` : ''}${label}${l ? `<span class="lt-n">${l.length}</span>` : ''}</span><span class="lt-m">${tabM(s, l)}</span></button>`).join('')}</div>
+<div class="cfilters"><label class="pill">📅 Date<select data-iv="date">${[['all', 'All'], ['30', 'Issued past 30 days'], ['90', 'Issued past 90 days'], ['year', 'Issued this year']].map(([k, l]) => `<option value="${k}" ${v.date === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
 <input id="iq" class="csearch" type="search" placeholder="Search invoices…" value="${esc(v.q)}">${colPicker('invoices', ICOLS, cols)}</div>
-<div class="card ctable"><div class="tablewrap"><table><tr>${cols.map((c) => c.th).join('')}</tr>
-${list.map((i) => `<tr class="crow" data-id="${i.id}">${cols.map((c) => c.td(i)).join('')}</tr>`).join('') || `<tr><td colspan="${cols.length}" class="empty">${D.invoices.length ? 'No invoices match these filters' : 'No invoices yet'}</td></tr>`}</table></div></div>`;
+${invSel.size ? `<div class="bulk"><strong>${invSel.size} selected</strong><button class="btn sm" data-act="invRemindSel">Send reminders</button><button class="btn alt sm" data-act="invClearSel">Clear selection</button></div>` : ''}
+<div class="card ctable"><div class="tablewrap"><table><tr><th class="sel-td"><input type="checkbox" id="iSelAll" aria-label="Select all" ${list.length && list.every((i) => invSel.has(i.id)) ? 'checked' : ''}></th>${cols.map((c) => c.th).join('')}<th aria-label="Actions"></th></tr>
+${body || `<tr><td colspan="${ncol}" class="empty">${v.status === 'action' && !v.q && v.date === 'all' && D.invoices.length ? 'Nothing needs action: no invoices are past due.' : D.invoices.length ? 'No invoices match these filters' : 'No invoices yet'}</td></tr>`}</table></div>
+${v.status === 'action' && waiting ? `<div class="lmore"><span>${waiting} more invoice${waiting === 1 ? ' is' : 's are'} awaiting payment and not due yet.</span><button type="button" class="link-btn" data-act="invTab" data-s="sent">Awaiting payment →</button></div>` : ''}</div>`;
     $$('[data-iv]').forEach((s) => s.addEventListener('change', (e) => { invView[e.target.dataset.iv] = e.target.value; refresh(); }));
     let t; $('#iq').addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(async () => { invView.q = e.target.value; await refresh(); const q = $('#iq'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 250); });
-    $$('.crow').forEach((r) => r.addEventListener('click', () => navigate('/invoices/view?id=' + r.dataset.id)));
+    $('#iSelAll').addEventListener('change', (e) => { list.forEach((i) => (e.target.checked ? invSel.add(i.id) : invSel.delete(i.id))); refresh(); });
+    $$('.isel').forEach((b) => b.addEventListener('change', (e) => { e.target.checked ? invSel.add(e.target.value) : invSel.delete(e.target.value); refresh(); }));
+    $$('.crow').forEach((r) => r.addEventListener('click', (e) => { if (!e.target.closest('input, button, a')) navigate('/invoices/view?id=' + r.dataset.id); }));
   },
 };
-A.invFilter = (d) => { invView = { ...invView, status: d.s }; refresh(); };
-A.invCard = () => { invView = { ...invView, date: '30', status: 'all' }; refresh(); };
+A.invTab = (d) => { invView = { ...invView, status: d.s, sort: 'urgent', dir: 1 }; invSel.clear(); refresh(); };
 A.invSort = (d) => { invView.dir = invView.sort === d.k ? -invView.dir : (['client', 'status'].includes(d.k) ? 1 : -1); invView.sort = d.k; refresh(); };
+A.invClearSel = () => { invSel.clear(); refresh(); };
+// payment reminders by email, one after another: the invoice email again, with its pay-online link (texts are left out)
+async function invRemind(ids) {
+  const list = ids.map((id) => byId(D.invoices, id)).filter((i) => i && i.status !== 'paid' && i.status !== 'draft');
+  const ok = list.filter((i) => (byId(D.clients, i.clientId) || {}).email); const skip = list.length - ok.length; const s = (n) => (n === 1 ? '' : 's');
+  if (!ok.length) return toast(list.length ? 'None of these clients has an email address' : 'Choose unpaid invoices that were already sent', true);
+  if (!confirm(`Email a payment reminder for ${ok.length} invoice${s(ok.length)}?${skip ? ` ${skip} client${skip === 1 ? ' has' : 's have'} no email address and will be skipped.` : ''}`)) return;
+  let sent = 0; let failed = 0;
+  for (const i of ok) { try { const r = await api('POST', `/api/invoices/${i.id}/send`, { channels: ['email'] }); (r.results || []).some((x) => x.status === 'failed') ? failed++ : sent++; } catch (x) { failed++; } }
+  toast(failed ? `${sent} reminder${s(sent)} sent, ${failed} failed` : `${sent} reminder${s(sent)} sent`, !!failed); invSel.clear(); refresh();
+}
+A.invRemindAll = () => invRemind(invLateIds);
+A.invRemindSel = () => invRemind([...invSel]);
 A.exportInvoices = () => downloadCsv('invoices.csv', [['Invoice', 'Client', 'Company', 'Subject', 'Issued', 'Due', 'Status', 'Subtotal', 'Tax', 'Total', 'Balance', 'Paid on', 'Paid by'],
   ...D.invoices.map((i) => { const c = byId(D.clients, i.clientId) || {}; return [i.number, c.name || '', c.company || '', invSubject(i), i.issueDate, i.dueDate, I_STATUS[i.displayStatus], i.subtotal, i.tax, i.total, invBalance(i), i.paidAt || '', i.paymentMethod ? payLabel(i.paymentMethod) : '']; })]);
 A.newInvoice = () => navigate('/invoices/new');
