@@ -2349,6 +2349,17 @@ a.hm-step:hover{border-color:var(--brand)}
 @media (hover:none){.racts>div{opacity:1}}
 .lmore{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:12px 14px;border-top:1px solid var(--line);font-size:14px;color:var(--muted)}
 .lmore .link-btn{margin-left:0;text-decoration:none}
-/* the More actions button: a square with the three dots */
-.btn.icon-more{display:inline-flex;align-items:center;justify-content:center;min-width:38px;padding-left:0;padding-right:0}
-@media (max-width:760px){:where(#main,.modal,.mpage,.msheet) .btn.icon-more{min-width:50px;padding-left:0;padding-right:0}}
+/* square icon buttons: More actions (three dots), and Call / Email on a client row */
+.btn.icon-more,.btn.sq{display:inline-flex;align-items:center;justify-content:center;min-width:38px;padding-left:0;padding-right:0}
+@media (max-width:760px){:where(#main,.modal,.mpage,.msheet) :is(.btn.icon-more,.btn.sq){min-width:50px;padding-left:0;padding-right:0}}
+/* Clients list: initials circle, contact line under the name, past-due amounts in red, the duplicates note */
+.cl-who{display:flex;align-items:center;gap:12px;min-width:0}.cl-txt{min-width:0}
+.cl-top{display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px}
+.cl-contact a{color:inherit;text-decoration:none}.cl-contact a:hover{color:var(--link);text-decoration:underline}
+.av{flex:none;display:inline-grid;place-items:center;width:38px;height:38px;border-radius:50%;font-size:14px;font-weight:700;letter-spacing:.02em}
+.av0{background:var(--info-bg);color:var(--info-fg)}.av1{background:var(--ok-bg);color:var(--ok-fg)}.av2{background:var(--warn-bg);color:var(--warn-fg)}
+.av3{background:var(--violet-bg);color:var(--violet-fg)}.av4{background:var(--bad-bg);color:var(--bad-fg)}.av5{background:var(--neutral-bg);color:var(--neutral-fg)}
+.cl-late{color:var(--danger)}
+.cl-dupes{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.lstrip .ls-b{background:none;border:0;padding:0;font:inherit;color:inherit;cursor:pointer}.lstrip .ls-b:hover strong{color:var(--link)}
+.racts a.btn{text-decoration:none}

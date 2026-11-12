@@ -1158,7 +1158,12 @@ const clientTags = (c) => (Array.isArray(c.tags) ? c.tags : String(c.tags || '')
 // the Clients list shows 10 per page on phone screens (matches the 760px CSS breakpoint) and 20 on larger ones
 const phoneMq = matchMedia('(max-width:760px)'); const mOpenNow = () => !!document.querySelector('.mpage, #msheet'); // a page or sheet is open: turning the phone mustn't redraw behind it, which would close it
 phoneMq.addEventListener('change', () => { if ($('#cq') && !mOpenNow()) refresh(); });
-let clientView = { status: 'all', tag: '', q: '', since: '', dupes: false, sort: 'name', dir: 1, page: 0 }; const clientSel = new Set();
+// The Clients page opens on Needs attention: clients who owe money past due, new leads (past 60 days) with no quote yet, and
+// active clients with no job in over a year and nothing booked. Same look as Quotes, Jobs and Invoices: status tabs, a one-line stats
+// strip, rows grouped by why, and each row's buttons (Call, Email, New quote, New job) on hover.
+let clientView = { status: 'attention', tag: '', q: '', since: '', dupes: false, sort: 'name', dir: 1, page: 0 }; const clientSel = new Set();
+const initials = (s) => String(s || '?').trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+const avHue = (s) => [...String(s || '')].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) % 6, 0);
 PAGES['/clients'] = {
   title: 'Clients',
   async render(main) {
@@ -1174,52 +1179,81 @@ PAGES['/clients'] = {
     const ytd = D.clients.filter((c) => created(c) >= yStart).length;
     const change = (now, prev) => (prev ? `<span class="chg ${now >= prev ? 'up' : 'down'}">${now >= prev ? '↑' : '↓'} ${Math.abs(Math.round(((now - prev) / prev) * 100))}%</span>` : '');
     const dup = duplicateIds(); const tags = [...new Set(D.clients.flatMap(clientTags))].sort();
+    // per client: paid to date and owed (sent invoices), next booked visit, last visit, number of quotes
+    const fin = {}; D.clients.forEach((c) => { fin[c.id] = { paid: 0, owed: 0, late: 0, next: '', lastJob: '', quotes: 0 }; });
+    D.invoices.forEach((i) => { const f = fin[i.clientId]; if (!f || i.status === 'draft') return; const b = invBalance(i); f.paid += Math.max(0, (i.total || 0) - b); if (i.status !== 'paid') { f.owed += b; if (i.displayStatus === 'overdue') f.late += b; } });
+    D.jobs.forEach((j) => { const f = fin[j.clientId]; if (!f || j.status === 'cancelled' || !j.date) return; if (j.status === 'scheduled' && j.date >= today && (!f.next || j.date < f.next)) f.next = j.date; if (j.date <= today && j.date > f.lastJob) f.lastJob = j.date; });
+    D.quotes.forEach((q) => { const f = fin[q.clientId]; if (f) f.quotes++; });
+    const why = (c) => { if (c.archived) return ''; const f = fin[c.id];
+      return f.late > 0 ? 'owes' : !info[c.id].active && !f.quotes && created(c) >= ago(60) ? 'lead' : info[c.id].active && f.lastJob && f.lastJob < ago(365) && !f.next ? 'quiet' : ''; };
+    const inTab = (c, s) => (s === 'attention' ? !!why(c) : s === 'archived' ? !!c.archived : !c.archived && (s === 'all' || (s === 'lead') === !info[c.id].active));
     let list = D.clients.filter((c) => {
-      if ((v.status === 'archived') !== !!c.archived) return false; // archived clients show only under Status: Archived
-      if (v.status === 'lead' && info[c.id].active) return false;
-      if (v.status === 'active' && !info[c.id].active) return false;
+      if (!inTab(c, v.status)) return false;
       if (v.tag && !clientTags(c).includes(v.tag)) return false;
       if (v.since && created(c) < v.since) return false;
       if (v.dupes && !dup.ids.has(c.id)) return false;
       const s = [c.name, c.company, c.email, c.phone, c.address, ...clientTags(c)].join(' ').toLowerCase();
       return !v.q || s.includes(v.q.toLowerCase());
     });
-    const key = (c) => (v.sort === 'last' ? info[c.id].last : (c.company || c.name || '').toLowerCase());
+    const key = { name: (c) => (c.company || c.name || '').toLowerCase(), last: (c) => info[c.id].last, next: (c) => fin[c.id].next || '9999', paid: (c) => fin[c.id].paid, owed: (c) => fin[c.id].owed }[v.sort] || ((c) => (c.company || c.name || '').toLowerCase());
     list.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0) * v.dir);
     [...clientSel].forEach((id) => { if (!byId(D.clients, id)) clientSel.delete(id); });
-    const per = phoneMq.matches ? 10 : 20; const pages = Math.max(1, Math.ceil(list.length / per)); v.page = Math.min(v.page, pages - 1);
-    const shown = list.slice(v.page * per, (v.page + 1) * per);
+    const grouped = v.status === 'attention' && !v.dupes && v.sort === 'name' && v.dir === 1; // a column sort shows one plain list
+    const per = phoneMq.matches ? 10 : 20; const pages = grouped ? 1 : Math.max(1, Math.ceil(list.length / per)); v.page = Math.min(v.page, pages - 1);
+    const shown = grouped ? list : list.slice(v.page * per, (v.page + 1) * per);
     const sinceLabel = v.since === yStart ? 'this year' : 'past 30 days';
     const arrow = (k) => `<span class="sort ${v.sort === k ? 'on' : ''}">${v.sort === k ? (v.dir > 0 ? '▲' : '▼') : '⇅'}</span>`;
+    const thb = (k, label) => `<button class="th-btn" data-act="clientSort" data-k="${k}">${label} ${arrow(k)}</button>`;
+    const dash = '<span class="muted">—</span>'; const sub = (s) => (s ? `<div class="muted sm-l">${s}</div>` : '');
+    const stBadge = (c) => (c.archived ? '<span class="cstatus q-draft">Archived</span>' : info[c.id].active ? '<span class="cstatus active">Active</span>' : '<span class="cstatus lead">Lead</span>');
+    const tel = (p) => String(p).replace(/[^\d+]/g, '');
+    const ico = (d) => `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+    const PHONE = ico('<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/>');
+    const MAIL = ico('<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/>');
+    const acts = (c) => `${c.phone ? `<a class="btn alt sq" href="tel:${esc(tel(c.phone))}" aria-label="Call ${esc(c.name)}" title="Call">${PHONE}</a>` : ''}${c.email ? `<a class="btn alt sq" href="mailto:${esc(c.email)}" aria-label="Email ${esc(c.name)}" title="Email">${MAIL}</a>` : ''}${c.archived ? '' : `<a class="btn alt need-quotes" href="/quotes/new?client=${c.id}" data-link>New quote</a><a class="btn need-jobs-edit" href="/jobs/new?client=${c.id}" data-link>New job</a>`}`;
+    const owedCell = (c) => { const f = fin[c.id]; if (!f.owed) return `<td class="m-hide r need-invoices">${dash}</td>`;
+      return `<td class="m-hide r need-invoices"><strong class="${f.late ? 'cl-late' : ''}">${money(f.owed)}</strong>${f.late && f.late < f.owed ? sub(money(f.late) + ' past due') : f.late ? sub('Past due') : ''}</td>`; };
+    const row = (c) => { const nm = c.company || c.name; const f = fin[c.id];
+      return `<tr class="crow" data-id="${c.id}"><td class="admin-only"><input type="checkbox" class="sel" value="${c.id}" ${clientSel.has(c.id) ? 'checked' : ''} aria-label="Select ${esc(c.name)}"></td>
+<td class="cl-name"><div class="cl-who"><span class="av av${avHue(nm)}" aria-hidden="true">${esc(initials(nm))}</span><div class="cl-txt"><div class="cl-top"><strong>${esc(nm)}</strong><span class="m-hide">${stBadge(c)}</span></div>${c.company && c.name && c.name !== c.company ? `<div>${esc(c.name)}</div>` : ''}<div class="m-hide muted sm-l cl-contact">${[c.phone ? `<a href="tel:${esc(tel(c.phone))}">${esc(c.phone)}</a>` : '', c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ''].filter(Boolean).join(' · ')}</div><div class="m-only cl-sub">${stBadge(c)}${c.address ? `<span class="cl-addr">${esc(c.address)}</span>` : ''}</div></div></div></td>
+<td class="m-hide">${esc(c.address)}</td><td class="m-hide">${clientTags(c).map((t) => `<span class="tag">${esc(t)}</span>`).join('')}</td>
+<td class="m-hide cl-nowrap">${f.next ? esc(mDay(f.next)) : dash}</td><td class="m-hide r need-invoices">${f.paid ? money(f.paid) : dash}</td>${owedCell(c)}
+<td class="m-hide cl-nowrap">${activityLabel(info[c.id].last)}</td><td class="racts m-hide"><div>${acts(c)}</div></td></tr>`; };
+    const grp = (dot, title, note) => `<tr class="lgrp"><td colspan="11"><div><i class="dot ${dot}"></i><strong>${title}</strong><span class="muted">${note}</span></div></td></tr>`;
+    let body;
+    if (grouped) {
+      const of = (w) => shown.filter((c) => why(c) === w); const s = (n) => (n === 1 ? '' : 's');
+      const owes = of('owes').sort((a, b) => fin[b.id].late - fin[a.id].late); const leads = of('lead').sort((a, b) => created(b).localeCompare(created(a))); const quiet = of('quiet').sort((a, b) => fin[a.id].lastJob.localeCompare(fin[b.id].lastJob));
+      body = (owes.length ? `<tr class="lgrp need-invoices"><td colspan="11"><div><i class="dot q-declined"></i><strong>Owes you money</strong><span class="muted">${owes.length} client${s(owes.length)} · ${money(owes.reduce((t, c) => t + fin[c.id].late, 0))} past due</span></div></td></tr>` + owes.map(row).join('') : '')
+        + (leads.length ? grp('q-sent', 'New leads with no quote', 'Added in the past 60 days') + leads.map(row).join('') : '')
+        + (quiet.length ? grp('q-draft', 'Gone quiet', 'Active clients with no job in over a year and nothing booked') + quiet.map(row).join('') : '');
+    } else body = shown.map(row).join('');
+    const count = (s) => D.clients.filter((c) => inTab(c, s)).length;
+    const tabs = [['attention', 'Needs attention'], ['lead', 'Leads'], ['active', 'Active'], ['archived', 'Archived'], ['all', 'All']];
     main.innerHTML = `<div class="head"><h1>Clients</h1><div class="actions need-clients-edit"><button class="btn" data-act="newClient">New Client</button>
 </div></div>
-<div class="cstats cl-stats">
-<button class="cstat" data-act="clientCard" data-k="leads"><div class="cs-h"><strong>New leads</strong><span>↗</span></div><div class="muted">Past 30 days</div><div class="cs-v">${leadsNow} ${change(leadsNow, leadsPrev)}</div></button>
-<button class="cstat" data-act="clientCard" data-k="active"><div class="cs-h"><strong>New clients</strong><span>↗</span></div><div class="muted">Past 30 days</div><div class="cs-v">${actNow} ${change(actNow, actPrev)}</div></button>
-<button class="cstat" data-act="clientCard" data-k="ytd"><div class="cs-h"><strong>Total new clients</strong><span>↗</span></div><div class="muted">Year to date</div><div class="cs-v">${ytd}</div></button>
-<div class="cstat merge admin-only"><div>Merge duplicate clients into a single profile to keep information accurate.</div><div class="muted">${dup.count ? `${dup.count} possible duplicate${dup.count === 1 ? '' : 's'} found` : 'No duplicates found'}</div><button class="btn alt sm" data-act="clientDupes" ${dup.count ? '' : 'disabled'}>Merge Clients</button></div></div>
-<h2 class="ftitle">Filtered clients <span class="muted">(${list.length} result${list.length === 1 ? '' : 's'})</span></h2>
+<div class="lstrip"><span class="ls-l">Past 30 days</span><button type="button" class="ls-b" data-act="clientCard" data-k="leads">New leads <strong>${leadsNow}</strong> ${change(leadsNow, leadsPrev)}</button>
+<button type="button" class="ls-b" data-act="clientCard" data-k="active">New clients <strong>${actNow}</strong> ${change(actNow, actPrev)}</button><button type="button" class="ls-b" data-act="clientCard" data-k="ytd">This year <strong>${ytd}</strong> new client${ytd === 1 ? '' : 's'}</button></div>
+${dup.count && !v.dupes ? `<div class="notice admin-only cl-dupes"><span>${dup.count} possible duplicate client${dup.count === 1 ? '' : 's'} found. Merging them keeps each client’s history in one profile.</span><button type="button" class="btn alt sm" data-act="clientDupes">Review and merge</button></div>` : ''}
+<div class="ltabs" role="tablist" aria-label="Client status">${tabs.map(([s, label]) => `<button type="button" role="tab" aria-selected="${v.status === s}" class="ltab${v.status === s ? ' on' : ''}" data-act="clientTab" data-s="${s}"><span class="lt-t">${label}<span class="lt-n">${count(s)}</span></span></button>`).join('')}</div>
 <div class="cfilters"><label class="pill m-hide">Tag<select data-cv="tag"><option value="">All tags</option>${tags.map((t) => `<option ${v.tag === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
-<label class="pill m-hide">Status<select data-cv="status">${[['all', 'Leads and Active'], ['lead', 'Leads'], ['active', 'Active'], ['archived', 'Archived']].map(([k, l]) => `<option value="${k}" ${v.status === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
 ${v.since ? `<button class="pill on" data-act="clientClear" data-k="since">Created ${sinceLabel} ×</button>` : ''}${v.dupes ? '<button class="pill on" data-act="clientClear" data-k="dupes">Possible duplicates ×</button>' : ''}
 <input id="cq" class="csearch" type="search" placeholder="Search clients…" value="${esc(v.q)}"></div>
 ${v.dupes ? '<div class="notice">Showing clients that share an email, phone number or name. Tick the profiles that are the same client, then click Merge.</div>' : ''}
 ${clientSel.size ? `<div class="bulk admin-only"><strong>${clientSel.size} selected</strong><button class="btn sm" data-act="mergeClients" ${clientSel.size > 1 ? '' : 'disabled title="Select at least two clients"'}>Merge</button><button class="btn danger sm" data-act="deleteSelClients">Delete</button><button class="btn alt sm" data-act="clientClearSel">Clear selection</button></div>` : ''}
 <div class="card ctable clist"><div class="tablewrap"><table><tr><th style="width:36px" class="admin-only"><input type="checkbox" id="selAll" aria-label="Select all" ${shown.length && shown.every((c) => clientSel.has(c.id)) ? 'checked' : ''}></th>
-<th><button class="th-btn" data-act="clientSort" data-k="name">Name ${arrow('name')}</button></th><th class="m-hide">Phone</th><th class="m-hide">Email</th><th class="m-hide">Address</th><th class="m-hide">Tags</th><th class="m-hide">Status</th><th class="m-hide"><button class="th-btn" data-act="clientSort" data-k="last">Last Activity ${arrow('last')}</button></th></tr>
-${shown.map((c) => `<tr class="crow" data-id="${c.id}"><td class="admin-only"><input type="checkbox" class="sel" value="${c.id}" ${clientSel.has(c.id) ? 'checked' : ''} aria-label="Select ${esc(c.name)}"></td>
-<td class="cl-name"><strong>${esc(c.company || c.name)}</strong>${c.company && c.name && c.name !== c.company ? `<div>${esc(c.name)}</div>` : ''}<div class="m-only cl-sub">${c.archived ? '<span class="cstatus q-draft">Archived</span>' : info[c.id].active ? '<span class="cstatus active">Active</span>' : '<span class="cstatus lead">Lead</span>'}${c.address ? `<span class="cl-addr">${esc(c.address)}</span>` : ''}</div></td><td class="m-hide cl-nowrap">${c.phone ? `<a href="tel:${esc(String(c.phone).replace(/[^\d+]/g, ''))}">${esc(c.phone)}</a>` : ''}</td><td class="m-hide">${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ''}</td><td class="m-hide">${esc(c.address)}</td>
-<td class="m-hide">${clientTags(c).map((t) => `<span class="tag">${esc(t)}</span>`).join('')}</td>
-<td class="m-hide">${c.archived ? '<span class="cstatus q-draft">Archived</span>' : info[c.id].active ? '<span class="cstatus active">Active</span>' : '<span class="cstatus lead">Lead</span>'}</td><td class="m-hide">${activityLabel(info[c.id].last)}</td></tr>`).join('') || `<tr><td colspan="8" class="empty">${D.clients.length ? 'No clients match these filters' : 'No clients yet'}</td></tr>`}</table></div>
-${list.length > per ? `<div class="tfoot"><span>Showing ${v.page * per + 1}–${Math.min(list.length, (v.page + 1) * per)} of ${list.length}</span>
+<th>${thb('name', 'Client')}</th><th class="m-hide">Address</th><th class="m-hide">Tags</th><th class="m-hide">${thb('next', 'Next visit')}</th><th class="m-hide r need-invoices">${thb('paid', 'Paid to date')}</th><th class="m-hide r need-invoices">${thb('owed', 'Owed')}</th><th class="m-hide">${thb('last', 'Last activity')}</th><th class="m-hide" aria-label="Actions"></th></tr>
+${body || `<tr><td colspan="11" class="empty">${v.status === 'attention' && !v.q && !v.tag && !v.since && D.clients.length ? 'Nothing needs attention: no one owes you money past due, every new lead has a quote, and no regular has gone quiet.' : D.clients.length ? 'No clients match these filters' : 'No clients yet'}</td></tr>`}</table></div>
+${!grouped && list.length > per ? `<div class="tfoot"><span>Showing ${v.page * per + 1}–${Math.min(list.length, (v.page + 1) * per)} of ${list.length}</span>
 <span class="pager"><button class="btn alt sm" data-act="clientPage" data-d="-1" ${v.page ? '' : 'disabled'} aria-label="Previous page">‹</button><button class="btn alt sm" data-act="clientPage" data-d="1" ${v.page < pages - 1 ? '' : 'disabled'} aria-label="Next page">›</button></span></div>` : ''}</div>`;
     $$('[data-cv]').forEach((s) => s.addEventListener('change', (e) => { clientView[e.target.dataset.cv] = e.target.value; clientView.page = 0; refresh(); }));
     let t; $('#cq').addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(async () => { clientView.q = e.target.value; clientView.page = 0; await refresh(); const q = $('#cq'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 250); });
     $('#selAll').addEventListener('change', (e) => { shown.forEach((c) => (e.target.checked ? clientSel.add(c.id) : clientSel.delete(c.id))); refresh(); });
     $$('.sel').forEach((b) => b.addEventListener('change', (e) => { e.target.checked ? clientSel.add(e.target.value) : clientSel.delete(e.target.value); refresh(); }));
-    $$('.crow').forEach((r) => r.addEventListener('click', (e) => { if (!e.target.closest('input, a')) navigate('/clients/view?id=' + r.dataset.id); }));
+    $$('.crow').forEach((r) => r.addEventListener('click', (e) => { if (!e.target.closest('input, a, button')) navigate('/clients/view?id=' + r.dataset.id); }));
   },
 };
+A.clientTab = (d) => { clientView = { ...clientView, status: d.s, dupes: false, sort: 'name', dir: 1, page: 0 }; clientSel.clear(); refresh(); };
 document.addEventListener('click', (e) => { $$('details.menu[open]').forEach((m) => { if (!m.contains(e.target)) m.open = false; }); });
 A.clientCard = (d) => {
   const yStart = new Date().getFullYear() + '-01-01'; const ago30 = ymd(addDays(new Date(), -30));
@@ -1229,7 +1263,7 @@ A.clientCard = (d) => {
 A.clientDupes = () => { clientView = { ...clientView, status: 'all', tag: '', q: '', since: '', dupes: true, sort: 'name', dir: 1, page: 0 }; refresh(); };
 A.clientClear = (d) => { clientView[d.k] = d.k === 'dupes' ? false : ''; clientView.page = 0; refresh(); };
 A.clientPage = (d) => { clientView.page += Number(d.d); refresh(); };
-A.clientSort = (d) => { clientView.dir = clientView.sort === d.k ? -clientView.dir : (d.k === 'last' ? -1 : 1); clientView.sort = d.k; clientView.page = 0; refresh(); };
+A.clientSort = (d) => { clientView.dir = clientView.sort === d.k ? -clientView.dir : (['last', 'paid', 'owed'].includes(d.k) ? -1 : 1); clientView.sort = d.k; clientView.page = 0; refresh(); };
 A.clientClearSel = () => { clientSel.clear(); refresh(); };
 A.deleteSelClients = async () => {
   if (!confirm(`Delete ${clientSel.size} client${clientSel.size === 1 ? '' : 's'}? Their quotes, jobs and invoices stay in the system.`)) return;
