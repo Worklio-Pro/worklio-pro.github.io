@@ -2366,3 +2366,6 @@ tr:hover>.racts>div,tr:focus-within>.racts>div,.racts>div:has(details[open]){opa
 /* Timesheets and Service Plans: a button at the end of the stats strip, and the person's colour dot in a group heading */
 .lstrip .ls-act{margin-left:auto}
 .lgrp .to-dot{flex:none}
+/* Calendar: the page title row above the calendar, so the time grid is a little shorter to still fit the screen */
+.head+.sc .sc-body{max-height:calc(100vh - 310px)}
+.head+.dm .dm-map{height:calc(100vh - 210px)}

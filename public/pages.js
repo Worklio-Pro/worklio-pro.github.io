@@ -147,6 +147,8 @@ function scLayout(items) {
   for (const it of L) { if (it.s >= groupEnd && group.length) flush(); group.push(it); groupEnd = Math.max(groupEnd, it.e); }
   flush(); return done;
 }
+// the page title, as on every other page; the date range under it is a smaller heading in the calendar's own bar
+const calHead = (edit) => `<div class="head"><h1>Calendar</h1>${edit ? '<div class="actions"><button type="button" class="btn" data-act="newJob">New Job</button></div>' : ''}</div>`;
 PAGES['/calendar'] = {
   title: 'Calendar',
   async render(main) {
@@ -154,7 +156,7 @@ PAGES['/calendar'] = {
     const views = `<div class="sc-views">${[['day', 'Day'], ['week', 'Week'], ['month', 'Month'], ...(planHas('dispatchMap') ? [['map', 'Map']] : [])].map(([k, l]) => `<button type="button" class="${scState.view === k ? 'on' : ''}" data-act="scView" data-v="${k}">${l}</button>`).join('')}</div>`;
     if (scState.view === 'map' && !planHas('dispatchMap')) scState.view = 'day';
     if (scState.view === 'map') return scMapRender(main, edit, `<div class="sc-bar"><button type="button" class="btn alt sm" data-act="scToday">Today</button><button type="button" class="btn alt sm sc-arrow" data-act="scStep" data-n="-1" aria-label="Previous day">‹</button><button type="button" class="btn alt sm sc-arrow" data-act="scStep" data-n="1" aria-label="Next day">›</button>
-<h1 class="sc-range">${esc(scState.anchor.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }))}</h1><span style="flex:1"></span>${views}</div>`);
+<h2 class="sc-range">${esc(scState.anchor.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }))}</h2><span style="flex:1"></span>${views}</div>`);
     const a = scState.anchor; const first = new Date(a.getFullYear(), a.getMonth(), 1); const gridStart = startOfWeek(first);
     const range = scState.view === 'month' ? first.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : scState.view === 'day' ? a.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
       : `${days[0].toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}–${days[0].getMonth() === days[6].getMonth() ? days[6].getDate() : days[6].toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}, ${days[6].getFullYear()}`;
@@ -168,11 +170,11 @@ PAGES['/calendar'] = {
     const col = (s) => `<div class="sc-col${s === today ? ' today' : ''}" data-d="${s}">${scLayout(scItems(s).filter((x) => !x.anytime && x.start)).map((x) => { const top = (Math.max(x.s, SC_START * 60) - SC_START * 60) / 60 * SC_HOUR; const h = Math.max(18, (Math.min(x.e, SC_END * 60) - Math.max(x.s, SC_START * 60)) / 60 * SC_HOUR);
       return `<div class="sc-item k-${x.kind}${x.done ? ' done' : ''}" style="--c:${esc(scColor(x))};top:${top}px;height:${h}px;left:calc(${(100 / x.cols) * x.col}% + 2px);width:calc(${100 / x.cols}% - 4px)" data-kind="${x.kind}" data-id="${x.id}" data-start="${x.start}" data-end="${x.end}" ${edit ? 'data-drag="1"' : ''} title="${esc(`${fmtTime(x.start)}–${fmtTime(x.end)} · ${x.title}${x.sub ? ' · ' + x.sub : ''}`)}">
 <span class="sc-t">${esc(fmtTime(x.start))}</span><strong>${esc(x.title)}</strong>${x.sub && h > 40 ? `<span class="sc-s">${esc(x.sub)}</span>` : ''}</div>`; }).join('')}${s === today && new Date().getHours() >= SC_START && new Date().getHours() < SC_END ? `<div class="sc-now" style="top:${(new Date().getHours() * 60 + new Date().getMinutes() - SC_START * 60) / 60 * SC_HOUR}px"></div>` : ''}</div>`;
-    main.innerHTML = `<div class="sc">
+    main.innerHTML = `${calHead(edit)}<div class="sc">
 <aside class="sc-side">${mini}<div class="sc-team"><h3>Team calendars</h3>${team.map(([id, n, c]) => `<label><input type="checkbox" data-act="scTeam" data-id="${esc(id)}" ${scState.hidden.includes(id) ? '' : 'checked'} style="accent-color:${esc(c)}"> ${esc(n)}</label>`).join('')}</div>
 ${edit ? '<p class="muted sc-tip">Click a time to add a job, task or event. Drag anything to move it.</p>' : ''}</aside>
 <section class="sc-main"><div class="sc-bar"><button type="button" class="btn alt sm" data-act="scToday">Today</button><button type="button" class="btn alt sm sc-arrow" data-act="scStep" data-n="-1" aria-label="Previous">‹</button><button type="button" class="btn alt sm sc-arrow" data-act="scStep" data-n="1" aria-label="Next">›</button>
-<h1 class="sc-range">${esc(range)}</h1><span style="flex:1"></span>${views}</div>
+<h2 class="sc-range">${esc(range)}</h2><span style="flex:1"></span>${views}</div>
 ${scState.view === 'month' ? scMonthHtml(first, today, edit) : `<div class="sc-grid" style="--days:${days.length}">
 <div class="sc-head"><div class="sc-gut">${esc(Intl.DateTimeFormat().resolvedOptions().timeZone.split('/').pop().replace('_', ' '))}</div>${days.map((d) => `<div class="sc-dh${ymd(d) === today ? ' today' : ''}"><span>${d.toLocaleDateString('en-US', { weekday: 'short' })}</span><b>${d.getDate()}</b></div>`).join('')}</div>
 <div class="sc-head sc-anyrow"><div class="sc-gut">Anytime</div>${week.map(lane).join('')}</div>
@@ -296,7 +298,7 @@ const dmDirections = (stops) => { const a = stops.map((j) => j.address).filter(B
   return `https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=${encodeURIComponent(a[a.length - 1])}${a.length > 1 ? '&waypoints=' + encodeURIComponent(a.slice(0, -1).join('|')) : ''}`; };
 async function scMapRender(main, edit, bar) {
   const token = ++dmToken; const date = ymd(scState.anchor);
-  main.innerHTML = `<div class="dm">${bar}<div class="dm-body"><aside class="dm-list" id="dmList"><p class="muted">Loading…</p></aside><div class="dm-map" id="dmMap" role="region" aria-label="Map of the day’s jobs"></div></div></div>`;
+  main.innerHTML = `${calHead(edit)}<div class="dm">${bar}<div class="dm-body"><aside class="dm-list" id="dmList"><p class="muted">Loading…</p></aside><div class="dm-map" id="dmMap" role="region" aria-label="Map of the day’s jobs"></div></div></div>`;
   let data; let L;
   try { [data, L] = await Promise.all([api('GET', '/api/dispatch?date=' + date), loadLeaflet()]); } catch (x) { if (token === dmToken) $('#dmList').innerHTML = `<p class="danger-text">${esc(x.message)}</p>`; return; }
   if (token !== dmToken || !$('#dmMap')) return; // moved to another day or page while loading
