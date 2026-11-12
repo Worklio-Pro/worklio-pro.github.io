@@ -2156,7 +2156,9 @@ const cardReady = () => !!(company.account && company.account.cardReady);
 // bank payments (ACH): a switch of their own on quotes and invoices, shown while card payments are set up and ACH is on for that kind
 // in App Settings → Payments → Client payments (d.allowAch 'off' = no bank option on this one)
 const achOn = (kind) => { const p = company.paySettings || {}; return planHas('onlinePayments') && cardReady() && !p.disabled && !!p[kind + 'Ach']; };
-const achSw = (kind, d, pre = '') => (achOn(kind) ? switchRow('allowAch', pre + 'Bank payments (ACH)', d.allowAch !== 'off') : '');
+// off in Payment settings (it starts off, separately for quotes and invoices): show the row greyed out with where to turn it on, so it can be found
+const achSw = (kind, d, pre = '') => (achOn(kind) ? switchRow('allowAch', pre + 'Bank payments (ACH)', d.allowAch !== 'off')
+  : planHas('onlinePayments') && cardReady() && !(company.paySettings || {}).disabled ? switchRow('allowAch', pre + 'Bank payments (ACH)', false, ['owner', 'admin'].includes(role()) ? `Turn on for ${kind}s in <a href="/payments/settings" data-link>Payment settings</a>` : `Off for ${kind}s in Payment settings: ask your account owner`, true) : '');
 // partial payments: the client can pay part of an invoice's balance online (d.allowPartial 'on'; off by default), shown while online payments are set up
 const partOn = () => planHas('onlinePayments') && cardReady() && !(company.paySettings || {}).disabled;
 const partSw = (d, pre = '') => (partOn() ? switchRow('allowPartial', pre + 'Partial payments', d.allowPartial === 'on', 'Client can pay part of the balance online') : '');
