@@ -1134,7 +1134,8 @@ function referralProgramView(box) {
 <h2 style="margin-top:18px">Video (optional)</h2>
 <div class="row"><label>Title<input name="videoTitle" value="${esc(p.video.title)}" maxlength="80" placeholder="e.g. Refer in minutes, earn for months"></label><label>Video link<input name="videoUrl" value="${esc(p.video.url)}" maxlength="300" placeholder="https://www.youtube.com/watch?v=…"></label></div>
 <label>Text<input name="videoText" value="${esc(p.video.text)}" maxlength="300" placeholder="e.g. A walkthrough of sharing your link and tracking referrals"></label>
-<div class="savebar"><span class="muted">YouTube links play on the page; other links open in a new tab.</span><button class="btn">Save referral program</button></div></form>`;
+<p class="muted" style="font-size:12px;margin:-6px 0 0">YouTube links play on the page; other links open in a new tab.</p>
+<div class="savebar rp-bar"><button class="btn">Save referral program</button></div></form>`;
   const f = $('#rpf', box);
   const readMiles = () => { $$('.rp-mile', f).forEach((row) => { const m = rfDraft.milestones[row.dataset.i]; $$('[data-k]', row).forEach((i) => { m[i.dataset.k] = i.value; }); }); };
   f._readMiles = readMiles;
