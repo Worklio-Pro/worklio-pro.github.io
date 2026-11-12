@@ -812,21 +812,23 @@ async function iconsCard(box, keep) {
   if (!box) return;
   if (!keep) { try { IC = await api('GET', '/api/platform/nav-icons'); } catch (x) { box.innerHTML = `<h2>Menu</h2><p class="muted">${esc(x.message)}</p>`; return; } }
   const lib = Object.fromEntries(IC.library.map((i) => [i.key, i]));
-  const row = (l, i) => `<div class="ic-row" draggable="true" data-p="${esc(l.path)}"><span class="ic-handle" title="Drag to move" aria-hidden="true">⠿</span><span class="ic-prev">${icSvg(lib[l.icon].d)}</span><div class="ic-l"><strong>${esc(l.label)}</strong><span class="sm">${esc(lib[l.icon].label)}${l.icon === l.default ? ' · default icon' : ''}</span></div>
-<div class="acts"><button type="button" class="btn alt sm ic-mv" data-act="icMove" data-p="${esc(l.path)}" data-dir="-1" aria-label="Move ${esc(l.label)} up" ${i === 0 ? 'disabled' : ''}>↑</button><button type="button" class="btn alt sm ic-mv" data-act="icMove" data-p="${esc(l.path)}" data-dir="1" aria-label="Move ${esc(l.label)} down" ${i === IC.links.length - 1 ? 'disabled' : ''}>↓</button>
-${l.icon !== l.default ? `<button type="button" class="btn alt sm" data-act="icReset" data-p="${esc(l.path)}">Reset icon</button>` : ''}<button type="button" class="btn alt sm" data-act="icPick" data-p="${esc(l.path)}">Change icon</button></div></div>`;
-  const section = (g) => { const items = IC.links.map((l, i) => [l, i]).filter(([l]) => l.group === g);
-    return `<div class="ic-grp" data-g="${esc(g)}">${esc(g)}</div>${items.length ? items.map(([l, i]) => row(l, i)).join('') : `<div class="ic-empty" data-g="${esc(g)}">Drag links here. An empty section doesn’t show in the menu.</div>`}`; };
+  const row = (l) => `<div class="ic-row" data-act="icPick" data-p="${esc(l.path)}" role="button" tabindex="0" aria-label="Change the icon for ${esc(l.label)}"><span class="ic-handle" data-act="icDrag" title="Drag to move" aria-hidden="true">⠿</span><span class="ic-prev">${icSvg(lib[l.icon].d)}</span><div class="ic-l"><strong>${esc(l.label)}</strong><span class="sm">${esc(lib[l.icon].label)}${l.icon === l.default ? ' · default icon' : ''}</span></div>
+${l.icon !== l.default ? `<div class="acts"><button type="button" class="btn alt sm" data-act="icReset" data-p="${esc(l.path)}">Reset icon</button></div>` : ''}</div>`;
+  const section = (g) => { const items = IC.links.filter((l) => l.group === g);
+    return `<div class="ic-grp" data-g="${esc(g)}">${esc(g)}</div>${items.length ? items.map(row).join('') : `<div class="ic-empty" data-g="${esc(g)}">Drag links here. An empty section doesn’t show in the menu.</div>`}`; };
   box.innerHTML = `<div class="ic-head"><h2>Menu</h2>${IC.custom ? '<button type="button" class="btn alt sm" data-act="icResetOrder">Reset order</button>' : ''}</div>
-<p class="muted" style="font-size:13px;margin-top:0">Every business’s menu (the sidebar and the phone menu). Drag a link by its handle to move it, even into another section, or use the arrows. Change any link’s icon. Changes show the next time a page loads.</p>
+<p class="muted" style="font-size:13px;margin-top:0">Every business’s menu (the sidebar and the phone menu). Drag a link by its ⠿ handle to move it, even into another section. Select a link to change its icon. Changes show the next time a page loads.</p>
 <div class="ic-wrap"><div class="ic-list">${IC.groups.map(section).join('')}</div>
 <div class="ic-preview" aria-label="Preview"><div class="sm" style="margin-bottom:8px">Preview</div><div class="ic-side">${IC.groups.filter((g) => IC.links.some((l) => l.group === g)).map((g) => `<div class="ic-sg">${esc(g)}</div>` + IC.links.filter((l) => l.group === g).map((l) => `<div class="ic-sl">${icSvg(lib[l.icon].d, 18)}<span>${esc(l.label)}</span></div>`).join('')).join('')}</div></div></div>`;
   // drag and drop: drop on a link to go before or after it (and join its section), or on a section's name to go first in it
   const list = $('.ic-list', box); let dragP = null;
   const clear = () => $$('.ic-before, .ic-after, .ic-into', box).forEach((x) => x.classList.remove('ic-before', 'ic-after', 'ic-into'));
+  // only the ⠿ handle starts a drag; selecting the rest of the row opens the icon picker
   $$('.ic-row', box).forEach((r) => {
+    const h = $('.ic-handle', r); h.addEventListener('pointerdown', () => { r.draggable = true; }); h.addEventListener('pointerup', () => { r.draggable = false; });
+    r.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target === r) { e.preventDefault(); A.icPick(r.dataset); } });
     r.addEventListener('dragstart', (e) => { dragP = r.dataset.p; r.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', dragP); });
-    r.addEventListener('dragend', () => { r.classList.remove('dragging'); clear(); dragP = null; });
+    r.addEventListener('dragend', () => { r.draggable = false; r.classList.remove('dragging'); clear(); dragP = null; });
   });
   const target = (e) => { const r = e.target.closest('.ic-row'); if (r && r.dataset.p !== dragP) { const b = r.getBoundingClientRect(); return { row: r, after: e.clientY > b.top + b.height / 2 }; } const g = e.target.closest('.ic-grp, .ic-empty'); return g ? { group: g } : null; };
   list.addEventListener('dragover', (e) => { if (!dragP) return; const t = target(e); if (!t) return; e.preventDefault(); clear(); if (t.row) t.row.classList.add(t.after ? 'ic-after' : 'ic-before'); else t.group.classList.add('ic-into'); });
@@ -843,12 +845,7 @@ async function icSaveOrder(links, box) {
   IC.links = IC.groups.flatMap((g) => links.filter((l) => l.group === g)); iconsCard(box, true);
   try { IC = await api('PUT', '/api/platform/nav-order', { order: IC.links.map((l) => ({ path: l.path, group: l.group })) }); iconsCard(box, true); toast('Menu order saved'); } catch (x) { toast(x.message, true); iconsCard(box); }
 }
-// the arrows: within a section they swap with the neighbor; at a section's edge they move into the next section
-A.icMove = (d) => {
-  const L = IC.links.slice(); const i = L.findIndex((l) => l.path === d.p); const j = i + Number(d.dir); const cur = L[i]; const nb = L[j]; if (!nb) return;
-  if (nb.group === cur.group) { L[i] = nb; L[j] = cur; } else cur.group = nb.group;
-  icSaveOrder(L, $('#iconsCard'));
-};
+A.icDrag = () => {}; // a tap on the ⠿ handle alone does nothing (it doesn't open the icon picker)
 A.icResetOrder = async () => { if (!confirm('Put the menu back in its original order and sections? Icons you chose stay.')) return; try { IC = await api('PUT', '/api/platform/nav-order', { reset: true }); iconsCard($('#iconsCard'), true); toast('Menu order reset'); } catch (x) { toast(x.message, true); } };
 A.icPick = (d) => {
   const l = IC.links.find((x) => x.path === d.p);

@@ -117,12 +117,12 @@
     .ic-side{background:#0b1324;border-radius:12px;padding:12px 10px;color:#cbd5e1}.ic-sg{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#7d8fb3;margin:10px 6px 4px}.ic-sg:first-child{margin-top:0}
     .ic-sl{display:flex;align-items:center;gap:12px;padding:5px 6px;font-size:13px}.ic-sl svg{flex:none;opacity:.85}
     .ic-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:-18px -18px 14px;padding:10px 18px;background:var(--tint);border-bottom:1px solid var(--line);border-radius:12px 12px 0 0}.ic-head h2{margin:0;font-size:16px}
-    .ic-row{cursor:grab;border-radius:8px;position:relative}.ic-row:active{cursor:grabbing}.ic-row.dragging{opacity:.4}
-    .ic-handle{flex:none;color:var(--muted);font-size:16px;line-height:1;cursor:grab;user-select:none;padding:0 2px}
+    .ic-row{cursor:pointer;border-radius:8px;position:relative}.ic-row:hover{background:var(--surface-2)}.ic-row:focus-visible{outline:2px solid var(--brand);outline-offset:-2px}.ic-row.dragging{opacity:.4}
+    .ic-handle{flex:none;color:var(--muted);font-size:18px;line-height:1;cursor:grab;user-select:none;-webkit-user-select:none;padding:6px 6px 6px 4px}.ic-handle:active{cursor:grabbing}
     .ic-row.ic-before{box-shadow:inset 0 3px 0 var(--brand)}.ic-row.ic-after{box-shadow:inset 0 -3px 0 var(--brand)}
     .ic-grp.ic-into,.ic-empty.ic-into{background:var(--tint);border-radius:6px;outline:2px dashed var(--brand)}
     .ic-empty{padding:12px;border:1px dashed var(--line);border-radius:8px;font-size:13px;color:var(--muted);margin:4px 0}
-    .ic-grp{padding:4px 6px}.ic-mv{width:30px;padding:0}.ic-mv:disabled{opacity:.35}
+    .ic-grp{padding:4px 6px}
     .ic-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;max-height:60vh;overflow:auto;padding:2px}
     .ic-opt{display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 6px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--text);cursor:pointer;font:inherit;font-size:12px;text-align:center}
     .ic-opt[hidden]{display:none}.ic-opt:hover{border-color:var(--brand)}.ic-opt.on{border-color:var(--brand);background:var(--tint)}
@@ -422,7 +422,7 @@
   <script src="/hc-editor.js?v=3"></script>
   <script src="/brand.js?v=1"></script>
   <script src="/cancelflow.js?v=1"></script>
-  <script src="/platform.js?v=116"></script>
+  <script src="/platform.js?v=117"></script>
   <script src="/alpha-creators.js?v=4"></script>
   <script src="/alpha-import.js?v=3"></script>
 </body>
