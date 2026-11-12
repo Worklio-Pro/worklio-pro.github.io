@@ -543,9 +543,8 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeHelp();
 });
 let renderedPath = '';
-/* ===== Page not found: a cartoon Yorkie (our own drawing) who sniffed everywhere and came up empty. It wags, tilts its head, blinks and
-   twitches an ear (styles.css, .p404-*); people who ask their device for less motion get it standing still. ===== */
-const P404_YORKIE = `<svg class="p404-dog" viewBox="0 0 300 300" role="img" aria-label="A confused cartoon Yorkie with a pink bow, tilting its head">
+/* ===== Page not found: Yoya, our cartoon Yorkie (our own drawing), who sniffed everywhere and came up empty. Styles: .p404-* ===== */
+const P404_YORKIE = `<svg class="p404-dog" viewBox="0 0 300 300" role="img" aria-label="Yoya, a puzzled cartoon Yorkie with a pink bow">
 <ellipse class="p404-shadow" cx="150" cy="280" rx="84" ry="9"/>
 <g class="p404-q"><text x="58" y="96" font-size="30">?</text><text x="226" y="74" font-size="38">?</text><text x="246" y="118" font-size="22">?</text></g>
 <g class="p404-tail"><path d="M196 222 C228 214 236 182 222 162" fill="none" stroke="#4b5a70" stroke-width="13" stroke-linecap="round"/><circle cx="221" cy="160" r="8" fill="#c98b45"/></g>
@@ -575,7 +574,7 @@ const P404_YORKIE = `<svg class="p404-dog" viewBox="0 0 300 300" role="img" aria
 </g>
 </svg>`;
 const page404Html = () => `<div class="p404">${P404_YORKIE}<div class="p404-code">Error 404</div><h1>Ruh-roh! This page ran off.</h1>
-<p class="muted">Our Yorkie sniffed under every couch cushion, but couldn’t find the page you’re looking for. It may have moved, or the link might be a little off.</p>
+<p class="muted">Yoya sniffed under every couch cushion, but couldn’t find the page you’re looking for. It may have moved, or the link might be a little off.</p>
 <div class="p404-acts"><a class="btn" href="/business-overview" data-link>Take me home</a><button type="button" class="btn alt" data-act="p404Back">Go back</button></div></div>`;
 async function render() {
   const path = curPath();

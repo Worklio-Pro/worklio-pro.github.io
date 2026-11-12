@@ -2369,7 +2369,7 @@ tr:hover>.racts>div,tr:focus-within>.racts>div,.racts>div:has(details[open]){opa
 /* Calendar: the page title row above the calendar, so the time grid is a little shorter to still fit the screen */
 .head+.sc .sc-body{max-height:calc(100vh - 310px)}
 .head+.dm .dm-map{height:calc(100vh - 210px)}
-/* Page not found: the cartoon Yorkie (app.js, P404_YORKIE) and its little animations */
+/* Page not found: Yoya, our cartoon Yorkie (app.js, P404_YORKIE) */
 .p404{max-width:560px;margin:24px auto 48px;text-align:center;display:flex;flex-direction:column;align-items:center}
 .p404-dog{width:min(390px,84vw);height:auto;overflow:visible}
 .p404-shadow{fill:var(--text);opacity:.1}
@@ -2379,16 +2379,3 @@ tr:hover>.racts>div,tr:focus-within>.racts>div,.racts>div:has(details[open]){opa
 .p404 p{margin:0 0 22px;font-size:16px;line-height:1.5}
 .p404-acts{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
 .p404-acts a.btn{text-decoration:none}
-.p404-tail,.p404-head,.p404-ear,.p404-eyes,.p404-q text{transform-box:view-box}
-.p404-tail{transform-origin:196px 222px;animation:p404-wag .45s ease-in-out infinite alternate}
-.p404-head{transform-origin:150px 162px;animation:p404-tilt 4.5s ease-in-out infinite}
-.p404-ear{transform-origin:122px 92px;animation:p404-ear 3.6s ease-in-out infinite}
-.p404-eyes{transform-origin:150px 118px;animation:p404-blink 5s infinite}
-.p404-q text{animation:p404-float 2.6s ease-in-out infinite}
-.p404-q text:nth-child(2){animation-delay:.6s}.p404-q text:nth-child(3){animation-delay:1.2s}
-@keyframes p404-wag{from{transform:rotate(-14deg)}to{transform:rotate(16deg)}}
-@keyframes p404-tilt{0%,100%{transform:rotate(0)}25%,50%{transform:rotate(-10deg)}70%{transform:rotate(5deg)}}
-@keyframes p404-ear{0%,78%,100%{transform:rotate(0)}84%{transform:rotate(-12deg)}90%{transform:rotate(5deg)}}
-@keyframes p404-blink{0%,90%,100%{transform:scaleY(1)}94%{transform:scaleY(.1)}}
-@keyframes p404-float{0%,100%{transform:translateY(0);opacity:.55}50%{transform:translateY(-8px);opacity:1}}
-@media (prefers-reduced-motion:reduce){.p404-tail,.p404-head,.p404-ear,.p404-eyes,.p404-q text{animation:none}}
