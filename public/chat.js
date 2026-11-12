@@ -30,10 +30,10 @@
     root.innerHTML = `<style>
 :host{all:initial}
 *{box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
-.btn{position:fixed;right:20px;bottom:${where === 'app' ? '20px' : '20px'};z-index:2147483000;width:58px;height:58px;border-radius:50%;border:0;background:var(--brand,#2563eb);color:#fff;cursor:pointer;box-shadow:0 8px 24px rgba(15,23,42,.28);display:flex;align-items:center;justify-content:center;transition:transform .15s}
+.btn{position:fixed;right:20px;bottom:${where === 'app' ? '88px' : '20px'};z-index:2147483000;width:58px;height:58px;border-radius:50%;border:0;background:var(--brand,#2563eb);color:#fff;cursor:pointer;box-shadow:0 8px 24px rgba(15,23,42,.28);display:flex;align-items:center;justify-content:center;transition:transform .15s}
 .btn:hover{transform:scale(1.05)}.btn svg{width:28px;height:28px}
 .badge{position:absolute;top:-2px;right:-2px;min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:#dc2626;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid #fff}
-.panel{position:fixed;right:20px;bottom:90px;z-index:2147483000;width:370px;max-width:calc(100vw - 32px);height:560px;max-height:calc(100vh - 120px);background:var(--c-bg);color:var(--c-text);border-radius:16px;box-shadow:0 18px 50px rgba(15,23,42,.3);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--c-line)}
+.panel{position:fixed;right:20px;bottom:${where === 'app' ? '158px' : '90px'};z-index:2147483000;width:370px;max-width:calc(100vw - 32px);height:560px;max-height:calc(100vh - ${where === 'app' ? '188px' : '120px'});background:var(--c-bg);color:var(--c-text);border-radius:16px;box-shadow:0 18px 50px rgba(15,23,42,.3);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--c-line)}
 .panel[hidden],.badge[hidden]{display:none}
 .top{background:var(--brand,#2563eb);color:#fff;padding:14px 16px;display:flex;align-items:center;gap:10px}
 .top strong{display:block;font-size:16px}.top small{display:flex;align-items:center;gap:6px;font-size:12px;opacity:.9}
@@ -81,7 +81,7 @@ textarea:focus,input:focus{outline:2px solid var(--brand,#2563eb);outline-offset
 .fgone{padding:6px 10px;font-size:13px;opacity:.75}
 .drop{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;background:rgba(37,99,235,.12);border:3px dashed var(--brand,#2563eb);border-radius:16px;font-weight:700;color:var(--brand,#2563eb);font-size:16px;pointer-events:none}
 .drop[hidden]{display:none}
-${where === 'app' ? '@media (max-width:760px){.btn{bottom:calc(var(--bnav-h,64px) + 14px)}.panel{bottom:calc(var(--bnav-h,64px) + 84px);max-height:calc(100vh - var(--bnav-h,64px) - 110px)}}' : ''}
+${where === 'app' ? '@media (max-width:760px){.btn{bottom:calc(var(--bnav-h,64px) + 84px)}.panel{bottom:calc(var(--bnav-h,64px) + 154px);max-height:calc(100vh - var(--bnav-h,64px) - 180px)}}' : ''}
 @media (max-width:480px){.panel{right:0;bottom:0;width:100vw;max-width:100vw;height:100%;max-height:100%;border-radius:0}.btn{${where === 'app' ? '' : 'bottom:16px;'}right:16px}}
 </style>
 <button class="btn" type="button" aria-label="Chat with us"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 3h14a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3h-7.6l-4.7 3.8A1 1 0 0 1 5 21v-3a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3z"/><path d="M7.5 8.5h9M7.5 12h6" stroke="var(--brand,#2563eb)" stroke-width="1.8" stroke-linecap="round"/></svg><span class="badge" hidden></span></button>
