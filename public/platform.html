@@ -396,6 +396,12 @@
       .pf-bnav a{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;color:var(--muted);text-decoration:none;font-size:12px;font-weight:600;border-radius:10px;-webkit-tap-highlight-color:transparent}
       .pf-bnav a.on{color:var(--brand)}
       .pf-bnav span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+      .pf-bmore{flex:1;display:flex;position:static}.pf-bmore summary{flex:1;position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;color:var(--muted);font-size:12px;font-weight:600;border-radius:10px;-webkit-tap-highlight-color:transparent}
+      .pf-bmore summary:hover,.pf-bmore[open] summary{background:none;color:var(--brand)}.pf-bmore.on summary{color:var(--brand)}
+      .pf-bdot{position:absolute;top:4px;left:calc(50% + 8px);width:9px;height:9px;border-radius:50%;background:var(--danger,#dc2626);border:2px solid var(--card)}
+      .pf-bmore .pf-menu-list{top:auto;bottom:calc(100% + 6px);right:8px;min-width:220px}
+      .pf-bmore .pf-menu-list a{display:flex;flex-direction:row;align-items:center;gap:10px;padding:11px 10px;border-radius:6px;font-size:15px;font-weight:500;color:var(--text)}
+      .pf-bmore .pf-menu-list a.on{color:var(--brand);font-weight:600}.pf-bmore .pf-menu-list a .msg-n{margin-left:auto}
       #main.pf-main{padding:20px 16px calc(96px + env(safe-area-inset-bottom))}
       .savebar{bottom:calc(66px + env(safe-area-inset-bottom))}
       #toast{bottom:calc(84px + env(safe-area-inset-bottom))}
@@ -416,7 +422,7 @@
   <script src="/hc-editor.js?v=3"></script>
   <script src="/brand.js?v=1"></script>
   <script src="/cancelflow.js?v=1"></script>
-  <script src="/platform.js?v=115"></script>
+  <script src="/platform.js?v=116"></script>
   <script src="/alpha-creators.js?v=4"></script>
   <script src="/alpha-import.js?v=3"></script>
 </body>

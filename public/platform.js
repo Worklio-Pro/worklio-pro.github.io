@@ -105,6 +105,7 @@ const TAB_ICONS = { // bottom bar icons (phones), by section
   forum: ico('<path d="M17 9a6 6 0 0 0-11.5-2.4A5 5 0 0 0 3 15.3L2 19l3.7-1A6 6 0 0 0 17 9z"/><path d="M14 18.6A6 6 0 0 0 22 13a5 5 0 0 0-2.5-4.3"/>'),
   social: ico('<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/>'),
   plans: ico('<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14.5 17.5l2 2 4-4"/>'),
+  more: ico('<path d="M4 6h16M4 12h16M4 18h16"/>'),
   settings: ico('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>'),
 };
 async function load() { D = await api('GET', '/api/platform/overview'); if (!draftPlans) { draftPlans = structuredClone(D.plans); draftBeta = [...D.betaFeatures]; } }
@@ -125,7 +126,7 @@ function render() {
 <details class="pf-user pf-menu"><summary>${esc(D.admin.name)}${isSupport() ? ' <small class="pf-role">Support</small>' : ''} <span aria-hidden="true">▾</span></summary><div class="pf-menu-list"><div class="pf-menu-who">${esc(D.admin.email)}</div><button type="button" data-act="myEmail">Change email</button><button type="button" data-act="myPassword">Change password</button><button type="button" data-act="logout">Log out</button></div></details></div></header>
 ${D.maintenance && D.maintenance.on ? `<div class="mt-bar" role="status"><strong>Maintenance mode is on.</strong> Visitors and businesses see the maintenance page; you can still use everything. ${isSupport() ? 'The owner can turn it off in Settings.' : '<a href="#settings" data-act="goMaint">Turn it off in Settings</a>'}</div>` : ''}
 <main class="pf-main" id="main"></main>
-<nav class="pf-bnav" aria-label="Alpha sections">${secs.filter((n) => !NOT_ON_PHONES.includes(n.k)).map((n) => `<a href="#${n.pages.includes(n.phone) ? n.phone : n.pages[0]}" class="${n === cur ? 'on' : ''}"${n === cur ? ' aria-current="page"' : ''}>${TAB_ICONS[n.k]}<span>${n.short || n.l}</span></a>`).join('')}</nav>`;
+${phoneBar(secs, cur, badge)}`;
   $('#main').dataset.tab = tab; // box title bands are styled per tab (platform.html)
   ({ accounts: accountsView, plans: plansView, discounts: promoView, messages: messagesView, forum: forumView, help: helpView, social: socialView, settings: settingsView })[tab]($('#main'));
 }
@@ -150,7 +151,16 @@ const tabFromHash = () => {
   if (h === 'integrations' && !isSupport()) { setTab = 'integrations'; return 'settings'; } // Integrations moved into Settings; old links still land there
   return tabsFor().includes(h) ? h : 'accounts';
 };
-const NOT_ON_PHONES = ['settings']; // left off the phone tab bar for everyone (it needs a bigger screen); there Pricing opens on Promotions
+// phones: a bottom tab bar with these sections, then a More button (☰) that opens the rest (Pricing opens on Promotions there)
+const PHONE_BAR = ['accounts', 'messages', 'social', 'settings'];
+const phoneHref = (n) => '#' + (n.pages.includes(n.phone) ? n.phone : n.pages[0]);
+function phoneBar(secs, cur, badge) {
+  const bar = PHONE_BAR.map((k) => secs.find((n) => n.k === k)).filter(Boolean);
+  const more = secs.filter((n) => !PHONE_BAR.includes(n.k));
+  const tabA = (n) => `<a href="${phoneHref(n)}" class="${n === cur ? 'on' : ''}"${n === cur ? ' aria-current="page"' : ''}>${TAB_ICONS[n.k]}<span>${n.short || n.l}</span></a>`;
+  const inMore = more.includes(cur), dot = more.some((n) => badge(n.k)) ? '<i class="pf-bdot" aria-hidden="true"></i>' : '';
+  return `<nav class="pf-bnav" aria-label="Alpha sections">${bar.map(tabA).join('')}${more.length ? `<details class="pf-menu pf-bmore${inMore ? ' on' : ''}"><summary aria-label="More sections">${TAB_ICONS.more}${dot}<span>More</span></summary><div class="pf-menu-list">${more.map((n) => `<a href="${phoneHref(n)}" class="${n === cur ? 'on' : ''}"${n === cur ? ' aria-current="page"' : ''}>${TAB_ICONS[n.k]}${n.l}${badge(n.k)}</a>`).join('')}</div></details>` : ''}</nav>`;
+}
 window.addEventListener('hashchange', () => { if (POPOUT) return; tab = tabFromHash(); if (tab === 'forum') { FR = null; frSel = ''; } if (D) render(); });
 
 /* ===== accounts ===== */
