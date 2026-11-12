@@ -128,7 +128,8 @@ function creatorProgramView(box) {
 <p class="muted" style="font-size:12px;margin:-4px 0 8px">Remember your price lock: an “every payment” discount is for good.</p>
 <h2 style="margin-top:18px">The page</h2>
 <label>Line under the headline on /partners<input name="pitch" maxlength="300" value="${esc(p.pitch)}"></label>
-<div class="savebar"><span class="muted">${p.enabled ? `Live at <a href="/partners" target="_blank" rel="noopener">${esc(location.origin)}/partners</a>` : 'Off: /partners goes to the home page.'}</span><button class="btn">Save creator program</button></div></form>`;
+<p class="muted" style="font-size:12px;margin:-4px 0 0;overflow-wrap:anywhere">${p.enabled ? `Live at <a href="/partners" target="_blank" rel="noopener">${esc(location.origin)}/partners</a>` : 'Off: /partners goes to the home page.'}</p>
+<div class="savebar rp-bar"><button class="btn">Save creator program</button></div></form>`;
   const f = $('#crpf', box);
   const sync = () => { const trial = f.type.value === 'trial'; $$('[data-off]', f).forEach((el) => { el.hidden = trial; }); $$('[data-trial]', f).forEach((el) => { el.hidden = !trial; }); if (!trial) $('[data-rep]', f).hidden = f.duration.value !== 'repeating'; };
   f.type.addEventListener('change', sync); f.duration.addEventListener('change', sync); sync();
