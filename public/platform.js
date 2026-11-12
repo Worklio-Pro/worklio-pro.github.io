@@ -1434,7 +1434,7 @@ ${LC && LC.settings.on && LC.settings.hours.on && !LC.inHours ? `<div class="not
   lcTimer = setInterval(() => { if (tab !== 'messages' || msgTab !== 'chat' || !$('#lcList')) { clearInterval(lcTimer); return; } lcLoad(); }, 4000);
 }
 async function lcLoad() {
-  try { LC = await api('GET', '/api/platform/chats'); } catch (x) { return; }
+  try { LC = await api('GET', '/api/platform/chats' + (document.hidden ? '?bg' : '')); } catch (x) { return; }
   lcAlert(LC.chats); const L = $('#lcList'); if (!L) return;
   const waiting = LC.chats.filter((c) => c.status === 'waiting' || (c.status === 'live' && c.unread)).length;
   setChatCount(waiting);
@@ -1464,7 +1464,7 @@ function lcAlert(chats) {
 }
 A.lcBack = () => { lcSel = ''; $('.lc').classList.remove('open'); };
 async function lcConv() {
-  let c; try { c = await api('GET', '/api/platform/chats/' + lcSel); } catch (x) { lcSel = ''; $('#lcConv').innerHTML = `<p class="muted lc-empty">${esc(x.message)}</p>`; return; }
+  let c; try { c = await api('GET', '/api/platform/chats/' + lcSel + (document.hidden ? '?bg' : '')); } catch (x) { lcSel = ''; $('#lcConv').innerHTML = `<p class="muted lc-empty">${esc(x.message)}</p>`; return; }
   const box = $('#lcConv'); if (!box || c.id !== lcSel) return;
   const sig = c.id + c.messages.length + c.status;
   if (!$('.lc-msgs', box) || !lcShown.startsWith(c.id)) {
