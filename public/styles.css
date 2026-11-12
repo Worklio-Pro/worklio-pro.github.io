@@ -2349,3 +2349,6 @@ a.hm-step:hover{border-color:var(--brand)}
 @media (hover:none){.racts>div{opacity:1}}
 .lmore{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:12px 14px;border-top:1px solid var(--line);font-size:14px;color:var(--muted)}
 .lmore .link-btn{margin-left:0;text-decoration:none}
+/* the More actions button: a square with the three dots */
+.btn.icon-more{display:inline-flex;align-items:center;justify-content:center;min-width:38px;padding-left:0;padding-right:0}
+@media (max-width:760px){:where(#main,.modal,.mpage,.msheet) .btn.icon-more{min-width:50px;padding-left:0;padding-right:0}}

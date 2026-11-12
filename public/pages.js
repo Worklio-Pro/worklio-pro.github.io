@@ -3815,7 +3815,7 @@ ${X && X.fee != null ? `<div class="pd-l muted"><span>Processing fees</span><spa
     pdState = { P, X, refunded, docName };
     main.innerHTML = `<div class="pd"><div class="pd-main">
 <div class="pd-top"><a class="pd-back" href="/payments" data-link aria-label="Back to Payments">‹ Payments</a><span class="badge ${stCls}">${stLabel}</span>
-<div class="pd-acts"><details class="menu"><summary class="btn alt">⋯ More</summary><div class="menu-list">${more}</div></details>${C && C.email ? `<button type="button" class="btn" data-act="pdReceipt" data-id="${esc(P.id)}">Send receipt</button>` : ''}</div></div>
+<div class="pd-acts"><details class="menu">${MORE_SUM}<div class="menu-list">${more}</div></details>${C && C.email ? `<button type="button" class="btn" data-act="pdReceipt" data-id="${esc(P.id)}">Send receipt</button>` : ''}</div></div>
 <div class="pd-amt">${money(P.amount)}</div>
 ${R.stripeError ? `<div class="note">Couldn’t load the card details from Stripe: ${esc(R.stripeError)}</div>` : ''}
 ${C ? `<div class="card pd-client"><div class="pd-cn"><strong>${esc(C.name)}</strong>${C.company ? `<span class="muted"> · ${esc(C.company)}</span>` : ''}<button type="button" class="link-btn" data-act="pdClient" data-id="${C.id}">View client</button></div>

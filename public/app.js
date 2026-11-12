@@ -6,6 +6,8 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const money = (n) => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const pad = (n) => String(n).padStart(2, '0');
 const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+// the More actions menu button on desktop pages: just the three dots, named for screen readers and on hover
+const MORE_SUM = `<summary class="btn alt icon-more" aria-label="More actions" title="More actions"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></summary>`;
 const parseD = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
 const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
 // regional settings (App Settings): first day of the week, date format, 12/24-hour time
@@ -1592,7 +1594,7 @@ PAGES['/clients/property'] = {
     const at = `data-client="${c.id}" data-id="${esc(p.id)}"`;
     main.innerHTML = `<div class="pp"><a class="back pp-back" href="/clients/view?id=${c.id}" data-link>← Back to ${esc(c.name)}</a>
 <div class="pp-head"><div class="pp-title">${PI.home}<h1>${esc(propAddr(p))}</h1>${p.name ? `<div class="muted">${esc(p.name)}</div>` : ''}</div>
-<div class="pp-acts"><details class="menu cv-more"><summary class="btn alt"><span class="more-dots" aria-hidden="true">•••</span> More</summary><div class="menu-list"><div class="mi-h">Create new</div>${workMenuItems(c, p)}<button type="button" class="mi need-jobs-edit" data-act="propTask" ${at}>${PI.task}Task</button>
+<div class="pp-acts"><details class="menu cv-more">${MORE_SUM}<div class="menu-list"><div class="mi-h">Create new</div>${workMenuItems(c, p)}<button type="button" class="mi need-jobs-edit" data-act="propTask" ${at}>${PI.task}Task</button>
 ${edit ? `<hr class="mi-sep"><button type="button" class="mi admin-only" data-act="propDelete" ${at}>${PI.trash}Delete property</button>` : ''}</div></details>
 <a class="btn" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(propAddr(p))}" target="_blank" rel="noopener">${PI.pin}Show on Map</a></div>
 ${edit ? `<button type="button" class="icon-btn cv-ib pp-edit" data-act="propEdit" ${at} title="Edit Property" aria-label="Edit Property">${CI.edit}</button>` : ''}</div>
@@ -2436,7 +2438,7 @@ function quoteMore(d, { job, canJob, c }) {
   const b = (act, icon, label, extra = '') => `<button type="button" class="mi" data-act="${act}" data-kind="quote" data-id="${d.id}" ${extra}>${QM[icon]}${label}</button>`;
   const marks = [d.status !== 'sent' ? b('markQuoteSent', 'awaiting', 'Awaiting Response') : '', d.status !== 'approved' ? b('approveQuote', 'approved', 'Approved') : '',
     d.status !== 'declined' && d.depositFee > 0 && !d.depositPaidAt ? b('markDepositPaid', 'deposit', `Deposit Paid${d.zelleSentAt ? ` (${sentName(d)} sent)` : ''}`) : ''].join('');
-  return `<details class="menu more-menu"><summary class="btn alt"><span class="more-dots" aria-hidden="true">•••</span> More</summary><div class="menu-list">
+  return `<details class="menu more-menu">${MORE_SUM}<div class="menu-list">
 ${canJob ? b('quoteToJob', 'job', 'Convert to Job') : ''}${job ? `<a class="mi" href="/jobs/edit?id=${job.id}" data-link>${QM.goJob}Go to Job ${esc(job.number)}</a>` : ''}${b('copyQuote', 'copy', 'Create Similar Quote')}
 <hr class="mi-sep"><div class="mi-h">Send as…</div>${b('sendDoc', 'email', 'Email', 'data-ch="email"')}${planHas('sms') && c.phone && c.smsConsent ? b('sendDoc', 'text', 'Text Message', 'data-ch="text"') : ''}
 ${marks ? `<hr class="mi-sep"><div class="mi-h">Mark as…</div>${marks}` : ''}
@@ -2452,7 +2454,7 @@ const sendBtn = (kind, d) => (planHas('sms')
 function invoiceMore(d, c) {
   const b = (act, icon, label, extra = '') => `<button type="button" class="mi" data-act="${act}" data-kind="invoice" data-id="${d.id}" ${extra}>${QM[icon]}${label}</button>`;
   const open = d.status !== 'paid';
-  return `<details class="menu more-menu"><summary class="btn alt"><span class="more-dots" aria-hidden="true">•••</span> More</summary><div class="menu-list">
+  return `<details class="menu more-menu">${MORE_SUM}<div class="menu-list">
 ${open ? b('collectPayment', 'pay', 'Collect Payment') + (invBalance(d) > 0 ? b('payQr', 'qr', 'Show Pay QR Code') : '') : ''}${b('copyInvoice', 'copy', 'Create Similar Invoice')}
 <hr class="mi-sep"><div class="mi-h">${open ? 'Send as…' : 'Send receipt as…'}</div>${b(open ? 'sendDoc' : 'sendReceipt', 'email', 'Email', 'data-ch="email"')}${planHas('sms') && c.phone && c.smsConsent ? b(open ? 'sendDoc' : 'sendReceipt', 'text', 'Text Message', 'data-ch="text"') : ''}
 ${d.status === 'draft' ? `<hr class="mi-sep"><div class="mi-h">Mark as…</div>${b('markInvoiceSent', 'awaiting', 'Awaiting Payment')}` : ''}
@@ -3529,7 +3531,7 @@ ${cols.map((c) => c.td(i)).join('')}<td class="racts"><div>${acts(i)}</div></td>
       .filter(([s, , l]) => s !== 'partial' || l.length || v.status === 'partial');
     const tabM = (s, l) => (l ? (l.length ? moneyShort(bal(l)) : '') : s === 'paid' && paid30.length ? `${moneyShort(sum(paid30))} past 30 days` : '');
     main.innerHTML = `<div class="head"><h1>Invoices</h1><div class="actions"><button class="btn" data-act="newInvoice">New Invoice</button>
-<details class="menu"><summary class="btn alt">⋯ More Actions</summary><div class="menu-list"><button data-act="batchInvoice">Invoice completed jobs</button></div></details></div></div>
+<details class="menu">${MORE_SUM}<div class="menu-list"><button data-act="batchInvoice">Invoice completed jobs</button></div></details></div></div>
 ${batchBanner()}<div class="lstrip"><span class="ls-l">Past 30 days</span><span>Issued <strong>${issNow.length} · ${moneyShort(sum(issNow))}</strong> ${change(issNow.length, issPrev.length)}</span>
 <span>Average invoice <strong>${avg(issNow) >= 1000 ? moneyShort(avg(issNow)) : '$' + Math.round(avg(issNow))}</strong> ${change(avg(issNow), avg(issPrev))}</span>${paidIn ? `<span>Paid in ${paidIn}</span>` : ''}<a href="/reports" data-link>Full report →</a></div>
 <div class="ltabs" role="tablist" aria-label="Invoice status">${tabs.map(([s, label, l]) => `<button type="button" role="tab" aria-selected="${v.status === s}" class="ltab${v.status === s ? ' on' : ''}" data-act="invTab" data-s="${s}"><span class="lt-t">${I_CLASS[s] ? `<i class="dot ${I_CLASS[s]}"></i>` : ''}${label}${l ? `<span class="lt-n">${l.length}</span>` : ''}</span><span class="lt-m">${tabM(s, l)}</span></button>`).join('')}</div>
@@ -3783,7 +3785,7 @@ function jobMore(j) {
   const b = (act, icon, label, cls = '') => `<button type="button" class="mi ${cls}" data-act="${act}" data-id="${j.id}">${QM[icon]}${label}</button>`;
   const sms = planHas('sms') && byId(D.clients, j.clientId)?.smsConsent;
   const off = planHas('timeOff') && me && me.staffId && (j.staffIds || []).includes(me.staffId) && j.date >= ymd(new Date());
-  return `<details class="menu more-menu"><summary class="btn alt"><span class="more-dots" aria-hidden="true">•••</span> More</summary><div class="menu-list">
+  return `<details class="menu more-menu">${MORE_SUM}<div class="menu-list">
 ${planHas('invoices') ? b('jobInvoice', 'invoice', 'Create Invoice', 'need-invoices') : ''}${!planHas('signatures') ? '' : b('collectSignature', 'sign', j.signature ? 'Collect Another Signature' : 'Collect Signature')}
 <div class="need-jobs-edit"><hr class="mi-sep"><div class="mi-h">Send as…</div>${b('jobRemind', sms ? 'text' : 'email', `${sms ? 'Text' : 'Email'} Reminder`)}</div>
 <hr class="mi-sep">${j.repeat && j.repeat.next && planHas('recurringJobs') ? b('stopRepeat', 'calendar', 'Stop Repeating After This Visit', 'need-jobs-edit') : ''}${off ? b('jobRequestOff', 'calendar', 'Request Off for This Job') : ''}<a class="mi" href="/calendar" data-link>${QM.calendar}Open Calendar</a>
@@ -3911,7 +3913,7 @@ function jobPage(main, job, preset) {
   const team = D.staff.filter((s) => s.status !== 'deactivated' || (j.staffIds || []).includes(s.id));
   main.innerHTML = `<form class="qform jform"><div class="qpage"><div class="qmain">
 <div class="qtop"><div class="qtop-l"><a href="/jobs" data-link class="back">← Jobs</a><span class="cstatus ${J_CLASS[st]}">${J_STATUS[st]}</span></div>
-<div class="actions">${j.id ? `<details class="menu"><summary class="btn alt">⋯ More</summary><div class="menu-list">
+<div class="actions">${j.id ? `<details class="menu">${MORE_SUM}<div class="menu-list">
 ${!planHas('signatures') ? '' : `<button type="button" data-act="collectSignature" data-id="${j.id}">${j.signature ? 'Collect another signature' : 'Collect signature'}</button>`}${planHas('timeOff') && me && me.staffId && (j.staffIds || []).includes(me.staffId) && j.date >= ymd(new Date()) ? `<button type="button" data-act="jobRequestOff" data-id="${j.id}">Request off for this job</button>` : ''}
 <button type="button" class="need-jobs-edit" data-act="jobRemind" data-id="${j.id}">${planHas('sms') && byId(D.clients, j.clientId)?.smsConsent ? 'Text' : 'Email'} reminder to client</button>${planHas('invoices') ? `<button type="button" class="need-invoices" data-act="jobInvoice" data-id="${j.id}">Create invoice</button>` : ''}
 <a href="/calendar" data-link>Open calendar</a><button type="button" class="danger-text need-jobs-edit" data-act="delJob" data-id="${j.id}">Delete job</button></div></details>
@@ -4114,7 +4116,7 @@ PAGES['/jobs'] = {
       row: (x) => ({ name: cname(x), date: mDay(x.date) + (x.anytime || !x.startTime ? '' : ' ' + fmtTime(x.startTime)), amount: canDo('jobs.prices') && jobTotal(x) !== null ? mAmt(jobTotal(x)) : '', title: x.title, label: J_STATUS[jobStatus(x)], cls: J_CLASS[jobStatus(x)], href: '/jobs/edit?id=' + x.id }),
       onStatus: (k) => { jobView = { ...jobView, status: k }; }, onQ: (t) => { jobView.q = t; }, newAct: 'newJob', newCls: 'need-jobs-edit' });
     main.innerHTML = `<div class="head"><h1>Jobs</h1><div class="actions"><button class="btn need-jobs-edit" data-act="newJob">New Job</button>
-<details class="menu"><summary class="btn alt">⋯ More Actions</summary><div class="menu-list"><a href="/calendar" data-link>Open calendar</a></div></details></div></div>
+<details class="menu">${MORE_SUM}<div class="menu-list"><a href="/calendar" data-link>Open calendar</a></div></details></div></div>
 <div class="cstats">
 <div class="cstat"><strong class="cs-h">Overview</strong><div class="qov">${[['late', 'q-declined'], ['invoice', 'q-sent'], ['today', 'q-converted'], ['upcoming', 'q-approved']].map(([s, c]) => `<button data-act="jobFilter" data-s="${s}"><i class="dot ${c}"></i>${J_STATUS[s]} (${count(s)})</button>`).join('')}</div></div>
 <button class="cstat" data-act="jobCard" data-k="recent"><div class="cs-h"><strong>Recent visits</strong><span>↗</span></div><div class="muted">Past 30 days</div><div class="cs-v">${recNow.length} ${change(recNow.length, recPrev.length)}</div><div class="muted money">${moneyShort(sum(recNow))}</div></button>
