@@ -543,6 +543,41 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeHelp();
 });
 let renderedPath = '';
+/* ===== Page not found: a cartoon Yorkie (our own drawing) who sniffed everywhere and came up empty. It wags, tilts its head, blinks and
+   twitches an ear (styles.css, .p404-*); people who ask their device for less motion get it standing still. ===== */
+const P404_YORKIE = `<svg class="p404-dog" viewBox="0 0 300 300" role="img" aria-label="A confused cartoon Yorkie with a pink bow, tilting its head">
+<ellipse class="p404-shadow" cx="150" cy="280" rx="84" ry="9"/>
+<g class="p404-q"><text x="58" y="96" font-size="30">?</text><text x="226" y="74" font-size="38">?</text><text x="246" y="118" font-size="22">?</text></g>
+<g class="p404-tail"><path d="M196 222 C228 214 236 182 222 162" fill="none" stroke="#4b5a70" stroke-width="13" stroke-linecap="round"/><circle cx="221" cy="160" r="8" fill="#c98b45"/></g>
+<path d="M98 268 C92 230 100 190 122 172 C138 160 164 160 180 172 C202 190 210 232 204 268 Z" fill="#4b5a70"/>
+<path d="M94 262 Q104 282 114 266 Q124 284 134 268 Q144 286 154 268 Q164 286 174 268 Q184 284 194 266 Q203 280 208 262 L204 248 L98 248 Z" fill="#4b5a70"/>
+<path d="M112 200 Q107 232 112 262 M124 186 Q117 222 122 262 M188 200 Q193 232 188 262 M176 186 Q183 222 178 262" fill="none" stroke="#6b7c93" stroke-width="2.5" stroke-linecap="round" opacity=".85"/>
+<path d="M128 176 C140 168 162 168 174 176 C178 205 170 232 151 246 C132 232 124 205 128 176 Z" fill="#d79a52"/>
+<rect x="121" y="220" width="20" height="54" rx="10" fill="#c98b45"/><rect x="161" y="220" width="20" height="54" rx="10" fill="#c98b45"/>
+<ellipse cx="131" cy="273" rx="14" ry="8" fill="#e2b06b"/><ellipse cx="171" cy="273" rx="14" ry="8" fill="#e2b06b"/>
+<path d="M126 270 v6 M131 269 v7 M136 270 v6 M166 270 v6 M171 269 v7 M176 270 v6" stroke="#b07a3c" stroke-width="1.6" stroke-linecap="round"/>
+<path d="M124 168 Q150 182 176 168" fill="none" stroke="#2563eb" stroke-width="6" stroke-linecap="round"/><circle cx="150" cy="180" r="6.5" fill="#f5c542" stroke="#d4a017" stroke-width="1.5"/>
+<g class="p404-head">
+<g class="p404-ear"><path d="M118 98 L104 46 L140 80 Z M104 46 L99 58 L106 61 L101 73 L110 74 L107 87 L118 98 Z" fill="#c98b45"/><path d="M119 91 L110 58 L133 82 Z" fill="#f2b6a8"/></g>
+<path d="M182 98 L196 46 L160 80 Z M196 46 L201 58 L194 61 L199 73 L190 74 L193 87 L182 98 Z" fill="#c98b45"/><path d="M181 91 L190 58 L167 82 Z" fill="#f2b6a8"/>
+<path d="M108 128 C104 92 124 72 150 72 C176 72 196 92 192 128 C190 150 172 166 150 166 C128 166 110 150 108 128 Z" fill="#d79a52"/>
+<path d="M128 82 C130 62 144 52 150 52 C156 52 170 62 172 82 C164 76 136 76 128 82 Z" fill="#b9824a"/>
+<path d="M150 56 L130 44 L132 68 Z M150 56 L170 44 L168 68 Z" fill="#ec4899"/><circle cx="150" cy="56" r="6" fill="#be185d"/>
+<path d="M122 128 C122 110 136 104 150 104 C164 104 178 110 178 128 C178 150 166 162 150 162 C134 162 122 150 122 128 Z" fill="#ecc283"/>
+<path d="M122 134 Q113 160 126 184 Q131 177 136 192 Q142 183 150 200 Q158 183 164 192 Q169 177 174 184 Q187 160 178 134 Q166 160 150 160 Q134 160 122 134 Z" fill="#ecc283"/>
+<ellipse cx="127" cy="141" rx="7" ry="4" fill="#f9a8b8" opacity=".55"/><ellipse cx="173" cy="141" rx="7" ry="4" fill="#f9a8b8" opacity=".55"/>
+<path d="M124 102 Q132 96 141 101 M159 98 Q168 94 176 101" fill="none" stroke="#9c6a35" stroke-width="3" stroke-linecap="round"/>
+<g class="p404-eyes"><circle cx="134" cy="118" r="9.5" fill="#1f1a17"/><circle cx="166" cy="118" r="9.5" fill="#1f1a17"/>
+<circle cx="137.5" cy="114" r="3.2" fill="#fff"/><circle cx="169.5" cy="114" r="3.2" fill="#fff"/><circle cx="131" cy="122" r="1.5" fill="#fff"/><circle cx="163" cy="122" r="1.5" fill="#fff"/></g>
+<path d="M140 132 Q150 125 160 132 Q160 142 150 144 Q140 142 140 132 Z" fill="#1f1a17"/><ellipse cx="146" cy="131" rx="3.5" ry="2" fill="#fff" opacity=".45"/>
+<path d="M146 151 Q150 164 154 151 Z" fill="#f472b6"/>
+<path d="M150 144 V149 M150 149 Q143 156 137 150 M150 149 Q157 156 163 150" fill="none" stroke="#7a4a24" stroke-width="2.5" stroke-linecap="round"/>
+</g>
+</svg>`;
+const page404Html = () => `<div class="p404">${P404_YORKIE}<div class="p404-code">Error 404</div><h1>Ruh-roh! This page ran off.</h1>
+<p class="muted">Our Yorkie sniffed under every couch cushion, but couldn’t find the page you’re looking for. It may have moved, or the link might be a little off.</p>
+<div class="p404-acts"><a class="btn" href="/business-overview" data-link>Take me home</a><button type="button" class="btn alt" data-act="p404Back">Go back</button></div></div>`;
+A.p404Back = () => (history.length > 1 ? history.back() : navigate('/business-overview'));
 async function render() {
   const path = curPath();
   if (path !== renderedPath) { $$('.qc').forEach((el) => el.remove()); renderedPath = path; } // the calendar's add/edit box floats on the page: it goes when the page changes (a refresh keeps it)
@@ -579,7 +614,7 @@ async function render() {
   if (pausedNow() && !portal && isAdminMe() && /\/(new|edit|import)$/.test(path)) { toast('Your account is paused. Choose a plan to make changes again.', true); history.replaceState({}, '', '/settings/billing'); return render(); }
   if (page && !memberCan(path)) { document.title = 'No access'; main.innerHTML = `<div class="card"><h1>You don't have access to this page</h1><p class="muted">Your access level doesn't include this page. Ask the account owner if you need more access.</p><p><a href="/calendar" data-link>Go to the job calendar</a></p></div>`; return; }
   if (page && planLocked(path)) { document.title = page.title; main.innerHTML = `<div class="card upgrade-card"><h1>${esc(page.title)} isn’t in your plan</h1><p class="muted">You’re on the ${esc(company.account.plan.name)} plan. Upgrade to get ${esc(page.title)} and more.</p><p><a href="/settings" data-link class="btn alt">See your plan</a></p></div>`; return; }
-  if (!page) { document.title = 'Not found'; main.innerHTML = '<div class="card"><h1>Page not found</h1><p><a href="/business-overview" data-link>Go to dashboard</a></p></div>'; return; }
+  if (!page) { document.title = 'Page not found'; main.innerHTML = page404Html(); return; }
   document.title = `${page.title} · ${company.name || (company.account && company.account.productName) || 'Worklio Pro'}`;
   try { D = portal ? {} : await loadAll(); timeOffBadge(); await page.render(main); if (betaPage(path)) main.insertAdjacentHTML('afterbegin', BETA_BAR); }
   catch (e) { main.innerHTML = `<div class="card"><h2>Something went wrong</h2><p>${esc(e.message)}</p></div>`; }
