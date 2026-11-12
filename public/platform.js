@@ -41,7 +41,10 @@ function authView(state, err) {
   $('#af input').focus();
   $('#af').addEventListener('submit', async (e) => {
     e.preventDefault(); const b = Object.fromEntries(new FormData(e.target));
-    try { await api('POST', setup ? '/api/platform/setup' : '/api/platform/login', b); boot(); } catch (x) { authView(state, x.message); }
+    try { await api('POST', setup ? '/api/platform/setup' : '/api/platform/login', b); boot(); } catch (x) {
+      if (askedTwoStep(x)) return twoStepView(state, x.data, (otp) => api('POST', '/api/platform/login', { ...b, otp }));
+      authView(state, x.message);
+    }
   });
 }
 
@@ -66,7 +69,12 @@ function forgotView(state, f, err) {
       if (f.step === 'email') { await api('POST', '/api/platform/forgot', { email: b.email }); return forgotView(state, { step: 'code', email: b.email.trim().toLowerCase() }); }
       if (f.step === 'code') { const code = b.code.replace(/\D/g, ''); await api('POST', '/api/platform/forgot/verify', { email: f.email, code, check: true }); return forgotView(state, { ...f, step: 'password', code }); }
       if (b.password !== b.again) return forgotView(state, f, 'The two passwords don’t match');
-      await api('POST', '/api/platform/forgot/verify', { email: f.email, code: f.code, password: b.password }); toast('Password changed'); boot();
+      const body = { email: f.email, code: f.code, password: b.password };
+      try { await api('POST', '/api/platform/forgot/verify', body); } catch (x) {
+        if (!askedTwoStep(x)) throw x;
+        return twoStepView(state, x.data, async (otp) => { const r = await api('POST', '/api/platform/forgot/verify', { ...body, otp }); toast('Password changed'); return r; });
+      }
+      toast('Password changed'); boot();
     } catch (x) { forgotView(state, x.message.includes('Request a new one') ? { ...f, step: 'code' } : f, x.message); }
   });
 }
@@ -87,10 +95,75 @@ async function inviteView(token, state) {
     $('#ivf [name=password]').focus();
     $('#ivf').addEventListener('submit', async (e) => {
       e.preventDefault(); const b = Object.fromEntries(new FormData(e.target)); if (b.password !== b.again) return draw('The two passwords don’t match');
-      try { await api('POST', '/api/platform/invite', { token, password: b.password }); history.replaceState(null, '', '/alpha'); boot(); } catch (x) { draw(x.message); }
+      try { await api('POST', '/api/platform/invite', { token, password: b.password }); history.replaceState(null, '', '/alpha'); boot(); } catch (x) {
+        if (askedTwoStep(x)) return twoStepView(state, x.data, async (otp) => { const r = await api('POST', '/api/platform/invite', { token, password: b.password, otp }); history.replaceState(null, '', '/alpha'); return r; });
+        draw(x.message);
+      }
     });
   };
   draw();
+}
+
+// ----- two-step login: after the password, a code from an authenticator app; the first time, scan a QR code to add Alpha to the app -----
+const askedTwoStep = (x) => !!(x.data && (x.data.needCode || x.data.setup));
+const twoStepKey = (secret) => esc(secret.replace(/(.{4})/g, '$1 ').trim());
+const twoStepSetupHtml = (setup) => `<div class="pf-2s-qr">${window.qrSvg ? qrSvg(setup.uri) : ''}</div>
+<details class="pf-2s-key"><summary>Can’t scan it?</summary><p class="muted">In the app, add an account by hand (time-based) with this key:</p><code>${twoStepKey(setup.secret)}</code></details>`;
+// retry(otp): the same request again with the code. Its reply carries backupCodes when two-step login was just turned on
+function twoStepView(state, data, retry, err) {
+  const brand = state.brand && state.brand.logo ? `<div class="pf-auth-logo">${brandImg(state.brand)}</div>` : '';
+  const setup = data.setup;
+  $('#root').innerHTML = `<div class="pf-auth card">${brand}<h1>${setup ? 'Set up two-step login' : 'Two-step login'}</h1>
+${setup ? `<p class="muted">Every Alpha login needs a code from an authenticator app on your phone (Google Authenticator, Microsoft Authenticator, Authy, 1Password…). Open the app, add an account, and scan this QR code.</p>${twoStepSetupHtml(setup)}`
+    : '<p class="muted">Enter the 6-digit code your authenticator app shows for Alpha. Don’t have your phone? Enter one of your backup codes.</p>'}
+<form id="tsf">${err ? `<div class="msg err" role="alert">${esc(err)}</div>` : ''}<label>${setup ? 'The 6-digit code the app now shows' : 'Code'}<input name="otp" required autocomplete="one-time-code" ${setup ? 'inputmode="numeric" pattern="\\d{6}" maxlength="6"' : 'maxlength="12" autocapitalize="off" spellcheck="false"'} placeholder="123456" class="pf-code"></label>
+<button class="btn">${setup ? 'Turn on and log in' : 'Log in'}</button></form>
+<p class="pf-auth-alt"><a href="#" data-act="backToLogin">Back to log in</a></p></div>`;
+  A.backToLogin = () => { history.replaceState(null, '', '/alpha'); authView(state); };
+  $('#tsf input').focus();
+  $('#tsf').addEventListener('submit', async (e) => {
+    e.preventDefault(); const otp = new FormData(e.target).get('otp'); $('#tsf .btn').disabled = true;
+    try { const r = await retry(otp); if (r && r.backupCodes) return backupCodesView(r.backupCodes, boot); boot(); }
+    catch (x) { if (askedTwoStep(x)) return twoStepView(state, x.data, retry, x.message); twoStepView(state, data, retry, x.message); }
+  });
+}
+// the backup codes, shown once: each one logs in once without the phone
+const backupCodesHtml = (codes) => `<p class="muted">If you lose your phone, each of these codes logs you in once instead of the app’s code. Keep them somewhere safe, like a password manager. They won’t be shown again.</p>
+<ol class="pf-2s-codes">${codes.map((c) => `<li><code>${esc(c)}</code></li>`).join('')}</ol>
+<p><button type="button" class="btn alt sm" data-act="copyBackup">Copy</button> <button type="button" class="btn alt sm" data-act="saveBackup">Download</button></p>`;
+function backupActions(codes) {
+  const text = `${document.title.replace(/\s*·.*$/, '')} Alpha backup codes (each works once)\n\n${codes.join('\n')}\n`;
+  A.copyBackup = async () => { try { await navigator.clipboard.writeText(text); toast('Backup codes copied'); } catch (e) { toast('Couldn’t copy: select the codes instead', true); } };
+  A.saveBackup = () => { const u = URL.createObjectURL(new Blob([text], { type: 'text/plain' })); const l = document.createElement('a'); l.href = u; l.download = 'alpha-backup-codes.txt'; l.click(); setTimeout(() => URL.revokeObjectURL(u), 1000); };
+}
+function backupCodesView(codes, done) {
+  $('#root').innerHTML = `<div class="pf-auth card"><h1>Two-step login is on</h1>${backupCodesHtml(codes)}<button type="button" class="btn" data-act="backupDone">I’ve saved them</button></div>`;
+  backupActions(codes); A.backupDone = () => done();
+}
+// top bar → your name → Two-step login: backup codes left, new backup codes, or a new phone
+async function myTwoStep() { // A.myTwoStep (set beside A.myPassword: A is made further down)
+  $$('details.pf-menu[open]').forEach((m) => { m.open = false; });
+  let v; try { v = await api('GET', '/api/platform/me/two-step'); } catch (x) { return toast(x.message, true); }
+  const codeField = '<label>Code from your app (or a backup code)<input name="otp" required autocomplete="one-time-code" maxlength="12" autocapitalize="off" spellcheck="false" placeholder="123456" class="pf-code"></label>';
+  const m = modal('Two-step login', `<form id="tsm"><p class="muted" style="margin-top:0">On${v.since ? ` since ${fmtDate(v.since)}` : ''}. Each login asks for a code from your authenticator app. <strong>${v.backupLeft}</strong> backup code${v.backupLeft === 1 ? '' : 's'} left.</p>
+${codeField}<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Close</button><button class="btn alt" name="go" value="newApp">Move to a new phone</button><button class="btn" name="go" value="codes">New backup codes</button></div></form>`);
+  $('#tsm', m).addEventListener('submit', async (e) => {
+    e.preventDefault(); const otp = new FormData(e.target).get('otp'); const go = e.submitter && e.submitter.value;
+    try {
+      if (go === 'codes') { const r = await api('POST', '/api/platform/me/two-step/backup-codes', { otp }); return myBackupCodes(r.backupCodes, 'New backup codes'); }
+      const r = await api('POST', '/api/platform/me/two-step/new-app', { otp }); myNewApp(r.setup);
+    } catch (x) { toast(x.message, true); }
+  });
+}
+function myBackupCodes(codes, title) { modal(title, `${backupCodesHtml(codes)}<p class="muted" style="font-size:13px">Your old backup codes no longer work.</p><div class="foot"><button type="button" class="btn" data-act="closeModal">I’ve saved them</button></div>`, { sticky: true }); backupActions(codes); }
+function myNewApp(setup) {
+  const m = modal('Move to a new phone', `<form id="tsn"><p class="muted" style="margin-top:0">In the authenticator app on your new phone, add an account and scan this QR code. Your old phone’s codes stop working once you confirm.</p>${twoStepSetupHtml(setup)}
+<label>The 6-digit code the new app shows<input name="otp" required inputmode="numeric" pattern="\\d{6}" maxlength="6" autocomplete="one-time-code" placeholder="123456" class="pf-code"></label>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Switch to this phone</button></div></form>`, { sticky: true });
+  $('#tsn', m).addEventListener('submit', async (e) => {
+    e.preventDefault(); const otp = new FormData(e.target).get('otp');
+    try { const r = await api('POST', '/api/platform/me/two-step/new-app/confirm', { otp }); toast('Switched to your new phone'); myBackupCodes(r.backupCodes, 'Your new backup codes'); } catch (x) { toast(x.message, true); if (/expired/.test(x.message)) closeModal(); }
+  });
 }
 
 /* ===== shell ===== */
@@ -123,7 +196,7 @@ function render() {
   document.title = `${cur.l} · ${D.settings.productName} Alpha`;
   $('#root').innerHTML = `<header class="pf-top"><div class="pf-bar"><div class="pf-brand">${brandHtml()}</div>
 <nav class="pf-tabs">${secs.map((n) => `<a href="#${n.pages[0]}" data-k="${n.k}" class="${n === cur ? 'on' : ''}">${n.l}${badge(n.k)}</a>`).join('')}</nav>
-<details class="pf-user pf-menu"><summary>${esc(D.admin.name)}${isSupport() ? ' <small class="pf-role">Support</small>' : ''} <span aria-hidden="true">▾</span></summary><div class="pf-menu-list"><div class="pf-menu-who">${esc(D.admin.email)}</div><button type="button" data-act="myEmail">Change email</button><button type="button" data-act="myPassword">Change password</button><button type="button" data-act="logout">Log out</button></div></details></div></header>
+<details class="pf-user pf-menu"><summary>${esc(D.admin.name)}${isSupport() ? ' <small class="pf-role">Support</small>' : ''} <span aria-hidden="true">▾</span></summary><div class="pf-menu-list"><div class="pf-menu-who">${esc(D.admin.email)}</div><button type="button" data-act="myEmail">Change email</button><button type="button" data-act="myPassword">Change password</button><button type="button" data-act="myTwoStep">Two-step login</button><button type="button" data-act="logout">Log out</button></div></details></div></header>
 ${D.maintenance && D.maintenance.on ? `<div class="mt-bar" role="status"><strong>Maintenance mode is on.</strong> Visitors and businesses see the maintenance page; you can still use everything. ${isSupport() ? 'The owner can turn it off in Settings.' : '<a href="#settings" data-act="goMaint">Turn it off in Settings</a>'}</div>` : ''}
 <main class="pf-main" id="main"></main>
 ${phoneBar(secs, cur, badge)}`;
@@ -2321,6 +2394,7 @@ function myEmailCode(email) {
     } catch (x) { btn.disabled = false; toast(x.message, true); if (/Start again/.test(x.message)) closeModal(); }
   });
 }
+A.myTwoStep = myTwoStep; // top bar → your name → Two-step login
 // change your own password (top bar → your name)
 A.myPassword = () => {
   $$('details.pf-menu[open]').forEach((m) => { m.open = false; });

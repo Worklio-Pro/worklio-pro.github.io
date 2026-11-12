@@ -1325,7 +1325,7 @@ app.post('/api/auth/setup', (req, res) => { // first run only: create the owner 
   db.users.push(user); ensureOwnerStaff(); save(); startSession(res, user); res.json(publicUser(user));
 });
 app.post('/api/auth/login', (req, res) => {
-  const email = normEmail(req.body && req.body.email); const key = tenancy.current().id + '|' + email + '|' + req.socket.remoteAddress;
+  const email = normEmail(req.body && req.body.email); const key = tenancy.current().id + '|' + email + '|' + req.ip;
   if (tooMany(key)) return res.status(429).json({ error: 'Too many attempts. Try again in 15 minutes or reset your password.' });
   const user = db.users.find((u) => u.email === email);
   if (!user || !user.passwordHash || !checkPassword(String((req.body && req.body.password) || ''), user)) { recordFailure(key); return res.status(401).json({ error: 'That email and password don’t match an account' }); }
@@ -3834,10 +3834,10 @@ app.post('/refer/:code', async (req, res) => {
   if (!c) return res.status(404).send(shell('Link not found', '<h1>Link not found</h1>'));
   const b = req.body || {}; const clip = (k, n) => String(b[k] || '').trim().slice(0, n);
   const done = shell('Request sent', `<h1>Thanks${clip('name', 100) ? ', ' + esc(clip('name', 100).split(/\s+/)[0]) : ''}!</h1><p class="muted">We got your request and will be in touch soon.</p>${smsSignedUp(b, clip('phone', 40))}`);
-  const spam = humanCheck.check(b, { form: 'referral form', ip: req.socket.remoteAddress, texts: ['title', 'details'] }); // lib/human-check.js
+  const spam = humanCheck.check(b, { form: 'referral form', ip: req.ip, texts: ['title', 'details'] }); // lib/human-check.js
   if (spam && spam.bot) return res.send(done);
   if (spam) return res.status(400).send(referPage(c, { error: spam.error, values: b }));
-  const ip = req.socket.remoteAddress; const now = Date.now(); const hits = (referHits.get(ip) || []).filter((t) => now - t < 3600e3);
+  const ip = req.ip; const now = Date.now(); const hits = (referHits.get(ip) || []).filter((t) => now - t < 3600e3);
   if (hits.length >= 5) return res.status(429).send(referPage(c, { error: 'Too many requests from this connection. Please call or email us instead.', values: b }));
   const name = clip('name', 100); const title = clip('title', 120); const email = clip('email', 120).toLowerCase(); const phone = clip('phone', 40);
   if (!name || !title) return res.status(400).send(referPage(c, { error: 'Please enter your name and what you need done.', values: b }));
@@ -3950,7 +3950,7 @@ app.get('/book', (req, res) => { if (req.query.ref) jobPosts.visit(String(req.qu
 app.post('/book', async (req, res) => {
   const b = req.body || {}; const clip = (k, n) => String(b[k] || '').trim().slice(0, n); const embed = bookEmbed(req);
   const done = bookShell('Booking request sent', `<h1>Thanks${clip('name', 100) ? ', ' + esc(clip('name', 100).split(/\s+/)[0]) : ''}!</h1><p class="muted">We got your request and will be in touch soon to confirm a time.</p>${smsSignedUp(b, clip('phone', 40))}`, embed);
-  const ip = req.socket.remoteAddress; const now = Date.now(); const hits = (bookHits.get(ip) || []).filter((t) => now - t < 3600e3);
+  const ip = req.ip; const now = Date.now(); const hits = (bookHits.get(ip) || []).filter((t) => now - t < 3600e3);
   const again = (status, error) => res.status(status).send(bookPage({ error, values: b, embed }));
   const spam = humanCheck.check(b, { form: 'booking form', ip, texts: ['title', 'details'] }); // lib/human-check.js
   if (spam && spam.bot) return res.send(done);
@@ -4008,10 +4008,10 @@ app.post('/card/exchange', async (req, res) => {
   const p = bizPage(); const b = req.body || {}; const clip = (k, n) => String(b[k] || '').trim().slice(0, n);
   const again = (status, error) => res.status(status).send(businessPage.render(p, { book: pageBook(), error, values: b }));
   if (!p.exchange) return res.redirect('/card');
-  const spam = humanCheck.check(b, { form: 'business page', ip: req.socket.remoteAddress }); // lib/human-check.js
+  const spam = humanCheck.check(b, { form: 'business page', ip: req.ip }); // lib/human-check.js
   if (spam && spam.bot) return res.send(businessPage.render(p, { book: pageBook(), done: true, values: b }));
   if (spam) return again(400, spam.error);
-  const ip = req.socket.remoteAddress; const now = Date.now(); const hits = (bookHits.get(ip) || []).filter((t) => now - t < 3600e3);
+  const ip = req.ip; const now = Date.now(); const hits = (bookHits.get(ip) || []).filter((t) => now - t < 3600e3);
   if (hits.length >= 5) return again(429, 'Too many messages from this connection. Please call or email us instead.');
   const name = clip('name', 100); const email = normEmail(clip('email', 120)); const phone = clip('phone', 40);
   if (!name) return again(400, 'Please enter your name.');
@@ -5698,9 +5698,20 @@ const platformApp = require('./lib/platform')({
   planItem, seatItem, seatParams, extraCount, extraLines, matrixItem, syncSeats, // a subscription’s plan line, extra logins line and add-on lines
   dataImport, // Alpha → an account → Import data
 });
+// the visitor's own address. On SiteGround (and most hosts) the app sits behind the host's proxy, so every request arrives from the proxy's
+// address and login limits would lump all visitors together. When the request comes from this machine or a private network (the proxy),
+// trust the address the proxy adds: the last one in X-Forwarded-For (anything before it can be typed in by the visitor), or X-Real-IP.
+const PRIVATE_IP = /^(::1|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|::ffff:(127|10|192\.168|172\.(1[6-9]|2\d|3[01]))\.|f[cd][0-9a-f]{2}:)/i;
+function clientIp(req) {
+  const direct = req.socket.remoteAddress || '';
+  if (!PRIVATE_IP.test(direct)) return direct;
+  const fwd = String(req.headers['x-forwarded-for'] || '').split(',').map((s) => s.trim()).filter(Boolean);
+  return fwd[fwd.length - 1] || String(req.headers['x-real-ip'] || '').trim() || direct;
+}
 // which app answers: the platform's (its own domain, or /alpha… while developing) or an account's
 const PLATFORM_PATHS = /^\/(alpha(\/.*)?|platform(\/.*)?|stripe\/go\/[a-z]+|oauth\/(google|meta|tiktok|linkedin|pinterest|threads|quickbooks|xero)\/callback|home|features|marketing|partners(\/[a-f0-9]+)?|go\/[A-Za-z0-9_-]+|quote-from-photos|good-better-best|pricing|signup|sign-in(\/(google|apple)(\/callback)?)?|supporters|industries(\/[a-z-]+)?|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;
 function dispatch(req, res) {
+  req.ip = clientIp(req); // who's asking (login limits, spam checks)
   // browser safety on every reply: files are only treated as the type we say (an upload can't pass itself off as a script),
   // other websites can't show our pages in a hidden frame to trick clicks (except the booking form, which business websites embed),
   // and links out don't carry full addresses (which can hold client tokens)
@@ -5757,6 +5768,14 @@ if (rpp > 0) { // same for the platform console login: node server.js --reset-pl
   Object.assign(a, (({ salt, hash }) => ({ salt, passwordHash: hash }))(hashPassword(pw)));
   for (const [k, s] of Object.entries(P.sessions)) if (s.adminId === a.id) delete P.sessions[k]; // log out everywhere
   tenancy.savePlatform(); console.log(`Platform password updated for ${a.email}`); process.exit(0);
+}
+const rts = process.argv.indexOf('--reset-platform-two-step');
+if (rts > 0) { // lost the phone and the backup codes: node server.js --reset-platform-two-step you@example.com (the next login sets it up again)
+  const P = tenancy.platform(); const a = P.admins.find((x) => x.email === normEmail(process.argv[rts + 1]));
+  if (!a) { console.error(`No Alpha login with that email. Alpha logins: ${P.admins.map((x) => x.email).join(', ') || 'none'}`); process.exit(1); }
+  delete a.twoStep; delete a.twoStepPending;
+  for (const [k, s] of Object.entries(P.sessions)) if (s.adminId === a.id) delete P.sessions[k]; // log out everywhere
+  tenancy.savePlatform(); console.log(`Two-step login reset for ${a.email}: the next login scans a new QR code`); process.exit(0);
 }
 setTimeout(remindExpiring, 10e3); setInterval(remindExpiring, 3600e3); // reminder emails before an account's last day of access
 setTimeout(() => bizAuto.runAll().catch((e) => console.error('automations:', e.message)), 30e3); setInterval(() => bizAuto.runAll().catch((e) => console.error('automations:', e.message)), 3600e3); // checks every automation hourly

@@ -343,6 +343,9 @@
     /* login */
     .pf-auth{max-width:380px;width:calc(100% - 32px);box-sizing:border-box;margin:12vh auto;padding:28px} /* the same space on every side; 16px from the screen edges on phones */
     .pf-auth-alt{margin:14px 0 0;font-size:13px;text-align:center}.pf-code{font-size:22px!important;letter-spacing:.3em;text-align:center;font-variant-numeric:tabular-nums}
+    .pf-2s-qr{display:flex;justify-content:center;margin:14px auto;width:200px;max-width:100%;box-sizing:border-box;padding:10px;background:#fff;border-radius:10px;border:1px solid var(--line)}.pf-2s-qr svg{width:100%;height:auto;display:block}
+    .pf-2s-key{margin:0 0 14px;font-size:13px}.pf-2s-key summary{cursor:pointer;color:var(--muted)}.pf-2s-key code{display:block;margin-top:6px;padding:8px 10px;background:var(--surface-2);border-radius:8px;font-size:14px;letter-spacing:.05em;word-break:break-all;user-select:all}
+    .pf-2s-codes{columns:2;gap:16px;margin:12px 0;padding-left:24px;font-size:15px}.pf-2s-codes li{margin:4px 0}.pf-2s-codes code{user-select:all}
     .pf-auth form{margin:0}.pf-auth form>:last-child{margin-bottom:0}.pf-auth h1{font-size:22px;margin:0 0 6px;text-align:center}.pf-auth p{text-align:center}
     .pf-auth .btn{width:100%;height:44px;font-size:15px;margin-top:6px}
     .msg{padding:10px 12px;border-radius:8px;font-size:14px;margin-bottom:12px}.msg.err{background:var(--bad-bg);color:var(--bad-fg)}
@@ -429,7 +432,8 @@
   <script src="/hc-editor.js?v=3"></script>
   <script src="/brand.js?v=1"></script>
   <script src="/cancelflow.js?v=1"></script>
-  <script src="/platform.js?v=122"></script>
+  <script src="/qr.js?v=2"></script>
+  <script src="/platform.js?v=123"></script>
   <script src="/alpha-creators.js?v=5"></script>
   <script src="/alpha-import.js?v=3"></script>
 </body>
