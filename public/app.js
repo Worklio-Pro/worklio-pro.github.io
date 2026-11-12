@@ -1162,7 +1162,7 @@ phoneMq.addEventListener('change', () => { if ($('#cq') && !mOpenNow()) refresh(
 // active clients with no job in over a year and nothing booked. Same look as Quotes, Jobs and Invoices: status tabs, a one-line stats
 // strip, rows grouped by why, and each row's buttons (Call, Email, New quote, New job) on hover.
 let clientView = { status: 'attention', tag: '', q: '', since: '', dupes: false, sort: 'name', dir: 1, page: 0 }; const clientSel = new Set();
-const initials = (s) => String(s || '?').trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+const clientInitials = (s) => String(s || '?').trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
 const avHue = (s) => [...String(s || '')].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) % 6, 0);
 PAGES['/clients'] = {
   title: 'Clients',
@@ -1215,7 +1215,7 @@ PAGES['/clients'] = {
       return `<td class="m-hide r need-invoices"><strong class="${f.late ? 'cl-late' : ''}">${money(f.owed)}</strong>${f.late && f.late < f.owed ? sub(money(f.late) + ' past due') : f.late ? sub('Past due') : ''}</td>`; };
     const row = (c) => { const nm = c.company || c.name; const f = fin[c.id];
       return `<tr class="crow" data-id="${c.id}"><td class="admin-only"><input type="checkbox" class="sel" value="${c.id}" ${clientSel.has(c.id) ? 'checked' : ''} aria-label="Select ${esc(c.name)}"></td>
-<td class="cl-name"><div class="cl-who"><span class="av av${avHue(nm)}" aria-hidden="true">${esc(initials(nm))}</span><div class="cl-txt"><div class="cl-top"><strong>${esc(nm)}</strong><span class="m-hide">${stBadge(c)}</span></div>${c.company && c.name && c.name !== c.company ? `<div>${esc(c.name)}</div>` : ''}<div class="m-hide muted sm-l cl-contact">${[c.phone ? `<a href="tel:${esc(tel(c.phone))}">${esc(c.phone)}</a>` : '', c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ''].filter(Boolean).join(' · ')}</div><div class="m-only cl-sub">${stBadge(c)}${c.address ? `<span class="cl-addr">${esc(c.address)}</span>` : ''}</div></div></div></td>
+<td class="cl-name"><div class="cl-who"><span class="av av${avHue(nm)}" aria-hidden="true">${esc(clientInitials(nm))}</span><div class="cl-txt"><div class="cl-top"><strong>${esc(nm)}</strong><span class="m-hide">${stBadge(c)}</span></div>${c.company && c.name && c.name !== c.company ? `<div>${esc(c.name)}</div>` : ''}<div class="m-hide muted sm-l cl-contact">${[c.phone ? `<a href="tel:${esc(tel(c.phone))}">${esc(c.phone)}</a>` : '', c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ''].filter(Boolean).join(' · ')}</div><div class="m-only cl-sub">${stBadge(c)}${c.address ? `<span class="cl-addr">${esc(c.address)}</span>` : ''}</div></div></div></td>
 <td class="m-hide">${esc(c.address)}</td><td class="m-hide">${clientTags(c).map((t) => `<span class="tag">${esc(t)}</span>`).join('')}</td>
 <td class="m-hide cl-nowrap">${f.next ? esc(mDay(f.next)) : dash}</td><td class="m-hide r need-invoices">${f.paid ? money(f.paid) : dash}</td>${owedCell(c)}
 <td class="m-hide cl-nowrap">${activityLabel(info[c.id].last)}</td><td class="racts m-hide"><div>${acts(c)}</div></td></tr>`; };
