@@ -543,8 +543,8 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeHelp();
 });
 let renderedPath = '';
-/* ===== Page not found: Yoya, the Worklio Pro Yorkie (public/img/yoya-404.jpg), who sniffed everywhere and came up empty. Styles: .p404-* ===== */
-const P404_YORKIE = `<img class="p404-dog" src="/img/yoya-404.jpg" width="800" height="800" alt="Yoya, the Worklio Pro Yorkie, in a Worklio Pro polo shirt with a laptop">`;
+/* ===== Page not found: Yoya, the Worklio Pro Yorkie (public/img/yoya-404.webp, background cut out), who sniffed everywhere and came up empty. Styles: .p404-* ===== */
+const P404_YORKIE = `<img class="p404-dog" src="/img/yoya-404.webp" width="800" height="800" alt="Yoya, the Worklio Pro Yorkie, in a Worklio Pro polo shirt with a laptop">`;
 const page404Html = () => `<div class="p404">${P404_YORKIE}<div class="p404-code">Error 404</div><h1>Ruh-roh! This page ran off.</h1>
 <p class="muted">Yoya sniffed under every couch cushion, but couldn’t find the page you’re looking for. It may have moved, or the link might be a little off.</p>
 <div class="p404-acts"><a class="btn" href="/business-overview" data-link>Take me home</a><button type="button" class="btn alt" data-act="p404Back">Go back</button></div></div>`;
