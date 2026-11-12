@@ -2343,7 +2343,7 @@ a.hm-step:hover{border-color:var(--brand)}
 .ctable tr.lgrp td{background:var(--surface-2);padding:8px 12px;font-size:13px;cursor:default}
 .lgrp td>div{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px}.lgrp .btn{margin-left:auto}
 .dot.i-claim{color:var(--violet-fg)}
-.ctable td.racts{width:1%;white-space:nowrap;text-align:right;padding-top:6px;padding-bottom:6px}
+.ctable td.racts{width:1%;white-space:nowrap;text-align:right;padding-top:8px;padding-bottom:8px}
 .racts>div{display:flex;gap:6px;justify-content:flex-end;opacity:0;transition:opacity .12s}
 .crow:hover .racts>div,.crow:focus-within .racts>div{opacity:1}
 @media (hover:none){.racts>div{opacity:1}}

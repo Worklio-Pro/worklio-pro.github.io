@@ -3510,7 +3510,7 @@ PAGES['/invoices'] = {
       row: (x) => ({ name: cname(x), date: mDay(x.issueDate), amount: mAmt(x.total), title: invSubject(x), label: I_STATUS[x.displayStatus], cls: I_CLASS[x.displayStatus], href: '/invoices/view?id=' + x.id }),
       onStatus: (k) => { invView = { ...invView, status: k }; }, onQ: (t) => { invView.q = t; }, newAct: 'newInvoice', banner: batchBanner() });
     // the buttons on a row (shown on hover): what you'd do next with that invoice
-    const acts = (i) => { const b = (act, label, alt) => `<button type="button" class="btn sm${alt ? ' alt' : ''}" data-act="${act}" data-id="${i.id}">${label}</button>`; const s = i.displayStatus;
+    const acts = (i) => { const b = (act, label, alt) => `<button type="button" class="btn${alt ? ' alt' : ''}" data-act="${act}" data-id="${i.id}">${label}</button>`; const s = i.displayStatus;
       return s === 'paid' ? b('sendReceipt', 'Send receipt', true) : s === 'draft' ? b('sendInvoice', 'Send') : invClaimed(i) ? b('collectPayment', 'Record payment') : b('sendInvoice', 'Send reminder', true) + b('collectPayment', 'Record payment'); };
     const ncol = cols.length + 2;
     const row = (i) => `<tr class="crow" data-id="${i.id}"><td class="sel-td"><input type="checkbox" class="isel" value="${i.id}" ${invSel.has(i.id) ? 'checked' : ''} aria-label="Select ${esc(i.number)}"></td>
@@ -3520,7 +3520,7 @@ ${cols.map((c) => c.td(i)).join('')}<td class="racts"><div>${acts(i)}</div></td>
     let body;
     if (v.status === 'action' && v.sort === 'urgent') { // grouped by why it needs action
       const claimed = list.filter(invClaimed); const s = (n) => (n === 1 ? '' : 's');
-      body = (late.length ? grp('q-declined', 'Past due', `${late.length} invoice${s(late.length)} · ${money(bal(late))} owed`, late.length > 1 ? `<button type="button" class="btn sm alt" data-act="invRemindAll">Remind all ${late.length}</button>` : '') + late.map(row).join('') : '')
+      body = (late.length ? grp('q-declined', 'Past due', `${late.length} invoice${s(late.length)} · ${money(bal(late))} owed`, late.length > 1 ? `<button type="button" class="btn alt" data-act="invRemindAll">Remind all ${late.length}</button>` : '') + late.map(row).join('') : '')
         + (claimed.length ? grp('i-claim', 'Client says they paid', 'Check that it arrived, then record it') + claimed.map(row).join('') : '');
     } else body = list.map(row).join('');
     const waiting = D.invoices.filter((i) => ['sent', 'partial'].includes(i.displayStatus) && !invClaimed(i)).length;
