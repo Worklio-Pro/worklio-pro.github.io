@@ -1192,7 +1192,7 @@ ${step('password', 6, 'Password to confirm', 'They enter their password to cance
 <h2 style="margin-top:22px">Reasons</h2><p class="muted" style="font-size:13px;margin-top:0">What a business picks from, top to bottom. Up to 8.</p>
 <div id="rtReasons">${rtReasons.map(reasonRow).join('')}</div>
 ${rtReasons.length < 8 ? '<button type="button" class="btn alt sm" data-act="rtAdd">+ Add a reason</button>' : ''}
-<div class="savebar"><button type="button" class="btn alt" data-act="rtTest">Test the flow</button><button type="button" class="btn alt" data-act="rtDefaults">Restore defaults</button><button class="btn">Save cancellation flow</button></div></form>`;
+<div class="savebar rt-bar"><button type="button" class="btn alt" data-act="rtTest">Test the flow</button><button type="button" class="btn alt" data-act="rtDefaults">Restore defaults</button><button class="btn">Save cancellation flow</button></div></form>`;
   const f = $('#rtf', box); f._read = () => $$('.rt-reason', f).forEach((row) => { const r = rtReasons[row.dataset.i]; $$('[data-k]', row).forEach((i) => { r[i.dataset.k] = i.value; }); });
   f._body = () => {
     f._read(); const ch = (n) => !!f.elements[n].checked; const v = (n) => f.elements[n].value;

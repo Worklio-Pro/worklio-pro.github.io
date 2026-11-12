@@ -284,6 +284,8 @@
     .rm-plan{background:none;border:0;color:var(--muted);font:inherit;font-size:12px;cursor:pointer;padding:2px 4px}.rm-plan:hover{color:var(--danger)}
     .savebar{position:sticky;bottom:0;z-index:3;background:var(--card);border-top:1px solid var(--line);padding:12px 18px;margin:0 -18px -18px;display:flex;gap:10px;align-items:center;justify-content:flex-end;border-radius:0 0 12px 12px}
     .savebar .muted{margin-right:auto;font-size:13px}
+    /* Cancellation flow on phones: Save across the full width, then Test and Restore side by side at the same size */
+    @media (max-width:640px){.rt-bar{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}.rt-bar .btn{width:100%;height:44px;margin:0;display:flex;align-items:center;justify-content:center;padding:0 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.rt-bar .btn:not(.alt){grid-column:1/-1;order:-1}}
     /* plans on phones: one plan at a time */
     .pl-pick{display:flex;gap:6px;overflow-x:auto;margin:0 -16px 12px;padding:2px 16px;scrollbar-width:none}.pl-pick::-webkit-scrollbar{display:none}
     .pl-pick button{flex:none;border:1px solid var(--border);background:var(--card);color:var(--text);font:inherit;font-size:14px;font-weight:600;padding:8px 14px;border-radius:99px;cursor:pointer}
@@ -425,7 +427,7 @@
   <script src="/hc-editor.js?v=3"></script>
   <script src="/brand.js?v=1"></script>
   <script src="/cancelflow.js?v=1"></script>
-  <script src="/platform.js?v=119"></script>
+  <script src="/platform.js?v=120"></script>
   <script src="/alpha-creators.js?v=4"></script>
   <script src="/alpha-import.js?v=3"></script>
 </body>
