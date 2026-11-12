@@ -19,7 +19,7 @@
 #side{display:flex;flex-direction:column}.side-nav{flex:1}
 /* team members (role "member"): admin-only controls and prices are hidden; the server enforces the same limits */
 /* team roles: .limit = not the owner or an admin; p-<permission> = what their role allows (Settings → Roles & Permissions) */
-.limit .admin-only,.limit:not(.p-home) .cstats,.limit:not(.p-home) .lstrip,.limit:not(.p-clients-edit) .need-clients-edit,.limit:not(.p-jobs-edit) .need-jobs-edit,.limit:not(.p-jobs-prices) .need-jobs-prices,.limit:not(.p-jobs-prices) .money,.limit:not(.p-quotes) .need-quotes,.limit:not(.p-invoices) .need-invoices{display:none!important}
+.limit .admin-only,.limit:not(.p-home) .cstats,.limit:not(.p-home) .lstrip:not(.ls-all),.limit:not(.p-clients-edit) .need-clients-edit,.limit:not(.p-jobs-edit) .need-jobs-edit,.limit:not(.p-jobs-prices) .need-jobs-prices,.limit:not(.p-jobs-prices) .money,.limit:not(.p-quotes) .need-quotes,.limit:not(.p-invoices) .need-invoices{display:none!important}
 .login-card{margin-top:22px}.login-card .role-pick{max-width:560px;margin:10px 0 0}
 .login-card .msg-ok{margin:12px 0 0;padding:10px 12px;border-radius:8px;background:var(--ok-bg);color:var(--ok-fg);font-size:14px}
 .copy-row{display:flex;gap:8px;margin-top:8px}.copy-row input{height:36px;font-size:13px}
@@ -2345,7 +2345,7 @@ a.hm-step:hover{border-color:var(--brand)}
 .dot.i-claim{color:var(--violet-fg)}
 .ctable td.racts{width:1%;white-space:nowrap;text-align:right;padding-top:8px;padding-bottom:8px}
 .racts>div{display:flex;gap:6px;justify-content:flex-end;opacity:0;transition:opacity .12s}
-.crow:hover .racts>div,.crow:focus-within .racts>div{opacity:1}
+tr:hover>.racts>div,tr:focus-within>.racts>div,.racts>div:has(details[open]){opacity:1}
 @media (hover:none){.racts>div{opacity:1}}
 .lmore{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:12px 14px;border-top:1px solid var(--line);font-size:14px;color:var(--muted)}
 .lmore .link-btn{margin-left:0;text-decoration:none}
@@ -2363,3 +2363,6 @@ a.hm-step:hover{border-color:var(--brand)}
 .cl-dupes{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
 .lstrip .ls-b{background:none;border:0;padding:0;font:inherit;color:inherit;cursor:pointer}.lstrip .ls-b:hover strong{color:var(--link)}
 .racts a.btn{text-decoration:none}
+/* Timesheets and Service Plans: a button at the end of the stats strip, and the person's colour dot in a group heading */
+.lstrip .ls-act{margin-left:auto}
+.lgrp .to-dot{flex:none}

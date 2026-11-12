@@ -1056,7 +1056,7 @@ A.exportTimesheets = async () => {
 /* ===== Timesheets (plan feature "timesheets"): clock in and out, a week of time per person, approval and payroll export.
    Everyone sees their own time; the owner, admins and anyone who edits jobs see everyone's, fix entries and approve them.
    Pay rates and labor cost: the owner and admins only (the server leaves them out for anyone else). ===== */
-let tsWeek = ''; let tsWho = ''; let TS = null;
+let tsWeek = ''; let tsWho = ''; let TS = null; let tsTab = 'waiting';
 const tsMonday = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); x.setDate(x.getDate() - dayInWeek(x)); return x; };
 const tsAdd = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
 const tsClock = (iso) => fmtTime(new Date(iso).toTimeString().slice(0, 5));
@@ -1085,21 +1085,28 @@ PAGES['/timesheets'] = {
     const row = (e) => `<tr class="${e.end ? '' : 'ts-live'}"><td>${esc(fmtDate(ymd(new Date(e.start))))}</td><td>${e.job ? `<a href="/jobs/edit?id=${esc(e.job.id)}" data-link>${esc(e.job.number)}</a> ${esc(e.job.title)}` : e.jobId ? '<span class="muted">Deleted job</span>' : '<span class="muted">No job</span>'}${e.note ? `<div class="muted sm">${esc(e.note)}</div>` : ''}</td>
 <td>${tsClock(e.start)}</td><td>${e.end ? tsClock(e.end) : '<span class="cstatus q-converted">On the clock</span>'}</td><td class="r">${tsH(e.hours)}${e.hours > 12 ? ' <span title="Over 12 hours: check it wasn’t left running">⚠️</span>' : ''}</td>
 ${TS.admin ? `<td class="r m-hide">${e.rate ? money(e.hours * e.rate) : '<span class="muted">—</span>'}</td>` : ''}<td>${e.approvedAt ? `<span class="cstatus active" title="Approved by ${esc(e.approvedBy)}">Approved</span>` : e.end ? '<span class="cstatus q-sent">Waiting</span>' : ''}</td>
-${M ? `<td class="actions">${e.end && !e.approvedAt ? `<button type="button" class="btn alt sm" data-act="tsApprove" data-ids="${e.id}">Approve</button>` : ''}<button type="button" class="btn alt sm row-edit" data-act="tsEdit" data-id="${e.id}">Edit</button></td>` : ''}</tr>`;
-    const person = ([id, p]) => { const h = p.entries.reduce((s, e) => s + e.hours, 0); const w = p.entries.filter((e) => e.end && !e.approvedAt);
-      return `<div class="card ts-person"><div class="ts-ph"><h2><span class="to-dot" style="background:${esc(p.color || '#64748b')}"></span>${esc(p.name)}</h2><div class="ts-pt"><strong>${tsH(h)} h</strong>${h > OVERTIME_H ? ` <span class="cstatus q-declined" title="Over ${OVERTIME_H} hours this week">${tsH(h - OVERTIME_H)} h overtime</span>` : ''}
-${M && w.length ? `<button type="button" class="btn sm" data-act="tsApprove" data-ids="${w.map((e) => e.id).join(',')}">Approve ${w.length}</button>` : ''}</div></div>
-<div class="tablewrap"><table class="m-ts"><tr><th>Day</th><th>Job</th><th>In</th><th>Out</th><th class="r">Hours</th>${TS.admin ? '<th class="r m-hide">Cost</th>' : ''}<th>Status</th>${M ? '<th></th>' : ''}</tr>${p.entries.map(row).join('')}</table></div></div>`; };
+${M ? `<td class="racts"><div>${e.end && !e.approvedAt ? `<button type="button" class="btn" data-act="tsApprove" data-ids="${e.id}">Approve</button>` : ''}<button type="button" class="btn alt row-edit" data-act="tsEdit" data-id="${e.id}">Edit</button></div></td>` : ''}</tr>`;
+    // managers open on Waiting for approval; everyone sees the week's entries in one table, a group per person
+    const tab = M ? tsTab : 'all'; const inTab = (e) => tab === 'all' || (tab === 'waiting' ? e.end && !e.approvedAt : !!e.approvedAt);
+    const ncol = 6 + (TS.admin ? 1 : 0) + (M ? 1 : 0);
+    const person = ([id, p]) => { const h = p.entries.reduce((s, e) => s + e.hours, 0); const w = p.entries.filter((e) => e.end && !e.approvedAt); const rows = p.entries.filter(inTab); if (!rows.length) return '';
+      return `<tr class="lgrp"><td colspan="${ncol}"><div><span class="to-dot" style="background:${esc(p.color || '#64748b')}"></span><strong>${esc(p.name)}</strong><span class="muted">${tsH(h)} h this week</span>${h > OVERTIME_H ? `<span class="cstatus q-declined" title="Over ${OVERTIME_H} hours this week">${tsH(h - OVERTIME_H)} h overtime</span>` : ''}
+${M && w.length ? `<button type="button" class="btn alt" data-act="tsApprove" data-ids="${w.map((e) => e.id).join(',')}">Approve ${w.length}</button>` : ''}</div></td></tr>${rows.map(row).join('')}`; };
     main.innerHTML = `<div class="head"><div><h1>Timesheets</h1><p class="sub">${M ? 'Your team’s hours, clocked in and out on jobs. Check them, fix what’s wrong and approve them for payroll.' : 'Clock in and out, and see your hours.'}${TS.admin ? ' Hours on a job count as labor cost in Financial Reports → Job profit.' : ''}</p></div>
 <div class="ts-acts">${TS.admin ? '<button type="button" class="btn alt" data-act="tsRates">Pay rates</button>' : ''}${M ? '<button type="button" class="btn" data-act="tsEdit">Add time</button>' : ''}</div></div>
 ${clockCard}
 <div class="ts-bar"><div class="ts-week"><button type="button" class="btn alt sm" data-act="tsWeekGo" data-n="-7" aria-label="Previous week">‹</button><strong>${range}</strong><button type="button" class="btn alt sm" data-act="tsWeekGo" data-n="7" aria-label="Next week">›</button>${thisWeek ? '' : '<button type="button" class="link-btn" data-act="tsWeekGo" data-n="0">This week</button>'}</div>
 ${M && people.length > 1 ? `<label class="ts-who"><span class="sr">Team member</span><select id="tsWho"><option value="">Everyone</option>${people.map(([id, n]) => `<option value="${esc(id)}" ${tsWho === id ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label>` : ''}</div>
-<div class="grid ${TS.admin ? 'g4' : 'g3'}">${stat('Hours', tsH(total), M ? `${Object.keys(byPerson).length} ${Object.keys(byPerson).length === 1 ? 'person' : 'people'}` : 'This week')}${stat('Overtime', tsH(over), `Over ${OVERTIME_H} h a week`)}${stat('Waiting for approval', waiting.length, waiting.length && M ? `<button type="button" class="link-btn" data-act="tsApprove" data-ids="${waiting.map((e) => e.id).join(',')}">Approve all</button>` : 'Entries')}${TS.admin ? stat('Labor cost', money(cost), Object.keys(TS.rates || {}).length ? 'At each person’s pay rate' : '<button type="button" class="link-btn" data-act="tsRates">Set pay rates</button>') : ''}</div>
-${Object.entries(byPerson).map(person).join('') || `<div class="card"><p class="muted" style="margin:0">No time ${tsWho ? 'for this person ' : ''}this week.${TS.canClock ? ' Clock in above, or from a job’s page.' : ''}</p></div>`}`;
+<div class="lstrip ls-all"><span>Hours <strong>${tsH(total)} h</strong>${M ? ` · ${Object.keys(byPerson).length} ${Object.keys(byPerson).length === 1 ? 'person' : 'people'}` : ''}</span><span>Overtime <strong>${tsH(over)} h</strong> <span class="muted">(over ${OVERTIME_H} h a week)</span></span>
+<span>Waiting for approval <strong>${waiting.length}</strong></span>${TS.admin ? `<span>Labor cost <strong>${money(cost)}</strong>${Object.keys(TS.rates || {}).length ? '' : ' · <button type="button" class="link-btn" data-act="tsRates">Set pay rates</button>'}</span>` : ''}
+${M && waiting.length ? `<button type="button" class="btn ls-act" data-act="tsApprove" data-ids="${waiting.map((e) => e.id).join(',')}">Approve all ${waiting.length}</button>` : ''}</div>
+${M ? `<div class="ltabs" role="tablist" aria-label="Time entries">${[['waiting', 'Waiting for approval', waiting.length], ['approved', 'Approved', list.filter((e) => e.approvedAt).length], ['all', 'All', list.length]].map(([k, l, n]) => `<button type="button" role="tab" aria-selected="${tab === k}" class="ltab${tab === k ? ' on' : ''}" data-act="tsTab" data-t="${k}"><span class="lt-t">${l}<span class="lt-n">${n}</span></span></button>`).join('')}</div>` : ''}
+<div class="card ctable"><div class="tablewrap"><table class="m-ts"><tr><th>Day</th><th>Job</th><th>In</th><th>Out</th><th class="r">Hours</th>${TS.admin ? '<th class="r m-hide">Cost</th>' : ''}<th>Status</th>${M ? '<th aria-label="Actions"></th>' : ''}</tr>
+${Object.entries(byPerson).map(person).join('') || `<tr><td colspan="${ncol}" class="empty">${tab === 'waiting' && list.length ? 'Nothing waiting for approval this week. <button type="button" class="link-btn" data-act="tsTab" data-t="all">See all hours</button>' : tab === 'approved' && list.length ? 'Nothing approved yet this week.' : `No time ${tsWho ? 'for this person ' : ''}this week.${TS.canClock ? ' Clock in above, or from a job’s page.' : ''}`}</td></tr>`}</table></div></div>`;
     const who = $('#tsWho'); if (who) who.addEventListener('change', (e) => { tsWho = e.target.value; refresh(); });
   },
 };
+A.tsTab = (d) => { tsTab = d.t; refresh(); };
 A.tsWeekGo = (d) => { const n = Number(d.n); tsWeek = n ? ymd(tsAdd(tsWeek ? new Date(tsWeek + 'T00:00') : tsMonday(new Date()), n)) : ''; refresh(); };
 A.tsClockIn = () => A.clockIn({ id: ($('#tsJob') || {}).value || '' });
 A.tsApprove = async (d) => { try { const r = await api('POST', '/api/time/approve', { ids: String(d.ids).split(',') }); toast(`Approved ${r.approved} ${r.approved === 1 ? 'entry' : 'entries'}`); refresh(); } catch (x) { toast(x.message, true); } };
@@ -3939,18 +3946,20 @@ PAGES['/payments'] = {
     const methods = [...new Set(rows.filter((r) => !online(r.method)).map((r) => r.method))];
     const docLink = ([kind, d]) => `<a href="/${kind}s/view?id=${d.id}" data-link>${kind === 'quote' ? 'Quote' : 'Invoice'} ${esc(d.number)}</a>`;
     const admin = !me || ['owner', 'admin'].includes(me.role);
-    const upBox = `<div class="cstat"><div class="cs-h"><strong>Upcoming payouts</strong></div><div class="cs-v">${S.loading || S.failed ? '<span class="pay-wait">—</span>' : money(upcoming)}</div><div class="muted">${S.loading ? 'Checking Stripe…' : S.failed ? 'Not available right now' : !S.connected ? 'Payouts appear here once you connect Stripe and collect online payments' : UP.length ? `<button type="button" class="link-btn up-link" data-act="viewPayouts">View ${UP.length} payout${UP.length === 1 ? '' : 's'}</button>` : 'Upcoming payouts appear after you collect payments'}</div></div>`;
-    const overview = `<div class="cstats pay-stats">
-${upBox}
-<button class="cstat" data-act="payInvoices"><div class="cs-h"><strong>Invoice payment time</strong><span>↗</span></div><div class="muted">Past 30 days</div><div class="pts">${stat(payDays, 30, true, (d) => `${d} ${d === 1 ? 'day' : 'days'}`)}</div></button>
-<div class="cstat"><div class="cs-h"><strong>Invoices paid on time</strong></div><div class="muted">Last 60 days</div><div class="pts">${stat(onTime, 60, false, (p) => p + '%')}</div></div></div>
-<h2 class="ftitle">All payments <span class="muted">(${list.length} result${list.length === 1 ? '' : 's'})</span></h2>
-<div class="cfilters"><label class="pill">Status<select data-pv="status"><option value="all">All</option>${Object.entries(PAY_STATUS).map(([k, [l]]) => `<option value="${k}" ${v.status === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-<label class="pill">Method<select data-pv="method"><option value="all">All</option><option value="online" ${v.method === 'online' ? 'selected' : ''}>Online</option>${methods.map((m) => `<option value="${esc(m)}" ${v.method === m ? 'selected' : ''}>${esc(payLabel(m))}</option>`).join('')}</select></label>
+    // the stats are one line above the list (as on Invoices): upcoming payouts first, on both tabs
+    const upNote = S.loading ? 'Checking Stripe…' : S.failed ? 'not available right now' : !S.connected ? 'shown once you connect Stripe' : UP.length ? `<button type="button" class="link-btn up-link" data-act="viewPayouts">View ${UP.length} payout${UP.length === 1 ? '' : 's'}</button>` : '';
+    const upStrip = `<span>Upcoming payouts <strong>${S.loading || S.failed ? '—' : money(upcoming)}</strong>${upNote ? ' · ' + upNote : ''}</span>`;
+    const both = (fn, n, fmt) => [false, true].map((com) => { const x = fn(paidIn(ago(n), tomorrow, com)); return `<strong>${x === null ? '—' : fmt(x)}</strong> ${com ? 'commercial' : 'residential'}`; }).join(' · ');
+    const payTabs = ['all', ...Object.keys(PAY_STATUS).filter((k) => k === v.status || rows.some((r) => r.status === k))];
+    const overview = `<div class="lstrip">${upStrip}<span>Invoice payment time <span class="muted">(30 days)</span> ${both(payDays, 30, (d) => `${d} ${d === 1 ? 'day' : 'days'}`)}</span>
+<span>Paid on time <span class="muted">(60 days)</span> ${both(onTime, 60, (p) => p + '%')}</span></div>
+<div class="ltabs" role="tablist" aria-label="Payment status">${payTabs.map((k) => { const l = k === 'all' ? rows : rows.filter((r) => r.status === k);
+  return `<button type="button" role="tab" aria-selected="${v.status === k}" class="ltab${v.status === k ? ' on' : ''}" data-act="payStatus" data-s="${k}"><span class="lt-t">${k === 'all' ? 'All payments' : PAY_STATUS[k][0]}<span class="lt-n">${l.length}</span></span><span class="lt-m">${l.length ? moneyShort(l.reduce((s, r) => s + r.amount, 0)) : ''}</span></button>`; }).join('')}</div>
+<div class="cfilters"><label class="pill">Method<select data-pv="method"><option value="all">All</option><option value="online" ${v.method === 'online' ? 'selected' : ''}>Online</option>${methods.map((m) => `<option value="${esc(m)}" ${v.method === m ? 'selected' : ''}>${esc(payLabel(m))}</option>`).join('')}</select></label>
 <label class="pill">📅 Date<select data-pv="date">${[['all', 'All'], ['30', 'Past 30 days'], ['90', 'Past 90 days'], ['year', 'This year']].map(([k, l]) => `<option value="${k}" ${v.date === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
 <input id="pq" class="csearch" type="search" placeholder="Search payments…" value="${esc(v.q)}"></div>
 <div class="card ctable"><div class="tablewrap"><table class="m-pay"><tr>${th('client', 'Client')}${th('date', 'Payment date')}${th('status', 'Payment status')}${th('method', 'Method')}${th('payout', 'Payout date')}${th('amount', 'Amount', 'r')}</tr>
-${list.map((r) => `<tr class="crow" data-id="${esc(r.id)}" title="See this payment"><td><strong>${esc(cname(r))}</strong><div class="pay-ref">${docLink(r.doc)}</div></td><td style="white-space:nowrap">${fmtDate(r.date)}</td>
+${list.map((r) => `<tr class="crow" data-id="${esc(r.id)}" title="See this payment"><td><div class="cl-who"><span class="av av${avHue(cname(r))}" aria-hidden="true">${esc(clientInitials(cname(r)))}</span><div class="cl-txt"><strong>${esc(cname(r))}</strong><div class="pay-ref">${docLink(r.doc)}</div></div></div></td><td style="white-space:nowrap">${fmtDate(r.date)}</td>
 <td><span class="badge ${PAY_STATUS[r.status][1]}">${PAY_STATUS[r.status][0]}</span></td><td>${r.method === 'stripe' ? '💳 ' : ''}${esc(r.methodLabel)}</td><td style="white-space:nowrap">${esc(r.payout)}</td><td class="r"><strong>${money(r.amount)}</strong></td></tr>`).join('')
   || `<tr><td colspan="6" class="empty">${rows.length ? 'No payments match these filters' : 'No payments yet. Payments show up here when clients pay online or you record a payment on an invoice.'}</td></tr>`}</table></div></div>`;
     // Payouts tab: upcoming (same box as Overview), what reached the bank this week and month, and every payout with filters
@@ -3964,9 +3973,8 @@ ${list.map((r) => `<tr class="crow" data-id="${esc(r.id)}" title="See this payme
     const poTh = (k, label, cls = '') => `<th class="${cls}"><button class="th-btn" data-act="poSort" data-k="${k}">${label} <span class="sort ${pv.sort === k ? 'on' : ''}">${pv.sort === k ? (pv.dir > 0 ? '▲' : '▼') : '⇅'}</span></button></th>`;
     const payouts = S.loading || S.failed ? `<div class="card"><h2>Payouts</h2><p class="muted">${S.failed ? 'Payouts didn’t load from Stripe. Try again in a moment.' : 'Loading payouts from Stripe…'}</p></div>`
       : !S.connected ? `<div class="card"><h2>Payouts</h2><p class="muted">When clients pay online, Stripe sends the money to your bank account. ${admin ? '<a href="/settings#payments" data-link>Set up card payments</a> in App Settings to start taking online payments.' : 'Ask the account owner to set up card payments.'}</p></div>`
-      : `<div class="cstats po-stats">${upBox}
-<div class="cstat"><div class="cs-h"><strong>Deposited <span class="po-q" title="Payouts that have reached your bank account">?</span></strong></div>
-<div class="cs-v">${money(deposited(wk, wkEnd))}</div><div class="muted">This week (${short(wk)} - ${short(wkEnd)})</div><div class="cs-v po-v2">${money(deposited(mo, moEnd))}</div><div class="muted">This month (${short(mo)} - ${short(moEnd)})</div></div></div>
+      : `<div class="lstrip">${upStrip}<span title="Payouts that have reached your bank account">Deposited this week <strong>${money(deposited(wk, wkEnd))}</strong> <span class="muted">(${short(wk)} – ${short(wkEnd)})</span></span>
+<span>This month <strong>${money(deposited(mo, moEnd))}</strong> <span class="muted">(${short(mo)} – ${short(moEnd)})</span></span></div>
 <h2 class="ftitle">All payouts <span class="muted">(${pl.length} result${pl.length === 1 ? '' : 's'})</span></h2>
 <div class="cfilters"><label class="pill">Method<select data-po="method">${[['all', 'All'], ['standard', 'Standard'], ['instant', 'Instant']].map(([k, l]) => `<option value="${k}" ${pv.method === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
 <label class="pill">📅 Date<select data-po="date">${[['all', 'All'], ['week', 'This week'], ['month', 'This month'], ['30', 'Past 30 days'], ['90', 'Past 90 days'], ['year', 'This year']].map(([k, l]) => `<option value="${k}" ${pv.date === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
@@ -3985,6 +3993,7 @@ ${v.tab === 'payouts' ? payouts : overview}`;
   },
 };
 A.payTab = (d) => { payView.tab = d.t; refresh(); };
+A.payStatus = (d) => { payView.status = d.s; refresh(); };
 // "View N payouts": the dates and amounts Stripe expects, with a note that they can change
 A.viewPayouts = () => {
   const L = payView.upcoming || []; const when = (u) => (u.date ? new Date(u.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : u.next ? 'Next payout' : 'When the payments clear'); // undated: manual payouts, or no schedule from Stripe
@@ -4289,38 +4298,60 @@ A.copyRefLink = () => { const l = $('#main')._refLink; navigator.clipboard.write
 
 
 /* ===== Service plans & memberships (a plan feature): plans the business sells on repeat, and the clients on them ===== */
-let SP = { plans: [], memberships: [], mrr: 0 }; let spShow = 'active';
+let SP = { plans: [], memberships: [], mrr: 0 }; let spView = { tab: 'attention', q: '' };
 const SP_EVERY = { month: 'month', quarter: 'quarter', year: 'year' };
 const spPrice = (x) => `${money(x.price)} / ${SP_EVERY[x.interval]}`;
 const spVisits = (n) => (!n ? 'No visits included' : n === 12 ? '1 visit a month' : `${n} visit${n === 1 ? '' : 's'} a year`);
+// Service Plans opens on Needs attention: members with plan invoices unpaid, and active members whose plan includes visits but have none booked.
+// Status tabs, a one-line stats strip and the members table as on Quotes, Jobs and Invoices; the plans stay as cards below.
+const spWhy = (m) => (m.unpaid > 0 ? 'unpaid' : m.status === 'active' && Number(m.visitsPerYear) > 0 && !m.nextVisit ? 'novisit' : '');
 PAGES['/service-plans'] = {
   title: 'Service Plans',
   async render(main) {
-    SP = await api('GET', '/api/service-plans');
+    SP = await api('GET', '/api/service-plans'); const v = spView;
     const active = SP.memberships.filter((m) => m.status === 'active'); const soon = ymd(addDays(new Date(), 30));
-    const due = active.filter((m) => m.nextBill <= soon); const list = SP.memberships.filter((m) => spShow === 'all' || m.status === 'active');
+    const due = active.filter((m) => m.nextBill <= soon);
+    const inTab = (m, t) => (t === 'attention' ? !!spWhy(m) : t === 'active' ? m.status === 'active' : t === 'canceled' ? m.status !== 'active' : true);
+    const list = SP.memberships.filter((m) => inTab(m, v.tab) && (!v.q || [m.client, m.name].join(' ').toLowerCase().includes(v.q.toLowerCase())));
     const plans = SP.plans.filter((p) => !p.archived); const archived = SP.plans.filter((p) => p.archived);
     const planCard = (p) => `<div class="card sp-plan${p.archived ? ' sp-arch' : ''}"><div class="sp-ph"><h3>${esc(p.name)}</h3><button type="button" class="btn alt sm" data-act="spPlan" data-id="${p.id}">Edit</button></div>
 <div class="sp-price">${spPrice(p)}</div>${p.description ? `<p class="muted sp-desc">${esc(p.description)}</p>` : ''}
 <ul class="sp-facts"><li>${spVisits(p.visitsPerYear)}</li><li>${p.discount ? `${p.discount}% off other work for members` : 'No member discount'}</li><li>${p.taxable ? 'Sales tax added' : 'No sales tax'}</li></ul>
 <div class="sp-pf"><span class="muted">${p.members} active member${p.members === 1 ? '' : 's'}</span>${p.archived ? '<span class="cstatus q-draft">Archived</span>' : `<button type="button" class="link-btn" data-act="spJoin" data-plan="${p.id}">+ Add a client</button>`}</div></div>`;
-    const row = (m) => `<tr><td><a href="/clients/view?id=${esc(m.clientId)}" data-link><strong>${esc(m.client)}</strong></a></td><td>${esc(m.name)}<div class="muted sm">${spPrice(m)}</div></td>
-<td>${fmtDate(m.start)}</td><td>${m.status === 'active' ? fmtDate(m.nextBill) : '<span class="muted">—</span>'}</td>
-<td>${m.nextVisit ? `<a href="/jobs/edit?id=${esc(m.nextVisit.id)}" data-link>${fmtDate(m.nextVisit.date)}</a>` : '<span class="muted">—</span>'}</td>
-<td class="r">${m.unpaid ? `<span class="sp-owe">${money(m.unpaid)}</span>` : money(0)}</td>
-<td>${m.status === 'active' ? `<span class="cstatus active">Active</span>${m.autoSend ? '' : '<div class="muted sm">Invoices not emailed automatically</div>'}` : `<span class="cstatus q-draft" title="${esc(m.canceledBy ? 'By ' + m.canceledBy : '')}">Canceled ${m.canceledAt ? fmtDate(m.canceledAt.slice(0, 10)) : ''}</span>`}</td>
-<td class="actions">${m.status === 'active' ? `<details class="menu"><summary class="btn alt sm" aria-label="Membership options">•••</summary><div class="menu-list"><button type="button" data-act="spAuto" data-id="${m.id}">${m.autoSend ? 'Stop emailing invoices' : 'Email invoices automatically'}</button><button type="button" class="danger-text" data-act="spCancel" data-id="${m.id}">Cancel membership</button></div></details>` : ''}</td></tr>`;
+    const dash = '<span class="muted">—</span>'; const sub = (s) => (s ? `<div class="muted sm-l">${s}</div>` : '');
+    // the buttons on a row (shown on hover): book the missing visit, see the unpaid invoices, and the membership's options
+    const acts = (m) => `${spWhy(m) === 'novisit' ? `<a class="btn need-jobs-edit" href="/jobs/new?client=${esc(m.clientId)}" data-link>Book a visit</a>` : ''}${m.unpaid > 0 ? `<a class="btn alt" href="/clients/view?id=${esc(m.clientId)}" data-link>See invoices</a>` : ''}${m.status === 'active' ? `<details class="menu">${MORE_SUM.replaceAll('More actions', 'Membership options')}<div class="menu-list"><button type="button" data-act="spAuto" data-id="${m.id}">${m.autoSend ? 'Stop emailing invoices' : 'Email invoices automatically'}</button><button type="button" class="danger-text" data-act="spCancel" data-id="${m.id}">Cancel plan</button></div></details>` : ''}`;
+    const row = (m) => `<tr class="crow" data-client="${esc(m.clientId)}"><td><div class="cl-who"><span class="av av${avHue(m.client)}" aria-hidden="true">${esc(clientInitials(m.client))}</span><div class="cl-txt"><strong>${esc(m.client)}</strong>${sub(`${esc(m.name)} · ${spPrice(m)}`)}</div></div></td>
+<td class="cl-nowrap">${fmtDate(m.start)}</td><td class="cl-nowrap">${m.status === 'active' ? fmtDate(m.nextBill) : dash}</td>
+<td class="cl-nowrap">${m.nextVisit ? `<a href="/jobs/edit?id=${esc(m.nextVisit.id)}" data-link>${fmtDate(m.nextVisit.date)}</a>` : m.status === 'active' && Number(m.visitsPerYear) > 0 ? '<span class="cstatus q-sent">None booked</span>' : dash}</td>
+<td class="r">${m.unpaid ? `<strong class="cl-late">${money(m.unpaid)}</strong>` : dash}</td>
+<td>${m.status === 'active' ? `<span class="cstatus active">Active</span>${m.autoSend ? '' : sub('Invoices not emailed automatically')}` : `<span class="cstatus q-draft" title="${esc(m.canceledBy ? 'By ' + m.canceledBy : '')}">Canceled ${m.canceledAt ? fmtDate(m.canceledAt.slice(0, 10)) : ''}</span>`}</td>
+<td class="racts"><div>${acts(m)}</div></td></tr>`;
+    const grp = (dot, title, note) => `<tr class="lgrp"><td colspan="7"><div><i class="dot ${dot}"></i><strong>${title}</strong><span class="muted">${note}</span></div></td></tr>`;
+    let body;
+    if (v.tab === 'attention') {
+      const unpaid = list.filter((m) => spWhy(m) === 'unpaid').sort((a, b) => b.unpaid - a.unpaid); const nov = list.filter((m) => spWhy(m) === 'novisit'); const s = (n) => (n === 1 ? '' : 's');
+      body = (unpaid.length ? grp('q-declined', 'Unpaid plan invoices', `${unpaid.length} member${s(unpaid.length)} · ${money(unpaid.reduce((t, m) => t + m.unpaid, 0))} owed`) + unpaid.map(row).join('') : '')
+        + (nov.length ? grp('q-sent', 'No visit booked', 'Their plan includes visits, but none is scheduled') + nov.map(row).join('') : '');
+    } else body = list.map(row).join('');
+    const tabs = [['attention', 'Needs attention'], ['active', 'Active'], ['canceled', 'Canceled'], ['all', 'All']];
+    const empty = !SP.memberships.length ? (plans.length ? 'No clients on a plan yet. Add one with Add a client, or from a client’s page.' : 'Make a plan first (New plan), then add clients to it.')
+      : v.tab === 'attention' && !v.q ? 'Nothing needs attention: every plan invoice is paid and every member with visits has one booked.' : 'No members match';
     main.innerHTML = `<div class="head"><div><h1>Service Plans</h1><p class="sub">Plans your clients pay for on repeat, with visits included. Each billing period an invoice is made for every member, and their visits are scheduled ahead as repeating jobs.</p></div>
 <div class="ts-acts"><button type="button" class="btn alt" data-act="spPlan">New plan</button>${plans.length ? '<button type="button" class="btn" data-act="spJoin">Add a client</button>' : ''}</div></div>
-<div class="grid g3">${stat('Active members', active.length, `${plans.length} plan${plans.length === 1 ? '' : 's'}`)}${stat('Monthly recurring revenue', money(SP.mrr), `${money(SP.mrr * 12)} a year`)}${stat('Billing in the next 30 days', due.length, due.length ? money(due.reduce((s, m) => s + m.price, 0)) : 'Nothing due')}</div>
-<div class="card"><div class="sp-mh"><h2>Members</h2>${SP.memberships.length > active.length ? `<label class="ts-who"><select id="spShow" aria-label="Show"><option value="active">Active</option><option value="all" ${spShow === 'all' ? 'selected' : ''}>Active and canceled</option></select></label>` : ''}</div>
-${list.length ? `<div class="tablewrap"><table class="m-sp"><tr><th>Client</th><th>Plan</th><th>Since</th><th>Next bill</th><th>Next visit</th><th class="r">Unpaid</th><th>Status</th><th></th></tr>${list.map(row).join('')}</table></div>`
-    : `<p class="muted" style="margin:0">${plans.length ? 'No clients on a plan yet. Add one with Add a client, or from a client’s page.' : 'Make a plan first (New plan), then add clients to it.'}</p>`}</div>
-<h2 class="sp-h">Plans</h2><div class="sp-plans">${plans.map(planCard).join('') || '<div class="card"><p class="muted" style="margin:0">No plans yet. A plan is a price billed every month, quarter or year, with the visits it includes, like “Comfort Club: $19/month, 2 tune-ups a year, 15% off repairs”.</p><p style="margin:12px 0 0"><button type="button" class="btn" data-act="spPlan">New plan</button></p></div>'}</div>
+<div class="lstrip ls-all"><span>Active members <strong>${active.length}</strong> on ${plans.length} plan${plans.length === 1 ? '' : 's'}</span><span>Monthly recurring revenue <strong>${money(SP.mrr)}</strong> · ${money(SP.mrr * 12)} a year</span>
+<span>Billing in the next 30 days <strong>${due.length}${due.length ? ' · ' + money(due.reduce((t, m) => t + m.price, 0)) : ''}</strong></span></div>
+<div class="ltabs" role="tablist" aria-label="Members">${tabs.map(([k, l]) => `<button type="button" role="tab" aria-selected="${v.tab === k}" class="ltab${v.tab === k ? ' on' : ''}" data-act="spTab" data-t="${k}"><span class="lt-t">${l}<span class="lt-n">${SP.memberships.filter((m) => inTab(m, k)).length}</span></span></button>`).join('')}</div>
+${SP.memberships.length > 8 ? `<div class="cfilters"><input id="spq" class="csearch" type="search" placeholder="Search members…" value="${esc(v.q)}"></div>` : ''}
+<div class="card ctable"><div class="tablewrap"><table class="m-sp"><tr><th>Client · Plan</th><th>Since</th><th>Next bill</th><th>Next visit</th><th class="r">Unpaid</th><th>Status</th><th aria-label="Actions"></th></tr>
+${body || `<tr><td colspan="7" class="empty">${empty}</td></tr>`}</table></div></div>
+<h2 class="sp-h">Plans</h2><div class="sp-plans">${plans.map(planCard).join('') || '<div class="card"><p class="muted" style="margin:0">No plans yet. A plan is a price billed every month, quarter or year, with the visits it includes, like “Comfort Club: $19/month, 2 tune-ups a year, 15% off repairs”.</p></div>'}</div>
 ${archived.length ? `<details class="sp-archd"><summary class="muted">Archived plans (${archived.length})</summary><div class="sp-plans">${archived.map(planCard).join('')}</div></details>` : ''}`;
-    const sh = $('#spShow'); if (sh) sh.addEventListener('change', (e) => { spShow = e.target.value; refresh(); });
+    $$('.crow', main).forEach((r) => r.addEventListener('click', (e) => { if (!e.target.closest('a, button, details')) navigate('/clients/view?id=' + r.dataset.client); }));
+    let t; const q = $('#spq', main); if (q) q.addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(async () => { spView.q = e.target.value; await refresh(); const n = $('#spq'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 250); });
   },
 };
+A.spTab = (d) => { spView = { ...spView, tab: d.t }; refresh(); };
 // a plan: new or edited (changes apply to clients who join from now on)
 A.spPlan = (d) => {
   const p = (d && d.id && SP.plans.find((x) => x.id === d.id)) || { interval: 'month', visitsPerYear: 2, visitHours: 1, discount: 0 };
