@@ -1195,7 +1195,7 @@ PAGES['/clients'] = {
       const s = [c.name, c.company, c.email, c.phone, c.address, ...clientTags(c)].join(' ').toLowerCase();
       return !v.q || s.includes(v.q.toLowerCase());
     });
-    const key = { name: (c) => (c.company || c.name || '').toLowerCase(), last: (c) => info[c.id].last, next: (c) => fin[c.id].next || '9999', paid: (c) => fin[c.id].paid, owed: (c) => fin[c.id].owed }[v.sort] || ((c) => (c.company || c.name || '').toLowerCase());
+    const key = { name: (c) => (c.company || c.name || '').toLowerCase(), last: (c) => info[c.id].last, next: (c) => fin[c.id].next || '9999', paid: (c) => fin[c.id].paid, owed: (c) => fin[c.id].owed, created }[v.sort] || ((c) => (c.company || c.name || '').toLowerCase());
     list.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0) * v.dir);
     [...clientSel].forEach((id) => { if (!byId(D.clients, id)) clientSel.delete(id); });
     const grouped = v.status === 'attention' && !v.dupes && v.sort === 'name' && v.dir === 1; // a column sort shows one plain list
@@ -1213,12 +1213,25 @@ PAGES['/clients'] = {
     const acts = (c) => `${c.phone ? `<a class="btn alt sq" href="tel:${esc(tel(c.phone))}" aria-label="Call ${esc(c.name)}" title="Call">${PHONE}</a>` : ''}${c.email ? `<a class="btn alt sq" href="mailto:${esc(c.email)}" aria-label="Email ${esc(c.name)}" title="Email">${MAIL}</a>` : ''}${c.archived ? '' : `<a class="btn alt need-quotes" href="/quotes/new?client=${c.id}" data-link>New quote</a><a class="btn need-jobs-edit" href="/jobs/new?client=${c.id}" data-link>New job</a>`}`;
     const owedCell = (c) => { const f = fin[c.id]; if (!f.owed) return `<td class="m-hide r need-invoices">${dash}</td>`;
       return `<td class="m-hide r need-invoices"><strong class="${f.late ? 'cl-late' : ''}">${money(f.owed)}</strong>${f.late && f.late < f.owed ? sub(money(f.late) + ' past due') : f.late ? sub('Past due') : ''}</td>`; };
-    const row = (c) => { const nm = c.company || c.name; const f = fin[c.id];
-      return `<tr class="crow" data-id="${c.id}"><td class="admin-only"><input type="checkbox" class="sel" value="${c.id}" ${clientSel.has(c.id) ? 'checked' : ''} aria-label="Select ${esc(c.name)}"></td>
-<td class="cl-name"><div class="cl-who"><span class="av av${avHue(nm)}" aria-hidden="true">${esc(clientInitials(nm))}</span><div class="cl-txt"><div class="cl-top"><strong>${esc(nm)}</strong><span class="m-hide">${stBadge(c)}</span></div>${c.company && c.name && c.name !== c.company ? `<div>${esc(c.name)}</div>` : ''}<div class="m-hide muted sm-l cl-contact">${[c.phone ? `<a href="tel:${esc(tel(c.phone))}">${esc(c.phone)}</a>` : '', c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ''].filter(Boolean).join(' · ')}</div><div class="m-only cl-sub">${stBadge(c)}${c.address ? `<span class="cl-addr">${esc(c.address)}</span>` : ''}</div></div></div></td>
-<td class="m-hide">${esc(c.address)}</td><td class="m-hide">${clientTags(c).map((t) => `<span class="tag">${esc(t)}</span>`).join('')}</td>
-<td class="m-hide cl-nowrap">${f.next ? esc(mDay(f.next)) : dash}</td><td class="m-hide r need-invoices">${f.paid ? money(f.paid) : dash}</td>${owedCell(c)}
-<td class="m-hide cl-nowrap">${activityLabel(info[c.id].last)}</td><td class="racts m-hide"><div>${acts(c)}</div></td></tr>`; };
+    const telA = (c) => (c.phone ? `<a href="tel:${esc(tel(c.phone))}">${esc(c.phone)}</a>` : ''); const mailA = (c) => (c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '');
+    // the columns after Client, chosen with the column picker (filter icon); Client always shows
+    const CCOLS = [
+      { k: 'phone', label: 'Phone', off: true, th: '<th class="m-hide">Phone</th>', td: (c) => `<td class="m-hide cl-nowrap">${telA(c) || dash}</td>` },
+      { k: 'email', label: 'Email', off: true, th: '<th class="m-hide">Email</th>', td: (c) => `<td class="m-hide">${mailA(c) || dash}</td>` },
+      { k: 'address', label: 'Address', th: '<th class="m-hide">Address</th>', td: (c) => `<td class="m-hide">${esc(c.address)}</td>` },
+      { k: 'tags', label: 'Tags', th: '<th class="m-hide">Tags</th>', td: (c) => `<td class="m-hide">${clientTags(c).map((t) => `<span class="tag">${esc(t)}</span>`).join('')}</td>` },
+      { k: 'status', label: 'Status', off: true, th: '<th class="m-hide">Status</th>', td: (c) => `<td class="m-hide">${stBadge(c)}</td>` },
+      { k: 'next', label: 'Next visit', th: `<th class="m-hide">${thb('next', 'Next visit')}</th>`, td: (c) => `<td class="m-hide cl-nowrap">${fin[c.id].next ? esc(mDay(fin[c.id].next)) : dash}</td>` },
+      { k: 'paid', label: 'Paid to date', th: `<th class="m-hide r need-invoices">${thb('paid', 'Paid to date')}</th>`, td: (c) => `<td class="m-hide r need-invoices">${fin[c.id].paid ? money(fin[c.id].paid) : dash}</td>` },
+      { k: 'owed', label: 'Owed', th: `<th class="m-hide r need-invoices">${thb('owed', 'Owed')}</th>`, td: owedCell },
+      { k: 'created', label: 'Created', off: true, th: `<th class="m-hide">${thb('created', 'Created')}</th>`, td: (c) => `<td class="m-hide cl-nowrap">${created(c) ? esc(fmtDate(created(c))) : dash}</td>` },
+      { k: 'last', label: 'Last activity', th: `<th class="m-hide">${thb('last', 'Last activity')}</th>`, td: (c) => `<td class="m-hide cl-nowrap">${activityLabel(info[c.id].last)}</td>` },
+    ];
+    const cols = listCols('clients', CCOLS); const has = (k) => cols.some((x) => x.k === k);
+    const row = (c) => { const nm = c.company || c.name; const contact = has('phone') || has('email') ? '' : [telA(c), mailA(c)].filter(Boolean).join(' · ');
+      return `<tr class="crow" data-id="${c.id}"><td class="admin-only sel-td"><input type="checkbox" class="sel" value="${c.id}" ${clientSel.has(c.id) ? 'checked' : ''} aria-label="Select ${esc(c.name)}"></td>
+<td class="cl-name"><div class="cl-who"><span class="av av${avHue(nm)}" aria-hidden="true">${esc(clientInitials(nm))}</span><div class="cl-txt"><div class="cl-top"><strong>${esc(nm)}</strong>${has('status') ? '' : `<span class="m-hide">${stBadge(c)}</span>`}</div>${c.company && c.name && c.name !== c.company ? `<div>${esc(c.name)}</div>` : ''}${contact ? `<div class="m-hide muted sm-l cl-contact">${contact}</div>` : ''}<div class="m-only cl-sub">${stBadge(c)}${c.address ? `<span class="cl-addr">${esc(c.address)}</span>` : ''}</div></div></div></td>
+${cols.map((x) => x.td(c)).join('')}<td class="racts m-hide"><div>${acts(c)}</div></td></tr>`; };
     const grp = (dot, title, note) => `<tr class="lgrp"><td colspan="11"><div><i class="dot ${dot}"></i><strong>${title}</strong><span class="muted">${note}</span></div></td></tr>`;
     let body;
     if (grouped) {
@@ -1238,11 +1251,11 @@ ${dup.count && !v.dupes ? `<div class="notice admin-only cl-dupes"><span>${dup.c
 <div class="ltabs" role="tablist" aria-label="Client status">${tabs.map(([s, label]) => `<button type="button" role="tab" aria-selected="${v.status === s}" class="ltab${v.status === s ? ' on' : ''}" data-act="clientTab" data-s="${s}"><span class="lt-t">${label}<span class="lt-n">${count(s)}</span></span></button>`).join('')}</div>
 <div class="cfilters"><label class="pill m-hide">Tag<select data-cv="tag"><option value="">All tags</option>${tags.map((t) => `<option ${v.tag === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
 ${v.since ? `<button class="pill on" data-act="clientClear" data-k="since">Created ${sinceLabel} ×</button>` : ''}${v.dupes ? '<button class="pill on" data-act="clientClear" data-k="dupes">Possible duplicates ×</button>' : ''}
-<input id="cq" class="csearch" type="search" placeholder="Search clients…" value="${esc(v.q)}"></div>
+<input id="cq" class="csearch" type="search" placeholder="Search clients…" value="${esc(v.q)}"><span class="m-hide">${colPicker('clients', CCOLS, cols)}</span></div>
 ${v.dupes ? '<div class="notice">Showing clients that share an email, phone number or name. Tick the profiles that are the same client, then click Merge.</div>' : ''}
 ${clientSel.size ? `<div class="bulk admin-only"><strong>${clientSel.size} selected</strong><button class="btn sm" data-act="mergeClients" ${clientSel.size > 1 ? '' : 'disabled title="Select at least two clients"'}>Merge</button><button class="btn danger sm" data-act="deleteSelClients">Delete</button><button class="btn alt sm" data-act="clientClearSel">Clear selection</button></div>` : ''}
-<div class="card ctable clist"><div class="tablewrap"><table><tr><th style="width:36px" class="admin-only"><input type="checkbox" id="selAll" aria-label="Select all" ${shown.length && shown.every((c) => clientSel.has(c.id)) ? 'checked' : ''}></th>
-<th>${thb('name', 'Client')}</th><th class="m-hide">Address</th><th class="m-hide">Tags</th><th class="m-hide">${thb('next', 'Next visit')}</th><th class="m-hide r need-invoices">${thb('paid', 'Paid to date')}</th><th class="m-hide r need-invoices">${thb('owed', 'Owed')}</th><th class="m-hide">${thb('last', 'Last activity')}</th><th class="m-hide" aria-label="Actions"></th></tr>
+<div class="card ctable clist"><div class="tablewrap"><table><tr><th class="admin-only sel-td"><input type="checkbox" id="selAll" aria-label="Select all" ${shown.length && shown.every((c) => clientSel.has(c.id)) ? 'checked' : ''}></th>
+<th>${thb('name', 'Client')}</th>${cols.map((x) => x.th).join('')}<th class="m-hide" aria-label="Actions"></th></tr>
 ${body || `<tr><td colspan="11" class="empty">${v.status === 'attention' && !v.q && !v.tag && !v.since && D.clients.length ? 'Nothing needs attention: no one owes you money past due, every new lead has a quote, and no regular has gone quiet.' : D.clients.length ? 'No clients match these filters' : 'No clients yet'}</td></tr>`}</table></div>
 ${!grouped && list.length > per ? `<div class="tfoot"><span>Showing ${v.page * per + 1}–${Math.min(list.length, (v.page + 1) * per)} of ${list.length}</span>
 <span class="pager"><button class="btn alt sm" data-act="clientPage" data-d="-1" ${v.page ? '' : 'disabled'} aria-label="Previous page">‹</button><button class="btn alt sm" data-act="clientPage" data-d="1" ${v.page < pages - 1 ? '' : 'disabled'} aria-label="Next page">›</button></span></div>` : ''}</div>`;
@@ -1263,7 +1276,7 @@ A.clientCard = (d) => {
 A.clientDupes = () => { clientView = { ...clientView, status: 'all', tag: '', q: '', since: '', dupes: true, sort: 'name', dir: 1, page: 0 }; refresh(); };
 A.clientClear = (d) => { clientView[d.k] = d.k === 'dupes' ? false : ''; clientView.page = 0; refresh(); };
 A.clientPage = (d) => { clientView.page += Number(d.d); refresh(); };
-A.clientSort = (d) => { clientView.dir = clientView.sort === d.k ? -clientView.dir : (['last', 'paid', 'owed'].includes(d.k) ? -1 : 1); clientView.sort = d.k; clientView.page = 0; refresh(); };
+A.clientSort = (d) => { clientView.dir = clientView.sort === d.k ? -clientView.dir : (['last', 'paid', 'owed', 'created'].includes(d.k) ? -1 : 1); clientView.sort = d.k; clientView.page = 0; refresh(); };
 A.clientClearSel = () => { clientSel.clear(); refresh(); };
 A.deleteSelClients = async () => {
   if (!confirm(`Delete ${clientSel.size} client${clientSel.size === 1 ? '' : 's'}? Their quotes, jobs and invoices stay in the system.`)) return;
