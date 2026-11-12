@@ -544,34 +544,36 @@ document.addEventListener('keydown', (e) => {
 });
 let renderedPath = '';
 /* ===== Page not found: Yoya, our cartoon Yorkie (our own drawing), who sniffed everywhere and came up empty. Styles: .p404-* ===== */
-const P404_YORKIE = `<svg class="p404-dog" viewBox="0 0 300 300" role="img" aria-label="Yoya, a puzzled cartoon Yorkie with a pink bow">
-<ellipse class="p404-shadow" cx="150" cy="280" rx="84" ry="9"/>
-<g class="p404-q"><text x="58" y="96" font-size="30">?</text><text x="226" y="74" font-size="38">?</text><text x="246" y="118" font-size="22">?</text></g>
-<g class="p404-tail"><path d="M196 222 C228 214 236 182 222 162" fill="none" stroke="#4b5a70" stroke-width="13" stroke-linecap="round"/><circle cx="221" cy="160" r="8" fill="#c98b45"/></g>
-<path d="M98 268 C92 230 100 190 122 172 C138 160 164 160 180 172 C202 190 210 232 204 268 Z" fill="#4b5a70"/>
-<path d="M94 262 Q104 282 114 266 Q124 284 134 268 Q144 286 154 268 Q164 286 174 268 Q184 284 194 266 Q203 280 208 262 L204 248 L98 248 Z" fill="#4b5a70"/>
-<path d="M112 200 Q107 232 112 262 M124 186 Q117 222 122 262 M188 200 Q193 232 188 262 M176 186 Q183 222 178 262" fill="none" stroke="#6b7c93" stroke-width="2.5" stroke-linecap="round" opacity=".85"/>
-<path d="M128 176 C140 168 162 168 174 176 C178 205 170 232 151 246 C132 232 124 205 128 176 Z" fill="#d79a52"/>
-<rect x="121" y="220" width="20" height="54" rx="10" fill="#c98b45"/><rect x="161" y="220" width="20" height="54" rx="10" fill="#c98b45"/>
-<ellipse cx="131" cy="273" rx="14" ry="8" fill="#e2b06b"/><ellipse cx="171" cy="273" rx="14" ry="8" fill="#e2b06b"/>
-<path d="M126 270 v6 M131 269 v7 M136 270 v6 M166 270 v6 M171 269 v7 M176 270 v6" stroke="#b07a3c" stroke-width="1.6" stroke-linecap="round"/>
-<path d="M124 168 Q150 182 176 168" fill="none" stroke="#2563eb" stroke-width="6" stroke-linecap="round"/><circle cx="150" cy="180" r="6.5" fill="#f5c542" stroke="#d4a017" stroke-width="1.5"/>
-<g class="p404-head">
-<g class="p404-ear"><path d="M118 98 L104 46 L140 80 Z M104 46 L99 58 L106 61 L101 73 L110 74 L107 87 L118 98 Z" fill="#c98b45"/><path d="M119 91 L110 58 L133 82 Z" fill="#f2b6a8"/></g>
-<path d="M182 98 L196 46 L160 80 Z M196 46 L201 58 L194 61 L199 73 L190 74 L193 87 L182 98 Z" fill="#c98b45"/><path d="M181 91 L190 58 L167 82 Z" fill="#f2b6a8"/>
-<path d="M108 128 C104 92 124 72 150 72 C176 72 196 92 192 128 C190 150 172 166 150 166 C128 166 110 150 108 128 Z" fill="#d79a52"/>
-<path d="M128 82 C130 62 144 52 150 52 C156 52 170 62 172 82 C164 76 136 76 128 82 Z" fill="#b9824a"/>
-<path d="M150 56 L130 44 L132 68 Z M150 56 L170 44 L168 68 Z" fill="#ec4899"/><circle cx="150" cy="56" r="6" fill="#be185d"/>
-<path d="M122 128 C122 110 136 104 150 104 C164 104 178 110 178 128 C178 150 166 162 150 162 C134 162 122 150 122 128 Z" fill="#ecc283"/>
-<path d="M122 134 Q113 160 126 184 Q131 177 136 192 Q142 183 150 200 Q158 183 164 192 Q169 177 174 184 Q187 160 178 134 Q166 160 150 160 Q134 160 122 134 Z" fill="#ecc283"/>
-<ellipse cx="127" cy="141" rx="7" ry="4" fill="#f9a8b8" opacity=".55"/><ellipse cx="173" cy="141" rx="7" ry="4" fill="#f9a8b8" opacity=".55"/>
-<path d="M124 102 Q132 96 141 101 M159 98 Q168 94 176 101" fill="none" stroke="#9c6a35" stroke-width="3" stroke-linecap="round"/>
-<g class="p404-eyes"><circle cx="134" cy="118" r="9.5" fill="#1f1a17"/><circle cx="166" cy="118" r="9.5" fill="#1f1a17"/>
-<circle cx="137.5" cy="114" r="3.2" fill="#fff"/><circle cx="169.5" cy="114" r="3.2" fill="#fff"/><circle cx="131" cy="122" r="1.5" fill="#fff"/><circle cx="163" cy="122" r="1.5" fill="#fff"/></g>
-<path d="M140 132 Q150 125 160 132 Q160 142 150 144 Q140 142 140 132 Z" fill="#1f1a17"/><ellipse cx="146" cy="131" rx="3.5" ry="2" fill="#fff" opacity=".45"/>
-<path d="M146 151 Q150 164 154 151 Z" fill="#f472b6"/>
-<path d="M150 144 V149 M150 149 Q143 156 137 150 M150 149 Q157 156 163 150" fill="none" stroke="#7a4a24" stroke-width="2.5" stroke-linecap="round"/>
-</g>
+const P404_YORKIE = `<svg class="p404-dog" viewBox="0 0 300 300" role="img" aria-label="Yoya, a puzzled cartoon Yorkie with a pink bow and a name tag">
+<ellipse class="p404-shadow" cx="150" cy="283" rx="92" ry="9"/>
+<g class="p404-q"><text x="52" y="100" font-size="30">?</text><text x="228" y="70" font-size="38">?</text><text x="250" y="114" font-size="22">?</text></g>
+<path d="M188 224 C214 216 230 198 232 176 C241 188 239 206 228 216 C239 214 243 225 234 233 C221 239 204 235 188 232 Z" fill="#4b5a70"/>
+<path d="M112 176 C100 200 92 240 86 270 Q96 283 106 272 Q114 285 124 274 Q132 285 141 274 L159 274 Q168 285 176 274 Q186 285 194 272 Q204 283 214 270 C208 240 200 200 188 176 Z" fill="#4b5a70"/>
+<path d="M118 192 Q106 232 100 268 M131 188 Q123 232 121 268 M182 192 Q194 232 200 268 M169 188 Q177 232 179 268" fill="none" stroke="#6b7c93" stroke-width="2.5" stroke-linecap="round"/>
+<path d="M130 178 C138 172 162 172 170 178 C174 206 166 234 150 250 C134 234 126 206 130 178 Z" fill="#d9a25c"/>
+<rect x="125" y="238" width="18" height="38" rx="9" fill="#c98b45"/><rect x="157" y="238" width="18" height="38" rx="9" fill="#c98b45"/>
+<path d="M121 252 Q125 262 121 270 Q128 266 130 274 Q134 266 139 272 Q141 262 147 258 Z M153 258 Q159 262 161 272 Q166 266 170 274 Q172 266 179 270 Q175 262 179 252 Z" fill="#d9a25c"/>
+<ellipse cx="134" cy="277" rx="14" ry="7" fill="#e6b673"/><ellipse cx="166" cy="277" rx="14" ry="7" fill="#e6b673"/>
+<path d="M129 274 v5 M134 273 v6 M139 274 v5 M161 274 v5 M166 273 v6 M171 274 v5" stroke="#b07a3c" stroke-width="1.6" stroke-linecap="round"/>
+<path d="M128 184 Q150 198 172 184" fill="none" stroke="#2563eb" stroke-width="6" stroke-linecap="round"/>
+<rect x="131" y="190" width="38" height="17" rx="8.5" fill="#f5c542" stroke="#d4a017" stroke-width="1.5"/><text x="150" y="202.5" font-size="10.5" font-weight="800" text-anchor="middle" fill="#7a5a00" font-family="inherit">YOYA</text>
+<path d="M121 94 L113 58 L141 82 Z M179 94 L187 58 L159 82 Z" fill="#c98b45"/><path d="M123 88 L117 66 L135 83 Z M177 88 L183 66 L165 83 Z" fill="#f2b6a8"/>
+<path d="M112 120 C112 90 128 74 150 74 C172 74 188 90 188 120 C188 146 172 160 150 160 C128 160 112 146 112 120 Z" fill="#d79a52"/>
+<path d="M120 86 C101 100 96 130 98 160 C99 178 94 192 100 206 Q106 197 111 208 Q115 197 121 204 C123 183 121 160 125 136 Z M180 86 C199 100 204 130 202 160 C201 178 206 192 200 206 Q194 197 189 208 Q185 197 179 204 C177 183 179 160 175 136 Z" fill="#c98b45"/>
+<path d="M108 120 Q104 150 106 180 M192 120 Q196 150 194 180" fill="none" stroke="#b07a3c" stroke-width="2" stroke-linecap="round"/>
+<path d="M134 84 C134 66 142 57 150 55 C158 57 166 66 166 84 C160 80 140 80 134 84 Z" fill="#b9824a"/>
+<path d="M150 50 C145 39 140 36 135 34 C142 33 147 37 150 43 C153 37 158 33 165 34 C160 36 155 39 150 50 Z" fill="#b9824a"/>
+<path d="M150 53 L131 42 L133 64 Z M150 53 L169 42 L167 64 Z" fill="#ec4899"/><circle cx="150" cy="53" r="5.5" fill="#be185d"/>
+<path d="M126 118 C126 102 138 95 150 95 C162 95 174 102 174 118 C174 140 164 152 150 152 C136 152 126 140 126 118 Z" fill="#e8b977"/>
+<path d="M128 104 Q135 98 143 103 M157 103 Q165 98 172 104" fill="none" stroke="#9c6a35" stroke-width="3" stroke-linecap="round"/>
+<circle cx="136" cy="116" r="8.5" fill="#1f1a17"/><circle cx="164" cy="116" r="8.5" fill="#1f1a17"/>
+<circle cx="139" cy="112.5" r="3" fill="#fff"/><circle cx="167" cy="112.5" r="3" fill="#fff"/><circle cx="133.5" cy="119.5" r="1.4" fill="#fff"/><circle cx="161.5" cy="119.5" r="1.4" fill="#fff"/>
+<ellipse cx="129" cy="128" rx="5" ry="3" fill="#f9a8b8" opacity=".6"/><ellipse cx="171" cy="128" rx="5" ry="3" fill="#f9a8b8" opacity=".6"/>
+<path d="M128 128 Q119 153 130 176 Q135 167 140 180 Q145 169 150 184 Q155 169 160 180 Q165 167 170 176 Q181 153 172 128 Q162 150 150 150 Q138 150 128 128 Z" fill="#efc78e"/>
+<path d="M134 146 Q130 158 133 168 M166 146 Q170 158 167 168 M150 156 V172" fill="none" stroke="#d9a25c" stroke-width="1.6" stroke-linecap="round"/>
+<path d="M142 130 Q150 124 158 130 Q158 139 150 141 Q142 139 142 130 Z" fill="#1f1a17"/><ellipse cx="147" cy="129" rx="3.2" ry="1.8" fill="#fff" opacity=".45"/>
+<path d="M146 148 Q150 158 154 148 Z" fill="#f472b6"/>
+<path d="M150 141 V146 M150 146 Q144 152 139 147 M150 146 Q156 152 161 147" fill="none" stroke="#7a4a24" stroke-width="2.4" stroke-linecap="round"/>
 </svg>`;
 const page404Html = () => `<div class="p404">${P404_YORKIE}<div class="p404-code">Error 404</div><h1>Ruh-roh! This page ran off.</h1>
 <p class="muted">Yoya sniffed under every couch cushion, but couldn’t find the page you’re looking for. It may have moved, or the link might be a little off.</p>
