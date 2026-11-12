@@ -814,7 +814,7 @@ PAGES['/services'] = {
     main.innerHTML = `<div class="head"><div><h1>Products &amp; services</h1><p class="sub">Add and update your products and services to stay organized when creating quotes, jobs and invoices.</p></div></div>
 ${mxPromo()}<div class="cfilters"><div class="search-x"><input id="sq" type="search" placeholder="Search" value="${esc(v.q)}" aria-label="Search products and services"><button type="button" class="icon-btn" data-act="svcClear" aria-label="Clear search" ${v.q ? '' : 'hidden'}>✕</button></div>
 ${cats.length ? `<select id="svcCat" aria-label="Category" style="width:auto"><option value="">All categories</option>${cats.map((c) => `<option value="${esc(c)}" ${v.cat.toLowerCase() === c.toLowerCase() ? 'selected' : ''}>${esc(c)}</option>`).join('')}<option value="__none" ${v.cat === '__none' ? 'selected' : ''}>No category</option></select>` : ''}
-<span style="margin-left:auto"></span>${phone ? colPicker('services-phone', SCOLS, scols) : `${cats.length ? '<button type="button" class="btn alt" data-act="svcCatsEdit">Categories</button>' : ''}<a class="btn alt" href="/services/import" data-link>Import</a>`}<button class="btn" data-act="newService">+ Add Item</button></div>
+<span style="margin-left:auto"></span>${phone ? colPicker('services-phone', SCOLS, scols) : `${cats.length ? '<button type="button" class="btn alt" data-act="svcCatsEdit">Categories</button>' : ''}`}<button class="btn" data-act="newService">+ Add Item</button></div>
 ${svcSel.size ? `<div class="bulk">${phone ? '' : `<strong>${svcSel.size} selected</strong>`}<button class="btn sm" data-act="svcBulkEdit">Edit</button><button class="btn danger sm" data-act="svcBulkDelete">Delete</button><button class="btn alt sm" data-act="svcClearSel">Clear selection</button></div>` : ''}
 <div class="card ctable"><div class="tablewrap"><table><tr><th class="sel-td"><input type="checkbox" id="svcSelAll" aria-label="Select all" ${list.length && list.every((s) => svcSel.has(s.id)) ? 'checked' : ''} ${list.length ? '' : 'disabled'}></th>${on('name') ? th('name', 'Name') : ''}${on('desc') ? '<th>Description</th>' : ''}${on('cat') ? th('cat', 'Category') : ''}${on('type') ? th('type', 'Type') : ''}${on('price') ? th('price', 'Price', 'r') : ''}</tr>
 ${list.map((s) => `<tr class="crow" data-id="${s.id}"><td class="sel-td"><input type="checkbox" class="svcsel" value="${s.id}" ${svcSel.has(s.id) ? 'checked' : ''} aria-label="Select ${esc(s.name)}"></td>${on('name') ? `<td><strong>${esc(s.name)}</strong></td>` : ''}${on('desc') ? `<td>${esc(s.description)}</td>` : ''}${on('cat') ? `<td>${s.category ? `<span class="svc-cat">${esc(s.category)}</span>` : '<span class="muted">—</span>'}</td>` : ''}${on('type') ? `<td>${svcType(s)}</td>` : ''}${on('price') ? `<td class="r" style="white-space:nowrap">${money(s.price)}<span class="muted"> / ${esc(s.unit || (s.type === 'product' ? 'each' : 'job'))}</span></td>` : ''}</tr>`).join('')
@@ -979,7 +979,7 @@ PAGES['/services/import'] = {
   title: 'Import products & services',
   async render(main) {
     svcImport = null;
-    main.innerHTML = `<div class="head"><div><a href="/services" data-link class="back">← Products &amp; services</a><h1>Import products &amp; services</h1><p class="sub">Add your price list at once from a spreadsheet or another app's export.</p></div></div>
+    main.innerHTML = `<div class="head"><div><a href="/settings/import-export" data-link class="back">← Import &amp; Export</a><h1>Import products &amp; services</h1><p class="sub">Add your price list at once from a spreadsheet or another app's export.</p></div></div>
 <div class="card"><h2>1. Choose a CSV file</h2><p class="muted" style="margin-top:0">Save your list as <strong>CSV</strong>. The first row should be column names, such as Name, Description, Type and Price. <a href="#" data-act="svcImportTemplate">Download a sample file</a></p>
 <input type="file" id="svcFile" accept=".csv,.txt,text/csv" style="width:auto"></div><div id="svcStep"></div>`;
     $('#svcFile').addEventListener('change', async (e) => {
@@ -1007,7 +1007,7 @@ ${s.map.includes('name') ? '' : '<div class="notice" style="margin-top:12px">Cho
 <div class="tablewrap"><table class="m-svcimp"><tr><th>Name</th><th>Type</th>${s.map.includes('category') ? '<th>Category</th>' : ''}<th>Description</th><th class="r">Price</th><th></th></tr>
 ${plan.slice(0, 100).map((p) => `<tr><td>${esc(p.c.name) || '<span class="muted">—</span>'}</td><td>${p.c.type === 'product' ? 'Product' : 'Service'}</td>${s.map.includes('category') ? `<td>${esc(p.c.category)}</td>` : ''}<td>${esc(p.c.description)}</td><td class="r">${money(p.c.price)}${p.c.unit ? `<span class="muted"> / ${esc(p.c.unit)}</span>` : ''}</td><td>${tag[p.status]}</td></tr>`).join('')}</table></div>
 ${plan.length > 100 ? `<p class="muted">Showing the first 100 of ${plan.length} rows.</p>` : ''}
-<div class="foot"><a class="btn alt" href="/services" data-link>Cancel</a><button class="btn" data-act="runSvcImport" ${take.length ? '' : 'disabled'}>Import ${take.length} item${take.length === 1 ? '' : 's'}</button></div></div>`;
+<div class="foot"><a class="btn alt" href="/settings/import-export" data-link>Cancel</a><button class="btn" data-act="runSvcImport" ${take.length ? '' : 'disabled'}>Import ${take.length} item${take.length === 1 ? '' : 's'}</button></div></div>`;
   $$('[data-smap]').forEach((sel) => sel.addEventListener('change', (e) => { s.map[Number(e.target.dataset.smap)] = e.target.value; svcImportStep(); }));
   $('#svcSkip').addEventListener('change', (e) => { s.skipDupes = e.target.checked; svcImportStep(); });
 }
@@ -1023,6 +1023,36 @@ A.svcImportTemplate = () => downloadCsv('products-services-sample.csv', [['Name'
 /* ===== /expenses ===== */
 let expJob = '';
 const CATS = ['Materials', 'Subcontractor', 'Fuel', 'Equipment', 'Software', 'Insurance', 'Other'];
+/* ===== /settings/import-export (Settings → Other Settings): every import and export in one place. Reports keep their own Export CSV. ===== */
+PAGES['/settings/import-export'] = {
+  title: 'Import & Export',
+  async render(main) {
+    const row = (h, p, btn) => `<div class="ie-row"><div><strong>${h}</strong><p class="muted">${p}</p></div>${btn}</div>`;
+    const ex = (act, label = 'Export CSV') => `<button type="button" class="btn alt" data-act="${act}">${label}</button>`;
+    const im = (href) => `<a class="btn alt" href="${href}" data-link>Import CSV</a>`;
+    const imports = [planHas('clientImport') && row('Clients', 'Bring in a client list from a spreadsheet or another app’s export. Duplicates are found for you.', im('/clients/import')),
+      row('Products &amp; services', 'Add your price list at once from a spreadsheet.', im('/services/import'))].filter(Boolean);
+    const today = ymd(new Date()); const monthAgo = ymd(new Date(Date.now() - 30 * 864e5));
+    const exports = [row('Clients', 'Every client with contact details, tags, status and notes.', ex('exportClients')),
+      row('Quotes', 'Every quote with client, status and totals.', ex('exportQuotes')),
+      row('Jobs', 'Every job with client, date, team, status and total.', ex('exportJobs')),
+      row('Invoices', 'Every invoice with dates, status, balance and how it was paid.', ex('exportInvoices')),
+      row('Products &amp; services', 'Your price list: name, description, type, price, unit and category.', ex('exportServices')),
+      !planLocked('/expenses') && row('Expenses', 'Every expense with date, vendor, category and amount.', ex('exportExpenses')),
+      planHas('timesheets') && `<div class="ie-row"><div><strong>Timesheets</strong><p class="muted">Clocked hours for payroll, between two dates.</p><div class="ie-dates"><label>From <input type="date" id="ieFrom" value="${monthAgo}"></label><label>To <input type="date" id="ieTo" value="${today}"></label></div></div>${ex('exportTimesheets')}</div>`].filter(Boolean);
+    main.innerHTML = `<div class="head"><div><h1>Import &amp; Export</h1><p class="sub">Bring your lists in from a spreadsheet, or download your records as CSV files for Excel, Google Sheets or your accountant. Each report also has its own Export CSV in Reports.</p></div></div>
+<div class="card"><h2>Import</h2>${imports.join('')}</div>
+<div class="card"><h2>Export</h2>${exports.join('')}</div>`;
+  },
+};
+A.exportServices = () => downloadCsv('products-services.csv', [['Name', 'Description', 'Type', 'Price', 'Unit', 'Category'], ...D.services.map((s) => [s.name, s.description || '', svcType(s), s.price, s.unit || '', s.category || ''])]);
+A.exportExpenses = () => downloadCsv('expenses.csv', [['Date', 'Vendor', 'Description', 'Category', 'Amount', 'Job'], ...D.expenses.map((e) => [e.date, e.vendor || '', e.description || '', e.category || '', e.amount, (byId(D.jobs, e.jobId) || {}).number || ''])]);
+A.exportTimesheets = async () => {
+  const from = $('#ieFrom').value; const to = $('#ieTo').value; if (!from || !to || from > to) return toast('Choose a From date on or before the To date', true);
+  const T = await api('GET', `/api/time?from=${encodeURIComponent(new Date(from + 'T00:00').toISOString())}&to=${encodeURIComponent(tsAdd(new Date(to + 'T00:00'), 1).toISOString())}`);
+  downloadCsv(`timesheets-${from}-to-${to}.csv`, tsCsvRows(T, T.entries.filter((e) => e.end)));
+};
+
 /* ===== Timesheets (plan feature "timesheets"): clock in and out, a week of time per person, approval and payroll export.
    Everyone sees their own time; the owner, admins and anyone who edits jobs see everyone's, fix entries and approve them.
    Pay rates and labor cost: the owner and admins only (the server leaves them out for anyone else). ===== */
@@ -1061,7 +1091,7 @@ ${M ? `<td class="actions">${e.end && !e.approvedAt ? `<button type="button" cla
 ${M && w.length ? `<button type="button" class="btn sm" data-act="tsApprove" data-ids="${w.map((e) => e.id).join(',')}">Approve ${w.length}</button>` : ''}</div></div>
 <div class="tablewrap"><table class="m-ts"><tr><th>Day</th><th>Job</th><th>In</th><th>Out</th><th class="r">Hours</th>${TS.admin ? '<th class="r m-hide">Cost</th>' : ''}<th>Status</th>${M ? '<th></th>' : ''}</tr>${p.entries.map(row).join('')}</table></div></div>`; };
     main.innerHTML = `<div class="head"><div><h1>Timesheets</h1><p class="sub">${M ? 'Your team’s hours, clocked in and out on jobs. Check them, fix what’s wrong and approve them for payroll.' : 'Clock in and out, and see your hours.'}${TS.admin ? ' Hours on a job count as labor cost in Financial Reports → Job profit.' : ''}</p></div>
-<div class="ts-acts">${TS.admin ? '<button type="button" class="btn alt" data-act="tsRates">Pay rates</button>' : ''}${M ? '<button type="button" class="btn alt" data-act="tsCsv">Export CSV</button><button type="button" class="btn" data-act="tsEdit">Add time</button>' : ''}</div></div>
+<div class="ts-acts">${TS.admin ? '<button type="button" class="btn alt" data-act="tsRates">Pay rates</button>' : ''}${M ? '<button type="button" class="btn" data-act="tsEdit">Add time</button>' : ''}</div></div>
 ${clockCard}
 <div class="ts-bar"><div class="ts-week"><button type="button" class="btn alt sm" data-act="tsWeekGo" data-n="-7" aria-label="Previous week">‹</button><strong>${range}</strong><button type="button" class="btn alt sm" data-act="tsWeekGo" data-n="7" aria-label="Next week">›</button>${thisWeek ? '' : '<button type="button" class="link-btn" data-act="tsWeekGo" data-n="0">This week</button>'}</div>
 ${M && people.length > 1 ? `<label class="ts-who"><span class="sr">Team member</span><select id="tsWho"><option value="">Everyone</option>${people.map(([id, n]) => `<option value="${esc(id)}" ${tsWho === id ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label>` : ''}</div>
@@ -1073,11 +1103,9 @@ ${Object.entries(byPerson).map(person).join('') || `<div class="card"><p class="
 A.tsWeekGo = (d) => { const n = Number(d.n); tsWeek = n ? ymd(tsAdd(tsWeek ? new Date(tsWeek + 'T00:00') : tsMonday(new Date()), n)) : ''; refresh(); };
 A.tsClockIn = () => A.clockIn({ id: ($('#tsJob') || {}).value || '' });
 A.tsApprove = async (d) => { try { const r = await api('POST', '/api/time/approve', { ids: String(d.ids).split(',') }); toast(`Approved ${r.approved} ${r.approved === 1 ? 'entry' : 'entries'}`); refresh(); } catch (x) { toast(x.message, true); } };
-A.tsCsv = () => {
-  const rows = TS.entries.filter((e) => e.end && (!tsWho || e.staffId === tsWho));
-  downloadCsv(`timesheets-${tsWeek || ymd(tsMonday(new Date()))}.csv`, [['Team member', 'Date', 'Clock in', 'Clock out', 'Hours', 'Job', 'Job title', 'Note', 'Approved', 'Approved by', ...(TS.admin ? ['Pay rate', 'Cost'] : [])],
-    ...rows.map((e) => [e.person, ymd(new Date(e.start)), tsClock(e.start), tsClock(e.end), tsH(e.hours), e.job ? e.job.number : '', e.job ? e.job.title : '', e.note || '', e.approvedAt ? 'Yes' : 'No', e.approvedBy || '', ...(TS.admin ? [e.rate || '', e.rate ? (e.hours * e.rate).toFixed(2) : ''] : [])])]);
-};
+// timesheet CSV rows (Settings → Import & Export): pay rate and cost only for owner/admin
+const tsCsvRows = (TS, rows) => [['Team member', 'Date', 'Clock in', 'Clock out', 'Hours', 'Job', 'Job title', 'Note', 'Approved', 'Approved by', ...(TS.admin ? ['Pay rate', 'Cost'] : [])],
+    ...rows.map((e) => [e.person, ymd(new Date(e.start)), tsClock(e.start), tsClock(e.end), tsH(e.hours), e.job ? e.job.number : '', e.job ? e.job.title : '', e.note || '', e.approvedAt ? 'Yes' : 'No', e.approvedBy || '', ...(TS.admin ? [e.rate || '', e.rate ? (e.hours * e.rate).toFixed(2) : ''] : [])])];
 // add or fix an entry (managers)
 A.tsEdit = (d) => {
   const e = d.id ? TS.entries.find((x) => x.id === d.id) : null; const now = new Date();
@@ -3412,7 +3440,7 @@ PAGES['/clients/import'] = {
   title: 'Import clients',
   async render(main) {
     importState = null;
-    main.innerHTML = `<div class="head"><div><a href="/clients" data-link class="back">← Clients</a><h1>Import clients</h1><p class="sub">Add many clients at once from a spreadsheet or contacts export.</p></div></div>
+    main.innerHTML = `<div class="head"><div><a href="/settings/import-export" data-link class="back">← Import &amp; Export</a><h1>Import clients</h1><p class="sub">Add many clients at once from a spreadsheet or contacts export.</p></div></div>
 <div class="card"><h2>1. Choose a CSV file</h2>
 <p class="muted" style="margin-top:0">Export your list as <strong>CSV</strong> from Excel or Numbers (File → Save As / Export → CSV), Google Sheets (File → Download → CSV), Google Contacts, Outlook or QuickBooks. The first row should be column names. <a href="#" data-act="importTemplate">Download a sample file</a></p>
 <input type="file" id="importFile" accept=".csv,.txt,text/csv" style="width:auto"></div>
@@ -3456,7 +3484,7 @@ ${hasName ? '' : '<div class="notice" style="margin-top:12px">Choose which colum
 <div class="tablewrap"><table class="m-climp"><tr><th>Name</th><th>Email</th><th>Phone</th><th>Address</th><th></th></tr>
 ${plan.slice(0, 100).map((p) => `<tr><td>${esc(p.c.name) || '<span class="muted">—</span>'}</td><td>${esc(p.c.email)}</td><td>${esc(p.c.phone)}</td><td>${esc(p.c.address)}</td><td>${tag[p.status]}</td></tr>`).join('')}</table></div>
 ${plan.length > 100 ? `<p class="muted">Showing the first 100 of ${plan.length} rows.</p>` : ''}
-<div class="foot"><a class="btn alt" href="/clients" data-link>Cancel</a><button class="btn" data-act="runImport" ${willImport.length ? '' : 'disabled'}>Import ${willImport.length} client${willImport.length === 1 ? '' : 's'}</button></div></div>`;
+<div class="foot"><a class="btn alt" href="/settings/import-export" data-link>Cancel</a><button class="btn" data-act="runImport" ${willImport.length ? '' : 'disabled'}>Import ${willImport.length} client${willImport.length === 1 ? '' : 's'}</button></div></div>`;
   $$('[data-map]').forEach((sel) => sel.addEventListener('change', (e) => { s.map[Number(e.target.dataset.map)] = e.target.value; renderImportStep(); }));
   $('#skipDupes').addEventListener('change', (e) => { s.skipDupes = e.target.checked; renderImportStep(); });
 }
