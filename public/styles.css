@@ -2384,3 +2384,10 @@ body.p404-only :is(#side,#sideMiniBtn,#menuBtn,#topbar,#bnav,#installBar,#suppor
 .ce-commh{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:16px 0 8px}.ce-commh h4{margin:0}
 .ce-commbtn{background:none;border:0;padding:0;color:var(--link);font:inherit;font-weight:600;font-size:14px;text-decoration:underline;cursor:pointer;text-align:right}
 .ce-commtext{font-size:13px;margin:0 0 10px;line-height:1.45}
+/* client portal: the language switch at the bottom of the left menu (only for clients whose Preferred language isn't English) */
+.cp-lang{display:flex;align-items:center;gap:4px;margin:16px 4px 0;padding:4px;border:1px solid var(--cp-line);border-radius:99px;color:var(--cp-ink)}
+.cp-lang svg{flex:none;margin:0 2px 0 6px;opacity:.7}
+.cp-lang button{flex:1;min-width:0;padding:7px 6px;border:0;border-radius:99px;background:none;color:var(--cp-ink);font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.cp-lang button:hover{background:var(--cp-hover)}.cp-lang button.on{background:var(--brand);color:#fff}
+.cp-lang button:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+@media (min-width:761px){.cp-side{display:flex;flex-direction:column}.cp-navs{flex:1;display:flex;flex-direction:column}.cp-lang{margin-top:auto}}

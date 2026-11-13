@@ -3296,7 +3296,7 @@ document.addEventListener('DOMContentLoaded',up);})();</script>`;
 }
 // a client's quote and invoice pages (and what they post) come out in that client's language
 app.use((req, res, next) => {
-  const portal = /^\/api\/portal\/([^/]+)/.exec(req.path); if (portal) { const c = db.clients.find((x) => x.portalToken === portal[1]); return c ? i18n.run(portalLang(c), next) : next(); } // the portal's own messages
+  const portal = /^\/api\/portal\/([^/]+)/.exec(req.path); if (portal) { const c = db.clients.find((x) => x.portalToken === portal[1]); return c ? i18n.run(req.query.lang === 'en' ? 'en' : portalLang(c), next) : next(); } // the portal's own messages (?lang=en: the client switched it to English)
   const m = /^\/(pay|p\/quote)\/([^/]+)/.exec(req.path); if (!m) return next();
   const d = (m[1] === 'pay' ? db.invoices : db.quotes).find((x) => x.token === m[2]);
   return d ? inClientLang(d.clientId, next) : next();
@@ -3898,6 +3898,7 @@ app.get('/api/portal/:token', (req, res) => {
   const lang = portalLang(c);
   res.json({
     lang, locale: i18n.locale(lang), strings: i18n.strings(lang), // the portal's words in the client's language (public/pages.js pt())
+    langNames: lang === 'en' ? null : { en: 'English', [lang]: i18n.LANGUAGES[lang].native }, // the language switch at the bottom of the portal's menu
     company: { name: db.company.name, logo: db.company.logo, email: db.company.email, phone: db.company.phone, accentColor: accentColor(), address: db.company.addressPrivate ? '' : db.company.address, website: db.company.website, hours: db.company.showHours ? db.company.hours || null : null },
     client: { id: c.id, name: c.name, email: c.email, phone: c.phone, address: c.address, smsConsent: !!c.smsConsent, smsBrand: smsBrand() },
     referralLink: tenancy.has('referrals') ? referralLink(c) : null,

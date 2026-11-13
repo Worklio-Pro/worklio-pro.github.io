@@ -2314,13 +2314,15 @@ PAGES['/client-portal'] = {
     let p;
     try { p = await api('GET', '/api/portal/' + encodeURIComponent(tok)); } catch (e) { main.innerHTML = '<div class="cp-invalid"><h1>Link not valid</h1><p>This portal link is invalid or has expired. Please contact your service provider.</p></div>'; return; }
     if (p.company.accentColor) { document.documentElement.style.setProperty('--brand', p.company.accentColor); document.documentElement.dataset.accent = ''; }
-    CP_T = p.strings || {}; CP_LOCALE = p.locale || 'en-US'; document.documentElement.lang = p.lang || 'en'; // the client's Preferred language (server.js portalLang)
+    let saved = ''; try { saved = localStorage.getItem('cpLang:' + tok) || ''; } catch (e) { /* storage off: their Preferred language */ }
+    cpUseLang(p, p.langNames && p.langNames[saved] ? saved : p.lang); // the client's Preferred language (server.js portalLang), or English if they switched
     document.title = `${p.company.name || pt('Client portal')} · ${pt('Client hub')}`;
     renderPortal(main, tok, p);
   },
 };
 /* ===== client hub (layout modeled on Jobber's client hub): sidebar of sections, content on the right, always light ===== */
 const CP_ICON = {
+  globe: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.3 2.4 3.5 5.2 3.5 8.5s-1.2 6.1-3.5 8.5c-2.3-2.4-3.5-5.2-3.5-8.5s1.2-6.1 3.5-8.5z"/>',
   requests: '<path d="M4 13v5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/><path d="M4 13h4l1.5 2.5h5L16 13h4"/><path d="M12 4v7m-3-3 3 3 3-3"/>',
   estimates: '<circle cx="10" cy="10" r="5"/><path d="m14 14 6 6"/><path d="M8.5 10h3M10 8.5v3"/>',
   appointments: '<rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4m8-4v4"/>',
@@ -2337,7 +2339,11 @@ const CP_ICON = {
 const cpIcon = (k, size = 22) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${CP_ICON[k]}</svg>`;
 // The portal speaks the client's Preferred language: pt() turns an English phrase into its translation from the portal data (strings, from
 // lib/i18n/), else the English. Phrases in the lists below are marked /*tx*/ so `node lib/i18n.js` checks them too.
-let CP_T = {}; let CP_LOCALE = 'en-US';
+let CP_T = {}; let CP_LOCALE = 'en-US'; let CP_LANG = 'en';
+// English, or the Preferred language whose words came with the portal data (p.strings)
+const cpUseLang = (p, lang) => { CP_LANG = lang === p.lang ? p.lang : 'en'; const on = CP_LANG !== 'en'; CP_T = on ? p.strings || {} : {}; CP_LOCALE = on ? p.locale || 'en-US' : 'en-US'; document.documentElement.lang = CP_LANG; };
+// what the portal posts: ?lang=en asks for the server's messages in English when the client switched to it
+const cpQ = (p) => (CP_LANG === 'en' && p.lang !== 'en' ? '?lang=en' : '');
 const pt = (en, v) => { const s = Object.prototype.hasOwnProperty.call(CP_T, en) ? CP_T[en] : en; return v ? s.replace(/\{(\w+)\}/g, (m, k) => (k in v ? v[k] : m)) : s; };
 const cpDate = (s) => (CP_LOCALE === 'en-US' ? fmtDate(s) : s ? new Date(String(s).slice(0, 10) + 'T12:00:00').toLocaleDateString(CP_LOCALE, { month: 'short', day: 'numeric', year: 'numeric' }) : '');
 const CP_NAV = [[['requests', /*tx*/'Requests'], ['estimates', /*tx*/'Estimates'], ['appointments', /*tx*/'Appointments'], ['invoices', /*tx*/'Invoices'], ['reviews', /*tx*/'Reviews']], [['wallet', /*tx*/'Wallet']], [['contact', /*tx*/'Contact Us']]];
@@ -2393,7 +2399,7 @@ function renderPortal(main, tok, p) {
       e.preventDefault(); const btn = $('.primary', f); const label = btn.textContent; btn.disabled = true; btn.textContent = pt('Sending…');
       const fields = Object.fromEntries(new FormData(f)); const base = `/api/portal/${encodeURIComponent(tok)}/reviews`;
       let r;
-      try { r = edit ? await api('PUT', `${base}/${encodeURIComponent(edit.id)}`, fields) : await api('POST', base, { ...fields, kind: item.kind, id: item.id }); }
+      try { r = edit ? await api('PUT', `${base}/${encodeURIComponent(edit.id)}${cpQ(p)}`, fields) : await api('POST', base + cpQ(p), { ...fields, kind: item.kind, id: item.id }); }
       catch (err) { toast(err.message, true); btn.disabled = false; btn.textContent = label; return; }
       if (edit) p.reviews[p.reviews.indexOf(edit)] = r; else { p.reviews.unshift(r); p.reviewable = p.reviewable.filter((x) => x !== item); }
       const mediaUrl = `${base}/${encodeURIComponent(r.id)}/media`; let bad = 0; const keep = (x) => { p.reviews[p.reviews.findIndex((y) => y.id === x.id)] = x; };
@@ -2444,7 +2450,9 @@ ${co.hours ? `<h3 class="cp-sec">${pt('Business hours')}</h3><table class="cp-ho
 <a class="cp-out wide" href="https://mail.google.com/mail/?${q({ view: 'cm', fs: '1', su: subject, body })}" target="_blank" rel="noopener">Gmail</a></div>`; },
   };
   const nav = (cur) => `<button type="button" class="cp-newreq" data-cp="new-request"${reqOff}>${cpIcon('plus', 18)} ${pt('New Request')}</button>` + CP_NAV.map((grp) => grp.filter(([k]) => k !== 'reviews' || p.reviews).map(([k, l]) => `<button type="button" class="cp-nav ${cur === k || (cur === 'new-request' && k === 'requests') ? 'on' : ''}" data-cp="${k}">${cpIcon(k)}<span>${pt(l)}</span></button>`).join('')).join('<hr>')
-    + (p.referralLink ? `<hr><button type="button" class="cp-nav cp-refer ${cur === 'refer' ? 'on' : ''}" data-cp="refer">${cpIcon('refer')}<span>${pt('Refer a Friend')}</span></button>` : '');
+    + (p.referralLink ? `<hr><button type="button" class="cp-nav cp-refer ${cur === 'refer' ? 'on' : ''}" data-cp="refer">${cpIcon('refer')}<span>${pt('Refer a Friend')}</span></button>` : '')
+    // the language switch at the bottom: only for a client whose Preferred language isn't English (p.langNames)
+    + (p.langNames ? `<div class="cp-lang" role="group" aria-label="${pt('Language')}">${cpIcon('globe', 18)}${Object.entries(p.langNames).map(([k, n]) => `<button type="button" lang="${k}" class="${k === CP_LANG ? 'on' : ''}" aria-pressed="${k === CP_LANG}" data-cp-lang="${k}">${esc(n)}</button>`).join('')}</div>` : '');
   const show = (section) => {
     if (!views[section] || (section === 'new-request' && p.reviewsViewOnly) || (section === 'refer' && !p.referralLink) || (section === 'reviews' && !p.reviews)) section = 'requests';
     $('.cp-navs', main).innerHTML = nav(section); $('.cp-main', main).innerHTML = views[section]();
@@ -2452,7 +2460,7 @@ ${co.hours ? `<h3 class="cp-sec">${pt('Business hours')}</h3><table class="cp-ho
     const f = $('#cpReq', main);
     if (f) f.addEventListener('submit', async (e) => {
       e.preventDefault(); const btn = $('.primary', f); btn.disabled = true; btn.textContent = pt('Sending…');
-      try { const r = await api('POST', `/api/portal/${encodeURIComponent(tok)}/requests`, Object.fromEntries(new FormData(f))); p.requests.unshift(r); p.client.smsConsent = r.smsConsent; p.client.phone = r.phone; toast(pt('Request sent. We’ll be in touch soon.')); show('requests'); }
+      try { const r = await api('POST', `/api/portal/${encodeURIComponent(tok)}/requests${cpQ(p)}`, Object.fromEntries(new FormData(f))); p.requests.unshift(r); p.client.smsConsent = r.smsConsent; p.client.phone = r.phone; toast(pt('Request sent. We’ll be in touch soon.')); show('requests'); }
       catch (err) { toast(err.message, true); btn.disabled = false; btn.textContent = pt('Send request'); }
     });
     setMenu(false);
@@ -2471,6 +2479,9 @@ ${co.hours ? `<h3 class="cp-sec">${pt('Business hours')}</h3><table class="cp-ho
     if ($('.cp-side.open', main) && !e.target.closest('.cp-navs')) setMenu(false);
     const fb = e.target.closest('[data-cp-form]'); if (fb) { const [jid, fid] = fb.dataset.cpForm.split(':'); const j = p.jobs.find((x) => x.id === jid); const f = j && j.forms.find((x) => x.id === fid); if (f) modal(f.name, `<div class="jf-fill jf-done">${f.description ? `<p class="muted jf-desc">${esc(f.description)}</p>` : ''}<div class="jf-fin">${pt('Finished {date}', { date: esc(cpDate(f.completedAt.slice(0, 10))) })} · ${esc(j.title)}</div><div class="jf-items">${f.fields.map((x) => jfField(x, f.answers[x.id], true)).join('')}</div><div class="jf-foot"><a class="cp-btn" href="/api/portal/${encodeURIComponent(tok)}/forms/${esc(f.id)}/pdf" target="_blank" rel="noopener">${pt('Download PDF')}</a></div></div>`, true); return; } // a finished checklist the business shares
     const b = e.target.closest('[data-cp]'); if (b) { e.preventDefault(); if (b.dataset.rv) return openReview(p.reviewable[Number(b.dataset.rv)]); if (b.dataset.rve) { const r = p.reviews[Number(b.dataset.rve)]; return openReview({ kind: r.kind, title: r.title, number: r.refNumber, edit: r }); } show(b.dataset.cp); return; }
+    const lb = e.target.closest('[data-cp-lang]');
+    if (lb) { if (lb.dataset.cpLang === CP_LANG) return; try { localStorage.setItem('cpLang:' + tok, lb.dataset.cpLang); } catch (err) { /* only for this visit */ }
+      cpUseLang(p, lb.dataset.cpLang); document.title = `${co.name || pt('Client portal')} · ${pt('Client hub')}`; renderPortal(main, tok, p); return; }
     const cp = e.target.closest('[data-cp-copy]');
     if (cp) {
       const i = $('#cpRefLink', main); try { await navigator.clipboard.writeText(i.value); } catch (err) { i.select(); document.execCommand('copy'); }
