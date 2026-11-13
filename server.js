@@ -1809,19 +1809,22 @@ app.put('/api/company', (req, res) => {
   if ('timezone' in b) applyTimezone();
   save(); res.json({ ...db.company, account: accountInfo() });
 });
+// the logo for light backgrounds (logo) and the one for dark backgrounds (logoDark, ?kind=dark)
+const logoField = (req) => (req.query.kind === 'dark' ? 'logoDark' : 'logo');
 app.post('/api/company/logo', (req, res) => {
-  const { dataUrl } = req.body;
+  const { dataUrl } = req.body; const field = logoField(req);
   const m = /^data:image\/(png|jpeg|jpg|gif|webp|svg\+xml);base64,(.+)$/.exec(dataUrl || '');
   if (!m) return res.status(400).json({ error: 'Invalid image' });
   const ext = m[1] === 'svg+xml' ? 'svg' : m[1] === 'jpeg' ? 'jpg' : m[1];
-  const file = `logo-${Date.now()}.${ext}`;
+  const file = `logo-${field === 'logoDark' ? 'dark-' : ''}${Date.now()}.${ext}`;
   fs.writeFileSync(path.join(uploadDir(), file), Buffer.from(m[2], 'base64'));
-  db.company.logo = `/uploads/${file}`; save(); res.json(db.company);
+  db.company[field] = `/uploads/${file}`; save(); res.json(db.company);
 });
 app.delete('/api/company/logo', (req, res) => {
-  const old = /^\/uploads\/(logo-[\w-]+\.\w+)$/.exec(db.company.logo || '');
+  const field = logoField(req);
+  const old = /^\/uploads\/(logo-[\w-]+\.\w+)$/.exec(db.company[field] || '');
   if (old) fs.rm(path.join(uploadDir(), old[1]), () => {});
-  db.company.logo = ''; save(); res.json(db.company);
+  db.company[field] = ''; save(); res.json(db.company);
 });
 // every business uses the Worklio Pro app icon (Alpha → Settings → App icon), or the built-in one until that's uploaded
 const APP_ICON_DIR = path.join(__dirname, 'public', 'img', 'app');

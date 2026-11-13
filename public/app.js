@@ -267,7 +267,7 @@ const isOnPage = (p, path) => p === path || (!navPaths.includes(path) && path.st
 const SIDE_BREAKS = ['Money', 'Marketing']; // a line above these sections; the main menu shows no section names
 function sideHtml(path) {
   const items = me ? [['/profile', 'My Profile'], ...settingsFor()] : settingsFor(); // everyone can edit their own profile
-  const brand = `<div class="brand">${company.logo ? `<a href="/" data-link class="brand-logo" title="Home"><img src="${esc(company.logo)}" alt="Home"></a>` : brandImg(company.account && company.account.product, 'dark')}<span>${esc(company.name || (company.account && company.account.productName) || 'Worklio Pro')}</span></div>`;
+  const brand = `<div class="brand">${company.logoDark || company.logo ? `<a href="/" data-link class="brand-logo" title="Home"><img src="${esc(company.logoDark || company.logo)}" alt="Home"></a>` : brandImg(company.account && company.account.product, 'dark')}<span>${esc(company.name || (company.account && company.account.productName) || 'Worklio Pro')}</span></div>`;
   if (items.length && (sideMode || (items.some(([p]) => isOnPage(p, path)) ? 'settings' : 'main')) === 'settings') {
     const label = Object.fromEntries(items);
     return `<div class="side-nav side-settings">${brand}<button type="button" class="side-back" data-act="sideBack">${svgIcon(ICONS.back, 18)}<span>Go Back</span></button><h2 class="side-title">Settings</h2>` +
@@ -364,7 +364,7 @@ function searchFeatures(q) {
 }
 function buildTopbar() {
   // phones: the company logo (or name) on the left
-  $('#topbar').innerHTML = `<a href="/" data-link class="tb-logo" title="Home">${company.logo ? `<img src="${esc(company.logo)}" alt="${esc(company.name || 'Home')}">` : `<span>${esc(company.name || 'Home')}</span>`}</a>
+  $('#topbar').innerHTML = `<a href="/" data-link class="tb-logo" title="Home">${company.logo ? `<img src="${esc(company.logo)}" alt="${esc(company.name || 'Home')}"${company.logoDark ? ' class="lg-light"' : ''}>${company.logoDark ? `<img src="${esc(company.logoDark)}" alt="${esc(company.name || 'Home')}" class="lg-dark">` : ''}` : `<span>${esc(company.name || 'Home')}</span>`}</a>
 <a class="tb-fb tb-ref" href="/rewards" data-link title="Refer other businesses and earn free months" hidden>${svgIcon(ICONS.gift, 18)}<span>Refer &amp; earn</span></a><button type="button" class="tb-fb" data-act="feedbackForm" title="Send feedback about the app">${svgIcon(ICONS.feedback, 18)}<span>Feedback</span></button>
 <details class="menu tb-news"><summary class="tb-icon" title="What’s new" aria-label="What’s new"><span class="tb-circle">${svgIcon(ICONS.megaphone, 18)}</span><span class="tb-dot" hidden></span></summary><div class="menu-list" id="newsMenu"></div></details>
 <button type="button" class="tb-icon" data-act="openHelp" title="Help and support" aria-label="Help and support"><span class="tb-circle tb-q" aria-hidden="true">?</span></button>

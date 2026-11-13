@@ -2662,7 +2662,10 @@ function wireAsTabs(main) {
 async function companyPage(main, full) {
   const c = company; const integ = full ? await api('GET', '/api/integrations') : null;
   // App Settings boxes; on App Settings they sit in two columns outside the form, so their fields say form="cf"
-  const logoBox = planHas('branding') ? `<div class="card${full ? '' : ' cs'}"><h2>Logo</h2><div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap"><div id="logoPrev" style="width:120px;height:70px;border:1px dashed var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden">${c.logo ? `<img src="${esc(c.logo)}" style="max-width:100%;max-height:100%">` : '<span class="muted">No logo</span>'}</div><div class="logo-side"><div class="logo-acts"><input type="file" id="logoFile" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" style="width:auto">${c.logo ? '<button type="button" class="btn danger sm" data-act="removeLogo">Delete logo</button>' : ''}</div><div class="muted">Appears on quotes, invoices and the client portal.</div></div></div></div>` : '';
+  // two logos: one for light backgrounds (quotes, invoices, emails, client portal) and one for dark ones (the app's side menu, dark mode); click a box to choose an image
+  const logoSlot = (kind, src, label, note) => `<div class="logo-slot"><span class="logo-lbl">${label}</span><label class="logo-pick ${kind}" title="${src ? 'Replace' : 'Upload'} the logo for ${label.toLowerCase()}">${src ? `<img src="${esc(src)}" alt="">` : '<span>Click to upload</span>'}<input type="file" class="logo-file" data-kind="${kind}" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" hidden></label>
+<div class="logo-under">${src ? `<button type="button" class="logo-trash" data-act="removeLogo" data-kind="${kind}" title="Delete this logo" aria-label="Delete the logo for ${label.toLowerCase()}">${BP_TRASH}</button>` : ''}</div><span class="muted logo-note">${note}</span></div>`;
+  const logoBox = planHas('branding') ? `<div class="card${full ? '' : ' cs'}"><h2>Logo</h2><div class="logo-slots">${logoSlot('light', c.logo, 'Light backgrounds', 'Quotes, invoices, emails and the client portal.')}${logoSlot('dark', c.logoDark, 'Dark backgrounds', 'The side menu and dark mode. Uses the light one if blank.')}</div></div>` : '';
   const brandBox = full && planHas('branding') ? `<div class="card"><h2>Branding</h2><div class="row"><label>Brand color<input form="cf" name="brandColor" type="color" value="${esc(c.brandColor || '#2563eb')}"><span class="muted">Used on quotes, invoices and emails to clients.</span></label><label>Accent color<input form="cf" name="accentColor" type="color" value="${esc(c.accentColor || c.defaultAccent)}"><span class="muted">Used on your client portal.${c.accentColor ? ' <button type="button" class="linkbtn" data-act="resetAccent">Reset</button>' : ''}</span></label></div></div>` : '';
   const defaultsBox = full ? `<div class="card"><h2>Defaults</h2><label>Invoice footer message<input form="cf" name="invoiceFooter" value="${esc(c.invoiceFooter)}"></label></div>` : '';
   const prefixBox = full ? planHas('numberPrefixes') ? `<div class="card"><h2>Number prefixes</h2><p class="muted" style="margin-top:0">The label in front of each quote, job and invoice number. Changes apply to new ones only; existing numbers stay as they are.</p>
@@ -2717,17 +2720,20 @@ ${full ? `<div class="as-tabs" role="tablist">${AS_TABS.map(([t, n]) => `<button
     });
   }
   A.resetAccent = async () => { try { await api('PUT', '/api/company', { accentColor: '' }); toast('Accent color reset'); refresh(); } catch (err) { toast(err.message, true); } };
-  A.removeLogo = async () => {
-    if (!confirm('Delete your logo? It will be removed from quotes, invoices and the client portal.')) return;
-    try { await api('DELETE', '/api/company/logo'); toast('Logo deleted'); refresh(); } catch (err) { toast(err.message, true); }
+  A.removeLogo = async (d) => {
+    const dark = d.kind === 'dark';
+    if (!confirm(dark ? 'Delete your logo for dark backgrounds? The light one will be used instead.' : 'Delete your logo? It will be removed from quotes, invoices and the client portal.')) return;
+    try { const saved = await api('DELETE', '/api/company/logo' + (dark ? '?kind=dark' : '')); company = { ...company, ...saved }; toast('Logo deleted'); refresh(); } catch (err) { toast(err.message, true); }
   };
   wireAccountCards(main);
   if (full) { stripeReturnNotice(integ); const to = ['#zelle', '#pay-apps', '#late-fees'].includes(location.hash) ? $(location.hash, main) : null; if (to) to.scrollIntoView({ block: 'start' }); } // back from Stripe, or a link to Card payments
-  if ($('#logoFile')) $('#logoFile').addEventListener('change', async (e) => {
-    const f = e.target.files[0]; if (!f) return; if (f.size > 4e6) return toast('Logo must be under 4 MB', true);
-    const dataUrl = f.type === 'image/svg+xml' ? await readFileAsDataUrl(f) : await resizeImage(f, 600);
-    await api('POST', '/api/company/logo', { dataUrl }); toast('Logo updated'); refresh();
-  });
+  $$('.logo-file', main).forEach((inp) => inp.addEventListener('change', async (e) => {
+    const f = e.target.files[0]; e.target.value = ''; if (!f) return; if (f.size > 4e6) return toast('Logo must be under 4 MB', true);
+    try {
+      const dataUrl = f.type === 'image/svg+xml' ? await readFileAsDataUrl(f) : await resizeImage(f, 600);
+      const saved = await api('POST', '/api/company/logo' + (inp.dataset.kind === 'dark' ? '?kind=dark' : ''), { dataUrl }); company = { ...company, ...saved }; toast('Logo updated'); refresh();
+    } catch (err) { toast(err.message, true); }
+  }));
 }
 /* ===== App Settings: plan, web address, card payments ===== */
 function planCard(a) {
