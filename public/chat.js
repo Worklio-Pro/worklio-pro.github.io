@@ -81,7 +81,7 @@ textarea:focus,input:focus{outline:2px solid var(--brand,#2563eb);outline-offset
 .fgone{padding:6px 10px;font-size:13px;opacity:.75}
 .drop{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;background:rgba(37,99,235,.12);border:3px dashed var(--brand,#2563eb);border-radius:16px;font-weight:700;color:var(--brand,#2563eb);font-size:16px;pointer-events:none}
 .drop[hidden]{display:none}
-${where === 'app' ? '@media (max-width:760px){.btn{bottom:calc(var(--bnav-h,64px) + 84px)}.panel{bottom:calc(var(--bnav-h,64px) + 154px);max-height:calc(100vh - var(--bnav-h,64px) - 180px)}}' : ''}
+${where === 'app' ? '@media (max-width:760px){.btn{bottom:calc(var(--bnav-h,64px) + 12px + var(--chat-lift,0px))}.panel{bottom:calc(var(--bnav-h,64px) + 82px + var(--chat-lift,0px));max-height:calc(100vh - var(--bnav-h,64px) - 110px - var(--chat-lift,0px))}}' : ''}
 @media (max-width:480px){.panel{right:0;bottom:0;width:100vw;max-width:100vw;height:100%;max-height:100%;border-radius:0}.btn{${where === 'app' ? '' : 'bottom:16px;'}right:16px}}
 </style>
 <button class="btn" type="button" aria-label="Chat with us"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 3h14a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3h-7.6l-4.7 3.8A1 1 0 0 1 5 21v-3a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3z"/><path d="M7.5 8.5h9M7.5 12h6" stroke="var(--brand,#2563eb)" stroke-width="1.8" stroke-linecap="round"/></svg><span class="badge" hidden></span></button>
