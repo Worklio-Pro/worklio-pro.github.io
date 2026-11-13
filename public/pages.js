@@ -2494,6 +2494,15 @@ ${flSelect('Date format', 'dateFormat', ['MMM D, YYYY', 'MM/DD/YYYY', 'DD/MM/YYY
 ${flSelect('Time format', 'timeFormat', [['12', '12 Hour (1:30 PM)'], ['24', '24 Hour (13:30)']], c.timeFormat || '12')}
 ${flSelect('First day of the week', 'weekStart', [['sun', 'Sunday'], ['mon', 'Monday']], c.weekStart || 'mon')}</div>`.replace(/<select name=/g, '<select form="cf" name=');
 }
+// App Settings → General → Languages: the language new clients start with (each client's own is on their client page), and a link to ask
+// for another language on the Ideas board. Clients get their quotes, invoices, emails, PDFs and pay pages in their language (lib/i18n.js).
+const langLabel = (l) => (l.native === l.name ? l.name : `${l.native} (${l.name})`);
+function languagesBox(c) {
+  const langs = (c.account && c.account.languages) || []; if (langs.length < 2) return '';
+  return `<div class="card cs" id="languages"><h2>Languages</h2><p class="muted cs-note">Clients get their quotes, invoices, emails and PDFs in their own language. Choose it on each client’s page; new clients start with this one.</p>
+${flSelect('Default language for clients', 'clientLang', langs.map((l) => [l.code, langLabel(l)]), c.clientLang || 'en').replace('<select name=', '<select form="cf" name=')}
+<p class="muted cs-note">Available now: ${langs.map((l) => esc(l.native)).join(', ')}. <a href="/ideas/sso?r=${encodeURIComponent('/feedback/other')}" target="_blank" rel="noopener">Need another language? Request it</a></p></div>`;
+}
 // the kind of business (asked at sign-up; the choices come with the account info)
 function industryHtml(c) {
   const L = (c.account && c.account.industries) || []; if (!L.length) return '';
@@ -2647,7 +2656,7 @@ async function companyPage(main, full) {
 <div class="row3"><label>Venmo username<input form="cf" name="venmoHandle" value="${esc(c.venmoHandle ? '@' + c.venmoHandle : '')}" placeholder="@YourBusiness" autocomplete="off"></label><label>Cash App $Cashtag<input form="cf" name="cashappTag" value="${esc(c.cashappTag ? '$' + c.cashappTag : '')}" placeholder="$YourBusiness" autocomplete="off"></label><label>PayPal.me name<input form="cf" name="paypalHandle" value="${esc(c.paypalHandle ? 'paypal.me/' + c.paypalHandle : '')}" placeholder="paypal.me/YourBusiness" autocomplete="off"></label></div></div>` : '';
   main.innerHTML = `<div class="head"><div><h1>${full ? 'App Settings' : 'Company settings'}</h1>${full ? '<p class="sub">Defaults, white label and payments for every quote and invoice. Business details, social media and tax settings are on <a href="/settings/company" data-link>Company Profile</a>.</p>' : ''}</div></div>
 ${full ? `<div class="as-tabs" role="tablist">${AS_TABS.map(([t, n]) => `<button type="button" role="tab" data-as-tab="${t}" aria-controls="as-${t}">${n}</button>`).join('')}</div>
-<div class="as-panel" id="as-general" role="tabpanel">${planCard(c.account)}<div class="as-cols"><div class="as-col">${regionalBox(c)}${mxCard()}</div><div class="as-col">${defaultsBox}${savedDiscCard()}${prefixBox}</div></div></div>
+<div class="as-panel" id="as-general" role="tabpanel">${planCard(c.account)}<div class="as-cols"><div class="as-col">${regionalBox(c)}${languagesBox(c)}${mxCard()}</div><div class="as-col">${defaultsBox}${savedDiscCard()}${prefixBox}</div></div></div>
 <div class="as-panel" id="as-white-label" role="tabpanel"><div class="as-cols"><div class="as-col">${webAddressCard(c.account)}</div><div class="as-col">${brandBox || `<div class="card"><h2>Branding</h2><p class="muted" style="margin:0">Your own brand and accent colors on quotes, invoices, emails and the client portal come with a plan that includes Branding.</p></div>`}</div></div></div>
 <div class="as-panel" id="as-payments" role="tabpanel"><div class="as-cols"><div class="as-col">${payCard(integ)}${zelleBox}</div><div class="as-col">${appsBox}${lateFeeCard(c)}</div></div></div>
 <form id="cf"></form>` :`<form id="cf" class="cs-form">${companySettingsHtml(c, logoBox)}</form>`}`;
@@ -3614,19 +3623,25 @@ PAGES['/settings/emails'] = {
   title: 'Email Templates',
   // a list of the emails; clicking one opens it in an editor with a live preview
   async render(main) {
-    TPL.list = await api('GET', '/api/email-templates');
+    const langs = (company.account && company.account.languages) || []; const q = new URLSearchParams(location.search).get('lang');
+    TPL.lang = langs.some((l) => l.code === q) ? q : 'en'; const L = langs.find((l) => l.code === TPL.lang);
+    TPL.list = await api('GET', '/api/email-templates?lang=' + TPL.lang);
     main.innerHTML = `<div class="head"><div><h1>Email Templates</h1><p class="sub">Edit the emails sent to clients. Each one shows your logo, business name and brand color (Company Profile and App Settings).</p></div></div>
+${langs.length > 1 ? `<div class="as-tabs tpl-langs" role="tablist" aria-label="Language">${langs.map((l) => `<button type="button" role="tab" class="${l.code === TPL.lang ? 'on' : ''}" aria-selected="${l.code === TPL.lang}" data-act="tplLang" data-lang="${l.code}">${esc(l.native)}</button>`).join('')}</div>
+<p class="muted" style="margin:-4px 0 12px">${TPL.lang === 'en' ? 'Clients get the email in their own language (set on each client, or in App Settings → General → Languages).' : `The ${esc(L.name)} emails go to clients whose language is ${esc(L.native)}. Edit them like the English ones; placeholders such as {{client_name}} stay in English.`}</p>` : ''}
 <div class="card ctable"><div class="tablewrap"><table class="tpl-list"><tr><th>Email</th><th>When it’s sent</th><th>Subject</th><th></th></tr>
 ${TPL.list.map((t) => `<tr class="crow" data-act="editTpl" data-key="${t.key}"><td><strong>${esc(t.label)}</strong>${t.custom ? ' <span class="badge sent">customized</span>' : ''}</td><td class="muted">${esc(t.description)}</td><td class="tpl-subj">${esc(t.subject)}</td>
 <td class="r"><button type="button" class="btn alt sm row-edit" data-act="editTpl" data-key="${t.key}">Edit</button></td></tr>`).join('')}</table></div></div>`;
   },
 };
-const TPL = { list: [] };
+const TPL = { list: [], lang: 'en' };
+A.tplLang = (d) => { history.replaceState(history.state, '', '/settings/emails' + (d.lang === 'en' ? '' : '?lang=' + d.lang)); refresh(); };
 const tplSample = () => ({ work: 'Gutter cleaning', reply: 'Thank you! It was a pleasure working with you.', client_name: 'Jane Smith', company_name: company.name || 'Your Business', company_email: company.email || 'hello@yourbusiness.com', sent_date: fmtDate(ymd(new Date())), quote_number: docPrefix('quotePrefix') + '1005', quote_title: 'Backyard cleanup', invoice_number: docPrefix('invoicePrefix') + '3010', total: '$1,250.00', fee: '$25.00', balance: '$1,275.00', due_date: fmtDate(ymd(addDays(new Date(), 14))), job_number: docPrefix('jobPrefix') + '2010', job_title: 'Gutter cleaning', date: fmtDate(ymd(addDays(new Date(), 2))), time: '09:00', address: '100 Main St, Houston, TX 77002', amount: '$1,250.00', paid_for: 'Invoice ' + docPrefix('invoicePrefix') + '3010', reference: 'pi_3Q8x2L4eZvKYlo2C', staff_name: 'Alex Rivera', eta: '20 minutes', arrival_time: '2:35 PM' });
 const tplLinks = () => ({ quote: location.origin + '/p/quote/abc123', invoice: location.origin + '/pay/abc123', reviewRequest: location.origin + '/p/review/abc123', reviewReply: location.origin + '/p/review/abc123' });
 A.editTpl = (d) => {
-  const t = TPL.list.find((x) => x.key === d.key); if (!t) return; const vars = { ...tplSample(), link: tplLinks()[t.key] || '' };
-  const body = modal(`${t.label} email`, `<form class="tpl" data-sticky><p class="muted" style="margin:-4px 0 12px">${esc(t.description)}</p>
+  const t = TPL.list.find((x) => x.key === d.key); if (!t) return; const vars = { ...tplSample(), ...(TPL.lang === 'es' ? { eta: '20 minutos', paid_for: 'la factura ' + docPrefix('invoicePrefix') + '3010', work: 'Limpieza de canaletas', reply: '¡Gracias! Fue un placer trabajar con usted.' } : {}), link: tplLinks()[t.key] || '' };
+  const lname = TPL.lang === 'en' ? '' : ` (${((company.account.languages || []).find((l) => l.code === TPL.lang) || {}).native || TPL.lang})`;
+  const body = modal(`${t.label} email${lname}`, `<form class="tpl" data-sticky><p class="muted" style="margin:-4px 0 12px">${esc(t.description)}</p>
 <div class="tpl-grid"><div><label>Subject<input name="subject" value="${esc(t.subject)}" required></label><label>Message<textarea name="body" rows="14" required>${esc(t.body)}</textarea></label>
 <div class="muted" style="margin-bottom:6px">Insert a placeholder at the cursor:</div><div class="chips">${Object.entries(t.vars).map(([k, l]) => `<button type="button" class="btn alt sm" data-act="insVar" data-v="${k}" title="${esc(l)}">${esc(l)}</button>`).join('')}</div>
 <details class="tpl-fmt"><summary>Formatting</summary><ul><li><code># Heading</code> on the first line is the big title</li><li>Leave a blank line between paragraphs</li><li><code>**bold**</code> for bold</li><li><code>[Button text]({{link}})</code> on its own line is a button</li><li>Lines starting with <code>&gt;</code> go in a shaded box</li></ul></details>
@@ -3636,7 +3651,7 @@ A.editTpl = (d) => {
   body.parentElement.classList.add('tpl-modal');
   const form = $('form', body); let timer; let seq = 0;
   const draw = async () => { // the styled email, drawn by the server so it matches what clients get
-    const n = ++seq; const r = await api('POST', `/api/email-templates/${t.key}/preview`, { subject: form.subject.value, body: form.body.value, vars }).catch(() => null);
+    const n = ++seq; const r = await api('POST', `/api/email-templates/${t.key}/preview?lang=${TPL.lang}`, { subject: form.subject.value, body: form.body.value, vars }).catch(() => null);
     if (!r || n !== seq || !document.body.contains(form)) return; $('.pv-subj', form).textContent = r.subject; $('.pv-frame', form).srcdoc = r.html;
   };
   const preview = () => {
@@ -3649,7 +3664,7 @@ A.editTpl = (d) => {
   form._dirty = () => form.subject.value !== t.subject || form.body.value !== t.body;
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    await api('PUT', '/api/email-templates/' + t.key, { subject: form.subject.value, body: form.body.value });
+    await api('PUT', `/api/email-templates/${t.key}?lang=${TPL.lang}`, { subject: form.subject.value, body: form.body.value });
     closeModal(); toast(t.label + ' email saved'); refresh();
   });
   draw(); form.body.focus();
@@ -3661,7 +3676,7 @@ A.insVar = (d, el) => {
   f.value = f.value.slice(0, a) + tag + f.value.slice(b); f.focus(); f.setSelectionRange(a + tag.length, a + tag.length);
   f.dispatchEvent(new Event('input', { bubbles: true }));
 };
-A.resetTpl = async (d) => { if (!confirm('Replace your wording with the original default email?')) return; await api('DELETE', '/api/email-templates/' + d.key); closeModal(); toast('Template reset'); refresh(); };
+A.resetTpl = async (d) => { if (!confirm('Replace your wording with the original default email?')) return; await api('DELETE', `/api/email-templates/${d.key}?lang=${TPL.lang}`); closeModal(); toast('Template reset'); refresh(); };
 
 
 render();

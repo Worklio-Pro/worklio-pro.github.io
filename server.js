@@ -13,6 +13,7 @@ const BASE_URL = process.env.BASE_URL || `https://workliopro.com/public`;
 // many companies (accounts) on one server: see lib/tenancy.js. `db` below is the data of the account the current request is for.
 const tenancy = require('./lib/tenancy');
 const emails = require('./lib/emails');
+const i18n = require('./lib/i18n'); const { tx } = i18n; // what clients see, in each client's language
 const brandLib = require('./lib/brand');
 const notFound = require('./lib/not-found'); // the Page not found page (Yoya) for the website, help centre and Ideas
 const referrals = require('./lib/referrals');
@@ -891,7 +892,7 @@ function cleanPlan(b) {
 }
 // the biggest discount among a client's active plans (0 without the feature or a plan)
 // the discount's label on totals: its saved name (or "Discount"), plus the percentage. Plain text: escape it for HTML.
-const discLabel = (d) => `${d.discountName || 'Discount'}${d.discountType === 'percent' ? ` (${d.discountValue}%)` : ''}`;
+const discLabel = (d) => `${d.discountName || tx('Discount')}${d.discountType === 'percent' ? ` (${d.discountValue}%)` : ''}`;
 const memberDiscount = (clientId) => (tenancy.has('servicePlans') ? Math.max(0, ...memberships().filter((m) => m.clientId === clientId && m.status === 'active').map((m) => Number(m.discount) || 0)) : 0);
 const applyMemberDiscount = (doc) => { if (Number(doc.discountValue) > 0 || doc.membershipId) return; const pct = memberDiscount(doc.clientId); if (pct) { doc.discountType = 'percent'; doc.discountValue = pct; doc.memberDiscount = true; } };
 const nextVisit = (m) => { const today = localNow().date; return m.seriesId ? db.jobs.filter((j) => j.seriesId === m.seriesId && j.status === 'scheduled' && j.date >= today).sort((a, b) => a.date.localeCompare(b.date))[0] : null; };
@@ -909,7 +910,7 @@ function billMembership(m) {
       paidAt: null, token: token(), createdAt: iso(new Date()), notes: '', disclaimer: db.company.invoiceDisclaimer ?? '', taxRate: m.taxable ? db.company.taxRate : 0, discountType: 'flat', discountValue: 0,
       items: [{ desc: `${m.name} service plan`, details: `${niceDate(from)} – ${niceDate(to)}`, qty: 1, cost: m.price, markup: 0, markupType: 'percent', price: m.price }] });
     db.invoices.push(inv); made.push(inv); m.bills++; m.nextBill = addMonthsYmd(m.start, m.bills * PLAN_MONTHS[m.interval]);
-    if (m.autoSend && c.email) { inv.status = 'sent'; const email = renderEmail('invoice', docVars('invoice', inv));
+    if (m.autoSend && c.email) { inv.status = 'sent'; const email = inClientLang(c.id, () => renderEmail('invoice', docVars('invoice', inv)));
       notify({ clientId: c.id, channel: 'email', kind: 'invoice', refId: inv.id, refNumber: inv.number, subject: email.subject, html: email.html, body: email.body }).catch((e) => console.error('service plan invoice email:', e.message)); }
   }
   return made;
@@ -1739,7 +1740,7 @@ function accountInfo() {
     marketplace: marketplace.isOn(tenancy.platform()), // Alpha → Settings → App Marketplace
     aiDescriptions: tenancy.aiOn('aiDescriptions'), aiRewrite: tenancy.aiOn('aiRewrite'), // Alpha → Settings → Integrations → AI
     navIcons: iconsLib.navIcons(), navOrder: iconsLib.order(), // the menu's icons, order and sections (Alpha → Settings → Menu)
-    productName: tenancy.platform().settings.productName, product: brandLib.brand(), contactEmail: tenancy.platform().settings.contactEmail, helpUrl: tenancy.helpUrl(), ideasUrl: tenancy.ideasUrl(), managed: !tenancy.isDefault(),
+    productName: tenancy.platform().settings.productName, product: brandLib.brand(), contactEmail: tenancy.platform().settings.contactEmail, helpUrl: tenancy.helpUrl(), ideasUrl: tenancy.ideasUrl(), languages: i18n.list(), managed: !tenancy.isDefault(),
     matrixPricing: matrixAllowed(t), matrixAddon: matrixInfo(t), // matrix line items: included by Alpha, or the paid add-on
     referrals: referrals.openTo(t), cardReady: !!stripeKey(), // card payments set up (App Settings → Payments → Card payments)
     // how: 'embedded' (set up in the app, payout bank changed in the app), 'standard' (own Stripe account), 'server' (the platform's own account), or null
@@ -1788,7 +1789,8 @@ app.put('/api/company', (req, res) => {
     db.company.social = social;
   }
   const allowed = ['name', 'email', 'phone', 'website', 'address', 'logo', 'taxRate', 'paymentTermsDays', 'invoiceFooter', 'brandColor', 'accentColor', 'zelleRecipient', 'zelleName', 'quoteDisclaimer', 'invoiceDisclaimer', ...Object.keys(PREFIX_DEFAULTS),
-    ...ADDRESS_PARTS, 'taxIdName', 'taxIdNumber', 'taxName', 'taxDescription', 'hours', ...Object.keys(REGIONAL)];
+    ...ADDRESS_PARTS, 'taxIdName', 'taxIdNumber', 'taxName', 'taxDescription', 'hours', 'clientLang', ...Object.keys(REGIONAL)];
+  if ('clientLang' in b && !i18n.valid(b.clientLang)) return res.status(400).json({ error: 'Choose one of the languages listed' });
   const handles = {}; // Venmo / Cash App / PayPal.me: a pasted link and a leading @ or $ are fine
   for (const m of PAY_APPS) if (m.field in b) { const h = payHandle(b[m.field], m.host); if (h === null) return res.status(400).json({ error: `Enter your ${m.label} ${m.what}, like ${m.eg}` }); handles[m.field] = h; }
   for (const k of allowed) if (k in b) db.company[k] = k === 'taxRate' || k === 'paymentTermsDays' ? Number(b[k]) || 0 : typeof b[k] === 'string' ? b[k].trim().slice(0, 500) : b[k];
@@ -2115,7 +2117,7 @@ app.post('/api/:col', (req, res, next) => {
   if (PAYMENT_FIELDS[col]) { b = { ...b }; PAYMENT_FIELDS[col].forEach((k) => delete b[k]); } // payments only through their own endpoints
   let doc = { ...b, id: uid(), createdAt: iso(new Date()) };
   if (DOC_NUM[col] && String(b.number || '').trim()) { const r = customNumber(col, b.number); if (r.error) return res.status(400).json({ error: r.error }); doc.number = r.number; }
-  if (col === 'clients') { doc.portalToken = token(); doc.smsConsent = b.smsConsent ? { at: new Date().toISOString(), source: 'business' } : null; }
+  if (col === 'clients') { doc.portalToken = token(); doc.smsConsent = b.smsConsent ? { at: new Date().toISOString(), source: 'business' } : null; doc.lang = i18n.valid(b.lang) ? b.lang : ''; } // lang '': the business's default
   if (col === 'quotes') {
     doc.number = doc.number || nextNumber('quotes'); doc.status = b.status || 'draft'; doc.token = token();
     if (!tenancy.has('quoteOptions')) { delete doc.options; delete doc.chosenOption; } // Good / Better / Best is a plan feature
@@ -2160,6 +2162,7 @@ app.put('/api/:col/:id', (req, res, next) => {
   if (col === 'jobs' && isMemberReq(req)) upd = Object.fromEntries(Object.entries(upd).filter(([k]) => MEMBER_JOB_FIELDS.includes(k)));
   if (col === 'quotes' && !tenancy.has('quoteOptions') && Array.isArray(upd.options) && upd.options.length) delete upd.options; // Good / Better / Best is a plan feature (turning options off always works)
   if (col === 'tasks' || col === 'events') { const bad = calItemProblem({ ...db[col][i], ...upd }); if (bad) return res.status(400).json({ error: bad }); }
+  if (col === 'clients' && 'lang' in upd) upd.lang = i18n.valid(upd.lang) ? upd.lang : '';
   if (col === 'clients' && 'smsConsent' in upd) upd.smsConsent = upd.smsConsent ? db.clients[i].smsConsent || { at: new Date().toISOString(), source: 'business' } : null; // keeps when and where they first agreed
   let doc = { ...db[col][i], ...upd };
   // sent back to the client (Draft or Sent) before any deposit is paid: they approve and sign again, so the old signature goes
@@ -2400,38 +2403,50 @@ const EMAIL_TEMPLATES = {
     vars: { client_name: 'Client name', company_name: 'Your business name', company_email: 'Your business email', link: 'Link to their client portal' },
   },
 };
-const emailTemplate = (key) => ({ subject: EMAIL_TEMPLATES[key].subject, body: EMAIL_TEMPLATES[key].body, ...((db.emailTemplates || {})[key] || {}) });
+// Each template has an English version and one per other language (Spanish defaults in lib/i18n/es.js). A business's own edits are saved
+// under the key for English and "key:lang" for the others. Without a lang, the language in use (i18n.run around the email) picks.
+const tplKey = (key, lang) => (lang === 'en' ? key : `${key}:${lang}`);
+const defaultTemplate = (key, lang) => (lang !== 'en' && i18n.emailDefaults(lang)[key]) || EMAIL_TEMPLATES[key];
+const emailTemplate = (key, lang = i18n.current()) => { const d = defaultTemplate(key, lang); return { subject: d.subject, body: d.body, ...((db.emailTemplates || {})[tplKey(key, lang)] || {}) }; };
+// "Nov 13, 2026", or "13 nov 2026" for a client in Spanish; the numeric formats are the same in every language
 const niceDate = (s) => {
   if (!s) return '';
   const [y, m, d] = String(s).slice(0, 10).split('-'); const f = db.company.dateFormat;
-  return f === 'MM/DD/YYYY' ? `${m}/${d}/${y}` : f === 'DD/MM/YYYY' ? `${d}/${m}/${y}` : f === 'YYYY-MM-DD' ? `${y}-${m}-${d}` : new Date(s.slice(0, 10) + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return f === 'MM/DD/YYYY' ? `${m}/${d}/${y}` : f === 'DD/MM/YYYY' ? `${d}/${m}/${y}` : f === 'YYYY-MM-DD' ? `${y}-${m}-${d}` : new Date(s.slice(0, 10) + 'T12:00:00').toLocaleDateString(i18n.locale(), { month: 'short', day: 'numeric', year: 'numeric' });
 };
+// a client's language (client.lang), else the business's default for clients (App Settings → General → Languages)
+const langOf = (c) => i18n.pick(c && c.lang, db.company.clientLang);
+const langFor = (clientId) => langOf(findClient(clientId));
+// fn's emails, PDFs and pages come out in the client's language
+const inClientLang = (clientId, fn) => i18n.run(langFor(clientId), fn);
 // the business's emails to clients: styled like the platform's emails, with the business's logo, name and brand color (lib/emails.js)
 // US numbers as (713) 555-0100, like the phone box in Company Profile (public/app.js fmtUsPhone); other international numbers stay as typed
 const fmtUsPhone = (s) => { const t = String(s || '').trim(); let d = t.replace(/\D/g, ''); if (d.length === 11 && d[0] === '1') d = d.slice(1); else if (/^\+/.test(t)) return t; return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : t; };
 const companyBrand = (origin = baseUrl()) => ({ name: db.company.name || 'Your business', logoUrl: db.company.logo ? origin.replace(/\/+$/, '') + db.company.logo : '', color: db.company.brandColor,
   contact: [fmtUsPhone(db.company.phone), db.company.email, db.company.website] });
-function renderEmail(key, vars, t = emailTemplate(key), origin) { const m = emails.renderBusiness(t, { company_email: db.company.email || '', ...vars }, companyBrand(origin)); return { ...m, body: m.text }; }
+function renderEmail(key, vars, t = emailTemplate(key), origin) { const m = emails.renderBusiness(t, { company_email: db.company.email || '', ...vars }, { ...companyBrand(origin), sentBy: tx('Sent by'), lang: i18n.current() }); return { ...m, body: m.text }; }
 
-app.get('/api/email-templates', (req, res) => res.json(Object.entries(EMAIL_TEMPLATES).map(([key, d]) => {
-  const t = emailTemplate(key);
-  return { key, label: d.label, description: d.description, vars: d.vars, subject: t.subject, body: t.body, defaultSubject: d.subject, defaultBody: d.body, custom: !!(db.emailTemplates || {})[key] };
-})));
+// Settings → Email Templates edits one language at a time: ?lang=es (English when it's left out)
+const tplLang = (req) => i18n.pick(req.query.lang);
+app.get('/api/email-templates', (req, res) => { const lang = tplLang(req); res.json(Object.entries(EMAIL_TEMPLATES).map(([key, d]) => {
+  const t = emailTemplate(key, lang); const def = defaultTemplate(key, lang);
+  return { key, label: d.label, description: d.description, vars: d.vars, subject: t.subject, body: t.body, defaultSubject: def.subject, defaultBody: def.body, custom: !!(db.emailTemplates || {})[tplKey(key, lang)] };
+})); });
 // the editor's preview: what's in the form (saved or not) with the sample details it sends, logo loaded from this page's own address
 app.post('/api/email-templates/:key/preview', (req, res) => {
   const key = req.params.key; if (!EMAIL_TEMPLATES[key]) return res.status(404).json({ error: 'Unknown template' });
   const b = req.body || {}; const vars = Object.fromEntries(Object.entries(b.vars || {}).map(([k, v]) => [k, String(v ?? '').slice(0, 300)]));
-  const m = renderEmail(key, vars, { subject: String(b.subject || ''), body: String(b.body || '') }, `${/^https/.test(process.env.BASE_URL || '') ? 'https' : 'http'}://${req.headers.host}`);
+  const m = i18n.run(tplLang(req), () => renderEmail(key, vars, { subject: String(b.subject || ''), body: String(b.body || '') }, `${/^https/.test(process.env.BASE_URL || '') ? 'https' : 'http'}://${req.headers.host}`));
   res.json({ subject: m.subject, html: m.html });
 });
 app.put('/api/email-templates/:key', (req, res) => {
   const key = req.params.key; if (!EMAIL_TEMPLATES[key]) return res.status(404).json({ error: 'Unknown template' });
   const subject = String((req.body && req.body.subject) || '').trim(); const body = String((req.body && req.body.body) || '').trim();
   if (!subject || !body) return res.status(400).json({ error: 'Subject and message are required' });
-  db.emailTemplates = { ...(db.emailTemplates || {}), [key]: { subject, body } }; save(); res.json({ ok: true });
+  db.emailTemplates = { ...(db.emailTemplates || {}), [tplKey(key, tplLang(req))]: { subject, body } }; save(); res.json({ ok: true });
 });
 app.delete('/api/email-templates/:key', (req, res) => {
-  if (db.emailTemplates) delete db.emailTemplates[req.params.key]; save(); res.json({ ok: true });
+  if (db.emailTemplates) delete db.emailTemplates[tplKey(req.params.key, tplLang(req))]; save(); res.json({ ok: true });
 });
 
 app.post('/api/quotes/:id/send', async (req, res) => {
@@ -2442,7 +2457,7 @@ app.post('/api/quotes/:id/send', async (req, res) => {
   const channels = (req.body.channels && req.body.channels.length) ? req.body.channels : ['email'];
   const link = quoteLink(q); const co = db.company.name;
   const results = [];
-  const email = renderEmail('quote', docVars('quote', q));
+  const email = inClientLang(q.clientId, () => renderEmail('quote', docVars('quote', q)));
   if (channels.includes('email') && req.body.email) { const r = await emailDoc(req, 'quote', q); if (r.error) return res.status(400).json(r); results.push(...r.results); }
   for (const ch of channels) {
     if (ch === 'email' && req.body.email) continue;
@@ -2551,7 +2566,7 @@ app.post('/api/invoices/batch', async (req, res) => {
   let sent = 0;
   if (b.send) for (const inv of made) {
     const c = findClient(inv.clientId); if (!c.email || !(inv.total > 0)) continue;
-    inv.status = 'sent'; sent++; const email = renderEmail('invoice', docVars('invoice', inv));
+    inv.status = 'sent'; sent++; const email = inClientLang(inv.clientId, () => renderEmail('invoice', docVars('invoice', inv)));
     notify({ clientId: c.id, channel: 'email', kind: 'invoice', refId: inv.id, refNumber: inv.number, subject: email.subject, html: email.html, body: email.body }).then(() => save()).catch((e) => console.error('batch invoice email:', e.message));
   }
   save();
@@ -2580,7 +2595,7 @@ function nextLateFee(inv, cfg = db.company.lateFee || {}) {
   const n = (inv.lateFees || []).length; if (n >= (cfg.times || 1)) return null;
   return { n: n + 1, on: addDaysYmd(inv.dueDate, (cfg.days || 0) + 1 + 30 * n) };
 }
-const lateFeeText = (cfg) => (cfg.type === 'percent' ? `${cfg.amount}% of the balance` : money(cfg.amount));
+const lateFeeText = (cfg) => (cfg.type === 'percent' ? tx('{pct}% of the balance', { pct: cfg.amount }) : money(cfg.amount));
 EMAIL_TEMPLATES.lateFee = {
   label: 'Late fee added', description: 'Sent when a late fee is added to a past-due invoice, if you turned this on in App Settings → Payments → Late fees.',
   subject: 'Late fee added to invoice {{invoice_number}}',
@@ -2600,7 +2615,7 @@ function chargeLateFees() {
     computeTotals(inv); n++;
     const c = findClient(inv.clientId);
     if (cfg.email !== false && c && c.email) {
-      const email = renderEmail('lateFee', { ...docVars('invoice', inv), fee: money(amount), balance: money(invoiceCredits(inv).balanceDue) });
+      const email = inClientLang(c.id, () => renderEmail('lateFee', { ...docVars('invoice', inv), fee: money(amount), balance: money(invoiceCredits(inv).balanceDue) }));
       notify({ clientId: c.id, channel: 'email', kind: 'invoice', refId: inv.id, refNumber: inv.number, subject: email.subject, html: email.html, body: email.body }).then(() => save()).catch((e) => console.error('late fee email:', e.message));
     }
   }
@@ -2620,7 +2635,7 @@ app.post('/api/invoices/:id/send', async (req, res) => {
   const channels = (req.body.channels && req.body.channels.length) ? req.body.channels : ['email'];
   const link = invoiceLink(inv); const co = db.company.name;
   const results = [];
-  const email = renderEmail('invoice', docVars('invoice', inv));
+  const email = inClientLang(inv.clientId, () => renderEmail('invoice', docVars('invoice', inv)));
   if (channels.includes('email') && req.body.email) { const r = await emailDoc(req, 'invoice', inv); if (r.error) return res.status(400).json(r); results.push(...r.results); }
   for (const ch of channels) {
     if (ch === 'email' && req.body.email) continue;
@@ -2659,21 +2674,22 @@ const BUTTON_LINE = /^\s*\[([^\]]+)\]\(\{\{\s*link\s*\}\}\)\s*$/m; // the templa
 const fillVars = (str, v) => String(str || '').replace(/\{\{\s*(\w+)\s*\}\}/g, (m, k) => (k in v ? v[k] : m));
 // the box's starting subject and message: the template's, without its heading and button (the email puts the button under the message)
 // receipt: a paid invoice's receipt (the Payment receipt template; its button opens the receipt page)
-function emailDraft(kind, d, receipt = false) {
+function emailDraft(kind, d, receipt = false) { return inClientLang(d.clientId, () => { // in the client's language, so the business sees what they'll get
   const t = emailTemplate(receipt ? 'receipt' : kind); const v = receipt ? receiptVars(d) : docVars(kind, d);
   const message = fillVars(t.body.replace(BUTTON_LINE, '').split('\n').filter((l) => !/^#\s/.test(l)).join('\n'), v).replace(/\*\*(.+?)\*\*/g, '$1').replace(/\n{3,}/g, '\n\n').trim();
-  return { to: findClient(d.clientId)?.email || '', subject: fillVars(t.subject, v), message, button: (t.body.match(BUTTON_LINE) || [])[1] || (receipt ? 'View receipt' : kind === 'quote' ? 'View and approve quote' : 'View and pay invoice') };
-}
+  return { to: findClient(d.clientId)?.email || '', subject: fillVars(t.subject, v), message, button: (t.body.match(BUTTON_LINE) || [])[1] || (receipt ? tx('View receipt') : kind === 'quote' ? tx('View and approve quote') : tx('View and pay invoice')), lang: i18n.current() };
+}); }
 // the Payment receipt template's values for a whole paid invoice: everything it has paid (payments and a deposit credit), the paid date, the last payment's reference
 function receiptVars(inv) {
   const x = withStatus(inv); const last = [...(inv.payments || [])].sort((a, b) => (a.date || '').localeCompare(b.date || '')).pop();
-  return { ...docVars('invoice', inv), amount: money(round2((x.amountPaid || 0) + (x.depositApplied || 0)) || inv.total || 0), paid_for: `invoice ${inv.number}`, date: niceDate(String(inv.paidAt || '').slice(0, 10)), reference: (last && last.reference) || inv.number };
+  return { ...docVars('invoice', inv), amount: money(round2((x.amountPaid || 0) + (x.depositApplied || 0)) || inv.total || 0), paid_for: tx('invoice {number}', { number: inv.number }), date: niceDate(String(inv.paidAt || '').slice(0, 10)), reference: (last && last.reference) || inv.number };
 }
 const EMAIL_FILES_MAX = 10 * 1024 * 1024;
 const pdfName = (kind, d) => `${kind}_${String(d.number).replace(/[^\w-]+/g, '')}.pdf`;
 // sends what the Email box holds: to each address, the message with the button under it, any files (base64 from the browser) and the PDF;
 // "Send me a copy" sends the same email to the person sending it
-async function emailDoc(req, kind, d, receipt = false) {
+async function emailDoc(req, kind, d, receipt = false) { return inClientLang(d.clientId, () => emailDocIn(req, kind, d, receipt)); }
+async function emailDocIn(req, kind, d, receipt) {
   const e = req.body.email; const draft = emailDraft(kind, d, receipt);
   const to = [...new Set(String(e.to ?? draft.to).split(/[\s,;]+/).filter(Boolean))];
   if (!to.length) return { error: 'Enter an email address to send to' };
@@ -2691,7 +2707,8 @@ async function emailDoc(req, kind, d, receipt = false) {
   return { results };
 }
 // a quote or invoice as a PDF: the business, the client, the line items (an invoice's Client view switches apply), totals, message and contract
-function docPdf(kind, d) {
+function docPdf(kind, d) { return inClientLang(d.clientId, () => docPdfIn(kind, d)); } // in the client's language
+function docPdfIn(kind, d) {
   const q = kind === 'quote'; const co = db.company; const c = findClient(d.clientId) || {}; const x = q ? d : withStatus(d);
   const on = (k) => q || d[k] !== 'off'; const showQty = on('showQty'); const showUnit = on('showUnit'); const showLine = on('showLineTotals');
   const pdf = createPdf(); const L = 54; const R = 558; let y = 64;
@@ -2699,27 +2716,27 @@ function docPdf(kind, d) {
   const gray = '#475569'; const soft = '#64748b';
   // the business, and the document's number and dates
   pdf.text(L, y, co.name || '', { size: 18, bold: true }); y += 18;
-  for (const t of [co.address, [co.phone ? fmtUsPhone(co.phone) : '', co.email].filter(Boolean).join('  ·  '), co.website, !q && co.taxIdNumber ? `${co.taxIdName || 'Tax ID'}: ${co.taxIdNumber}` : ''].filter(Boolean)) y = pdf.para(L, y, t, 300, { size: 10, color: gray, lineHeight: 14 });
-  pdf.text(R, 64, q ? 'QUOTE' : 'INVOICE', { size: 18, bold: true, align: 'right' }); let ry = 84;
-  for (const t of q ? [`Quote #${d.number}`, `Created ${niceDate(String(d.createdAt || '').slice(0, 10))}`] : [`Invoice #${d.number}`, `Issued ${niceDate(d.issueDate)}`, `Due ${niceDate(d.dueDate)}`]) { pdf.text(R, ry, t, { size: 10, color: gray, align: 'right' }); ry += 14; }
+  for (const t of [co.address, [co.phone ? fmtUsPhone(co.phone) : '', co.email].filter(Boolean).join('  ·  '), co.website, !q && co.taxIdNumber ? `${co.taxIdName || tx('Tax ID')}: ${co.taxIdNumber}` : ''].filter(Boolean)) y = pdf.para(L, y, t, 300, { size: 10, color: gray, lineHeight: 14 });
+  pdf.text(R, 64, tx(q ? 'QUOTE' : 'INVOICE'), { size: 18, bold: true, align: 'right' }); let ry = 84;
+  for (const t of q ? [tx('Quote #{number}', { number: d.number }), tx('Created {date}', { date: niceDate(String(d.createdAt || '').slice(0, 10)) })] : [tx('Invoice #{number}', { number: d.number }), tx('Issued {date}', { date: niceDate(d.issueDate) }), tx('Due {date}', { date: niceDate(d.dueDate) })]) { pdf.text(R, ry, t, { size: 10, color: gray, align: 'right' }); ry += 14; }
   y = Math.max(y, ry) + 14; pdf.line(L, y, R, y); y += 26;
   // the client
-  pdf.text(L, y, q ? 'PREPARED FOR' : 'BILL TO', { size: 9, bold: true, color: soft }); y += 16;
+  pdf.text(L, y, tx(q ? 'PREPARED FOR' : 'BILL TO'), { size: 9, bold: true, color: soft }); y += 16;
   pdf.text(L, y, c.company ? `${c.name} (${c.company})` : c.name || '', { size: 11, bold: true }); y += 15;
   for (const t of [c.address, c.email, c.phone ? fmtUsPhone(c.phone) : ''].filter(Boolean)) y = pdf.para(L, y, t, 300, { size: 10, color: gray, lineHeight: 14 });
   const title = q ? d.title : d.subject; if (title) { y += 12; y = pdf.para(L, y, title, R - L, { size: 14, bold: true, lineHeight: 18 }); }
   // line items
   const cQty = 392; const cUnit = 474; const descW = (showQty || showUnit ? 300 : 400);
-  const head = () => { pdf.rect(L, y, R - L, 24, { fill: '#f1f5fb' }); pdf.text(L + 8, y + 16, 'Description', { size: 9, bold: true, color: soft }); if (showQty) pdf.text(cQty, y + 16, 'Qty', { size: 9, bold: true, color: soft, align: 'right' }); if (showUnit) pdf.text(cUnit, y + 16, 'Unit price', { size: 9, bold: true, color: soft, align: 'right' }); if (showLine) pdf.text(R - 8, y + 16, 'Total', { size: 9, bold: true, color: soft, align: 'right' }); y += 24; };
+  const head = () => { pdf.rect(L, y, R - L, 24, { fill: '#f1f5fb' }); pdf.text(L + 8, y + 16, tx('Description'), { size: 9, bold: true, color: soft }); if (showQty) pdf.text(cQty, y + 16, tx('Qty'), { size: 9, bold: true, color: soft, align: 'right' }); if (showUnit) pdf.text(cUnit, y + 16, tx('Unit price'), { size: 9, bold: true, color: soft, align: 'right' }); if (showLine) pdf.text(R - 8, y + 16, tx('Total'), { size: 9, bold: true, color: soft, align: 'right' }); y += 24; };
   const tl = 340;
   const row = (k, v, bold) => { room(22); pdf.text(tl, y + 14, k, { size: 10.5, bold }); pdf.text(R - 8, y + 14, v, { size: 10.5, bold, align: 'right' }); y += 22; };
   // a quote with options (Good / Better / Best): each option under its own heading with its items and totals, or only the chosen one
   const parts = q ? quoteParts(d) : [{ doc: d }];
-  if (parts.length > 1) { y += 16; y = pdf.para(L, y, `${parts.length} options: choose one when you approve`, R - L, { size: 10.5, color: gray, lineHeight: 14 }); }
+  if (parts.length > 1) { y += 16; y = pdf.para(L, y, tx('{n} options: choose one when you approve', { n: parts.length }), R - L, { size: 10.5, color: gray, lineHeight: 14 }); }
   for (const part of parts) {
     const dd = part.doc;
     if (part.opt) {
-      room(80); y += 30; pdf.text(L, y, `${part.chosen ? 'Chosen option: ' : ''}${part.opt.name}${part.recommended ? '  (Recommended)' : ''}`, { size: 13, bold: true }); if (parts.length > 1) pdf.text(R, y, money(dd.total || 0), { size: 13, bold: true, align: 'right' }); y += 4;
+      room(80); y += 30; pdf.text(L, y, `${part.chosen ? tx('Chosen option: ') : ''}${part.opt.name}${part.recommended ? `  (${tx('Recommended')})` : ''}`, { size: 13, bold: true }); if (parts.length > 1) pdf.text(R, y, money(dd.total || 0), { size: 13, bold: true, align: 'right' }); y += 4;
       if (part.opt.desc) for (const t of part.opt.desc.split('\n').filter((t) => t.trim())) y = pdf.para(L, y + 12, t, R - L, { size: 10, color: gray, lineHeight: 13 }) - 12;
     }
     y += 14; head();
@@ -2730,30 +2747,30 @@ function docPdf(kind, d) {
       for (const t of String(i.details || '').split('\n').filter((t) => t.trim())) yy = pdf.para(L + 8 + ind, yy + 1, t, descW - ind, { size: 9.5, color: gray, lineHeight: 13 });
       if (showQty && !inc && !hd) pdf.text(cQty, top, String(i.qty), { size: 10.5, align: 'right' });
       if (showUnit && !inc && !hd) pdf.text(cUnit, top, money(i.price), { size: 10.5, align: 'right' });
-      if (showLine && !hd) pdf.text(R - 8, top, inc ? 'Included' : money(round2(i.qty * i.price)), { size: 10.5, align: 'right' });
+      if (showLine && !hd) pdf.text(R - 8, top, inc ? tx('Included') : money(round2(i.qty * i.price)), { size: 10.5, align: 'right' });
       y = yy + 6; pdf.line(L, y, R, y);
     }
     // totals
     y += 10;
-    row('Subtotal', money(dd.subtotal || 0));
+    row(tx('Subtotal'), money(dd.subtotal || 0));
     if (dd.discount > 0) row(discLabel(dd), '-' + money(dd.discount));
-    if (Number(dd.taxRate)) row(`${Number(dd.taxRate) === Number(co.taxRate) && co.taxName ? co.taxName : 'Tax'} (${dd.taxRate}%)`, money(dd.tax || 0));
-    row(part.opt && parts.length > 1 ? `${part.opt.name} total` : 'Total', money(dd.total || 0), true);
-    if (q && dd.depositFee > 0) row(`Required deposit${dd.depositType === 'percent' ? ` (${dd.depositValue}%)` : ''}`, money(dd.depositFee));
+    if (Number(dd.taxRate)) row(`${Number(dd.taxRate) === Number(co.taxRate) && co.taxName ? co.taxName : tx('Tax')} (${dd.taxRate}%)`, money(dd.tax || 0));
+    row(part.opt && parts.length > 1 ? tx('{name} total', { name: part.opt.name }) : tx('Total'), money(dd.total || 0), true);
+    if (q && dd.depositFee > 0) row(`${tx('Required deposit')}${dd.depositType === 'percent' ? ` (${dd.depositValue}%)` : ''}`, money(dd.depositFee));
   }
   if (!q) {
     const paid = (d.payments || []).reduce((n, pm) => n + (Number(pm.amount) || 0), 0);
-    if (d.depositApplied > 0) row('Deposit collected', '-' + money(d.depositApplied));
-    if (paid > 0) row('Payments', '-' + money(paid));
-    row('Balance due', money(x.balanceDue ?? d.total), true);
+    if (d.depositApplied > 0) row(tx('Deposit collected'), '-' + money(d.depositApplied));
+    if (paid > 0) row(tx('Payments'), '-' + money(paid));
+    row(tx('Balance due'), money(x.balanceDue ?? d.total), true);
   }
   // the client message and the contract / disclaimer
-  for (const [h, t] of [['Message', d.notes], [q ? 'Contract / Disclaimer' : 'Terms', d.disclaimer]]) {
+  for (const [h, t] of [[tx('Message'), d.notes], [tx(q ? 'Contract / Disclaimer' : 'Terms'), d.disclaimer]]) {
     if (!String(t || '').trim()) continue;
     y += 18; room(40); pdf.text(L, y, h.toUpperCase(), { size: 9, bold: true, color: soft }); y += 16;
     for (const para of String(t).split('\n')) { room(14 * Math.max(1, Math.ceil(pdf.width(para, 10) / (R - L)))); y = para.trim() ? pdf.para(L, y, para, R - L, { size: 10, color: '#334155', lineHeight: 14 }) : y + 8; }
   }
-  return pdf.toBuffer(`${q ? 'Quote' : 'Invoice'} ${d.number}`);
+  return pdf.toBuffer(`${tx(q ? 'Quote' : 'Invoice')} ${d.number}`);
 }
 
 // ---------- payments recorded by staff (owner, admin, manager) ----------
@@ -2804,7 +2821,7 @@ app.post('/api/jobs/:id/remind', async (req, res) => {
   if (!j) return res.status(404).json({ error: 'Not found' });
   const co = db.company.name;
   const channels = (req.body.channels && req.body.channels.length) ? req.body.channels : [tenancy.has('sms') && findClient(j.clientId)?.smsConsent ? 'sms' : 'email'];
-  const email = renderEmail('reminder', { client_name: findClient(j.clientId)?.name || '', company_name: co, job_number: j.number, job_title: j.title, date: niceDate(j.date), time: j.startTime, address: j.address || '' });
+  const email = inClientLang(j.clientId, () => renderEmail('reminder', { client_name: findClient(j.clientId)?.name || '', company_name: co, job_number: j.number, job_title: j.title, date: niceDate(j.date), time: j.startTime, address: j.address || '' }));
   const results = [];
   for (const ch of channels) {
     results.push(await notify({ clientId: j.clientId, channel: ch, kind: 'job', refId: j.id, refNumber: j.number,
@@ -2824,9 +2841,9 @@ app.post('/api/jobs/:id/on-my-way', async (req, res) => {
   const eta = ETA_CHOICES.includes(Number(req.body.eta)) ? Number(req.body.eta) : 30;
   const st = (db.staff || []).find((x) => x.id === u.staffId); const who = String((st && st.name) || u.name || 'Our team').trim();
   const first = who.split(/\s+/)[0];
-  const arrive = new Date(Date.now() + eta * 60e3).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: db.company.timeFormat !== '24' });
+  const arrive = new Date(Date.now() + eta * 60e3).toLocaleTimeString(i18n.locale(langOf(c)), { hour: 'numeric', minute: '2-digit', hour12: db.company.timeFormat !== '24' });
   const ch = tenancy.has('sms') && c.smsConsent && c.phone ? 'sms' : 'email';
-  const email = renderEmail('onMyWay', { client_name: c.name || '', company_name: db.company.name, staff_name: who, eta: `${eta} minutes`, arrival_time: arrive, job_number: j.number, job_title: j.title || '', address: j.address || c.address || '' });
+  const email = inClientLang(c.id, () => renderEmail('onMyWay', { client_name: c.name || '', company_name: db.company.name, staff_name: who, eta: tx('{n} minutes', { n: eta }), arrival_time: arrive, job_number: j.number, job_title: j.title || '', address: j.address || c.address || '' }));
   const r = await notify({ clientId: c.id, channel: ch, kind: 'job', refId: j.id, refNumber: j.number, subject: email.subject, html: ch === 'email' ? email.html : '',
     body: ch === 'email' ? email.body : `${first} is on the way and should arrive in about ${eta} minutes (around ${arrive}). Reply STOP to opt out.` });
   if (r.status !== 'failed') j.onMyWay = { at: new Date().toISOString(), staffId: u.staffId || null, name: who, eta, channel: ch };
@@ -2837,7 +2854,7 @@ app.post('/api/jobs/:id/on-my-way', async (req, res) => {
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 function shell(title, inner) {
   const co = db.company;
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><link rel="icon" href="/favicon.ico">
+  return `<!doctype html><html lang="${i18n.current()}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><link rel="icon" href="/favicon.ico">
 <style>body{font-family:system-ui,sans-serif;background:#f4f6f8;margin:0;color:#111827}.card{max-width:640px;margin:24px auto;background:#fff;border-radius:12px;padding:28px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
 h1{margin:0 0 4px;font-size:22px}table{width:100%;border-collapse:collapse;margin:16px 0}td,th{padding:8px 4px;border-bottom:1px solid #e5e7eb;text-align:left}.r{text-align:right}
 .btn{background:${esc(co.brandColor)};color:#fff;border:0;border-radius:8px;padding:12px 20px;font-size:16px;cursor:pointer}.btn.alt{background:#fff;color:#111;border:1px solid #d1d5db}.muted{color:#6b7280;font-size:14px}.badge{display:inline-block;padding:2px 10px;border-radius:99px;background:#e5e7eb;font-size:13px}.paid{background:#dcfce7;color:#166534}
@@ -2851,10 +2868,10 @@ const heading = (i) => !!i.matrix; // a matrix line: its sizes and colors are th
 function itemsTable(d, o = {}) {
   const qty = o.qty !== false; const unit = o.unit !== false; const line = o.line !== false; const span = 1 + qty + unit;
   const row = (label, value) => `<tr><td colspan="${span}" class="r">${label}</td><td class="r">${value}</td></tr>`;
-  return `<table><tr><th>Description</th>${qty ? '<th class="r">Qty</th>' : ''}${unit ? '<th class="r">Price</th>' : ''}<th class="r">${line ? 'Amount' : ''}</th></tr>${d.items.map((i) => { const inc = included(i); const hd = heading(i); return `<tr><td${i.sub ? ' style="padding-left:28px"' : ''}>${hd ? `<strong>${esc(i.desc)}</strong>` : esc(i.desc)}${i.details ? `<div class="muted" style="white-space:pre-line">${esc(i.details)}</div>` : ''}</td>${qty ? `<td class="r">${inc || hd ? '' : i.qty}</td>` : ''}${unit ? `<td class="r">${inc || hd ? '' : money(i.price)}</td>` : ''}<td class="r">${hd ? '' : inc ? (line || !unit ? 'Included' : '') : line ? money(i.qty * i.price) : ''}</td></tr>`; }).join('')}
-${row('Subtotal', money(d.subtotal))}${d.discount > 0 ? row(esc(discLabel(d)), '−' + money(d.discount)) : ''}${row(`${esc(Number(d.taxRate) === Number(db.company.taxRate) && db.company.taxName ? db.company.taxName : 'Tax')} (${d.taxRate}%)`, money(d.tax))}${row('<strong>Total</strong>', `<strong>${money(d.total)}</strong>`)}
-${o.invoice ? (d.depositApplied > 0 ? row(`Deposit collected (quote ${esc(d.depositQuote)}, ${esc(niceDate(d.depositAppliedAt))})`, '−' + money(d.depositApplied)) + row('<strong>Balance due</strong>', `<strong>${money(d.balanceDue)}</strong>`) : '')
-    : d.depositFee > 0 ? row(`Deposit${d.depositType === 'percent' ? ` (${d.depositValue}%)` : ''}`, money(d.depositFee)) + row('Balance after deposit', money(d.total - d.depositFee)) : ''}</table>`;
+  return `<table><tr><th>${tx('Description')}</th>${qty ? `<th class="r">${tx('Qty')}</th>` : ''}${unit ? `<th class="r">${tx('Price')}</th>` : ''}<th class="r">${line ? tx('Amount') : ''}</th></tr>${d.items.map((i) => { const inc = included(i); const hd = heading(i); return `<tr><td${i.sub ? ' style="padding-left:28px"' : ''}>${hd ? `<strong>${esc(i.desc)}</strong>` : esc(i.desc)}${i.details ? `<div class="muted" style="white-space:pre-line">${esc(i.details)}</div>` : ''}</td>${qty ? `<td class="r">${inc || hd ? '' : i.qty}</td>` : ''}${unit ? `<td class="r">${inc || hd ? '' : money(i.price)}</td>` : ''}<td class="r">${hd ? '' : inc ? (line || !unit ? tx('Included') : '') : line ? money(i.qty * i.price) : ''}</td></tr>`; }).join('')}
+${row(tx('Subtotal'), money(d.subtotal))}${d.discount > 0 ? row(esc(discLabel(d)), '−' + money(d.discount)) : ''}${row(`${esc(Number(d.taxRate) === Number(db.company.taxRate) && db.company.taxName ? db.company.taxName : tx('Tax'))} (${d.taxRate}%)`, money(d.tax))}${row(`<strong>${tx('Total')}</strong>`, `<strong>${money(d.total)}</strong>`)}
+${o.invoice ? (d.depositApplied > 0 ? row(tx('Deposit collected (quote {number}, {date})', { number: esc(d.depositQuote), date: esc(niceDate(d.depositAppliedAt)) }), '−' + money(d.depositApplied)) + row(`<strong>${tx('Balance due')}</strong>`, `<strong>${money(d.balanceDue)}</strong>`) : '')
+    : d.depositFee > 0 ? row(`${tx('Deposit')}${d.depositType === 'percent' ? ` (${d.depositValue}%)` : ''}`, money(d.depositFee)) + row(tx('Balance after deposit'), money(d.total - d.depositFee)) : ''}</table>`;
 }
 
 // Paying outside the app: Zelle, Venmo, Cash App and PayPal. None of them tells us a payment arrived, so the client says they sent it
@@ -2884,27 +2901,27 @@ function offlineMethods(doc) {
 function offlineBox(doc, amount, memo, base) {
   const methods = offlineMethods(doc); if (!methods.length) return '';
   const wrap = (html) => `<div style="background:#f5f3ff;padding:16px;border-radius:8px;margin-top:16px;border:1px solid #c4b5fd">${html}</div>`;
-  if (doc.zelleSentAt) return wrap(`<p style="margin:0">✓ You told us you sent this payment by ${esc(PAY_VIA[doc.sentVia] || 'Zelle')} on ${esc(niceDate(doc.zelleSentAt))}. We'll confirm it once it arrives.</p>`);
+  if (doc.zelleSentAt) return wrap(`<p style="margin:0">✓ ${tx('You told us you sent this payment by {app} on {date}. We’ll confirm it once it arrives.', { app: esc(PAY_VIA[doc.sentVia] || 'Zelle'), date: esc(niceDate(doc.zelleSentAt)) })}</p>`);
   const amt = (Math.round(amount * 100) / 100).toFixed(2); const sm = 'display:flex;align-items:center;justify-content:center;width:100%;box-sizing:border-box;min-height:50px;padding:12px 16px;font-size:16px;font-weight:600;line-height:1.3;text-align:center'; // big and full width, easy to tap
-  const sent = (m) => `<form method="post" action="${esc(`${base}/sent/${m.key}`)}" style="margin-top:10px"><button class="btn alt" style="${sm}">I've sent the payment by ${esc(m.label)}</button></form>`;
+  const sent = (m) => `<form method="post" action="${esc(`${base}/sent/${m.key}`)}" style="margin-top:10px"><button class="btn alt" style="${sm}">${tx('I’ve sent the payment by {app}', { app: esc(m.label) })}</button></form>`;
   const box = (m) => {
     if (m.key === 'zelle') {
       const z = db.company.zelleRecipient;
-      return `<h3 style="margin:0 32px 12px 0">Pay with Zelle</h3>
-<p style="margin:0 0 6px">Send <strong>${money(amount)}</strong> with Zelle to:</p>
-<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><strong style="font-size:18px">${esc(z)}</strong><button type="button" class="btn alt" style="${sm}" data-v="${esc(z)}" onclick="navigator.clipboard.writeText(this.dataset.v);this.textContent='Copied'">Copy</button></div>
-${db.company.zelleName ? `<div class="muted">Registered to ${esc(db.company.zelleName)}. Check this name before you send.</div>` : ''}
-<p class="muted" style="margin-bottom:0">Use your bank's app or the Zelle app, and put <strong>${esc(memo)}</strong> in the memo.</p>${sent(m)}`;
+      return `<h3 style="margin:0 32px 12px 0">${tx('Pay with {app}', { app: 'Zelle' })}</h3>
+<p style="margin:0 0 6px">${tx('Send {amount} with Zelle to:', { amount: `<strong>${money(amount)}</strong>` })}</p>
+<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><strong style="font-size:18px">${esc(z)}</strong><button type="button" class="btn alt" style="${sm}" data-v="${esc(z)}" data-done="${esc(tx('Copied'))}" onclick="navigator.clipboard.writeText(this.dataset.v);this.textContent=this.dataset.done">${tx('Copy')}</button></div>
+${db.company.zelleName ? `<div class="muted">${tx('Registered to {name}. Check this name before you send.', { name: esc(db.company.zelleName) })}</div>` : ''}
+<p class="muted" style="margin-bottom:0">${tx('Use your bank’s app or the Zelle app, and put {memo} in the memo.', { memo: `<strong>${esc(memo)}</strong>` })}</p>${sent(m)}`;
     }
     const h = db.company[m.field];
-    return `<h3 style="margin:0 32px 12px 0">Pay with ${esc(m.label)}</h3>
-<p style="margin:0 0 10px">Send <strong>${money(amount)}</strong> to <strong>${esc(m.show(h))}</strong>.</p>
-<a class="btn" href="${esc(m.link(h, amt, memo))}" target="_blank" rel="noopener">Open ${esc(m.label)}</a>
-<p class="muted" style="margin-bottom:0">Check the amount, and put <strong>${esc(memo)}</strong> in the note.</p>${sent(m)}`;
+    return `<h3 style="margin:0 32px 12px 0">${tx('Pay with {app}', { app: esc(m.label) })}</h3>
+<p style="margin:0 0 10px">${tx('Send {amount} to {to}.', { amount: `<strong>${money(amount)}</strong>`, to: `<strong>${esc(m.show(h))}</strong>` })}</p>
+<a class="btn" href="${esc(m.link(h, amt, memo))}" target="_blank" rel="noopener">${tx('Open {app}', { app: esc(m.label) })}</a>
+<p class="muted" style="margin-bottom:0">${tx('Check the amount, and put {memo} in the note.', { memo: `<strong>${esc(memo)}</strong>` })}</p>${sent(m)}`;
   };
   // one tile per app in its brand colors; tapping it opens that app's instructions in a pop-up (a <dialog>)
-  const tile = (m) => `<button type="button" class="pa-t pa-${m.key}" data-pay="${m.key}" aria-haspopup="dialog" aria-label="Pay with ${esc(m.label)}">${PAY_TILE[m.key]}</button>`;
-  const pop = (m) => `<dialog class="pa-d" id="pa-${m.key}" aria-label="Pay with ${esc(m.label)}"><button type="button" class="pa-x" data-close aria-label="Close">×</button>${box(m)}</dialog>`;
+  const tile = (m) => `<button type="button" class="pa-t pa-${m.key}" data-pay="${m.key}" aria-haspopup="dialog" aria-label="${tx('Pay with {app}', { app: esc(m.label) })}">${PAY_TILE[m.key]}</button>`;
+  const pop = (m) => `<dialog class="pa-d" id="pa-${m.key}" aria-label="${tx('Pay with {app}', { app: esc(m.label) })}"><button type="button" class="pa-x" data-close aria-label="${tx('Close')}">×</button>${box(m)}</dialog>`;
   return `<style>.pa{margin-top:16px}.pa-h{font-weight:600;margin:0 0 8px}.pa-g{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px}
 .pa-t{display:flex;align-items:center;justify-content:center;gap:6px;height:54px;border-radius:10px;border:1px solid transparent;cursor:pointer;font:700 19px/1 system-ui,-apple-system,sans-serif;color:#fff;padding:0 10px}
 .pa-t:focus-visible{outline:3px solid #2563eb;outline-offset:2px}.pa-t:hover{filter:brightness(1.06)}
@@ -2914,7 +2931,7 @@ ${db.company.zelleName ? `<div class="muted">Registered to ${esc(db.company.zell
 .pa-paypal b{color:#003087}.pa-paypal i{color:#009cde}
 .pa-d{border:0;border-radius:14px;padding:22px 20px 20px;width:min(420px,calc(100% - 32px));box-shadow:0 20px 50px rgba(0,0,0,.25)}.pa-d::backdrop{background:rgba(15,23,42,.5)}
 .pa-x{position:absolute;top:10px;right:12px;border:0;background:none;font-size:26px;line-height:1;cursor:pointer;color:#6b7280;padding:4px 8px}</style>
-<div class="pa"><p class="pa-h">Pay with an app</p><div class="pa-g">${methods.map(tile).join('')}</div>${methods.map(pop).join('')}</div>
+<div class="pa"><p class="pa-h">${tx('Pay with an app')}</p><div class="pa-g">${methods.map(tile).join('')}</div>${methods.map(pop).join('')}</div>
 <script>(function(){var r=document.currentScript.previousElementSibling;
 r.addEventListener('click',function(e){var t=e.target.closest('[data-pay]');if(t){var d=r.querySelector('#pa-'+t.dataset.pay);if(d&&d.showModal)d.showModal();return}
 var d=e.target.closest('dialog');if(!d)return;var b=d.getBoundingClientRect(),out=e.target===d&&(e.clientX<b.left||e.clientX>b.right||e.clientY<b.top||e.clientY>b.bottom);
@@ -2951,12 +2968,15 @@ function onlineMethods(kind, doc) {
   return [s[kind + 'Card'] && doc.allowCard !== 'off' && 'card', s[kind + 'Ach'] && doc.allowAch !== 'off' && 'us_bank_account'].filter(Boolean); // each has its own switch on the quote or invoice
 }
 // card and bank (ACH) both on: a button each, so the client sees the bank option before Stripe's page (the button's method= picks it)
-const methodLabel = (m, amount, what = '') => (m === 'us_bank_account' ? `Pay ${what}${money(amount)} from your bank (ACH)` : `Pay ${what}${money(amount)} with card`);
+// what: truthy for a quote's deposit ("Pay deposit of $50.00 with card")
+const methodLabel = (m, amount, what = '') => { const a = { amount: money(amount) };
+  return m === 'us_bank_account' ? (what ? tx('Pay deposit of {amount} from your bank (ACH)', a) : tx('Pay {amount} from your bank (ACH)', a)) : (what ? tx('Pay deposit of {amount} with card', a) : tx('Pay {amount} with card', a)); };
 const payButtons = (methods, amount, what = '') => (methods.length > 1
   ? methods.map((m) => `<button class="btn payBtn" style="width:100%" name="method" value="${m}" data-base="${esc(methodLabel(m, 0, what))}">${methodLabel(m, amount, what)}</button>`).join('')
   : `<button class="btn payBtn" style="width:100%" data-base="${esc(payButtonLabel(methods, 0, what))}">${payButtonLabel(methods, amount, what)}</button>`);
 const pickMethod = (methods, b) => (b && methods.includes(b.method) ? [b.method] : methods); // the button the client pressed, or every method
-const payButtonLabel = (methods, amount, what = '') => (methods.length > 1 ? `Pay ${what}${money(amount)} online` : methods[0] === 'us_bank_account' ? `Pay ${what}${money(amount)} from your bank` : `Pay ${what}${money(amount)} with card`);
+const payButtonLabel = (methods, amount, what = '') => { const a = { amount: money(amount) };
+  return methods.length > 1 ? (what ? tx('Pay deposit of {amount} online', a) : tx('Pay {amount} online', a)) : methods[0] === 'us_bank_account' ? (what ? tx('Pay deposit of {amount} from your bank', a) : tx('Pay {amount} from your bank', a)) : (what ? tx('Pay deposit of {amount} with card', a) : tx('Pay {amount} with card', a)); };
 // a Checkout page for one amount; meta = { invoiceId } or { quoteId }; methods = Stripe payment method types
 async function stripeCheckout({ amount, name, client, meta, successUrl, cancelUrl, methods = ['card'], tip = 0 }) {
   const p = {
@@ -2964,9 +2984,10 @@ async function stripeCheckout({ amount, name, client, meta, successUrl, cancelUr
     'line_items[0][price_data][unit_amount]': String(Math.round(amount * 100)), 'line_items[0][price_data][product_data][name]': name,
     success_url: successUrl + (successUrl.includes('?') ? '&' : '?') + 'session_id={CHECKOUT_SESSION_ID}', cancel_url: cancelUrl,
     'payment_intent_data[description]': `${db.company.name}: ${name}${tip > 0 ? ` + ${money(tip)} tip` : ''}`,
+    ...(i18n.current() !== 'en' ? { locale: i18n.current() } : {}), // Stripe's page in the client's language
   };
   if (tip > 0) { // its own line on the Checkout page; metadata.tip tells applyStripeSession how much of the total is the tip
-    Object.assign(p, { 'line_items[1][quantity]': '1', 'line_items[1][price_data][currency]': 'usd', 'line_items[1][price_data][unit_amount]': String(Math.round(tip * 100)), 'line_items[1][price_data][product_data][name]': 'Tip' });
+    Object.assign(p, { 'line_items[1][quantity]': '1', 'line_items[1][price_data][currency]': 'usd', 'line_items[1][price_data][unit_amount]': String(Math.round(tip * 100)), 'line_items[1][price_data][product_data][name]': tx('Tip') });
     meta = { ...meta, tip: tip.toFixed(2) };
   }
   for (const [k, v] of Object.entries(meta)) { p[`metadata[${k}]`] = v; p[`payment_intent_data[metadata][${k}]`] = v; }
@@ -2983,11 +3004,11 @@ function applyStripeSession(s) {
   clearPayCache(); // a new payment: the Payments page asks Stripe again
   const amount = round2((Number(s.amount_total) || 0) / 100); const meta = s.metadata || {};
   const tip = meta.invoiceId ? Math.min(amount, Math.max(0, round2(Number(meta.tip) || 0))) : 0; // a tip the client added on the invoice page
-  const tell = (what, clientId) => {
+  const tell = (what, clientId, [paidFor, paidVars]) => { // paidFor: what was paid in the client's words (the receipt is in their language)
     if (tip > 0) what += ` (including a ${money(tip)} tip)`;
     const c = findClient(clientId); const set = paySettings();
     if (set.emailReceipts && c && c.email) { // receipt to the client, from the business
-      const rm = renderEmail('receipt', { client_name: c.name, company_name: db.company.name, amount: money(amount), paid_for: what, date: niceDate(iso(new Date())), reference: s.payment_intent || s.id });
+      const rm = inClientLang(c.id, () => renderEmail('receipt', { client_name: c.name, company_name: db.company.name, amount: money(amount), paid_for: tx(paidFor, paidVars) + (tip > 0 ? tx(' (including a {tip} tip)', { tip: money(tip) }) : ''), date: niceDate(iso(new Date())), reference: s.payment_intent || s.id }));
       notify({ clientId, channel: 'email', kind: 'receipt', refId: meta.invoiceId || meta.quoteId, refNumber: '', subject: rm.subject, body: rm.text, html: rm.html }).then(() => save()).catch(() => {});
     }
     if (!set.notifyEmail || !db.company.email) return;
@@ -3001,13 +3022,13 @@ function applyStripeSession(s) {
     if (!inv || inv.stripeSessionId === s.id) return inv;
     inv.payments = [...(inv.payments || []), { id: uid(), amount: round2(amount - tip), ...(tip > 0 ? { tip } : {}), method: 'stripe', date: iso(new Date()), reference: s.payment_intent || s.id, recordedBy: 'Stripe', createdAt: new Date().toISOString() }];
     Object.assign(inv, { paidAmount: round2(amount - tip), stripeSessionId: s.id, stripePaymentIntent: s.payment_intent || null }); settleInvoice(inv);
-    save(); tell(`invoice ${inv.number}`, inv.clientId); return inv;
+    save(); tell(`invoice ${inv.number}`, inv.clientId, [/*tx*/'invoice {number}', { number: inv.number }]); return inv;
   }
   if (meta.quoteId) {
     const q = db.quotes.find((x) => x.id === meta.quoteId);
     if (!q || q.stripeSessionId === s.id) return q;
     Object.assign(q, { depositPaidAt: iso(new Date()), depositStatus: 'paid', depositPaidAmount: amount, depositMethod: 'stripe', depositReference: s.payment_intent || s.id, stripeSessionId: s.id, stripePaymentIntent: s.payment_intent || null });
-    save(); tell(`the deposit on quote ${q.number}`, q.clientId); return q;
+    save(); tell(`the deposit on quote ${q.number}`, q.clientId, [/*tx*/'the deposit on quote {number}', { number: q.number }]); return q;
   }
   return null;
 }
@@ -3207,7 +3228,7 @@ app.get('/api/payment-detail/:id/pdf', async (req, res) => {
 app.post('/api/payment-detail/:id/receipt', async (req, res) => {
   const f = findPayment(req.params.id); if (!f) return res.status(404).json({ error: 'Payment not found' });
   const c = findClient(f.doc.clientId); if (!c || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email || '')) return res.status(400).json({ error: 'This client has no email address. Add one to their client details first.' });
-  const rm = renderEmail('receipt', { client_name: c.name, company_name: db.company.name, amount: money(Number(f.p.amount) || 0), paid_for: f.what, date: niceDate((f.p.date || '').slice(0, 10)), reference: f.p.reference || f.doc.number });
+  const rm = inClientLang(c.id, () => renderEmail('receipt', { client_name: c.name, company_name: db.company.name, amount: money(Number(f.p.amount) || 0), paid_for: (f.kind === 'quote' ? tx('the deposit on quote {number}', { number: f.doc.number }) : tx('invoice {number}', { number: f.doc.number })), date: niceDate((f.p.date || '').slice(0, 10)), reference: f.p.reference || f.doc.number }));
   const n = await notify({ clientId: c.id, channel: 'email', kind: 'receipt', refId: f.doc.id, refNumber: f.doc.number, subject: rm.subject, body: rm.text, html: rm.html }); save();
   if (n.status === 'failed') return res.status(502).json({ error: n.detail || 'The receipt couldn’t be sent' });
   res.json({ ok: true, to: c.email, status: n.status });
@@ -3241,14 +3262,14 @@ function tipPicker(due, methods) {
 .tip-o span{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:52px;padding:6px 4px;border:1px solid #d1d5db;border-radius:8px;cursor:pointer;font-size:15px;text-align:center}.tip-o small{font-size:12px;color:#6b7280;font-weight:400}
 .tip-o input:checked+span{border-color:${c};box-shadow:0 0 0 1px ${c};font-weight:600}.tip-o input:focus-visible+span{outline:2px solid ${c};outline-offset:2px}
 .tip-x{display:none;margin-top:10px}.tip-x.on{display:block}@media(max-width:420px){.tip-g{grid-template-columns:repeat(3,1fr)}}</style>
-<fieldset class="tip"><legend>Add a tip?</legend><div class="tip-g">${opt('0', 'No tip', '', true)}${TIP_PCTS.map((p) => opt(p, p + '%', `<i data-p="${p}" style="font-style:normal">${money(round2(due * p / 100))}</i>`)).join('')}${opt('other', 'Other', '')}</div>
-<label class="tip-x" id="tipX">Tip amount<input name="tipAmount" type="text" inputmode="decimal" placeholder="$0.00" autocomplete="off"></label>
-<p class="muted" style="margin:8px 0 0">Tips go to ${esc(db.company.name)}.</p></fieldset>
-<script>(function(){var due=${due},max=${tipMax(due)},f=document.currentScript.closest('form'),x=f.querySelector('#tipX'); 
+<fieldset class="tip"><legend>${tx('Add a tip?')}</legend><div class="tip-g">${opt('0', tx('No tip'), '', true)}${TIP_PCTS.map((p) => opt(p, p + '%', `<i data-p="${p}" style="font-style:normal">${money(round2(due * p / 100))}</i>`)).join('')}${opt('other', tx('Other'), '')}</div>
+<label class="tip-x" id="tipX">${tx('Tip amount')}<input name="tipAmount" type="text" inputmode="decimal" placeholder="$0.00" autocomplete="off"></label>
+<p class="muted" style="margin:8px 0 0">${tx('Tips go to {name}.', { name: esc(db.company.name) })}</p></fieldset>
+<script>(function(){var due=${due},max=${tipMax(due)},inc=${JSON.stringify(tx(' (includes {tip} tip)')).replace(/</g, '\\u003c')},f=document.currentScript.closest('form'),x=f.querySelector('#tipX'); 
 function m(v){return '$'+v.toFixed(2).replace(/\\B(?=(\\d{3})+(?!\\d))/g,',')}
 function tip(){var c=f.querySelector('[name=tipPct]:checked'),v=c?c.value:'0';x.classList.toggle('on',v==='other');if(v==='other'){var t=parseFloat(String(f.tipAmount.value).replace(/[$,\\s]/g,''));return t>0?Math.min(Math.round(t*100)/100,max):0}return Math.round(base()*Number(v))/100}
 function base(){return f._amt?f._amt():due}
-function up(){var a=base(),t=tip();f.querySelectorAll('[data-p]').forEach(function(i){i.textContent=m(Math.round(a*Number(i.getAttribute('data-p')))/100)});f.querySelectorAll('.payBtn').forEach(function(b){b.textContent=b.getAttribute('data-base').replace('$0.00',m(a+t))+(t>0?' (includes '+m(t)+' tip)':'')})}f._up=up;
+function up(){var a=base(),t=tip();f.querySelectorAll('[data-p]').forEach(function(i){i.textContent=m(Math.round(a*Number(i.getAttribute('data-p')))/100)});f.querySelectorAll('.payBtn').forEach(function(b){b.textContent=b.getAttribute('data-base').replace('$0.00',m(a+t))+(t>0?inc.replace('{tip}',m(t)):'')})}f._up=up;
 f.addEventListener('change',function(e){up();if(e.target.value==='other')f.tipAmount.focus()});f.tipAmount.addEventListener('input',up);document.addEventListener('DOMContentLoaded',up);})();</script>`;
 }
 // partial payments (the invoice's allowPartial 'on'): the client types how much to pay now, at least $1 (or the whole balance when it's less) and no more than the balance
@@ -3258,37 +3279,46 @@ function readPart(b, due) {
   const v = round2(Number(raw)); if (!(v > 0) || v < partMin(due) - 0.004) return null; return Math.min(v, due);
 }
 function partPicker(due) {
-  return `<label style="display:block;margin:0 0 14px;font-weight:600">Amount to pay now<input name="payAmount" type="text" inputmode="decimal" autocomplete="off" value="${due.toFixed(2)}" style="display:block;width:100%;margin-top:6px;font-weight:400"></label>
-<p class="muted" id="partNote" style="margin:-8px 0 14px">You can pay part of the ${money(due)} balance now and the rest later.</p>
-<script>(function(){var due=${due},min=${partMin(due)},f=document.currentScript.closest('form'),a=f.payAmount,n=f.querySelector('#partNote'),t=n.textContent;
+  const J = (s) => JSON.stringify(s).replace(/</g, '\\u003c'); // phrases for the script below
+  return `<label style="display:block;margin:0 0 14px;font-weight:600">${tx('Amount to pay now')}<input name="payAmount" type="text" inputmode="decimal" autocomplete="off" value="${due.toFixed(2)}" style="display:block;width:100%;margin-top:6px;font-weight:400"></label>
+<p class="muted" id="partNote" style="margin:-8px 0 14px">${tx('You can pay part of the {due} balance now and the rest later.', { due: money(due) })}</p>
+<script>(function(){var due=${due},min=${partMin(due)},over=${J(tx('That is more than the {due} balance. You will pay {due}.'))},least=${J(tx('Enter at least {min}.'))},f=document.currentScript.closest('form'),a=f.payAmount,n=f.querySelector('#partNote'),t=n.textContent;
 function m(v){return '$'+v.toFixed(2).replace(/\\B(?=(\\d{3})+(?!\\d))/g,',')}
 function val(){return parseFloat(String(a.value).replace(/[$,\\s]/g,''))}
 f._amt=function(){var v=val();return v>0?Math.min(Math.round(v*100)/100,due):due};
 function up(){if(f._up)return f._up();var v=f._amt();f.querySelectorAll('.payBtn').forEach(function(b){b.textContent=b.getAttribute('data-base').replace('$0.00',m(v))})}
-a.addEventListener('input',function(){var v=val();n.textContent=v>due?'That is more than the '+m(due)+' balance. You will pay '+m(due)+'.':v>0&&v<min?'Enter at least '+m(min)+'.':t;up()});
-f.addEventListener('submit',function(e){var v=val();if(String(a.value).trim()&&!(v>=min)){e.preventDefault();n.textContent='Enter at least '+m(min)+'.';a.focus()}});
+a.addEventListener('input',function(){var v=val();n.textContent=v>due?over.split('{due}').join(m(due)):v>0&&v<min?least.replace('{min}',m(min)):t;up()});
+f.addEventListener('submit',function(e){var v=val();if(String(a.value).trim()&&!(v>=min)){e.preventDefault();n.textContent=least.replace('{min}',m(min));a.focus()}});
 document.addEventListener('DOMContentLoaded',up);})();</script>`;
 }
+// a client's quote and invoice pages (and what they post) come out in that client's language
+app.use((req, res, next) => {
+  const m = /^\/(pay|p\/quote)\/([^/]+)/.exec(req.path); if (!m) return next();
+  const d = (m[1] === 'pay' ? db.invoices : db.quotes).find((x) => x.token === m[2]);
+  return d ? inClientLang(d.clientId, next) : next();
+});
 app.get('/pay/:token', (req, res) => {
   const inv = db.invoices.find((x) => x.token === req.params.token);
-  if (!inv) return res.status(404).send(shell('Not found', '<h1>Invoice not found</h1>'));
-  const c = findClient(inv.clientId); const x = withStatus(inv); const st = x.displayStatus; const due = x.balanceDue;
+  if (!inv) return res.status(404).send(shell(tx('Not found'), `<h1>${tx('Invoice not found')}</h1>`));
+  const c = findClient(inv.clientId); const x = withStatus(inv); const st = x.displayStatus;
+  const stName = { overdue: tx('past due'), paid: tx('paid'), sent: tx('sent'), partial: tx('partial'), draft: tx('draft') }[st] || st; const due = x.balanceDue;
   const live = !!stripeKey(); const on = (k) => inv[k] !== 'off'; const methods = onlineMethods('invoice', inv);
   const account = db.invoices.filter((i) => i.clientId === inv.clientId && i.status !== 'paid' && i.status !== 'draft').reduce((s, i) => s + withStatus(i).balanceDue, 0);
   const card = !methods.length ? '' : live
     ? `<form method="post" action="/pay/${esc(inv.token)}/checkout">${inv.allowPartial === 'on' && due > 0 ? partPicker(due) : ''}${paySettings().tips && due > 0 ? tipPicker(due, methods) : ''}<div style="display:flex;gap:8px;flex-wrap:wrap">${payButtons(methods, due)}</div></form>`
     : '';
-  const zelle = offlineBox(inv, due, `Invoice ${inv.number}`, `/pay/${inv.token}`);
+  const zelle = offlineBox(inv, due, `${tx('Invoice')} ${inv.number}`, `/pay/${inv.token}`);
   const preview = !!currentUser(req); const payOff = (html) => (preview ? previewOff(html, 'opacity:.55') : html);
   const previewNote = preview ? `<p style="margin:12px 0;padding:12px 16px;border-radius:10px;background:#fdf2dc;color:#6b4a00;font-size:14px">${PREVIEW_NOTE}</p>` : '';
-  res.send(shell(`Invoice ${inv.number}`, `<h1>Invoice ${esc(inv.number)} <span class="badge ${st === 'paid' ? 'paid' : ''}">${esc(st === 'overdue' ? 'past due' : st)}</span></h1>
-${st === 'overdue' && on('showLateStamp') ? '<div style="display:inline-block;margin:8px 0;padding:4px 14px;border:2px solid #dc2626;color:#dc2626;border-radius:6px;font-weight:800;letter-spacing:.08em;transform:rotate(-2deg)">PAST DUE</div>' : ''}
-${db.company.taxIdNumber ? `<div class="muted">${esc(db.company.taxIdName || 'Tax ID')}: ${esc(db.company.taxIdNumber)}</div>` : ''}<div class="muted">Billed to ${esc(c?.name)}${inv.subject ? ` · ${esc(inv.subject)}` : ''} · Issued ${esc(niceDate(inv.issueDate))} · Due ${inv.dueDate && inv.dueDate <= inv.issueDate ? 'upon receipt' : esc(niceDate(inv.dueDate))}</div>
+  res.send(shell(`${tx('Invoice')} ${inv.number}`, `<h1>${tx('Invoice')} ${esc(inv.number)} <span class="badge ${st === 'paid' ? 'paid' : ''}">${esc(stName)}</span></h1>
+${st === 'overdue' && on('showLateStamp') ? '<div style="display:inline-block;margin:8px 0;padding:4px 14px;border:2px solid #dc2626;color:#dc2626;border-radius:6px;font-weight:800;letter-spacing:.08em;transform:rotate(-2deg)">' + tx('PAST DUE') + '</div>' : ''}
+${db.company.taxIdNumber ? `<div class="muted">${esc(db.company.taxIdName || tx('Tax ID'))}: ${esc(db.company.taxIdNumber)}</div>` : ''}<div class="muted">${tx('Billed to {name}', { name: esc(c?.name) })}${inv.subject ? ` · ${esc(inv.subject)}` : ''} · ${tx('Issued {date}', { date: esc(niceDate(inv.issueDate)) })} · ${inv.dueDate && inv.dueDate <= inv.issueDate ? tx('Due upon receipt') : tx('Due {date}', { date: esc(niceDate(inv.dueDate)) })}</div>
 ${itemsTable(x, { qty: on('showQty'), unit: on('showUnit'), line: on('showLineTotals'), invoice: true })}
-${on('showAccountBalance') && st !== 'paid' && account > 0 ? `<p class="muted" style="text-align:right">Account balance (all open invoices): <strong>${money(account)}</strong></p>` : ''}
-${(() => { const next = st !== 'paid' && nextLateFee(inv); return next ? `<p class="muted" style="text-align:right">${next.n > 1 ? 'Another late fee' : 'A late fee'} of ${esc(lateFeeText(db.company.lateFee))} is added if this invoice isn’t paid by ${esc(niceDate(addDaysYmd(next.on, -1)))}.</p>` : ''; })()}
+${on('showAccountBalance') && st !== 'paid' && account > 0 ? `<p class="muted" style="text-align:right">${tx('Account balance (all open invoices):')} <strong>${money(account)}</strong></p>` : ''}
+${(() => { const next = st !== 'paid' && nextLateFee(inv); const v = next && { fee: esc(lateFeeText(db.company.lateFee)), date: esc(niceDate(addDaysYmd(next.on, -1))) };
+  return next ? `<p class="muted" style="text-align:right">${next.n > 1 ? tx('Another late fee of {fee} is added if this invoice isn’t paid by {date}.', v) : tx('A late fee of {fee} is added if this invoice isn’t paid by {date}.', v)}</p>` : ''; })()}
 ${inv.notes ? `<p style="white-space:pre-wrap">${esc(inv.notes)}</p>` : ''}
-${previewNote}${st === 'paid' ? `<p>Paid on ${esc(niceDate(inv.paidAt))}. Thank you!</p>${reviewPrompt(inv, preview)}` : payOff(card + zelle) + (!card && !zelle ? `<p class="muted">Please contact ${esc(db.company.name)} at ${esc(db.company.phone || db.company.email)} to arrange payment.</p>` : '')}
+${previewNote}${st === 'paid' ? `<p>${tx('Paid on {date}. Thank you!', { date: esc(niceDate(inv.paidAt)) })}</p>${reviewPrompt(inv, preview)}` : payOff(card + zelle) + (!card && !zelle ? `<p class="muted">${tx('Please contact {name} at {contact} to arrange payment.', { name: esc(db.company.name), contact: esc(db.company.phone || db.company.email) })}</p>` : '')}
 ${inv.disclaimer ? `<div style="margin:16px 0;padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px;white-space:pre-wrap" class="muted">${esc(inv.disclaimer)}</div>` : `<p class="muted">${esc(db.company.invoiceFooter)}</p>`}`));
 });
 app.use('/pay', express.urlencoded({ extended: false }));
@@ -3308,12 +3338,12 @@ app.post('/pay/:token/checkout', async (req, res) => {
   const due = withStatus(inv).balanceDue;
   if (inv.status === 'paid' || !(due > 0)) return res.redirect(`/pay/${inv.token}`);
   const amount = inv.allowPartial === 'on' ? readPart(req.body, due) : due; // a partial payment: the amount the client typed
-  if (amount === null) return res.status(400).send(shell('Payment error', `<h1>Check the amount</h1><p>Enter at least ${money(partMin(due))}.</p><p><a href="/pay/${esc(inv.token)}">Back to the invoice</a></p>`));
+  if (amount === null) return res.status(400).send(shell(tx('Payment error'), `<h1>${tx('Check the amount')}</h1><p>${tx('Enter at least {min}.', { min: money(partMin(due)) })}</p><p><a href="/pay/${esc(inv.token)}">${tx('Back to the invoice')}</a></p>`));
   try {
     const tip = paySettings().tips ? readTip(req.body || {}, amount) : 0;
-    const s = await stripeCheckout({ amount, tip, name: `Invoice ${inv.number}${amount < due ? ' (part payment)' : ''}`, client: findClient(inv.clientId), meta: { invoiceId: inv.id }, successUrl: `${baseUrl()}/pay/${inv.token}/success`, cancelUrl: `${baseUrl()}/pay/${inv.token}`, methods: pickMethod(onlineMethods('invoice', inv), req.body) });
+    const s = await stripeCheckout({ amount, tip, name: `${tx('Invoice')} ${inv.number}${amount < due ? tx(' (part payment)') : ''}`, client: findClient(inv.clientId), meta: { invoiceId: inv.id }, successUrl: `${baseUrl()}/pay/${inv.token}/success`, cancelUrl: `${baseUrl()}/pay/${inv.token}`, methods: pickMethod(onlineMethods('invoice', inv), req.body) });
     res.redirect(303, s.url);
-  } catch (e) { res.status(502).send(shell('Payment error', `<h1>Payment error</h1><p>${esc(e.message)}</p><p><a href="/pay/${esc(inv.token)}">Back to the invoice</a></p>`)); }
+  } catch (e) { res.status(502).send(shell(tx('Payment error'), `<h1>${tx('Payment error')}</h1><p>${esc(e.message)}</p><p><a href="/pay/${esc(inv.token)}">${tx('Back to the invoice')}</a></p>`)); }
 });
 app.get('/pay/:token/success', async (req, res) => {
   const inv = db.invoices.find((x) => x.token === req.params.token);
@@ -3324,7 +3354,7 @@ app.get('/pay/:token/success', async (req, res) => {
 
 app.get('/p/quote/:token', (req, res) => {
   const q = db.quotes.find((x) => x.token === req.params.token);
-  if (!q) return res.status(404).send(shell('Not found', '<h1>Quote not found</h1>'));
+  if (!q) return res.status(404).send(shell(tx('Not found'), `<h1>${tx('Quote not found')}</h1>`));
   const c = findClient(q.clientId);
   if (q.status === 'sent' && !q.viewPushedAt && !currentUser(req)) { // the client's first look, not the team's own preview
     q.viewPushedAt = new Date().toISOString(); save();
@@ -3335,22 +3365,22 @@ app.get('/p/quote/:token', (req, res) => {
   else if (q.status === 'approved' && q.depositFee > 0) {
     if (!q.depositPaidAt) {
       depositSection = `<div style="background:#fef3c7;padding:16px;border-radius:8px;margin-top:16px;border:1px solid #fcd34d">
-<h3 style="margin-top:0">Deposit required: ${money(q.depositFee)}</h3>
-<p>Your quote has been signed. A deposit of ${money(q.depositFee)} is required to proceed with the work.</p>
+<h3 style="margin-top:0">${tx('Deposit required: {amount}', { amount: money(q.depositFee) })}</h3>
+<p>${tx('Your quote has been signed. A deposit of {amount} is required to proceed with the work.', { amount: money(q.depositFee) })}</p>
 ${onlineMethods('quote', q).length ? `<form method="post" action="/p/quote/${esc(q.token)}/pay-deposit" style="display:flex;gap:8px;flex-wrap:wrap">
 ${payButtons(onlineMethods('quote', q), q.depositFee, 'deposit of ')}
 </form>` : ''}
-${offlineBox(q, q.depositFee, `Deposit for quote ${q.number}`, `/p/quote/${q.token}`)}
-${!onlineMethods('quote', q).length && !offlineMethods(q).length ? `<p class="muted">Please contact ${esc(db.company.name)} at ${esc(db.company.phone || db.company.email)} to arrange your deposit payment.</p>` : ''}
+${offlineBox(q, q.depositFee, tx('Deposit for quote {number}', { number: q.number }), `/p/quote/${q.token}`)}
+${!onlineMethods('quote', q).length && !offlineMethods(q).length ? `<p class="muted">${tx('Please contact {name} at {contact} to arrange your deposit payment.', { name: esc(db.company.name), contact: esc(db.company.phone || db.company.email) })}</p>` : ''}
 </div>`;
     } else {
       depositSection = `<div style="background:#f0fdf4;padding:16px;border-radius:8px;margin-top:16px;border:1px solid #86efac">
-<h3 style="margin-top:0">✓ Deposit paid</h3>
-<p>Thank you! Your deposit of ${money(q.depositPaidAmount ?? q.depositFee)} has been received. We will begin work shortly.</p>
+<h3 style="margin-top:0">✓ ${tx('Deposit paid')}</h3>
+<p>${tx('Thank you! Your deposit of {amount} has been received. We will begin work shortly.', { amount: money(q.depositPaidAmount ?? q.depositFee) })}</p>
 </div>`;
     }
   }
-  const signed = q.signedAt ? `<div style="margin-top:16px;padding:14px 16px;border:1px solid #e5e7eb;border-radius:8px"><strong>✓ Signed${q.signedName ? ` by ${esc(q.signedName)}` : ''}</strong> <span class="muted">· ${esc(niceDate(q.signedAt.slice(0, 10)))}</span>${q.signature ? `<img src="${esc(q.signature.file)}" alt="Signature" style="display:block;max-width:100%;width:320px;margin-top:8px">` : ''}</div>` : '';
+  const signed = q.signedAt ? `<div style="margin-top:16px;padding:14px 16px;border:1px solid #e5e7eb;border-radius:8px"><strong>✓ ${q.signedName ? tx('Signed by {name}', { name: esc(q.signedName) }) : tx('Signed')}</strong> <span class="muted">· ${esc(niceDate(q.signedAt.slice(0, 10)))}</span>${q.signature ? `<img src="${esc(q.signature.file)}" alt="${tx('Signature')}" style="display:block;max-width:100%;width:320px;margin-top:8px">` : ''}</div>` : '';
   res.send(quoteView(q, c, { signed, depositSection, sent: req.query.changes === 'sent', preview: !!currentUser(req) && req.query.collect !== '1', business: !!currentUser(req) }));
 });
 // ---------- the client's quote page, laid out like the client hub: the hub's menu on the left (behind Menu on phones),
@@ -3367,7 +3397,7 @@ const QV_ICON = { // the same icons as the client hub (CP_ICON in public/pages.j
   plus: '<path d="M12 5v14M5 12h14"/>', menu: '<path d="M4 7h13M4 12h16M4 17h13"/><path d="M17 9l3 3-3 3"/>', back: '<path d="M19 12H5m6-6-6 6 6 6"/>', chev: '<path d="m6 15 6-6 6 6"/>',
 };
 const qvIcon = (k, size = 22) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${QV_ICON[k]}</svg>`;
-const QV_STATUS = { draft: ['Draft', 'grey'], sent: ['Awaiting response', 'wait'], approved: ['Approved', 'ok'], converted: ['Approved', 'ok'], declined: ['Declined', 'no'] };
+const QV_STATUS = { draft: [/*tx*/'Draft', 'grey'], sent: [/*tx*/'Awaiting response', 'wait'], approved: [/*tx*/'Approved', 'ok'], converted: ['Approved', 'ok'], declined: [/*tx*/'Declined', 'no'] }; // shown with tx()
 const QV_CSS = `.qv-biz{position:sticky;top:0;z-index:40;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:52px;padding:6px 12px;padding-top:calc(6px + env(safe-area-inset-top));background:#032b3a;color:#fff;font-size:14px}.qv-biz a{display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:0 16px 0 10px;border-radius:99px;background:rgba(255,255,255,.14);color:#fff;font-size:16px;font-weight:700;text-decoration:none}.qv-biz span{opacity:.8;text-align:right}.qv-is-biz .qv-side{top:52px;height:calc(100vh - 52px)}
 @media (max-width:900px){.qv-is-biz .qv-top{top:52px}}
 *{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f6f5f3;color:#032b3a;font-size:15px}
@@ -3425,46 +3455,46 @@ function quoteView(q, c, { signed, depositSection, sent, preview, business }) {
   const co = db.company; const brand = accentColor() || brandLib.siteColor('--brand') || DEFAULT_BUTTON; // the same color as the client hub
   const hub = tenancy.has('clientPortal') && c && c.portalToken ? `/client-portal?c=${encodeURIComponent(c.portalToken)}` : '';
   const logo = co.logo ? `<img src="${esc(co.logo)}" alt="${esc(co.name)}">` : `<div class="qv-mono">${esc((co.name || '?').split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase())}</div>`;
-  const nav = [[['requests', 'Requests'], ['estimates', 'Estimates'], ['appointments', 'Appointments'], ['invoices', 'Invoices'], ...(tenancy.has('reviews') ? [['reviews', 'Reviews']] : [])], [['wallet', 'Wallet']], [['contact', 'Contact Us']]]
+  const nav = [[['requests', tx('Requests')], ['estimates', tx('Estimates')], ['appointments', tx('Appointments')], ['invoices', tx('Invoices')], ...(tenancy.has('reviews') ? [['reviews', tx('Reviews')]] : [])], [['wallet', tx('Wallet')]], [['contact', tx('Contact Us')]]]
     .map((g) => g.map(([k, l]) => `<a class="qv-nav ${k === 'estimates' ? 'on' : ''}" href="${hub}#${k}">${qvIcon(k)}<span>${l}</span></a>`).join('')).join('<hr>')
-    + (tenancy.has('referrals') ? `<hr><a class="qv-nav qv-refer" href="${hub}#refer">${qvIcon('refer')}<span>Refer a Friend</span></a>` : '');
-  const side = hub ? `<aside class="qv-side" id="qvMenu"><div class="qv-brand">${logo}</div><div class="qv-co">${esc(co.name)}</div>${business ? `<span class="qv-new" style="opacity:.5;cursor:not-allowed" title="Only your client can send a request">${qvIcon('plus', 18)} New Request</span>` : `<a class="qv-new" href="${hub}#new-request">${qvIcon('plus', 18)} New Request</a>`}<nav aria-label="Client hub">${nav}</nav></aside>` : '';
-  const top = `<header class="qv-top">${hub ? `<button type="button" class="qv-burger" aria-expanded="false" aria-controls="qvMenu" onclick="var o=document.getElementById('qvMenu').classList.toggle('open');this.setAttribute('aria-expanded',o)">${qvIcon('menu', 30)}Menu</button>` : '<span></span>'}${logo}</header>`;
+    + (tenancy.has('referrals') ? `<hr><a class="qv-nav qv-refer" href="${hub}#refer">${qvIcon('refer')}<span>${tx('Refer a Friend')}</span></a>` : '');
+  const side = hub ? `<aside class="qv-side" id="qvMenu"><div class="qv-brand">${logo}</div><div class="qv-co">${esc(co.name)}</div>${business ? `<span class="qv-new" style="opacity:.5;cursor:not-allowed" title="Only your client can send a request">${qvIcon('plus', 18)} ${tx('New Request')}</span>` : `<a class="qv-new" href="${hub}#new-request">${qvIcon('plus', 18)} ${tx('New Request')}</a>`}<nav aria-label="${tx('Client hub')}">${nav}</nav></aside>` : '';
+  const top = `<header class="qv-top">${hub ? `<button type="button" class="qv-burger" aria-expanded="false" aria-controls="qvMenu" onclick="var o=document.getElementById('qvMenu').classList.toggle('open');this.setAttribute('aria-expanded',o)">${qvIcon('menu', 30)}${tx('Menu')}</button>` : '<span></span>'}${logo}</header>`;
   const open = q.status === 'sent' || q.status === 'draft'; const chg = open && q.changesRequestedAt && (q.changeRequests || []).length && !(q.lastSentAt > q.changesRequestedAt) && !(q.changesDoneAt > q.changesRequestedAt); // gone once the business sends it again or marks it handled
-  const [label, tone] = chg ? ['Changes requested', 'chg'] : QV_STATUS[q.status] || [q.status, 'grey'];
+  const [label, tone] = chg ? [tx('Changes requested'), 'chg'] : (([l, t]) => [tx(l), t])(QV_STATUS[q.status] || [q.status, 'grey']);
   const addr = q.address || (c && c.address) || '';
-  const taxName = Number(q.taxRate) === Number(co.taxRate) && co.taxName ? co.taxName : 'Tax';
+  const taxName = Number(q.taxRate) === Number(co.taxRate) && co.taxName ? co.taxName : tx('Tax');
   const row = (l, v) => `<div class="qv-row"><span>${l}</span><span>${v}</span></div>`;
-  const totalsOf = (d) => row('Subtotal', money(d.subtotal)) + (d.discount > 0 ? row(esc(discLabel(d)), '−' + money(d.discount)) : '')
-    + (Number(d.taxRate) ? row(`${esc(taxName)} (${d.taxRate}%)`, money(d.tax)) : '') + row('Total', money(d.total))
-    + (d.depositFee > 0 ? row(`Deposit${d.depositType === 'percent' ? ` (${d.depositValue}%)` : ''}`, money(d.depositFee)) : '');
+  const totalsOf = (d) => row(tx('Subtotal'), money(d.subtotal)) + (d.discount > 0 ? row(esc(discLabel(d)), '−' + money(d.discount)) : '')
+    + (Number(d.taxRate) ? row(`${esc(taxName)} (${d.taxRate}%)`, money(d.tax)) : '') + row(tx('Total'), money(d.total))
+    + (d.depositFee > 0 ? row(`${tx('Deposit')}${d.depositType === 'percent' ? ` (${d.depositValue}%)` : ''}`, money(d.depositFee)) : '');
   const itemsOf = (d) => (d.items || []).map((i) => `<div class="qv-it${i.sub ? ' sub' : ''}"><div class="qv-it-d"><strong>${esc(i.desc)}</strong>${i.details ? `<p>${esc(i.details)}</p>` : ''}</div>
-${heading(i) ? '<div class="qv-n"></div><div class="qv-n"></div><div class="qv-n"></div>' : included(i) ? '<div class="qv-n"></div><div class="qv-n"></div><div class="qv-n"><span class="qv-l">Total</span>Included</div>' : `<div class="qv-n"><span class="qv-l">Qty.</span>${esc(String(i.qty))}</div><div class="qv-n"><span class="qv-l">Unit price</span>${money(i.price)}</div><div class="qv-n"><span class="qv-l">Total</span>${money(i.qty * i.price)}</div>`}</div>`).join('');
+${heading(i) ? '<div class="qv-n"></div><div class="qv-n"></div><div class="qv-n"></div>' : included(i) ? `<div class="qv-n"></div><div class="qv-n"></div><div class="qv-n"><span class="qv-l">${tx('Total')}</span>${tx('Included')}</div>` : `<div class="qv-n"><span class="qv-l">${tx('Qty.')}</span>${esc(String(i.qty))}</div><div class="qv-n"><span class="qv-l">${tx('Unit price')}</span>${money(i.price)}</div><div class="qv-n"><span class="qv-l">${tx('Total')}</span>${money(i.qty * i.price)}</div>`}</div>`).join('');
   // Good / Better / Best: each option with its own items and totals until one is chosen; then only that one
   const parts = quoteParts(q); const many = parts.length > 1;
-  const optHead = (p) => (p.opt ? `<div class="qv-oh" id="opt-${esc(p.opt.id)}"><div class="qv-on"><h2>${p.chosen ? 'Your choice: ' : ''}${esc(p.opt.name)}</h2>${p.recommended ? '<span class="qv-rec">Recommended</span>' : ''}${many ? `<span class="qv-ot">${money(p.doc.total)}</span>` : ''}</div>${p.opt.desc ? `<p>${esc(p.opt.desc)}</p>` : ''}</div>` : '');
-  const body = parts.map((p) => `<section class="${p.opt ? 'qv-opt' : ''}${p.recommended ? ' rec' : ''}">${optHead(p)}<div class="qv-items"><div class="qv-ih"><span>Product / Service</span><span>Qty.</span><span>Unit Price</span><span>Total</span></div>${itemsOf(p.doc)}</div>
+  const optHead = (p) => (p.opt ? `<div class="qv-oh" id="opt-${esc(p.opt.id)}"><div class="qv-on"><h2>${p.chosen ? tx('Your choice: ') : ''}${esc(p.opt.name)}</h2>${p.recommended ? `<span class="qv-rec">${tx('Recommended')}</span>` : ''}${many ? `<span class="qv-ot">${money(p.doc.total)}</span>` : ''}</div>${p.opt.desc ? `<p>${esc(p.opt.desc)}</p>` : ''}</div>` : '');
+  const body = parts.map((p) => `<section class="${p.opt ? 'qv-opt' : ''}${p.recommended ? ' rec' : ''}">${optHead(p)}<div class="qv-items"><div class="qv-ih"><span>${tx('Product / Service')}</span><span>${tx('Qty.')}</span><span>${tx('Unit Price')}</span><span>${tx('Total')}</span></div>${itemsOf(p.doc)}</div>
 <div class="qv-tot"><div></div><div>${totalsOf(p.doc)}</div></div></section>`).join('');
-  const depositNote = open && q.depositFee > 0 ? `<div class="qv-note">${q.depositPaidAt ? `<strong>Deposit paid: ${money(q.depositPaidAmount ?? q.depositFee)}.</strong> This estimate was updated. After you approve, you’ll sign it again.` : `<strong>Deposit: ${many && q.depositType === 'percent' ? `${q.depositValue}% of the option you choose` : `${money(q.depositFee)}${q.depositType === 'percent' ? ` (${q.depositValue}% of the total)` : ''}`}.</strong> After you approve, you’ll sign the estimate and pay this deposit before work begins.`}</div>` : '';
+  const depositNote = open && q.depositFee > 0 ? `<div class="qv-note">${q.depositPaidAt ? `<strong>${tx('Deposit paid: {amount}.', { amount: money(q.depositPaidAmount ?? q.depositFee) })}</strong> ${tx('This estimate was updated. After you approve, you’ll sign it again.')}` : `<strong>${tx('Deposit: {what}.', { what: many && q.depositType === 'percent' ? tx('{pct}% of the option you choose', { pct: q.depositValue }) : `${money(q.depositFee)}${q.depositType === 'percent' ? ` ${tx('({pct}% of the total)', { pct: q.depositValue })}` : ''}` })}</strong> ${tx('After you approve, you’ll sign the estimate and pay this deposit before work begins.')}`}</div>` : '';
   const payDep = (d) => d.depositFee > 0 && !q.depositPaidAt; // a deposit still to pay: the Approve button says so
-  const actions = open ? `${sent ? '<div class="qv-msg" role="status">Thanks! We got your changes and will send you an updated estimate.</div>' : ''}
-${many ? `<div class="qv-note"><strong>Choose an option to approve.</strong></div>${parts.map((p) => `<form method="post" action="/p/quote/${esc(q.token)}/respond"><input type="hidden" name="opt" value="${esc(p.opt.id)}"><button class="qv-btn${p.recommended ? ' primary' : ''} qv-obtn" name="r" value="approved">Approve ${esc(p.opt.name)}${payDep(p.doc) ? ' and pay deposit' : ''} · ${money(p.doc.total)}</button></form>`).join('')}`
-  : `<form method="post" action="/p/quote/${esc(q.token)}/respond"><button class="qv-btn primary" name="r" value="approved">${payDep(q) ? 'Approve and pay deposit' : 'Approve'}</button></form>`}
-<details class="qv-chg"><summary class="qv-btn">Request Changes</summary><form method="post" action="/p/quote/${esc(q.token)}/changes">
-<label for="qvChg">What would you like changed?</label><textarea id="qvChg" name="message" required maxlength="2000"></textarea><button class="qv-btn primary">Send to ${esc(co.name)}</button></form></details>
-${chg ? `<div class="qv-note">You asked for changes on ${esc(niceDate(q.changesRequestedAt.slice(0, 10)))}: “${esc(q.changeRequests[q.changeRequests.length - 1].text)}”</div>` : ''}${depositNote}
-<form method="post" action="/p/quote/${esc(q.token)}/respond" onsubmit="return confirm('Decline this estimate?')" style="display:flex;justify-content:center"><button class="qv-link" name="r" value="declined">Decline this estimate</button></form>` : '';
+  const actions = open ? `${sent ? `<div class="qv-msg" role="status">${tx('Thanks! We got your changes and will send you an updated estimate.')}</div>` : ''}
+${many ? `<div class="qv-note"><strong>${tx('Choose an option to approve.')}</strong></div>${parts.map((p) => `<form method="post" action="/p/quote/${esc(q.token)}/respond"><input type="hidden" name="opt" value="${esc(p.opt.id)}"><button class="qv-btn${p.recommended ? ' primary' : ''} qv-obtn" name="r" value="approved">${payDep(p.doc) ? tx('Approve {name} and pay deposit', { name: esc(p.opt.name) }) : tx('Approve {name}', { name: esc(p.opt.name) })} · ${money(p.doc.total)}</button></form>`).join('')}`
+  : `<form method="post" action="/p/quote/${esc(q.token)}/respond"><button class="qv-btn primary" name="r" value="approved">${payDep(q) ? tx('Approve and pay deposit') : tx('Approve')}</button></form>`}
+<details class="qv-chg"><summary class="qv-btn">${tx('Request Changes')}</summary><form method="post" action="/p/quote/${esc(q.token)}/changes">
+<label for="qvChg">${tx('What would you like changed?')}</label><textarea id="qvChg" name="message" required maxlength="2000"></textarea><button class="qv-btn primary">${tx('Send to {name}', { name: esc(co.name) })}</button></form></details>
+${chg ? `<div class="qv-note">${tx('You asked for changes on {date}:', { date: esc(niceDate(q.changesRequestedAt.slice(0, 10))) })} “${esc(q.changeRequests[q.changeRequests.length - 1].text)}”</div>` : ''}${depositNote}
+<form method="post" action="/p/quote/${esc(q.token)}/respond" onsubmit="return confirm(this.dataset.ask)" data-ask="${esc(tx('Decline this estimate?'))}" style="display:flex;justify-content:center"><button class="qv-link" name="r" value="declined">${tx('Decline this estimate')}</button></form>` : '';
   const act = preview && (actions + depositSection).trim() ? `<div class="qv-preview">${PREVIEW_NOTE}</div>${previewOff(actions + depositSection, 'display:flex;flex-direction:column;gap:16px')}${signed}` : actions + signed + depositSection; const pdf = `/p/quote/${esc(q.token)}/pdf`;
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Estimate ${esc(q.number)} · ${esc(co.name)}</title><link rel="icon" href="/favicon.ico">
+  return `<!doctype html><html lang="${i18n.current()}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${tx('Estimate')} ${esc(q.number)} · ${esc(co.name)}</title><link rel="icon" href="/favicon.ico">
 <style>:root{--brand:${esc(brand)}}${QV_CSS}</style></head><body${preview ? ' class="qv-is-biz"' : ''}>${preview ? `<div class="qv-biz"><a href="/quotes/view?id=${esc(q.id)}" onclick="if(history.length>1&&document.referrer.indexOf(location.origin)===0){history.back();return false}">${qvIcon('back', 18)} Back</a><span>Viewing as your client</span></div>` : ''}<div class="qv">${side}<div class="qv-wrap">${top}<main class="qv-main">
-<div class="qv-grid"><div class="qv-docwrap"><div class="qv-bar">${hub ? `<a class="qv-tb" href="${hub}#estimates">${qvIcon('back', 18)} Back</a>` : '<span></span>'}<a class="qv-tb" href="${pdf}">Download PDF</a></div>
-<details class="qv-doc" open><summary><span><span class="qv-hide">Hide Quote</span><span class="qv-show">Show Quote</span></span>${qvIcon('chev', 22)}</summary><div class="qv-body">
-<div class="qv-hd"><div class="qv-hd-l"><div class="qv-no"><span>Estimate #${esc(q.number)}</span><span class="qv-pill ${tone}">${esc(label)}</span></div>
+<div class="qv-grid"><div class="qv-docwrap"><div class="qv-bar">${hub ? `<a class="qv-tb" href="${hub}#estimates">${qvIcon('back', 18)} ${tx('Back')}</a>` : '<span></span>'}<a class="qv-tb" href="${pdf}">${tx('Download PDF')}</a></div>
+<details class="qv-doc" open><summary><span><span class="qv-hide">${tx('Hide Quote')}</span><span class="qv-show">${tx('Show Quote')}</span></span>${qvIcon('chev', 22)}</summary><div class="qv-body">
+<div class="qv-hd"><div class="qv-hd-l"><div class="qv-no"><span>${tx('Estimate #{number}', { number: esc(q.number) })}</span><span class="qv-pill ${tone}">${esc(label)}</span></div>
 <div class="qv-who">${esc((c && c.name) || '')}</div>${addr ? `<div>${esc(addr)}</div>` : ''}${c && c.phone ? `<a class="qv-ph" href="tel:${esc(c.phone)}">${esc(c.phone)}</a>` : ''}</div>
-<div class="qv-hd-r"><span>Sent on</span><span>${esc(niceDate(q.sentAt || String(q.createdAt || '').slice(0, 10)))}</span></div></div>
-${many ? `<p class="qv-pick">${parts.length} options: choose the one that suits you.</p>` : ''}${body}
+<div class="qv-hd-r"><span>${tx('Sent on')}</span><span>${esc(niceDate(q.sentAt || String(q.createdAt || '').slice(0, 10)))}</span></div></div>
+${many ? `<p class="qv-pick">${tx('{n} options: choose the one that suits you.', { n: parts.length })}</p>` : ''}${body}
 ${q.notes ? `<div class="qv-text">${esc(q.notes)}</div>` : ''}${q.disclaimer ? `<div class="qv-text">${esc(q.disclaimer)}</div>` : ''}
-<a class="qv-btn qv-pdf-m" href="${pdf}">Download PDF</a></div></details></div>
+<a class="qv-btn qv-pdf-m" href="${pdf}">${tx('Download PDF')}</a></div></details></div>
 ${act.trim() ? `<div class="qv-act">${act}</div>` : ''}</div></main></div></div><script src="/phone.js?v=2" defer></script></body></html>`;
 }
 // the client signs by drawing (finger, stylus or mouse) or by typing their name, which is written out in a script font; posted as a PNG data URL
@@ -3472,23 +3502,23 @@ function quoteSignBox(q) {
   const tab = 'flex:1;padding:8px;border:0;font-size:15px;cursor:pointer;background:transparent;color:#374151';
   return `<div style="background:#f0fdf4;padding:16px;border-radius:8px;margin-top:16px;border:1px solid #86efac">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600&display=swap">
-<h3 style="margin-top:0">Next step: Review and sign</h3>
-<p>To proceed with this quote, please review the terms and sign below.</p>
+<h3 style="margin-top:0">${tx('Next step: Review and sign')}</h3>
+<p>${tx('To proceed with this quote, please review the terms and sign below.')}</p>
 <form method="post" action="/p/quote/${esc(q.token)}/sign" id="sigForm">
-<div role="tablist" style="display:flex;gap:4px;padding:4px;background:#e5e7eb;border-radius:8px;margin-bottom:8px"><button type="button" role="tab" data-mode="drawn" style="${tab}">Draw</button><button type="button" role="tab" data-mode="typed" style="${tab}">Type</button></div>
-<div style="position:relative;height:200px;background:#fff;border:1px solid #d1d5db;border-radius:8px;margin-bottom:6px;overflow:hidden"><canvas aria-label="Signature pad" style="position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair"></canvas>
-<span style="position:absolute;left:20px;right:20px;bottom:46px;border-bottom:1.5px solid #cbd5e1;pointer-events:none"></span><span id="sigHint" style="position:absolute;left:20px;bottom:52px;color:#94a3b8;font-size:14px;pointer-events:none">Sign here with your finger or mouse</span></div>
-<div style="text-align:right;margin-bottom:8px;min-height:20px"><button type="button" id="sigClear" style="background:none;border:0;color:#2563eb;cursor:pointer;font-size:14px">Clear</button></div>
-<input type="hidden" name="dataUrl"><input type="hidden" name="sigMode" value="drawn"><label class="muted" for="sigName">Full name</label><input type="text" id="sigName" name="fullName" placeholder="Full name" required maxlength="100" autocomplete="name" value="${esc(findClient(q.clientId)?.name || '')}">
+<div role="tablist" style="display:flex;gap:4px;padding:4px;background:#e5e7eb;border-radius:8px;margin-bottom:8px"><button type="button" role="tab" data-mode="drawn" style="${tab}">${tx('Draw')}</button><button type="button" role="tab" data-mode="typed" style="${tab}">${tx('Type')}</button></div>
+<div style="position:relative;height:200px;background:#fff;border:1px solid #d1d5db;border-radius:8px;margin-bottom:6px;overflow:hidden"><canvas aria-label="${tx('Signature pad')}" style="position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair"></canvas>
+<span style="position:absolute;left:20px;right:20px;bottom:46px;border-bottom:1.5px solid #cbd5e1;pointer-events:none"></span><span id="sigHint" style="position:absolute;left:20px;bottom:52px;color:#94a3b8;font-size:14px;pointer-events:none">${tx('Sign here with your finger or mouse')}</span></div>
+<div style="text-align:right;margin-bottom:8px;min-height:20px"><button type="button" id="sigClear" style="background:none;border:0;color:#2563eb;cursor:pointer;font-size:14px">${tx('Clear')}</button></div>
+<input type="hidden" name="dataUrl"><input type="hidden" name="sigMode" value="drawn"><label class="muted" for="sigName">${tx('Full name')}</label><input type="text" id="sigName" name="fullName" placeholder="${tx('Full name')}" required maxlength="100" autocomplete="name" value="${esc(findClient(q.clientId)?.name || '')}">
 <p id="sigErr" style="color:#dc2626;margin:0 0 8px;display:none"></p>
-<button class="btn">Sign agreement</button>
+<button class="btn">${tx('Sign agreement')}</button>
 </form></div>
-<script>(function(){var f=document.getElementById('sigForm'),cv=f.querySelector('canvas'),x=cv.getContext('2d'),hint=document.getElementById('sigHint'),err=document.getElementById('sigErr'),clr=document.getElementById('sigClear'),nm=f.fullName,tabs=f.querySelectorAll('[data-mode]'),mode='drawn',inked=false,last=null,dpr=Math.max(1,Math.min(3,window.devicePixelRatio||1)),W,H;
+<script>(function(){var T=${JSON.stringify({ draw: tx('Sign here with your finger or mouse'), type: tx('Type your name below'), noName: tx('Please type your full name.'), noSig: tx('Please sign in the box first, or choose Type.') }).replace(/</g, '\\u003c')},f=document.getElementById('sigForm'),cv=f.querySelector('canvas'),x=cv.getContext('2d'),hint=document.getElementById('sigHint'),err=document.getElementById('sigErr'),clr=document.getElementById('sigClear'),nm=f.fullName,tabs=f.querySelectorAll('[data-mode]'),mode='drawn',inked=false,last=null,dpr=Math.max(1,Math.min(3,window.devicePixelRatio||1)),W,H;
 var r0=cv.getBoundingClientRect();W=r0.width;H=r0.height;cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);x.setTransform(dpr,0,0,dpr,0,0);x.lineWidth=2.4;x.lineCap='round';x.lineJoin='round';x.strokeStyle=x.fillStyle='#111827';
 function wipe(){x.clearRect(0,0,W,H);inked=false;}
 function typed(){wipe();var t=nm.value.trim();hint.style.display=t?'none':'';if(!t)return;var s=64;do{x.font='600 '+s+'px "Dancing Script",cursive';s-=2;}while(s>20&&x.measureText(t).width>W-40);x.textBaseline='alphabetic';x.fillText(t,20,H-56);inked=true;}
 function setMode(m){mode=m;f.sigMode.value=m;err.style.display='none';tabs.forEach(function(b){var on=b.getAttribute('data-mode')===m;b.setAttribute('aria-selected',on);b.style.background=on?'#fff':'transparent';b.style.fontWeight=on?'600':'400';b.style.boxShadow=on?'0 1px 2px rgba(0,0,0,.1)':'none';});
-cv.style.cursor=m==='drawn'?'crosshair':'default';clr.style.visibility=m==='drawn'?'visible':'hidden';hint.textContent=m==='drawn'?'Sign here with your finger or mouse':'Type your name below';
+cv.style.cursor=m==='drawn'?'crosshair':'default';clr.style.visibility=m==='drawn'?'visible':'hidden';hint.textContent=m==='drawn'?T.draw:T.type;
 if(m==='typed'){typed();if(document.fonts)document.fonts.load('600 48px "Dancing Script"').then(function(){if(mode==='typed')typed();});}else{wipe();hint.style.display='';}}
 tabs.forEach(function(b){b.addEventListener('click',function(){setMode(b.getAttribute('data-mode'));});});
 nm.addEventListener('input',function(){if(mode==='typed')typed();});
@@ -3497,7 +3527,7 @@ cv.addEventListener('pointerdown',function(e){if(mode!=='drawn')return;e.prevent
 cv.addEventListener('pointermove',function(e){if(!last)return;e.preventDefault();(e.getCoalescedEvents?e.getCoalescedEvents():[e]).forEach(function(ev){var p=at(ev);x.beginPath();x.moveTo(last.x,last.y);x.lineTo(p.x,p.y);x.stroke();last=p;});});
 cv.addEventListener('pointerup',function(){last=null;});cv.addEventListener('pointercancel',function(){last=null;});
 clr.addEventListener('click',function(){wipe();hint.style.display='';});
-f.addEventListener('submit',function(e){if(mode==='typed')typed();if(!inked){e.preventDefault();err.textContent=mode==='typed'?'Please type your full name.':'Please sign in the box first, or choose Type.';err.style.display='';return;}f.dataUrl.value=cv.toDataURL('image/png');});
+f.addEventListener('submit',function(e){if(mode==='typed')typed();if(!inked){e.preventDefault();err.textContent=mode==='typed'?T.noName:T.noSig;err.style.display='';return;}f.dataUrl.value=cv.toDataURL('image/png');});
 setMode('drawn');})();</script>`;
 }
 // email the business when a client approves, declines or signs a quote, and log it with the other notifications
@@ -3537,7 +3567,7 @@ function askForReview(kind, doc) {
   const since = new Date(Date.now() - REVIEW_ASK_GAP_DAYS * 864e5).toISOString();
   if (clientReviews().some((x) => x.clientId === c.id && ((x.emailedAt || '') > since || (x.submittedAt || '') > since))) return;
   const r = reviewRecord(kind, doc); r.emailedAt = new Date().toISOString(); save();
-  const m = renderEmail('reviewRequest', { client_name: c.name, company_name: db.company.name, work: r.title || 'your recent work', link: reviewLink(r) });
+  const m = inClientLang(c.id, () => renderEmail('reviewRequest', { client_name: c.name, company_name: db.company.name, work: r.title || tx('your recent work'), link: reviewLink(r) }));
   notify({ clientId: c.id, channel: 'email', kind: 'review', refId: doc.id, refNumber: doc.number, subject: m.subject, body: m.text, html: m.html })
     .then((n) => { if (n.status === 'failed') delete r.emailedAt; save(); }).catch(() => {}); // a failed email can be asked again next time
 }
@@ -3549,8 +3579,8 @@ const previewOff = (html, style = '') => (html.trim() ? `<fieldset disabled clas
 function reviewPrompt(inv, preview) {
   if (!tenancy.has('reviews') || !reviewSettings().afterInvoice) return '';
   const refs = reviewRefs('invoice', inv); if (clientReviews().some((x) => refs.includes(x.refId) && x.submittedAt)) return '';
-  if (preview) return '<p><span class="btn" style="display:inline-block;opacity:.5;cursor:not-allowed" title="Only your client can leave a review">Leave a review</span></p>';
-  return `<p><a class="btn" style="display:inline-block;text-decoration:none" href="/p/review/${esc(reviewRecord('invoice', inv).token)}">Leave a review</a></p>`;
+  if (preview) return '<p><span class="btn" style="display:inline-block;opacity:.5;cursor:not-allowed" title="Only your client can leave a review">' + tx('Leave a review') + '</span></p>';
+  return `<p><a class="btn" style="display:inline-block;text-decoration:none" href="/p/review/${esc(reviewRecord('invoice', inv).token)}">${tx('Leave a review')}</a></p>`;
 }
 function tellBusinessReview(r, edited) {
   const c = findClient(r.clientId); const name = c ? c.name : 'A client';
@@ -3730,7 +3760,7 @@ app.put('/api/reviews/client/:id/reply', async (req, res) => {
   const first = !r.reply; const u = currentUser(req); r.reply = { comment, by: u ? u.name : '', updatedAt: new Date().toISOString() }; save();
   const c = findClient(r.clientId);
   if (first && c && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email || '')) {
-    const m = renderEmail('reviewReply', { client_name: c.name, company_name: db.company.name, work: r.title || 'your recent work', reply: comment, link: reviewLink(r) });
+    const m = inClientLang(c.id, () => renderEmail('reviewReply', { client_name: c.name, company_name: db.company.name, work: r.title || tx('your recent work'), reply: comment, link: reviewLink(r) }));
     notify({ clientId: c.id, channel: 'email', kind: 'review', refId: r.refId, refNumber: r.refNumber, subject: m.subject, body: m.text, html: m.html }).then(() => save()).catch(() => {});
   }
   res.json(r.reply);
@@ -3790,11 +3820,11 @@ app.post('/p/quote/:token/sign', (req, res) => {
   const q = db.quotes.find((x) => x.token === req.params.token);
   if (!q || q.status !== 'approved') return res.status(400).send('Quote not available for signing');
   if (q.signedAt) return res.redirect(`/p/quote/${q.token}`); // already signed (a double submit)
-  const back = (msg) => res.status(400).send(shell('Signature needed', `<h1>Signature needed</h1><p>${esc(msg)}</p><p><a href="/p/quote/${esc(q.token)}">Back to the quote</a></p>`));
-  const name = String(req.body.fullName || '').trim().slice(0, 100); if (!name) return back('Please type your full name.');
+  const back = (msg) => res.status(400).send(shell(tx('Signature needed'), `<h1>${tx('Signature needed')}</h1><p>${esc(msg)}</p><p><a href="/p/quote/${esc(q.token)}">${tx('Back to the quote')}</a></p>`));
+  const name = String(req.body.fullName || '').trim().slice(0, 100); if (!name) return back(tx('Please type your full name.'));
   const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(req.body.dataUrl || '');
-  if (!m || m[1].length < 200) return back('Please sign in the box first.');
-  if (m[1].length > 2e6) return back('That signature image is too large.');
+  if (!m || m[1].length < 200) return back(tx('Please sign in the box first.'));
+  if (m[1].length > 2e6) return back(tx('That signature image is too large.'));
   const file = `sig-${token()}.png`; // unguessable name: uploads are served without login
   fs.writeFileSync(path.join(uploadDir(), file), Buffer.from(m[1], 'base64'));
   removeSignatureFile(q);
@@ -3824,9 +3854,9 @@ app.post('/p/quote/:token/pay-deposit', (req, res) => {
   if (!q || !q.depositFee) return res.status(400).send('No deposit required');
   if (!onlineMethods('quote', q).length) return res.status(400).send('Online payment is not available for this quote'); // only once card payments are set up
   if (q.depositPaidAt) return res.redirect(`/p/quote/${q.token}`);
-  stripeCheckout({ amount: q.depositFee, name: `Deposit for Quote ${q.number}`, client: findClient(q.clientId), meta: { quoteId: q.id }, successUrl: `${baseUrl()}/p/quote/${q.token}/deposit-success`, cancelUrl: `${baseUrl()}/p/quote/${q.token}`, methods: pickMethod(onlineMethods('quote', q), req.body) })
+  stripeCheckout({ amount: q.depositFee, name: tx('Deposit for quote {number}', { number: q.number }), client: findClient(q.clientId), meta: { quoteId: q.id }, successUrl: `${baseUrl()}/p/quote/${q.token}/deposit-success`, cancelUrl: `${baseUrl()}/p/quote/${q.token}`, methods: pickMethod(onlineMethods('quote', q), req.body) })
       .then((s) => res.redirect(303, s.url))
-      .catch((e) => res.status(502).send(shell('Payment error', `<h1>Payment error</h1><p>${esc(e.message)}</p><p><a href="/p/quote/${esc(q.token)}">Back to the quote</a></p>`)));
+      .catch((e) => res.status(502).send(shell(tx('Payment error'), `<h1>${tx('Payment error')}</h1><p>${esc(e.message)}</p><p><a href="/p/quote/${esc(q.token)}">${tx('Back to the quote')}</a></p>`)));
 });
 app.get('/p/quote/:token/deposit-success', async (req, res) => {
   const q = db.quotes.find((x) => x.token === req.params.token);
@@ -4641,7 +4671,7 @@ app.post('/api/clients/:id/requests', (req, res) => {
 app.post('/api/clients/:id/portal-email', async (req, res) => {
   const c = findClient(req.params.id); if (!c) return res.status(404).json({ error: 'Not found' });
   if (!c.email) return res.status(400).json({ error: 'Add the client’s email address first' });
-  const email = renderEmail('portal', { client_name: c.name, company_name: db.company.name || '', link: `${baseUrl()}/client-portal?c=${c.portalToken}` });
+  const email = inClientLang(c.id, () => renderEmail('portal', { client_name: c.name, company_name: db.company.name || '', link: `${baseUrl()}/client-portal?c=${c.portalToken}` }));
   const r = await notify({ clientId: c.id, channel: 'email', kind: 'portal', refId: c.id, refNumber: '', subject: email.subject, html: email.html, body: email.body });
   save(); if (r.status === 'failed') return res.status(502).json({ error: r.detail || 'The email couldn’t be sent' }); res.json(r);
 });

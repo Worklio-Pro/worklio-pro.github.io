@@ -1057,6 +1057,8 @@ function emailDialog(kind, doc, c, receipt = false) { // receipt: a paid invoice
   api('GET', `/api/${kind}s/${doc.id}/email-draft${receipt ? '?receipt=1' : ''}`).then((r) => {
     if (!typed) { f.subject.value = r.subject; f.message.value = r.message; } f.subject.placeholder = ''; f.message.placeholder = '';
     if (r.me) { $('.em-me', mb).textContent = `(${r.me})`; $('.em-copy', mb).hidden = false; }
+    const L = r.lang && r.lang !== 'en' && ((company.account && company.account.languages) || []).find((l) => l.code === r.lang); // the client's language
+    if (L) $('.em-note', mb).insertAdjacentHTML('beforeend', ` <strong>Sends in ${esc(L.native)}:</strong> this client’s language is ${esc(L.name)}, so the email, its button and the PDF are in ${esc(L.name)}. Your line items stay as you typed them.`);
   }).catch((x) => toast(x.message, true));
   const total = () => files.reduce((n, x) => n + x.size, 0);
   const draw = () => {
@@ -1328,6 +1330,12 @@ const nameParts = (c) => {
   if (c.company && c.name === c.company) return { first: '', last: '', commercial: true };
   const w = String(c.name || '').trim().split(/\s+/).filter(Boolean); return { first: w[0] || '', last: w.slice(1).join(' '), commercial: false };
 };
+// the language this client gets quotes, invoices, emails and PDFs in; blank follows App Settings → General → Languages
+const clientLangField = (c) => {
+  const langs = (company.account && company.account.languages) || []; if (langs.length < 2) return '';
+  const def = langs.find((l) => l.code === (company.clientLang || 'en')) || langs[0]; const name = (l) => (l.native === l.name ? l.name : `${l.native} (${l.name})`);
+  return `<label>Language<select name="lang"><option value="">Business default (${esc(def.native)})</option>${langs.map((l) => `<option value="${l.code}" ${c.lang === l.code ? 'selected' : ''}>${esc(name(l))}</option>`).join('')}</select></label><p class="muted ce-note">Quotes, invoices, emails and PDFs go to this client in this language.</p>`;
+};
 const blankProp = () => ({ id: '', name: '', street1: '', street2: '', city: '', state: '', zip: '', country: 'United States', contacts: [], taxRate: null });
 // opts.cancel / opts.saved(client): shown over an editor; otherwise Cancel and Save go to the client's profile
 function clientEditPage(main, c, opts = {}) {
@@ -1353,6 +1361,7 @@ ${i === 0 ? `<label class="sw-row ce-sms"><span>Receives messages <small class="
 <div class="chk ce-chks"><label><input type="checkbox" name="billingContact" ${c.billingContact !== false ? 'checked' : ''}> Set as billing contact</label><label><input type="checkbox" name="commercial" ${n.commercial ? 'checked' : ''}> Commercial client: Use company name as client name</label></div>
 <h4>Communication</h4><div class="ce-lines" data-ce-phones>${phones.map((p, i) => phoneLine(p, i)).join('')}</div>
 <div class="ce-lines" data-ce-emails>${emails.map((m, i) => emailLine(m, i)).join('')}</div>
+${clientLangField(c)}
 <details class="ce-comm"${c.smsConsent ? ' open' : ''}><summary>Communication settings</summary>
 <p class="muted">${c.smsConsent ? `Agreed ${esc(fmtDate(c.smsConsent.at.slice(0, 10)))}${c.smsConsent.source !== 'business' ? ' on the ' + esc(c.smsConsent.source) : ''}. ` : ''}Only turn on Receives messages if the client said yes after you read them: “Can we sign you up for text messages from ${esc((company.account && company.account.productName) || 'Worklio Pro')}, the system we use, about your quotes, invoices and appointments with us? Message frequency varies, and msg &amp; data rates may apply. Reply HELP for help or STOP at any time to opt out. The text terms and privacy policy are at ${esc(dom)}/terms and ${esc(dom)}/privacy. Agreeing isn’t required to do business with us. Do you agree to receive texts?” If they say yes: “Thanks, you’re signed up. You’ll get a text from ${esc((company.account && company.account.productName) || 'Worklio Pro')} confirming it.” Turning it on sends them that confirmation text.</p></details>
 <h4>Payment terms</h4><label>Payment terms<select name="paymentTerms"><option value="">Company default (Due upon receipt)</option>${TERMS.filter(([k]) => k !== 'custom').map(([k, l]) => `<option value="${k}" ${c.paymentTerms === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label><p class="muted ce-note">Sets the due date on this client's new invoices.</p>
@@ -1412,7 +1421,7 @@ ${i === 0 ? `<label class="sw-row ce-sms"><span>Receives messages <small class="
     const properties = kept.map(({ p }) => ({ ...p, id: p.id || rid() })); const bi = kept.findIndex(({ i }) => i === billing);
     const body = { title: v('title'), firstName: v('firstName'), lastName: v('lastName'), company: v('company'), commercial: f.commercial.checked, name, role: v('role'), billingContact: f.billingContact.checked,
       phones: phoneList, phone: phoneList[0] ? phoneList[0].number : '', emails: emailList, email: (emailList.find((m) => m.primary) || {}).address || '',
-      smsConsent: f.smsConsent.checked, paymentTerms: f.paymentTerms.value, leadSource: v('leadSource'), contacts, properties,
+      smsConsent: f.smsConsent.checked, ...(f.lang ? { lang: f.lang.value } : {}), paymentTerms: f.paymentTerms.value, leadSource: v('leadSource'), contacts, properties,
       address: bi >= 0 ? propAddr(properties[bi]) : f.billingAddress ? v('billingAddress') : properties[0] ? propAddr(properties[0]) : '' };
     const btn = $('.ce-foot button:not([type])', f); btn.disabled = true;
     try {
@@ -1756,7 +1765,7 @@ ${planHas('clientPortal') && (portal || (c.email && canDo('clients.edit'))) ? `$
 ${canDo('clients.edit') ? '<hr class="mi-sep">' : ''}<button type="button" class="mi" data-act="cvCustomize">${CI.gear}Customize view</button></div></details>
 ${canCreateWork() ? createMenu('<summary class="btn">+ Create</summary>') : ''}</div></div>
 <div class="cv-name"><h1>${esc(c.name)}</h1>${edit ? `<a class="icon-btn cv-ib" href="/clients/edit?id=${c.id}" data-link title="Edit client" aria-label="Edit client">${CI.edit}</a>` : ''}</div>${c.company && c.company !== c.name ? `<div class="muted cv-co">${esc(c.company)}</div>` : ''}
-<div class="cv-info"><div>${(c.phones && c.phones.length ? c.phones : [{ number: c.phone, type: 'Main' }]).map((p) => field(`${esc(p.type || 'Main')} phone`, p.number ? `<a href="tel:${esc(p.number)}">${esc(p.number)}</a>` : '')).join('')}${(c.emails && c.emails.length ? c.emails : [{ address: c.email, type: '' }]).map((m) => field(m.type ? `${esc(m.type)} email` : 'Email', m.address ? `<a href="mailto:${esc(m.address)}">${esc(m.address)}</a>${c.emails && c.emails.length > 1 && m.primary ? ' <span class="muted">· primary</span>' : ''}` : '')).join('')}${field('Text messages', c.smsConsent ? `Agreed ${esc(fmtDate(c.smsConsent.at.slice(0, 10)))}` : 'Not agreed')}</div>
+<div class="cv-info"><div>${(c.phones && c.phones.length ? c.phones : [{ number: c.phone, type: 'Main' }]).map((p) => field(`${esc(p.type || 'Main')} phone`, p.number ? `<a href="tel:${esc(p.number)}">${esc(p.number)}</a>` : '')).join('')}${(c.emails && c.emails.length ? c.emails : [{ address: c.email, type: '' }]).map((m) => field(m.type ? `${esc(m.type)} email` : 'Email', m.address ? `<a href="mailto:${esc(m.address)}">${esc(m.address)}</a>${c.emails && c.emails.length > 1 && m.primary ? ' <span class="muted">· primary</span>' : ''}` : '')).join('')}${field('Text messages', c.smsConsent ? `Agreed ${esc(fmtDate(c.smsConsent.at.slice(0, 10)))}` : 'Not agreed')}${(() => { const L = c.lang && ((company.account && company.account.languages) || []).find((l) => l.code === c.lang); return L ? field('Language', esc(L.native)) : ''; })()}</div>
 <div>${field('Payment terms', esc((TERMS.find(([k]) => k === c.paymentTerms) || [, 'Company default (Due upon receipt)'])[1]))}${field('Lead source', esc(c.leadSource || ((c.tags || []).includes('Online booking') ? 'Online booking' : '')))}${c.company && c.company !== c.name ? field('Company', esc(c.company)) : ''}${c.role ? field('Role', esc(c.role)) : ''}${field('Client since', c.createdAt ? fmtDate(c.createdAt.slice(0, 10)) : '')}</div></div>
 <div class="cv-tabs" role="tablist"><button type="button" role="tab" class="${v.tab === 'info' ? 'on' : ''}" aria-selected="${v.tab === 'info'}" data-act="cvTab" data-t="info">Client information</button><button type="button" role="tab" class="${v.tab === 'comms' ? 'on' : ''}" aria-selected="${v.tab === 'comms'}" data-act="cvTab" data-t="comms">Communication</button></div>
 ${v.tab === 'comms' ? comms : info}</div>
