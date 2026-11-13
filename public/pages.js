@@ -2499,8 +2499,8 @@ ${flSelect('First day of the week', 'weekStart', [['sun', 'Sunday'], ['mon', 'Mo
 const langLabel = (l) => (l.native === l.name ? l.name : `${l.native} (${l.name})`);
 function languagesBox(c) {
   const langs = (c.account && c.account.languages) || []; if (langs.length < 2) return '';
-  return `<div class="card cs" id="languages"><h2>Languages</h2><p class="muted cs-note">Clients get their quotes, invoices, emails and PDFs in their own language. Choose it on each client’s page; new clients start with this one.</p>
-${flSelect('Default language for clients', 'clientLang', langs.map((l) => [l.code, langLabel(l)]), c.clientLang || 'en').replace('<select name=', '<select form="cf" name=')}
+  return `<div class="card cs" id="languages"><h2>Languages</h2><p class="muted cs-note">The language clients get their quotes, invoices, emails and PDFs in. Choose a language other than English to turn on languages: then you can also pick a language on each client’s page and edit the emails in each language.</p>
+${flSelect('Language for clients', 'clientLang', langs.map((l) => [l.code, langLabel(l)]), c.clientLang || 'en').replace('<select name=', '<select form="cf" name=')}
 <p class="muted cs-note">Available now: ${langs.map((l) => esc(l.native)).join(', ')}. <a href="/ideas/sso?r=${encodeURIComponent('/feedback/other')}" target="_blank" rel="noopener">Need another language? Request it</a></p></div>`;
 }
 // the kind of business (asked at sign-up; the choices come with the account info)
@@ -3623,7 +3623,7 @@ PAGES['/settings/emails'] = {
   title: 'Email Templates',
   // a list of the emails; clicking one opens it in an editor with a live preview
   async render(main) {
-    const langs = (company.account && company.account.languages) || []; const q = new URLSearchParams(location.search).get('lang');
+    const langs = (company.clientLang || 'en') === 'en' ? [] : (company.account && company.account.languages) || []; const q = new URLSearchParams(location.search).get('lang'); // only once App Settings → Languages isn't English
     TPL.lang = langs.some((l) => l.code === q) ? q : 'en'; const L = langs.find((l) => l.code === TPL.lang);
     TPL.list = await api('GET', '/api/email-templates?lang=' + TPL.lang);
     main.innerHTML = `<div class="head"><div><h1>Email Templates</h1><p class="sub">Edit the emails sent to clients. Each one shows your logo, business name and brand color (Company Profile and App Settings).</p></div></div>

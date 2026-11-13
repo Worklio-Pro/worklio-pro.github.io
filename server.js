@@ -2414,8 +2414,9 @@ const niceDate = (s) => {
   const [y, m, d] = String(s).slice(0, 10).split('-'); const f = db.company.dateFormat;
   return f === 'MM/DD/YYYY' ? `${m}/${d}/${y}` : f === 'DD/MM/YYYY' ? `${d}/${m}/${y}` : f === 'YYYY-MM-DD' ? `${y}-${m}-${d}` : new Date(s.slice(0, 10) + 'T12:00:00').toLocaleDateString(i18n.locale(), { month: 'short', day: 'numeric', year: 'numeric' });
 };
-// a client's language (client.lang), else the business's default for clients (App Settings → General → Languages)
-const langOf = (c) => i18n.pick(c && c.lang, db.company.clientLang);
+// a client's language (client.lang), else the business's default for clients (App Settings → General → Languages).
+// Languages are only on when that default isn't English: then each client can have their own; with English, everyone gets English.
+const langOf = (c) => { const def = i18n.pick(db.company.clientLang); return def === 'en' ? 'en' : i18n.pick(c && c.lang, def); };
 const langFor = (clientId) => langOf(findClient(clientId));
 // fn's emails, PDFs and pages come out in the client's language
 const inClientLang = (clientId, fn) => i18n.run(langFor(clientId), fn);
