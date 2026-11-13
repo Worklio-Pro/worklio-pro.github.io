@@ -2380,3 +2380,7 @@ tr:hover>.racts>div,tr:focus-within>.racts>div,.racts>div:has(details[open]){opa
 /* Page not found shows nothing but the Worklio Pro logo, Yoya and the message: no menus, bars or chat */
 body.p404-only :is(#side,#sideMiniBtn,#menuBtn,#topbar,#bnav,#installBar,#supportBar,#expiryBar,#textsBar,#chat-root){display:none!important}
 .p404-logo{display:inline-flex;align-items:center;gap:10px;margin:8px 0 18px;--logo-h:44px;--logo-w:240px;font-size:24px;font-weight:800;color:var(--text);text-decoration:none}
+/* client form: Communication heading with the Communication settings link at the right of its row */
+.ce-commh{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:16px 0 8px}.ce-commh h4{margin:0}
+.ce-commbtn{background:none;border:0;padding:0;color:var(--link);font:inherit;font-weight:600;font-size:14px;text-decoration:underline;cursor:pointer;text-align:right}
+.ce-commtext{font-size:13px;margin:0 0 10px;line-height:1.45}

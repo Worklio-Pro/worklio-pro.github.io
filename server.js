@@ -2418,6 +2418,8 @@ const niceDate = (s) => {
 // Languages are only on when that default isn't English: then each client can have their own; with English, everyone gets English.
 const langOf = (c) => { const def = i18n.pick(db.company.clientLang); return def === 'en' ? 'en' : i18n.pick(c && c.lang, def); };
 const langFor = (clientId) => langOf(findClient(clientId));
+// the client portal: in the client's Preferred language only when App Settings isn't English and the client has one chosen; otherwise English
+const portalLang = (c) => (i18n.pick(db.company.clientLang) !== 'en' && i18n.valid(c && c.lang) ? c.lang : 'en');
 // fn's emails, PDFs and pages come out in the client's language
 const inClientLang = (clientId, fn) => i18n.run(langFor(clientId), fn);
 // the business's emails to clients: styled like the platform's emails, with the business's logo, name and brand color (lib/emails.js)
@@ -3294,6 +3296,7 @@ document.addEventListener('DOMContentLoaded',up);})();</script>`;
 }
 // a client's quote and invoice pages (and what they post) come out in that client's language
 app.use((req, res, next) => {
+  const portal = /^\/api\/portal\/([^/]+)/.exec(req.path); if (portal) { const c = db.clients.find((x) => x.portalToken === portal[1]); return c ? i18n.run(portalLang(c), next) : next(); } // the portal's own messages
   const m = /^\/(pay|p\/quote)\/([^/]+)/.exec(req.path); if (!m) return next();
   const d = (m[1] === 'pay' ? db.invoices : db.quotes).find((x) => x.token === m[2]);
   return d ? inClientLang(d.clientId, next) : next();
@@ -3892,7 +3895,9 @@ const requestForClient = (r) => Object.fromEntries(REQ_FIELDS.map((k) => [k, r[k
 app.get('/api/portal/:token', (req, res) => {
   const c = db.clients.find((x) => x.portalToken === req.params.token);
   if (!c) return res.status(404).json({ error: 'Invalid portal link' });
+  const lang = portalLang(c);
   res.json({
+    lang, locale: i18n.locale(lang), strings: i18n.strings(lang), // the portal's words in the client's language (public/pages.js pt())
     company: { name: db.company.name, logo: db.company.logo, email: db.company.email, phone: db.company.phone, accentColor: accentColor(), address: db.company.addressPrivate ? '' : db.company.address, website: db.company.website, hours: db.company.showHours ? db.company.hours || null : null },
     client: { id: c.id, name: c.name, email: c.email, phone: c.phone, address: c.address, smsConsent: !!c.smsConsent, smsBrand: smsBrand() },
     referralLink: tenancy.has('referrals') ? referralLink(c) : null,
@@ -4194,13 +4199,13 @@ app.post('/api/portal/:token/requests', async (req, res) => {
   if (currentUser(req)) return res.status(403).json({ error: 'You’re logged in to the business account, so you can’t send a request for your client.' });
   db.requests = db.requests || [];
   const b = req.body || {}; const clip = (v, n) => String(v || '').trim().slice(0, n);
-  const title = clip(b.title, 120); if (!title) return res.status(400).json({ error: 'Tell us what you need done' });
+  const title = clip(b.title, 120); if (!title) return res.status(400).json({ error: tx('Tell us what you need done') });
   const dayAgo = new Date(Date.now() - 864e5).toISOString();
-  if (db.requests.filter((r) => r.clientId === c.id && r.createdAt > dayAgo).length >= 10) return res.status(429).json({ error: 'You’ve sent several requests today. Please call or email us instead.' });
+  if (db.requests.filter((r) => r.clientId === c.id && r.createdAt > dayAgo).length >= 10) return res.status(429).json({ error: tx('You’ve sent several requests today. Please call or email us instead.') });
   const preferredDate = /^\d{4}-\d{2}-\d{2}$/.test(b.preferredDate || '') ? b.preferredDate : '';
   const preferredTime = ['morning', 'afternoon', 'evening'].includes(b.preferredTime) ? b.preferredTime : 'any';
   const phone = clip(b.phone, 40); const optedIn = !c.smsConsent && smsConsentFrom(b, phone, 'client portal');
-  if (b.smsConsent && !c.smsConsent && String(phone).replace(/\D/g, '').length < 10) return res.status(400).json({ error: 'Enter your mobile number with the area code to get texts' });
+  if (b.smsConsent && !c.smsConsent && String(phone).replace(/\D/g, '').length < 10) return res.status(400).json({ error: tx('Enter your mobile number with the area code to get texts') });
   if (optedIn) { c.smsConsent = optedIn; c.phone = phone; } // the number they just agreed to be texted at
   const r = { id: uid(), clientId: c.id, title, details: clip(b.details, 4000), address: clip(b.address, 300) || c.address || '', preferredDate, preferredTime, status: 'new', createdAt: new Date().toISOString() };
   db.requests.push(r);

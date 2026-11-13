@@ -599,7 +599,7 @@ A.teamSort = (d) => { teamView.dir = teamView.sort === d.k ? -teamView.dir : (d.
 A.teamClear = () => { teamView.q = ''; refresh().then(() => $('#tq').focus()); };
 A.teamPage = (d) => { teamView.page += Number(d.d); refresh(); };
 // working hours: { sun: { on, start, end }, … }; members without saved hours work Mon–Fri 9–5
-const WEEK = [['sun', 'Sunday'], ['mon', 'Monday'], ['tue', 'Tuesday'], ['wed', 'Wednesday'], ['thu', 'Thursday'], ['fri', 'Friday'], ['sat', 'Saturday']];
+const WEEK = [['sun', /*tx*/'Sunday'], ['mon', /*tx*/'Monday'], ['tue', /*tx*/'Tuesday'], ['wed', /*tx*/'Wednesday'], ['thu', /*tx*/'Thursday'], ['fri', /*tx*/'Friday'], ['sat', /*tx*/'Saturday']];
 function staffHours(s) {
   const h = (s && s.hours) || {};
   return Object.fromEntries(WEEK.map(([k]) => [k, h[k] || { on: !['sun', 'sat'].includes(k), start: '09:00', end: '17:00' }]));
@@ -2314,7 +2314,8 @@ PAGES['/client-portal'] = {
     let p;
     try { p = await api('GET', '/api/portal/' + encodeURIComponent(tok)); } catch (e) { main.innerHTML = '<div class="cp-invalid"><h1>Link not valid</h1><p>This portal link is invalid or has expired. Please contact your service provider.</p></div>'; return; }
     if (p.company.accentColor) { document.documentElement.style.setProperty('--brand', p.company.accentColor); document.documentElement.dataset.accent = ''; }
-    document.title = `${p.company.name || 'Client portal'} · Client hub`;
+    CP_T = p.strings || {}; CP_LOCALE = p.locale || 'en-US'; document.documentElement.lang = p.lang || 'en'; // the client's Preferred language (server.js portalLang)
+    document.title = `${p.company.name || pt('Client portal')} · ${pt('Client hub')}`;
     renderPortal(main, tok, p);
   },
 };
@@ -2334,12 +2335,17 @@ const CP_ICON = {
   camera: '<path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/>',
 };
 const cpIcon = (k, size = 22) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${CP_ICON[k]}</svg>`;
-const CP_NAV = [[['requests', 'Requests'], ['estimates', 'Estimates'], ['appointments', 'Appointments'], ['invoices', 'Invoices'], ['reviews', 'Reviews']], [['wallet', 'Wallet']], [['contact', 'Contact Us']]];
-const CP_STATUS = { new: 'Received', sent: 'Awaiting your approval', approved: 'Approved', declined: 'Declined', converted: 'Approved', scheduled: 'Scheduled', completed: 'Completed', cancelled: 'Cancelled', paid: 'Paid', overdue: 'Overdue', unpaid: 'Due', partial: 'Partly paid' };
-const cpBadge = (s) => `<span class="cp-badge cp-${esc(s)}">${esc(CP_STATUS[s] || s)}</span>`;
+// The portal speaks the client's Preferred language: pt() turns an English phrase into its translation from the portal data (strings, from
+// lib/i18n/), else the English. Phrases in the lists below are marked /*tx*/ so `node lib/i18n.js` checks them too.
+let CP_T = {}; let CP_LOCALE = 'en-US';
+const pt = (en, v) => { const s = Object.prototype.hasOwnProperty.call(CP_T, en) ? CP_T[en] : en; return v ? s.replace(/\{(\w+)\}/g, (m, k) => (k in v ? v[k] : m)) : s; };
+const cpDate = (s) => (CP_LOCALE === 'en-US' ? fmtDate(s) : s ? new Date(String(s).slice(0, 10) + 'T12:00:00').toLocaleDateString(CP_LOCALE, { month: 'short', day: 'numeric', year: 'numeric' }) : '');
+const CP_NAV = [[['requests', /*tx*/'Requests'], ['estimates', /*tx*/'Estimates'], ['appointments', /*tx*/'Appointments'], ['invoices', /*tx*/'Invoices'], ['reviews', /*tx*/'Reviews']], [['wallet', /*tx*/'Wallet']], [['contact', /*tx*/'Contact Us']]];
+const CP_STATUS = { new: /*tx*/'Received', sent: /*tx*/'Awaiting your approval', approved: /*tx*/'Approved', declined: /*tx*/'Declined', converted: 'Approved', scheduled: /*tx*/'Scheduled', completed: /*tx*/'Completed', cancelled: /*tx*/'Cancelled', paid: /*tx*/'Paid', overdue: /*tx*/'Overdue', unpaid: /*tx*/'Due', partial: /*tx*/'Partly paid' };
+const cpBadge = (s) => `<span class="cp-badge cp-${esc(s)}">${esc(pt(CP_STATUS[s] || s))}</span>`;
 const cpEmpty = (icon, title, text, action = '') => `<div class="cp-empty"><div class="cp-empty-ic">${cpIcon(icon, 24)}</div><h2>${title}</h2><p>${text}</p>${action}</div>`;
 const rvMediaHtml = (media) => `<div class="rv-media">${media.map((m) => (m.type === 'video' ? `<video src="${esc(m.url)}" controls preload="metadata" playsinline></video>` : `<a href="${esc(m.url)}" target="_blank" rel="noopener"><img src="${esc(m.url)}" alt="Photo from the review"></a>`)).join('')}</div>`;
-const TIME_LABEL = { any: 'Any time', morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening' };
+const TIME_LABEL = { any: /*tx*/'Any time', morning: /*tx*/'Morning', afternoon: /*tx*/'Afternoon', evening: /*tx*/'Evening' };
 function renderPortal(main, tok, p) {
   const today = ymd(new Date());
   const quotes = p.quotes.filter((q) => q.status !== 'draft');
@@ -2350,41 +2356,41 @@ function renderPortal(main, tok, p) {
   const co = p.company;
   // logged in to the business, New Request shows greyed out: only the client sends requests (the server refuses too)
   const reqOff = p.reviewsViewOnly ? ' disabled title="Only your client can send a request. You’re previewing as the business."' : '';
-  const newReqBtn = `<button type="button" class="cp-btn" data-cp="new-request"${reqOff}>${cpIcon('plus', 18)} New Request</button>`;
+  const newReqBtn = `<button type="button" class="cp-btn" data-cp="new-request"${reqOff}>${cpIcon('plus', 18)} ${pt('New Request')}</button>`;
   const row = (title, sub, right) => `<div class="cp-item"><div class="cp-item-main"><strong>${title}</strong>${sub.filter(Boolean).map((x) => `<div class="cp-sub">${x}</div>`).join('')}</div><div class="cp-item-side">${right}</div></div>`;
   const head = (title, action = '') => `<div class="cp-head"><h1>${title}</h1>${action}</div>`;
   // the review form opens on one finished job or invoice; its questions are the ones the business set for that module
   let reviewing = null;
   // logged in to the business, the review buttons show but are greyed out: only the client can write or change a review
   const rvOff = p.reviewsViewOnly ? ' disabled title="Only your client can write or edit reviews. You’re previewing as the business."' : '';
-  const rvBtn = (id) => { const i = p.reviewable.findIndex((x) => x.refs.includes(id)); return i < 0 ? '' : `<button type="button" class="cp-btn primary" data-cp="write-review" data-rv="${i}"${rvOff}>Write a review</button>`; };
+  const rvBtn = (id) => { const i = p.reviewable.findIndex((x) => x.refs.includes(id)); return i < 0 ? '' : `<button type="button" class="cp-btn primary" data-cp="write-review" data-rv="${i}"${rvOff}>${pt('Write a review')}</button>`; };
   const rvVal = (q) => ((reviewing.edit && reviewing.edit.answers) || []).find((a) => a.questionId === q.id)?.answer;
-  const rvStars = (name, label, required, value) => `<div class="cp-rv-stars" role="radiogroup" aria-label="${esc(label)}">${[5, 4, 3, 2, 1].map((n) => `<input type="radio" id="${name}_${n}" name="${name}" value="${n}" ${required ? 'required' : ''} ${Number(value) === n ? 'checked' : ''}><label for="${name}_${n}" title="${n} out of 5" aria-label="${n} out of 5 stars">★</label>`).join('')}</div>`;
+  const rvStars = (name, label, required, value) => `<div class="cp-rv-stars" role="radiogroup" aria-label="${esc(label)}">${[5, 4, 3, 2, 1].map((n) => `<input type="radio" id="${name}_${n}" name="${name}" value="${n}" ${required ? 'required' : ''} ${Number(value) === n ? 'checked' : ''}><label for="${name}_${n}" title="${pt('{n} out of 5', { n })}" aria-label="${pt('{n} out of 5 stars', { n })}">★</label>`).join('')}</div>`;
   const rvField = (q) => { const name = 'q_' + q.id; const need = q.required ? 'required' : ''; const val = rvVal(q);
-    return `<div class="cp-rv-q"><div class="cp-rv-l">${esc(q.text)}${q.required ? '' : ' <span class="cp-num">(optional)</span>'}</div>${q.type === 'stars' ? rvStars(name, q.text, q.required, val)
-      : q.type === 'yesno' ? ['Yes', 'No'].map((v) => `<label class="cp-rv-yn"><input type="radio" name="${name}" value="${v}" ${need} ${val === v ? 'checked' : ''}> ${v}</label>`).join('') : `<textarea name="${name}" rows="3" maxlength="1000" ${need}>${esc(val ?? '')}</textarea>`}</div>`; };
+    return `<div class="cp-rv-q"><div class="cp-rv-l">${esc(q.text)}${q.required ? '' : ` <span class="cp-num">${pt('(optional)')}</span>`}</div>${q.type === 'stars' ? rvStars(name, q.text, q.required, val)
+      : q.type === 'yesno' ? [/*tx*/'Yes', /*tx*/'No'].map((v) => `<label class="cp-rv-yn"><input type="radio" name="${name}" value="${v}" ${need} ${val === v ? 'checked' : ''}> ${pt(v)}</label>`).join('') : `<textarea name="${name}" rows="3" maxlength="1000" ${need}>${esc(val ?? '')}</textarea>`}</div>`; };
   const RV_ACCEPT = 'image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/webm';
   // the review popup, like writing one on Google: stars, the business's questions, the review and its photos and videos
   const openReview = (item) => {
     reviewing = item; const edit = item.edit; let have = edit ? [...(edit.media || [])] : []; const gone = []; let added = [];
     closeModal();
     const ov = document.createElement('div'); ov.className = 'overlay'; ov.id = 'overlay';
-    ov.innerHTML = `<form class="modal cp-rv-modal" role="dialog" aria-modal="true" aria-label="${edit ? 'Edit your review' : 'Write a review'}"><h2>${esc(co.name)}</h2>
-<p class="cp-sub">${esc(item.title || (item.kind === 'job' ? 'Your job' : 'Your invoice'))}${item.number ? ` (#${esc(item.number)})` : ''}. Your review goes to the business and isn’t posted publicly.</p>
-<div class="cp-rv-top">${rvStars('stars', 'Your overall rating', true, edit && edit.stars)}</div>${(p.reviewQuestions[item.kind] || []).map(rvField).join('')}
-<textarea name="comment" rows="4" maxlength="2000" aria-label="Your review" placeholder="Share details of your own experience with ${esc(co.name)}">${esc((edit && edit.comment) || '')}</textarea>
-<div class="cp-rv-tiles"></div><label class="cp-rv-add">${cpIcon('camera', 18)} Add photos &amp; videos<input type="file" multiple accept="${RV_ACCEPT}" hidden></label>
-<div class="cp-actions"><button type="button" class="cp-btn ghost" data-rv-cancel>Cancel</button><button class="cp-btn primary">${edit ? 'Save changes' : 'Send review'}</button></div></form>`;
+    ov.innerHTML = `<form class="modal cp-rv-modal" role="dialog" aria-modal="true" aria-label="${edit ? pt('Edit your review') : pt('Write a review')}"><h2>${esc(co.name)}</h2>
+<p class="cp-sub">${esc(item.title || (item.kind === 'job' ? pt('Your job') : pt('Your invoice')))}${item.number ? ` (#${esc(item.number)})` : ''}. ${pt('Your review goes to the business and isn’t posted publicly.')}</p>
+<div class="cp-rv-top">${rvStars('stars', pt('Your overall rating'), true, edit && edit.stars)}</div>${(p.reviewQuestions[item.kind] || []).map(rvField).join('')}
+<textarea name="comment" rows="4" maxlength="2000" aria-label="${pt('Your review')}" placeholder="${pt('Share details of your own experience with {name}', { name: esc(co.name) })}">${esc((edit && edit.comment) || '')}</textarea>
+<div class="cp-rv-tiles"></div><label class="cp-rv-add">${cpIcon('camera', 18)} ${pt('Add photos & videos').replace('&', '&amp;')}<input type="file" multiple accept="${RV_ACCEPT}" hidden></label>
+<div class="cp-actions"><button type="button" class="cp-btn ghost" data-rv-cancel>${pt('Cancel')}</button><button class="cp-btn primary">${edit ? pt('Save changes') : pt('Send review')}</button></div></form>`;
     $('.cp', main).append(ov); const f = $('form', ov); const tiles = $('.cp-rv-tiles', f); const pick = $('input[type=file]', f);
-    const tile = (src, video, rm) => { const d = document.createElement('div'); d.className = 'cp-rv-tile'; d.innerHTML = (video ? '<span>Video</span>' : `<img src="${esc(src)}" alt="">`) + '<button type="button" aria-label="Remove">×</button>'; $('button', d).onclick = rm; tiles.append(d); };
+    const tile = (src, video, rm) => { const d = document.createElement('div'); d.className = 'cp-rv-tile'; d.innerHTML = (video ? `<span>${pt('Video')}</span>` : `<img src="${esc(src)}" alt="">`) + `<button type="button" aria-label="${pt('Remove')}">×</button>`; $('button', d).onclick = rm; tiles.append(d); };
     const draw = () => { tiles.textContent = '';
       have.forEach((m) => tile(m.url, m.type === 'video', () => { gone.push(m.id); have = have.filter((x) => x !== m); draw(); }));
       added.forEach((x) => { const v = x.type.startsWith('video'); tile(v ? '' : URL.createObjectURL(x), v, () => { added = added.filter((y) => y !== x); draw(); }); }); };
     draw();
-    pick.onchange = () => { for (const x of pick.files) { const v = x.type.startsWith('video'); if (have.length + added.length >= 10) { toast('Up to 10 photos and videos on a review', true); break; } if (x.size > (v ? 100e6 : 15e6)) { toast(`${x.name} is too large. Photos can be up to 15 MB and videos up to 100 MB.`, true); continue; } added.push(x); } pick.value = ''; draw(); };
+    pick.onchange = () => { for (const x of pick.files) { const v = x.type.startsWith('video'); if (have.length + added.length >= 10) { toast(pt('Up to 10 photos and videos on a review'), true); break; } if (x.size > (v ? 100e6 : 15e6)) { toast(pt('{name} is too large. Photos can be up to 15 MB and videos up to 100 MB.', { name: x.name }), true); continue; } added.push(x); } pick.value = ''; draw(); };
     $('[data-rv-cancel]', f).onclick = closeModal;
     f.onsubmit = async (e) => {
-      e.preventDefault(); const btn = $('.primary', f); const label = btn.textContent; btn.disabled = true; btn.textContent = 'Sending…';
+      e.preventDefault(); const btn = $('.primary', f); const label = btn.textContent; btn.disabled = true; btn.textContent = pt('Sending…');
       const fields = Object.fromEntries(new FormData(f)); const base = `/api/portal/${encodeURIComponent(tok)}/reviews`;
       let r;
       try { r = edit ? await api('PUT', `${base}/${encodeURIComponent(edit.id)}`, fields) : await api('POST', base, { ...fields, kind: item.kind, id: item.id }); }
@@ -2392,83 +2398,83 @@ function renderPortal(main, tok, p) {
       if (edit) p.reviews[p.reviews.indexOf(edit)] = r; else { p.reviews.unshift(r); p.reviewable = p.reviewable.filter((x) => x !== item); }
       const mediaUrl = `${base}/${encodeURIComponent(r.id)}/media`; let bad = 0; const keep = (x) => { p.reviews[p.reviews.findIndex((y) => y.id === x.id)] = x; };
       for (const id of gone) { try { keep(await api('DELETE', `${mediaUrl}/${encodeURIComponent(id)}`)); } catch (err) { bad++; } }
-      for (let n = 0; n < added.length; n++) { btn.textContent = `Uploading ${n + 1} of ${added.length}…`;
-        try { const u = await fetch(mediaUrl, { method: 'POST', headers: { 'Content-Type': added[n].type || 'application/octet-stream' }, body: added[n] }); const j = await u.json().catch(() => ({})); if (u.ok) keep(j); else { bad++; toast(j.error || 'A file didn’t upload', true); } } catch (err) { bad++; } }
-      reviewing = null; closeModal(); toast(bad ? `Your review was saved, but ${bad} file${bad === 1 ? '' : 's'} didn’t upload. Choose Edit to try again.` : edit ? 'Your review was updated.' : 'Thank you! Your review was sent.', !!bad); show('reviews');
+      for (let n = 0; n < added.length; n++) { btn.textContent = pt('Uploading {n} of {total}…', { n: n + 1, total: added.length });
+        try { const u = await fetch(mediaUrl, { method: 'POST', headers: { 'Content-Type': added[n].type || 'application/octet-stream' }, body: added[n] }); const j = await u.json().catch(() => ({})); if (u.ok) keep(j); else { bad++; toast(j.error || pt('A file didn’t upload'), true); } } catch (err) { bad++; } }
+      reviewing = null; closeModal(); toast(bad ? (bad === 1 ? pt('Your review was saved, but 1 file didn’t upload. Choose Edit to try again.') : pt('Your review was saved, but {n} files didn’t upload. Choose Edit to try again.', { n: bad })) : edit ? pt('Your review was updated.') : pt('Thank you! Your review was sent.'), !!bad); show('reviews');
     };
     $('[name=stars]:checked', f) ? $('textarea[name=comment]', f).focus() : $('.cp-rv-top input:last-of-type', f).focus();
   };
   const rvMedia = (r) => ((r.media || []).length ? rvMediaHtml(r.media) : '');
   const views = {
-    requests: () => (p.requests.length ? head('Requests', newReqBtn) + `<div class="cp-list">${p.requests.map((r) => row(esc(r.title), [`Sent ${fmtDate(r.createdAt.slice(0, 10))}`, r.preferredDate || r.preferredTime !== 'any' ? `Preferred: ${r.preferredDate ? fmtDate(r.preferredDate) : 'any day'}, ${TIME_LABEL[r.preferredTime].toLowerCase()}` : '', r.details ? esc(r.details) : ''], cpBadge(r.status))).join('')}</div>`
-      : cpEmpty('requests', 'Get work done', 'Send us a request to fill us in on the details', newReqBtn)),
-    'new-request': () => `${head('New request')}<form class="cp-form" id="cpReq">
-<label class="fl"><span>What do you need done?*</span><input name="title" required maxlength="120" placeholder="e.g. Install 4 security cameras"></label>
-<label class="fl"><span>Details</span><textarea name="details" rows="5" maxlength="4000" placeholder="Anything that helps us prepare: sizes, access, photos you can describe…"></textarea></label>
-<label class="fl"><span>Service address</span><input name="address" maxlength="300" value="${esc(p.client.address || '')}"></label>
-<div class="cp-row"><label class="fl"><span>Preferred date</span><input name="preferredDate" type="date" min="${today}"></label>
-<label class="fl"><span>Preferred time</span><select name="preferredTime">${Object.entries(TIME_LABEL).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select></label></div>
-${p.client.smsConsent ? `<p class="cp-sub" style="margin:4px 0 12px">You get texts from us at ${esc(p.client.phone)}. Reply STOP to any text to stop them.</p>` : `<label class="fl"><span>Mobile phone (for texts)</span><input name="phone" type="tel" maxlength="40" autocomplete="tel" value="${esc(p.client.phone || '')}"></label>
+    requests: () => (p.requests.length ? head(pt('Requests'), newReqBtn) + `<div class="cp-list">${p.requests.map((r) => row(esc(r.title), [pt('Sent {date}', { date: cpDate(r.createdAt.slice(0, 10)) }), r.preferredDate || r.preferredTime !== 'any' ? pt('Preferred: {day}, {time}', { day: r.preferredDate ? cpDate(r.preferredDate) : pt('any day'), time: pt(TIME_LABEL[r.preferredTime]).toLowerCase() }) : '', r.details ? esc(r.details) : ''], cpBadge(r.status))).join('')}</div>`
+      : cpEmpty('requests', pt('Get work done'), pt('Send us a request to fill us in on the details'), newReqBtn)),
+    'new-request': () => `${head(pt('New request'))}<form class="cp-form" id="cpReq">
+<label class="fl"><span>${pt('What do you need done?')}*</span><input name="title" required maxlength="120" placeholder="${pt('e.g. Install 4 security cameras')}"></label>
+<label class="fl"><span>${pt('Details')}</span><textarea name="details" rows="5" maxlength="4000" placeholder="${pt('Anything that helps us prepare: sizes, access, photos you can describe…')}"></textarea></label>
+<label class="fl"><span>${pt('Service address')}</span><input name="address" maxlength="300" value="${esc(p.client.address || '')}"></label>
+<div class="cp-row"><label class="fl"><span>${pt('Preferred date')}</span><input name="preferredDate" type="date" min="${today}"></label>
+<label class="fl"><span>${pt('Preferred time')}</span><select name="preferredTime">${Object.entries(TIME_LABEL).map(([k, l]) => `<option value="${k}">${pt(l)}</option>`).join('')}</select></label></div>
+${p.client.smsConsent ? `<p class="cp-sub" style="margin:4px 0 12px">${pt('You get texts from us at {phone}. Reply STOP to any text to stop them.', { phone: esc(p.client.phone) })}</p>` : `<label class="fl"><span>${pt('Mobile phone (for texts)')}</span><input name="phone" type="tel" maxlength="40" autocomplete="tel" value="${esc(p.client.phone || '')}"></label>
 <label style="display:flex;gap:10px;align-items:flex-start;margin:0 0 14px;font-size:14px;line-height:1.45"><input type="checkbox" name="smsConsent" value="1" style="width:auto;margin:3px 0 0;flex:none">
 <span>Text me updates from ${esc(p.client.smsBrand || 'Worklio Pro')} about my request, quotes, invoices and appointments with ${esc(co.name)}. Message frequency varies. Msg &amp; data rates may apply. Reply STOP to opt out, HELP for help. Agreeing isn’t a condition of service. See the <a href="/terms#sms" target="_blank" rel="noopener">Terms</a> and <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</span></label>`}
-<div class="cp-actions"><button type="button" class="cp-btn ghost" data-cp="requests">Cancel</button><button class="cp-btn primary">Send request</button></div></form>`,
-    estimates: () => (quotes.length ? head('Estimates') + `<div class="cp-list">${quotes.map((q) => row(`${esc(q.title || 'Estimate')} <span class="cp-num">#${esc(q.number)}</span>`, [`Sent ${fmtDate((q.sentAt || q.createdAt).slice(0, 10))}`, `Total ${money(q.total)}`, q.depositFee > 0 ? (q.depositPaidAt ? `Deposit paid ${money(q.depositPaidAmount ?? q.depositFee)}` : `Deposit ${money(q.depositFee)}`) : ''], `${cpBadge(q.status)}<a class="cp-btn ${q.status === 'sent' ? 'primary' : ''}" href="${esc(q.link)}">${q.status === 'sent' ? 'Review' : 'View'}</a>`)).join('')}</div>`
-      : cpEmpty('estimates', 'No estimates yet', 'When we send you an estimate, you can review and approve it here.')),
-    appointments: () => (p.jobs.length ? head('Appointments') + (upcoming.length ? `<h3 class="cp-sec">Upcoming</h3><div class="cp-list">${upcoming.map((j) => row(esc(j.title), [`${fmtDate(j.date)} · ${fmtTime(j.startTime)} – ${fmtTime(j.endTime)}`, esc(j.address)], cpBadge('scheduled'))).join('')}</div>` : '')
-      + (past.length ? `<h3 class="cp-sec">Past</h3><div class="cp-list">${past.map((j) => row(esc(j.title), [fmtDate(j.date), esc(j.address)], `${cpBadge(j.status)}${(j.forms || []).map((f) => `<button type="button" class="cp-btn" data-cp-form="${esc(j.id)}:${esc(f.id)}">${esc(f.name)}</button>`).join('')}${rvBtn(j.id)}`)).join('')}</div>` : '')
-      : cpEmpty('appointments', 'No appointments', 'Your scheduled visits will show up here.')),
-    invoices: () => (invoices.length ? head('Invoices') + (openInv.length ? `<div class="cp-due"><span>Balance due</span><strong>${money(openInv.reduce((s, i) => s + (i.balanceDue ?? i.total), 0))}</strong></div>` : '')
-      + `<div class="cp-list">${[...openInv, ...invoices.filter((i) => i.displayStatus === 'paid')].map((i) => row(`${esc(i.subject || 'Invoice')} <span class="cp-num">#${esc(i.number)}</span>`, [i.displayStatus === 'paid' ? `Paid ${fmtDate((i.paidAt || i.issueDate).slice(0, 10))}` : `Due ${fmtDate(i.dueDate)}`, i.displayStatus === 'paid' ? money(i.total) : `${money(i.balanceDue ?? i.total)}${i.depositApplied > 0 ? ` after ${money(i.depositApplied)} deposit` : ''}`], `${cpBadge(i.displayStatus)}${i.displayStatus !== 'paid' && p.reviewsViewOnly ? '<button type="button" class="cp-btn primary" disabled title="Only your client can pay. You’re previewing as the business.">Pay now</button>' : `<a class="cp-btn ${i.displayStatus === 'paid' ? '' : 'primary'}" href="${esc(i.link)}">${i.displayStatus === 'paid' ? 'Receipt' : 'Pay now'}</a>`}${i.displayStatus === 'paid' ? rvBtn(i.id) : ''}`)).join('')}</div>`
-      : cpEmpty('invoices', 'No invoices', 'Invoices we send you will show up here, ready to pay online.')),
-    reviews: () => (p.reviews.length || p.reviewable.length ? head('Reviews') + (p.reviewsViewOnly ? '<p class="cp-note">You’re previewing as the business, so the review buttons are turned off. Your client can use them.</p>' : '') + (p.reviewable.length ? `<h3 class="cp-sec">Waiting for your review</h3><div class="cp-list">${p.reviewable.map((x, i) => row(`${esc(x.title || (x.kind === 'job' ? 'Job' : 'Invoice'))}${x.number ? ` <span class="cp-num">#${esc(x.number)}</span>` : ''}`, [x.kind === 'job' ? `Completed ${fmtDate(x.date)}` : `Paid ${fmtDate(x.date)}`], `<button type="button" class="cp-btn primary" data-cp="write-review" data-rv="${i}"${rvOff}>Write a review</button>`)).join('')}</div>` : '')
-      + (p.reviews.length ? `<h3 class="cp-sec">Your reviews</h3><div class="cp-list">${p.reviews.map((r, i) => row(`${esc(r.title || (r.kind === 'job' ? 'Job' : 'Invoice'))}${r.refNumber ? ` <span class="cp-num">#${esc(r.refNumber)}</span>` : ''}`, [`Sent ${fmtDate(r.submittedAt.slice(0, 10))}${r.editedAt ? ` · Edited ${fmtDate(r.editedAt.slice(0, 10))}` : ''}`, ...r.answers.map((a) => `${esc(a.question)} ${a.type === 'stars' ? starRow(a.answer, 14) : esc(a.answer)}`), r.comment ? esc(r.comment) : '', rvMedia(r), r.reply ? `<b>Reply from ${esc(co.name)}:</b> ${esc(r.reply.comment)}` : ''], `${starRow(r.stars)}<button type="button" class="cp-btn" data-cp="write-review" data-rve="${i}"${rvOff}>Edit</button>`)).join('')}</div>` : '')
-      : cpEmpty('reviews', 'No reviews yet', `When a job is completed or an invoice is paid, you can review it here.`)),
-    wallet: () => cpEmpty('wallet', 'No saved payment methods', 'Pay any invoice by card, Zelle, Venmo, Cash App or PayPal when you open it. Card details are handled securely by Stripe and are never stored by us.'),
-    contact: () => `${head('Contact us')}<div class="cp-card">${co.logo ? `<img src="${esc(co.logo)}" alt="" class="cp-card-logo">` : ''}<h2>${esc(co.name)}</h2>
+<div class="cp-actions"><button type="button" class="cp-btn ghost" data-cp="requests">${pt('Cancel')}</button><button class="cp-btn primary">${pt('Send request')}</button></div></form>`,
+    estimates: () => (quotes.length ? head(pt('Estimates')) + `<div class="cp-list">${quotes.map((q) => row(`${esc(q.title || pt('Estimate'))} <span class="cp-num">#${esc(q.number)}</span>`, [pt('Sent {date}', { date: cpDate((q.sentAt || q.createdAt).slice(0, 10)) }), pt('Total {amount}', { amount: money(q.total) }), q.depositFee > 0 ? (q.depositPaidAt ? pt('Deposit paid {amount}', { amount: money(q.depositPaidAmount ?? q.depositFee) }) : pt('Deposit {amount}', { amount: money(q.depositFee) })) : ''], `${cpBadge(q.status)}<a class="cp-btn ${q.status === 'sent' ? 'primary' : ''}" href="${esc(q.link)}">${q.status === 'sent' ? pt('Review') : pt('View')}</a>`)).join('')}</div>`
+      : cpEmpty('estimates', pt('No estimates yet'), pt('When we send you an estimate, you can review and approve it here.'))),
+    appointments: () => (p.jobs.length ? head(pt('Appointments')) + (upcoming.length ? `<h3 class="cp-sec">${pt('Upcoming')}</h3><div class="cp-list">${upcoming.map((j) => row(esc(j.title), [`${cpDate(j.date)} · ${fmtTime(j.startTime)} – ${fmtTime(j.endTime)}`, esc(j.address)], cpBadge('scheduled'))).join('')}</div>` : '')
+      + (past.length ? `<h3 class="cp-sec">${pt('Past')}</h3><div class="cp-list">${past.map((j) => row(esc(j.title), [cpDate(j.date), esc(j.address)], `${cpBadge(j.status)}${(j.forms || []).map((f) => `<button type="button" class="cp-btn" data-cp-form="${esc(j.id)}:${esc(f.id)}">${esc(f.name)}</button>`).join('')}${rvBtn(j.id)}`)).join('')}</div>` : '')
+      : cpEmpty('appointments', pt('No appointments'), pt('Your scheduled visits will show up here.'))),
+    invoices: () => (invoices.length ? head(pt('Invoices')) + (openInv.length ? `<div class="cp-due"><span>${pt('Balance due')}</span><strong>${money(openInv.reduce((s, i) => s + (i.balanceDue ?? i.total), 0))}</strong></div>` : '')
+      + `<div class="cp-list">${[...openInv, ...invoices.filter((i) => i.displayStatus === 'paid')].map((i) => row(`${esc(i.subject || pt('Invoice'))} <span class="cp-num">#${esc(i.number)}</span>`, [i.displayStatus === 'paid' ? pt('Paid {date}', { date: cpDate((i.paidAt || i.issueDate).slice(0, 10)) }) : pt('Due {date}', { date: cpDate(i.dueDate) }), i.displayStatus === 'paid' ? money(i.total) : `${money(i.balanceDue ?? i.total)}${i.depositApplied > 0 ? ` ${pt('after {amount} deposit', { amount: money(i.depositApplied) })}` : ''}`], `${cpBadge(i.displayStatus)}${i.displayStatus !== 'paid' && p.reviewsViewOnly ? `<button type="button" class="cp-btn primary" disabled title="Only your client can pay. You’re previewing as the business.">${pt('Pay now')}</button>` : `<a class="cp-btn ${i.displayStatus === 'paid' ? '' : 'primary'}" href="${esc(i.link)}">${i.displayStatus === 'paid' ? pt('Receipt') : pt('Pay now')}</a>`}${i.displayStatus === 'paid' ? rvBtn(i.id) : ''}`)).join('')}</div>`
+      : cpEmpty('invoices', pt('No invoices'), pt('Invoices we send you will show up here, ready to pay online.'))),
+    reviews: () => (p.reviews.length || p.reviewable.length ? head(pt('Reviews')) + (p.reviewsViewOnly ? '<p class="cp-note">You’re previewing as the business, so the review buttons are turned off. Your client can use them.</p>' : '') + (p.reviewable.length ? `<h3 class="cp-sec">${pt('Waiting for your review')}</h3><div class="cp-list">${p.reviewable.map((x, i) => row(`${esc(x.title || (x.kind === 'job' ? pt('Job') : pt('Invoice')))}${x.number ? ` <span class="cp-num">#${esc(x.number)}</span>` : ''}`, [x.kind === 'job' ? pt('Completed {date}', { date: cpDate(x.date) }) : pt('Paid {date}', { date: cpDate(x.date) })], `<button type="button" class="cp-btn primary" data-cp="write-review" data-rv="${i}"${rvOff}>${pt('Write a review')}</button>`)).join('')}</div>` : '')
+      + (p.reviews.length ? `<h3 class="cp-sec">${pt('Your reviews')}</h3><div class="cp-list">${p.reviews.map((r, i) => row(`${esc(r.title || (r.kind === 'job' ? pt('Job') : pt('Invoice')))}${r.refNumber ? ` <span class="cp-num">#${esc(r.refNumber)}</span>` : ''}`, [`${pt('Sent {date}', { date: cpDate(r.submittedAt.slice(0, 10)) })}${r.editedAt ? ` · ${pt('Edited {date}', { date: cpDate(r.editedAt.slice(0, 10)) })}` : ''}`, ...r.answers.map((a) => `${esc(a.question)} ${a.type === 'stars' ? starRow(a.answer, 14) : esc(a.answer)}`), r.comment ? esc(r.comment) : '', rvMedia(r), r.reply ? `<b>${pt('Reply from {name}:', { name: esc(co.name) })}</b> ${esc(r.reply.comment)}` : ''], `${starRow(r.stars)}<button type="button" class="cp-btn" data-cp="write-review" data-rve="${i}"${rvOff}>${pt('Edit')}</button>`)).join('')}</div>` : '')
+      : cpEmpty('reviews', pt('No reviews yet'), pt('When a job is completed or an invoice is paid, you can review it here.'))),
+    wallet: () => cpEmpty('wallet', pt('No saved payment methods'), pt('Pay any invoice by card, Zelle, Venmo, Cash App or PayPal when you open it. Card details are handled securely by Stripe and are never stored by us.')),
+    contact: () => `${head(pt('Contact us'))}<div class="cp-card">${co.logo ? `<img src="${esc(co.logo)}" alt="" class="cp-card-logo">` : ''}<h2>${esc(co.name)}</h2>
 ${co.phone ? `<a class="cp-contact" href="tel:${esc(co.phone)}">${cpIcon('contact', 18)} ${esc(co.phone)}</a>` : ''}${co.email ? `<a class="cp-contact" href="mailto:${esc(co.email)}">✉ ${esc(co.email)}</a>` : ''}
 ${co.address ? `<div class="cp-contact cp-addr">${esc(co.address)}</div>` : ''}${co.website ? `<a class="cp-contact" href="${esc(/^https?:/.test(co.website) ? co.website : 'https://' + co.website)}" target="_blank" rel="noopener">${esc(co.website)}</a>` : ''}
-${co.hours ? `<h3 class="cp-sec">Business hours</h3><table class="cp-hours">${WEEK.map(([k, l]) => `<tr><td>${l}</td><td>${co.hours[k] && co.hours[k].on ? `${fmtTime(co.hours[k].start)} – ${fmtTime(co.hours[k].end)}` : 'Closed'}</td></tr>`).join('')}</table>` : ''}</div>`,
+${co.hours ? `<h3 class="cp-sec">${pt('Business hours')}</h3><table class="cp-hours">${WEEK.map(([k, l]) => `<tr><td>${pt(l)}</td><td>${co.hours[k] && co.hours[k].on ? `${fmtTime(co.hours[k].start)} – ${fmtTime(co.hours[k].end)}` : pt('Closed')}</td></tr>`).join('')}</table>` : ''}</div>`,
     // referral: their public referral link (never the private portal link) with copy / email / Outlook / Gmail options
-    refer: () => { const link = p.referralLink; const subject = `Check out ${co.name}`; const body = `I recommend ${co.name}. You can request service here:\n${link}`;
+    refer: () => { const link = p.referralLink; const subject = pt('Check out {name}', { name: co.name }); const body = pt('I recommend {name}. You can request service here:', { name: co.name }) + `\n${link}`;
       const q = (o) => Object.entries(o).map(([k, v]) => k + '=' + encodeURIComponent(v)).join('&');
-      return `<div class="cp-refer-card"><h1>Share Your Referral Link</h1><p>Help us serve our community by recommending us to your friends and family!</p><p class="cp-refer-lead">Copy or share our link below:</p>
-<div class="cp-copy"><label class="fl"><span>Referral link</span><input id="cpRefLink" readonly value="${esc(link)}" onclick="this.select()"></label><button type="button" class="cp-out" data-cp-copy><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h2"/></svg><span>Copy Link</span></button></div>
-<a class="cp-out wide" href="mailto:?${q({ subject, body })}">Email</a>
+      return `<div class="cp-refer-card"><h1>${pt('Share Your Referral Link')}</h1><p>${pt('Help us serve our community by recommending us to your friends and family!')}</p><p class="cp-refer-lead">${pt('Copy or share our link below:')}</p>
+<div class="cp-copy"><label class="fl"><span>${pt('Referral link')}</span><input id="cpRefLink" readonly value="${esc(link)}" onclick="this.select()"></label><button type="button" class="cp-out" data-cp-copy><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h2"/></svg><span>${pt('Copy Link')}</span></button></div>
+<a class="cp-out wide" href="mailto:?${q({ subject, body })}">${pt('Email')}</a>
 <a class="cp-out wide" href="https://outlook.live.com/mail/0/deeplink/compose?${q({ subject, body })}" target="_blank" rel="noopener">Outlook</a>
 <a class="cp-out wide" href="https://mail.google.com/mail/?${q({ view: 'cm', fs: '1', su: subject, body })}" target="_blank" rel="noopener">Gmail</a></div>`; },
   };
-  const nav = (cur) => `<button type="button" class="cp-newreq" data-cp="new-request"${reqOff}>${cpIcon('plus', 18)} New Request</button>` + CP_NAV.map((grp) => grp.filter(([k]) => k !== 'reviews' || p.reviews).map(([k, l]) => `<button type="button" class="cp-nav ${cur === k || (cur === 'new-request' && k === 'requests') ? 'on' : ''}" data-cp="${k}">${cpIcon(k)}<span>${l}</span></button>`).join('')).join('<hr>')
-    + (p.referralLink ? `<hr><button type="button" class="cp-nav cp-refer ${cur === 'refer' ? 'on' : ''}" data-cp="refer">${cpIcon('refer')}<span>Refer a Friend</span></button>` : '');
+  const nav = (cur) => `<button type="button" class="cp-newreq" data-cp="new-request"${reqOff}>${cpIcon('plus', 18)} ${pt('New Request')}</button>` + CP_NAV.map((grp) => grp.filter(([k]) => k !== 'reviews' || p.reviews).map(([k, l]) => `<button type="button" class="cp-nav ${cur === k || (cur === 'new-request' && k === 'requests') ? 'on' : ''}" data-cp="${k}">${cpIcon(k)}<span>${pt(l)}</span></button>`).join('')).join('<hr>')
+    + (p.referralLink ? `<hr><button type="button" class="cp-nav cp-refer ${cur === 'refer' ? 'on' : ''}" data-cp="refer">${cpIcon('refer')}<span>${pt('Refer a Friend')}</span></button>` : '');
   const show = (section) => {
     if (!views[section] || (section === 'new-request' && p.reviewsViewOnly) || (section === 'refer' && !p.referralLink) || (section === 'reviews' && !p.reviews)) section = 'requests';
     $('.cp-navs', main).innerHTML = nav(section); $('.cp-main', main).innerHTML = views[section]();
     if (location.hash.slice(1) !== section) history.replaceState({}, '', location.pathname + location.search + '#' + section);
     const f = $('#cpReq', main);
     if (f) f.addEventListener('submit', async (e) => {
-      e.preventDefault(); const btn = $('.primary', f); btn.disabled = true; btn.textContent = 'Sending…';
-      try { const r = await api('POST', `/api/portal/${encodeURIComponent(tok)}/requests`, Object.fromEntries(new FormData(f))); p.requests.unshift(r); p.client.smsConsent = r.smsConsent; p.client.phone = r.phone; toast('Request sent. We’ll be in touch soon.'); show('requests'); }
-      catch (err) { toast(err.message, true); btn.disabled = false; btn.textContent = 'Send request'; }
+      e.preventDefault(); const btn = $('.primary', f); btn.disabled = true; btn.textContent = pt('Sending…');
+      try { const r = await api('POST', `/api/portal/${encodeURIComponent(tok)}/requests`, Object.fromEntries(new FormData(f))); p.requests.unshift(r); p.client.smsConsent = r.smsConsent; p.client.phone = r.phone; toast(pt('Request sent. We’ll be in touch soon.')); show('requests'); }
+      catch (err) { toast(err.message, true); btn.disabled = false; btn.textContent = pt('Send request'); }
     });
     setMenu(false);
     main.scrollTop = 0; window.scrollTo(0, 0);
   };
   main.innerHTML = `<div class="cp"><aside class="cp-side"><div class="cp-brand">${co.logo ? `<img src="${esc(co.logo)}" alt="${esc(co.name)}">` : `<div class="cp-mono">${esc(initials(co.name || '?'))}</div>`}</div>
-<div class="cp-co">${esc(co.name)}</div><button type="button" class="cp-burger" aria-label="Open menu" aria-expanded="false" aria-controls="cpNavs">${cpIcon('menu', 26)}</button><nav class="cp-navs" id="cpNavs" aria-label="Client hub"></nav></aside><section class="cp-main" aria-live="polite"></section></div>`;
+<div class="cp-co">${esc(co.name)}</div><button type="button" class="cp-burger" aria-label="${pt('Open menu')}" aria-expanded="false" aria-controls="cpNavs">${cpIcon('menu', 26)}</button><nav class="cp-navs" id="cpNavs" aria-label="${pt('Client hub')}"></nav></aside><section class="cp-main" aria-live="polite"></section></div>`;
   // phones: the menu folds away behind a hamburger button
   function setMenu(open) {
     const side = $('.cp-side', main); const btn = $('.cp-burger', main); if (!side || !btn) return;
-    side.classList.toggle('open', open); btn.setAttribute('aria-expanded', open); btn.setAttribute('aria-label', open ? 'Close menu' : 'Open menu'); btn.innerHTML = cpIcon(open ? 'close' : 'menu', 26);
+    side.classList.toggle('open', open); btn.setAttribute('aria-expanded', open); btn.setAttribute('aria-label', open ? pt('Close menu') : pt('Open menu')); btn.innerHTML = cpIcon(open ? 'close' : 'menu', 26);
   }
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $('.cp-side.open', main)) { setMenu(false); $('.cp-burger', main).focus(); } });
   main.onclick = async (e) => {
     if (e.target.closest('.cp-burger')) return setMenu(!$('.cp-side.open', main));
     if ($('.cp-side.open', main) && !e.target.closest('.cp-navs')) setMenu(false);
-    const fb = e.target.closest('[data-cp-form]'); if (fb) { const [jid, fid] = fb.dataset.cpForm.split(':'); const j = p.jobs.find((x) => x.id === jid); const f = j && j.forms.find((x) => x.id === fid); if (f) modal(f.name, `<div class="jf-fill jf-done">${f.description ? `<p class="muted jf-desc">${esc(f.description)}</p>` : ''}<div class="jf-fin">Finished ${esc(fmtDate(f.completedAt.slice(0, 10)))} · ${esc(j.title)}</div><div class="jf-items">${f.fields.map((x) => jfField(x, f.answers[x.id], true)).join('')}</div><div class="jf-foot"><a class="cp-btn" href="/api/portal/${encodeURIComponent(tok)}/forms/${esc(f.id)}/pdf" target="_blank" rel="noopener">Download PDF</a></div></div>`, true); return; } // a finished checklist the business shares
+    const fb = e.target.closest('[data-cp-form]'); if (fb) { const [jid, fid] = fb.dataset.cpForm.split(':'); const j = p.jobs.find((x) => x.id === jid); const f = j && j.forms.find((x) => x.id === fid); if (f) modal(f.name, `<div class="jf-fill jf-done">${f.description ? `<p class="muted jf-desc">${esc(f.description)}</p>` : ''}<div class="jf-fin">${pt('Finished {date}', { date: esc(cpDate(f.completedAt.slice(0, 10))) })} · ${esc(j.title)}</div><div class="jf-items">${f.fields.map((x) => jfField(x, f.answers[x.id], true)).join('')}</div><div class="jf-foot"><a class="cp-btn" href="/api/portal/${encodeURIComponent(tok)}/forms/${esc(f.id)}/pdf" target="_blank" rel="noopener">${pt('Download PDF')}</a></div></div>`, true); return; } // a finished checklist the business shares
     const b = e.target.closest('[data-cp]'); if (b) { e.preventDefault(); if (b.dataset.rv) return openReview(p.reviewable[Number(b.dataset.rv)]); if (b.dataset.rve) { const r = p.reviews[Number(b.dataset.rve)]; return openReview({ kind: r.kind, title: r.title, number: r.refNumber, edit: r }); } show(b.dataset.cp); return; }
     const cp = e.target.closest('[data-cp-copy]');
     if (cp) {
       const i = $('#cpRefLink', main); try { await navigator.clipboard.writeText(i.value); } catch (err) { i.select(); document.execCommand('copy'); }
-      $('span', cp).textContent = 'Copied!'; setTimeout(() => { if (cp.isConnected) $('span', cp).textContent = 'Copy Link'; }, 2000);
+      $('span', cp).textContent = pt('Copied!'); setTimeout(() => { if (cp.isConnected) $('span', cp).textContent = pt('Copy Link'); }, 2000);
     }
   };
   show(location.hash.slice(1));
