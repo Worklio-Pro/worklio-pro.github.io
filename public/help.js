@@ -11,6 +11,14 @@ let ideas = ''; // the Ideas site (ideas.<domain>): {ideas} in an article
 const hcName = () => `${product ? product + ' ' : ''}Help Center`;
 const prod = () => esc(product || 'the app');
 const fill = (s) => String(s).replace(/\{product\}/g, prod()).replace(/\{ideas\}/g, esc(ideas || '/'));
+// video captions: iPhone Safari won't play a video that already has a captions track when it starts loading (crossed-out play button),
+// so an article's <track> is parked in a <template> and added once the video has loaded (then the CC button works there too)
+const deferTracks = (html) => String(html).replace(/<track\b[^>]*>/gi, (t) => `<template data-track>${t}</template>`);
+const wireTracks = (root) => root.querySelectorAll('video').forEach((v) => {
+  const ts = [...v.querySelectorAll('template[data-track]')]; if (!ts.length) return;
+  const add = () => ts.forEach((t) => { v.appendChild(t.content.cloneNode(true)); t.remove(); });
+  if (v.readyState >= 1) add(); else v.addEventListener('loadedmetadata', add, { once: true });
+});
 let TOPICS = []; let ARTICLES = []; let POPULAR = []; let SUGGESTED = [];
 const topicOf = (slug) => TOPICS.find((t) => t.slug === slug) || { slug, title: '', desc: '', icon: 'help' };
 const articleOf = (slug) => ARTICLES.find((a) => a.slug === slug);
@@ -114,7 +122,7 @@ function articlePage(slug) {
   const t = topicOf(a.topic); const more = inTopic(a.topic);
   return { title: `${plain(fill(a.title))} · ${hcName()}`, html: `<div class="wrap">${crumbs([[`/topics/${t.slug}`, t.title], [null, plain(fill(a.title))]])}<div class="page"><div>
 <h1 class="page-title">${fill(a.title)}</h1><p class="lead">${fill(a.summary)}</p>
-<article class="card article">${fill(a.body)}<div class="feedback" id="feedback" data-slug="${esc(a.slug)}">${votedOn(a.slug) ? '<span>Thanks for your feedback!</span>' : '<span>Was this article helpful?</span><button type="button" data-fb="yes">👍 Yes</button><button type="button" data-fb="no">👎 No</button>'}</div></article></div>
+<article class="card article">${deferTracks(fill(a.body))}<div class="feedback" id="feedback" data-slug="${esc(a.slug)}">${votedOn(a.slug) ? '<span>Thanks for your feedback!</span>' : '<span>Was this article helpful?</span><button type="button" data-fb="yes">👍 Yes</button><button type="button" data-fb="no">👎 No</button>'}</div></article></div>
 <aside class="side"><h3>In ${esc(t.title)}</h3><nav>${more.map((x) => `<a href="/articles/${x.slug}" data-link class="${x.slug === slug ? 'on' : ''}">${fill(x.title)}</a>`).join('')}</nav>${topicNav(a.topic)}</aside></div>${helpBand()}</div>` };
 }
 function searchPage(q) {
@@ -149,6 +157,7 @@ function render() {
   const view = path === '/' ? home() : m ? (m[1] === 'topics' ? topicPage(m[2]) : articlePage(m[2])) : path === '/search' ? searchPage(q) : path === '/contact' ? contactPage() : notFound();
   if (rendered) document.title = view.title; rendered = true; // the first page keeps the title the server wrote for search engines
   $('#main').innerHTML = view.html;
+  wireTracks($('#main'));
   $$('.hc-search', $('#main')).forEach(wireSearch);
   wirePage(); fitLatest(); $('.hc-topics').open = false;
 }

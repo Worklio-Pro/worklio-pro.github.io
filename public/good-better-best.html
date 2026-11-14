@@ -117,7 +117,7 @@
 
     <section class="h-sec" id="video"><div class="h-wrap">
       <div class="h-sec-head"><span class="h-kicker">See it in the app</span><h2>Good / Better / Best in under 2 minutes</h2><p>Building the options, what your client sees, and what happens when they approve.</p></div>
-      <div class="gb-video"><video controls playsinline preload="metadata" poster="/video/help/quote-options.jpg" src="/video/help/quote-options.mp4"><track kind="captions" src="/video/help/quote-options.vtt" srclang="en" label="English"></video></div>
+      <div class="gb-video"><video controls playsinline preload="metadata" poster="/video/help/quote-options.jpg" src="/video/help/quote-options.mp4"><template data-track><track kind="captions" src="/video/help/quote-options.vtt" srclang="en" label="English"></template></video></div>
     </div></section>
 
     <div class="h-wrap f-list">
@@ -197,6 +197,8 @@
     <span>© <span id="yr"></span> <span class="pname">Worklio Pro</span><!--legal-owner--></span>
     <nav aria-label="Footer"><a href="/pricing">Pricing</a><a href="/features">Features</a><a href="/marketing">Job marketing</a><a href="/quote-from-photos">Quote from photos</a><a href="/good-better-best">Good / Better / Best</a><a href="/industries">Industries</a><!--supporters-link--><a href="/terms">Terms of Service</a><a href="/privacy">Privacy Policy</a><a href="/sms-consent">Text Message Opt-In</a></nav>
   </div></footer>
+  <script>/* captions: iPhone Safari won't play a video that already has a captions track when it starts loading, so the track is added once the video has loaded */
+    document.querySelectorAll('video').forEach(function (v) { var ts = v.querySelectorAll('template[data-track]'); if (!ts.length) return; var add = function () { ts.forEach(function (t) { v.appendChild(t.content.cloneNode(true)); t.remove(); }); }; if (v.readyState >= 1) add(); else v.addEventListener('loadedmetadata', add, { once: true }); });</script>
   <script src="/brand.js?v=1"></script>
   <script src="/menu.js?v=3"></script>
   <script>
