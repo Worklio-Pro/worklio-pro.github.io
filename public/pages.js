@@ -228,8 +228,7 @@ ${wait.length > SC_WAIT_MAX ? `<a class="sc-wmore" href="/quotes" data-link>+${w
 <div class="sc-body" id="scBody"><div class="sc-hours">${Array.from({ length: SC_END - SC_START }, (_, i) => `<div style="height:${SC_HOUR}px"><span>${fmtTime(scTime((SC_START + i) * 60)).replace(':00', '')}</span></div>`).join('')}</div>
 <div class="sc-cols" style="height:${(SC_END - SC_START) * SC_HOUR}px">${cols.map(col).join('')}</div></div></div>`;
     main.innerHTML = `${calHead()}<div class="sc">
-<aside class="sc-side">${mini}${waitHtml}<div class="sc-team"><h3>Team calendars</h3>${teamCals.map(([id, n, c]) => `<label><input type="checkbox" data-act="scTeam" data-id="${esc(id)}" ${scState.hidden.includes(id) ? '' : 'checked'} style="accent-color:${esc(c)}"> ${esc(n)}</label>`).join('')}</div>
-${edit ? `<p class="muted sc-tip">Click a time to add a job, task or event. Drag anything to move it${team ? ' or give it to someone else' : ''}, or drag its bottom edge to change how long it takes.</p>` : ''}</aside>
+<aside class="sc-side">${mini}${waitHtml}<div class="sc-team"><h3>Team calendars</h3>${teamCals.map(([id, n, c]) => `<label><input type="checkbox" data-act="scTeam" data-id="${esc(id)}" ${scState.hidden.includes(id) ? '' : 'checked'} style="accent-color:${esc(c)}"> ${esc(n)}</label>`).join('')}</div></aside>
 <section class="sc-main"><div class="sc-bar"><button type="button" class="btn alt sm" data-act="scToday">Today</button><button type="button" class="btn alt sm sc-arrow" data-act="scStep" data-n="-1" aria-label="Previous">‹</button><button type="button" class="btn alt sm sc-arrow" data-act="scStep" data-n="1" aria-label="Next">›</button>
 <h2 class="sc-range">${esc(range)}</h2><span style="flex:1"></span>${wait.length ? `<button type="button" class="btn alt sm sc-wait-btn" data-act="scWaitList">To schedule (${wait.length})</button>` : ''}${views}</div>
 ${scState.view === 'month' ? scMonthHtml(first, today, edit) : grid}</section></div>`;
