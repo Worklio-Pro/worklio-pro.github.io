@@ -1158,6 +1158,8 @@ a.conn-chip{text-decoration:none}a.conn-chip:hover{text-decoration:underline}
 .sc-item:hover .sc-rz::after,.sc-sizing .sc-rz::after{opacity:.9}.sc-item.sc-sizing{z-index:4;box-shadow:0 2px 8px rgba(0,0,0,.25)}
 @media (hover:none){.sc-rz{height:14px}.sc-rz::after{opacity:.6}}
 /* Team: a column for each team member on one day (scrolls sideways when there are many) */
+/* the time grid below scrolls and the header rows don't: keep room for the scrollbar in all of them so the columns line up */
+.sc-head,.sc-body{scrollbar-gutter:stable}.sc-head{overflow:hidden}
 .sc-grid.team{overflow-x:auto}.sc-grid.team>*{min-width:calc(var(--gut) + var(--days) * 140px)}
 .sc-dh.sc-ph{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;min-width:0}
 .sc-dh.sc-ph .avatar{display:inline-flex;align-items:center;justify-content:center;border-radius:50%;color:#fff;font-weight:700;flex:none}
