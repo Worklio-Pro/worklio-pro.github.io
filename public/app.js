@@ -113,29 +113,37 @@ const isStandalone = () => matchMedia('(display-mode: standalone)').matches || n
 })();
 const isIos = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const isPhone = () => matchMedia('(max-width:900px) and (pointer:coarse)').matches;
-window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; if (me && !$('#installBar').hidden) showInstallBar(false); });
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; if (me && !$('#installBar').hidden) showInstallBar(false); const c = document.getElementById('installCard'); if (c) c.innerHTML = installCard(false); });
 window.addEventListener('appinstalled', installHide);
 const IOS_SHARE = '<svg class="ib-share" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Share"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/></svg>';
-// every iPhone browser adds to the Home Screen from its Share menu, which each one keeps in a different place; apps' built-in browsers can't, so they're sent to Safari
+const IOS_ADD = '<svg class="ib-share" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M12 8v8M8 12h8"/></svg>';
+const IB_BADGE = '<svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2l2.4 1.8 3-.2.9 2.9 2.5 1.7-.9 2.9.9 2.9-2.5 1.7-.9 2.9-3-.2L12 22l-2.4-1.8-3 .2-.9-2.9-2.5-1.7.9-2.9-.9-2.9 2.5-1.7.9-2.9 3 .2z"/><path d="m8.5 12.2 2.3 2.3 4.7-4.8" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+// every iPhone browser adds to the Home Screen from its Share menu, which each one keeps in a different place; apps' built-in browsers can't, so they're sent to Safari.
+// Returns the two steps, or one sentence when there's nothing to tap in this browser.
 function iosSteps() {
-  const ua = navigator.userAgent; const add = 'then <strong>Add to Home Screen</strong>.';
-  if (/CriOS/.test(ua)) return `Tap ${IOS_SHARE} <strong>Share</strong> in Chrome’s address bar (or in the ⋯ menu), ${add}`;
-  if (/EdgiOS/.test(ua)) return `Tap the ⋯ menu, then ${IOS_SHARE} <strong>Share</strong>, ${add}`;
-  if (/FxiOS/.test(ua)) return `Tap the ☰ menu, then ${IOS_SHARE} <strong>Share</strong>, ${add}`;
+  const ua = navigator.userAgent; const add = `Tap ${IOS_ADD} <strong>Add to Home Screen</strong>`;
   if (/FBAN|FBAV|Instagram|LinkedInApp|GSA\//.test(ua)) return 'Open this page in Safari, then tap <strong>Share</strong> and <strong>Add to Home Screen</strong>.';
-  if (/Safari\//.test(ua)) return `Tap ${IOS_SHARE} <strong>Share</strong> in Safari, ${add}`;
-  return `Tap your browser’s ${IOS_SHARE} <strong>Share</strong> button, ${add}`;
+  if (/CriOS/.test(ua)) return [`Tap ${IOS_SHARE} <strong>Share</strong> in the address bar (or the ⋯ menu)`, add];
+  if (/EdgiOS/.test(ua)) return [`Tap ⋯, then ${IOS_SHARE} <strong>Share</strong>`, add];
+  if (/FxiOS/.test(ua)) return [`Tap ☰, then ${IOS_SHARE} <strong>Share</strong>`, add];
+  return [`Tap ${IOS_SHARE} <strong>Share</strong> (in the ⋯ menu if you don’t see it)`, add];
+}
+// the "official app" card: the Home Screen banner, and Settings → Preferences (closable only as the banner)
+function installCard(closable) {
+  const name = esc((company.account && company.account.productName) || 'Worklio Pro');
+  const how = installEvt ? null
+    : isIos() ? iosSteps()
+    : isPhone() ? ['Tap <strong>⋮</strong> in your browser', 'Tap <strong>Install app</strong> or <strong>Add to Home screen</strong>']
+    : `On your phone, sign in at <strong>${esc(location.host)}</strong>, then open <strong>Settings → Preferences</strong> and follow the steps there.`;
+  const steps = !how ? '' : Array.isArray(how) ? `<ol class="ib-steps">${how.map((h) => `<li>${h}</li>`).join('')}</ol>` : `<p class="ib-note">${how}</p>`;
+  return `<div class="ib-head"><img class="ib-icon" src="/apple-touch-icon.png" alt="" width="52" height="52">
+<div class="ib-meta"><strong class="ib-name">${name}</strong><span class="ib-badge">${IB_BADGE}Official app</span><span class="ib-sub">Free · Opens full screen from your Home Screen</span></div>
+${installEvt ? '<button type="button" class="ib-get" data-act="installApp">Install</button>' : ''}${closable ? '<button type="button" class="ib-x" data-act="installLater" aria-label="Not now">×</button>' : ''}</div>${steps}`;
 }
 function showInstallBar(portal) {
   const bar = $('#installBar');
   bar.hidden = portal || !me || isStandalone() || !isPhone() || installSeen();
-  if (bar.hidden) return;
-  const name = esc(company.name || (company.account && company.account.productName) || 'Worklio Pro');
-  const how = installEvt ? 'Open it like an app, full screen, right from your Home Screen.'
-    : isIos() ? iosSteps()
-    : 'Open your browser’s menu (⋮), then tap <strong>Add to Home screen</strong> or <strong>Install app</strong>.';
-  bar.innerHTML = `<img class="ib-icon" src="/apple-touch-icon.png" alt="" width="40" height="40"><span><strong>Add ${name} to your Home Screen</strong><br>${how}</span>
-${installEvt ? '<button type="button" class="btn sm" data-act="installApp">Install</button>' : ''}<button type="button" class="ib-x" data-act="installLater" aria-label="Not now">×</button>`;
+  if (!bar.hidden) bar.innerHTML = installCard(true);
 }
 function toast(msg, err) {
   const t = document.createElement('div'); t.className = 'toast' + (err ? ' err' : ''); t.textContent = msg;
@@ -627,7 +635,7 @@ document.addEventListener('click', (e) => {
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
 $('#menuBtn').addEventListener('click', () => $('#side').classList.toggle('open'));
 A.installLater = installHide;
-A.installApp = async () => { const e = installEvt; installEvt = null; if (!e) return; e.prompt(); const r = await e.userChoice.catch(() => null); installHide(); if (r && r.outcome === 'accepted') toast('Installed. Open it from your Home Screen.'); };
+A.installApp = async () => { const e = installEvt; installEvt = null; if (!e) return; e.prompt(); const r = await e.userChoice.catch(() => null); installHide(); const c = document.getElementById('installCard'); if (c) c.innerHTML = installCard(false); if (r && r.outcome === 'accepted') toast('Installed. Open it from your Home Screen.'); };
 A.toggleSide = (d, el) => { const open = $('#side').classList.toggle('open'); el.setAttribute('aria-expanded', open); };
 // tapping outside the open menu drawer closes it (not a tap on Settings or Go Back, whose button the redrawn menu has already replaced)
 document.addEventListener('click', (e) => { const side = $('#side'); if (side.classList.contains('open') && e.target.isConnected && !e.target.closest('#side, #menuBtn, [data-act="toggleSide"]')) { side.classList.remove('open'); const b = $('#bnav [data-act="toggleSide"]'); if (b) b.setAttribute('aria-expanded', 'false'); } });

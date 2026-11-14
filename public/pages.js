@@ -3613,11 +3613,14 @@ PAGES['/settings/preferences'] = {
     const t = getTheme();
     main.innerHTML = `<h1 class="tm-title">Preferences</h1>
 <div class="qcard pref-card"><h2>Appearance</h2><p class="muted">Saved on this browser or phone. Your clients always see their pages in light mode.</p><div class="ap-cards">${apCard('system', 'System', t)}${apCard('light', 'Light', t)}${apCard('dark', 'Dark', t)}</div></div>
+<div class="qcard pref-card" id="phoneApp"><h2>App on your phone</h2>${isStandalone() ? `<p class="ib-done">${IB_BADGE} You’re using the app. Open it any time from your Home Screen.</p>` : '<p class="muted">Add the app to your phone’s Home Screen. It opens full screen like any other app, stays signed in, and can send you push notifications.</p><div id="installCard" class="ib-card"></div>'}</div>
 <div class="qcard pref-card"><h2>Push notifications</h2><p class="muted">Receive push notifications on your phone, tablet or computer. Turn them on for each device you use.</p>
 ${why ? `<div class="notice">${why}</div>` : ''}
 <label class="sw-row"><span>Notifications on this device</span><input type="checkbox" class="sw" id="pushHere" ${here ? 'checked' : ''} ${why ? 'disabled' : ''}><i></i></label>
 ${kinds.map(([k, label, note]) => `<label class="sw-row"><span>${label}<small class="muted">${note}</small></span><input type="checkbox" class="sw" data-push="${k}" ${P.prefs[k] ? 'checked' : ''}><i></i></label>`).join('')}</div>
 ${F.allowed ? '<div class="qcard pref-card" id="calendar"></div>' : ''}`;
+    const ic = $('#installCard', main); if (ic) ic.innerHTML = installCard(false);
+    if (location.hash === '#phoneApp') $('#phoneApp', main).scrollIntoView({ block: 'start' });
     if (F.allowed) { wireCal($('#calendar', main), F); if (location.hash === '#calendar') $('#calendar', main).scrollIntoView({ block: 'start' }); }
     const kindBoxes = $$('[data-push]', main); const dim = () => kindBoxes.forEach((c) => { c.disabled = !here; }); dim();
     const box = $('#pushHere', main);
