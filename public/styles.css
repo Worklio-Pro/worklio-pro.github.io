@@ -1143,6 +1143,25 @@ a.conn-chip{text-decoration:none}a.conn-chip:hover{text-decoration:underline}
 .sc-mini-g button.out{color:var(--muted)}.sc-mini-g button.in{background:var(--tint-strong);color:var(--tint-fg)}.sc-mini-g button.today{background:var(--brand);color:#fff;font-weight:700}
 .sc-team{margin-top:16px}.sc-team h3{font-size:14px;margin:0 0 8px}.sc-team label{display:flex;align-items:center;gap:8px;margin:0 0 6px;font-size:14px;cursor:pointer}.sc-team input{width:16px;height:16px}
 .sc-tip{font-size:12px;margin-top:14px}
+.sc-side{max-height:calc(100vh - 24px);overflow-y:auto}
+/* To schedule: approved quotes waiting for a job, dragged onto the calendar */
+.sc-wait{margin-top:16px}.sc-wait h3{font-size:14px;margin:0 0 8px;display:flex;align-items:center;gap:6px}.sc-wn{background:var(--brand);color:#fff;border-radius:10px;font-size:11px;padding:1px 7px;font-weight:700}
+.sc-w{display:block;box-sizing:border-box;background:var(--card);border:1px solid var(--line);border-left:4px solid var(--brand);border-radius:8px;padding:6px 8px;margin:0 0 6px;cursor:grab;touch-action:none;font-size:13px;color:var(--text);user-select:none}
+.sc-w strong,.sc-w span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sc-w span{font-size:12px;color:var(--muted)}.sc-w:hover{border-color:var(--brand)}
+.sc-w.sc-ghost{cursor:grabbing}.sc-wt{display:block;font-style:normal;font-size:12px;font-weight:600;color:var(--brand);margin-top:2px}.sc-wt:empty{display:none}
+.sc-wmore{display:block;font-size:12px;margin:2px 0 0}
+.sc-wl{display:flex;flex-direction:column;gap:6px}.sc-wl .sc-w{width:100%;text-align:left;font:inherit;cursor:pointer;margin:0}
+.sc-wait-btn{display:none}@media (max-width:900px){.sc-wait-btn{display:inline-flex}}
+.sc-col.drop,.sc-lane.drop{background:var(--tint-strong)}
+/* drag an item's bottom edge to change how long it takes */
+.sc-rz{position:absolute;left:0;right:0;bottom:0;height:8px;cursor:ns-resize}.sc-rz::after{content:"";position:absolute;left:50%;bottom:2px;width:18px;height:3px;margin-left:-9px;border-radius:2px;background:var(--c);opacity:0;transition:opacity .15s}
+.sc-item:hover .sc-rz::after,.sc-sizing .sc-rz::after{opacity:.9}.sc-item.sc-sizing{z-index:4;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+@media (hover:none){.sc-rz{height:14px}.sc-rz::after{opacity:.6}}
+/* Team: a column for each team member on one day (scrolls sideways when there are many) */
+.sc-grid.team{overflow-x:auto}.sc-grid.team>*{min-width:calc(var(--gut) + var(--days) * 140px)}
+.sc-dh.sc-ph{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;min-width:0}
+.sc-dh.sc-ph .avatar{display:inline-flex;align-items:center;justify-content:center;border-radius:50%;color:#fff;font-weight:700;flex:none}
+.sc-pn{font-size:13px;font-weight:600;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sc-pc{font-size:11px;color:var(--muted)}
 .sc-bar{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap}.sc-arrow{width:34px;padding:0;font-size:18px}
 .sc-range{font-size:18px;margin:0 0 0 6px}
 .sc-views{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}.sc-views button{border:0;background:var(--card);color:var(--text);font:inherit;font-size:13px;padding:6px 14px;cursor:pointer}.sc-views button.on{background:var(--brand);color:#fff}
