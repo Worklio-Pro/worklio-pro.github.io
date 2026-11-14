@@ -5855,7 +5855,9 @@ function dispatch(req, res) {
   if (humanCheck.serve(req, res)) return; // the page stamp the public forms send (lib/human-check.js), on every address
   if (chat.handle(req, res, { tenant: r.kind === 'tenant' ? r.tenant : null })) return; // the chat button (lib/chat.js), on every address
   // pages and API replies depend on who is logged in: hosting caches (e.g. SiteGround's dynamic cache) must never store or share them
-  if (!/\.(js|css|png|jpe?g|gif|webp|svg|ico|woff2?)$/i.test(p)) res.setHeader('Cache-Control', 'private, no-store');
+  // video, audio and captions: private (never in a shared cache) but not no-store — iPhone Safari won't play media it isn't allowed to keep (crossed-out play button), it streams them in pieces it has to hold on to
+  if (/\.(mp4|m4v|mov|webm|m4a|mp3|vtt)$/i.test(p)) res.setHeader('Cache-Control', 'private, no-cache');
+  else if (!/\.(js|css|png|jpe?g|gif|webp|svg|ico|woff2?)$/i.test(p)) res.setHeader('Cache-Control', 'private, no-store');
   else if (/\.(js|css)$/i.test(p)) res.setHeader('Cache-Control', 'no-cache'); // the app's code: always check for a newer version, so a deploy shows up right away
   if (legal.kindOf(p)) { res.setHeader('Content-Type', 'text/html; charset=utf-8'); return res.end(legal.page(legal.kindOf(p))); } // Terms + Privacy: the same on every address
   // Intuit's "Disconnect URL": where QuickBooks sends someone who disconnects the app from inside QuickBooks. The token is revoked on their side, so the next sync asks the account to reconnect
