@@ -129,6 +129,7 @@ function migrate() {
   });
 }
 tenancy.init({ seed, emptySeed, migrate });
+require('./lib/env-keys').init(); // keys saved in Alpha (AI, Twilio, Google login) go into process.env in place of .env's
 
 // ---------- company settings: address parts, regional settings, business hours ----------
 const ADDRESS_PARTS = ['addrStreet1', 'addrStreet2', 'addrCity', 'addrState', 'addrZip', 'addrCountry'];
@@ -1991,7 +1992,7 @@ app.post('/api/integrations/test', async (req, res) => {
 let anthropic = null;
 const aiClient = () => {
   if (!process.env.ANTHROPIC_API_KEY) return null;
-  if (!anthropic) { const Anthropic = require('@anthropic-ai/sdk'); anthropic = new Anthropic(); }
+  if (!anthropic || anthropic.apiKey !== process.env.ANTHROPIC_API_KEY) { const Anthropic = require('@anthropic-ai/sdk'); anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }); } // a new key saved in Alpha takes over
   return anthropic;
 };
 // asks Claude for a short text and answers with { [key]: text }, or the error to show

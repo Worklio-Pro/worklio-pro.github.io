@@ -693,6 +693,10 @@ const IG_TABS = [
   ['meta', 'Facebook', 'Facebook (Meta)', 'Businesses connect their Facebook Page and post to it'],
   ['instagram', 'Instagram', 'Instagram', 'Businesses connect Instagram with Instagram Login'],
   ['tiktok', 'TikTok', 'TikTok', 'Your own TikTok account, and businesses’ posts'],
+  ['linkedin', 'LinkedIn', 'LinkedIn', 'Businesses post their work to their LinkedIn company page'],
+  ['pinterest', 'Pinterest', 'Pinterest', 'Businesses save project photos as Pins'],
+  ['threads', 'Threads', 'Threads', 'Businesses post updates and photos to Threads'],
+  ['googlelogin', 'Google login', 'Google login', 'Continue with Google on the sign-up and login pages'],
   ['quickbooks', 'QuickBooks', 'QuickBooks Online', 'Businesses send clients, invoices and payments to their books'],
   ['xero', 'Xero', 'Xero', 'Businesses send clients, invoices and payments to their books'],
   ['slack', 'Slack', 'Slack', 'Businesses get messages in a Slack channel about new work and payments'],
@@ -712,6 +716,10 @@ const IG_ICONS = {
   ai: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#7C3AED"/><path fill="#fff" d="M22 11l2.6 7.4L32 21l-7.4 2.6L22 31l-2.6-7.4L12 21l7.4-2.6zM33 27l1.3 3.7L38 32l-3.7 1.3L33 37l-1.3-3.7L28 32l3.7-1.3z"/></svg>',
   quickbooks: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#2CA01C"/><text x="24" y="30.5" text-anchor="middle" font-family="system-ui,sans-serif" font-size="18" font-weight="700" fill="#fff">qb</text></svg>',
   xero: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#13B5EA"/><text x="24" y="30.5" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="#fff">xero</text></svg>',
+  linkedin: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#0A66C2"/><rect x="12" y="20" width="5" height="16" fill="#fff"/><circle cx="14.5" cy="14.5" r="3" fill="#fff"/><path fill="#fff" d="M21 20h4.8v2.2c.8-1.4 2.6-2.6 5.2-2.6 4.6 0 5.5 3 5.5 6.9V36h-5v-8.3c0-2-.1-4.4-2.7-4.4s-3 2-3 4.3V36H21z"/></svg>',
+  pinterest: '<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="21" fill="#E60023"/><path fill="#fff" d="M24.6 11c-7.4 0-11.1 5.3-11.1 9.7 0 2.7 1 5 3.2 5.9.4.1.7 0 .8-.4l.3-1.3c.1-.4.1-.5-.2-.9-.6-.8-1.1-1.7-1.1-3.1 0-4 3-7.6 7.8-7.6 4.3 0 6.6 2.6 6.6 6.1 0 4.6-2 8.5-5 8.5-1.7 0-2.9-1.4-2.5-3.1.5-2 1.4-4.2 1.4-5.6 0-1.3-.7-2.4-2.2-2.4-1.7 0-3.1 1.8-3.1 4.2 0 1.5.5 2.6.5 2.6l-2.1 8.8c-.6 2.6-.1 5.8 0 6.1 0 .2.3.2.4.1.2-.2 2.2-2.8 2.9-5.3l1.1-4.4c.6 1.1 2.2 2 3.9 2 5.1 0 8.6-4.7 8.6-10.9 0-4.7-4-9.1-10.1-9.1z"/></svg>',
+  threads: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#000"/><text x="24" y="33" text-anchor="middle" font-family="system-ui,sans-serif" font-size="26" font-weight="600" fill="#fff">@</text></svg>',
+  googlelogin: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3.5" y="3.5" width="41" height="41" rx="10" fill="#fff" stroke="#dadce0"/><text x="24" y="32" text-anchor="middle" font-family="system-ui,sans-serif" font-size="22" font-weight="700" fill="#4285F4">G</text></svg>',
   homedepot: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#F96302"/><rect x="11" y="11" width="26" height="26" fill="none" stroke="#fff" stroke-width="2.6" transform="rotate(0 24 24)"/><text x="24" y="29.5" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="800" fill="#fff">HD</text></svg>',
   slack: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#4A154B"/><g fill="none" stroke-width="4.4" stroke-linecap="round"><path stroke="#36C5F0" d="M20 13v10"/><path stroke="#2EB67D" d="M35 20H25"/><path stroke="#ECB22E" d="M28 35V25"/><path stroke="#E01E5A" d="M13 28h10"/></g><g><circle cx="13" cy="20" r="2.4" fill="#36C5F0"/><circle cx="28" cy="13" r="2.4" fill="#2EB67D"/><circle cx="35" cy="28" r="2.4" fill="#ECB22E"/><circle cx="20" cy="35" r="2.4" fill="#E01E5A"/></g></svg>',
   soon: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#64748b"/><g fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="24" r="11"/><path d="M24 17v7l5 3"/></g></svg>',
@@ -1890,7 +1898,9 @@ ${I.mailServer ? `<p class="ig-env">Using your mail server below (${esc(I.mailSe
 <div class="acts" style="justify-content:flex-start"><button class="btn alt">${I.mailServer ? 'Save mail server' : 'Use this mail server'}</button>${I.mailServer ? `<button type="button" class="btn danger sm" data-act="rmMailServer">${I.envEmail ? `Go back to ${esc(I.envEmail)}` : 'Remove'}</button>` : ''}</div></form>
 <h4>Send a test</h4>${I.email ? '<form id="tEmail" class="inline-form"><label>Test email to<input name="to" type="email" required placeholder="you@example.com"></label><button class="btn alt">Send test email</button></form>' : '<p class="muted ig-p">Set up email first. Until then, emails are recorded in each account’s Notifications Log but not delivered.</p>'}`)}
 ${ig('Text messages (Twilio)', on(I.sms), `<p class="ig-d">Every business’s texts to clients (on plans with text messages), sent from your Twilio number and starting with the business’s name.</p>
-${env('<code>TWILIO_ACCOUNT_SID</code>, <code>TWILIO_AUTH_TOKEN</code> and <code>TWILIO_FROM</code> (your Twilio number, or a Messaging Service SID starting with MG).')}
+<ol class="ig-steps"><li>In the <a href="https://console.twilio.com/" target="_blank" rel="noopener">Twilio console</a>, the home page’s <strong>Account Info</strong> shows your <strong>Account SID</strong> and <strong>Auth Token</strong>.</li>
+<li>For <strong>Send from</strong>, use your Twilio number with its country code (e.g. +15125550100), or a Messaging Service SID (starts with MG). US numbers need an approved A2P 10DLC campaign before texts are delivered.</li></ol>
+${envForm(I, 'sms', [['TWILIO_ACCOUNT_SID', 'Account SID', 'AC…'], ['TWILIO_AUTH_TOKEN', 'Auth Token', '', true], ['TWILIO_FROM', 'Send from', '+15125550100 or MG…']])}
 <h4>Send a test</h4>${I.sms ? '<form id="tSms" class="inline-form"><label>Test text to<input name="to" required placeholder="+17135550100"></label><button class="btn alt">Send test text</button></form>' : '<p class="muted ig-p">Set up Twilio first. Until then, texts are recorded in each account’s Notifications Log but not delivered.</p>'}`)}
 ${ig('AI', on(I.ai), `<p class="ig-d">Everything that uses Claude. Turning a switch off takes effect right away, and nothing else changes.</p>
 ${[['aiDescriptions', 'Descriptions', 'Write with AI on products and services, and Rewrite on quote, invoice and job lines. Every business, on plans with AI descriptions.', D.settings.aiDescriptions !== false],
@@ -1899,7 +1909,8 @@ ${[['aiDescriptions', 'Descriptions', 'Write with AI on products and services, a
   ['aiSnapQuote', 'Snap to quote', 'Draft a quote from job site photos and the tech’s notes. Every business, on plans with Snap to quote.', D.settings.aiSnapQuote !== false],
   ['aiChat', 'Help chat', 'The chat bot answers from your help center. Off, it uses only your saved answers and matching articles. Same setting as in Messages.', I.aiChat]].map(([k, l, n, v]) => `<label class="sw-row"><span>${l}<small class="muted">${n}</small></span><input type="checkbox" class="sw" data-ai="${k}" ${v ? 'checked' : ''}><i></i></label>`).join('')}
 <p class="muted ig-p">With Descriptions and Client messages and contracts both off, AI descriptions also leaves your pricing page and plan lists.</p>
-${env('<code>ANTHROPIC_API_KEY</code>.')}`)}
+<h4>Anthropic API key</h4><p class="muted ig-p">In the <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Claude Console</a>, go to API keys → <strong>Create key</strong>, then paste it here. Usage is billed to that Console account.</p>
+${envForm(I, 'ai', [['ANTHROPIC_API_KEY', 'API key', 'sk-ant-…', true]])}`)}
 ${ig('App Marketplace', on(D.settings.marketplace !== false, 'On', 'Off'), `<p class="ig-d">Settings → App Marketplace in every account: owners and admins browse apps, connect the ones that work today and vote for the rest (see Messages → App requests).</p>
 <label class="switchline"><input type="checkbox" id="mkOn" ${D.settings.marketplace !== false ? 'checked' : ''}> Show the App Marketplace in every account</label>
 <label class="switchline"><input type="checkbox" id="mkBeta" ${D.settings.marketplaceBeta ? 'checked' : ''}> Mark the App Marketplace as Beta <span class="beta-tag">Beta</span></label>
@@ -1960,6 +1971,11 @@ ${I.localhost ? '<p class="muted ig-p" style="margin-top:8px">Stripe can’t rea
   $$('input[data-soon]', box).forEach((c) => c.addEventListener('change', async () => {
     try { await api('PUT', '/api/platform/social-soon/' + c.dataset.soon, { soon: c.checked }); toast(c.checked ? 'Businesses now see Coming soon' : 'Businesses can connect now'); integrationsCard(box); } catch (x) { c.checked = !c.checked; toast(x.message, true); }
   }));
+  $$('.env-form', box).forEach((f) => f.addEventListener('submit', async (e) => {
+    e.preventDefault(); const btn = $('button.btn', f); btn.disabled = true;
+    try { await api('PUT', '/api/platform/env-keys/' + f.dataset.g, Object.fromEntries(new FormData(f))); await load(); toast('Saved. It works right away, with no restart.'); await integrationsCard(box); }
+    catch (x) { btn.disabled = false; toast(x.message, true); }
+  }));
   $('#hdKeyForm', box).addEventListener('submit', async (e) => {
     e.preventDefault(); const f = e.target; const key = f.elements.key.value.trim(); if (!key) return toast('Paste your SerpApi key', true);
     const btn = $('button.btn', f); btn.disabled = true;
@@ -2014,7 +2030,55 @@ ${copy(T.redirectUri, 'TikTok redirect URI')}
 <ol class="ig-steps" start="3"><li>Under URL properties, verify your domain. TikTok downloads your posts’ videos and photos from it.</li>
 <li>Paste the app’s Client key and Client secret here. While testing, use the Sandbox keys; switch to the Production keys once TikTok approves the app. Or set <code>TIKTOK_CLIENT_KEY</code> and <code>TIKTOK_CLIENT_SECRET</code> in <code>.env</code>.</li></ol>
 ${form('tiktok', T, 'Client key', 'e.g. sbaw1234abcd5678', 'Client secret')}${I.localhost ? '<p class="muted ig-p">TikTok only sends people back to a public address: set <code>BASE_URL</code> (or <code>PLATFORM_DOMAIN</code>) first.</p>' : ''}`)
-  + booksGroups(I, ig, on, copy, form, n) + slackGroup(I, ig, on, copy, form, n);
+  + networkGroups(I, ig, on, copy, form, n) + googleLoginGroup(I, ig, on) + booksGroups(I, ig, on, copy, form, n) + slackGroup(I, ig, on, copy, form, n);
+}
+// keys that used to be .env only (lib/env-keys.js): fields = [[NAME, label, placeholder, secret]]. A blank secret keeps the saved one.
+function envForm(I, g, fields) {
+  const E = (I.envKeys || {})[g] || { keys: {} };
+  const where = E.saved ? '<p class="ig-env">Saved here. Remove brings back the <code>.env</code> keys, if there are any.</p>' : E.fromEnv ? `<p class="ig-env">Using ${fields.map(([n]) => `<code>${n}</code>`).join(', ')} from <code>.env</code>. Keys saved here are used in their place, with no restart.</p>` : '';
+  return `${where}<form class="env-form" data-g="${g}"><div class="row">${fields.map(([n, label, ph, secret]) => `<label>${label}<input name="${n}" ${secret ? 'type="password" autocomplete="new-password"' : 'autocomplete="off"'} spellcheck="false"
+ ${secret ? `placeholder="${E.saved && E.keys[n] ? `Saved (ending ${esc(E.keys[n].replace('…', ''))}). Leave blank to keep it` : E.fromEnv && E.keys[n] ? `From .env (ending ${esc(E.keys[n].replace('…', ''))})` : esc(ph)}"` : `value="${esc(E.saved ? E.keys[n] || '' : '')}" placeholder="${E.fromEnv && E.keys[n] ? esc(E.keys[n]) + ' (from .env)' : esc(ph)}"`}></label>`).join('')}</div>
+<div class="acts" style="justify-content:flex-start"><button class="btn alt">Save</button>${E.saved ? `<button type="button" class="btn danger sm" data-act="rmEnvKeys" data-g="${g}">Remove</button>` : ''}</div></form>`;
+}
+A.rmEnvKeys = async (d) => {
+  if (!confirm('Remove these keys? The .env keys are used again if there are any; otherwise this stops working for every business.')) return;
+  try { await api('DELETE', '/api/platform/env-keys/' + d.g); toast('Keys removed'); integrationsCard($('#integ')); } catch (x) { toast(x.message, true); }
+};
+// Continue with Google (lib/sign-in-with.js): its own Google OAuth client, or the Google Business Profile one when this is empty
+function googleLoginGroup(I, ig, on) {
+  const E = (I.envKeys || {}).googleLogin || {}; const G = I.social.google || {}; const own = E.saved || E.fromEnv;
+  return ig('Google login', on(own || (G.id && G.secret), own ? 'Ready' : 'Using Business Profile app', 'Not set up'), `<p class="ig-d">The <strong>Continue with Google</strong> button on the sign-up and login pages. Without keys here, it uses the Google Business Profile app’s keys.</p>
+<ol class="ig-steps"><li>In <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud → Credentials</a>, click <strong>Create credentials → OAuth client ID</strong> and choose <strong>Web application</strong>.</li>
+<li>Under <strong>Authorized redirect URIs</strong>, add:</li></ol>
+${copyBox(I.googleLoginUri, 'Google login redirect URI')}
+<ol class="ig-steps" start="3"><li>On the OAuth consent screen, the <code>openid</code>, <code>email</code> and <code>profile</code> scopes are enough (Google doesn’t need to verify the app for those). Publish it so anyone can sign in.</li>
+<li>Paste the Client ID and Client secret here.</li></ol>
+${envForm(I, 'googleLogin', [['LOGIN_GOOGLE_CLIENT_ID', 'Client ID', '….apps.googleusercontent.com'], ['LOGIN_GOOGLE_CLIENT_SECRET', 'Client secret', '', true]])}`);
+}
+const copyBox = (v, label) => `<div class="linkbox"><input readonly value="${esc(v || '')}" aria-label="${esc(label)}"><button type="button" class="btn alt" data-act="copy">Copy</button></div>`;
+// Marketing's posting networks (lib/networks.js): LinkedIn, Pinterest and Threads apps businesses connect through
+function networkGroups(I, ig, on, copy, form, n) {
+  const L = I.social.linkedin || {}; const PI = I.social.pinterest || {}; const TH = I.social.threads || {};
+  return ig('LinkedIn', on(L.id && L.secret, 'Ready', 'Not set up'), `<p class="ig-d">Businesses connect their LinkedIn company page in Marketing and post their work to it. ${n('', L.connected || 0)}.</p>
+<ol class="ig-steps"><li>On <a href="https://www.linkedin.com/developers/apps" target="_blank" rel="noopener">LinkedIn Developers</a>, create an app linked to your company page.</li>
+<li>On the <strong>Products</strong> tab, request the <strong>Community Management API</strong>. Until LinkedIn approves it, connecting says “scope is not valid”.</li>
+<li>On the <strong>Auth</strong> tab, add this <strong>Authorized redirect URL</strong>:</li></ol>
+${copy(L.redirectUri, 'LinkedIn redirect URL')}
+<ol class="ig-steps" start="4"><li>The same tab shows the Client ID and Primary Client Secret. Paste them here. Or set <code>LINKEDIN_CLIENT_ID</code> and <code>LINKEDIN_CLIENT_SECRET</code> in <code>.env</code>.</li></ol>
+${form('linkedin', L, 'Client ID', 'e.g. 86abcd1234efgh', 'Client secret')}`)
+  + ig('Pinterest', on(PI.id && PI.secret, 'Ready', 'Not set up'), `<p class="ig-d">Businesses connect Pinterest in Marketing and save their project photos as Pins on a board they choose. ${n('', PI.connected || 0)}.</p>
+<ol class="ig-steps"><li>On <a href="https://developers.pinterest.com/apps/" target="_blank" rel="noopener">Pinterest Developers</a>, connect an app. New apps get Trial access; request <strong>Standard access</strong> so Pins go to real boards.</li>
+<li>In the app’s settings, add this <strong>Redirect URI</strong>:</li></ol>
+${copy(PI.redirectUri, 'Pinterest redirect URI')}
+<ol class="ig-steps" start="3"><li>Paste the App id and App secret key here. Or set <code>PINTEREST_APP_ID</code> and <code>PINTEREST_APP_SECRET</code> in <code>.env</code>.</li></ol>
+${form('pinterest', PI, 'App id', 'e.g. 1500000', 'App secret key')}`)
+  + ig('Threads', on(TH.id && TH.secret, 'Ready', 'Not set up'), `<p class="ig-d">Businesses connect Threads in Marketing and post updates and photos. ${n('', TH.connected || 0)}.</p>
+<ol class="ig-steps"><li>On <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener">Meta for Developers</a>, create an app with the <strong>Access the Threads API</strong> use case, with <code>threads_basic</code> and <code>threads_content_publish</code>.</li>
+<li>Under the use case’s <strong>Settings</strong>, add this as the <strong>Redirect Callback URL</strong>:</li></ol>
+${copy(TH.redirectUri, 'Threads redirect URL')}
+<ol class="ig-steps" start="3"><li>The same page shows the <strong>Threads app ID</strong> and <strong>Threads app secret</strong> (not the Meta App ID). Paste them here. Or set <code>THREADS_APP_ID</code> and <code>THREADS_APP_SECRET</code> in <code>.env</code>.</li>
+<li>Until Meta’s App Review approves the app, only people with a role on the app can connect.</li></ol>
+${form('threads', TH, 'Threads app ID', '1234567890123456', 'Threads app secret')}`);
 }
 // App Marketplace → The Home Depot (lib/homedepot.js): the SerpApi key the price searches go through
 function hdGroup(H, ig, on) {
