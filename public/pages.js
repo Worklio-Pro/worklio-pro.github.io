@@ -2159,8 +2159,9 @@ function marketingBroken(C) {
 }
 function marketingConnect(C) {
   const admin = ['owner', 'admin'].includes(role());
-  const card = (name, icon, body, on) => `<div class="mk-card${on ? ' on' : ''}"><span class="mk-ic">${icon}</span><strong>${name}</strong>${body}</div>`;
+  // a network showing Coming soon (no keys yet, or its Alpha card says Coming soon) is left off the page
   const soon = '<span class="mk-btn soon">Coming soon</span>';
+  const card = (name, icon, body, on) => (body === soon ? '' : `<div class="mk-card${on ? ' on' : ''}"><span class="mk-ic">${icon}</span><strong>${name}</strong>${body}</div>`);
   const ask = '<small class="muted">Ask the account owner or an admin to connect it</small>';
   // the business signs in with its own account on each network
   // who: the account it's connected to; a network the server doesn't list yet shows Coming soon
@@ -2181,9 +2182,11 @@ function marketingConnect(C) {
   const xCard = card('X', CONN_ICONS.x, X.connected
     ? `<span class="mk-on">Connected</span><small class="muted">@${esc(X.username)}</small>${admin ? '<a class="mk-link" href="/settings/connections#conn-x" data-link>Manage</a>' : ''}`
     : X.available === false ? soon : admin ? '<button type="button" class="mk-btn" data-act="xConnect">+ Connect</button>' : ask, X.connected);
+  const major = `${live('facebook', 'Facebook', (x) => x.name)}${live('instagram', 'Instagram', (x) => '@' + x.username)}${live('linkedin', 'LinkedIn', (x) => x.name)}${live('tiktok', 'TikTok', (x) => x.name)}${live('youtube', 'YouTube', (x) => x.name)}`;
+  const more = `${bsky}${live('pinterest', 'Pinterest', (x) => x.name)}${live('threads', 'Threads', (x) => '@' + x.username)}${xCard}${gbp}`;
+  const grp = (title, html) => (html ? `<div class="mk-grp">${title}</div><div class="mk-grid">${html}</div>` : ''); // a group with nothing to show is left out
   return `${marketingBroken(C)}<section class="mk-connect"><h2>Connect your social accounts</h2><p class="muted">Pick where you want to publish. You can add or remove networks anytime.</p>
-<div class="mk-grp">Major networks</div><div class="mk-grid">${live('facebook', 'Facebook', (x) => x.name)}${live('instagram', 'Instagram', (x) => '@' + x.username)}${live('linkedin', 'LinkedIn', (x) => x.name)}${live('tiktok', 'TikTok', (x) => x.name)}${live('youtube', 'YouTube', (x) => x.name)}</div>
-<div class="mk-grp">More networks</div><div class="mk-grid">${bsky}${live('pinterest', 'Pinterest', (x) => x.name)}${live('threads', 'Threads', (x) => '@' + x.username)}${xCard}${gbp}</div></section>`;
+${grp('Major networks', major)}${grp('More networks', more)}${major || more ? '' : '<p class="muted">No networks can be connected yet. New ones show up here as they become available.</p>'}</section>`;
 }
 /* ===== Marketing → Every job markets itself: posts drafted from finished jobs, waiting for approval (lib/job-posts.js) ===== */
 // where a job's post can go: TikTok needs its own options and YouTube a video, so those are posted from New post
