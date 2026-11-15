@@ -4748,7 +4748,7 @@ app.get('/api/integrations', async (req, res) => {
   const sec = secrets(); if (sec.stripeAccountId && (!sec.stripeChargesEnabled || sec.stripeAccountType === 'embedded')) await syncStripeAccount(); // e.g. just back from Stripe, or a new payout bank set in the app
   const s = secrets(); const pay = tenancy.has('onlinePayments');
   res.json({
-    email: !!emailProvider(), sms: smsReady(), ai: !!process.env.ANTHROPIC_API_KEY,
+    email: !!emailProvider(), sms: smsReady(), ai: !!process.env.ANTHROPIC_API_KEY && !social.held('ai'),
     serverEmail: !!serverEmailProvider(),
     payments: !!stripeKey(), paymentsMode: stripeKey() ? stripeMode() : null,
     stripe: pay ? {

@@ -2989,7 +2989,7 @@ async function connectionsPage(main) {
   const [integ, C] = await Promise.all([api('GET', '/api/integrations'), api('GET', '/api/connections')]);
   connReturnNotice();
   const admin = ['owner', 'admin'].includes(role());
-  const soon = { status: connChip('off', 'Coming soon'), button: '<button type="button" class="btn alt conn-btn" disabled title="Coming soon">Connect</button>' };
+  const soon = { soon: true }; // Coming soon (no keys yet, or its Alpha card says Coming soon): left off this page
   const connect = (id) => ({ status: connChip('off', 'Not connected'), button: admin ? `<button type="button" class="btn alt conn-btn" data-act="socialConnect" data-kind="${id}">Connect</button>` : '' });
   const connected = (id, to, n) => ({ status: connChip('on', 'Connected'), connectedTo: `Connected to ${to}.${admin && n > 1 ? ` <button type="button" class="link-btn" data-act="socialChoose" data-kind="${id}">Change</button>` : ''}`,
     button: admin ? `<button type="button" class="btn alt conn-btn" data-act="socialDisconnect" data-kind="${id}">Disconnect</button>` : '' });
@@ -3028,12 +3028,13 @@ async function connectionsPage(main) {
       ...(C.x && C.x.connected ? { status: connChip('on', 'Connected'), connectedTo: `Connected to <a href="https://x.com/${encodeURIComponent(C.x.username)}" target="_blank" rel="noopener"><strong>@${esc(C.x.username)}</strong></a>.`,
         button: admin ? '<button type="button" class="btn alt conn-btn" data-act="socialDisconnect" data-kind="x">Disconnect</button>' : '' }
         : C.x && C.x.available === false ? soon : { status: connChip('off', 'Not connected'), button: admin ? '<button type="button" class="btn alt conn-btn" data-act="xConnect">Connect</button>' : '' }) },
-    ...(aiOn() ? [{ id: 'ai', icon: 'ai', feature: 'ai', title: 'AI descriptions', button: '', body: '', status: integ.ai ? connChip('on', 'On') : connChip('off', 'Not available yet'),
+    ...(aiOn() && integ.ai ? [{ id: 'ai', icon: 'ai', feature: 'ai', title: 'AI descriptions', button: '', body: '', status: connChip('on', 'On'),
       desc: `“Write with AI” drafts product and service descriptions from their name.` }] : []),
-  ];
+  ].filter((r) => !r.soon);
   // connections for features the platform marks as Beta get a Beta tag and a short notice
   const beta = (r) => !!(r.feature && company.account && (company.account.featureList || []).some((f) => f.key === r.feature && f.beta));
   main.innerHTML = `<div class="head"><div><h1>Account Connections</h1><p class="sub">Manage the accounts your business has connected: change the Page, account or board you use, disconnect, and set up Google reviews and booking.${planHas('socialPosts') ? ' To post to social media, go to <a href="/social-posts" data-link>Marketing</a>.' : ''} Card payments are set up in <a href="/settings#payments" data-link>App Settings</a>; emails and texts to clients are sent for you.</p></div></div>
+${rows.length ? '' : '<div class="card empty">No accounts can be connected yet. New connections show up here as they become available.</div>'}
 <div class="conn-list">${rows.map((r) => `<section class="card conn${r.body ? ' wide' : ''}" id="conn-${r.id}"><div class="conn-top"><div class="conn-ic">${CONN_ICONS[r.icon]}</div>
 <div class="conn-main"><h2>${esc(r.title)}${beta(r) ? '<span class="beta-tag" title="This feature is in beta testing">Beta</span>' : ''}</h2>${r.status}</div></div>
 <div class="conn-main">${r.connectedTo ? `<p class="conn-to">${r.connectedTo}</p>` : ''}<p>${r.desc}</p>${beta(r) ? '<p class="beta-note">This feature is in beta testing. It works, but it may change and you might run into rough edges. Tell us if something doesn’t look right.</p>' : ''}</div>
