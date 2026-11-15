@@ -2444,8 +2444,8 @@ body.p404-only :is(#side,#sideMiniBtn,#menuBtn,#topbar,#bnav,#installBar,#suppor
 /* Team location: where the phone was at Clock In / Clock Out (Timesheets) and each person's last known spot (Calendar → Map) */
 .ts-loc{display:block;font-size:12px;color:var(--muted);text-decoration:none;white-space:nowrap;margin-top:2px}a.ts-loc:hover{text-decoration:underline}.ts-loc.far{color:var(--danger);font-weight:600}.ts-locnote{flex-basis:100%;margin:8px 0 0}
 .dm-who span{display:grid;place-items:center;width:32px;height:32px;border-radius:50%;background:var(--c);color:#fff;font-size:12px;font-weight:700;border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.4)}.dm-who.off span{opacity:.6}
-/* Big calendar for job dates (app.js bcOpen): larger than the browser's own date picker */
-input[type=date][data-bigcal]{cursor:pointer}
+/* Big calendar for every date field (app.js bcOpen): larger than the browser's own date picker */
+input[type=date]:not([data-nativecal]){cursor:pointer}
 .bc-pop{position:fixed;z-index:3000;width:364px;max-width:calc(100vw - 16px);background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow-lg);padding:14px}
 .bc-h{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}.bc-h strong{font-size:17px}
 .bc-nav{width:40px;height:40px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--text);font-size:22px;line-height:1;cursor:pointer}.bc-nav:hover{background:var(--bg)}

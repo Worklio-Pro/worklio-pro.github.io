@@ -633,7 +633,7 @@ document.addEventListener('click', (e) => {
   if (fn) Promise.resolve(fn(el.dataset, el)).catch((err) => toast(err.message, true));
 });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
-/* ===== Big calendar for job dates (input[type=date][data-bigcal]): on computers, clicking the field opens a larger month calendar than the
+/* ===== Big calendar for every date field (add data-nativecal to keep the browser's own): on computers, clicking the field opens a larger month calendar than the
    browser's own (whose size can't be changed). Typing in the field still works. Phones and tablets keep their full-screen picker. The week
    starts on the business's first day (App Settings → Regional settings). Arrow keys move, Enter picks, Escape closes. ===== */
 const bcFine = () => matchMedia('(pointer: fine)').matches;
@@ -676,12 +676,12 @@ function bcOpen(input) {
 }
 // open on a click in the field (instead of the browser's picker); keyboard: Alt+↓ or the arrows once it's open
 document.addEventListener('click', (e) => {
-  const i = e.target.closest && e.target.closest('input[type=date][data-bigcal]');
+  const i = e.target.closest && e.target.closest('input[type=date]:not([data-nativecal])');
   if (i && bcFine() && !i.disabled && !i.readOnly) { e.preventDefault(); bcOpen(i); return; }
   if (bcState && !bcState.pop.contains(e.target)) bcClose();
 }, true);
 document.addEventListener('keydown', (e) => {
-  const i = e.target.closest && e.target.closest('input[type=date][data-bigcal]');
+  const i = e.target.closest && e.target.closest('input[type=date]:not([data-nativecal])');
   if (!bcState) { if (i && bcFine() && e.altKey && e.key === 'ArrowDown') { e.preventDefault(); bcOpen(i); } return; }
   if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); return bcClose(true); } // not the popup behind it
   if (e.key === 'Tab') return bcClose();
@@ -1696,7 +1696,7 @@ ${!p && props.length > 1 ? `<label>Property<select name="propertyId">${props.map
 A.propTask = (d) => {
   const c = byId(D.clients, d.client); const p = clientProps(c).find((x) => x.id === d.id); const team = D.staff.filter((s) => s.status !== 'deactivated');
   const mb = modal('New task', `<form><p class="muted" style="margin-top:0">For ${esc(c.name)}${p ? ` at ${esc(propAddr(p))}` : ''}</p><label>Title<input name="title" required></label>
-<div class="row3"><label>Date<input type="date" name="date" required data-bigcal value="${ymd(new Date())}"></label><label>Start<input type="time" name="startTime" value="09:00"></label><label>End<input type="time" name="endTime" value="10:00"></label></div>
+<div class="row3"><label>Date<input type="date" name="date" required value="${ymd(new Date())}"></label><label>Start<input type="time" name="startTime" value="09:00"></label><label>End<input type="time" name="endTime" value="10:00"></label></div>
 <div class="chk"><label><input type="checkbox" name="anytime"> Anytime that day (no set time)</label></div>
 <div class="muted qlabel">Assigned team</div><div class="team-pick">${team.map((s) => `<label><input type="checkbox" name="staff" value="${s.id}">${avatarHtml(s, 24)}${esc(s.name)}</label>`).join('') || '<span class="muted">Add team members on Manage Team first</span>'}</div>
 <label>Notes<textarea name="description" rows="3"></textarea></label><div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save task</button></div></form>`);
@@ -3604,7 +3604,7 @@ function askJobAfterDeposit(id) {
 }
 A.quoteToJob = (d) => {
   const q = byId(D.quotes, d.id);
-  const mb = modal(`Schedule job from ${q.number}`, `<form><div class="row3"><label>Date<input type="date" name="date" required data-bigcal value="${ymd(addDays(new Date(), 1))}"></label><label>Start<input type="time" name="startTime" value="09:00"></label><label>End<input type="time" name="endTime" value="11:00"></label></div>
+  const mb = modal(`Schedule job from ${q.number}`, `<form><div class="row3"><label>Date<input type="date" name="date" required value="${ymd(addDays(new Date(), 1))}"></label><label>Start<input type="time" name="startTime" value="09:00"></label><label>End<input type="time" name="endTime" value="11:00"></label></div>
 <div class="chk"><label><input type="checkbox" name="anytime"> Anytime that day (no set time)</label></div>
 <div class="muted">Assign staff</div><div class="chk">${D.staff.filter((s) => s.status !== 'deactivated').map((s) => `<label><input type="checkbox" name="staff" value="${s.id}">${esc(s.name)}</label>`).join('')}</div>
 <div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Create job</button></div></form>`);
@@ -4030,7 +4030,7 @@ const repeatCard = (j, date) => {
   return `<div class="rj"><label class="rj-f">Repeats<select name="rpFreq">${[['', 'Doesn’t repeat'], ['day', 'Daily'], ['week', 'Weekly'], ['month', 'Monthly']].map(([k, l]) => `<option value="${k}" ${r.freq === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
 <div class="rj-more" ${r.freq ? '' : 'hidden'}><div class="rj-row"><label class="rj-every">Every<input type="number" name="rpEvery" min="1" max="365" value="${esc(r.every || 1)}"><span class="rj-unit"></span></label>
 <label class="rj-end">Ends<select name="rpEnd">${[['never', 'Never'], ['count', 'After'], ['until', 'On']].map(([k, l]) => `<option value="${k}" ${r.end === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
-<input type="number" name="rpCount" min="2" max="500" value="${esc(r.count || 10)}" aria-label="Number of visits"><span class="rj-cl">visits</span><input type="date" name="rpUntil" data-bigcal value="${esc(r.until || ymd(addDays(parseD(date), 90)))}" aria-label="Last day"></label></div>
+<input type="number" name="rpCount" min="2" max="500" value="${esc(r.count || 10)}" aria-label="Number of visits"><span class="rj-cl">visits</span><input type="date" name="rpUntil" value="${esc(r.until || ymd(addDays(parseD(date), 90)))}" aria-label="Last day"></label></div>
 <div class="rj-days" role="group" aria-label="Days of the week">${WDAY.map((w, i) => `<label title="${w}"><input type="checkbox" name="rpDay" value="${i}" ${(r.days || [dow]).includes(i) ? 'checked' : ''}><span>${w[0]}</span></label>`).join('')}</div>
 <div class="rj-month"><label><input type="radio" name="rpBy" value="date" ${r.monthBy !== 'weekday' ? 'checked' : ''}><span class="rj-bydate"></span></label><label><input type="radio" name="rpBy" value="weekday" ${r.monthBy === 'weekday' && r.nth !== -1 ? 'checked' : ''}><span class="rj-byday"></span></label><label class="rj-bylast"><input type="radio" name="rpBy" value="last" ${r.monthBy === 'weekday' && r.nth === -1 ? 'checked' : ''}><span></span></label></div>
 <p class="muted rj-sum"></p></div></div>`;
@@ -4121,7 +4121,7 @@ ${j.status === 'scheduled' ? `<button type="button" class="btn alt need-jobs-edi
 <dt>Created</dt><dd>${fmtDate((j.createdAt || ymd(new Date())).slice(0, 10))}</dd>
 <dt>From quote</dt><dd>${q ? `<a href="/quotes/view?id=${q.id}" data-link>${esc(q.number)}</a>` : '<span class="muted">—</span>'}</dd></dl></div>
 ${!canDo('jobs.prices') ? '' : itemsCard(items, '<div class="jdeposit"></div>', j.taxRate !== undefined ? j : q || j)}
-<div class="qcard"><h2>Scheduled visit</h2><div class="row3"><label>Date<input type="date" name="date" required data-bigcal value="${esc(j.date || p.date || ymd(new Date()))}"></label>
+<div class="qcard"><h2>Scheduled visit</h2><div class="row3"><label>Date<input type="date" name="date" required value="${esc(j.date || p.date || ymd(new Date()))}"></label>
 <label>Start<input type="time" name="startTime" value="${esc(j.startTime || '09:00')}"></label><label>End<input type="time" name="endTime" value="${esc(j.endTime || '11:00')}"></label></div>
 <label class="switchline"><input type="checkbox" name="anytime" ${j.anytime ? 'checked' : ''}> Anytime that day (no set time)</label>
 ${repeatCard(j, j.date || p.date || ymd(new Date()))}
