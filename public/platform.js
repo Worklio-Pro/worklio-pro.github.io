@@ -696,6 +696,7 @@ const IG_TABS = [
   ['quickbooks', 'QuickBooks', 'QuickBooks Online', 'Businesses send clients, invoices and payments to their books'],
   ['xero', 'Xero', 'Xero', 'Businesses send clients, invoices and payments to their books'],
   ['slack', 'Slack', 'Slack', 'Businesses get messages in a Slack channel about new work and payments'],
+  ['homedepot', 'Home Depot', 'Home Depot', 'Home Depot prices in the product and service form (SerpApi)'],
   ['soon', 'Coming soon', 'Coming soon', 'Show Coming soon in place of Connect, network by network'],
   ['ai', 'AI', 'AI', 'Write with AI, Rewrite, social captions and the help chat'],
   ['marketplace', 'App Marketplace', 'App Marketplace', 'The App Marketplace in every account, and Home Depot prices'],
@@ -711,6 +712,7 @@ const IG_ICONS = {
   ai: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#7C3AED"/><path fill="#fff" d="M22 11l2.6 7.4L32 21l-7.4 2.6L22 31l-2.6-7.4L12 21l7.4-2.6zM33 27l1.3 3.7L38 32l-3.7 1.3L33 37l-1.3-3.7L28 32l3.7-1.3z"/></svg>',
   quickbooks: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#2CA01C"/><text x="24" y="30.5" text-anchor="middle" font-family="system-ui,sans-serif" font-size="18" font-weight="700" fill="#fff">qb</text></svg>',
   xero: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#13B5EA"/><text x="24" y="30.5" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="#fff">xero</text></svg>',
+  homedepot: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#F96302"/><rect x="11" y="11" width="26" height="26" fill="none" stroke="#fff" stroke-width="2.6" transform="rotate(0 24 24)"/><text x="24" y="29.5" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="800" fill="#fff">HD</text></svg>',
   slack: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#4A154B"/><g fill="none" stroke-width="4.4" stroke-linecap="round"><path stroke="#36C5F0" d="M20 13v10"/><path stroke="#2EB67D" d="M35 20H25"/><path stroke="#ECB22E" d="M28 35V25"/><path stroke="#E01E5A" d="M13 28h10"/></g><g><circle cx="13" cy="20" r="2.4" fill="#36C5F0"/><circle cx="28" cy="13" r="2.4" fill="#2EB67D"/><circle cx="35" cy="28" r="2.4" fill="#ECB22E"/><circle cx="20" cy="35" r="2.4" fill="#E01E5A"/></g></svg>',
   soon: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#64748b"/><g fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="24" r="11"/><path d="M24 17v7l5 3"/></g></svg>',
   marketplace: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#7c3aed"/><g fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="14" y="14" width="8" height="8" rx="1.5"/><rect x="26" y="14" width="8" height="8" rx="1.5"/><rect x="14" y="26" width="8" height="8" rx="1.5"/><rect x="26" y="26" width="8" height="8" rx="1.5"/></g></svg>',
@@ -1902,8 +1904,9 @@ ${ig('App Marketplace', on(D.settings.marketplace !== false, 'On', 'Off'), `<p c
 <label class="switchline"><input type="checkbox" id="mkOn" ${D.settings.marketplace !== false ? 'checked' : ''}> Show the App Marketplace in every account</label>
 <label class="switchline"><input type="checkbox" id="mkBeta" ${D.settings.marketplaceBeta ? 'checked' : ''}> Mark the App Marketplace as Beta <span class="beta-tag">Beta</span></label>
 <p class="muted ig-p">Businesses see a Beta banner at the top of the page.</p>
-<p class="muted ig-p">Turned off, the page is hidden and Home Depot search stops in the product and service form. Google, Facebook, Instagram, Stripe and AI keep working: they’re set up on their own pages.</p>
-<h4>Home Depot prices ${on(I.homeDepot)}</h4><p class="muted ig-p">Businesses that turn on The Home Depot can search Home Depot products and prices from the product and service form. Home Depot has no public API, so searches go through <a href="https://serpapi.com/home-depot-search-api" target="_blank" rel="noopener">SerpApi</a>: each new search uses one SerpApi credit (repeat searches within an hour are free), up to 60 an hour per business.</p>${env('<code>SERPAPI_API_KEY</code> (from your SerpApi dashboard).')}`)}
+<p class="muted ig-p">Turned off, the page is hidden and Home Depot search and Slack messages stop. Google, Facebook, Instagram, Stripe and AI keep working: they’re set up on their own pages.</p>
+<p class="muted ig-p">The keys for apps in the marketplace are on their own cards: <a href="#settings" data-act="setTab" data-k="integrations:homedepot">Home Depot</a> and <a href="#settings" data-act="setTab" data-k="integrations:slack">Slack</a>.</p>`)}
+${hdGroup(I.homeDepot || {}, ig, on)}
 </div><div class="ig-col">${socialGroups(I, ig, on, copy)}${soonGroup(I, ig, on)}</div></div>
 <div class="ig-wide">${ig('Stripe', S.key ? `${on(true)} <span class="cstatus ${S.mode === 'live' ? 'active' : 'q-sent'}">${S.mode === 'live' ? 'Live' : 'Test mode'}</span>` : on(false), `<div class="ig-2"><div><p class="ig-d">Your Stripe account: plan payments when businesses sign up, and “Connect with Stripe” for businesses’ card payments from their clients.</p>
 ${S.keyVar ? `<p class="ig-env">Using <code>${S.keyVar}</code> from <code>.env</code>.</p>` : env('<code>BILLING_STRIPE_SECRET_KEY</code> (or <code>STRIPE_SECRET_KEY</code>).')}
@@ -1957,6 +1960,12 @@ ${I.localhost ? '<p class="muted ig-p" style="margin-top:8px">Stripe can’t rea
   $$('input[data-soon]', box).forEach((c) => c.addEventListener('change', async () => {
     try { await api('PUT', '/api/platform/social-soon/' + c.dataset.soon, { soon: c.checked }); toast(c.checked ? 'Businesses now see Coming soon' : 'Businesses can connect now'); integrationsCard(box); } catch (x) { c.checked = !c.checked; toast(x.message, true); }
   }));
+  $('#hdKeyForm', box).addEventListener('submit', async (e) => {
+    e.preventDefault(); const f = e.target; const key = f.elements.key.value.trim(); if (!key) return toast('Paste your SerpApi key', true);
+    const btn = $('button.btn', f); btn.disabled = true;
+    try { const r = await api('PUT', '/api/platform/home-depot-key', { key }); await integrationsCard(box); igTab = 'homedepot'; igTabs(box); const out = $('#hdUsageOut'); if (out) out.textContent = hdUsageText(r.usage); toast('Key saved. Businesses can turn on Home Depot now.'); }
+    catch (x) { btn.disabled = false; toast(x.message, true); }
+  });
   $$('.oa-form', box).forEach((f) => f.addEventListener('submit', async (e) => {
     e.preventDefault(); const body = Object.fromEntries(new FormData(f)); if (f.elements.sandbox) body.sandbox = f.elements.sandbox.checked; // QuickBooks: development (sandbox) keys
     try { await api('PUT', '/api/platform/oauth-apps/' + f.dataset.p, body); toast(f.dataset.p === 'tiktok' ? 'Saved. Connect your account in Social.' : 'Saved. Businesses can connect now.'); integrationsCard(box); } catch (x) { toast(x.message, true); }
@@ -2007,6 +2016,23 @@ ${copy(T.redirectUri, 'TikTok redirect URI')}
 ${form('tiktok', T, 'Client key', 'e.g. sbaw1234abcd5678', 'Client secret')}${I.localhost ? '<p class="muted ig-p">TikTok only sends people back to a public address: set <code>BASE_URL</code> (or <code>PLATFORM_DOMAIN</code>) first.</p>' : ''}`)
   + booksGroups(I, ig, on, copy, form, n) + slackGroup(I, ig, on, copy, form, n);
 }
+// App Marketplace → The Home Depot (lib/homedepot.js): the SerpApi key the price searches go through
+function hdGroup(H, ig, on) {
+  return ig('Home Depot', on(H.on, 'Ready', 'Not set up'), `<p class="ig-d">Businesses that turn on The Home Depot in the App Marketplace can search Home Depot products and prices from the product and service form. Home Depot has no public API, so searches go through <a href="https://serpapi.com/home-depot-search-api" target="_blank" rel="noopener">SerpApi</a>.</p>
+<ol class="ig-steps"><li>Sign up at <a href="https://serpapi.com/users/sign_up" target="_blank" rel="noopener">serpapi.com</a>. The free plan has a small number of searches each month; paid plans have more.</li>
+<li>Copy your <strong>Private API Key</strong> from the <a href="https://serpapi.com/manage-api-key" target="_blank" rel="noopener">API key page</a> and paste it here. It’s checked with SerpApi before it’s saved.</li></ol>
+<p class="muted ig-p">Each new search uses one SerpApi search. The same search again within an hour is free, and each business can search up to 60 times an hour.</p>
+${H.fromEnv ? `<p class="ig-env">Using <code>SERPAPI_API_KEY</code> from <code>.env</code> (ending ${esc(H.hint)}). A key saved here is used in its place.</p>` : ''}
+<form id="hdKeyForm"><div class="row"><label>SerpApi API key<input name="key" type="password" autocomplete="new-password" spellcheck="false" placeholder="${H.saved ? `Saved (ending ${esc(H.hint)}). Paste a new one to replace it` : 'Paste your SerpApi key'}"></label></div>
+<div class="acts" style="justify-content:flex-start"><button class="btn alt">Save</button>${H.on ? '<button type="button" class="btn alt" data-act="hdUsage">Check searches left</button>' : ''}${H.saved ? '<button type="button" class="btn danger sm" data-act="hdKeyRm">Remove</button>' : ''}</div></form>
+<p class="muted ig-p" id="hdUsageOut"></p>`);
+}
+const hdUsageText = (u) => (u ? `${u.plan ? `${u.plan} plan. ` : ''}${u.left.toLocaleString()} searches left${u.perMonth ? ` (${u.used.toLocaleString()} of ${u.perMonth.toLocaleString()} used this month)` : ''}.` : '');
+A.hdUsage = async (d, el) => { el.disabled = true; try { const r = await api('GET', '/api/platform/home-depot-key/usage'); $('#hdUsageOut').textContent = hdUsageText(r.usage); } catch (x) { toast(x.message, true); } el.disabled = false; };
+A.hdKeyRm = async () => {
+  if (!confirm('Remove the SerpApi key? Home Depot search stops for every business until you add one again.')) return;
+  try { await api('DELETE', '/api/platform/home-depot-key'); toast('Key removed'); integrationsCard($('#integ')); } catch (x) { toast(x.message, true); }
+};
 // App Marketplace → Slack (lib/slack.js): the Slack app businesses add to their workspace to get messages in a channel
 function slackGroup(I, ig, on, copy, form, n) {
   const S = I.social.slack || {};

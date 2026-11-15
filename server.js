@@ -5069,7 +5069,8 @@ app.put('/api/home-depot', (req, res) => {
   if (b.on && !homeDepot.ready()) return res.status(503).json({ error: 'Home Depot search isn’t available yet' });
   const zip = String(b.zip || '').trim(); if (zip && !/^\d{5}$/.test(zip)) return res.status(400).json({ error: 'Enter a 5-digit ZIP code, or leave it empty' });
   const markup = Number(b.markup) || 0; if (markup < 0 || markup > 500) return res.status(400).json({ error: 'Markup must be between 0% and 500%' });
-  db.homeDepot = { on: !!b.on, zip, markup: Math.round(markup * 10) / 10 }; save(); res.json(hdView());
+  db.homeDepot = { on: !!b.on, zip, markup: Math.round(markup * 10) / 10 }; save();
+  res.json(hdView());
 });
 app.get('/api/home-depot/search', async (req, res) => {
   if (!hdView().on) return res.status(400).json({ error: 'Turn on Home Depot in Settings → App Marketplace first' });
