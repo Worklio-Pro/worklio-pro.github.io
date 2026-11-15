@@ -844,12 +844,13 @@ async function seoCard(box) {
 }
 function seoDraw(box) {
   const S = SEO; const img = seoDraft.shareImage || S.defaultShareImage;
-  const page = (p) => `<div class="seo-page" data-key="${p.key}"><div class="seo-ph"><div><strong>${esc(p.label)}</strong> <a class="sm" href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.url.replace(/^https?:\/\//, ''))}</a></div>
+  // one line per page (name, the title Google shows, a tag when it's custom or too long); opening a row shows its editor in place
+  const page = (p) => `<details class="seo-page" data-key="${p.key}"><summary><span class="seo-sl"><strong>${esc(p.label)}</strong><span class="seo-st"></span></span><span class="seo-tag"></span></summary><div class="seo-body"><div class="seo-ph"><div><a class="sm" href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.url.replace(/^https?:\/\//, ''))}</a></div>
 <button type="button" class="btn alt sm" data-act="seoReset" data-key="${p.key}">Use recommended</button></div>
 <label>Title <span class="seo-n" data-n="title"></span><input name="title" value="${esc(p.title || p.recommended.title)}" maxlength="120"></label>
 <label>Description <span class="seo-n" data-n="description"></span><textarea name="description" rows="2" maxlength="320">${esc(p.description || p.recommended.description)}</textarea></label>
 <p class="sm muted" style="margin:-6px 0 8px">${p.tokens.map((t) => `<code>{${t}}</code>`).join(' ')}${p.template ? ' · one pattern for every page of this kind' : ''}</p>
-<div class="seo-prev" aria-label="Search result preview"><span class="seo-url">${esc(p.url.replace(/^https?:\/\//, '').replace(/\/$/, '').replace(/\//g, ' › '))}</span><span class="seo-t"></span><span class="seo-d"></span></div></div>`;
+<div class="seo-prev" aria-label="Search result preview"><span class="seo-url">${esc(p.url.replace(/^https?:\/\//, '').replace(/\/$/, '').replace(/\//g, ' › '))}</span><span class="seo-t"></span><span class="seo-d"></span></div></div></details>`;
   box.innerHTML = `<form id="seof"><h2>Search engines</h2>
 <label class="switchline"><input type="checkbox" name="indexing" ${S.indexing ? 'checked' : ''}> <span><strong>Show the public site in search results.</strong> Turn off before launch to keep Google out. Account apps, client links, checkout and Alpha are always hidden from search engines.</span></label>
 <div class="row" style="margin-top:12px"><label>Google Search Console verification<input name="googleVerification" value="${esc(S.googleVerification)}" placeholder="Paste the meta tag or its content value" autocomplete="off"></label>
@@ -874,6 +875,9 @@ function seoDraw(box) {
   const update = (row) => { const k = row.dataset.key; const p = S.pages.find((x) => x.key === k); const vars = { ...S.sample };
     for (const n of ['title', 'description']) { const v = seoFill($(`[name=${n}]`, row).value, vars); const lim = SEO_LIMITS[n]; const c = $(`[data-n=${n}]`, row); c.textContent = `${v.length}/${lim}`; c.className = 'seo-n' + (v.length > lim ? ' over' : ''); }
     $('.seo-t', row).textContent = seoFill($('[name=title]', row).value, vars) || seoFill(p.recommended.title, vars);
+    $('.seo-st', row).textContent = $('.seo-t', row).textContent;
+    const over = !!$('.seo-n.over', row); const custom = ['title', 'description'].some((n) => { const v = $(`[name=${n}]`, row).value.trim(); return v && v !== p.recommended[n]; });
+    const tag = $('.seo-tag', row); tag.textContent = over ? 'Too long' : custom ? 'Custom' : ''; tag.className = 'seo-tag' + (over ? ' over' : '');
     const d = seoFill($('[name=description]', row).value, vars); $('.seo-d', row).textContent = d.length > 158 ? d.slice(0, 155) + '…' : d; };
   $$('.seo-page', f).forEach((row) => { update(row); row.addEventListener('input', () => update(row)); });
   f._update = update;
