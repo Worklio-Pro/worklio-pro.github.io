@@ -427,6 +427,7 @@ const loadLeaflet = () => dmLeaflet || (dmLeaflet = new Promise((ok, no) => {
   const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
   s.onload = () => ok(window.L); s.onerror = () => { dmLeaflet = null; no(new Error('The map couldn’t load. Check your connection and try again.')); }; document.head.appendChild(s);
 }));
+const dmAgo = (iso) => { const m = Math.max(0, Math.round((Date.now() - new Date(iso)) / 6e4)); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : `${Math.floor(m / 60)} h ${m % 60} min ago`; };
 const dmMin = (j) => (j.anytime || !j.startTime ? 1440 : scMin(j.startTime));
 const dmWhen = (j) => (j.anytime || !j.startTime ? 'Anytime' : `${fmtTime(j.startTime)}–${fmtTime(j.endTime)}`);
 // Google Maps directions through a person's stops in order, starting from where the phone is (Google allows 9 stops between)
@@ -474,6 +475,14 @@ ${edit && data.jobs.length ? '<p class="muted dm-tip">Drag a visit onto someone 
 ${edit && j.status !== 'completed' ? `<label class="dm-assign">Assign to <select data-id="${j.id}"><option value="">Unassigned</option>${team.map((s) => `<option value="${s.id}" ${j.staffIds[0] === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>` : ''}
 <a href="/jobs/edit?id=${j.id}" data-dm-open="${j.id}">Open job #${esc(String(j.number))} ›</a></div>`);
     dmPins[j.id] = m;
+  }
+  // Team location: each person's last known spot today (from Clock In, Clock Out or On My Way), managers only; sent by the server only while it's on
+  if (date === ymd(new Date())) for (const sp of data.spots || []) {
+    const s = byId(D.staff, sp.staffId); if (!s) continue; pts.push([sp.lat, sp.lng]);
+    const ini = s.name.split(/\s+/).map((w) => w[0] || '').join('').slice(0, 2).toUpperCase();
+    const what = { in: 'Clocked in', out: 'Clocked out', omw: 'Sent On My Way' }[sp.what] || 'Seen';
+    L.marker([sp.lat, sp.lng], { icon: L.divIcon({ className: 'dm-who' + (sp.what === 'out' ? ' off' : ''), html: `<span style="--c:${esc(s.color || '#0f766e')}">${esc(ini)}</span>`, iconSize: [32, 32], iconAnchor: [16, 16] }), title: s.name, zIndexOffset: 500 }).addTo(dmMap)
+      .bindPopup(`<div class="dm-pop"><strong>${esc(s.name)}</strong><span>${what}${sp.job ? ` on #${esc(String(sp.job.number))} ${esc(sp.job.title)}` : ''}</span><span class="muted">${esc(tsClock(sp.at))} · ${esc(dmAgo(sp.at))}</span><span class="muted">Last known spot, not live</span></div>`);
   }
   if (pts.length) dmMap.fitBounds(pts, { padding: [40, 40], maxZoom: 14 }); else dmMap.setView([39.5, -98.35], 4);
   dmMap.on('popupopen', (e) => { const el = e.popup.getElement(); const sel = $('select', el); const open = $('[data-dm-open]', el);
@@ -1201,6 +1210,14 @@ const tsClock = (iso) => fmtTime(new Date(iso).toTimeString().slice(0, 5));
 const tsH = (h) => (Math.round(h * 100) / 100).toFixed(2);
 const tsLocal = (iso) => { const d = new Date(iso); return `${ymd(d)}T${d.toTimeString().slice(0, 5)}`; }; // for datetime-local inputs
 const OVERTIME_H = 40; // hours in a week before overtime
+// Team location (App Settings → General): where the phone was at Clock In / Clock Out, and how far from the job's address; over 0.25 mi is flagged
+const LOC_FAR = 0.25;
+const distTxt = (mi) => (mi < 0.1 ? `${Math.max(10, Math.round(mi * 5280 / 10) * 10)} ft` : `${mi < 10 ? mi.toFixed(1) : Math.round(mi)} mi`);
+const locTag = (l) => { if (!l) return '';
+  if (l.none) return `<span class="ts-loc none" title="${l.none === 'denied' ? 'They didn’t allow location on their phone' : 'Their phone couldn’t find its location'}">📍 ${l.none === 'denied' ? 'Not shared' : 'No location'}</span>`;
+  const far = l.away !== undefined && l.away > LOC_FAR; const rough = l.acc > 1000 ? ' (rough)' : '';
+  return `<a class="ts-loc${far ? ' far' : ''}" href="https://www.google.com/maps?q=${l.lat},${l.lng}" target="_blank" rel="noopener" title="See on a map${l.acc ? ` (accurate to about ${distTxt(l.acc / 1609.34)})` : ''}">📍 ${l.away !== undefined ? `${distTxt(l.away)} from job` : 'Map'}${rough}</a>`; };
+const locCsv = (l) => (!l ? '' : l.none ? (l.none === 'denied' ? 'Not shared' : 'No location') : l.away !== undefined ? `${distTxt(l.away)} from job` : `${l.lat},${l.lng}`);
 PAGES['/timesheets'] = {
   title: 'Timesheets',
   async render(main) {
@@ -1219,9 +1236,9 @@ PAGES['/timesheets'] = {
     const o = TS.open;
     const clockCard = !TS.canClock ? '' : `<div class="card ts-clock ${o ? 'on' : ''}">${o ? `<div><div class="ts-big">⏱ On the clock · ${clockSince(o.start)}</div><div class="muted">Since ${tsClock(o.start)}${o.job ? ` on <a href="/jobs/edit?id=${esc(o.job.id)}" data-link>${esc(o.job.number)} ${esc(o.job.title)}</a>` : ', no job'}</div></div>
 <button type="button" class="btn ts-btn" data-act="clockOut">Clock Out</button>` : `<div><div class="ts-big">You’re off the clock</div><label class="ts-job">Job<select id="tsJob"><option value="">No job (shop time, travel…)</option>${mine.map((j) => `<option value="${j.id}">${esc(j.number)} · ${esc(j.title || '')}${j.date ? ' · ' + esc(fmtDate(j.date)) : ''}</option>`).join('')}</select></label></div>
-<button type="button" class="btn ts-btn" data-act="tsClockIn">Clock In</button>`}</div>`;
+<button type="button" class="btn ts-btn" data-act="tsClockIn">Clock In</button>`}${TS.teamLocation ? '<p class="muted sm ts-locnote">📍 Your location is saved when you clock in and out (never in between), so your manager can see you were at the job.</p>' : ''}</div>`;
     const row = (e) => `<tr class="${e.end ? '' : 'ts-live'}"><td>${esc(fmtDate(ymd(new Date(e.start))))}</td><td>${e.job ? `<a href="/jobs/edit?id=${esc(e.job.id)}" data-link>${esc(e.job.number)}</a> ${esc(e.job.title)}` : e.jobId ? '<span class="muted">Deleted job</span>' : '<span class="muted">No job</span>'}${e.note ? `<div class="muted sm">${esc(e.note)}</div>` : ''}</td>
-<td>${tsClock(e.start)}</td><td>${e.end ? tsClock(e.end) : '<span class="cstatus q-converted">On the clock</span>'}</td><td class="r">${tsH(e.hours)}${e.hours > 12 ? ' <span title="Over 12 hours: check it wasn’t left running">⚠️</span>' : ''}</td>
+<td>${tsClock(e.start)}${locTag(e.inLoc)}</td><td>${e.end ? tsClock(e.end) + locTag(e.outLoc) : '<span class="cstatus q-converted">On the clock</span>'}</td><td class="r">${tsH(e.hours)}${e.hours > 12 ? ' <span title="Over 12 hours: check it wasn’t left running">⚠️</span>' : ''}</td>
 ${TS.admin ? `<td class="r m-hide">${e.rate ? money(e.hours * e.rate) : '<span class="muted">—</span>'}</td>` : ''}<td>${e.approvedAt ? `<span class="cstatus active" title="Approved by ${esc(e.approvedBy)}">Approved</span>` : e.end ? '<span class="cstatus q-sent">Waiting</span>' : ''}</td>
 ${M ? `<td class="racts"><div>${e.end && !e.approvedAt ? `<button type="button" class="btn" data-act="tsApprove" data-ids="${e.id}">Approve</button>` : ''}<button type="button" class="btn alt row-edit" data-act="tsEdit" data-id="${e.id}">Edit</button></div></td>` : ''}</tr>`;
     // managers open on Waiting for approval; everyone sees the week's entries in one table, a group per person
@@ -1249,8 +1266,8 @@ A.tsWeekGo = (d) => { const n = Number(d.n); tsWeek = n ? ymd(tsAdd(tsWeek ? new
 A.tsClockIn = () => A.clockIn({ id: ($('#tsJob') || {}).value || '' });
 A.tsApprove = async (d) => { try { const r = await api('POST', '/api/time/approve', { ids: String(d.ids).split(',') }); toast(`Approved ${r.approved} ${r.approved === 1 ? 'entry' : 'entries'}`); refresh(); } catch (x) { toast(x.message, true); } };
 // timesheet CSV rows (Settings → Import & Export): pay rate and cost only for owner/admin
-const tsCsvRows = (TS, rows) => [['Team member', 'Date', 'Clock in', 'Clock out', 'Hours', 'Job', 'Job title', 'Note', 'Approved', 'Approved by', ...(TS.admin ? ['Pay rate', 'Cost'] : [])],
-    ...rows.map((e) => [e.person, ymd(new Date(e.start)), tsClock(e.start), tsClock(e.end), tsH(e.hours), e.job ? e.job.number : '', e.job ? e.job.title : '', e.note || '', e.approvedAt ? 'Yes' : 'No', e.approvedBy || '', ...(TS.admin ? [e.rate || '', e.rate ? (e.hours * e.rate).toFixed(2) : ''] : [])])];
+const tsCsvRows = (TS, rows) => [['Team member', 'Date', 'Clock in', 'Clock out', 'Hours', 'Job', 'Job title', 'Note', 'Approved', 'Approved by', ...(TS.admin ? ['Pay rate', 'Cost'] : []), ...(TS.teamLocation ? ['Clock in location', 'Clock out location'] : [])],
+    ...rows.map((e) => [e.person, ymd(new Date(e.start)), tsClock(e.start), tsClock(e.end), tsH(e.hours), e.job ? e.job.number : '', e.job ? e.job.title : '', e.note || '', e.approvedAt ? 'Yes' : 'No', e.approvedBy || '', ...(TS.admin ? [e.rate || '', e.rate ? (e.hours * e.rate).toFixed(2) : ''] : []), ...(TS.teamLocation ? [locCsv(e.inLoc), locCsv(e.outLoc)] : [])])];
 // add or fix an entry (managers)
 A.tsEdit = (d) => {
   const e = d.id ? TS.entries.find((x) => x.id === d.id) : null; const now = new Date();
@@ -2783,10 +2800,22 @@ function wireMx() {
     try { const saved = await api('PUT', '/api/company', { matrixItems: b }); company = { ...company, ...saved }; toast(b.on ? 'Matrix line items saved' : 'Matrix line items are off'); } catch (err) { toast(err.message, true); }
   });
 }
+// App Settings → General → Team location (company.teamLocation, off by default): saves as soon as it's switched
+const teamLocCard = (c) => (!planHas('timesheets') && !planHas('dispatchMap') ? '' : `<div class="card" id="team-location"><h2>Team location</h2><p class="muted" style="margin-top:0">See where your team was when they clocked in, clocked out or sent On My Way. Timesheets show how far each one was from the job${planHas('dispatchMap') ? ', and Calendar → Map shows everyone’s last known spot today' : ''}.</p>
+<form id="tlf">${switchRow('on', 'Save location at clock in, clock out and On My Way', !!c.teamLocation)}</form>
+<p class="muted sm" style="margin:10px 0 0">Location is never tracked in between or off the clock. Each person’s phone asks them first, and the Timesheets page tells them it’s on. If someone says no, they can still clock in. Some states require telling employees in writing that you record their location.</p></div>`);
+function wireTeamLoc() {
+  const f = $('#tlf'); if (!f) return;
+  f.addEventListener('submit', (e) => e.preventDefault());
+  f.addEventListener('change', async () => {
+    const on = new FormData(f).getAll('on').includes('on');
+    try { const saved = await api('PUT', '/api/company', { teamLocation: on }); company = { ...company, ...saved }; toast(on ? 'Team location is on' : 'Team location is off'); } catch (err) { toast(err.message, true); }
+  });
+}
 // App Settings tabs; the hash keeps the tab (links to #payments, #zelle, #pay-apps or #late-fees open Payments). Every card stays in the page so form="cf" fields still save.
 const AS_TABS = [['general', 'General'], ['white-label', 'White Label'], ['payments', 'Payments']];
 function wireAsTabs(main) {
-  const tabOf = (h) => (h === 'saved-discounts' ? 'general' : ['zelle', 'pay-apps', 'late-fees'].includes(h) ? 'payments' : AS_TABS.some(([t]) => t === h) ? h : 'general');
+  const tabOf = (h) => (['saved-discounts', 'team-location'].includes(h) ? 'general' : ['zelle', 'pay-apps', 'late-fees'].includes(h) ? 'payments' : AS_TABS.some(([t]) => t === h) ? h : 'general');
   const show = (t, keep) => {
     $$('[data-as-tab]', main).forEach((b) => { const on = b.dataset.asTab === t; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); });
     $$('.as-panel', main).forEach((p) => { p.hidden = p.id !== 'as-' + t; });
@@ -2812,11 +2841,11 @@ async function companyPage(main, full) {
 <div class="row3"><label>Venmo username<input form="cf" name="venmoHandle" value="${esc(c.venmoHandle ? '@' + c.venmoHandle : '')}" placeholder="@YourBusiness" autocomplete="off"></label><label>Cash App $Cashtag<input form="cf" name="cashappTag" value="${esc(c.cashappTag ? '$' + c.cashappTag : '')}" placeholder="$YourBusiness" autocomplete="off"></label><label>PayPal.me name<input form="cf" name="paypalHandle" value="${esc(c.paypalHandle ? 'paypal.me/' + c.paypalHandle : '')}" placeholder="paypal.me/YourBusiness" autocomplete="off"></label></div></div>` : '';
   main.innerHTML = `<div class="head"><div><h1>${full ? 'App Settings' : 'Company settings'}</h1>${full ? '<p class="sub">Defaults, white label and payments for every quote and invoice. Business details, social media and tax settings are on <a href="/settings/company" data-link>Company Profile</a>.</p>' : ''}</div></div>
 ${full ? `<div class="as-tabs" role="tablist">${AS_TABS.map(([t, n]) => `<button type="button" role="tab" data-as-tab="${t}" aria-controls="as-${t}">${n}</button>`).join('')}</div>
-<div class="as-panel" id="as-general" role="tabpanel">${planCard(c.account)}<div class="as-cols"><div class="as-col">${regionalBox(c)}${languagesBox(c)}${mxCard()}</div><div class="as-col">${defaultsBox}${savedDiscCard()}${prefixBox}</div></div></div>
+<div class="as-panel" id="as-general" role="tabpanel">${planCard(c.account)}<div class="as-cols"><div class="as-col">${regionalBox(c)}${languagesBox(c)}${mxCard()}</div><div class="as-col">${defaultsBox}${savedDiscCard()}${prefixBox}${teamLocCard(c)}</div></div></div>
 <div class="as-panel" id="as-white-label" role="tabpanel"><div class="as-cols"><div class="as-col">${webAddressCard(c.account)}</div><div class="as-col">${brandBox || `<div class="card"><h2>Branding</h2><p class="muted" style="margin:0">Your own brand and accent colors on quotes, invoices, emails and the client portal come with a plan that includes Branding.</p></div>`}</div></div></div>
 <div class="as-panel" id="as-payments" role="tabpanel"><div class="as-cols"><div class="as-col">${payCard(integ)}${zelleBox}</div><div class="as-col">${appsBox}${lateFeeCard(c)}</div></div></div>
 <form id="cf"></form>` :`<form id="cf" class="cs-form">${companySettingsHtml(c, logoBox)}</form>`}`;
-  if (full) { wireLateFees(); wireMx(); wireAsTabs(main); }
+  if (full) { wireLateFees(); wireMx(); wireTeamLoc(); wireAsTabs(main); }
   $$('.prefix-row input').forEach((i) => i.addEventListener('input', () => { i.nextElementSibling.textContent = 'e.g. ' + i.value.trim() + i.dataset.sample; }));
   const ind = $('#cf select[name=industry]', main); if (ind) ind.addEventListener('change', () => { $('#cf [data-other]', main).hidden = ind.value !== 'other'; });
   if (!full) { // Company Profile saves on its own: a field as soon as it changes, the business hours with their pencil
@@ -2862,7 +2891,7 @@ ${full ? `<div class="as-tabs" role="tablist">${AS_TABS.map(([t, n]) => `<button
     try { const saved = await api('DELETE', '/api/company/logo' + (dark ? '?kind=dark' : '')); company = { ...company, ...saved }; toast('Logo deleted'); refresh(); } catch (err) { toast(err.message, true); }
   };
   wireAccountCards(main);
-  if (full) { stripeReturnNotice(integ); const to = ['#zelle', '#pay-apps', '#late-fees'].includes(location.hash) ? $(location.hash, main) : null; if (to) to.scrollIntoView({ block: 'start' }); } // back from Stripe, or a link to Card payments
+  if (full) { stripeReturnNotice(integ); const to = ['#zelle', '#pay-apps', '#late-fees', '#team-location'].includes(location.hash) ? $(location.hash, main) : null; if (to) to.scrollIntoView({ block: 'start' }); } // back from Stripe, or a link to Card payments
   $$('.logo-file', main).forEach((inp) => inp.addEventListener('change', async (e) => {
     const f = e.target.files[0]; e.target.value = ''; if (!f) return; if (f.size > 4e6) return toast('Logo must be under 4 MB', true);
     try {

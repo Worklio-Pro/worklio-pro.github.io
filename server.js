@@ -703,19 +703,37 @@ const timeList = () => (db.timeEntries = db.timeEntries || []);
 const payRates = () => (db.payRates = db.payRates || {});
 const openEntry = (staffId) => staffId && timeList().find((e) => e.staffId === staffId && !e.end);
 const entryHours = (e) => Math.max(0, ((e.end ? new Date(e.end) : new Date()) - new Date(e.start)) / 36e5);
+// Team location (App Settings → General, company.teamLocation, off by default): when it's on, the phone's location is saved at Clock In,
+// Clock Out and On My Way (never in between). The timesheet shows how far each was from the job; the Dispatch map shows each person's last
+// known spot (db.lastSpot[staffId]). The browser asks each person first; if they say no, the action still goes through without it.
+// A spot: { lat, lng, acc (meters), at } or { none: 'denied' | 'unavailable' }. Turned off, nothing new is saved and saved spots are hidden.
+const teamLocOn = () => !!db.company.teamLocation;
+function readSpot(b) {
+  if (!teamLocOn() || !b) return null;
+  const l = b.loc; if (l && typeof l === 'object' && isFinite(l.lat) && isFinite(l.lng) && Math.abs(l.lat) <= 90 && Math.abs(l.lng) <= 180)
+    return { lat: +Number(l.lat).toFixed(6), lng: +Number(l.lng).toFixed(6), acc: Math.max(0, Math.round(Number(l.acc) || 0)), at: new Date().toISOString() };
+  return ['denied', 'unavailable'].includes(b.locErr) ? { none: b.locErr, at: new Date().toISOString() } : null;
+}
+const keepSpot = (staffId, spot, what, jobId) => { if (!staffId || !spot || spot.none) return; (db.lastSpot = db.lastSpot || {})[staffId] = { ...spot, what, jobId: jobId || '' }; };
+// straight-line miles between two points
+const crowMiles = (a, b) => roadMiles(a, b) / 1.3;
+// a spot for the timesheet, with how far it was from the job's address (when that's on the map)
+const spotOut = (spot, j) => { if (!spot) return null; if (spot.none) return { none: spot.none };
+  const place = j && placeOf(jobAddress(j)); return { lat: spot.lat, lng: spot.lng, acc: spot.acc, ...(place ? { away: Math.round(crowMiles(spot, place) * 1000) / 1000 } : {}) }; };
 const timeRow = (e, u) => { const j = e.jobId && db.jobs.find((x) => x.id === e.jobId); const s = db.staff.find((x) => x.id === e.staffId);
-  return { ...e, person: s ? s.name : 'Former team member', color: s ? s.color : '', job: j ? { id: j.id, number: j.number, title: j.title || '' } : null, hours: Math.round(entryHours(e) * 100) / 100,
+  const { inLoc, outLoc, ...rest } = e; const locs = teamLocOn() ? { inLoc: spotOut(inLoc, j), outLoc: spotOut(outLoc, j) } : {};
+  return { ...rest, ...locs, person: s ? s.name : 'Former team member', color: s ? s.color : '', job: j ? { id: j.id, number: j.number, title: j.title || '' } : null, hours: Math.round(entryHours(e) * 100) / 100,
     ...(isAdmin(u) ? { rate: Number(payRates()[e.staffId]) || 0 } : {}) }; };
 const timeWhen = (v, label) => { const d = new Date(v); if (!v || isNaN(d)) throw Object.assign(new Error(`Enter the ${label} time`), { status: 400 }); return d.toISOString(); };
 // labor cost per job from time logged to it, at each person's pay rate (Job profit report)
 const laborByJob = () => { const r = payRates(); const out = {}; for (const e of timeList()) if (e.jobId && e.end && r[e.staffId]) out[e.jobId] = (out[e.jobId] || 0) + entryHours(e) * Number(r[e.staffId]); return out; };
-app.get('/api/time/status', (req, res) => { const u = currentUser(req); const e = openEntry(u.staffId); res.json({ canClock: !!db.staff.find((s) => s.id === u.staffId), open: e ? timeRow(e, u) : null }); });
+app.get('/api/time/status', (req, res) => { const u = currentUser(req); const e = openEntry(u.staffId); res.json({ canClock: !!db.staff.find((s) => s.id === u.staffId), open: e ? timeRow(e, u) : null, teamLocation: teamLocOn() }); });
 app.get('/api/time', (req, res) => {
   const u = currentUser(req); const manager = canManageTime(u);
   const from = req.query.from ? new Date(req.query.from) : new Date(Date.now() - 7 * 864e5); const to = req.query.to ? new Date(req.query.to) : new Date();
   // entries that overlap the range; team members get only their own
   const list = timeList().filter((e) => (manager || e.staffId === u.staffId) && new Date(e.start) < to && (!e.end || new Date(e.end) > from)).sort((a, b) => a.start.localeCompare(b.start));
-  res.json({ manager, admin: isAdmin(u), staffId: u.staffId || null, canClock: !!db.staff.find((s) => s.id === u.staffId), open: openEntry(u.staffId) ? timeRow(openEntry(u.staffId), u) : null,
+  res.json({ manager, admin: isAdmin(u), staffId: u.staffId || null, teamLocation: teamLocOn(), canClock: !!db.staff.find((s) => s.id === u.staffId), open: openEntry(u.staffId) ? timeRow(openEntry(u.staffId), u) : null,
     entries: list.slice(0, 3000).map((e) => timeRow(e, u)), ...(isAdmin(u) ? { rates: payRates() } : {}) });
 });
 // clock in, on a job or not; clocking in again while on the clock switches: the open entry ends now and a new one starts
@@ -725,13 +743,17 @@ app.post('/api/time/clock-in', (req, res) => {
   if (j && !canManageTime(u) && !(j.staffIds || []).includes(u.staffId)) return res.status(403).json({ error: 'You can only clock in on jobs you’re assigned to' });
   const now = new Date().toISOString(); const was = openEntry(u.staffId);
   if (was && (was.jobId || '') === jobId) return res.json({ open: timeRow(was, u) });
-  if (was) was.end = now;
-  const e = { id: uid(), staffId: u.staffId, jobId, start: now, end: null, note: '', approvedAt: null, approvedBy: '', createdAt: now }; timeList().push(e); save();
+  const spot = readSpot(req.body);
+  if (was) { was.end = now; if (spot) was.outLoc = spot; }
+  const e = { id: uid(), staffId: u.staffId, jobId, start: now, end: null, note: '', approvedAt: null, approvedBy: '', createdAt: now, ...(spot ? { inLoc: spot } : {}) }; timeList().push(e);
+  keepSpot(u.staffId, spot, 'in', jobId); save();
+  if (spot && !spot.none && j) placeAddresses([jobAddress(j)]).catch(() => {}); // so the timesheet can say how far from the job
   res.status(201).json({ open: timeRow(e, u), switched: was ? timeRow(was, u) : null });
 });
 app.post('/api/time/clock-out', (req, res) => {
   const u = currentUser(req); const e = openEntry(u.staffId); if (!e) return res.status(400).json({ error: 'You’re not clocked in' });
-  e.end = new Date().toISOString(); const note = String((req.body || {}).note || '').trim().slice(0, 500); if (note) e.note = note; save(); res.json({ entry: timeRow(e, u) });
+  e.end = new Date().toISOString(); const note = String((req.body || {}).note || '').trim().slice(0, 500); if (note) e.note = note;
+  const spot = readSpot(req.body); if (spot) e.outLoc = spot; keepSpot(u.staffId, spot, 'out', e.jobId); save(); res.json({ entry: timeRow(e, u) });
 });
 // managers: add, fix and remove anyone's entries; a change to an approved entry needs approving again
 const manageTime = (fn) => (req, res) => { const u = currentUser(req); if (!canManageTime(u)) return res.status(403).json({ error: 'Only managers can change timesheets' }); try { fn(req, res, u, req.body || {}); } catch (e) { res.status(e.status || 500).json({ error: e.message }); } };
@@ -1025,7 +1047,9 @@ app.get('/api/dispatch', async (req, res) => {
   const date = String(req.query.date || ''); if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'Choose a day' });
   const jobs = dayJobs(date); const base = String(db.company.address || '').trim();
   const pending = await placeAddresses([base, ...jobs.map(jobAddress)]);
-  res.json({ date, pending, base: base ? { address: base, ...(placeOf(base) || {}) } : null,
+  const u = currentUser(req); const spots = teamLocOn() && canManageTime(u) ? Object.entries(db.lastSpot || {}).filter(([id, x]) => db.staff.find((s) => s.id === id) && Date.now() - new Date(x.at) < 864e5)
+    .map(([staffId, x]) => { const j = x.jobId && db.jobs.find((y) => y.id === x.jobId); return { staffId, lat: x.lat, lng: x.lng, acc: x.acc, at: x.at, what: x.what, job: j ? { id: j.id, number: j.number, title: j.title || '' } : null }; }) : [];
+  res.json({ date, pending, spots, base: base ? { address: base, ...(placeOf(base) || {}) } : null,
     jobs: jobs.map((j) => { const c = findClient(j.clientId) || {}; const addr = jobAddress(j);
       return { id: j.id, number: j.number, title: j.title, client: c.company || c.name || '', address: addr, startTime: j.startTime, endTime: j.endTime, anytime: !!j.anytime,
         staffIds: j.staffIds || [], status: j.status, seriesId: j.seriesId || '', ...(placeOf(addr) || {}), unplaced: !!addr && !placeOf(addr) && !!(db.geo || {})[geoKey(addr)] }; }) });
@@ -1796,7 +1820,7 @@ app.put('/api/company', (req, res) => {
   for (const k of allowed) if (k in b) db.company[k] = k === 'taxRate' || k === 'paymentTermsDays' ? Number(b[k]) || 0 : typeof b[k] === 'string' ? b[k].trim().slice(0, 500) : b[k];
   Object.assign(db.company, handles);
   if (b.lateFee && typeof b.lateFee === 'object') { try { db.company.lateFee = cleanLateFee(b.lateFee, db.company.lateFee); } catch (e) { return res.status(400).json({ error: e.message }); } }
-  for (const k of ['addressPrivate', 'showHours']) if (k in b) db.company[k] = b[k] === true || b[k] === 'on' || b[k] === 'true';
+  for (const k of ['addressPrivate', 'showHours', 'teamLocation']) if (k in b) db.company[k] = b[k] === true || b[k] === 'on' || b[k] === 'true';
   if (ADDRESS_PARTS.some((k) => k in b)) db.company.address = composeAddress(db.company); // the one-line address used everywhere else
   if ('savedDiscounts' in b) { // Saved discounts for quick select on quotes, jobs and invoices: a name, $ or %, and the amount
     const list = (Array.isArray(b.savedDiscounts) ? b.savedDiscounts : []).slice(0, 30).map((x) => ({ id: x && typeof x.id === 'string' && /^[a-z0-9]{4,16}$/.test(x.id) ? x.id : uid(), name: String((x && x.name) || '').trim().slice(0, 60), type: x && x.type === 'percent' ? 'percent' : 'flat', value: Math.round(Math.max(0, Number(x && x.value) || 0) * 100) / 100 }));
@@ -2852,7 +2876,7 @@ app.post('/api/jobs/:id/on-my-way', async (req, res) => {
   const email = inClientLang(c.id, () => renderEmail('onMyWay', { client_name: c.name || '', company_name: db.company.name, staff_name: who, eta: tx('{n} minutes', { n: eta }), arrival_time: arrive, job_number: j.number, job_title: j.title || '', address: j.address || c.address || '' }));
   const r = await notify({ clientId: c.id, channel: ch, kind: 'job', refId: j.id, refNumber: j.number, subject: email.subject, html: ch === 'email' ? email.html : '',
     body: ch === 'email' ? email.body : `${first} is on the way and should arrive in about ${eta} minutes (around ${arrive}). Reply STOP to opt out.` });
-  if (r.status !== 'failed') j.onMyWay = { at: new Date().toISOString(), staffId: u.staffId || null, name: who, eta, channel: ch };
+  if (r.status !== 'failed') { j.onMyWay = { at: new Date().toISOString(), staffId: u.staffId || null, name: who, eta, channel: ch }; keepSpot(u.staffId, readSpot(req.body), 'omw', j.id); }
   save(); res.json({ result: r, job: j });
 });
 

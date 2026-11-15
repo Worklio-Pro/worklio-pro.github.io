@@ -3775,14 +3775,28 @@ const onThisJob = (j) => !!(D.clock && D.clock.open && D.clock.open.jobId === j.
 const clockBtn = (j, cls = 'btn alt') => (onThisJob(j) ? `<button type="button" class="${cls} clock-on" data-act="clockOut">Clock Out</button>` : canClockJob(j) ? `<button type="button" class="${cls}" data-act="clockIn" data-id="${j.id}">Clock In</button>` : '');
 const clockSince = (start) => { const m = Math.max(0, Math.floor((Date.now() - new Date(start)) / 6e4)); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`; };
 const clockBadge = (j) => (onThisJob(j) ? `<span class="vsign clock-badge" title="You clocked in at ${esc(fmtTime(new Date(D.clock.open.start).toTimeString().slice(0, 5)))}">⏱ On the clock · ${clockSince(D.clock.open.start)}</span>` : '');
+// Team location (App Settings → General, off by default): the phone's location goes with Clock In, Clock Out and On My Way, never in between.
+// The browser asks the person first; if they say no (or there's no signal) the action still goes through, marked as no location.
+const teamLocOn = () => !!company.teamLocation;
+const getSpot = () => (!teamLocOn() ? Promise.resolve({}) : !navigator.geolocation ? Promise.resolve({ locErr: 'unavailable' }) : new Promise((ok) => {
+  let done = false; const end = (v) => { if (!done) { done = true; ok(v); } };
+  setTimeout(() => end({ locErr: 'unavailable' }), 12000);
+  navigator.geolocation.getCurrentPosition((p) => end({ loc: { lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy } }),
+    (e) => end({ locErr: e && e.code === 1 ? 'denied' : 'unavailable' }), { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+}));
+const spotNote = (g) => (g.loc ? ' · location saved' : g.locErr === 'denied' ? ' · location not shared' : g.locErr ? ' · location not found' : '');
 A.clockIn = async (d) => {
   $$('details.menu[open]').forEach((x) => { x.open = false; });
   const was = D.clock && D.clock.open; const j = d.id ? byId(D.jobs, d.id) : null;
   if (was && !confirm(`You’re on the clock ${was.job ? `on ${was.job.number} ${was.job.title}` : 'without a job'}. Clock out of that and in on ${j ? `${j.number} ${j.title || ''}` : 'no job'}?`)) return;
-  try { const r = await api('POST', '/api/time/clock-in', { jobId: d.id || '' }); D.clock = { ...D.clock, open: r.open }; toast(j ? `Clocked in on ${j.number}` : 'Clocked in'); refresh(); } catch (x) { toast(x.message, true); }
+  if (teamLocOn()) toast('Getting your location…');
+  const g = await getSpot();
+  try { const r = await api('POST', '/api/time/clock-in', { jobId: d.id || '', ...g }); D.clock = { ...D.clock, open: r.open }; toast((j ? `Clocked in on ${j.number}` : 'Clocked in') + spotNote(g)); refresh(); } catch (x) { toast(x.message, true); }
 };
 A.clockOut = async () => {
-  try { const r = await api('POST', '/api/time/clock-out', {}); D.clock = { ...D.clock, open: null }; toast(`Clocked out: ${r.entry.hours.toFixed(2)} h`); refresh(); } catch (x) { toast(x.message, true); }
+  if (teamLocOn()) toast('Getting your location…');
+  const g = await getSpot();
+  try { const r = await api('POST', '/api/time/clock-out', g); D.clock = { ...D.clock, open: null }; toast(`Clocked out: ${r.entry.hours.toFixed(2)} h` + spotNote(g)); refresh(); } catch (x) { toast(x.message, true); }
 };
 /* ===== job checklists & forms (a plan feature): the card on a job, adding one, and filling one in (a popup on computers, full screen on phones).
    Answers save as they're typed or ticked; Finish checks every required item. Templates are made on Settings → Checklists & Forms (pages.js). ===== */
@@ -4306,7 +4320,7 @@ ${j.onMyWay ? `<p class="notice">${esc(j.onMyWay.name)} already sent this ${ymd(
   f.addEventListener('submit', async (e) => {
     e.preventDefault(); const b = $('button.btn:not(.alt)', f); b.disabled = true;
     try {
-      const r = await api('POST', '/api/jobs/' + j.id + '/on-my-way', { eta: Number(f.eta.value) }); const x = r.result;
+      const r = await api('POST', '/api/jobs/' + j.id + '/on-my-way', { eta: Number(f.eta.value), ...(await getSpot()) }); const x = r.result;
       if (x.status === 'failed') { b.disabled = false; return toast(x.detail || 'Couldn’t send it', true); }
       Object.assign(j, r.job); closeModal(); toast(x.status === 'simulated' ? 'Logged (no message provider connected)' : `${x.channel === 'sms' ? 'Text' : 'Email'} sent: the client knows you’re on the way`); refresh();
     } catch (err) { b.disabled = false; toast(err.message, true); }
