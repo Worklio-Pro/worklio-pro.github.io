@@ -2447,7 +2447,7 @@ const qSvyStage = (q) => !!q.estimate && !!q.survey && !!q.estimateApprovedAt &&
 const qSvyTask = (q) => (q.surveyTaskId && byId(D.tasks || [], q.surveyTaskId)) || null;
 const qSvyDone = (q) => { const t = qSvyTask(q); return !!t && `${t.date} ${t.startTime}` < `${ymd(new Date())} ${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`; };
 const qSvyText = (q) => { const t = qSvyTask(q); const s = t && byId(D.staff, (t.staffIds || [])[0]);
-  return q.quoteSentAt ? 'Done, quote sent' : t ? `${fmtDate(t.date)}, ${fmtTime(t.startTime)}${s ? ` with ${esc(s.name)}` : ''}` : q.estimateApprovedAt ? 'Waiting for the client to book' : 'Booked after the estimate is approved'; };
+  return q.quoteSentAt ? 'Done, quote sent' : t ? `${fmtDate(t.date)}, ${fmtTime(t.startTime)}${s ? ` with ${esc(s.name)}` : ''}` : !q.estimate ? 'Not booked' : q.estimateApprovedAt ? 'Waiting for the client to book' : 'Booked after the estimate is approved'; };
 // the title, an "i" that shows what the switch does, and the switch on the right of the same row (Estimate, and Site survey under it)
 const estInfoBtn = (id, what) => `<button type="button" class="est-i" aria-expanded="false" aria-controls="${id}" aria-label="What is ${what}?" title="What is this?" onclick="var p=document.getElementById(this.getAttribute('aria-controls'));p.hidden=!p.hidden;this.setAttribute('aria-expanded',!p.hidden)">i</button>`;
 const estCard = (d) => { const done = !!d.estimateApprovedAt;
@@ -2669,7 +2669,7 @@ function quotePage(d) {
 ${sendBtn('quote', d)}</div></div>
 <div class="vhead"><div class="vtitle-row"><h1 class="vtitle">${esc(d.title || 'Untitled quote')}</h1>${editBtn('quote', d, 'top')}</div>
 <div class="qhead"><div class="qclient"><div class="vclient"><span>${esc(c.name || 'No client')}</span>${c.id ? clientMenu(c) : ''}</div><div class="muted qlabel">Property address</div><div class="qaddr">${esc(d.address || c.address || '') || '<span class="muted">No address on file</span>'}</div></div>
-<dl class="qmeta"><dt>Quote #</dt><dd>${esc(d.number)}</dd><dt>Created</dt><dd>${fmtDate((d.createdAt || '').slice(0, 10))}</dd>${d.estimate || d.estimateApprovedAt ? `<dt>Estimate</dt><dd>${d.estimateApprovedAt ? `Approved ${fmtDate(d.estimateApprovedAt)}` : 'Client approves it first'}</dd>` : ''}${d.estimate && d.survey ? `<dt>Site survey</dt><dd>${qSvyText(d)}</dd>` : ''}${d.depositFee > 0 && !(qHasOpts(d) && !d.chosenOption) ? `<dt>Required deposit</dt><dd>${money(d.depositFee)}</dd>` : ''}${qHasOpts(d) && d.chosenOption ? `<dt>Client chose</dt><dd>${esc(qShown(d).name)}</dd>` : ''}</dl></div></div>
+<dl class="qmeta"><dt>Quote #</dt><dd>${esc(d.number)}</dd><dt>Created</dt><dd>${fmtDate((d.createdAt || '').slice(0, 10))}</dd>${d.estimate || d.estimateApprovedAt ? `<dt>Estimate</dt><dd>${d.estimateApprovedAt ? `Approved ${fmtDate(d.estimateApprovedAt)}` : 'Client approves it first'}</dd>` : ''}${d.survey && (d.estimate || d.surveyTaskId) ? `<dt>Site survey</dt><dd>${qSvyText(d)}</dd>` : ''}${d.depositFee > 0 && !(qHasOpts(d) && !d.chosenOption) ? `<dt>Required deposit</dt><dd>${money(d.depositFee)}</dd>` : ''}${qHasOpts(d) && d.chosenOption ? `<dt>Client chose</dt><dd>${esc(qShown(d).name)}</dd>` : ''}</dl></div></div>
 <div class="qcard"><div class="qcard-h"><h2>Product / Service</h2>${editBtn('quote', d, 'items')}</div>${qHasOpts(d) && !d.chosenOption ? `<p class="muted qo-intro">${d.options.length} options for the client to choose from.</p>` : ''}${quoteItemsView(d)}</div>
 ${d.signedAt ? `<div class="qcard sig-card"><div class="qcard-h"><h2>Client signature</h2><span class="cstatus q-approved">Signed</span></div>
 ${d.signature ? `<div class="sig-show"><img class="sig-img" src="${esc(d.signature.file)}" alt="Signature of ${esc(d.signedName || 'the client')}"></div>` : ''}
@@ -3498,7 +3498,7 @@ const agoTxt = (n) => (n === 0 ? 'today' : n === 1 ? 'yesterday' : `${n} days ag
 const qDepClaimed = (q) => !!q.zelleSentAt && !q.depositPaidAt && quoteStatus(q) !== 'converted';
 // why a quote needs action: chg = changes requested, dep = deposit to check, job = approved with no job, stale = no reply in 7+ days
 const quoteWhy = (q) => { const s = quoteStatus(q);
-  return quoteChg(q) ? 'chg' : qDepClaimed(q) ? 'dep' : s === 'survey' && qSvyDone(q) ? 'svy' : s === 'approved' ? 'job' : qOut(s) && daysSince(qSentOn(q)) >= 7 ? 'stale' : ''; };
+  return quoteChg(q) ? 'chg' : qDepClaimed(q) ? 'dep' : (s === 'survey' || (s === 'draft' && q.surveyTaskId)) && qSvyDone(q) ? 'svy' : s === 'approved' ? 'job' : qOut(s) && daysSince(qSentOn(q)) >= 7 ? 'stale' : ''; };
 const quoteInTab = (q, s) => s === 'all' || (s === 'action' ? !!quoteWhy(q) : quoteStatus(q) === s);
 const quoteUrgency = (a, b) => {
   const rank = (q) => ({ chg: 0, dep: 1, svy: 1.5, job: 2, stale: 3 }[quoteWhy(q)] ?? { sent: 4, estimate: 4, survey: 4, draft: 5, approved: 6, converted: 7, declined: 8 }[quoteStatus(q)] ?? 9);
@@ -3537,7 +3537,7 @@ PAGES['/quotes'] = {
     const addr = (q) => esc(q.address || (byId(D.clients, q.clientId) || {}).address || ''); const nowrap = (s) => `<td style="white-space:nowrap">${s}</td>`;
     const sub = (s) => (s ? `<div class="muted sm-l">${s}</div>` : '');
     const stCell = (q) => { const s = quoteStatus(q);
-      return `${s === 'sent' ? `<span class="cstatus q-sent">Sent ${agoTxt(daysSince(qSentOn(q)))}</span>` : s === 'estimate' ? `<span class="cstatus q-estimate">Estimate sent ${agoTxt(daysSince(qSentOn(q)))}</span>` : s === 'survey' ? `<span class="cstatus q-survey">${qSvyTask(q) ? (qSvyDone(q) ? 'Survey done' : 'Survey booked') : 'Survey to book'}</span>${qSvyTask(q) ? sub(qSvyText(q)) : ''}` : qBadge(s)}${quoteChg(q) ? ' <span class="badge chg">Changes requested</span>' : ''}${q.zelleSentAt && !q.depositPaidAt ? ` <span class="badge zelle">${sentName(q)} sent</span>` : ''}${s === 'approved' && q.depositPaidAt ? sub('Deposit paid') : ''}${s === 'approved' && q.estimateApprovedAt && !q.signedAt ? sub('Estimate approved, waiting for signature') : ''}`; };
+      return `${s === 'sent' ? `<span class="cstatus q-sent">Sent ${agoTxt(daysSince(qSentOn(q)))}</span>` : s === 'estimate' ? `<span class="cstatus q-estimate">Estimate sent ${agoTxt(daysSince(qSentOn(q)))}</span>` : s === 'survey' ? `<span class="cstatus q-survey">${qSvyTask(q) ? (qSvyDone(q) ? 'Survey done' : 'Survey booked') : 'Survey to book'}</span>${qSvyTask(q) ? sub(qSvyText(q)) : ''}` : qBadge(s)}${quoteChg(q) ? ' <span class="badge chg">Changes requested</span>' : ''}${q.zelleSentAt && !q.depositPaidAt ? ` <span class="badge zelle">${sentName(q)} sent</span>` : ''}${s === 'approved' && q.depositPaidAt ? sub('Deposit paid') : ''}${s === 'approved' && q.estimateApprovedAt && !q.signedAt ? sub('Estimate approved, waiting for signature') : ''}${s === 'draft' && qSvyTask(q) ? sub(`Site survey ${qSvyText(q)}`) : ''}`; };
     let cols = []; const has = (k) => cols.some((c) => c.k === k);
     const QCOLS = [
       { k: 'client', label: 'Client', th: th('client', 'Client'), td: (q) => `<td><strong>${esc(cname(q))}</strong>${q.title && !has('title') ? sub(esc(q.title)) : ''}</td>` },

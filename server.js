@@ -3972,33 +3972,35 @@ function surveySlots(staffId, skipTaskId) {
   return days;
 }
 // the booking on the calendar: a task for that person with the client, the address and the quote; booking again moves it
-function bookSurvey(q, s, date, time) {
+function bookSurvey(q, s, date, time, end, by = 'the client') { // end: the calendar's own end time (the client's booking uses the settings' length)
   const c = findClient(q.clientId); const S = svySettings(); let t = svyTask(q);
-  const fields = { title: `Site survey: ${c ? c.name : 'client'}`, date, startTime: time, endTime: svyHm(svyMin(time) + S.minutes), anytime: false, staffIds: [s.id], clientId: q.clientId,
-    address: q.address || (c && c.address) || '', propertyId: q.propertyId || '', description: `Site survey for quote ${q.number}${q.title ? ` (${q.title})` : ''}, booked by the client.`, survey: { quoteId: q.id, bookedAt: new Date().toISOString() }, remindedAt: null };
+  const fields = { title: `Site survey: ${c ? c.name : 'client'}`, date, startTime: time, endTime: end || svyHm(svyMin(time) + S.minutes), anytime: false, staffIds: [s.id], clientId: q.clientId,
+    address: q.address || (c && c.address) || '', propertyId: q.propertyId || '', description: `Site survey for quote ${q.number}${q.title ? ` (${q.title})` : ''}, booked by ${by}.`, survey: { quoteId: q.id, bookedAt: new Date().toISOString() }, remindedAt: null };
   if (t) Object.assign(t, fields); else { t = { id: uid(), createdAt: iso(new Date()), done: false, ...fields }; db.tasks = db.tasks || []; db.tasks.push(t); }
   q.surveyTaskId = t.id; return t;
 }
 // the client's email: booked (or moved) and the reminder a day ahead, in their language
+// the link opens the estimate (where they book) while it's waiting on the survey, else the survey's own page (/p/survey/:token)
 function surveyEmail(t, what) {
-  const q = db.quotes.find((x) => x.id === (t.survey || {}).quoteId); const c = q && findClient(q.clientId); if (!c || !c.email) return;
-  const s = svyStaff(t);
+  const q = (t.survey || {}).quoteId ? db.quotes.find((x) => x.id === t.survey.quoteId) : null; const c = findClient(t.clientId || (q && q.clientId)); if (!c || !c.email) return;
+  const s = svyStaff(t); if (!t.token) t.token = token();
+  const link = q && svyStage(q) ? quoteLink(q) : `${baseUrl()}/p/survey/${t.token}`;
   inClientLang(c.id, () => {
-    const m = renderEmail(what === 'reminder' ? 'surveyReminder' : 'surveyBooked', { client_name: c.name || '', company_name: db.company.name, date: svyDay(t.date), time: pushTime(t.startTime), staff_name: s ? s.name : db.company.name, duration: tx('{n} minutes', { n: svyMin(t.endTime) - svyMin(t.startTime) }), address: t.address || '', link: quoteLink(q) });
-    return notify({ clientId: c.id, channel: 'email', kind: 'survey', refId: q.id, refNumber: q.number, subject: m.subject, body: m.body, html: m.html });
+    const m = renderEmail(what === 'reminder' ? 'surveyReminder' : 'surveyBooked', { client_name: c.name || '', company_name: db.company.name, date: svyDay(t.date), time: pushTime(t.startTime), staff_name: s ? s.name : db.company.name, duration: tx('{n} minutes', { n: svyMin(t.endTime) - svyMin(t.startTime) }), address: t.address || '', link });
+    return notify({ clientId: c.id, channel: 'email', kind: 'survey', refId: q ? q.id : t.id, refNumber: q ? q.number : '', subject: m.subject, body: m.body, html: m.html });
   }).then(() => save()).catch(() => {});
 }
 // the business hears about it: a push, Slack, and an email to the business and to the person taking the survey
-function tellBusinessSurvey(q, t, what) {
-  const c = findClient(q.clientId); const who = c ? c.name : 'A client'; const s = svyStaff(t); const when = `${niceDate(t.date)} at ${pushTime(t.startTime)}`;
-  const title = { booked: 'Site survey booked', moved: 'Site survey moved', cancelled: 'Site survey cancelled' }[what];
-  const body = what === 'cancelled' ? `${who} cancelled the site survey on ${when} (quote ${q.number})` : `${who} ${what === 'moved' ? 'moved the site survey to' : 'booked a site survey for'} ${when}${s ? ` with ${s.name}` : ''} (quote ${q.number})`;
-  const url = `/quotes/view?id=${q.id}`;
+function tellBusinessSurvey(q, t, what) { // q: null for a survey booked on the calendar without a quote
+  const c = findClient(t.clientId || (q && q.clientId)); const who = c ? c.name : 'A client'; const s = svyStaff(t); const when = `${niceDate(t.date)} at ${pushTime(t.startTime)}`;
+  const title = { booked: 'Site survey booked', moved: 'Site survey moved', cancelled: 'Site survey cancelled' }[what]; const ref = q ? ` (quote ${q.number})` : '';
+  const body = what === 'cancelled' ? `${who} cancelled the site survey on ${when}${ref}` : `${who} ${what === 'moved' ? 'moved the site survey to' : 'booked a site survey for'} ${when}${s ? ` with ${s.name}` : ''}${ref}`;
+  const url = q ? `/quotes/view?id=${q.id}` : '/calendar';
   pushTo(usersWhoCan('quotes'), 'quoteApproved', { title, body, url });
   slackSend('quoteApproved', `*${title}:* ${slack.esc(body)}`, { label: 'Open quote', url: baseUrl() + url });
   const text = `${body}.\n\n${what === 'cancelled' ? 'They can book another time from the estimate page.' : 'It’s on the calendar. After the visit, update the quote and send it.'}\n\n${baseUrl()}${url}`;
   for (const to of new Set([db.company.email, s && s.email].filter(Boolean))) {
-    sendEmail(to, `${title}: ${who}`, text).then((sent) => { db.notifications.unshift({ id: uid(), at: new Date().toISOString(), clientId: q.clientId, clientName: c ? c.name : '', channel: 'email', kind: 'quote-status', refId: q.id, refNumber: q.number, to, subject: `${title}: ${who}`, body: text, status: sent.status, detail: sent.detail }); save(); }).catch(() => {});
+    sendEmail(to, `${title}: ${who}`, text).then((sent) => { db.notifications.unshift({ id: uid(), at: new Date().toISOString(), clientId: c ? c.id : '', clientName: c ? c.name : '', channel: 'email', kind: 'quote-status', refId: q ? q.id : t.id, refNumber: q ? q.number : '', to, subject: `${title}: ${who}`, body: text, status: sent.status, detail: sent.detail }); save(); }).catch(() => {});
   }
 }
 // a day ahead, unless it was booked less than a day and a half before (the booking email is reminder enough)
@@ -4060,6 +4062,39 @@ var ps=f.querySelectorAll('.sv-p');if(ps.length===1)pick(ps[0].dataset.id)})();<
 ${past ? '' : `<details class="qv-chg"><summary class="qv-btn">${tx('Change the time')}</summary>${picker}</details>
 <form method="post" action="/p/quote/${esc(q.token)}/survey/cancel" onsubmit="return confirm(this.dataset.ask)" data-ask="${esc(tx('Cancel the site survey?'))}" style="display:flex;justify-content:center"><button class="qv-link">${tx('Cancel the site survey')}</button></form>`}`;
 }
+// Calendar → Site survey: the business books one with a client (owners, admins and managers only). With a quote it's that quote's survey
+// (a new draft quote is made in the app first); without one it's a survey on its own. The client can be emailed the details.
+app.post('/api/surveys', (req, res) => {
+  const u = currentUser(req); if (!u || !SVY_ROLES.includes(u.role)) return res.status(403).json({ error: 'Only owners, admins and managers can book site surveys' });
+  const b = req.body || {}; const c = findClient(b.clientId); if (!c) return res.status(400).json({ error: 'Choose a client from the list' });
+  const s = (db.staff || []).find((x) => x.id === b.staffId && x.status !== 'deactivated'); if (!s) return res.status(400).json({ error: 'Choose who takes the site survey' });
+  const tm = (v) => /^\d{2}:\d{2}$/.test(v || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(b.date || '') || !tm(b.startTime) || !tm(b.endTime) || b.endTime <= b.startTime) return res.status(400).json({ error: 'Choose a date, and an end time after the start time' });
+  let q = null; if (b.quoteId) { q = db.quotes.find((x) => x.id === b.quoteId && x.clientId === c.id); if (!q) return res.status(400).json({ error: 'That quote isn’t this client’s' }); }
+  const notes = String(b.notes || '').trim().slice(0, 2000); let t;
+  if (q) { const moved = !!svyTask(q); t = bookSurvey(q, s, b.date, b.startTime, b.endTime, u.name || 'the business'); q.survey = true; if (moved) t.remindedAt = null; }
+  else { t = { id: uid(), createdAt: iso(new Date()), done: false, title: `Site survey: ${c.name}`, date: b.date, startTime: b.startTime, endTime: b.endTime, anytime: false, staffIds: [s.id], clientId: c.id, address: c.address || '', propertyId: '', description: `Site survey, booked by ${u.name || 'the business'}.`, survey: { quoteId: null, bookedAt: new Date().toISOString() }, remindedAt: null }; db.tasks = db.tasks || []; db.tasks.push(t); }
+  if (notes) t.description = `${notes}\n\n${t.description}`;
+  t.token = t.token || token(); save();
+  if (b.email) surveyEmail(t, 'booked');
+  res.status(201).json(t);
+});
+// a survey's own page for the client (from its emails): when, with whom and where; they can cancel, or contact the business to change it
+app.get('/p/survey/:token', (req, res) => {
+  const t = (db.tasks || []).find((x) => x.token === req.params.token && x.survey);
+  const q = t && t.survey.quoteId ? db.quotes.find((x) => x.id === t.survey.quoteId) : null; if (q && svyStage(q)) return res.redirect(`/p/quote/${q.token}`); // booking from the estimate: the estimate page has it all
+  const co = db.company; const contact = esc(co.phone || co.email || '');
+  if (!t) return res.status(404).send(shell(tx('Your site survey'), `<h1>${tx('Your site survey')}</h1><p>${tx('This site survey was cancelled. Please contact {name} at {contact} to book another time.', { name: esc(co.name), contact })}</p>`));
+  const s = svyStaff(t); const now = new Date(); const past = `${t.date} ${t.startTime}` <= `${svyYmd(now)} ${svyHm(now.getHours() * 60 + now.getMinutes())}`;
+  res.send(shell(tx('Your site survey'), `<h1>${tx('Your site survey')}</h1><p><strong>${esc(svyDay(t.date))} · ${esc(pushTime(t.startTime))}</strong><br>${s ? `${tx('With {name}', { name: esc(s.name) })} · ` : ''}${tx('{n} minutes', { n: svyMin(t.endTime) - svyMin(t.startTime) })}${t.address ? `<br>${esc(t.address)}` : ''}</p>
+${past ? `<p>${tx('Thanks for meeting with us.')}</p>` : `<p>${tx('Need a different time? Contact {name} at {contact}.', { name: esc(co.name), contact })}</p>
+<form method="post" action="/p/survey/${esc(t.token)}/cancel" onsubmit="return confirm(this.dataset.ask)" data-ask="${esc(tx('Cancel the site survey?'))}"><button class="btn alt">${tx('Cancel the site survey')}</button></form>`}`));
+});
+app.post('/p/survey/:token/cancel', (req, res) => {
+  const t = (db.tasks || []).find((x) => x.token === req.params.token && x.survey);
+  if (t && !currentUser(req)) { const q = t.survey.quoteId ? db.quotes.find((x) => x.id === t.survey.quoteId) : null; db.tasks = db.tasks.filter((x) => x.id !== t.id); if (q && q.surveyTaskId === t.id) q.surveyTaskId = null; save(); tellBusinessSurvey(q, t, 'cancelled'); }
+  res.redirect(`/p/survey/${encodeURIComponent(req.params.token)}`);
+});
 app.get('/p/quote/:token/survey/slots', (req, res) => {
   const q = db.quotes.find((x) => x.token === req.params.token); if (!q || !svyStage(q)) return res.status(404).json({ error: 'Not found' });
   const s = surveyors().find((x) => x.id === req.query.staff); if (!s) return res.json({ days: [] });

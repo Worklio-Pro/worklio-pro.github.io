@@ -545,6 +545,17 @@ function scOpen(kind, id, x, y) {
   const it = byId(kind === 'task' ? D.tasks : D.events, id); if (!it) return;
   scQuick({ ...it }, x, y, kind);
 }
+// Site survey on the calendar: owners, admins and managers only (the server checks too)
+const canSurvey = () => ['owner', 'admin', 'manager'].includes(role());
+// its fields: who takes it (the people clients can book first, then the rest who can), and the quote it's for
+function qcSurveyFields(p, team) {
+  const people = company.surveyPeople || []; const ids = people.map((x) => x.id); const list = people.length ? people : team.map((s) => ({ id: s.id, name: s.name }));
+  const pick = p.svyStaff || (p.staffIds || []).find((id) => ids.includes(id)) || (people.find((x) => x.on) || list[0] || {}).id;
+  const open = p.clientId ? D.quotes.filter((q) => q.clientId === p.clientId && !quoteJob(q) && ['draft', 'sent'].includes(q.status) && !q.quoteSentAt) : [];
+  const qv = p.svyQuote === '' || open.some((q) => q.id === p.svyQuote) ? p.svyQuote : 'new'; // another client's quote falls back to a new one
+  return `<label class="fl"><span>Who takes it</span><select name="svyStaff" required>${list.map((s) => `<option value="${esc(s.id)}" ${s.id === pick ? 'selected' : ''}>${esc(s.name)}</option>`).join('') || '<option value="">Add a team member first</option>'}</select></label>
+<label class="fl"><span>For quote</span><select name="svyQuote"><option value="new" ${qv === 'new' ? 'selected' : ''}>New quote (draft)</option>${open.map((q) => `<option value="${esc(q.id)}" ${qv === q.id ? 'selected' : ''}>${esc(q.number)}${q.title ? ' · ' + esc(q.title) : ''}${q.surveyTaskId ? ' (moves its survey)' : ''}</option>`).join('')}<option value="" ${qv === '' ? 'selected' : ''}>No quote</option></select></label>`;
+}
 // the quick pop-up: Job / Task / Event with the date and time filled in; drag it by its top bar
 function scQuick(p, x, y, editKind) {
   $$('.qc').forEach((el) => el.remove());
@@ -554,19 +565,25 @@ function scQuick(p, x, y, editKind) {
     const team = D.staff.filter(staffActive);
     const opened = box._open || {};
     box.innerHTML = `<div class="qc-bar" title="Drag to move"><span class="qc-grip" aria-hidden="true">⠿</span><span class="qc-h">${edit ? `Edit ${kind}` : ''}</span><button type="button" class="qc-x" aria-label="Close">×</button></div>
-${edit ? '' : `<div class="qc-tabs" role="tablist">${[['job', 'Job'], ['task', 'Task'], ['event', 'Event']].map(([k, l]) => `<button type="button" role="tab" aria-selected="${kind === k}" class="${kind === k ? 'on' : ''}" data-k="${k}">${l}</button>`).join('')}</div>`}
+${edit ? '' : `<div class="qc-tabs" role="tablist">${[['job', 'Job'], ['task', 'Task'], ['event', 'Event'], ...(canSurvey() ? [['survey', 'Site survey']] : [])].map(([k, l]) => `<button type="button" role="tab" aria-selected="${kind === k}" class="${kind === k ? 'on' : ''}" data-k="${k}">${l}</button>`).join('')}</div>`}
 <form class="qc-f">${kind !== 'event' ? `<div class="qc-cl"><input name="client" role="combobox" aria-expanded="false" aria-autocomplete="list" placeholder="Search client or address" autocomplete="off" value="${esc(p.clientId ? (byId(D.clients, p.clientId) || {}).name || '' : p.address || '')}" ${kind === 'job' ? 'required' : ''}><input type="hidden" name="clientId" value="${esc(p.clientId || '')}"><div class="qc-cl-pop" role="listbox" hidden></div></div>` : ''}
-<input name="title" placeholder="Title" required maxlength="120" value="${esc(p.title || '')}">
+${kind === 'survey' ? qcSurveyFields(p, team) : `<input name="title" placeholder="Title" required maxlength="120" value="${esc(p.title || '')}">`}
 ${opened.notes || p.description || p.details ? `<textarea name="notes" rows="2" placeholder="${kind === 'event' ? 'Details' : 'Instructions'}">${esc(p.description || p.details || '')}</textarea>` : `<button type="button" class="qc-add" data-open="notes">+ ${kind === 'event' ? 'Add Details' : 'Add Instructions'}</button>`}
 ${kind === 'job' ? (opened.item ? '<div class="qc-item"><input name="itemDesc" placeholder="Product or service"><input name="itemQty" type="number" min="0" step="any" value="1" aria-label="Quantity"><input name="itemPrice" type="number" min="0" step="0.01" placeholder="Price" aria-label="Price"></div>' : '<button type="button" class="qc-add" data-open="item">+ Add Line Item</button>') : ''}
-${kind !== 'event' ? (opened.assign || (p.staffIds || []).length ? `<div class="qc-team">${team.map((s) => `<label><input type="checkbox" name="staff" value="${s.id}" ${(p.staffIds || []).includes(s.id) ? 'checked' : ''}>${avatarHtml(s, 20)} ${esc(s.name)}</label>`).join('') || '<span class="muted">Add team members first</span>'}</div>` : '<button type="button" class="qc-add" data-open="assign">+ Assign</button>') : ''}
+${kind !== 'event' && kind !== 'survey' ? (opened.assign || (p.staffIds || []).length ? `<div class="qc-team">${team.map((s) => `<label><input type="checkbox" name="staff" value="${s.id}" ${(p.staffIds || []).includes(s.id) ? 'checked' : ''}>${avatarHtml(s, 20)} ${esc(s.name)}</label>`).join('') || '<span class="muted">Add team members first</span>'}</div>` : '<button type="button" class="qc-add" data-open="assign">+ Assign</button>') : ''}
 <div class="qc-when"><label class="fl"><span>Start date</span><input type="date" name="date" required value="${esc(p.date || ymd(new Date()))}"></label>
 <div class="qc-times" ${p.anytime ? 'hidden' : ''}><label class="fl"><span>Start</span><input type="time" name="startTime" value="${esc(p.startTime || '09:00')}"></label><label class="fl"><span>End</span><input type="time" name="endTime" value="${esc(p.endTime || '10:00')}"></label></div></div>
-<label class="qc-any"><input type="checkbox" name="anytime" ${p.anytime ? 'checked' : ''}> Anytime</label>
+<label class="qc-any"${kind === 'survey' ? ' hidden' : ''}><input type="checkbox" name="anytime" ${p.anytime && kind !== 'survey' ? 'checked' : ''}> Anytime</label>
+${kind === 'survey' ? `<label class="qc-any"><input type="checkbox" name="svyEmail" ${p.svyEmail === false ? '' : 'checked'}> Email the client the details</label>` : ''}
 <div class="qc-foot${!edit && kind !== 'job' ? ' one' : ''}">${edit ? '<button type="button" class="btn danger" data-qc="delete">Delete</button>' : kind === 'job' ? `<button type="button" class="btn alt" data-qc="more">More Options</button>` : ''}<button class="btn">Save</button></div></form>`;
     const f = $('.qc-f', box);
     if (f.client) qcClientPick(box, f, () => { keep(); return p; }, draw);
-    $$('.qc-tabs button', box).forEach((b) => b.addEventListener('click', () => { keep(); kind = b.dataset.k; draw(); }));
+    $$('.qc-tabs button', box).forEach((b) => b.addEventListener('click', () => { keep(); kind = b.dataset.k;
+      if (kind === 'survey') { p.anytime = false; p.startTime = p.startTime || '09:00'; p.endTime = scTime(scMin(p.startTime) + ((company.survey || {}).minutes || 60)); } // a survey's usual length
+      draw(); }));
+    if (f.svyQuote) f.svyQuote.addEventListener('change', () => { p.svyQuote = f.svyQuote.value; });
+    if (f.svyStaff) f.svyStaff.addEventListener('change', () => { p.svyStaff = f.svyStaff.value; });
+    if (f.svyEmail) f.svyEmail.addEventListener('change', () => { p.svyEmail = f.svyEmail.checked; });
     $$('.qc-add', box).forEach((b) => b.addEventListener('click', () => { keep(); box._open = { ...(box._open || {}), [b.dataset.open]: true }; draw(); const t = $(`[name=${b.dataset.open === 'notes' ? 'notes' : b.dataset.open === 'item' ? 'itemDesc' : 'staff'}]`, box); if (t) t.focus(); }));
     $('.qc-x', box).addEventListener('click', () => box.remove());
     f.anytime.addEventListener('change', () => { $('.qc-times', box).hidden = f.anytime.checked; });
@@ -574,10 +591,16 @@ ${kind !== 'event' ? (opened.assign || (p.staffIds || []).length ? `<div class="
     const del = $('[data-qc=delete]', box); if (del) del.addEventListener('click', async () => { if (!confirm(`Delete this ${kind}?`)) return; try { await api('DELETE', `/api/${kind}s/${p.id}`); box.remove(); toast(`${kind === 'task' ? 'Task' : 'Event'} deleted`); refresh(); } catch (x) { toast(x.message, true); } });
     f.addEventListener('submit', async (e) => {
       e.preventDefault(); const v = read();
-      if (kind === 'job' && !v.clientId) return toast('Choose a client from the list', true);
+      if ((kind === 'job' || kind === 'survey') && !v.clientId) return toast('Choose a client from the list', true);
       if (!v.anytime && v.endTime <= v.startTime) return toast('The end time must be after the start time', true);
       const btn = $('.qc-foot .btn:not(.alt):not(.danger)', box); btn.disabled = true;
       try {
+        if (kind === 'survey') { // a new draft quote first, when that's picked, so the survey belongs to it
+          let quoteId = f.svyQuote.value; const c = byId(D.clients, v.clientId) || {};
+          if (quoteId === 'new') quoteId = (await api('POST', '/api/quotes', { clientId: v.clientId, address: c.address || '', items: [], disclaimer: company.quoteDisclaimer ?? DEFAULT_DISCLAIMER, estimate: false })).id;
+          await api('POST', '/api/surveys', { clientId: v.clientId, staffId: f.svyStaff.value, date: v.date, startTime: v.startTime, endTime: v.endTime, quoteId, notes: v.notes, email: f.svyEmail.checked });
+          box.remove(); toast('Site survey added'); return refresh();
+        }
         if (kind === 'job') await api('POST', '/api/jobs', { title: v.title, clientId: v.clientId, address: (byId(D.clients, v.clientId) || {}).address || '', date: v.date, startTime: v.startTime || '09:00', endTime: v.endTime || '10:00', anytime: v.anytime, staffIds: v.staffIds, description: v.notes, ...(v.items ? { items: v.items } : {}) });
         else { const doc = { title: v.title, date: v.date, startTime: v.anytime ? '' : v.startTime, endTime: v.anytime ? '' : v.endTime, anytime: v.anytime, ...(kind === 'task' ? { clientId: v.clientId, address: v.clientId ? '' : v.address, description: v.notes, staffIds: v.staffIds } : { details: v.notes }) };
           await api(edit ? 'PUT' : 'POST', edit ? `/api/${kind}s/${p.id}` : `/api/${kind}s`, doc); }
