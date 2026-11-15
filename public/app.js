@@ -3088,7 +3088,7 @@ function mobileNew(kind, main, preset) {
   main.innerHTML = `<div class="mdoc mnew"><div class="mn-top"><a href="/${kind}s" data-link class="mn-x" aria-label="Close">${X_ICO}</a><h1>New ${kind}</h1><span></span></div>
 <form class="mnew-f" novalidate><h2 class="mn-sh">Service for</h2><div class="mn-who"></div><h2 class="mn-sh">Overview</h2>
 ${mField(kind === 'invoice' ? 'Subject' : 'Title', `<input name="${kind === 'invoice' ? 'subject' : 'title'}" maxlength="120" placeholder="${q ? 'e.g. Backyard cleanup' : job ? 'e.g. Streamer Install' : 'e.g. Camera System Install'}">`)}
-${job ? mField('Date', `<input type="date" name="date" value="${esc(preset.date || ymd(new Date()))}">`) + repeatCard({}, preset.date || ymd(new Date())) : ''}
+${job ? mField('Date', `<input type="date" name="date" value="${esc(preset.date || ymd(new Date()))}">`) + repeatCard({}, preset.date || ymd(new Date())) : ''}${q ? estCard({}) : ''}
 <button class="btn ms-save">Save</button>${q && (planHas('snapQuote') || canDo('quotes')) ? '<button class="btn alt ms-snap" data-snap="1">Snap to quote: draft from photos</button>' : ''}<p class="muted mn-next">${job ? 'You’ll set the time and team next.' : 'You’ll add line items next.'}</p></form></div>`;
   const f = $('form', main); const who = $('.mn-who', f); if (job) wireRepeat(f);
   const draw = () => {
@@ -3136,6 +3136,7 @@ ${newOk ? `<div class="mn-row">${ic.contact}<div class="mn-stack"><input name="f
       }
       const where = { address: prop ? propAddr(prop) : client.address || '', propertyId: prop ? prop.id : '', ...(prop && prop.taxRate != null && prop.taxRate !== '' ? { taxRate: Number(prop.taxRate) } : {}) };
       const b = { clientId: client.id, [kind === 'invoice' ? 'subject' : 'title']: v(kind === 'invoice' ? 'subject' : 'title') };
+      if (q) b.estimate = $('input.sw[name=estimate]', f).checked; // Estimate: chosen before the first save
       if (q && e.submitter && e.submitter.dataset.snap) { btn.disabled = false; return A.snapQuote({ clientId: client.id, ...where }); } // Snap to quote: the draft is made from the photos
       if (job) {
         const saved = await saveJobWithRepeat({}, { ...b, date: v('date'), startTime: '09:00', endTime: '11:00', status: 'scheduled', staffIds: [], ...where }, readRepeat(f), f); // with its Repeats settings
