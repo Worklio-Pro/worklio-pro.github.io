@@ -163,6 +163,10 @@ const hasOptions = (q) => Array.isArray(q.options) && q.options.length >= 2;
 const optionItems = (q, id) => (q.items || []).filter((i) => !i.opt || i.opt === id);
 const shownOption = (q) => (hasOptions(q) ? q.options.find((o) => o.id === q.chosenOption) || q.options.find((o) => o.id === q.recommended) || q.options[0] : null);
 // the line items that go on the job and invoice: the chosen option's (without their option marks)
+// Estimate first: a quote sent as an estimate (q.estimate) stays an estimate until the client approves it: no signature, no deposit, nothing to pay.
+// Approving it (estimateApprovedAt) makes it the quote, approved, for the client to sign and pay any deposit on the same page.
+const estStage = (q) => !!q.estimate && !q.estimateApprovedAt && ['draft', 'sent'].includes(q.status);
+const onOff = (v) => v === true || v === 'on' || v === 'true';
 const quoteItems = (q) => (hasOptions(q) ? (q.chosenOption ? optionItems(q, q.chosenOption) : []) : q.items || []).map(({ opt, ...i }) => ({ ...i }));
 function sumItems(doc, items) {
   const subtotal = round2(items.reduce((s, i) => s + i.qty * i.price, 0));
@@ -1826,7 +1830,7 @@ app.put('/api/company', (req, res) => {
   Object.assign(db.company, handles);
   if (b.lateFee && typeof b.lateFee === 'object') { try { db.company.lateFee = cleanLateFee(b.lateFee, db.company.lateFee); } catch (e) { return res.status(400).json({ error: e.message }); } }
   if ((b.teamLocation === true || b.teamLocation === 'on' || b.teamLocation === 'true') && !tenancy.has('teamLocation')) return res.status(403).json({ error: 'Team location isn’t included in your plan' });
-  for (const k of ['addressPrivate', 'showHours', 'teamLocation']) if (k in b) db.company[k] = b[k] === true || b[k] === 'on' || b[k] === 'true';
+  for (const k of ['addressPrivate', 'showHours', 'teamLocation', 'quoteEstimateFirst']) if (k in b) db.company[k] = b[k] === true || b[k] === 'on' || b[k] === 'true';
   if (ADDRESS_PARTS.some((k) => k in b)) db.company.address = composeAddress(db.company); // the one-line address used everywhere else
   if ('savedDiscounts' in b) { // Saved discounts for quick select on quotes, jobs and invoices: a name, $ or %, and the amount
     const list = (Array.isArray(b.savedDiscounts) ? b.savedDiscounts : []).slice(0, 30).map((x) => ({ id: x && typeof x.id === 'string' && /^[a-z0-9]{4,16}$/.test(x.id) ? x.id : uid(), name: String((x && x.name) || '').trim().slice(0, 60), type: x && x.type === 'percent' ? 'percent' : 'flat', value: Math.round(Math.max(0, Number(x && x.value) || 0) * 100) / 100 }));
@@ -2153,6 +2157,7 @@ app.post('/api/:col', (req, res, next) => {
   if (col === 'clients') { doc.portalToken = token(); doc.smsConsent = b.smsConsent ? { at: new Date().toISOString(), source: 'business' } : null; doc.lang = i18n.valid(b.lang) ? b.lang : ''; } // lang '': the business's default
   if (col === 'quotes') {
     doc.number = doc.number || nextNumber('quotes'); doc.status = b.status || 'draft'; doc.token = token();
+    doc.estimate = 'estimate' in b ? onOff(b.estimate) : !!db.company.quoteEstimateFirst; delete doc.estimateApprovedAt; // the default: App Settings → Send new quotes as estimates first
     if (!tenancy.has('quoteOptions')) { delete doc.options; delete doc.chosenOption; } // Good / Better / Best is a plan feature
     if (b.taxRate === undefined) doc.taxRate = db.company.taxRate; applyMemberDiscount(doc); computeTotals(doc); // a service plan member's discount
     const bad = optionsProblem(doc); if (bad) return res.status(400).json({ error: bad });
@@ -2203,7 +2208,7 @@ app.put('/api/:col/:id', (req, res, next) => {
   (PAYMENT_FIELDS[col] || []).forEach((k) => delete upd[k]);
   if (col === 'invoices' && (upd.status === 'paid' || db.invoices[i].status === 'paid')) delete upd.status; // paid only by its payments
   if (col === 'invoices' && upd.depositCreditRemoved && !db.invoices[i].depositCreditRemoved) delete upd.depositCreditRemoved; // a collected deposit stays credited
-  const removeSignature = col === 'quotes' && upd.removeSignature === true; if (col === 'quotes') { delete upd.removeSignature; delete upd.signedAt; delete upd.signedName; delete upd.signature; } // signatures only from the client's quote page
+  const removeSignature = col === 'quotes' && upd.removeSignature === true; if (col === 'quotes') { delete upd.removeSignature; delete upd.signedAt; delete upd.signedName; delete upd.signature; delete upd.estimateApprovedAt; if ('estimate' in upd) upd.estimate = onOff(upd.estimate); } // signatures and estimate approvals only from the client's quote page
   if (DOC_NUM[col] && String((req.body || {}).number || '').trim() && req.body.number !== db[col][i].number) { // renumber a quote / invoice
     const r = customNumber(col, req.body.number, req.params.id); if (r.error) return res.status(400).json({ error: r.error }); upd.number = r.number;
   }
@@ -2217,6 +2222,7 @@ app.put('/api/:col/:id', (req, res, next) => {
   if (col === 'quotes' && ['draft', 'sent'].includes(doc.status) && doc.status !== db.quotes[i].status && !doc.depositPaidAt) {
     doc.signedAt = null; doc.signedName = null; delete doc.signature; if (doc.depositStatus === 'pending') doc.depositStatus = null;
     doc.chosenOption = null; // they pick an option again
+    doc.estimateApprovedAt = null; // sent as an estimate first: they approve the estimate again
   }
   if (col === 'quotes' || col === 'invoices' || (col === 'jobs' && Array.isArray(doc.items))) computeTotals(doc); // jobs are priced once they have line items
   if (col === 'quotes') { if (Array.isArray(upd.items)) snapQuote.carryNeedsPrice(db[col][i], doc); else if (doc.aiDraft && doc.status !== 'draft') delete doc.aiDraft; if (doc.zeroOk) snapQuote.confirmZero(doc); delete doc.zeroOk; const bad = optionsProblem(doc); if (bad) return res.status(400).json({ error: bad }); }
@@ -2409,6 +2415,12 @@ const EMAIL_TEMPLATES = {
     body: '# Your quote is ready\n\nHello {{client_name}},\n\nThank you for asking us to quote on your project {{quote_title}}.\n\nThe quote total is {{total}} as of {{sent_date}}.\n\nIf you have any questions or concerns regarding this quote, please don\x27t hesitate to get in touch with us at {{company_email}}.\n\n[View and approve quote]({{link}})\n\nThank you,\n{{company_name}}',
     vars: { client_name: 'Client name', company_name: 'Your business name', company_email: 'Your business email', quote_number: 'Quote number', sent_date: 'Date the quote is sent', quote_title: 'Quote title', total: 'Quote total', link: 'Link to view and approve' },
   },
+  estimate: { // a quote sent as an estimate first: no signature or deposit until the client approves it and it becomes the quote
+    label: 'Estimate', description: 'Sent when you send a quote as an estimate first.',
+    subject: 'Estimate {{quote_number}} from {{company_name}}',
+    body: '# Your estimate is ready\n\nHello {{client_name}},\n\nThank you for asking us for an estimate on your project {{quote_title}}.\n\nThe estimate total is {{total}} as of {{sent_date}}. Ask for any changes you\x27d like. When it looks right, approve it and it becomes your quote to sign.\n\nIf you have any questions, please get in touch with us at {{company_email}}.\n\n[View estimate]({{link}})\n\nThank you,\n{{company_name}}',
+    vars: { client_name: 'Client name', company_name: 'Your business name', company_email: 'Your business email', quote_number: 'Quote number', sent_date: 'Date the estimate is sent', quote_title: 'Quote title', total: 'Estimate total', link: 'Link to view and approve' },
+  },
   invoice: {
     label: 'Invoice', description: 'Sent when you send an invoice to a client.',
     subject: 'Invoice {{invoice_number}} from {{company_name}}',
@@ -2509,12 +2521,12 @@ app.post('/api/quotes/:id/send', async (req, res) => {
   const channels = (req.body.channels && req.body.channels.length) ? req.body.channels : ['email'];
   const link = quoteLink(q); const co = db.company.name;
   const results = [];
-  const email = inClientLang(q.clientId, () => renderEmail('quote', docVars('quote', q)));
+  const email = inClientLang(q.clientId, () => renderEmail(tplOf('quote', q), docVars('quote', q))); const est = estStage(q);
   if (channels.includes('email') && req.body.email) { const r = await emailDoc(req, 'quote', q); if (r.error) return res.status(400).json(r); results.push(...r.results); }
   for (const ch of channels) {
     if (ch === 'email' && req.body.email) continue;
     results.push(await notify({ clientId: q.clientId, channel: ch, kind: 'quote', refId: q.id, refNumber: q.number,
-      subject: email.subject, html: ch === 'email' ? email.html : '', body: ch === 'email' ? email.body : req.body.message ? smsWithLink(req.body.message, 'View your quote here', link) : `Quote ${q.number} (${money(q.total)}) is ready: ${shortLink(link)} Reply STOP to opt out.` }));
+      subject: email.subject, html: ch === 'email' ? email.html : '', body: ch === 'email' ? email.body : req.body.message ? smsWithLink(req.body.message, est ? 'View your estimate here' : 'View your quote here', link) : `${est ? 'Estimate' : 'Quote'} ${q.number} (${money(q.total)}) is ready: ${shortLink(link)} Reply STOP to opt out.` }));
   }
   if (q.status === 'draft') q.status = 'sent'; if (!q.sentAt) q.sentAt = iso(new Date());
   q.lastSentAt = new Date().toISOString(); // sending again after the client asked for changes answers the request (the app's "Changes requested" clears)
@@ -2722,14 +2734,15 @@ const docVars = (kind, d) => {
   const base = { client_name: findClient(d.clientId)?.name || '', company_name: db.company.name, company_email: db.company.email || '', total: money(d.total), sent_date: niceDate(iso(new Date())) };
   return kind === 'quote' ? { ...base, quote_number: d.number, quote_title: d.title || '', link: quoteLink(d) } : { ...base, invoice_number: d.number, due_date: niceDate(d.dueDate), link: invoiceLink(d) };
 };
+const tplOf = (kind, d) => (kind === 'quote' && estStage(d) ? 'estimate' : kind); // a quote still at the estimate stage uses the Estimate template
 const BUTTON_LINE = /^\s*\[([^\]]+)\]\(\{\{\s*link\s*\}\}\)\s*$/m; // the template's button: [View and approve quote]({{link}})
 const fillVars = (str, v) => String(str || '').replace(/\{\{\s*(\w+)\s*\}\}/g, (m, k) => (k in v ? v[k] : m));
 // the box's starting subject and message: the template's, without its heading and button (the email puts the button under the message)
 // receipt: a paid invoice's receipt (the Payment receipt template; its button opens the receipt page)
 function emailDraft(kind, d, receipt = false) { return inClientLang(d.clientId, () => { // in the client's language, so the business sees what they'll get
-  const t = emailTemplate(receipt ? 'receipt' : kind); const v = receipt ? receiptVars(d) : docVars(kind, d);
+  const t = emailTemplate(receipt ? 'receipt' : tplOf(kind, d)); const v = receipt ? receiptVars(d) : docVars(kind, d);
   const message = fillVars(t.body.replace(BUTTON_LINE, '').split('\n').filter((l) => !/^#\s/.test(l)).join('\n'), v).replace(/\*\*(.+?)\*\*/g, '$1').replace(/\n{3,}/g, '\n\n').trim();
-  return { to: findClient(d.clientId)?.email || '', subject: fillVars(t.subject, v), message, button: (t.body.match(BUTTON_LINE) || [])[1] || (receipt ? tx('View receipt') : kind === 'quote' ? tx('View and approve quote') : tx('View and pay invoice')), lang: i18n.current() };
+  return { to: findClient(d.clientId)?.email || '', subject: fillVars(t.subject, v), message, button: (t.body.match(BUTTON_LINE) || [])[1] || (receipt ? tx('View receipt') : kind === 'quote' ? (estStage(d) ? tx('View estimate') : tx('View and approve quote')) : tx('View and pay invoice')), lang: i18n.current() };
 }); }
 // the Payment receipt template's values for a whole paid invoice: everything it has paid (payments and a deposit credit), the paid date, the last payment's reference
 function receiptVars(inv) {
@@ -2737,7 +2750,7 @@ function receiptVars(inv) {
   return { ...docVars('invoice', inv), amount: money(round2((x.amountPaid || 0) + (x.depositApplied || 0)) || inv.total || 0), paid_for: tx('invoice {number}', { number: inv.number }), date: niceDate(String(inv.paidAt || '').slice(0, 10)), reference: (last && last.reference) || inv.number };
 }
 const EMAIL_FILES_MAX = 10 * 1024 * 1024;
-const pdfName = (kind, d) => `${kind}_${String(d.number).replace(/[^\w-]+/g, '')}.pdf`;
+const pdfName = (kind, d) => `${tplOf(kind, d)}_${String(d.number).replace(/[^\w-]+/g, '')}.pdf`;
 // sends what the Email box holds: to each address, the message with the button under it, any files (base64 from the browser) and the PDF;
 // "Send me a copy" sends the same email to the person sending it
 async function emailDoc(req, kind, d, receipt = false) { return inClientLang(d.clientId, () => emailDocIn(req, kind, d, receipt)); }
@@ -2748,7 +2761,7 @@ async function emailDocIn(req, kind, d, receipt) {
   if (to.length > 5) return { error: 'Send to 5 email addresses at most' };
   const bad = to.find((a) => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(a)); if (bad) return { error: `“${bad}” isn’t an email address` };
   const message = String(e.message ?? draft.message).trim().slice(0, 10000); if (!message) return { error: 'Write a message first' };
-  const mail = renderEmail(receipt ? 'receipt' : kind, receipt ? receiptVars(d) : docVars(kind, d), { subject: String(e.subject || draft.subject).slice(0, 200), body: `${message}\n\n[${draft.button}]({{link}})` });
+  const mail = renderEmail(receipt ? 'receipt' : tplOf(kind, d), receipt ? receiptVars(d) : docVars(kind, d), { subject: String(e.subject || draft.subject).slice(0, 200), body: `${message}\n\n[${draft.button}]({{link}})` });
   const files = (Array.isArray(e.files) ? e.files : []).slice(0, 10).map((f) => ({ name: String(f.name || 'file').replace(/[\r\n"\\/]/g, '').slice(0, 120) || 'file', type: String(f.type || 'application/octet-stream').slice(0, 100), content: Buffer.from(String(f.data || ''), 'base64') }));
   if (files.reduce((n, f) => n + f.content.length, 0) > EMAIL_FILES_MAX) return { error: 'The attachments are over the 10 MB limit' };
   if (e.pdf) files.unshift({ name: pdfName(kind, d), type: 'application/pdf', content: docPdf(kind, d) });
@@ -2761,7 +2774,7 @@ async function emailDocIn(req, kind, d, receipt) {
 // a quote or invoice as a PDF: the business, the client, the line items (an invoice's Client view switches apply), totals, message and contract
 function docPdf(kind, d) { return inClientLang(d.clientId, () => docPdfIn(kind, d)); } // in the client's language
 function docPdfIn(kind, d) {
-  const q = kind === 'quote'; const co = db.company; const c = findClient(d.clientId) || {}; const x = q ? d : withStatus(d);
+  const q = kind === 'quote'; const est = q && estStage(d); const co = db.company; const c = findClient(d.clientId) || {}; const x = q ? d : withStatus(d);
   const on = (k) => q || d[k] !== 'off'; const showQty = on('showQty'); const showUnit = on('showUnit'); const showLine = on('showLineTotals');
   const pdf = createPdf(); const L = 54; const R = 558; let y = 64;
   const room = (need) => { if (y + need > 740) { pdf.addPage(); y = 64; } };
@@ -2769,8 +2782,8 @@ function docPdfIn(kind, d) {
   // the business, and the document's number and dates
   pdf.text(L, y, co.name || '', { size: 18, bold: true }); y += 18;
   for (const t of [co.address, [co.phone ? fmtUsPhone(co.phone) : '', co.email].filter(Boolean).join('  ·  '), co.website, !q && co.taxIdNumber ? `${co.taxIdName || tx('Tax ID')}: ${co.taxIdNumber}` : ''].filter(Boolean)) y = pdf.para(L, y, t, 300, { size: 10, color: gray, lineHeight: 14 });
-  pdf.text(R, 64, tx(q ? 'QUOTE' : 'INVOICE'), { size: 18, bold: true, align: 'right' }); let ry = 84;
-  for (const t of q ? [tx('Quote #{number}', { number: d.number }), tx('Created {date}', { date: niceDate(String(d.createdAt || '').slice(0, 10)) })] : [tx('Invoice #{number}', { number: d.number }), tx('Issued {date}', { date: niceDate(d.issueDate) }), tx('Due {date}', { date: niceDate(d.dueDate) })]) { pdf.text(R, ry, t, { size: 10, color: gray, align: 'right' }); ry += 14; }
+  pdf.text(R, 64, tx(est ? 'ESTIMATE' : q ? 'QUOTE' : 'INVOICE'), { size: 18, bold: true, align: 'right' }); let ry = 84;
+  for (const t of q ? [tx(est ? 'Estimate #{number}' : 'Quote #{number}', { number: d.number }), tx('Created {date}', { date: niceDate(String(d.createdAt || '').slice(0, 10)) })] : [tx('Invoice #{number}', { number: d.number }), tx('Issued {date}', { date: niceDate(d.issueDate) }), tx('Due {date}', { date: niceDate(d.dueDate) })]) { pdf.text(R, ry, t, { size: 10, color: gray, align: 'right' }); ry += 14; }
   y = Math.max(y, ry) + 14; pdf.line(L, y, R, y); y += 26;
   // the client
   pdf.text(L, y, tx(q ? 'PREPARED FOR' : 'BILL TO'), { size: 9, bold: true, color: soft }); y += 16;
@@ -2808,7 +2821,7 @@ function docPdfIn(kind, d) {
     if (dd.discount > 0) row(discLabel(dd), '-' + money(dd.discount));
     if (Number(dd.taxRate)) row(`${Number(dd.taxRate) === Number(co.taxRate) && co.taxName ? co.taxName : tx('Tax')} (${dd.taxRate}%)`, money(dd.tax || 0));
     row(part.opt && parts.length > 1 ? tx('{name} total', { name: part.opt.name }) : tx('Total'), money(dd.total || 0), true);
-    if (q && dd.depositFee > 0) row(`${tx('Required deposit')}${dd.depositType === 'percent' ? ` (${dd.depositValue}%)` : ''}`, money(dd.depositFee));
+    if (q && !est && dd.depositFee > 0) row(`${tx('Required deposit')}${dd.depositType === 'percent' ? ` (${dd.depositValue}%)` : ''}`, money(dd.depositFee));
   }
   if (!q) {
     const paid = (d.payments || []).reduce((n, pm) => n + (Number(pm.amount) || 0), 0);
@@ -3415,10 +3428,10 @@ app.get('/p/quote/:token', (req, res) => {
   const c = findClient(q.clientId);
   if (q.status === 'sent' && !q.viewPushedAt && !currentUser(req)) { // the client's first look, not the team's own preview
     q.viewPushedAt = new Date().toISOString(); save();
-    pushTo(usersWhoCan('quotes'), 'quoteViewed', { title: 'Client viewed quote', body: `${c ? c.name : 'A client'} viewed quote ${q.number}${q.title ? ` (${q.title})` : ''}`, url: `/quotes/edit?id=${q.id}` });
+    pushTo(usersWhoCan('quotes'), 'quoteViewed', { title: `Client viewed ${estStage(q) ? 'estimate' : 'quote'}`, body: `${c ? c.name : 'A client'} viewed ${estStage(q) ? 'estimate' : 'quote'} ${q.number}${q.title ? ` (${q.title})` : ''}`, url: `/quotes/edit?id=${q.id}` });
   }
   let depositSection = '';
-  if (q.status === 'approved' && !q.signedAt) depositSection = quoteSignBox(q); // every approved quote is signed next, deposit or not
+  if (q.status === 'approved' && !q.signedAt) depositSection = (q.estimateApprovedAt ? `<div class="qv-msg" role="status">${tx('You approved the estimate. This is now your quote: sign it below to accept it.')}${q.depositFee > 0 ? ` ${tx('Then you’ll pay the {amount} deposit.', { amount: money(q.depositFee) })}` : ''}</div>` : '') + quoteSignBox(q); // every approved quote is signed next, deposit or not
   else if (q.status === 'approved' && q.depositFee > 0) {
     if (!q.depositPaidAt) {
       depositSection = `<div style="background:#fef3c7;padding:16px;border-radius:8px;margin-top:16px;border:1px solid #fcd34d">
@@ -3512,11 +3525,12 @@ function quoteView(q, c, { signed, depositSection, sent, preview, business }) {
   const co = db.company; const brand = accentColor() || brandLib.siteColor('--brand') || DEFAULT_BUTTON; // the same color as the client hub
   const hub = tenancy.has('clientPortal') && c && c.portalToken ? `/client-portal?c=${encodeURIComponent(c.portalToken)}` : '';
   const logo = co.logo ? `<img src="${esc(co.logo)}" alt="${esc(co.name)}">` : `<div class="qv-mono">${esc((co.name || '?').split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase())}</div>`;
-  const nav = [[['requests', tx('Requests')], ['estimates', tx('Estimates')], ['appointments', tx('Appointments')], ['invoices', tx('Invoices')], ...(tenancy.has('reviews') ? [['reviews', tx('Reviews')]] : [])], [['wallet', tx('Wallet')]], [['contact', tx('Contact Us')]]]
+  const nav = [[['requests', tx('Requests')], ['estimates', tx('Estimates & quotes')], ['appointments', tx('Appointments')], ['invoices', tx('Invoices')], ...(tenancy.has('reviews') ? [['reviews', tx('Reviews')]] : [])], [['wallet', tx('Wallet')]], [['contact', tx('Contact Us')]]]
     .map((g) => g.map(([k, l]) => `<a class="qv-nav ${k === 'estimates' ? 'on' : ''}" href="${hub}#${k}">${qvIcon(k)}<span>${l}</span></a>`).join('')).join('<hr>')
     + (tenancy.has('referrals') ? `<hr><a class="qv-nav qv-refer" href="${hub}#refer">${qvIcon('refer')}<span>${tx('Refer a Friend')}</span></a>` : '');
   const side = hub ? `<aside class="qv-side" id="qvMenu"><div class="qv-brand">${logo}</div><div class="qv-co">${esc(co.name)}</div>${business ? `<span class="qv-new" style="opacity:.5;cursor:not-allowed" title="Only your client can send a request">${qvIcon('plus', 18)} ${tx('New Request')}</span>` : `<a class="qv-new" href="${hub}#new-request">${qvIcon('plus', 18)} ${tx('New Request')}</a>`}<nav aria-label="${tx('Client hub')}">${nav}</nav></aside>` : '';
   const top = `<header class="qv-top">${hub ? `<button type="button" class="qv-burger" aria-expanded="false" aria-controls="qvMenu" onclick="var o=document.getElementById('qvMenu').classList.toggle('open');this.setAttribute('aria-expanded',o)">${qvIcon('menu', 30)}${tx('Menu')}</button>` : '<span></span>'}${logo}</header>`;
+  const est = estStage(q); // Estimate first: no signature, deposit or payment until they approve it
   const open = q.status === 'sent' || q.status === 'draft'; const chg = open && q.changesRequestedAt && (q.changeRequests || []).length && !(q.lastSentAt > q.changesRequestedAt) && !(q.changesDoneAt > q.changesRequestedAt); // gone once the business sends it again or marks it handled
   const [label, tone] = chg ? [tx('Changes requested'), 'chg'] : (([l, t]) => [tx(l), t])(QV_STATUS[q.status] || [q.status, 'grey']);
   const addr = q.address || (c && c.address) || '';
@@ -3524,7 +3538,7 @@ function quoteView(q, c, { signed, depositSection, sent, preview, business }) {
   const row = (l, v) => `<div class="qv-row"><span>${l}</span><span>${v}</span></div>`;
   const totalsOf = (d) => row(tx('Subtotal'), money(d.subtotal)) + (d.discount > 0 ? row(esc(discLabel(d)), '−' + money(d.discount)) : '')
     + (Number(d.taxRate) ? row(`${esc(taxName)} (${d.taxRate}%)`, money(d.tax)) : '') + row(tx('Total'), money(d.total))
-    + (d.depositFee > 0 ? row(`${tx('Deposit')}${d.depositType === 'percent' ? ` (${d.depositValue}%)` : ''}`, money(d.depositFee)) : '');
+    + (!est && d.depositFee > 0 ? row(`${tx('Deposit')}${d.depositType === 'percent' ? ` (${d.depositValue}%)` : ''}`, money(d.depositFee)) : '');
   const itemsOf = (d) => (d.items || []).map((i) => `<div class="qv-it${i.sub ? ' sub' : ''}"><div class="qv-it-d"><strong>${esc(i.desc)}</strong>${i.details ? `<p>${esc(i.details)}</p>` : ''}</div>
 ${heading(i) ? '<div class="qv-n"></div><div class="qv-n"></div><div class="qv-n"></div>' : included(i) ? `<div class="qv-n"></div><div class="qv-n"></div><div class="qv-n"><span class="qv-l">${tx('Total')}</span>${tx('Included')}</div>` : `<div class="qv-n"><span class="qv-l">${tx('Qty.')}</span>${esc(String(i.qty))}</div><div class="qv-n"><span class="qv-l">${tx('Unit price')}</span>${money(i.price)}</div><div class="qv-n"><span class="qv-l">${tx('Total')}</span>${money(i.qty * i.price)}</div>`}</div>`).join('');
   // Good / Better / Best: each option with its own items and totals until one is chosen; then only that one
@@ -3532,21 +3546,23 @@ ${heading(i) ? '<div class="qv-n"></div><div class="qv-n"></div><div class="qv-n
   const optHead = (p) => (p.opt ? `<div class="qv-oh" id="opt-${esc(p.opt.id)}"><div class="qv-on"><h2>${p.chosen ? tx('Your choice: ') : ''}${esc(p.opt.name)}</h2>${p.recommended ? `<span class="qv-rec">${tx('Recommended')}</span>` : ''}${many ? `<span class="qv-ot">${money(p.doc.total)}</span>` : ''}</div>${p.opt.desc ? `<p>${esc(p.opt.desc)}</p>` : ''}</div>` : '');
   const body = parts.map((p) => `<section class="${p.opt ? 'qv-opt' : ''}${p.recommended ? ' rec' : ''}">${optHead(p)}<div class="qv-items"><div class="qv-ih"><span>${tx('Product / Service')}</span><span>${tx('Qty.')}</span><span>${tx('Unit Price')}</span><span>${tx('Total')}</span></div>${itemsOf(p.doc)}</div>
 <div class="qv-tot"><div></div><div>${totalsOf(p.doc)}</div></div></section>`).join('');
-  const depositNote = open && q.depositFee > 0 ? `<div class="qv-note">${q.depositPaidAt ? `<strong>${tx('Deposit paid: {amount}.', { amount: money(q.depositPaidAmount ?? q.depositFee) })}</strong> ${tx('This estimate was updated. After you approve, you’ll sign it again.')}` : `<strong>${tx('Deposit: {what}.', { what: many && q.depositType === 'percent' ? tx('{pct}% of the option you choose', { pct: q.depositValue }) : `${money(q.depositFee)}${q.depositType === 'percent' ? ` ${tx('({pct}% of the total)', { pct: q.depositValue })}` : ''}` })}</strong> ${tx('After you approve, you’ll sign the estimate and pay this deposit before work begins.')}`}</div>` : '';
-  const payDep = (d) => d.depositFee > 0 && !q.depositPaidAt; // a deposit still to pay: the Approve button says so
-  const actions = open ? `${sent ? `<div class="qv-msg" role="status">${tx('Thanks! We got your changes and will send you an updated estimate.')}</div>` : ''}
+  const depWhat = many && q.depositType === 'percent' ? tx('{pct}% of the option you choose', { pct: q.depositValue }) : `${money(q.depositFee)}${q.depositType === 'percent' ? ` ${tx('({pct}% of the total)', { pct: q.depositValue })}` : ''}`;
+  const depositNote = est ? `<div class="qv-note"><strong>${tx('Nothing to sign or pay yet.')}</strong> ${q.depositFee > 0 ? tx('When you approve this estimate, it becomes your quote to sign, with a deposit of {what}.', { what: depWhat }) : tx('When you approve this estimate, it becomes your quote to sign.')}</div>`
+    : open && q.depositFee > 0 ? `<div class="qv-note">${q.depositPaidAt ? `<strong>${tx('Deposit paid: {amount}.', { amount: money(q.depositPaidAmount ?? q.depositFee) })}</strong> ${tx('This quote was updated. After you approve, you’ll sign it again.')}` : `<strong>${tx('Deposit: {what}.', { what: depWhat })}</strong> ${tx('After you approve, you’ll sign the quote and pay this deposit before work begins.')}`}</div>` : '';
+  const payDep = (d) => !est && d.depositFee > 0 && !q.depositPaidAt; // a deposit still to pay: the Approve button says so
+  const actions = open ? `${sent ? `<div class="qv-msg" role="status">${(est ? tx('Thanks! We got your changes and will send you an updated estimate.') : tx('Thanks! We got your changes and will send you an updated quote.'))}</div>` : ''}
 ${many ? `<div class="qv-note"><strong>${tx('Choose an option to approve.')}</strong></div>${parts.map((p) => `<form method="post" action="/p/quote/${esc(q.token)}/respond"><input type="hidden" name="opt" value="${esc(p.opt.id)}"><button class="qv-btn${p.recommended ? ' primary' : ''} qv-obtn" name="r" value="approved">${payDep(p.doc) ? tx('Approve {name} and pay deposit', { name: esc(p.opt.name) }) : tx('Approve {name}', { name: esc(p.opt.name) })} · ${money(p.doc.total)}</button></form>`).join('')}`
-  : `<form method="post" action="/p/quote/${esc(q.token)}/respond"><button class="qv-btn primary" name="r" value="approved">${payDep(q) ? tx('Approve and pay deposit') : tx('Approve')}</button></form>`}
+  : `<form method="post" action="/p/quote/${esc(q.token)}/respond"><button class="qv-btn primary" name="r" value="approved">${est ? tx('Approve estimate') : payDep(q) ? tx('Approve and pay deposit') : tx('Approve')}</button></form>`}
 <details class="qv-chg"><summary class="qv-btn">${tx('Request Changes')}</summary><form method="post" action="/p/quote/${esc(q.token)}/changes">
 <label for="qvChg">${tx('What would you like changed?')}</label><textarea id="qvChg" name="message" required maxlength="2000"></textarea><button class="qv-btn primary">${tx('Send to {name}', { name: esc(co.name) })}</button></form></details>
 ${chg ? `<div class="qv-note">${tx('You asked for changes on {date}:', { date: esc(niceDate(q.changesRequestedAt.slice(0, 10))) })} “${esc(q.changeRequests[q.changeRequests.length - 1].text)}”</div>` : ''}${depositNote}
-<form method="post" action="/p/quote/${esc(q.token)}/respond" onsubmit="return confirm(this.dataset.ask)" data-ask="${esc(tx('Decline this estimate?'))}" style="display:flex;justify-content:center"><button class="qv-link" name="r" value="declined">${tx('Decline this estimate')}</button></form>` : '';
+<form method="post" action="/p/quote/${esc(q.token)}/respond" onsubmit="return confirm(this.dataset.ask)" data-ask="${esc(est ? tx('Decline this estimate?') : tx('Decline this quote?'))}" style="display:flex;justify-content:center"><button class="qv-link" name="r" value="declined">${est ? tx('Decline this estimate') : tx('Decline this quote')}</button></form>` : '';
   const act = preview && (actions + depositSection).trim() ? `<div class="qv-preview">${PREVIEW_NOTE}</div>${previewOff(actions + depositSection, 'display:flex;flex-direction:column;gap:16px')}${signed}` : actions + signed + depositSection; const pdf = `/p/quote/${esc(q.token)}/pdf`;
-  return `<!doctype html><html lang="${i18n.current()}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${tx('Estimate')} ${esc(q.number)} · ${esc(co.name)}</title><link rel="icon" href="/favicon.ico">
+  return `<!doctype html><html lang="${i18n.current()}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${est ? tx('Estimate') : tx('Quote')} ${esc(q.number)} · ${esc(co.name)}</title><link rel="icon" href="/favicon.ico">
 <style>:root{--brand:${esc(brand)}}${QV_CSS}</style></head><body${preview ? ' class="qv-is-biz"' : ''}>${preview ? `<div class="qv-biz"><a href="/quotes/view?id=${esc(q.id)}" onclick="if(history.length>1&&document.referrer.indexOf(location.origin)===0){history.back();return false}">${qvIcon('back', 18)} Back</a><span>Viewing as your client</span></div>` : ''}<div class="qv">${side}<div class="qv-wrap">${top}<main class="qv-main">
 <div class="qv-grid"><div class="qv-docwrap"><div class="qv-bar">${hub ? `<a class="qv-tb" href="${hub}#estimates">${qvIcon('back', 18)} ${tx('Back')}</a>` : '<span></span>'}<a class="qv-tb" href="${pdf}">${tx('Download PDF')}</a></div>
-<details class="qv-doc" open><summary><span><span class="qv-hide">${tx('Hide Quote')}</span><span class="qv-show">${tx('Show Quote')}</span></span>${qvIcon('chev', 22)}</summary><div class="qv-body">
-<div class="qv-hd"><div class="qv-hd-l"><div class="qv-no"><span>${tx('Estimate #{number}', { number: esc(q.number) })}</span><span class="qv-pill ${tone}">${esc(label)}</span></div>
+<details class="qv-doc" open><summary><span><span class="qv-hide">${est ? tx('Hide Estimate') : tx('Hide Quote')}</span><span class="qv-show">${est ? tx('Show Estimate') : tx('Show Quote')}</span></span>${qvIcon('chev', 22)}</summary><div class="qv-body">
+<div class="qv-hd"><div class="qv-hd-l"><div class="qv-no"><span>${est ? tx('Estimate #{number}', { number: esc(q.number) }) : tx('Quote #{number}', { number: esc(q.number) })}</span><span class="qv-pill ${tone}">${esc(label)}</span></div>
 <div class="qv-who">${esc((c && c.name) || '')}</div>${addr ? `<div>${esc(addr)}</div>` : ''}${c && c.phone ? `<a class="qv-ph" href="tel:${esc(c.phone)}">${esc(c.phone)}</a>` : ''}</div>
 <div class="qv-hd-r"><span>${tx('Sent on')}</span><span>${esc(niceDate(q.sentAt || String(q.createdAt || '').slice(0, 10)))}</span></div></div>
 ${many ? `<p class="qv-pick">${tx('{n} options: choose the one that suits you.', { n: parts.length })}</p>` : ''}${body}
@@ -3588,17 +3604,17 @@ f.addEventListener('submit',function(e){if(mode==='typed')typed();if(!inked){e.p
 setMode('drawn');})();</script>`;
 }
 // email the business when a client approves, declines or signs a quote, and log it with the other notifications
-function tellBusinessQuote(q, status) {
-  const c = findClient(q.clientId);
+function tellBusinessQuote(q, status, est = false) { // est: the client answered the estimate (Estimate first)
+  const c = findClient(q.clientId); const word = est ? 'estimate' : 'quote';
   const picked = hasOptions(q) && q.chosenOption ? `, choosing ${shownOption(q).name}` : ''; // Good / Better / Best: which option
   if (status === 'approved') {
-    pushTo(usersWhoCan('quotes'), 'quoteApproved', { title: 'Client approved quote', body: `${c ? c.name : 'A client'} approved quote ${q.number}${q.title ? ` (${q.title})` : ''}${picked}`, url: `/quotes/edit?id=${q.id}` });
-    slackSend('quoteApproved', `*Quote approved:* ${slack.esc(c ? c.name : 'A client')} approved quote ${slack.esc(q.number)}${q.title ? ` (${slack.esc(q.title)})` : ''}${slack.esc(picked)}`, { label: 'Open quote', url: `${baseUrl()}/quotes/edit?id=${q.id}` });
+    pushTo(usersWhoCan('quotes'), 'quoteApproved', { title: `Client approved ${word}`, body: `${c ? c.name : 'A client'} approved ${word} ${q.number}${q.title ? ` (${q.title})` : ''}${picked}`, url: `/quotes/edit?id=${q.id}` });
+    slackSend('quoteApproved', `*${est ? 'Estimate' : 'Quote'} approved:* ${slack.esc(c ? c.name : 'A client')} approved ${word} ${slack.esc(q.number)}${q.title ? ` (${slack.esc(q.title)})` : ''}${slack.esc(picked)}`, { label: 'Open quote', url: `${baseUrl()}/quotes/edit?id=${q.id}` });
   }
   if (!db.company.email) return;
-  const what = `quote ${q.number}${q.title ? ` (${q.title})` : ''}${status === 'approved' ? picked : ''}`;
+  const what = `${word} ${q.number}${q.title ? ` (${q.title})` : ''}${status === 'approved' ? picked : ''}`;
   const next = status === 'declined' ? 'You can follow up with them, or edit the quote and send it again.'
-    : status === 'approved' ? `They’ll sign it next${q.depositFee > 0 ? `, then pay the ${money(q.depositFee)} deposit` : ''}.`
+    : status === 'approved' ? `${est ? 'It’s now their quote, on the same page. ' : ''}They’ll sign it next${q.depositFee > 0 ? `, then pay the ${money(q.depositFee)} deposit` : ''}.`
       : q.depositFee > 0 ? `Next they pay the ${money(q.depositFee)} deposit.` : 'It’s ready to schedule as a job.';
   sendTemplate('quoteStatus', db.company.email, { client: c ? c.name : 'A client', status, what, total: money(q.total), next, business: db.company.name, account_url: baseUrl() }).then((sent) => {
     db.notifications.unshift({ id: uid(), at: new Date().toISOString(), clientId: q.clientId, clientName: c ? c.name : '', channel: 'email', kind: 'quote-status', refId: q.id, refNumber: q.number, to: db.company.email, subject: sent.subject, body: sent.text, status: sent.status, detail: sent.detail }); save();
@@ -3872,7 +3888,8 @@ app.post('/p/quote/:token/respond', (req, res) => {
   if (!q) return res.status(404).send('Not found');
   if (['sent', 'draft'].includes(q.status)) {
     const approve = req.body.r !== 'declined'; const pick = pickOption(q, req.body.opt); if (approve && pick === false) return res.redirect(`/p/quote/${q.token}`); // each option has its own Approve button
-    q.status = approve ? 'approved' : 'declined'; q.respondedAt = iso(new Date()); if (approve && pick) { q.chosenOption = pick; computeTotals(q); } save(); tellBusinessQuote(q, q.status);
+    const est = estStage(q); // approving the estimate makes it the quote, approved, to sign next
+    q.status = approve ? 'approved' : 'declined'; q.respondedAt = iso(new Date()); if (approve && est) q.estimateApprovedAt = q.respondedAt; if (approve && pick) { q.chosenOption = pick; computeTotals(q); } save(); tellBusinessQuote(q, q.status, est);
   }
   res.redirect(`/p/quote/${q.token}`);
 });
@@ -3965,7 +3982,7 @@ app.get('/api/portal/:token', (req, res) => {
     reviewQuestions: tenancy.has('reviews') ? Object.fromEntries(REVIEW_MODULES.map((m) => [m, reviewQuestionsFor(m).map(({ id, text, type, required }) => ({ id, text, type, required }))])) : {},
     requests: (db.requests || []).filter((r) => r.clientId === c.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(requestForClient),
     jobs: db.jobs.filter((j) => j.clientId === c.id).sort((a, b) => b.date.localeCompare(a.date)).map(jobForClient),
-    quotes: db.quotes.filter((q) => q.clientId === c.id).map((q) => ({ ...forClient(q), link: quoteLink(q) })),
+    quotes: db.quotes.filter((q) => q.clientId === c.id).map((q) => ({ ...forClient(q), link: quoteLink(q), stage: estStage(q) ? 'estimate' : 'quote' })), // stage: still an estimate (Estimate first), or the quote
     invoices: db.invoices.filter((i) => i.clientId === c.id).map((i) => ({ ...forClient(withStatus(i)), link: invoiceLink(i) })),
   });
 });

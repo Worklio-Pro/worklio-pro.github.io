@@ -285,6 +285,7 @@ table.mini th,table.mini td{padding:9px 8px;font-size:14px;vertical-align:middle
 .dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex-shrink:0}
 .dot.q-draft,.cstatus.q-draft{color:var(--neutral-fg)}.cstatus.q-draft{background:var(--surface-2)}
 .dot.q-sent,.cstatus.q-sent{color:var(--warn-fg)}.cstatus.q-sent{background:var(--warn-bg)}.dot.q-sent{color:#d97706}
+.dot.q-estimate,.cstatus.q-estimate{color:var(--warn-fg)}.cstatus.q-estimate{background:var(--warn-bg)}.dot.q-estimate{color:#d97706}
 .dot.q-approved,.cstatus.q-approved{color:var(--ok-fg)}.cstatus.q-approved{background:var(--ok-bg)}.dot.q-approved{color:#16a34a}
 .dot.q-converted,.cstatus.q-converted{color:var(--info-fg)}.cstatus.q-converted{background:var(--info-bg)}.dot.q-converted{color:#2563eb}
 .dot.q-declined,.cstatus.q-declined{color:var(--bad-fg)}.cstatus.q-declined{background:var(--bad-bg)}.dot.q-declined{color:#dc2626}
