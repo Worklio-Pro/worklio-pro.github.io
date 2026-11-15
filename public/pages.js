@@ -12,6 +12,17 @@ function downloadCsv(name, rows) {
 }
 // number prefixes from App Settings (same defaults as the server)
 const PREFIX_DEFAULTS = { quotePrefix: 'Q-', jobPrefix: 'J-', invoicePrefix: 'INV-' };
+// App Settings → General → Site surveys: how clients book the visit after approving an estimate (server: SVY_PICK)
+const SVY_OPTS = { minutes: [[30, '30 minutes'], [45, '45 minutes'], [60, '1 hour'], [90, '1½ hours'], [120, '2 hours'], [180, '3 hours']], buffer: [[0, 'None'], [15, '15 minutes'], [30, '30 minutes'], [45, '45 minutes'], [60, '1 hour']],
+  notice: [[0, 'None'], [2, '2 hours'], [4, '4 hours'], [12, '12 hours'], [24, '1 day'], [48, '2 days'], [72, '3 days']], ahead: [[7, '1 week'], [14, '2 weeks'], [30, '30 days'], [60, '60 days'], [90, '90 days']], step: [[15, 'Every 15 minutes'], [30, 'Every 30 minutes'], [60, 'Every hour']] };
+function surveyCard(c) {
+  const S = { minutes: 60, buffer: 15, notice: 24, ahead: 30, step: 30, ...(c.survey || {}) }; const ppl = c.surveyPeople || [];
+  const sel = (k, label) => `<label>${label}<select data-svy="${k}">${SVY_OPTS[k].map(([v, l]) => `<option value="${v}" ${Number(S[k]) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`;
+  return `<div class="card" id="site-surveys"><h2>Site surveys</h2><p class="muted" style="margin-top:0">When a quote has <strong>Site survey</strong> on, the client books a visit after approving the estimate: they pick who they’d like to meet, a day and a free time. Free times are inside that person’s working hours (on their Team profile), clear of their jobs, tasks and time off.</p>
+<div class="row">${sel('minutes', 'How long a survey takes')}${sel('buffer', 'Gap before and after')}</div><div class="row">${sel('notice', 'Minimum notice')}${sel('ahead', 'Clients can book up to')}</div><div class="row">${sel('step', 'Start times')}<span></span></div>
+<h3 style="margin:14px 0 4px;font-size:15px">Who clients can book</h3>${ppl.length ? ppl.map((p) => `<label class="sw-row"><span>${esc(p.name)}</span><input type="checkbox" class="sw" data-svy-p="${esc(p.id)}" ${p.on ? 'checked' : ''}><i></i></label>`).join('') : '<p class="muted" style="margin:0">No one yet: site surveys are with owners, admins and managers who have a login. Invite one in Team.</p>'}
+<p class="muted" style="font-size:12px;margin:8px 0 0">Owners, admins and managers who have a login. Turn someone off and clients can’t book them.</p></div>`;
+}
 const docPrefix = (k) => company[k] ?? PREFIX_DEFAULTS[k];
 const readFileAsDataUrl = (f) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(f); });
 async function resizeImage(file, max) {
@@ -2845,7 +2856,7 @@ async function companyPage(main, full) {
 <div class="row3"><label>Venmo username<input form="cf" name="venmoHandle" value="${esc(c.venmoHandle ? '@' + c.venmoHandle : '')}" placeholder="@YourBusiness" autocomplete="off"></label><label>Cash App $Cashtag<input form="cf" name="cashappTag" value="${esc(c.cashappTag ? '$' + c.cashappTag : '')}" placeholder="$YourBusiness" autocomplete="off"></label><label>PayPal.me name<input form="cf" name="paypalHandle" value="${esc(c.paypalHandle ? 'paypal.me/' + c.paypalHandle : '')}" placeholder="paypal.me/YourBusiness" autocomplete="off"></label></div></div>` : '';
   main.innerHTML = `<div class="head"><div><h1>${full ? 'App Settings' : 'Company settings'}</h1>${full ? '<p class="sub">Defaults, white label and payments for every quote and invoice. Business details, social media and tax settings are on <a href="/settings/company" data-link>Company Profile</a>.</p>' : ''}</div></div>
 ${full ? `<div class="as-tabs" role="tablist">${AS_TABS.map(([t, n]) => `<button type="button" role="tab" data-as-tab="${t}" aria-controls="as-${t}">${n}</button>`).join('')}</div>
-<div class="as-panel" id="as-general" role="tabpanel">${planCard(c.account)}<div class="as-cols"><div class="as-col">${regionalBox(c)}${languagesBox(c)}${mxCard()}</div><div class="as-col">${defaultsBox}${savedDiscCard()}${prefixBox}${teamLocCard(c)}</div></div></div>
+<div class="as-panel" id="as-general" role="tabpanel">${planCard(c.account)}<div class="as-cols"><div class="as-col">${regionalBox(c)}${languagesBox(c)}${mxCard()}</div><div class="as-col">${defaultsBox}${surveyCard(c)}${savedDiscCard()}${prefixBox}${teamLocCard(c)}</div></div></div>
 <div class="as-panel" id="as-white-label" role="tabpanel"><div class="as-cols"><div class="as-col">${webAddressCard(c.account)}</div><div class="as-col">${brandBox || `<div class="card"><h2>Branding</h2><p class="muted" style="margin:0">Your own brand and accent colors on quotes, invoices, emails and the client portal come with a plan that includes Branding.</p></div>`}</div></div></div>
 <div class="as-panel" id="as-payments" role="tabpanel"><div class="as-cols"><div class="as-col">${payCard(integ)}${zelleBox}</div><div class="as-col">${appsBox}${lateFeeCard(c)}</div></div></div>
 <form id="cf"></form>` :`<form id="cf" class="cs-form">${companySettingsHtml(c, logoBox)}</form>`}`;
@@ -2888,6 +2899,11 @@ ${full ? `<div class="as-tabs" role="tablist">${AS_TABS.map(([t, n]) => `<button
       if (el.tagName === 'INPUT') el.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); saveFields(); } });
     });
   }
+  const svc = full && $('#site-surveys', main); // Site surveys saves on its own (its fields aren't part of the form above)
+  if (svc) svc.addEventListener('change', async () => {
+    const survey = Object.fromEntries($$('[data-svy]', svc).map((s) => [s.dataset.svy, Number(s.value)])); survey.staffIds = $$('[data-svy-p]', svc).filter((x) => x.checked).map((x) => x.dataset.svyP);
+    try { const saved = await api('PUT', '/api/company', { survey }); company = { ...company, ...saved, surveyPeople: (company.surveyPeople || []).map((p) => ({ ...p, on: survey.staffIds.includes(p.id) })) }; toast('Settings saved'); } catch (err) { toast(err.message, true); }
+  });
   A.resetAccent = async () => { try { await api('PUT', '/api/company', { accentColor: '' }); toast('Accent color reset'); refresh(); } catch (err) { toast(err.message, true); } };
   A.removeLogo = async (d) => {
     const dark = d.kind === 'dark';

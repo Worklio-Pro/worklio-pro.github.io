@@ -167,6 +167,10 @@ const shownOption = (q) => (hasOptions(q) ? q.options.find((o) => o.id === q.cho
 // Approving it (estimateApprovedAt) makes it the quote, approved, for the client to sign and pay any deposit on the same page.
 const estStage = (q) => !!q.estimate && !q.estimateApprovedAt && ['draft', 'sent'].includes(q.status);
 const onOff = (v) => v === true || v === 'on' || v === 'true';
+// Site survey (Estimate first with q.survey): approving the estimate asks the client to book a site survey instead of making it the quote.
+// After the visit the business updates the quote and sends it (quoteSentAt); from then on it's an ordinary quote to approve, sign and pay.
+const svyStage = (q) => !!q.estimate && !!q.survey && !!q.estimateApprovedAt && !q.quoteSentAt && ['draft', 'sent'].includes(q.status);
+const estDoc = (q) => estStage(q) || svyStage(q); // still called an estimate to the client
 const quoteItems = (q) => (hasOptions(q) ? (q.chosenOption ? optionItems(q, q.chosenOption) : []) : q.items || []).map(({ opt, ...i }) => ({ ...i }));
 function sumItems(doc, items) {
   const subtotal = round2(items.reduce((s, i) => s + i.qty * i.price, 0));
@@ -1788,7 +1792,7 @@ function accountInfo() {
 // the color of the business's client portal, or '' for the product's own color (none chosen or a plan without branding)
 const accentColor = () => (tenancy.has('branding') && db.company.accentColor) || '';
 const DEFAULT_BUTTON = '#2563eb';
-app.get('/api/company', (req, res) => res.json({ ...db.company, defaultAccent: brandLib.siteColor('--brand') || DEFAULT_BUTTON, account: accountInfo() }));
+app.get('/api/company', (req, res) => res.json({ ...db.company, defaultAccent: brandLib.siteColor('--brand') || DEFAULT_BUTTON, account: accountInfo(), surveyPeople: surveyPeople() }));
 // social media pages a business can list; a handle becomes the page's link on networks that use handles
 const SOCIAL = { facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok', x: 'X', youtube: 'YouTube', linkedin: 'LinkedIn', google: 'Google Business Profile', yelp: 'Yelp', nextdoor: 'Nextdoor' };
 const SOCIAL_HANDLE = { facebook: (h) => `https://www.facebook.com/${h}`, instagram: (h) => `https://www.instagram.com/${h}`, tiktok: (h) => `https://www.tiktok.com/@${h}`, x: (h) => `https://x.com/${h}`, youtube: (h) => `https://www.youtube.com/@${h}` };
@@ -1830,6 +1834,7 @@ app.put('/api/company', (req, res) => {
   Object.assign(db.company, handles);
   if (b.lateFee && typeof b.lateFee === 'object') { try { db.company.lateFee = cleanLateFee(b.lateFee, db.company.lateFee); } catch (e) { return res.status(400).json({ error: e.message }); } }
   if ((b.teamLocation === true || b.teamLocation === 'on' || b.teamLocation === 'true') && !tenancy.has('teamLocation')) return res.status(403).json({ error: 'Team location isn’t included in your plan' });
+  if (b.survey && typeof b.survey === 'object') db.company.survey = cleanSurvey(b.survey); // App Settings → Site surveys
   for (const k of ['addressPrivate', 'showHours', 'teamLocation', 'quoteEstimateFirst']) if (k in b) db.company[k] = b[k] === true || b[k] === 'on' || b[k] === 'true';
   if (ADDRESS_PARTS.some((k) => k in b)) db.company.address = composeAddress(db.company); // the one-line address used everywhere else
   if ('savedDiscounts' in b) { // Saved discounts for quick select on quotes, jobs and invoices: a name, $ or %, and the amount
@@ -2158,6 +2163,7 @@ app.post('/api/:col', (req, res, next) => {
   if (col === 'quotes') {
     doc.number = doc.number || nextNumber('quotes'); doc.status = b.status || 'draft'; doc.token = token();
     doc.estimate = 'estimate' in b ? onOff(b.estimate) : !!db.company.quoteEstimateFirst; delete doc.estimateApprovedAt; // the default: App Settings → Send new quotes as estimates first
+    doc.survey = doc.estimate && onOff(b.survey); delete doc.quoteSentAt; delete doc.surveyTaskId; // Site survey: only with Estimate
     if (!tenancy.has('quoteOptions')) { delete doc.options; delete doc.chosenOption; } // Good / Better / Best is a plan feature
     if (b.taxRate === undefined) doc.taxRate = db.company.taxRate; applyMemberDiscount(doc); computeTotals(doc); // a service plan member's discount
     const bad = optionsProblem(doc); if (bad) return res.status(400).json({ error: bad });
@@ -2208,7 +2214,7 @@ app.put('/api/:col/:id', (req, res, next) => {
   (PAYMENT_FIELDS[col] || []).forEach((k) => delete upd[k]);
   if (col === 'invoices' && (upd.status === 'paid' || db.invoices[i].status === 'paid')) delete upd.status; // paid only by its payments
   if (col === 'invoices' && upd.depositCreditRemoved && !db.invoices[i].depositCreditRemoved) delete upd.depositCreditRemoved; // a collected deposit stays credited
-  const removeSignature = col === 'quotes' && upd.removeSignature === true; if (col === 'quotes') { delete upd.removeSignature; delete upd.signedAt; delete upd.signedName; delete upd.signature; delete upd.estimateApprovedAt; if ('estimate' in upd) upd.estimate = onOff(upd.estimate); } // signatures and estimate approvals only from the client's quote page
+  const removeSignature = col === 'quotes' && upd.removeSignature === true; if (col === 'quotes') { delete upd.removeSignature; delete upd.signedAt; delete upd.signedName; delete upd.signature; delete upd.estimateApprovedAt; delete upd.quoteSentAt; delete upd.surveyTaskId; if ('estimate' in upd) upd.estimate = onOff(upd.estimate); if ('survey' in upd) upd.survey = onOff(upd.survey); } // signatures and estimate approvals only from the client's quote page
   if (DOC_NUM[col] && String((req.body || {}).number || '').trim() && req.body.number !== db[col][i].number) { // renumber a quote / invoice
     const r = customNumber(col, req.body.number, req.params.id); if (r.error) return res.status(400).json({ error: r.error }); upd.number = r.number;
   }
@@ -2222,7 +2228,7 @@ app.put('/api/:col/:id', (req, res, next) => {
   if (col === 'quotes' && ['draft', 'sent'].includes(doc.status) && doc.status !== db.quotes[i].status && !doc.depositPaidAt) {
     doc.signedAt = null; doc.signedName = null; delete doc.signature; if (doc.depositStatus === 'pending') doc.depositStatus = null;
     doc.chosenOption = null; // they pick an option again
-    doc.estimateApprovedAt = null; // sent as an estimate first: they approve the estimate again
+    doc.estimateApprovedAt = null; doc.quoteSentAt = null; // sent as an estimate first: they approve the estimate again (a booked site survey stays booked)
   }
   if (col === 'quotes' || col === 'invoices' || (col === 'jobs' && Array.isArray(doc.items))) computeTotals(doc); // jobs are priced once they have line items
   if (col === 'quotes') { if (Array.isArray(upd.items)) snapQuote.carryNeedsPrice(db[col][i], doc); else if (doc.aiDraft && doc.status !== 'draft') delete doc.aiDraft; if (doc.zeroOk) snapQuote.confirmZero(doc); delete doc.zeroOk; const bad = optionsProblem(doc); if (bad) return res.status(400).json({ error: bad }); }
@@ -2249,6 +2255,7 @@ app.put('/api/:col/:id', (req, res, next) => {
   const following = col === 'jobs' && req.query.following && doc.seriesId && tenancy.has('recurringJobs') ? applyToFollowing(doc, upd, req.query.following) : 0; // Save → "This and following visits"
   if (col === 'jobs') matchFormsOnEdit(was, doc, (currentUser(req) || {}).name); // new line items can bring their checklists
   if (col === 'clients' && Array.isArray(upd.properties)) followPropertyAddresses(was, doc);
+  if (col === 'tasks' && doc.survey && (doc.date !== was.date || doc.startTime !== was.startTime)) { doc.remindedAt = null; doc.survey = { ...doc.survey, bookedAt: new Date().toISOString() }; surveyEmail(doc, 'moved'); } // a site survey moved on the calendar: the client is told
   db[col][i] = doc; save(); if (col === 'clients' && doc.smsConsent && !was.smsConsent) optInText(doc).catch(() => {}); if (col === 'jobs') { pushScheduleChange(was, doc, currentUser(req)); if (doc.status === 'completed' && was.status !== 'completed') { askForReview('job', doc); jobPosts.maybeDraft(doc); } }
   res.json(col === 'invoices' ? withStatus(doc) : col === 'jobs' ? { ...withRepeat(isMemberReq(req) ? jobForMember(doc) : doc), ...(following ? { following } : {}) } : col === 'clients' && isMemberReq(req) ? clientForMember(doc) : doc);
 });
@@ -2415,6 +2422,18 @@ const EMAIL_TEMPLATES = {
     body: '# Your quote is ready\n\nHello {{client_name}},\n\nThank you for asking us to quote on your project {{quote_title}}.\n\nThe quote total is {{total}} as of {{sent_date}}.\n\nIf you have any questions or concerns regarding this quote, please don\x27t hesitate to get in touch with us at {{company_email}}.\n\n[View and approve quote]({{link}})\n\nThank you,\n{{company_name}}',
     vars: { client_name: 'Client name', company_name: 'Your business name', company_email: 'Your business email', quote_number: 'Quote number', sent_date: 'Date the quote is sent', quote_title: 'Quote title', total: 'Quote total', link: 'Link to view and approve' },
   },
+  surveyBooked: { // Site survey: the client booked (or the time was moved)
+    label: 'Site survey booked', description: 'Sent when a client books a site survey from an estimate, or its time changes.',
+    subject: 'Your site survey with {{company_name}}',
+    body: '# Your site survey is booked\n\nHello {{client_name}},\n\nYour site survey is booked:\n\n> **{{date}} at {{time}}**\n> {{staff_name}} · {{duration}}\n> {{address}}\n\nWe\x27ll look at the details on site, then send you the quote to approve and sign. Need a different time? You can change or cancel it here:\n\n[View your booking]({{link}})\n\n{{company_name}}',
+    vars: { client_name: 'Client name', company_name: 'Your business name', company_email: 'Your business email', date: 'Survey date', time: 'Start time', staff_name: 'Who takes the survey', duration: 'How long it takes', address: 'Address', link: 'Link to the booking' },
+  },
+  surveyReminder: { // Site survey: a day ahead
+    label: 'Site survey reminder', description: 'Sent a day before a site survey.',
+    subject: 'Reminder: your site survey with {{company_name}}',
+    body: '# Your site survey is coming up\n\nHello {{client_name}},\n\nA reminder of your site survey:\n\n> **{{date}} at {{time}}**\n> {{staff_name}} · {{duration}}\n> {{address}}\n\nNeed a different time? You can change or cancel it here:\n\n[View your booking]({{link}})\n\n{{company_name}}',
+    vars: { client_name: 'Client name', company_name: 'Your business name', company_email: 'Your business email', date: 'Survey date', time: 'Start time', staff_name: 'Who takes the survey', duration: 'How long it takes', address: 'Address', link: 'Link to the booking' },
+  },
   estimate: { // a quote sent as an estimate first: no signature or deposit until the client approves it and it becomes the quote
     label: 'Estimate', description: 'Sent when you send a quote as an estimate first.',
     subject: 'Estimate {{quote_number}} from {{company_name}}',
@@ -2521,8 +2540,9 @@ app.post('/api/quotes/:id/send', async (req, res) => {
   const channels = (req.body.channels && req.body.channels.length) ? req.body.channels : ['email'];
   const link = quoteLink(q); const co = db.company.name;
   const results = [];
+  const svyWas = svyStage(q); if (svyWas) q.quoteSentAt = new Date().toISOString(); // after the site survey: this sends the quote itself
   const email = inClientLang(q.clientId, () => renderEmail(tplOf('quote', q), docVars('quote', q))); const est = estStage(q);
-  if (channels.includes('email') && req.body.email) { const r = await emailDoc(req, 'quote', q); if (r.error) return res.status(400).json(r); results.push(...r.results); }
+  if (channels.includes('email') && req.body.email) { const r = await emailDoc(req, 'quote', q); if (r.error) { if (svyWas) q.quoteSentAt = null; return res.status(400).json(r); } results.push(...r.results); }
   for (const ch of channels) {
     if (ch === 'email' && req.body.email) continue;
     results.push(await notify({ clientId: q.clientId, channel: ch, kind: 'quote', refId: q.id, refNumber: q.number,
@@ -2750,7 +2770,7 @@ function receiptVars(inv) {
   return { ...docVars('invoice', inv), amount: money(round2((x.amountPaid || 0) + (x.depositApplied || 0)) || inv.total || 0), paid_for: tx('invoice {number}', { number: inv.number }), date: niceDate(String(inv.paidAt || '').slice(0, 10)), reference: (last && last.reference) || inv.number };
 }
 const EMAIL_FILES_MAX = 10 * 1024 * 1024;
-const pdfName = (kind, d) => `${tplOf(kind, d)}_${String(d.number).replace(/[^\w-]+/g, '')}.pdf`;
+const pdfName = (kind, d) => `${kind === 'quote' && estDoc(d) ? 'estimate' : kind}_${String(d.number).replace(/[^\w-]+/g, '')}.pdf`;
 // sends what the Email box holds: to each address, the message with the button under it, any files (base64 from the browser) and the PDF;
 // "Send me a copy" sends the same email to the person sending it
 async function emailDoc(req, kind, d, receipt = false) { return inClientLang(d.clientId, () => emailDocIn(req, kind, d, receipt)); }
@@ -2774,7 +2794,7 @@ async function emailDocIn(req, kind, d, receipt) {
 // a quote or invoice as a PDF: the business, the client, the line items (an invoice's Client view switches apply), totals, message and contract
 function docPdf(kind, d) { return inClientLang(d.clientId, () => docPdfIn(kind, d)); } // in the client's language
 function docPdfIn(kind, d) {
-  const q = kind === 'quote'; const est = q && estStage(d); const co = db.company; const c = findClient(d.clientId) || {}; const x = q ? d : withStatus(d);
+  const q = kind === 'quote'; const est = q && estDoc(d); const co = db.company; const c = findClient(d.clientId) || {}; const x = q ? d : withStatus(d);
   const on = (k) => q || d[k] !== 'off'; const showQty = on('showQty'); const showUnit = on('showUnit'); const showLine = on('showLineTotals');
   const pdf = createPdf(); const L = 54; const R = 558; let y = 64;
   const room = (need) => { if (y + need > 740) { pdf.addPage(); y = 64; } };
@@ -3428,7 +3448,7 @@ app.get('/p/quote/:token', (req, res) => {
   const c = findClient(q.clientId);
   if (q.status === 'sent' && !q.viewPushedAt && !currentUser(req)) { // the client's first look, not the team's own preview
     q.viewPushedAt = new Date().toISOString(); save();
-    pushTo(usersWhoCan('quotes'), 'quoteViewed', { title: `Client viewed ${estStage(q) ? 'estimate' : 'quote'}`, body: `${c ? c.name : 'A client'} viewed ${estStage(q) ? 'estimate' : 'quote'} ${q.number}${q.title ? ` (${q.title})` : ''}`, url: `/quotes/edit?id=${q.id}` });
+    pushTo(usersWhoCan('quotes'), 'quoteViewed', { title: `Client viewed ${estDoc(q) ? 'estimate' : 'quote'}`, body: `${c ? c.name : 'A client'} viewed ${estDoc(q) ? 'estimate' : 'quote'} ${q.number}${q.title ? ` (${q.title})` : ''}`, url: `/quotes/edit?id=${q.id}` });
   }
   let depositSection = '';
   if (q.status === 'approved' && !q.signedAt) depositSection = (q.estimateApprovedAt ? `<div class="qv-msg" role="status">${tx('You approved the estimate. This is now your quote: sign it below to accept it.')}${q.depositFee > 0 ? ` ${tx('Then you’ll pay the {amount} deposit.', { amount: money(q.depositFee) })}` : ''}</div>` : '') + quoteSignBox(q); // every approved quote is signed next, deposit or not
@@ -3451,7 +3471,7 @@ ${!onlineMethods('quote', q).length && !offlineMethods(q).length ? `<p class="mu
     }
   }
   const signed = q.signedAt ? `<div style="margin-top:16px;padding:14px 16px;border:1px solid #e5e7eb;border-radius:8px"><strong>✓ ${q.signedName ? tx('Signed by {name}', { name: esc(q.signedName) }) : tx('Signed')}</strong> <span class="muted">· ${esc(niceDate(q.signedAt.slice(0, 10)))}</span>${q.signature ? `<img src="${esc(q.signature.file)}" alt="${tx('Signature')}" style="display:block;max-width:100%;width:320px;margin-top:8px">` : ''}</div>` : '';
-  res.send(quoteView(q, c, { signed, depositSection, sent: req.query.changes === 'sent', preview: !!currentUser(req) && req.query.collect !== '1', business: !!currentUser(req) }));
+  res.send(quoteView(q, c, { signed, depositSection, sent: req.query.changes === 'sent', preview: !!currentUser(req) && req.query.collect !== '1', business: !!currentUser(req), booked: req.query.survey === 'booked' }));
 });
 // ---------- the client's quote page, laid out like the client hub: the hub's menu on the left (behind Menu on phones),
 // the quote in the middle and what to do next on the right (on top on phones, where the quote folds away under Hide Quote) ----------
@@ -3521,7 +3541,7 @@ const QV_CSS = `.qv-biz{position:sticky;top:0;z-index:40;display:flex;align-item
  .qv-n{padding:12px 12px 12px 0;border-bottom:1px solid #d5dbdf;font-size:15px}.qv-n+.qv-n{border-left:1px solid #d5dbdf}.qv-l{display:block;font-weight:700;text-transform:uppercase;font-size:14px;margin-bottom:6px}
  .qv-tot{display:block;margin-top:36px}.qv-tot>div:first-child{display:none}.qv-tot>div:last-child{border:0}.qv-row{padding:14px 0;font-size:15px}
  .qv-pdf-m{display:flex;margin-top:24px}}`;
-function quoteView(q, c, { signed, depositSection, sent, preview, business }) {
+function quoteView(q, c, { signed, depositSection, sent, preview, business, booked }) {
   const co = db.company; const brand = accentColor() || brandLib.siteColor('--brand') || DEFAULT_BUTTON; // the same color as the client hub
   const hub = tenancy.has('clientPortal') && c && c.portalToken ? `/client-portal?c=${encodeURIComponent(c.portalToken)}` : '';
   const logo = co.logo ? `<img src="${esc(co.logo)}" alt="${esc(co.name)}">` : `<div class="qv-mono">${esc((co.name || '?').split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase())}</div>`;
@@ -3531,14 +3551,15 @@ function quoteView(q, c, { signed, depositSection, sent, preview, business }) {
   const side = hub ? `<aside class="qv-side" id="qvMenu"><div class="qv-brand">${logo}</div><div class="qv-co">${esc(co.name)}</div>${business ? `<span class="qv-new" style="opacity:.5;cursor:not-allowed" title="Only your client can send a request">${qvIcon('plus', 18)} ${tx('New Request')}</span>` : `<a class="qv-new" href="${hub}#new-request">${qvIcon('plus', 18)} ${tx('New Request')}</a>`}<nav aria-label="${tx('Client hub')}">${nav}</nav></aside>` : '';
   const top = `<header class="qv-top">${hub ? `<button type="button" class="qv-burger" aria-expanded="false" aria-controls="qvMenu" onclick="var o=document.getElementById('qvMenu').classList.toggle('open');this.setAttribute('aria-expanded',o)">${qvIcon('menu', 30)}${tx('Menu')}</button>` : '<span></span>'}${logo}</header>`;
   const est = estStage(q); // Estimate first: no signature, deposit or payment until they approve it
-  const open = q.status === 'sent' || q.status === 'draft'; const chg = open && q.changesRequestedAt && (q.changeRequests || []).length && !(q.lastSentAt > q.changesRequestedAt) && !(q.changesDoneAt > q.changesRequestedAt); // gone once the business sends it again or marks it handled
-  const [label, tone] = chg ? [tx('Changes requested'), 'chg'] : (([l, t]) => [tx(l), t])(QV_STATUS[q.status] || [q.status, 'grey']);
+  const svy = svyStage(q); const word = est || svy; // Site survey: the estimate is approved and they book the visit; still an estimate until the quote is sent
+  const open = !svy && (q.status === 'sent' || q.status === 'draft'); const chg = open && q.changesRequestedAt && (q.changeRequests || []).length && !(q.lastSentAt > q.changesRequestedAt) && !(q.changesDoneAt > q.changesRequestedAt); // gone once the business sends it again or marks it handled
+  const [label, tone] = svy ? [svyTask(q) ? tx('Site survey booked') : tx('Book your site survey'), 'wait'] : chg ? [tx('Changes requested'), 'chg'] : (([l, t]) => [tx(l), t])(QV_STATUS[q.status] || [q.status, 'grey']);
   const addr = q.address || (c && c.address) || '';
   const taxName = Number(q.taxRate) === Number(co.taxRate) && co.taxName ? co.taxName : tx('Tax');
   const row = (l, v) => `<div class="qv-row"><span>${l}</span><span>${v}</span></div>`;
   const totalsOf = (d) => row(tx('Subtotal'), money(d.subtotal)) + (d.discount > 0 ? row(esc(discLabel(d)), '−' + money(d.discount)) : '')
     + (Number(d.taxRate) ? row(`${esc(taxName)} (${d.taxRate}%)`, money(d.tax)) : '') + row(tx('Total'), money(d.total))
-    + (!est && d.depositFee > 0 ? row(`${tx('Deposit')}${d.depositType === 'percent' ? ` (${d.depositValue}%)` : ''}`, money(d.depositFee)) : '');
+    + (!word && d.depositFee > 0 ? row(`${tx('Deposit')}${d.depositType === 'percent' ? ` (${d.depositValue}%)` : ''}`, money(d.depositFee)) : '');
   const itemsOf = (d) => (d.items || []).map((i) => `<div class="qv-it${i.sub ? ' sub' : ''}"><div class="qv-it-d"><strong>${esc(i.desc)}</strong>${i.details ? `<p>${esc(i.details)}</p>` : ''}</div>
 ${heading(i) ? '<div class="qv-n"></div><div class="qv-n"></div><div class="qv-n"></div>' : included(i) ? `<div class="qv-n"></div><div class="qv-n"></div><div class="qv-n"><span class="qv-l">${tx('Total')}</span>${tx('Included')}</div>` : `<div class="qv-n"><span class="qv-l">${tx('Qty.')}</span>${esc(String(i.qty))}</div><div class="qv-n"><span class="qv-l">${tx('Unit price')}</span>${money(i.price)}</div><div class="qv-n"><span class="qv-l">${tx('Total')}</span>${money(i.qty * i.price)}</div>`}</div>`).join('');
   // Good / Better / Best: each option with its own items and totals until one is chosen; then only that one
@@ -3550,7 +3571,7 @@ ${heading(i) ? '<div class="qv-n"></div><div class="qv-n"></div><div class="qv-n
   const depositNote = est ? `<div class="qv-note"><strong>${tx('Nothing to sign or pay yet.')}</strong> ${q.depositFee > 0 ? tx('When you approve this estimate, it becomes your quote to sign, with a deposit of {what}.', { what: depWhat }) : tx('When you approve this estimate, it becomes your quote to sign.')}</div>`
     : open && q.depositFee > 0 ? `<div class="qv-note">${q.depositPaidAt ? `<strong>${tx('Deposit paid: {amount}.', { amount: money(q.depositPaidAmount ?? q.depositFee) })}</strong> ${tx('This quote was updated. After you approve, you’ll sign it again.')}` : `<strong>${tx('Deposit: {what}.', { what: depWhat })}</strong> ${tx('After you approve, you’ll sign the quote and pay this deposit before work begins.')}`}</div>` : '';
   const payDep = (d) => !est && d.depositFee > 0 && !q.depositPaidAt; // a deposit still to pay: the Approve button says so
-  const actions = open ? `${sent ? `<div class="qv-msg" role="status">${(est ? tx('Thanks! We got your changes and will send you an updated estimate.') : tx('Thanks! We got your changes and will send you an updated quote.'))}</div>` : ''}
+  const actions = svy ? surveyBox(q, booked) : open ? `${sent ? `<div class="qv-msg" role="status">${(est ? tx('Thanks! We got your changes and will send you an updated estimate.') : tx('Thanks! We got your changes and will send you an updated quote.'))}</div>` : ''}
 ${many ? `<div class="qv-note"><strong>${tx('Choose an option to approve.')}</strong></div>${parts.map((p) => `<form method="post" action="/p/quote/${esc(q.token)}/respond"><input type="hidden" name="opt" value="${esc(p.opt.id)}"><button class="qv-btn${p.recommended ? ' primary' : ''} qv-obtn" name="r" value="approved">${payDep(p.doc) ? tx('Approve {name} and pay deposit', { name: esc(p.opt.name) }) : tx('Approve {name}', { name: esc(p.opt.name) })} · ${money(p.doc.total)}</button></form>`).join('')}`
   : `<form method="post" action="/p/quote/${esc(q.token)}/respond"><button class="qv-btn primary" name="r" value="approved">${est ? tx('Approve estimate') : payDep(q) ? tx('Approve and pay deposit') : tx('Approve')}</button></form>`}
 <details class="qv-chg"><summary class="qv-btn">${tx('Request Changes')}</summary><form method="post" action="/p/quote/${esc(q.token)}/changes">
@@ -3558,11 +3579,11 @@ ${many ? `<div class="qv-note"><strong>${tx('Choose an option to approve.')}</st
 ${chg ? `<div class="qv-note">${tx('You asked for changes on {date}:', { date: esc(niceDate(q.changesRequestedAt.slice(0, 10))) })} “${esc(q.changeRequests[q.changeRequests.length - 1].text)}”</div>` : ''}${depositNote}
 <form method="post" action="/p/quote/${esc(q.token)}/respond" onsubmit="return confirm(this.dataset.ask)" data-ask="${esc(est ? tx('Decline this estimate?') : tx('Decline this quote?'))}" style="display:flex;justify-content:center"><button class="qv-link" name="r" value="declined">${est ? tx('Decline this estimate') : tx('Decline this quote')}</button></form>` : '';
   const act = preview && (actions + depositSection).trim() ? `<div class="qv-preview">${PREVIEW_NOTE}</div>${previewOff(actions + depositSection, 'display:flex;flex-direction:column;gap:16px')}${signed}` : actions + signed + depositSection; const pdf = `/p/quote/${esc(q.token)}/pdf`;
-  return `<!doctype html><html lang="${i18n.current()}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${est ? tx('Estimate') : tx('Quote')} ${esc(q.number)} · ${esc(co.name)}</title><link rel="icon" href="/favicon.ico">
-<style>:root{--brand:${esc(brand)}}${QV_CSS}</style></head><body${preview ? ' class="qv-is-biz"' : ''}>${preview ? `<div class="qv-biz"><a href="/quotes/view?id=${esc(q.id)}" onclick="if(history.length>1&&document.referrer.indexOf(location.origin)===0){history.back();return false}">${qvIcon('back', 18)} Back</a><span>Viewing as your client</span></div>` : ''}<div class="qv">${side}<div class="qv-wrap">${top}<main class="qv-main">
+  return `<!doctype html><html lang="${i18n.current()}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${word ? tx('Estimate') : tx('Quote')} ${esc(q.number)} · ${esc(co.name)}</title><link rel="icon" href="/favicon.ico">
+<style>:root{--brand:${esc(brand)}}${QV_CSS}${svy ? SV_CSS : ''}</style></head><body${preview ? ' class="qv-is-biz"' : ''}>${preview ? `<div class="qv-biz"><a href="/quotes/view?id=${esc(q.id)}" onclick="if(history.length>1&&document.referrer.indexOf(location.origin)===0){history.back();return false}">${qvIcon('back', 18)} Back</a><span>Viewing as your client</span></div>` : ''}<div class="qv">${side}<div class="qv-wrap">${top}<main class="qv-main">
 <div class="qv-grid"><div class="qv-docwrap"><div class="qv-bar">${hub ? `<a class="qv-tb" href="${hub}#estimates">${qvIcon('back', 18)} ${tx('Back')}</a>` : '<span></span>'}<a class="qv-tb" href="${pdf}">${tx('Download PDF')}</a></div>
-<details class="qv-doc" open><summary><span><span class="qv-hide">${est ? tx('Hide Estimate') : tx('Hide Quote')}</span><span class="qv-show">${est ? tx('Show Estimate') : tx('Show Quote')}</span></span>${qvIcon('chev', 22)}</summary><div class="qv-body">
-<div class="qv-hd"><div class="qv-hd-l"><div class="qv-no"><span>${est ? tx('Estimate #{number}', { number: esc(q.number) }) : tx('Quote #{number}', { number: esc(q.number) })}</span><span class="qv-pill ${tone}">${esc(label)}</span></div>
+<details class="qv-doc" open><summary><span><span class="qv-hide">${word ? tx('Hide Estimate') : tx('Hide Quote')}</span><span class="qv-show">${word ? tx('Show Estimate') : tx('Show Quote')}</span></span>${qvIcon('chev', 22)}</summary><div class="qv-body">
+<div class="qv-hd"><div class="qv-hd-l"><div class="qv-no"><span>${word ? tx('Estimate #{number}', { number: esc(q.number) }) : tx('Quote #{number}', { number: esc(q.number) })}</span><span class="qv-pill ${tone}">${esc(label)}</span></div>
 <div class="qv-who">${esc((c && c.name) || '')}</div>${addr ? `<div>${esc(addr)}</div>` : ''}${c && c.phone ? `<a class="qv-ph" href="tel:${esc(c.phone)}">${esc(c.phone)}</a>` : ''}</div>
 <div class="qv-hd-r"><span>${tx('Sent on')}</span><span>${esc(niceDate(q.sentAt || String(q.createdAt || '').slice(0, 10)))}</span></div></div>
 ${many ? `<p class="qv-pick">${tx('{n} options: choose the one that suits you.', { n: parts.length })}</p>` : ''}${body}
@@ -3614,6 +3635,7 @@ function tellBusinessQuote(q, status, est = false) { // est: the client answered
   if (!db.company.email) return;
   const what = `${word} ${q.number}${q.title ? ` (${q.title})` : ''}${status === 'approved' ? picked : ''}`;
   const next = status === 'declined' ? 'You can follow up with them, or edit the quote and send it again.'
+    : status === 'approved' && est && q.survey ? 'Next they book a site survey on the estimate page. After the visit, update the quote and send it.'
     : status === 'approved' ? `${est ? 'It’s now their quote, on the same page. ' : ''}They’ll sign it next${q.depositFee > 0 ? `, then pay the ${money(q.depositFee)} deposit` : ''}.`
       : q.depositFee > 0 ? `Next they pay the ${money(q.depositFee)} deposit.` : 'It’s ready to schedule as a job.';
   sendTemplate('quoteStatus', db.company.email, { client: c ? c.name : 'A client', status, what, total: money(q.total), next, business: db.company.name, account_url: baseUrl() }).then((sent) => {
@@ -3886,11 +3908,176 @@ app.post('/api/quotes/:id/changes-done', (req, res) => {
 app.post('/p/quote/:token/respond', (req, res) => {
   const q = db.quotes.find((x) => x.token === req.params.token);
   if (!q) return res.status(404).send('Not found');
-  if (['sent', 'draft'].includes(q.status)) {
+  if (['sent', 'draft'].includes(q.status) && !svyStage(q)) { // waiting on the site survey: nothing to approve until the quote is sent
     const approve = req.body.r !== 'declined'; const pick = pickOption(q, req.body.opt); if (approve && pick === false) return res.redirect(`/p/quote/${q.token}`); // each option has its own Approve button
     const est = estStage(q); // approving the estimate makes it the quote, approved, to sign next
+    if (approve && est && q.survey) { // Site survey: they book the visit next; the quote comes after it
+      q.estimateApprovedAt = iso(new Date()); q.respondedAt = q.estimateApprovedAt; if (pick) { q.chosenOption = pick; computeTotals(q); } save(); tellBusinessQuote(q, 'approved', true);
+      return res.redirect(`/p/quote/${q.token}`);
+    }
     q.status = approve ? 'approved' : 'declined'; q.respondedAt = iso(new Date()); if (approve && est) q.estimateApprovedAt = q.respondedAt; if (approve && pick) { q.chosenOption = pick; computeTotals(q); } save(); tellBusinessQuote(q, q.status, est);
   }
+  res.redirect(`/p/quote/${q.token}`);
+});
+// ---------- Site survey booking (like Calendly): once the client approves an estimate that has a site survey, they pick who they'd like to meet
+// (an owner, admin or manager the business takes surveys with), a day and a free time. It goes on the calendar as a task for that person. ----------
+const SVY_DEFAULTS = { minutes: 60, buffer: 15, notice: 24, ahead: 30, step: 30, staffIds: null }; // staffIds null: everyone who can take them
+const SVY_PICK = { minutes: [30, 45, 60, 90, 120, 180], buffer: [0, 15, 30, 45, 60], notice: [0, 2, 4, 12, 24, 48, 72], ahead: [7, 14, 30, 60, 90], step: [15, 30, 60] };
+const SVY_ROLES = ['owner', 'admin', 'manager'];
+const svySettings = () => ({ ...SVY_DEFAULTS, ...(db.company.survey || {}) });
+const svyMin = (t) => { const [h, m] = String(t || '0:0').split(':').map(Number); return h * 60 + (m || 0); };
+const svyHm = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+const svyYmd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; // the business's own day
+const svyDay = (date) => new Date(date + 'T12:00:00').toLocaleDateString(i18n.locale(), { weekday: 'long', month: 'long', day: 'numeric' });
+const svyTask = (q) => (q.surveyTaskId && (db.tasks || []).find((t) => t.id === q.surveyTaskId)) || null;
+const svyStaff = (t) => (db.staff || []).find((s) => s.id === ((t && t.staffIds) || [])[0]) || null;
+// who can take site surveys: active team members whose login is an owner, admin or manager; surveyors() are the ones App Settings has on
+const surveyEligible = () => (db.staff || []).filter((s) => s.status !== 'deactivated' && (() => { const u = (db.users || []).find((x) => x.staffId === s.id) || (db.users || []).find((x) => x.email && x.email === normEmail(s.email)); return !!u && SVY_ROLES.includes(u.role); })());
+const surveyors = () => { const S = svySettings(); return surveyEligible().filter((s) => !Array.isArray(S.staffIds) || S.staffIds.includes(s.id)); };
+const surveyPeople = () => { const on = new Set(surveyors().map((s) => s.id)); return surveyEligible().map((s) => ({ id: s.id, name: s.name, on: on.has(s.id) })); };
+function cleanSurvey(b) {
+  const out = svySettings();
+  for (const [k, ok] of Object.entries(SVY_PICK)) if (k in b) { const n = Number(b[k]); if (ok.includes(n)) out[k] = n; }
+  if ('staffIds' in b) out.staffIds = Array.isArray(b.staffIds) ? b.staffIds.filter((id) => surveyEligible().some((s) => s.id === id)) : null;
+  return out;
+}
+// a team member's working hours that day (Team → hours; weekdays 9 to 5 if they've never been set), or null on a day off
+function svyHours(s, date) {
+  const k = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][new Date(date + 'T12:00:00').getDay()];
+  const h = (s.hours || {})[k] || { on: !['sun', 'sat'].includes(k), start: '09:00', end: '17:00' }; return h.on ? h : null;
+}
+// what already fills their day: their jobs and tasks, the business's timed events, and approved time off (minutes from midnight)
+function svyBusy(staffId, date, skipTaskId) {
+  const out = []; const add = (a, b) => out.push([svyMin(a), Math.max(svyMin(b), svyMin(a) + 15)]);
+  for (const j of db.jobs) if (j.date === date && j.status !== 'cancelled' && (j.staffIds || []).includes(staffId) && !j.anytime && j.startTime) add(j.startTime, j.endTime || j.startTime);
+  for (const t of db.tasks || []) if (t.id !== skipTaskId && t.date === date && (t.staffIds || []).includes(staffId) && !t.anytime && t.startTime) add(t.startTime, t.endTime || t.startTime);
+  for (const e of db.events || []) if (e.date === date && !e.anytime && e.startTime) add(e.startTime, e.endTime || e.startTime);
+  for (const r of db.timeOff || []) if (r.staffId === staffId && r.status === 'approved' && r.from <= date && r.to >= date) { if (r.start && r.end) add(r.start, r.end); else out.push([0, 1440]); }
+  return out;
+}
+// the free start times, day by day: inside their hours, clear of what's booked (with the buffer either side), after the minimum notice
+function surveySlots(staffId, skipTaskId) {
+  const s = (db.staff || []).find((x) => x.id === staffId); if (!s) return [];
+  const S = svySettings(); const now = new Date(); const earliest = now.getTime() + S.notice * 3600e3; const days = [];
+  for (let i = 0; i <= S.ahead; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i); const date = svyYmd(d); const h = svyHours(s, date); if (!h) continue;
+    const busy = svyBusy(staffId, date, skipTaskId); const times = [];
+    for (let m = Math.ceil(svyMin(h.start) / S.step) * S.step; m + S.minutes <= svyMin(h.end); m += S.step) {
+      if (new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, m).getTime() < earliest) continue;
+      if (busy.some(([a, b]) => m < b + S.buffer && m + S.minutes + S.buffer > a)) continue;
+      times.push(svyHm(m));
+    }
+    if (times.length) days.push({ date, times });
+  }
+  return days;
+}
+// the booking on the calendar: a task for that person with the client, the address and the quote; booking again moves it
+function bookSurvey(q, s, date, time) {
+  const c = findClient(q.clientId); const S = svySettings(); let t = svyTask(q);
+  const fields = { title: `Site survey: ${c ? c.name : 'client'}`, date, startTime: time, endTime: svyHm(svyMin(time) + S.minutes), anytime: false, staffIds: [s.id], clientId: q.clientId,
+    address: q.address || (c && c.address) || '', propertyId: q.propertyId || '', description: `Site survey for quote ${q.number}${q.title ? ` (${q.title})` : ''}, booked by the client.`, survey: { quoteId: q.id, bookedAt: new Date().toISOString() }, remindedAt: null };
+  if (t) Object.assign(t, fields); else { t = { id: uid(), createdAt: iso(new Date()), done: false, ...fields }; db.tasks = db.tasks || []; db.tasks.push(t); }
+  q.surveyTaskId = t.id; return t;
+}
+// the client's email: booked (or moved) and the reminder a day ahead, in their language
+function surveyEmail(t, what) {
+  const q = db.quotes.find((x) => x.id === (t.survey || {}).quoteId); const c = q && findClient(q.clientId); if (!c || !c.email) return;
+  const s = svyStaff(t);
+  inClientLang(c.id, () => {
+    const m = renderEmail(what === 'reminder' ? 'surveyReminder' : 'surveyBooked', { client_name: c.name || '', company_name: db.company.name, date: svyDay(t.date), time: pushTime(t.startTime), staff_name: s ? s.name : db.company.name, duration: tx('{n} minutes', { n: svyMin(t.endTime) - svyMin(t.startTime) }), address: t.address || '', link: quoteLink(q) });
+    return notify({ clientId: c.id, channel: 'email', kind: 'survey', refId: q.id, refNumber: q.number, subject: m.subject, body: m.body, html: m.html });
+  }).then(() => save()).catch(() => {});
+}
+// the business hears about it: a push, Slack, and an email to the business and to the person taking the survey
+function tellBusinessSurvey(q, t, what) {
+  const c = findClient(q.clientId); const who = c ? c.name : 'A client'; const s = svyStaff(t); const when = `${niceDate(t.date)} at ${pushTime(t.startTime)}`;
+  const title = { booked: 'Site survey booked', moved: 'Site survey moved', cancelled: 'Site survey cancelled' }[what];
+  const body = what === 'cancelled' ? `${who} cancelled the site survey on ${when} (quote ${q.number})` : `${who} ${what === 'moved' ? 'moved the site survey to' : 'booked a site survey for'} ${when}${s ? ` with ${s.name}` : ''} (quote ${q.number})`;
+  const url = `/quotes/view?id=${q.id}`;
+  pushTo(usersWhoCan('quotes'), 'quoteApproved', { title, body, url });
+  slackSend('quoteApproved', `*${title}:* ${slack.esc(body)}`, { label: 'Open quote', url: baseUrl() + url });
+  const text = `${body}.\n\n${what === 'cancelled' ? 'They can book another time from the estimate page.' : 'It’s on the calendar. After the visit, update the quote and send it.'}\n\n${baseUrl()}${url}`;
+  for (const to of new Set([db.company.email, s && s.email].filter(Boolean))) {
+    sendEmail(to, `${title}: ${who}`, text).then((sent) => { db.notifications.unshift({ id: uid(), at: new Date().toISOString(), clientId: q.clientId, clientName: c ? c.name : '', channel: 'email', kind: 'quote-status', refId: q.id, refNumber: q.number, to, subject: `${title}: ${who}`, body: text, status: sent.status, detail: sent.detail }); save(); }).catch(() => {});
+  }
+}
+// a day ahead, unless it was booked less than a day and a half before (the booking email is reminder enough)
+function surveyRemindersAll() {
+  for (const tn of tenancy.platform().tenants) {
+    if (tn.status !== 'active') continue;
+    tenancy.run(tn, () => {
+      const now = Date.now(); let changed = false;
+      for (const k of db.tasks || []) {
+        if (!k.survey || k.remindedAt || k.done || !k.date || !k.startTime) continue;
+        const at = new Date(`${k.date}T${k.startTime}:00`).getTime(); const booked = Date.parse(k.survey.bookedAt || k.createdAt || 0) || 0;
+        if (at > now && at - now <= 24 * 3600e3 && at - booked > 36 * 3600e3) { k.remindedAt = new Date().toISOString(); changed = true; surveyEmail(k, 'reminder'); }
+      }
+      if (changed) save();
+    });
+  }
+}
+const SV_CSS = `.sv-title,.sv-done h3{margin:0;font-size:17px}.sv{display:flex;flex-direction:column;gap:12px;margin:0}.sv-h{margin:0;font-weight:600;font-size:14px}
+.sv-who{display:flex;flex-direction:column;gap:8px}.sv-p{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid #d7d3cc;border-radius:8px;background:#fff;font:inherit;font-size:14px;font-weight:600;color:#032b3a;cursor:pointer;text-align:left}.sv-p.on{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand)}
+.sv-av{width:32px;height:32px;border-radius:50%;object-fit:cover;flex:none;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px}
+.sv-mh{display:flex;align-items:center;justify-content:space-between}.sv-nav{width:32px;height:32px;border:1px solid #d7d3cc;border-radius:50%;background:#fff;color:#032b3a;font-size:18px;line-height:1;cursor:pointer}.sv-nav:disabled{opacity:.35;cursor:default}
+.sv-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center}.sv-wd{font-size:12px;color:#5b6b70;padding:4px 0}
+.sv-d{aspect-ratio:1;border:0;border-radius:50%;background:none;font:inherit;font-size:14px;color:#9aa5a9}.sv-d.ok{background:color-mix(in srgb,var(--brand) 12%,#fff);color:var(--brand);font-weight:700;cursor:pointer}.sv-d.on{background:var(--brand);color:#fff}
+.sv-tl{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px}.sv-t{height:40px;border:1px solid var(--brand);border-radius:8px;background:#fff;color:var(--brand);font:inherit;font-size:14px;font-weight:600;cursor:pointer}.sv-t.on{background:var(--brand);color:#fff}
+.sv [hidden]{display:none!important}.sv button:focus-visible{outline:2px solid var(--brand);outline-offset:2px}.sv-done p{margin:6px 0 0;font-size:14px;line-height:1.5}`;
+// the right-hand box on the estimate once it's approved: book the survey, or the booking with Change the time and Cancel
+function surveyBox(q, booked) {
+  const t = svyTask(q); const S = svySettings(); const c = findClient(q.clientId); const addr = q.address || (c && c.address) || ''; const people = surveyors();
+  const now = new Date(); const past = t && `${t.date} ${t.startTime}` <= `${svyYmd(now)} ${svyHm(now.getHours() * 60 + now.getMinutes())}`;
+  const av = (s) => (s.photo ? `<img class="sv-av" src="${esc(s.photo)}" alt="">` : `<span class="sv-av">${esc((s.name || '?').split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase())}</span>`);
+  const T = { book: tx('Book {when}'), loading: tx('Finding open times…') };
+  const picker = people.length ? `<form method="post" action="/p/quote/${esc(q.token)}/survey" class="sv" data-slots="/p/quote/${esc(q.token)}/survey/slots" data-lang="${esc(i18n.locale())}"><input type="hidden" name="staff"><input type="hidden" name="date"><input type="hidden" name="time">
+<div class="sv-who"${people.length === 1 ? ' hidden' : ''}><p class="sv-h">${tx('Who would you like to meet?')}</p>${people.map((s) => `<button type="button" class="sv-p" data-id="${esc(s.id)}">${av(s)}<span>${esc(s.name)}</span></button>`).join('')}</div>
+<div class="sv-cal" hidden><p class="sv-h">${tx('Choose a day')}</p><div class="sv-mh"><button type="button" class="sv-nav" data-d="-1" aria-label="${tx('Previous month')}">‹</button><strong class="sv-m"></strong><button type="button" class="sv-nav" data-d="1" aria-label="${tx('Next month')}">›</button></div><div class="sv-grid"></div>
+<p class="qv-note sv-none" hidden>${tx('No open times in the next few weeks. Please contact {name} at {contact}.', { name: esc(db.company.name), contact: esc(db.company.phone || db.company.email || '') })}</p></div>
+<div class="sv-times" hidden><p class="sv-h sv-dl"></p><div class="sv-tl"></div></div><button class="qv-btn primary sv-go" hidden></button>
+<p class="qv-note">${tx('{n} minutes', { n: S.minutes })}${addr ? ` · ${esc(addr)}` : ''}</p></form>
+<script>(function(){var f=document.querySelector('.sv');if(!f)return;var T=${JSON.stringify(T).replace(/</g, '\\u003c')},L=f.dataset.lang,data={},month=null,day=null;function $(s){return f.querySelector(s)}
+function pad(n){return String(n).padStart(2,'0')}
+function draw(){var g=$('.sv-grid');if(!month){g.innerHTML='';$('.sv-m').textContent='';return}var y=+month.slice(0,4),m=+month.slice(5,7)-1,d1=new Date(y,m,1),h='',i;$('.sv-m').textContent=d1.toLocaleDateString(L,{month:'long',year:'numeric'});
+for(i=0;i<7;i++)h+='<span class="sv-wd">'+new Date(2026,10,1+i).toLocaleDateString(L,{weekday:'narrow'})+'</span>';for(i=0;i<d1.getDay();i++)h+='<span></span>';
+var n=new Date(y,m+1,0).getDate();for(i=1;i<=n;i++){var ds=month+'-'+pad(i),ok=!!data[ds];h+='<button type="button" class="sv-d'+(ok?' ok':'')+(ds===day?' on':'')+'"'+(ok?' data-day="'+ds+'"':' disabled')+'>'+i+'</button>'}g.innerHTML=h;
+var k=Object.keys(data).sort();$('[data-d="-1"]').disabled=!k.length||k[0].slice(0,7)>=month;$('[data-d="1"]').disabled=!k.length||k[k.length-1].slice(0,7)<=month}
+function selDay(ds){day=ds;f.date.value=ds;f.time.value='';draw();$('.sv-times').hidden=false;$('.sv-dl').textContent=new Date(ds+'T12:00:00').toLocaleDateString(L,{weekday:'long',month:'long',day:'numeric'});
+$('.sv-tl').innerHTML=data[ds].map(function(t){return '<button type="button" class="sv-t" data-t="'+t.t+'">'+t.l+'</button>'}).join('');$('.sv-go').hidden=true}
+function pick(id){f.staff.value=id;f.querySelectorAll('.sv-p').forEach(function(b){b.classList.toggle('on',b.dataset.id===id)});$('.sv-cal').hidden=false;$('.sv-times').hidden=true;$('.sv-go').hidden=true;$('.sv-none').hidden=true;month=null;day=null;data={};draw();$('.sv-grid').innerHTML='<p class="qv-note" style="grid-column:1/-1">'+T.loading+'</p>';
+fetch(f.dataset.slots+'?staff='+encodeURIComponent(id)).then(function(r){return r.json()}).then(function(d){(d.days||[]).forEach(function(x){data[x.date]=x.times});var first=(d.days||[])[0];month=first?first.date.slice(0,7):null;$('.sv-none').hidden=!!first;draw();if(first)selDay(first.date)})}
+f.addEventListener('click',function(e){var b=e.target.closest('button');if(!b||b.type==='submit')return;
+if(b.dataset.id)pick(b.dataset.id);else if(b.dataset.day)selDay(b.dataset.day);
+else if(b.dataset.t){f.time.value=b.dataset.t;f.querySelectorAll('.sv-t').forEach(function(x){x.classList.toggle('on',x===b)});var g=$('.sv-go');g.hidden=false;g.textContent=T.book.replace('{when}',$('.sv-dl').textContent+', '+b.textContent)}
+else if(b.dataset.d){var y=+month.slice(0,4),m=+month.slice(5,7)-1+(+b.dataset.d),dd=new Date(y,m,1);month=dd.getFullYear()+'-'+pad(dd.getMonth()+1);draw()}});
+var ps=f.querySelectorAll('.sv-p');if(ps.length===1)pick(ps[0].dataset.id)})();</script>`
+    : `<p class="qv-note">${tx('Please contact {name} at {contact} to set up the site survey.', { name: esc(db.company.name), contact: esc(db.company.phone || db.company.email || '') })}</p>`;
+  if (!t) return `<h3 class="sv-title">${tx('Book your site survey')}</h3><p class="qv-note" style="margin:0">${tx('You approved the estimate. Next, choose a time for us to visit and check the details. Your quote comes after the visit.')}</p>${picker}`;
+  const s = svyStaff(t);
+  return `${booked ? `<div class="qv-msg" role="status">${tx('Your site survey is booked. We sent the details to your email.')}</div>` : ''}<div class="sv-done"><h3>${tx('Your site survey')}</h3>
+<p><strong>${esc(svyDay(t.date))} · ${esc(pushTime(t.startTime))}</strong><br>${s ? `${tx('With {name}', { name: esc(s.name) })} · ` : ''}${tx('{n} minutes', { n: svyMin(t.endTime) - svyMin(t.startTime) })}${t.address ? `<br>${esc(t.address)}` : ''}</p></div>
+<p class="qv-note" style="margin:0">${past ? tx('Thanks for meeting with us. We’re preparing your quote.') : tx('After the visit, we’ll send you the quote to approve and sign.')}</p>
+${past ? '' : `<details class="qv-chg"><summary class="qv-btn">${tx('Change the time')}</summary>${picker}</details>
+<form method="post" action="/p/quote/${esc(q.token)}/survey/cancel" onsubmit="return confirm(this.dataset.ask)" data-ask="${esc(tx('Cancel the site survey?'))}" style="display:flex;justify-content:center"><button class="qv-link">${tx('Cancel the site survey')}</button></form>`}`;
+}
+app.get('/p/quote/:token/survey/slots', (req, res) => {
+  const q = db.quotes.find((x) => x.token === req.params.token); if (!q || !svyStage(q)) return res.status(404).json({ error: 'Not found' });
+  const s = surveyors().find((x) => x.id === req.query.staff); if (!s) return res.json({ days: [] });
+  res.json({ days: surveySlots(s.id, q.surveyTaskId).map((d) => ({ date: d.date, times: d.times.map((t) => ({ t, l: pushTime(t) })) })) });
+});
+app.post('/p/quote/:token/survey', (req, res) => {
+  const q = db.quotes.find((x) => x.token === req.params.token); if (!q) return res.status(404).send('Not found');
+  if (!svyStage(q) || (currentUser(req) && req.query.collect !== '1')) return res.redirect(`/p/quote/${q.token}`); // the team's own preview can't book
+  const b = req.body || {}; const s = surveyors().find((x) => x.id === b.staff); const day = s && surveySlots(s.id, q.surveyTaskId).find((d) => d.date === b.date);
+  if (!day || !day.times.includes(b.time)) return res.status(409).send(shell(tx('That time isn’t open any more'), `<h1>${tx('That time isn’t open any more')}</h1><p>${tx('Please choose another time.')}</p><p><a href="/p/quote/${esc(q.token)}">${tx('Back to the estimate')}</a></p>`));
+  const moved = !!svyTask(q); const t = bookSurvey(q, s, b.date, b.time); save();
+  surveyEmail(t, 'booked'); tellBusinessSurvey(q, t, moved ? 'moved' : 'booked');
+  res.redirect(`/p/quote/${q.token}?survey=booked`);
+});
+app.post('/p/quote/:token/survey/cancel', (req, res) => {
+  const q = db.quotes.find((x) => x.token === req.params.token); if (!q) return res.status(404).send('Not found');
+  const t = svyStage(q) && !(currentUser(req) && req.query.collect !== '1') ? svyTask(q) : null;
+  if (t) { db.tasks = db.tasks.filter((x) => x.id !== t.id); q.surveyTaskId = null; save(); tellBusinessSurvey(q, t, 'cancelled'); }
   res.redirect(`/p/quote/${q.token}`);
 });
 app.post('/p/quote/:token/sign', (req, res) => {
@@ -3982,7 +4169,7 @@ app.get('/api/portal/:token', (req, res) => {
     reviewQuestions: tenancy.has('reviews') ? Object.fromEntries(REVIEW_MODULES.map((m) => [m, reviewQuestionsFor(m).map(({ id, text, type, required }) => ({ id, text, type, required }))])) : {},
     requests: (db.requests || []).filter((r) => r.clientId === c.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(requestForClient),
     jobs: db.jobs.filter((j) => j.clientId === c.id).sort((a, b) => b.date.localeCompare(a.date)).map(jobForClient),
-    quotes: db.quotes.filter((q) => q.clientId === c.id).map((q) => ({ ...forClient(q), link: quoteLink(q), stage: estStage(q) ? 'estimate' : 'quote' })), // stage: still an estimate (Estimate first), or the quote
+    quotes: db.quotes.filter((q) => q.clientId === c.id).map((q) => ({ ...forClient(q), link: quoteLink(q), stage: estDoc(q) ? 'estimate' : 'quote' })), // stage: still an estimate (Estimate first), or the quote
     invoices: db.invoices.filter((i) => i.clientId === c.id).map((i) => ({ ...forClient(withStatus(i)), link: invoiceLink(i) })),
   });
 });
@@ -6033,6 +6220,7 @@ setTimeout(() => bizAuto.runAll().catch((e) => console.error('automations:', e.m
 const jobPostsMonthly = () => { for (const t of tenancy.platform().tenants) if (t.status === 'active') tenancy.run(t, () => { try { jobPosts.monthlyReport(); } catch (e) { console.error('job posts:', e.message); } }); };
 setTimeout(jobPostsMonthly, 40e3); setInterval(jobPostsMonthly, 3600e3); // Every job markets itself: last month's results on the 1st
 setTimeout(billMemberships, 35e3); setInterval(billMemberships, 3600e3); // service plans: each billing period's invoice
+setTimeout(surveyRemindersAll, 55e3); setInterval(surveyRemindersAll, 15 * 60e3); // site survey reminders, a day ahead
 setTimeout(lateFeesAll, 50e3); setInterval(lateFeesAll, 3600e3); // late fees on past-due invoices (App Settings → Payments → Late fees)
 setTimeout(extendSeries, 25e3); setInterval(extendSeries, 3600e3); // recurring jobs: make visits as the months go by
 setTimeout(pushOverviews, 20e3); setInterval(pushOverviews, 15 * 60e3); // the morning's Today's work overview notifications

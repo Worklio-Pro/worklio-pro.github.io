@@ -271,7 +271,7 @@ table.mini th,table.mini td{padding:9px 8px;font-size:14px;vertical-align:middle
 .sw-row small{display:block;font-size:12px}
 .est-h{display:flex;align-items:center;gap:6px}.est-h h3{margin:0}.est-h .sw-row{margin-left:auto;padding:0;border-top:0}
 .est-i{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border:1px solid var(--muted);border-radius:50%;background:none;color:var(--muted);font:italic 700 11px/1 Georgia,serif;cursor:pointer}.est-i:hover,.est-i[aria-expanded=true]{border-color:var(--brand);color:var(--brand)}.est-i:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
-.est-info{margin:8px 0 0;font-size:13px;line-height:1.45}.mnew-f .est-c{margin:8px 0 16px}
+.est-info{margin:8px 0 0;font-size:13px;line-height:1.45}.est-svy{margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}.est-h .est-sh{font-size:14px}.est-svy-at{margin:6px 0 0;font-size:13px}.mnew-f .est-c{margin:8px 0 16px}
 .sw-row .sw{position:absolute;opacity:0;width:1px;height:1px}
 .sw-row i{flex-shrink:0;width:40px;height:22px;border-radius:99px;background:var(--switch-off);position:relative;transition:background .15s}
 .sw-row i::after{content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s}
@@ -289,6 +289,7 @@ table.mini th,table.mini td{padding:9px 8px;font-size:14px;vertical-align:middle
 .dot.q-draft,.cstatus.q-draft{color:var(--neutral-fg)}.cstatus.q-draft{background:var(--surface-2)}
 .dot.q-sent,.cstatus.q-sent{color:var(--warn-fg)}.cstatus.q-sent{background:var(--warn-bg)}.dot.q-sent{color:#d97706}
 .dot.q-estimate,.cstatus.q-estimate{color:var(--warn-fg)}.cstatus.q-estimate{background:var(--warn-bg)}.dot.q-estimate{color:#d97706}
+.dot.q-survey,.cstatus.q-survey{color:var(--info-fg)}.cstatus.q-survey{background:var(--info-bg)}.dot.q-survey{color:#2563eb}
 .dot.q-approved,.cstatus.q-approved{color:var(--ok-fg)}.cstatus.q-approved{background:var(--ok-bg)}.dot.q-approved{color:#16a34a}
 .dot.q-converted,.cstatus.q-converted{color:var(--info-fg)}.cstatus.q-converted{background:var(--info-bg)}.dot.q-converted{color:#2563eb}
 .dot.q-declined,.cstatus.q-declined{color:var(--bad-fg)}.cstatus.q-declined{background:var(--bad-bg)}.dot.q-declined{color:#dc2626}
