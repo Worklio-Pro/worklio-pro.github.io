@@ -2225,7 +2225,8 @@ function docPage(kind, isNew) {
   return {
     title: `${isNew ? 'New' : 'Edit'} ${kind}`,
     async render(main) {
-      if (isNew) return phoneMq.matches ? mobileNew(kind, main, { clientId: qp('client') }) : form(main, null, { clientId: qp('client') });
+      const copy = isNew && kind === 'quote' && qp('copy') ? quoteCopy(byId(D.quotes, qp('copy'))) : null; // Create Similar Quote: filled in, the client left to pick
+      if (isNew) return phoneMq.matches ? mobileNew(kind, main, { clientId: qp('client'), copy }) : form(main, copy, { clientId: qp('client') });
       const doc = byId(D[kind + 's'], qp('id'));
       if (!doc) { main.innerHTML = `<div class="card"><h1>${kind === 'quote' ? 'Quote' : 'Invoice'} not found</h1><p><a href="/${kind}s" data-link>Back to the list</a></p></div>`; return; }
       form(main, doc);
@@ -2443,7 +2444,7 @@ ${(d.items || []).length ? `<h3 class="mqo-ih">Line items</h3><p class="muted mq
 }
 // Estimate first: the client approves the price with no signature or deposit, then it becomes the quote to sign and pay (on the same page)
 const ESTIMATE_NOTE = 'The client approves the price first, with nothing to sign or pay. Then it becomes the quote to sign and pay the deposit.';
-const estOn = (d) => (d.id ? !!d.estimate : !!company.quoteEstimateFirst);
+const estOn = (d) => (d.id || 'estimate' in d ? !!d.estimate : !!company.quoteEstimateFirst); // a copy (Create Similar Quote) keeps the original's
 // Site survey (with Estimate): approving the estimate asks the client to book a visit; the quote is sent after it
 const SURVEY_NOTE = 'When the client approves the estimate, they book a site survey on the same page instead of getting the quote. After the visit, update the quote and send it. Who they can book, and when, is set in App Settings → General → Site surveys.';
 const qSvyStage = (q) => !!q.estimate && !!q.survey && !!q.estimateApprovedAt && !q.quoteSentAt && ['draft', 'sent'].includes(q.status);
@@ -2453,8 +2454,8 @@ const qSvyText = (q) => { const t = qSvyTask(q); const s = t && byId(D.staff, (t
   return q.quoteSentAt ? 'Done, quote sent' : t ? `${fmtDate(t.date)}, ${fmtTime(t.startTime)}${s ? ` with ${esc(s.name)}` : ''}` : !q.estimate ? 'Not booked' : q.estimateApprovedAt ? 'Waiting for the client to book' : 'Booked after the estimate is approved'; };
 // the title, an "i" that shows what the switch does, and the switch on the right of the same row (Estimate, and Site survey under it)
 const estInfoBtn = (id, what) => `<button type="button" class="est-i" aria-expanded="false" aria-controls="${id}" aria-label="What is ${what}?" title="What is this?" onclick="var p=document.getElementById(this.getAttribute('aria-controls'));p.hidden=!p.hidden;this.setAttribute('aria-expanded',!p.hidden)">i</button>`;
-const estCard = (d) => { const done = !!d.estimateApprovedAt;
-  return `<div class="qcard est-c"><div class="est-h"><h3>Estimate</h3>${estInfoBtn('estInfo', 'Estimate')}
+const estCard = (d, live) => { const done = !!d.estimateApprovedAt;
+  return `<div class="qcard est-c"${live ? ` data-est-live="${esc(d.id)}"` : ''}><div class="est-h"><h3>Estimate</h3>${estInfoBtn('estInfo', 'Estimate')}
 ${done ? '' : `<label class="sw-row"><input type="hidden" name="estimate" value="off"><input type="checkbox" class="sw" name="estimate" value="on" aria-label="Send as an estimate first" ${estOn(d) ? 'checked' : ''} onchange="this.closest('.est-c').querySelector('.est-svy').hidden=!this.checked"><i></i></label>`}</div>
 <p class="muted est-info" id="estInfo" hidden>${done ? `The client approved the estimate on ${fmtDate(d.estimateApprovedAt)}. ${d.survey ? 'Next is the site survey.' : 'It’s now the quote.'}` : `Turn on to send this quote as an estimate first. ${ESTIMATE_NOTE}`}</p>
 <div class="est-svy"${estOn(d) && (!done || d.survey) ? '' : ' hidden'}><div class="est-h"><h3 class="est-sh">Site survey</h3>${estInfoBtn('svyInfo', 'Site survey')}
@@ -2475,7 +2476,7 @@ function quoteForm(main, doc, preset) {
 <dt>Status</dt><dd><select name="status" aria-label="Status">${['draft', 'sent', 'approved', 'declined'].map((s) => `<option value="${s}" ${(d.status || 'draft') === s ? 'selected' : ''}>${Q_STATUS[s]}</option>`).join('')}</select></dd></dl></div>
 ${itemsCard(items, `${optRow({ label: 'Deposit', name: 'deposit', value: d.depositValue ?? d.depositFee, type: d.depositType, pctLabel: '% of total' })}<div class="dep-out muted"></div>${d.depositPaidAt ? `<div class="crow-line dep-credit"><span>Deposit collected <span class="muted">· ${fmtDate(d.depositPaidAt)}</span></span><span>−${money(depositPaid(d))}</span></div>` : ''}`, d)}
 <div class="qcard"><h2>Client message</h2><div class="ai-box"><textarea name="notes" rows="3" placeholder="A message to your client, shown on the quote">${esc(d.notes || '')}</textarea>${aiTextBar('quote', 'notes')}</div></div>
-${discCard('quote', d.id ? d.disclaimer || '' : company.quoteDisclaimer ?? DEFAULT_DISCLAIMER)}
+${discCard('quote', d.id || 'disclaimer' in d ? d.disclaimer || '' : company.quoteDisclaimer ?? DEFAULT_DISCLAIMER)}
 </div>
 <aside class="qside">${estCard(d)}<div class="qcard pay-c"><h3>Client payments</h3><p class="muted">How the client can pay this quote's deposit.</p>
 ${planHas('onlinePayments') ? switchRow('allowCard', 'Card payments', d.allowCard !== 'off' && cardReady(), cardReady() ? '' : cardHint(), !cardReady()) : ''}${achSw('quote', d)}
@@ -2573,7 +2574,8 @@ const docSide = (kind, d) => {
   const on = (k) => d[k] !== 'off';
   const pays = [planHas('onlinePayments') ? ['Card payments', on('allowCard') && cardReady()] : null, achOn(kind) ? ['Bank payments (ACH)', on('allowAch')] : null, planHas('zelle') ? ['Zelle', on('allowZelle') && !!company.zelleRecipient] : null, ...payAppsOn().map(([k, l]) => [l, on(k)]), kind === 'invoice' && partOn() ? ['Partial payments', d.allowPartial === 'on'] : null, kind === 'invoice' && lateFeesOn() ? ['Late fees', on('lateFee')] : null].filter(Boolean);
   const view = [['showQty', 'Quantities'], ['showUnit', 'Unit prices'], ['showLineTotals', 'Line item totals'], ['showAccountBalance', 'Account balance'], ['showLateStamp', 'Late stamp (if overdue)']].map(([k, l]) => [l, on(k)]);
-  return `<aside class="qside"><div class="qcard"><div class="qcard-h"><h2>Client payments</h2>${editBtn(kind, d, 'payments')}</div>${vopts(pays, 'No online payment options on your plan')}</div>
+  const est = kind === 'quote' && (d.estimate || d.estimateApprovedAt || (['draft', 'sent'].includes(d.status) && !quoteJob(d))); // the Estimate box: its switches save right away
+  return `<aside class="qside">${est ? estCard(d, true) : ''}<div class="qcard"><div class="qcard-h"><h2>Client payments</h2>${editBtn(kind, d, 'payments')}</div>${vopts(pays, 'No online payment options on your plan')}</div>
 ${kind === 'invoice' ? `<div class="qcard"><div class="qcard-h"><h2>Client view</h2>${editBtn(kind, d, 'clientView')}</div>${vopts(view)}</div>` : ''}
 ${textCard(kind, d, 'notes', 'Internal Notes', d.internalNotes, 'No internal notes. Clients never see these.')}${noteFilesCard(kind, d)}</aside>`;
 };
@@ -2650,13 +2652,23 @@ A.copyInvoice = async (x) => {
   toast(`Invoice ${saved.number} created`); return navigate('/invoices/view?id=' + saved.id);
 };
 A.markInvoiceSent = async (x) => { await api('PUT', '/api/invoices/' + x.id, { status: 'sent' }); toast('Invoice marked as awaiting payment'); return refresh(); };
-// Create Similar Quote: a new draft for the same client with the same title, line items, prices and messages
-A.copyQuote = async (x) => {
-  const q = byId(D.quotes, x.id);
-  const keep = ['clientId', 'title', 'items', 'taxRate', 'discountType', 'discountValue', 'discountName', 'depositType', 'depositValue', 'notes', 'disclaimer', 'internalNotes', 'allowCard', 'allowAch', 'allowZelle', 'allowVenmo', 'allowCashapp', 'allowPaypal'];
-  const saved = await api('POST', '/api/quotes', Object.fromEntries(keep.filter((k) => q[k] !== undefined).map((k) => [k, q[k]])));
-  toast(`Quote ${saved.number} created`); return navigate('/quotes/view?id=' + saved.id);
+// Create Similar Quote: the New quote form filled in with the same title, line items, options, prices, messages, payments and Estimate / Site survey;
+// the client is left empty to pick, and nothing is saved until Save
+const quoteCopy = (q) => {
+  if (!q) return null;
+  const keep = ['title', 'items', 'options', 'recommended', 'taxRate', 'discountType', 'discountValue', 'discountName', 'depositType', 'depositValue', 'notes', 'disclaimer', 'internalNotes', 'estimate', 'survey', 'allowCard', 'allowAch', 'allowZelle', 'allowVenmo', 'allowCashapp', 'allowPaypal'];
+  const c = JSON.parse(JSON.stringify(Object.fromEntries(keep.filter((k) => q[k] !== undefined).map((k) => [k, q[k]]))));
+  c.estimate = !!q.estimate; c.survey = c.estimate && !!q.survey; return c;
 };
+A.copyQuote = (x) => navigate('/quotes/new?copy=' + encodeURIComponent(x.id));
+// the quote page's Estimate box: turning Estimate or Site survey on or off saves it (Site survey only with Estimate)
+document.addEventListener('change', async (e) => {
+  const box = e.target.closest('[data-est-live]'); if (!box || !e.target.matches('input.sw')) return;
+  const est = $('input.sw[name=estimate]', box); const svy = $('input.sw[name=survey]', box); if (!est) return;
+  const body = { estimate: est.checked, survey: est.checked && !!(svy && svy.checked) };
+  try { await api('PUT', '/api/quotes/' + box.dataset.estLive, body); } catch (x) { toast(x.message, true); return refresh(); }
+  toast(!body.estimate ? 'It goes out as a quote' : body.survey ? 'It goes out as an estimate, then a site survey' : 'It goes out as an estimate first'); return refresh();
+});
 // Mark as Awaiting Response: back to Sent; if the client signed (and hasn't paid the deposit), they approve and sign again
 A.markQuoteSent = async (x) => {
   const q = byId(D.quotes, x.id);
@@ -3102,8 +3114,8 @@ function mobileNew(kind, main, preset) {
   if (client) onlyProp();
   main.innerHTML = `<div class="mdoc mnew"><div class="mn-top"><a href="/${kind}s" data-link class="mn-x" aria-label="Close">${X_ICO}</a><h1>New ${kind}</h1><span></span></div>
 <form class="mnew-f" novalidate><h2 class="mn-sh">Service for</h2><div class="mn-who"></div><h2 class="mn-sh">Overview</h2>
-${mField(kind === 'invoice' ? 'Subject' : 'Title', `<input name="${kind === 'invoice' ? 'subject' : 'title'}" maxlength="120" placeholder="${q ? 'e.g. Backyard cleanup' : job ? 'e.g. Streamer Install' : 'e.g. Camera System Install'}">`)}
-${job ? mField('Date', `<input type="date" name="date" value="${esc(preset.date || ymd(new Date()))}">`) + repeatCard({}, preset.date || ymd(new Date())) : ''}${q ? estCard({}) : ''}
+${mField(kind === 'invoice' ? 'Subject' : 'Title', `<input name="${kind === 'invoice' ? 'subject' : 'title'}" maxlength="120" placeholder="${q ? 'e.g. Backyard cleanup' : job ? 'e.g. Streamer Install' : 'e.g. Camera System Install'}" value="${esc((preset.copy || {}).title || '')}">`)}
+${job ? mField('Date', `<input type="date" name="date" value="${esc(preset.date || ymd(new Date()))}">`) + repeatCard({}, preset.date || ymd(new Date())) : ''}${q ? estCard(preset.copy || {}) : ''}
 <button class="btn ms-save">Save</button>${q && (planHas('snapQuote') || canDo('quotes')) ? '<button class="btn alt ms-snap" data-snap="1">Snap to quote: draft from photos</button>' : ''}<p class="muted mn-next">${job ? 'You’ll set the time and team next.' : 'You’ll add line items next.'}</p></form></div>`;
   const f = $('form', main); const who = $('.mn-who', f); if (job) wireRepeat(f);
   const draw = () => {
@@ -3157,9 +3169,10 @@ ${newOk ? `<div class="mn-row">${ic.contact}<div class="mn-stack"><input name="f
         const saved = await saveJobWithRepeat({}, { ...b, date: v('date'), startTime: '09:00', endTime: '11:00', status: 'scheduled', staffIds: [], ...where }, readRepeat(f), f); // with its Repeats settings
         return navigate('/jobs/edit?id=' + saved.id);
       }
-      const saved = await api('POST', `/api/${kind}s`, { ...b, ...where, items: [], disclaimer: q ? company.quoteDisclaimer ?? DEFAULT_DISCLAIMER : company.invoiceDisclaimer ?? '', ...(q ? {} : { paymentTerms: client.paymentTerms || '0', dueDate: ymd(addDays(new Date(), Number(client.paymentTerms) || 0)) }) });
+      const cp = q && preset.copy; // Create Similar Quote: the original's line items, prices and messages (the address and tax from this client's property)
+      const saved = await api('POST', `/api/${kind}s`, { items: [], disclaimer: q ? company.quoteDisclaimer ?? DEFAULT_DISCLAIMER : company.invoiceDisclaimer ?? '', ...(cp || {}), ...b, ...where, ...(q ? {} : { paymentTerms: client.paymentTerms || '0', dueDate: ymd(addDays(new Date(), Number(client.paymentTerms) || 0)) }) });
       await navigate(`/${kind}s/view?id=${saved.id}`);
-      A.mEdit({ kind, id: saved.id, sec: 'item', i: '' });
+      if (!cp) A.mEdit({ kind, id: saved.id, sec: 'item', i: '' });
     } catch (x) { toast(x.message, true); btn.disabled = false; }
   });
 }
