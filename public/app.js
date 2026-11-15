@@ -3493,6 +3493,7 @@ PAGES['/quotes'] = {
   title: 'Quotes',
   async render(main) {
     const v = quoteView; const day = qDay;
+    if (!v.picked) v.status = D.quotes.some(quoteWhy) ? 'action' : 'all'; // opens on Needs action, or All when nothing needs action
     const ago = (n) => ymd(addDays(new Date(), -n)); const tomorrow = ymd(addDays(new Date(), 1));
     const convOn = (q) => day((quoteJob(q) || {}).createdAt);
     const inWin = (d, from, to) => d && d >= from && d < to;
@@ -3536,7 +3537,7 @@ PAGES['/quotes'] = {
     cols = listCols('quotes', QCOLS);
     if (phoneMq.matches) return mobileList(main, { path: '/quotes', title: 'Quotes', plural: 'quotes', one: 'quote', list, q: v.q, status: v.status, statuses: [['action', 'Needs action'], ...order.map((s) => [s, Q_STATUS[s]])], date: (x) => x.createdAt,
       row: (x) => ({ name: cname(x), date: mDay(x.createdAt), amount: mAmt(x.total), title: x.title, label: quoteChg(x) ? 'Changes requested' : Q_STATUS[quoteStatus(x)], cls: 'q-' + quoteStatus(x), href: '/quotes/view?id=' + x.id }),
-      onStatus: (k) => { quoteView = { ...quoteView, status: k }; }, onQ: (t) => { quoteView.q = t; }, newAct: 'newQuote' });
+      onStatus: (k) => { quoteView = { ...quoteView, status: k, picked: true }; }, onQ: (t) => { quoteView.q = t; }, newAct: 'newQuote' });
     // the buttons on a row (shown on hover): what you'd do next with that quote
     const acts = (q) => { const b = (act, label, alt, cls = '') => `<button type="button" class="btn${alt ? ' alt' : ''}${cls}" data-act="${act}" data-id="${q.id}">${label}</button>`; const w = quoteWhy(q); const s = quoteStatus(q);
       if (w === 'chg') return b('editQuote', 'Revise quote');
@@ -3580,7 +3581,7 @@ ${v.status === 'action' && waiting ? `<div class="lmore"><span>${waiting} more q
     $$('.crow').forEach((r) => r.addEventListener('click', (e) => { if (!e.target.closest('input, button, a')) navigate('/quotes/view?id=' + r.dataset.id); }));
   },
 };
-A.quoteTab = (d) => { quoteView = { ...quoteView, status: d.s, sort: 'urgent', dir: 1 }; quoteSel.clear(); refresh(); };
+A.quoteTab = (d) => { quoteView = { ...quoteView, status: d.s, picked: true, sort: 'urgent', dir: 1 }; quoteSel.clear(); refresh(); };
 A.quoteSort = (d) => { quoteView.dir = quoteView.sort === d.k ? -quoteView.dir : (['created', 'sent', 'total', 'number'].includes(d.k) ? -1 : 1); quoteView.sort = d.k; refresh(); };
 const quoteFollowUp = (ids) => resendMany('quote', ids.map((id) => byId(D.quotes, id)).filter((q) => q && qOut(quoteStatus(q))), 'follow-up', () => quoteSel.clear());
 A.quoteFollowAll = () => quoteFollowUp(quoteStaleIds);
@@ -3666,6 +3667,7 @@ PAGES['/invoices'] = {
   title: 'Invoices',
   async render(main) {
     const v = invView; const day = (s) => (s || '').slice(0, 10);
+    if (!v.picked) v.status = D.invoices.some(invNeedsAction) ? 'action' : 'all'; // opens on Needs action, or All when nothing needs action
     const ago = (n) => ymd(addDays(new Date(), -n)); const tomorrow = ymd(addDays(new Date(), 1));
     const inWin = (d, from, to) => d && d >= from && d < to;
     const issued = (from, to) => D.invoices.filter((i) => i.status !== 'draft' && inWin(day(i.issueDate), from, to));
@@ -3714,7 +3716,7 @@ PAGES['/invoices'] = {
     cols = listCols('invoices', ICOLS);
     if (phoneMq.matches) return mobileList(main, { path: '/invoices', title: 'Invoices', plural: 'invoices', one: 'invoice', list, q: v.q, status: v.status, statuses: [['action', 'Needs action'], ...order.map((s) => [s, I_STATUS[s]])], date: (x) => x.issueDate,
       row: (x) => ({ name: cname(x), date: mDay(x.issueDate), amount: mAmt(x.total), title: invSubject(x), label: I_STATUS[x.displayStatus], cls: I_CLASS[x.displayStatus], href: '/invoices/view?id=' + x.id }),
-      onStatus: (k) => { invView = { ...invView, status: k }; }, onQ: (t) => { invView.q = t; }, newAct: 'newInvoice', banner: batchBanner() });
+      onStatus: (k) => { invView = { ...invView, status: k, picked: true }; }, onQ: (t) => { invView.q = t; }, newAct: 'newInvoice', banner: batchBanner() });
     // the buttons on a row (shown on hover): what you'd do next with that invoice
     const acts = (i) => { const b = (act, label, alt) => `<button type="button" class="btn${alt ? ' alt' : ''}" data-act="${act}" data-id="${i.id}">${label}</button>`; const s = i.displayStatus;
       return s === 'paid' ? b('sendReceipt', 'Send receipt', true) : s === 'draft' ? b('sendInvoice', 'Send') : invClaimed(i) ? b('collectPayment', 'Record payment') : b('sendInvoice', 'Send reminder', true) + b('collectPayment', 'Record payment'); };
@@ -3752,7 +3754,7 @@ ${v.status === 'action' && waiting ? `<div class="lmore"><span>${waiting} more i
     $$('.crow').forEach((r) => r.addEventListener('click', (e) => { if (!e.target.closest('input, button, a')) navigate('/invoices/view?id=' + r.dataset.id); }));
   },
 };
-A.invTab = (d) => { invView = { ...invView, status: d.s, sort: 'urgent', dir: 1 }; invSel.clear(); refresh(); };
+A.invTab = (d) => { invView = { ...invView, status: d.s, picked: true, sort: 'urgent', dir: 1 }; invSel.clear(); refresh(); };
 A.invSort = (d) => { invView.dir = invView.sort === d.k ? -invView.dir : (['client', 'status'].includes(d.k) ? 1 : -1); invView.sort = d.k; refresh(); };
 A.invClearSel = () => { invSel.clear(); refresh(); };
 // payment reminders by email, one after another: the invoice email again, with its pay-online link (texts are left out)
@@ -3802,7 +3804,7 @@ A.batchInvoice = async () => {
       const r = await api('POST', '/api/invoices/batch', { jobIds: boxes.filter((x) => x.checked).map((x) => x.value), combine: !!f.combine.value, send: f.send.checked });
       const n = r.invoices.length; closeModal();
       toast(`${n} invoice${n === 1 ? '' : 's'} created${f.send.checked ? ` · ${r.sent} emailed${r.drafts ? `, ${r.drafts} kept as draft${r.drafts === 1 ? '' : 's'}` : ''}` : ' as drafts'}`);
-      invView = { ...invView, status: 'all', date: 'all', q: '', sort: 'issued', dir: -1 }; curPath() === '/invoices' ? refresh() : navigate('/invoices');
+      invView = { ...invView, status: 'all', picked: true, date: 'all', q: '', sort: 'issued', dir: -1 }; curPath() === '/invoices' ? refresh() : navigate('/invoices');
     } catch (err) { toast(err.message, true); go.disabled = false; }
   });
 };
@@ -4307,6 +4309,7 @@ PAGES['/jobs'] = {
   title: 'Jobs',
   async render(main) {
     const v = jobView; const today = ymd(new Date());
+    if (!v.picked) v.status = D.jobs.some(jobNeedsAction) ? 'action' : 'all'; // opens on Needs action, or All when nothing needs action
     const ago = (n) => ymd(addDays(new Date(), -n)); const ahead = (n) => ymd(addDays(new Date(), n));
     const live = D.jobs.filter((j) => j.status !== 'cancelled');
     const recent = (from, to) => live.filter((j) => j.date >= from && j.date < to);
@@ -4348,7 +4351,7 @@ PAGES['/jobs'] = {
     const jobCols = JCOLS.filter((c) => c.k !== 'total' || canDo('jobs.prices')); cols = listCols('jobs', jobCols);
     if (phoneMq.matches) return mobileList(main, { path: '/jobs', title: 'Jobs', plural: 'jobs', one: 'job', list, q: v.q, status: v.status, statuses: [['action', 'Needs action'], ...order.map((s) => [s, J_STATUS[s]])], date: (x) => (x.date || '') + (x.startTime || ''),
       row: (x) => ({ name: cname(x), date: mDay(x.date) + (x.anytime || !x.startTime ? '' : ' ' + fmtTime(x.startTime)), amount: canDo('jobs.prices') && jobTotal(x) !== null ? mAmt(jobTotal(x)) : '', title: x.title, label: J_STATUS[jobStatus(x)], cls: J_CLASS[jobStatus(x)], href: '/jobs/edit?id=' + x.id }),
-      onStatus: (k) => { jobView = { ...jobView, status: k }; }, onQ: (t) => { jobView.q = t; }, newAct: 'newJob', newCls: 'need-jobs-edit' });
+      onStatus: (k) => { jobView = { ...jobView, status: k, picked: true }; }, onQ: (t) => { jobView.q = t; }, newAct: 'newJob', newCls: 'need-jobs-edit' });
     // the buttons on a row (shown on hover): what you'd do next with that job
     const acts = (j) => { const b = (act, label, alt, cls = '') => `<button type="button" class="btn${alt ? ' alt' : ''}${cls}" data-act="${act}" data-id="${j.id}">${label}</button>`; const st = jobStatus(j);
       if (st === 'late') return b('editJob', 'Reschedule', true, ' need-jobs-edit') + b('completeJob', 'Complete', false, ' need-jobs-edit');
@@ -4381,7 +4384,7 @@ ${v.status === 'action' && todayN ? `<div class="lmore"><span>${todayN} visit${t
     $$('.crow').forEach((r) => r.addEventListener('click', (e) => { if (!e.target.closest('input, button, a')) navigate('/jobs/edit?id=' + r.dataset.id); }));
   },
 };
-A.jobTab = (d) => { jobView = { ...jobView, status: d.s, sort: 'urgent', dir: 1 }; refresh(); };
+A.jobTab = (d) => { jobView = { ...jobView, status: d.s, picked: true, sort: 'urgent', dir: 1 }; refresh(); };
 A.jobSort = (d) => { jobView.dir = jobView.sort === d.k ? -jobView.dir : (['client', 'status'].includes(d.k) ? 1 : -1); jobView.sort = d.k; refresh(); };
 A.exportJobs = () => downloadCsv('jobs.csv', [['Job', 'Title', 'Client', 'Company', 'Property', 'Date', 'Start', 'End', 'Team', 'Status', 'Total'],
   ...D.jobs.map((j) => { const c = byId(D.clients, j.clientId) || {}; return [j.number, j.title, c.name || '', c.company || '', j.address || '', j.date, j.startTime, j.endTime, (j.staffIds || []).map((id) => (byId(D.staff, id) || {}).name).filter(Boolean).join('; '), J_STATUS[jobStatus(j)], jobTotal(j) ?? '']; })]);
