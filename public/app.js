@@ -2574,8 +2574,7 @@ const docSide = (kind, d) => {
   const on = (k) => d[k] !== 'off';
   const pays = [planHas('onlinePayments') ? ['Card payments', on('allowCard') && cardReady()] : null, achOn(kind) ? ['Bank payments (ACH)', on('allowAch')] : null, planHas('zelle') ? ['Zelle', on('allowZelle') && !!company.zelleRecipient] : null, ...payAppsOn().map(([k, l]) => [l, on(k)]), kind === 'invoice' && partOn() ? ['Partial payments', d.allowPartial === 'on'] : null, kind === 'invoice' && lateFeesOn() ? ['Late fees', on('lateFee')] : null].filter(Boolean);
   const view = [['showQty', 'Quantities'], ['showUnit', 'Unit prices'], ['showLineTotals', 'Line item totals'], ['showAccountBalance', 'Account balance'], ['showLateStamp', 'Late stamp (if overdue)']].map(([k, l]) => [l, on(k)]);
-  const est = kind === 'quote' && (d.estimate || d.estimateApprovedAt || (['draft', 'sent'].includes(d.status) && !quoteJob(d))); // the Estimate box: its switches save right away
-  return `<aside class="qside">${est ? estCard(d, true) : ''}<div class="qcard"><div class="qcard-h"><h2>Client payments</h2>${editBtn(kind, d, 'payments')}</div>${vopts(pays, 'No online payment options on your plan')}</div>
+  return `<aside class="qside">${kind === 'quote' ? estCard(d, true) : ''}<div class="qcard"><div class="qcard-h"><h2>Client payments</h2>${editBtn(kind, d, 'payments')}</div>${vopts(pays, 'No online payment options on your plan')}</div>
 ${kind === 'invoice' ? `<div class="qcard"><div class="qcard-h"><h2>Client view</h2>${editBtn(kind, d, 'clientView')}</div>${vopts(view)}</div>` : ''}
 ${textCard(kind, d, 'notes', 'Internal Notes', d.internalNotes, 'No internal notes. Clients never see these.')}${noteFilesCard(kind, d)}</aside>`;
 };
@@ -2666,6 +2665,12 @@ document.addEventListener('change', async (e) => {
   const box = e.target.closest('[data-est-live]'); if (!box || !e.target.matches('input.sw')) return;
   const est = $('input.sw[name=estimate]', box); const svy = $('input.sw[name=survey]', box); if (!est) return;
   const body = { estimate: est.checked, survey: est.checked && !!(svy && svy.checked) };
+  const q = byId(D.quotes, box.dataset.estLive) || {};
+  if (body.estimate && !q.estimate && !['draft', 'sent'].includes(q.status) && q.depositPaidAt) { toast('The client already paid the deposit on this quote. Create a similar quote to send as an estimate.', true); return refresh(); }
+  if (body.estimate && !q.estimate && !['draft', 'sent'].includes(q.status)) { // approved or declined: back to Draft to send again as an estimate
+    if (!confirm(`Send this quote again as an estimate? It goes back to Draft${q.signedAt ? ' and the client’s signature is removed' : ''}. Then send it to the client.`)) return refresh();
+    body.status = 'draft';
+  }
   try { await api('PUT', '/api/quotes/' + box.dataset.estLive, body); } catch (x) { toast(x.message, true); return refresh(); }
   toast(!body.estimate ? 'It goes out as a quote' : body.survey ? 'It goes out as an estimate, then a site survey' : 'It goes out as an estimate first'); return refresh();
 });
