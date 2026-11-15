@@ -5055,7 +5055,7 @@ function liveAppState(a, u) {
 }
 const marketplaceView = (u) => {
   const P = tenancy.platform(); const mine = marketplace.requestedBy(P, tenancy.current().id);
-  return { categories: marketplace.CATEGORIES, apps: marketplace.catalog().filter((a) => a.feature !== 'ai' || tenancy.aiOn('aiDescriptions')).map((a) => ({ ...a, ...(a.live ? liveAppState(a, u) : { requested: mine.includes(a.id) }) })) };
+  return { categories: marketplace.CATEGORIES, apps: marketplace.catalog().filter((a) => a.feature !== 'ai' || tenancy.aiOn('aiDescriptions')).map((a) => ({ ...a, requested: mine.includes(a.id), ...(a.live ? liveAppState(a, u) : {}) })) };
 };
 const marketplaceWho = (req) => { const u = currentUser(req); const t = tenancy.current(); return { t: t.id, company: db.company.name || t.slug, account: tenancy.tenantUrl(t), name: u.name, email: u.email }; };
 const marketplaceAdmin = (req, res) => { if (!marketplace.isOn(tenancy.platform())) { res.status(404).json({ error: 'The App Marketplace isn’t available' }); return false; } if (isAdmin(currentUser(req))) return true; res.status(403).json({ error: 'Only the account owner or an admin can manage apps' }); return false; };

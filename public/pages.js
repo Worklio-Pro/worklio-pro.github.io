@@ -3543,12 +3543,14 @@ CONN_ICONS.claude = '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="
 let MKT = null; const mktView = { cat: '', q: '' };
 const mktLogo = (a) => (a.logo ? `<span class="mkt-logo img${a.logoPad ? ' pad' : ''}"><img src="${esc(a.logo)}" alt="" loading="lazy"></span>` : a.icon && CONN_ICONS[a.icon] ? `<span class="mkt-logo">${CONN_ICONS[a.icon]}</span>` : `<span class="mkt-logo mono" style="background:${esc(a.bg)};color:${esc(a.fg)}${a.mono.length > 2 ? ';font-size:13px' : ''}">${esc(a.mono)}</span>`);
 function mktState(a) {
-  if (!a.live) return a.requested ? { chip: connChip('wait', 'Requested'), btn: `<button type="button" class="btn alt sm" data-act="mktWant" data-id="${a.id}" data-on="" aria-pressed="true">✓ Requested</button>` }
-    : { chip: connChip('off', 'Coming soon'), btn: `<button type="button" class="btn sm" data-act="mktWant" data-id="${a.id}" data-on="1">I want this</button>` };
+  // Coming soon (not built yet, or built but its keys aren't set or its Alpha card says Coming soon): I want this, which Alpha counts
+  const want = () => (a.requested ? { chip: connChip('wait', 'Requested'), btn: `<button type="button" class="btn alt sm" data-act="mktWant" data-id="${a.id}" data-on="" aria-pressed="true">✓ Requested</button>` }
+    : { chip: connChip('off', 'Coming soon'), btn: `<button type="button" class="btn sm" data-act="mktWant" data-id="${a.id}" data-on="1">I want this</button>` });
+  if (!a.live) return want();
   // Home Depot and Slack are set up in a popup here; the others on their own page
   const pop = { homedepot: 'hdManage', slack: 'slackManage' }[a.id];
   const go = (label, cls) => (pop ? `<button type="button" class="btn ${cls} sm" data-act="${pop}">${label}</button>` : `<a class="btn ${cls} sm" href="${esc(a.go)}" data-link>${label}</a>`);
-  if (!a.available && !a.connected) return { chip: connChip('off', 'Coming soon'), btn: '' }; // its keys aren't set in Alpha → Settings → Integrations yet
+  if (!a.available && !a.connected) return want();
   if (!a.planOk) return { chip: connChip('off', 'Not in your plan'), btn: role() === 'owner' ? '<a class="btn alt sm" href="/settings/billing" data-link>See plans</a>' : '' };
   if (a.connected) return { chip: connChip('on', a.id === 'claude' ? 'On' : 'Connected'), btn: go('Manage', 'alt') };
   return { chip: connChip('off', 'Not connected'), btn: go('Connect', '') };
