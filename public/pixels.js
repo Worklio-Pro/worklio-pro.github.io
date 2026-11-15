@@ -1,8 +1,8 @@
-// The Meta Pixel and Google tag on the public marketing pages, for retargeting visitors (IDs: Alpha → Settings → SEO; lib/seo.js adds this script).
+// The Meta Pixel, Google Ads tag, Google Analytics and Google Tag Manager on the public marketing pages (IDs: Alpha → Settings → SEO; lib/seo.js adds this script).
 // Nothing loads until the visitor accepts, and a browser sending Global Privacy Control counts as declining. The choice can be changed from
 // the footer's Cookie choices link or /#cookie-choices (the Privacy Policy links there).
 (function () {
-  var tag = document.currentScript; var metaId = tag.dataset.meta; var googleId = tag.dataset.google; var KEY = 'adCookies';
+  var tag = document.currentScript; var metaId = tag.dataset.meta; var googleIds = [tag.dataset.google, tag.dataset.analytics].filter(Boolean); var gtmId = tag.dataset.gtm; var KEY = 'adCookies';
   var gpc = navigator.globalPrivacyControl === true;
   function saved() { try { return localStorage.getItem(KEY); } catch (e) { return null; } }
   function remember(v) { try { localStorage.setItem(KEY, v); } catch (e) {} }
@@ -17,18 +17,24 @@
       window.fbq('set', 'autoConfig', false, metaId); // no reading of form fields or button clicks: the pricing page's sign-up form stays private
       window.fbq('init', metaId); window.fbq('track', 'PageView');
     }
-    if (googleId) {
+    if (googleIds.length || gtmId) {
       window.dataLayer = window.dataLayer || []; window.gtag = function () { window.dataLayer.push(arguments); };
       window.gtag('consent', 'default', { ad_storage: 'granted', ad_user_data: 'granted', ad_personalization: 'granted', analytics_storage: 'granted' }); // they accepted
-      window.gtag('js', new Date()); window.gtag('config', googleId);
-      var g = document.createElement('script'); g.async = true; g.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(googleId); document.head.appendChild(g);
+    }
+    if (googleIds.length) { // one gtag.js serves the Ads tag and Analytics; each ID gets its own config
+      window.gtag('js', new Date()); googleIds.forEach(function (id) { window.gtag('config', id); });
+      var g = document.createElement('script'); g.async = true; g.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(googleIds[0]); document.head.appendChild(g);
+    }
+    if (gtmId) {
+      window.dataLayer.push({ 'gtm.start': new Date().getTime(), event: 'gtm.js' });
+      var t = document.createElement('script'); t.async = true; t.src = 'https://www.googletagmanager.com/gtm.js?id=' + encodeURIComponent(gtmId); document.head.appendChild(t);
     }
   }
   // changing to No: remove what the tags stored on this site, and reload so they stop running
   function clearCookies() {
     var host = location.hostname.replace(/^www\./, '');
     document.cookie.split(';').forEach(function (c) {
-      var name = c.split('=')[0].trim(); if (!/^(_fbp|_fbc|_ga|_gcl_|_gid)/.test(name)) return;
+      var name = c.split('=')[0].trim(); if (!/^(_fbp|_fbc|_ga|_gcl_|_gid|_gat)/.test(name)) return;
       ['', '; domain=' + host, '; domain=.' + host].forEach(function (d) { document.cookie = name + '=; path=/; max-age=0' + d; });
     });
   }
@@ -41,7 +47,7 @@
     banner.innerHTML = '<style>.ad-consent{--c-bg:#fff;--c-text:#0f172a;--c-line:#dfe6f0;--c-link:#1d4ed8;position:fixed;left:16px;bottom:16px;z-index:2147482000;box-sizing:border-box;width:420px;max-width:calc(100vw - 100px);padding:16px;border:1px solid var(--c-line);border-radius:14px;background:var(--c-bg);color:var(--c-text);font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;box-shadow:0 8px 28px rgba(15,23,42,.18)}'
       + '@media (prefers-color-scheme:dark){:root:not([data-theme=light]) .ad-consent{--c-bg:#121b2f;--c-text:#e2e8f0;--c-line:#22304d;--c-link:#93b4fd}}:root[data-theme=dark] .ad-consent{--c-bg:#121b2f;--c-text:#e2e8f0;--c-line:#22304d;--c-link:#93b4fd}'
       + '.ad-consent p{margin:0 0 12px}.ad-consent a{color:var(--c-link)}.ad-consent div{display:flex;flex-wrap:wrap;gap:8px}.ad-consent button{min-height:40px;padding:0 16px;border:1px solid var(--c-line);border-radius:9px;background:transparent;color:inherit;font:inherit;font-weight:600;cursor:pointer}.ad-consent button[data-yes]{border-color:#2563eb;background:#2563eb;color:#fff}</style>'
-      + '<p>May we use advertising cookies from Meta and Google to show you our ads on other sites? See our <a href="/privacy#cookies">Privacy Policy</a>.</p><div><button type="button" data-yes>Accept</button><button type="button" data-no>No thanks</button></div>';
+      + '<p>May we use cookies from Meta and Google to measure visits to our site and show you our ads on other sites? See our <a href="/privacy#cookies">Privacy Policy</a>.</p><div><button type="button" data-yes>Accept</button><button type="button" data-no>No thanks</button></div>';
     banner.querySelector('[data-yes]').onclick = function () { remember('yes'); hide(); load(); };
     banner.querySelector('[data-no]').onclick = function () { var was = saved() === 'yes'; remember('no'); hide(); if (was) { clearCookies(); location.reload(); } };
     document.body.appendChild(banner);
