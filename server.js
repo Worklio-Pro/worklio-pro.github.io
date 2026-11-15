@@ -2176,6 +2176,21 @@ app.post('/api/:col', (req, res, next) => {
   res.status(201).json(col === 'invoices' ? withStatus(doc) : col === 'jobs' && isMemberReq(req) ? jobForMember(doc) : col === 'clients' && isMemberReq(req) ? clientForMember(doc) : doc);
 });
 
+// a property's address is edited: the quotes, jobs, invoices, requests and tasks for that property take the new address
+// (each keeps its own copy of the address). Linked by propertyId, or, from before properties, by the old address.
+const propAddrOf = (p) => [p.street1, p.street2, p.city, [p.state, p.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+function followPropertyAddresses(was, c) {
+  const before = Array.isArray(was.properties) ? was.properties : String(was.address || '').trim() ? [{ id: 'p0', old: String(was.address).trim() }] : [];
+  const same = (a, b) => !!String(a || '').trim() && String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+  for (const p of c.properties || []) {
+    const o = before.find((x) => x.id === p.id); const newA = propAddrOf(p); if (!newA) continue;
+    const oldA = o ? o.old || propAddrOf(o) : ''; // saving a property again also brings anything still showing an older address up to date
+    for (const col of ['quotes', 'jobs', 'invoices', 'tasks', 'requests']) for (const d of db[col] || []) {
+      if (d.clientId !== c.id || !(d.propertyId === p.id || (!d.propertyId && oldA !== newA && same(d.address, oldA)))) continue;
+      d.address = newA; if (!d.propertyId) d.propertyId = p.id;
+    }
+  }
+}
 // update
 app.put('/api/:col/:id', (req, res, next) => {
   const col = req.params.col;
@@ -2227,6 +2242,7 @@ app.put('/api/:col/:id', (req, res, next) => {
   if (col === 'jobs' && doc.status === 'completed' && was.status !== 'completed') doc.completedAt = iso(new Date()); // the "job completed" automations count from this
   const following = col === 'jobs' && req.query.following && doc.seriesId && tenancy.has('recurringJobs') ? applyToFollowing(doc, upd, req.query.following) : 0; // Save → "This and following visits"
   if (col === 'jobs') matchFormsOnEdit(was, doc, (currentUser(req) || {}).name); // new line items can bring their checklists
+  if (col === 'clients' && Array.isArray(upd.properties)) followPropertyAddresses(was, doc);
   db[col][i] = doc; save(); if (col === 'clients' && doc.smsConsent && !was.smsConsent) optInText(doc).catch(() => {}); if (col === 'jobs') { pushScheduleChange(was, doc, currentUser(req)); if (doc.status === 'completed' && was.status !== 'completed') { askForReview('job', doc); jobPosts.maybeDraft(doc); } }
   res.json(col === 'invoices' ? withStatus(doc) : col === 'jobs' ? { ...withRepeat(isMemberReq(req) ? jobForMember(doc) : doc), ...(following ? { following } : {}) } : col === 'clients' && isMemberReq(req) ? clientForMember(doc) : doc);
 });
