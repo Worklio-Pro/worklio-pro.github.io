@@ -701,7 +701,7 @@ app.post('/api/time-off/:id/decide', async (req, res) => {
   const u = currentUser(req); if (!canApproveTimeOff(u)) return res.status(403).json({ error: 'Ask the owner, an admin or a manager to decide this' });
   const r = (db.timeOff || []).find((x) => x.id === req.params.id); if (!r) return res.status(404).json({ error: 'Request not found' });
   if (r.status !== 'pending') return res.status(400).json({ error: `This request was already ${r.status}` });
-  if (r.staffId === u.staffId && !isAdmin(u)) return res.status(403).json({ error: 'Someone else needs to decide your own request' });
+  if (r.staffId === u.staffId && u.role !== 'owner') return res.status(403).json({ error: 'Someone else needs to decide your own request' }); // the owner decides their own
   const b = req.body || {}; const approve = !!b.approve;
   Object.assign(r, { status: approve ? 'approved' : 'declined', note: String(b.note || '').trim().slice(0, 500), decidedBy: u.name, decidedAt: new Date().toISOString() });
   let removed = 0; if (approve && b.unassign) for (const j of timeOffJobs(r.staffId, r)) { j.staffIds = j.staffIds.filter((x) => x !== r.staffId); removed++; }
