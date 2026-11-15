@@ -1556,6 +1556,24 @@ const sameAddr = (a, b) => !!String(a || '').trim() && String(a || '').trim().to
 // the property something is for: by its propertyId, else by its address (a blank address means the client's billing address)
 const docProp = (c, x) => { const ps = clientProps(c); return ps.find((p) => x.propertyId && p.id === x.propertyId) || ps.find((p) => sameAddr(propAddr(p), x.address || c.address)); };
 const rid = () => Math.random().toString(36).slice(2, 10);
+// a US ZIP code typed into any address (properties, clients, team, profile) fills in the city and state (zippopotam.us, free, no key).
+// Only a blank city or state, or one this filled in before, is filled; a country other than the United States is left alone.
+const zipCache = new Map();
+document.addEventListener('input', async (e) => {
+  const z = e.target; if (!z.matches || !z.matches('input[name=zip], input[data-k=zip]')) return;
+  const m = /^(\d{5})(-\d{4})?$/.exec(z.value.trim()); if (!m) return;
+  const box = z.closest('.ce-prop, .pf-addr, .addr, form'); if (!box) return;
+  const f = (k) => $(`[name=${k}], [data-k=${k}]`, box); const city = f('city'), state = f('state'), country = f('country');
+  if (country && country.value && country.value !== 'United States') return;
+  if (!zipCache.has(m[1])) zipCache.set(m[1], fetch('https://api.zippopotam.us/us/' + m[1]).then((r) => (r.ok ? r.json() : null)).then((j) => (j && j.places && j.places[0]) || null).catch(() => null));
+  const pl = await zipCache.get(m[1]); if (!pl || z.value.trim().slice(0, 5) !== m[1]) return; // still the same ZIP
+  const put = (el, v) => {
+    if (!el || !v || (el.value.trim() && el.value !== el.dataset.zipAuto)) return; // something typed by hand stays
+    if (el.tagName === 'SELECT' && ![...el.options].some((o) => o.value === v)) return;
+    el.value = v; el.dataset.zipAuto = v; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  put(city, pl['place name']); put(state, pl['state abbreviation']);
+});
 const PI = { // icons for what can be made for a client or property (QI is defined further down the file, so they're made when used)
   get request() { return QI('<path d="M4 14v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5"/><path d="M4 14h4l1.5 2h5l1.5-2h4M12 3v9M8.5 8.5L12 12l3.5-3.5"/>', 'pi-req'); },
   get quote() { return QI('<circle cx="10" cy="10" r="6"/><path d="M14.5 14.5L20 20M8 10h4"/>', 'pi-quote'); },
