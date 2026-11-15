@@ -3073,7 +3073,7 @@ ${mTap(kind, d, 'details', `<span class="md-h">${q ? 'Quote' : 'Invoice'} #${esc
 <div class="md-acts">${acts.filter(Boolean).join('')}<button type="button" class="btn alt md-more" data-act="mMore" data-kind="${kind}" data-id="${d.id}" aria-label="More actions">⋯</button></div>
 <div class="md-tabs" role="tablist"><button type="button" role="tab" class="on" aria-selected="true" data-act="mTab" data-k="doc">${q ? 'Quote' : 'Invoice'}</button><button type="button" role="tab" aria-selected="false" data-act="mTab" data-k="notes">Notes</button></div>
 <div class="md-pane" data-pane="doc"><section class="md-block"><h2 class="md-sh">Product / Service</h2><div class="md-lh"><strong>Line items</strong><button type="button" class="md-plus" data-act="mEdit" data-kind="${kind}" data-id="${d.id}" data-sec="item" data-i="" aria-label="Add line item">${CHEV('M12 5v14M5 12h14')}</button></div>${items || '<p class="muted md-empty">No line items yet. Tap + to add one.</p>'}</section>
-${optSec}<section class="md-block md-totals">${totals}</section>${paySec}${viewSec}
+${optSec}<section class="md-block md-totals">${totals}</section>${q ? `<section class="md-block md-est">${estCard(d, true)}</section>` : ''}${paySec}${viewSec}
 ${mTextSec(kind, d, 'message', 'Client message', d.notes, 'Add a message for the client')}
 ${mTextSec(kind, d, 'terms', 'Contract / disclaimer', d.disclaimer, 'Add a contract or disclaimer')}</div>
 <div class="md-pane" data-pane="notes" hidden>${mNotesPane(kind, d, d.internalNotes ? mTextSec(kind, d, 'notes', 'Internal notes', d.internalNotes, '') : '')}</div></div>`;
