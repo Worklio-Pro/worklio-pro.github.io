@@ -3548,9 +3548,9 @@ function mktState(a) {
   // Home Depot and Slack are set up in a popup here; the others on their own page
   const pop = { homedepot: 'hdManage', slack: 'slackManage' }[a.id];
   const go = (label, cls) => (pop ? `<button type="button" class="btn ${cls} sm" data-act="${pop}">${label}</button>` : `<a class="btn ${cls} sm" href="${esc(a.go)}" data-link>${label}</a>`);
+  if (!a.available && !a.connected) return { chip: connChip('off', 'Coming soon'), btn: '' }; // its keys aren't set in Alpha → Settings → Integrations yet
   if (!a.planOk) return { chip: connChip('off', 'Not in your plan'), btn: role() === 'owner' ? '<a class="btn alt sm" href="/settings/billing" data-link>See plans</a>' : '' };
   if (a.connected) return { chip: connChip('on', a.id === 'claude' ? 'On' : 'Connected'), btn: go('Manage', 'alt') };
-  if (!a.available) return { chip: connChip('off', 'Not available yet'), btn: '' };
   return { chip: connChip('off', 'Not connected'), btn: go('Connect', '') };
 }
 const mktCard = (a) => { const s = mktState(a);

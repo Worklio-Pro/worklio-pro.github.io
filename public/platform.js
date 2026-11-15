@@ -701,7 +701,6 @@ const IG_TABS = [
   ['xero', 'Xero', 'Xero', 'Businesses send clients, invoices and payments to their books'],
   ['slack', 'Slack', 'Slack', 'Businesses get messages in a Slack channel about new work and payments'],
   ['homedepot', 'Home Depot', 'Home Depot', 'Home Depot prices in the product and service form (SerpApi)'],
-  ['soon', 'Coming soon', 'Coming soon', 'Show Coming soon in place of Connect, network by network'],
   ['ai', 'AI', 'AI', 'Write with AI, Rewrite, social captions and the help chat'],
   ['marketplace', 'App Marketplace', 'App Marketplace', 'The App Marketplace in every account, and Home Depot prices'],
 ];
@@ -722,7 +721,6 @@ const IG_ICONS = {
   googlelogin: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3.5" y="3.5" width="41" height="41" rx="10" fill="#fff" stroke="#dadce0"/><text x="24" y="32" text-anchor="middle" font-family="system-ui,sans-serif" font-size="22" font-weight="700" fill="#4285F4">G</text></svg>',
   homedepot: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#F96302"/><rect x="11" y="11" width="26" height="26" fill="none" stroke="#fff" stroke-width="2.6" transform="rotate(0 24 24)"/><text x="24" y="29.5" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="800" fill="#fff">HD</text></svg>',
   slack: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#4A154B"/><g fill="none" stroke-width="4.4" stroke-linecap="round"><path stroke="#36C5F0" d="M20 13v10"/><path stroke="#2EB67D" d="M35 20H25"/><path stroke="#ECB22E" d="M28 35V25"/><path stroke="#E01E5A" d="M13 28h10"/></g><g><circle cx="13" cy="20" r="2.4" fill="#36C5F0"/><circle cx="28" cy="13" r="2.4" fill="#2EB67D"/><circle cx="35" cy="28" r="2.4" fill="#ECB22E"/><circle cx="20" cy="35" r="2.4" fill="#E01E5A"/></g></svg>',
-  soon: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#64748b"/><g fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="24" r="11"/><path d="M24 17v7l5 3"/></g></svg>',
   marketplace: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#7c3aed"/><g fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="14" y="14" width="8" height="8" rx="1.5"/><rect x="26" y="14" width="8" height="8" rx="1.5"/><rect x="14" y="26" width="8" height="8" rx="1.5"/><rect x="26" y="26" width="8" height="8" rx="1.5"/></g></svg>',
 };
 let igTab = ''; // '' shows the cards
@@ -1918,7 +1916,7 @@ ${ig('App Marketplace', on(D.settings.marketplace !== false, 'On', 'Off'), `<p c
 <p class="muted ig-p">Turned off, the page is hidden and Home Depot search and Slack messages stop. Google, Facebook, Instagram, Stripe and AI keep working: they’re set up on their own pages.</p>
 <p class="muted ig-p">The keys for apps in the marketplace are on their own cards: <a href="#settings" data-act="setTab" data-k="integrations:homedepot">Home Depot</a> and <a href="#settings" data-act="setTab" data-k="integrations:slack">Slack</a>.</p>`)}
 ${hdGroup(I.homeDepot || {}, ig, on)}
-</div><div class="ig-col">${socialGroups(I, ig, on, copy)}${soonGroup(I, ig, on)}</div></div>
+</div><div class="ig-col">${socialGroups(I, ig, on, copy)}</div></div>
 <div class="ig-wide">${ig('Stripe', S.key ? `${on(true)} <span class="cstatus ${S.mode === 'live' ? 'active' : 'q-sent'}">${S.mode === 'live' ? 'Live' : 'Test mode'}</span>` : on(false), `<div class="ig-2"><div><p class="ig-d">Your Stripe account: plan payments when businesses sign up, and “Connect with Stripe” for businesses’ card payments from their clients.</p>
 ${S.keyVar ? `<p class="ig-env">Using <code>${S.keyVar}</code> from <code>.env</code>.</p>` : env('<code>BILLING_STRIPE_SECRET_KEY</code> (or <code>STRIPE_SECRET_KEY</code>).')}
 ${S.key ? '' : '<div class="note">Without a Stripe key, sign-up checkout and businesses’ invoice pay pages run demo payments that charge nobody, and businesses can’t connect Stripe.</div>'}
@@ -1968,9 +1966,6 @@ ${I.localhost ? '<p class="muted ig-p" style="margin-top:8px">Stripe can’t rea
     e.preventDefault(); const b = Object.fromEntries(new FormData(e.target)); if (!b.stripePublishableKey) delete b.stripePublishableKey;
     try { await api('PUT', '/api/platform/settings', b); await load(); toast('Card payment setup saved'); integrationsCard(box); } catch (x) { toast(x.message, true); }
   });
-  $$('input[data-soon]', box).forEach((c) => c.addEventListener('change', async () => {
-    try { await api('PUT', '/api/platform/social-soon/' + c.dataset.soon, { soon: c.checked }); toast(c.checked ? 'Businesses now see Coming soon' : 'Businesses can connect now'); integrationsCard(box); } catch (x) { c.checked = !c.checked; toast(x.message, true); }
-  }));
   $$('.env-form', box).forEach((f) => f.addEventListener('submit', async (e) => {
     e.preventDefault(); const btn = $('button.btn', f); btn.disabled = true;
     try { await api('PUT', '/api/platform/env-keys/' + f.dataset.g, Object.fromEntries(new FormData(f))); await load(); toast('Saved. It works right away, with no restart.'); await integrationsCard(box); }
@@ -2127,13 +2122,6 @@ ${copy(X.redirectUri, 'Xero redirect URI')}
 <ol class="ig-steps" start="2"><li>Generate a Client secret, then paste the Client ID and secret here. Or set <code>XERO_CLIENT_ID</code> and <code>XERO_CLIENT_SECRET</code> in <code>.env</code>.</li>
 <li>An uncertified app can connect up to 25 organisations. Past that, apply to become a Xero App Partner.</li></ol>
 ${form('xero', X, 'Client ID', 'e.g. 1A2B3C4D…', 'Client secret')}`);
-}
-// Coming soon (lib/social.js): networks businesses see as Coming soon even with the keys saved, e.g. while an app waits on approval
-function soonGroup(I, ig, on) {
-  const L = I.socialSoon || []; const n = L.filter((x) => x.soon).length;
-  const keys = (x) => (x.keys === null ? 'Businesses use their own account' : x.keys ? 'Keys saved' : 'No keys yet: businesses see Coming soon anyway');
-  return ig('Coming soon', on(!n, 'All open', `${n} coming soon`), `<p class="ig-d">Turn one on to show <strong>Coming soon</strong> in place of Connect on every business’s Marketing and Account Connections pages, for example while LinkedIn reviews your app. Your own account sees it too: turn the switch off to test a network. Businesses already connected stay connected.</p>
-${L.map((x) => `<label class="switchline"><input type="checkbox" data-soon="${esc(x.kind)}" ${x.soon ? 'checked' : ''}> <span><strong>${esc(x.name)}</strong> <small class="muted">${keys(x)}</small></span></label>`).join('')}`);
 }
 A.rmOauthApp = async (d) => {
   if (!confirm('Remove these keys? Businesses won’t be able to connect, and connected ones stop working until you add keys again.')) return;
