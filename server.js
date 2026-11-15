@@ -332,7 +332,7 @@ function smtpSend({ host, port, user, pass }, { from, fromName, to, replyTo, sub
   });
 }
 // every account's email and texts go through the platform's own settings (Alpha → Settings → Integrations, or .env)
-const envTwilio = () => { const { TWILIO_ACCOUNT_SID: sid, TWILIO_AUTH_TOKEN: token, TWILIO_FROM: from } = process.env; return sid && token && from ? { sid, token, from } : null; };
+const envTwilio = () => { if (social.held('sms')) return null; /* Alpha → Text messages → Waiting for approval: texts are only logged */ const { TWILIO_ACCOUNT_SID: sid, TWILIO_AUTH_TOKEN: token, TWILIO_FROM: from } = process.env; return sid && token && from ? { sid, token, from } : null; };
 const smsReady = () => !!envTwilio();
 // the platform's own mail server, set in Alpha → Settings → Integrations (e.g. a SiteGround mailbox); it takes priority over the .env settings
 const platformSmtp = () => { const m = tenancy.platform().mailServer; return m && m.host && m.user && m.pass ? m : null; };
@@ -5013,7 +5013,7 @@ app.put('/api/accounting', (req, res) => {
 app.post('/api/accounting/sync', async (req, res) => {
   if (!booksAdmin(req, res)) return; const B = books();
   if (!B || !booksConn()) return res.status(400).json({ error: 'Connect QuickBooks or Xero first' });
-  if (!social.available(B.provider)) return res.status(503).json({ error: `${accounting.PROVIDERS[B.provider].name} isn’t available right now` });
+  if (!social.ready(B.provider)) return res.status(503).json({ error: `${accounting.PROVIDERS[B.provider].name} isn’t available right now` });
   B.needsReconnect = false; // runs in the background (Xero allows 60 calls a minute): the page checks back until it's done
   syncBooks({ retry: true }).catch((e) => console.error('accounting sync:', e.message)); res.json(booksView());
 });
@@ -5034,7 +5034,7 @@ async function syncAllBooks() {
   if (booksTick) return; booksTick = true;
   try {
     for (const t of tenancy.platform().tenants.filter((x) => x.accounting && x.status === 'active')) {
-      await tenancy.run(t, async () => { const B = books(); if (!B || !B.auto || B.needsReconnect || !booksConn() || !tenancy.has('accounting') || !social.available(B.provider)) return; await syncBooks({ limit: 100 }); })
+      await tenancy.run(t, async () => { const B = books(); if (!B || !B.auto || B.needsReconnect || !booksConn() || !tenancy.has('accounting') || !social.ready(B.provider)) return; await syncBooks({ limit: 100 }); })
         .catch((e) => console.error('accounting sync:', t.slug, e.message));
     }
   } finally { booksTick = false; }
@@ -5049,7 +5049,7 @@ function liveAppState(a, u) {
   if (a.id === 'bluesky' || a.id === 'x') return { planOk, available: social.available(a.id), connected: !!connOf(a.id) }; // the business's own app password or X app: nothing for the platform to set up
   if (a.id === 'stripe') { const s = secrets(); const on = !!stripeKey() && (!!s.stripeChargesEnabled || !!s.stripeSecretKey || (tenancy.isDefault() && !!process.env.STRIPE_SECRET_KEY)); return { planOk, available: on || !!stripeLib.platformKey(), connected: on }; }
   if (a.id === 'homedepot') return { planOk, available: homeDepot.ready(), connected: !!hdSettings().on };
-  if (a.id === 'slack') return { planOk, available: slack.ready(), connected: !!(db.slack && secrets().slack) };
+  if (a.id === 'slack') return { planOk, available: slack.ready() && !social.held('slack'), connected: !!(db.slack && secrets().slack) };
   if (a.id === 'claude') { const on = !!process.env.ANTHROPIC_API_KEY; return { planOk, available: on, connected: on }; }
   return { planOk, available: false, connected: false };
 }
@@ -5101,7 +5101,7 @@ const slackView = () => {
 };
 app.get('/api/slack', (req, res) => { if (marketplaceAdmin(req, res)) res.json(slackView()); });
 app.post('/api/slack/start', (req, res) => {
-  if (!marketplaceAdmin(req, res)) return; if (!slack.ready()) return res.status(503).json({ error: 'Slack isn’t available yet.' });
+  if (!marketplaceAdmin(req, res)) return; if (!slack.ready() || social.held('slack')) return res.status(503).json({ error: 'Slack isn’t available yet.' });
   res.json({ url: slack.startUrl(tenancy.current().id, currentUser(req).id) });
 });
 app.put('/api/slack', (req, res) => {
