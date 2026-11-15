@@ -2441,7 +2441,10 @@ ${(d.items || []).length ? `<h3 class="mqo-ih">Line items</h3><p class="muted mq
 // Estimate first: the client approves the price with no signature or deposit, then it becomes the quote to sign and pay (on the same page)
 const ESTIMATE_NOTE = 'The client approves the price first, with nothing to sign or pay. Then it becomes the quote to sign and pay the deposit.';
 const estOn = (d) => (d.id ? !!d.estimate : !!company.quoteEstimateFirst);
-const estCard = (d) => `<div class="qcard"><h3>Estimate first</h3>${d.estimateApprovedAt ? `<p class="muted">The client approved the estimate on ${fmtDate(d.estimateApprovedAt)}. It’s now the quote.</p>` : switchRow('estimate', 'Send as an estimate first', estOn(d), ESTIMATE_NOTE)}</div>`;
+// the title, an "i" that shows what the switch does, and the switch on the right of the same row
+const estCard = (d) => `<div class="qcard est-c"><div class="est-h"><h3>Estimate</h3><button type="button" class="est-i" aria-expanded="false" aria-controls="estInfo" aria-label="What is Estimate?" title="What is this?" onclick="var p=document.getElementById('estInfo');p.hidden=!p.hidden;this.setAttribute('aria-expanded',!p.hidden)">i</button>
+${d.estimateApprovedAt ? '' : `<label class="sw-row"><input type="hidden" name="estimate" value="off"><input type="checkbox" class="sw" name="estimate" value="on" aria-label="Send as an estimate first" ${estOn(d) ? 'checked' : ''}><i></i></label>`}</div>
+<p class="muted est-info" id="estInfo" hidden>${d.estimateApprovedAt ? `The client approved the estimate on ${fmtDate(d.estimateApprovedAt)}. It’s now the quote.` : `Turn on to send this quote as an estimate first. ${ESTIMATE_NOTE}`}</p></div>`;
 const quoteJobItems = (q) => (qHasOpts(q) ? (q.chosenOption ? qOptItems(q, q.chosenOption) : []) : q.items || []).map(({ opt, ...i }) => i);
 function quoteForm(main, doc, preset) {
   const d = doc || {}; const p = preset || {}; const items = d.items && d.items.length ? d.items : [{}];
