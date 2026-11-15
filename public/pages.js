@@ -3545,8 +3545,9 @@ const mktLogo = (a) => (a.logo ? `<span class="mkt-logo img${a.logoPad ? ' pad' 
 function mktState(a) {
   if (!a.live) return a.requested ? { chip: connChip('wait', 'Requested'), btn: `<button type="button" class="btn alt sm" data-act="mktWant" data-id="${a.id}" data-on="" aria-pressed="true">✓ Requested</button>` }
     : { chip: connChip('off', 'Coming soon'), btn: `<button type="button" class="btn sm" data-act="mktWant" data-id="${a.id}" data-on="1">I want this</button>` };
-  // Home Depot is set up in a popup here; the others on their own page
-  const go = (label, cls) => (a.id === 'homedepot' ? `<button type="button" class="btn ${cls} sm" data-act="hdManage">${label}</button>` : `<a class="btn ${cls} sm" href="${esc(a.go)}" data-link>${label}</a>`);
+  // Home Depot and Slack are set up in a popup here; the others on their own page
+  const pop = { homedepot: 'hdManage', slack: 'slackManage' }[a.id];
+  const go = (label, cls) => (pop ? `<button type="button" class="btn ${cls} sm" data-act="${pop}">${label}</button>` : `<a class="btn ${cls} sm" href="${esc(a.go)}" data-link>${label}</a>`);
   if (!a.planOk) return { chip: connChip('off', 'Not in your plan'), btn: role() === 'owner' ? '<a class="btn alt sm" href="/settings/billing" data-link>See plans</a>' : '' };
   if (a.connected) return { chip: connChip('on', a.id === 'claude' ? 'On' : 'Connected'), btn: go('Manage', 'alt') };
   if (!a.available) return { chip: connChip('off', 'Not available yet'), btn: '' };
@@ -3570,6 +3571,10 @@ PAGES['/marketplace'] = {
   title: 'App Marketplace',
   async render(main) {
     if (!marketplaceOn()) { main.innerHTML = '<div class="head"><div><h1>App Marketplace</h1></div></div><div class="card empty">The App Marketplace isn’t available right now.</div>'; return; }
+    const back = new URLSearchParams(location.search); // back from Slack's page
+    if (back.get('connected') === 'slack') toast('Slack is connected. A message was sent to your channel.');
+    else if (back.get('connect_error') === 'slack') toast(back.get('reason') === 'cancelled' ? 'Slack wasn’t connected' : back.get('reason') || 'Slack couldn’t connect', back.get('reason') !== 'cancelled');
+    if (back.has('connected') || back.has('connect_error')) history.replaceState(history.state, '', location.pathname);
     MKT = await api('GET', '/api/marketplace');
     const tabs = [['', 'All apps'], ...(MKT.apps.some((a) => a.live && a.connected && a.planOk) ? [['connected', 'Connected']] : []), ...MKT.categories.map((k) => [k, k])];
     main.innerHTML = `<div class="head"><div><h1>App Marketplace</h1><p class="sub">Connect the apps your business already uses. Apps marked <strong>Coming soon</strong> are on the way: tap <strong>I want this</strong> and the most-wanted ones are built first.</p></div>
@@ -3615,6 +3620,32 @@ A.hdManage = async () => {
     try { const r = await api('PUT', '/api/home-depot', { on: !!b.on, zip: b.zip, markup: b.markup }); closeModal(); toast(r.on ? 'Home Depot is on. Search it from the product and service form.' : 'Home Depot is off');
       if ($('#mktList')) { MKT = await api('GET', '/api/marketplace'); mktShow(); } } catch (err) { btn.disabled = false; toast(err.message, true); }
   });
+};
+// Slack: connect (Slack's own page picks the channel), which messages go there, a test message, and disconnect
+const slackRefresh = async () => { if ($('#mktList')) { MKT = await api('GET', '/api/marketplace'); mktShow(); } };
+A.slackManage = async () => {
+  const S = await api('GET', '/api/slack');
+  if (!S.connected) {
+    modal('Slack', `<p class="muted" style="margin-top:0">Get a message in a Slack channel when a request comes in, a client approves a quote or an invoice is paid.</p>
+<p>Slack opens and asks which channel to post to. You need to be able to add apps to your Slack workspace.</p>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button type="button" class="btn" data-act="slackStart" ${S.available ? '' : 'disabled'}>Connect Slack</button></div>`);
+    return;
+  }
+  const mb = modal('Slack', `<form id="slackForm">${S.broken ? `<div class="card" style="border-color:var(--danger,#dc2626);padding:10px 12px;margin:0 0 12px"><strong>Messages aren’t getting through.</strong> <span class="muted">${esc(S.error || 'Connect Slack again.')}</span><div style="margin-top:8px"><button type="button" class="btn sm" data-act="slackStart">Reconnect</button></div></div>` : ''}
+<p class="muted" style="margin-top:0">Posting to <strong>${esc(S.channel || 'your channel')}</strong>${S.team ? ` in ${esc(S.team)}` : ''}. To use another channel, disconnect and connect again.</p>
+${S.events.map((e) => `<label class="sw-row"><span>${esc(e.label)}</span><input type="checkbox" class="sw" name="${esc(e.k)}" ${e.on ? 'checked' : ''}><i></i></label>`).join('')}
+<div class="foot"><button type="button" class="btn danger" data-act="slackOff">Disconnect</button><button type="button" class="btn alt" data-act="slackTest">Send a test message</button><button class="btn">Save</button></div></form>`);
+  const f = $('#slackForm', mb);
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault(); const btn = $('button.btn:not(.alt):not(.danger)', f); btn.disabled = true;
+    try { await api('PUT', '/api/slack', { events: Object.fromEntries(S.events.map((x) => [x.k, !!f.elements[x.k].checked])) }); closeModal(); toast('Slack settings saved'); } catch (err) { btn.disabled = false; toast(err.message, true); }
+  });
+};
+A.slackStart = async (d, el) => { el.disabled = true; try { const r = await api('POST', '/api/slack/start'); location.href = r.url; } catch (e) { el.disabled = false; toast(e.message, true); } };
+A.slackTest = async (d, el) => { el.disabled = true; try { await api('POST', '/api/slack/test'); toast('Test message sent. Check your Slack channel.'); } catch (e) { toast(e.message, true); } el.disabled = false; };
+A.slackOff = async (d, el) => {
+  if (!confirm('Disconnect Slack? Messages stop, and the app is removed from your Slack workspace.')) return;
+  el.disabled = true; try { await api('DELETE', '/api/slack'); closeModal(); toast('Slack disconnected'); slackRefresh(); } catch (e) { el.disabled = false; toast(e.message, true); }
 };
 A.mktSuggest = () => {
   const mb = modal('Suggest an app', `<form id="mktSugForm"><p class="muted" style="margin-top:0">Don’t see an app you use? Tell us, and what you’d like it to do here.</p>

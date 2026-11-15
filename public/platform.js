@@ -695,6 +695,7 @@ const IG_TABS = [
   ['tiktok', 'TikTok', 'TikTok', 'Your own TikTok account, and businesses’ posts'],
   ['quickbooks', 'QuickBooks', 'QuickBooks Online', 'Businesses send clients, invoices and payments to their books'],
   ['xero', 'Xero', 'Xero', 'Businesses send clients, invoices and payments to their books'],
+  ['slack', 'Slack', 'Slack', 'Businesses get messages in a Slack channel about new work and payments'],
   ['soon', 'Coming soon', 'Coming soon', 'Show Coming soon in place of Connect, network by network'],
   ['ai', 'AI', 'AI', 'Write with AI, Rewrite, social captions and the help chat'],
   ['marketplace', 'App Marketplace', 'App Marketplace', 'The App Marketplace in every account, and Home Depot prices'],
@@ -710,6 +711,7 @@ const IG_ICONS = {
   ai: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#7C3AED"/><path fill="#fff" d="M22 11l2.6 7.4L32 21l-7.4 2.6L22 31l-2.6-7.4L12 21l7.4-2.6zM33 27l1.3 3.7L38 32l-3.7 1.3L33 37l-1.3-3.7L28 32l3.7-1.3z"/></svg>',
   quickbooks: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#2CA01C"/><text x="24" y="30.5" text-anchor="middle" font-family="system-ui,sans-serif" font-size="18" font-weight="700" fill="#fff">qb</text></svg>',
   xero: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#13B5EA"/><text x="24" y="30.5" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="#fff">xero</text></svg>',
+  slack: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#4A154B"/><g fill="none" stroke-width="4.4" stroke-linecap="round"><path stroke="#36C5F0" d="M20 13v10"/><path stroke="#2EB67D" d="M35 20H25"/><path stroke="#ECB22E" d="M28 35V25"/><path stroke="#E01E5A" d="M13 28h10"/></g><g><circle cx="13" cy="20" r="2.4" fill="#36C5F0"/><circle cx="28" cy="13" r="2.4" fill="#2EB67D"/><circle cx="35" cy="28" r="2.4" fill="#ECB22E"/><circle cx="20" cy="35" r="2.4" fill="#E01E5A"/></g></svg>',
   soon: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#64748b"/><g fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="24" r="11"/><path d="M24 17v7l5 3"/></g></svg>',
   marketplace: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#7c3aed"/><g fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="14" y="14" width="8" height="8" rx="1.5"/><rect x="26" y="14" width="8" height="8" rx="1.5"/><rect x="14" y="26" width="8" height="8" rx="1.5"/><rect x="26" y="26" width="8" height="8" rx="1.5"/></g></svg>',
 };
@@ -2003,7 +2005,20 @@ ${copy(T.redirectUri, 'TikTok redirect URI')}
 <ol class="ig-steps" start="3"><li>Under URL properties, verify your domain. TikTok downloads your posts’ videos and photos from it.</li>
 <li>Paste the app’s Client key and Client secret here. While testing, use the Sandbox keys; switch to the Production keys once TikTok approves the app. Or set <code>TIKTOK_CLIENT_KEY</code> and <code>TIKTOK_CLIENT_SECRET</code> in <code>.env</code>.</li></ol>
 ${form('tiktok', T, 'Client key', 'e.g. sbaw1234abcd5678', 'Client secret')}${I.localhost ? '<p class="muted ig-p">TikTok only sends people back to a public address: set <code>BASE_URL</code> (or <code>PLATFORM_DOMAIN</code>) first.</p>' : ''}`)
-  + booksGroups(I, ig, on, copy, form, n);
+  + booksGroups(I, ig, on, copy, form, n) + slackGroup(I, ig, on, copy, form, n);
+}
+// App Marketplace → Slack (lib/slack.js): the Slack app businesses add to their workspace to get messages in a channel
+function slackGroup(I, ig, on, copy, form, n) {
+  const S = I.social.slack || {};
+  return ig('Slack', on(S.id && S.secret, 'Ready', 'Not set up'), `<p class="ig-d">Businesses connect Slack in the App Marketplace and pick a channel. They get a message there when a request comes in, a client approves a quote or an invoice is paid. ${n('', S.connected || 0)}.</p>
+<ol class="ig-steps"><li>On <a href="https://api.slack.com/apps" target="_blank" rel="noopener">api.slack.com/apps</a>, click <strong>Create New App</strong> → <strong>From scratch</strong>. Name it after your product and pick your own Slack workspace.</li>
+<li>Under <strong>Incoming Webhooks</strong>, turn on <strong>Activate Incoming Webhooks</strong>.</li>
+<li>Under <strong>OAuth &amp; Permissions</strong>, add this <strong>Redirect URL</strong> and save, then add the <code>incoming-webhook</code> bot token scope:</li></ol>
+${copy(S.redirectUri, 'Slack redirect URL')}
+<ol class="ig-steps" start="4"><li>Under <strong>Manage Distribution</strong>, finish the checklist and click <strong>Activate Public Distribution</strong>, so other businesses’ workspaces can add the app. Slack doesn’t need to review it for that.</li>
+<li>Under <strong>Basic Information</strong> → App Credentials, copy the Client ID and Client Secret and paste them here. Or set <code>SLACK_CLIENT_ID</code> and <code>SLACK_CLIENT_SECRET</code> in <code>.env</code>.</li>
+<li>Optional: under Basic Information → Display Information, add your logo so businesses recognise it in Slack.</li></ol>
+${form('slack', S, 'Client ID', 'e.g. 1234567890.1234567890123', 'Client secret')}${I.localhost ? '<p class="muted ig-p">Slack only sends people back to a public https address: set <code>BASE_URL</code> (or <code>PLATFORM_DOMAIN</code>) first.</p>' : ''}`);
 }
 // Settings → QuickBooks & Xero (lib/accounting.js): the Intuit and Xero apps businesses connect their books through
 function booksGroups(I, ig, on, copy, form, n) {

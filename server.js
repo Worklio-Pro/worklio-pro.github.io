@@ -42,6 +42,7 @@ const forum = require('./lib/forum');
 const industries = require('./lib/industries');
 const marketplace = require('./lib/marketplace');
 const homeDepot = require('./lib/homedepot');
+const slack = require('./lib/slack'); // App Marketplace → Slack: messages in the business's channel
 const push = require('./lib/push');
 const { db, uploadDir } = tenancy;
 const baseUrl = () => tenancy.tenantUrl(tenancy.current()); // this account's web address, for links in messages
@@ -1581,7 +1582,10 @@ function pushScheduleChange(was, job, actor) {
   pushTo([...db.users.filter(isOwnerOrAdmin), ...jobCrew(was || {}), ...jobCrew(job || {})].filter((u) => !actor || u.id !== actor.id), 'schedule',
     { title: 'Today’s schedule changed', body: `${j.title || j.number} ${what}`, url: '/calendar' });
 }
-const pushNewRequest = (kind, c, r) => pushTo(usersWhoCan('clients.view'), kind, { title: kind === 'booking' ? 'New online booking' : 'New request', body: `${c.name}: ${r.title}`, url: `/clients/view?id=${c.id}` });
+const pushNewRequest = (kind, c, r) => {
+  pushTo(usersWhoCan('clients.view'), kind, { title: kind === 'booking' ? 'New online booking' : 'New request', body: `${c.name}: ${r.title}`, url: `/clients/view?id=${c.id}` });
+  slackSend('request', `*${kind === 'booking' ? 'New online booking' : 'New request'}* from ${slack.esc(c.name)}: ${slack.esc(r.title)}`, { label: 'Open client', url: `${baseUrl()}/clients/view?id=${c.id}` });
+};
 // once a day, around 7 in the morning where the business is: each login's own jobs today; the owner and admins get the whole team's
 function pushOverviews() {
   for (const t of tenancy.platform().tenants) {
@@ -2824,7 +2828,11 @@ function settleInvoice(inv) {
     Object.assign(inv, { status: 'paid', paidAt: last.date, paymentMethod: last.method });
   } else if (inv.status === 'paid') { Object.assign(inv, { status: 'sent', paidAt: null, paymentMethod: null }); }
   else if (inv.status === 'draft' && (inv.payments || []).length) inv.status = 'sent';
-  if (!wasPaid && inv.status === 'paid') askForReview('invoice', inv);
+  if (!wasPaid && inv.status === 'paid') { askForReview('invoice', inv); slackInvoicePaid(inv); }
+}
+function slackInvoicePaid(inv) {
+  const c = findClient(inv.clientId);
+  slackSend('invoicePaid', `*Invoice paid:* ${slack.esc(c ? c.name : 'A client')} paid invoice ${slack.esc(inv.number)} (${money(inv.total || 0)})`, { label: 'Open invoice', url: `${baseUrl()}/invoices/view?id=${inv.id}` });
 }
 app.post('/api/invoices/:id/payments', (req, res) => {
   const inv = db.invoices.find((x) => x.id === req.params.id); if (!inv) return res.status(404).json({ error: 'Not found' });
@@ -2842,7 +2850,7 @@ app.post('/api/invoices/:id/mark-paid', (req, res) => {
   if (!inv) return res.status(404).json({ error: 'Not found' });
   const method = PAY_METHODS[req.body.method] ? req.body.method : 'other'; const owed = invoiceCredits(inv, true).balanceDue; const u = currentUser(req);
   if (owed > 0) inv.payments = [...(inv.payments || []), { id: uid(), amount: owed, method, date: iso(new Date()), reference: '', recordedBy: u ? u.name : '', createdAt: new Date().toISOString() }];
-  settleInvoice(inv); if (inv.status !== 'paid') { Object.assign(inv, { status: 'paid', paidAt: iso(new Date()), paymentMethod: method }); askForReview('invoice', inv); }
+  settleInvoice(inv); if (inv.status !== 'paid') { Object.assign(inv, { status: 'paid', paidAt: iso(new Date()), paymentMethod: method }); askForReview('invoice', inv); slackInvoicePaid(inv); }
   save(); res.json(withStatus(inv));
 });
 
@@ -3565,7 +3573,10 @@ setMode('drawn');})();</script>`;
 function tellBusinessQuote(q, status) {
   const c = findClient(q.clientId);
   const picked = hasOptions(q) && q.chosenOption ? `, choosing ${shownOption(q).name}` : ''; // Good / Better / Best: which option
-  if (status === 'approved') pushTo(usersWhoCan('quotes'), 'quoteApproved', { title: 'Client approved quote', body: `${c ? c.name : 'A client'} approved quote ${q.number}${q.title ? ` (${q.title})` : ''}${picked}`, url: `/quotes/edit?id=${q.id}` });
+  if (status === 'approved') {
+    pushTo(usersWhoCan('quotes'), 'quoteApproved', { title: 'Client approved quote', body: `${c ? c.name : 'A client'} approved quote ${q.number}${q.title ? ` (${q.title})` : ''}${picked}`, url: `/quotes/edit?id=${q.id}` });
+    slackSend('quoteApproved', `*Quote approved:* ${slack.esc(c ? c.name : 'A client')} approved quote ${slack.esc(q.number)}${q.title ? ` (${slack.esc(q.title)})` : ''}${slack.esc(picked)}`, { label: 'Open quote', url: `${baseUrl()}/quotes/edit?id=${q.id}` });
+  }
   if (!db.company.email) return;
   const what = `quote ${q.number}${q.title ? ` (${q.title})` : ''}${status === 'approved' ? picked : ''}`;
   const next = status === 'declined' ? 'You can follow up with them, or edit the quote and send it again.'
@@ -5037,6 +5048,7 @@ function liveAppState(a, u) {
   if (a.id === 'bluesky' || a.id === 'x') return { planOk, available: social.available(a.id), connected: !!connOf(a.id) }; // the business's own app password or X app: nothing for the platform to set up
   if (a.id === 'stripe') { const s = secrets(); const on = !!stripeKey() && (!!s.stripeChargesEnabled || !!s.stripeSecretKey || (tenancy.isDefault() && !!process.env.STRIPE_SECRET_KEY)); return { planOk, available: on || !!stripeLib.platformKey(), connected: on }; }
   if (a.id === 'homedepot') return { planOk, available: homeDepot.ready(), connected: !!hdSettings().on };
+  if (a.id === 'slack') return { planOk, available: slack.ready(), connected: !!(db.slack && secrets().slack) };
   if (a.id === 'claude') { const on = !!process.env.ANTHROPIC_API_KEY; return { planOk, available: on, connected: on }; }
   return { planOk, available: false, connected: false };
 }
@@ -5062,6 +5074,48 @@ app.put('/api/home-depot', (req, res) => {
 app.get('/api/home-depot/search', async (req, res) => {
   if (!hdView().on) return res.status(400).json({ error: 'Turn on Home Depot in Settings → App Marketplace first' });
   try { res.json({ products: await homeDepot.search(req.query.q, { zip: hdSettings().zip, account: tenancy.current().id }) }); } catch (e) { res.status(e.status || 502).json({ error: e.message }); }
+});
+// Slack (lib/slack.js): the channel picked on Slack's page, and which messages go to it. db.slack holds what the page shows;
+// the webhook and token stay in the secrets. A message that Slack refuses for good (channel removed, app uninstalled) marks it broken.
+function slackSend(event, text, link) {
+  const S = db.slack; const conn = secrets().slack;
+  if (!S || !conn || S.broken || !slack.ready() || !marketplace.isOn(tenancy.platform()) || (S.events || {})[event] === false) return;
+  const t = tenancy.current();
+  slack.post(conn, text, link).catch((e) => {
+    if (!e.reconnect) return console.error('slack:', t.slug, e.message);
+    tenancy.run(t, () => { if (db.slack) { db.slack.broken = true; db.slack.error = e.message; save(); } });
+  });
+}
+function saveSlack(conn) {
+  const { webhook, token, ...shown } = conn; const old = db.slack || {};
+  db.slack = { ...shown, events: old.events || {}, broken: false, error: '' }; db.secrets = { ...secrets(), slack: { webhook, token } }; save();
+  const t = tenancy.current(); t.slack = true; tenancy.savePlatform(); // Alpha shows how many businesses use it
+  slack.post({ webhook }, `*${slack.esc(db.company.name || 'Your business')}* is connected. Messages about new requests, approved quotes and paid invoices will show up in this channel.`).catch(() => {});
+}
+const slackView = () => {
+  const S = db.slack; const on = !!(S && secrets().slack);
+  return { available: slack.ready(), connected: on, channel: on ? S.channel || '' : '', team: on ? S.team || '' : '', configUrl: on ? S.configUrl || '' : '', broken: !!(on && S.broken), error: on ? S.error || '' : '',
+    events: Object.entries(slack.EVENTS).map(([k, label]) => ({ k, label, on: !on || (S.events || {})[k] !== false })) };
+};
+app.get('/api/slack', (req, res) => { if (marketplaceAdmin(req, res)) res.json(slackView()); });
+app.post('/api/slack/start', (req, res) => {
+  if (!marketplaceAdmin(req, res)) return; if (!slack.ready()) return res.status(503).json({ error: 'Slack isn’t available yet.' });
+  res.json({ url: slack.startUrl(tenancy.current().id, currentUser(req).id) });
+});
+app.put('/api/slack', (req, res) => {
+  if (!marketplaceAdmin(req, res)) return; const S = db.slack; if (!S || !secrets().slack) return res.status(400).json({ error: 'Connect Slack first' });
+  const ev = (req.body || {}).events || {}; S.events = Object.fromEntries(Object.keys(slack.EVENTS).map((k) => [k, ev[k] !== false])); save(); res.json(slackView());
+});
+app.post('/api/slack/test', async (req, res) => {
+  if (!marketplaceAdmin(req, res)) return; const S = db.slack; const conn = secrets().slack; if (!S || !conn) return res.status(400).json({ error: 'Connect Slack first' });
+  try { await slack.post(conn, `This is a test message from *${slack.esc(db.company.name || 'Worklio Pro')}*. Slack is connected.`, { label: 'Open App Marketplace', url: `${baseUrl()}/marketplace` }); S.broken = false; S.error = ''; save(); res.json(slackView()); }
+  catch (e) { if (e.reconnect) { S.broken = true; S.error = e.message; save(); } res.status(e.status || 502).json({ error: e.message }); }
+});
+app.delete('/api/slack', async (req, res) => {
+  if (!marketplaceAdmin(req, res)) return;
+  await slack.revoke(secrets().slack); // takes the app out of the business's Slack workspace
+  const sec = { ...secrets() }; delete sec.slack; db.secrets = sec; delete db.slack; save();
+  const t = tenancy.current(); delete t.slack; tenancy.savePlatform(); res.json(slackView());
 });
 // "I want this" (on: true) or take it back (on: false)
 app.post('/api/marketplace/:id/request', (req, res) => {
@@ -5840,7 +5894,7 @@ const legal = require('./lib/legal');
 const dataImport = require('./lib/data-import')({ db, save, uid, token, iso, round2, computeTotals, cleanCat, invoiceCredits, nextNumber, docPrefix, NUMBERING });
 const platformApp = require('./lib/platform')({
   hashPassword, checkPassword, sha, normEmail, cookies, tooMany, recordFailure, clearFailures: (k) => failures.delete(k),
-  createOwner, ownerLink, sendVerifyEmail, sendPasswordReset, loginsFor, handoffUrl, tenantStats, endSupportSessions, sendEmail, sendTemplate, sendSms, emailProvider: serverEmailProvider, applyStripeSession, syncStripeAccount, resetDemo, saveConnection, saveAccounting, setCompanyEmail: (e) => { if (!db.company.email) { db.company.email = e; save(); } }, setCompanyPhone: (p) => { if (p && !db.company.phone) { db.company.phone = p; save(); } },
+  createOwner, ownerLink, sendVerifyEmail, sendPasswordReset, loginsFor, handoffUrl, tenantStats, endSupportSessions, sendEmail, sendTemplate, sendSms, emailProvider: serverEmailProvider, applyStripeSession, syncStripeAccount, resetDemo, saveConnection, saveAccounting, saveSlack, setCompanyEmail: (e) => { if (!db.company.email) { db.company.email = e; save(); } }, setCompanyPhone: (p) => { if (p && !db.company.phone) { db.company.phone = p; save(); } },
   setCompanyIndustry: (i) => { Object.assign(db.company, i); save(); },
   planProduct, // the Stripe product for a plan (Alpha → an account → Subscription → Change plan)
   planItem, seatItem, seatParams, extraCount, extraLines, matrixItem, syncSeats, // a subscription’s plan line, extra logins line and add-on lines
@@ -5857,7 +5911,7 @@ function clientIp(req) {
   return fwd[fwd.length - 1] || String(req.headers['x-real-ip'] || '').trim() || direct;
 }
 // which app answers: the platform's (its own domain, or /alpha… while developing) or an account's
-const PLATFORM_PATHS = /^\/(alpha(\/.*)?|platform(\/.*)?|stripe\/go\/[a-z]+|oauth\/(google|meta|tiktok|linkedin|pinterest|threads|quickbooks|xero)\/callback|home|features|marketing|partners(\/[a-f0-9]+)?|go\/[A-Za-z0-9_-]+|quote-from-photos|good-better-best|pricing|signup|sign-in(\/(google|apple)(\/callback)?)?|supporters|industries(\/[a-z-]+)?|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;
+const PLATFORM_PATHS = /^\/(alpha(\/.*)?|platform(\/.*)?|stripe\/go\/[a-z]+|oauth\/(google|meta|tiktok|linkedin|pinterest|threads|quickbooks|xero|slack)\/callback|home|features|marketing|partners(\/[a-f0-9]+)?|go\/[A-Za-z0-9_-]+|quote-from-photos|good-better-best|pricing|signup|sign-in(\/(google|apple)(\/callback)?)?|supporters|industries(\/[a-z-]+)?|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;
 function dispatch(req, res) {
   req.ip = clientIp(req); // who's asking (login limits, spam checks)
   // browser safety on every reply: files are only treated as the type we say (an upload can't pass itself off as a script),
