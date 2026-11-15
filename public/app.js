@@ -186,6 +186,9 @@ async function loadAll() {
   return out;
 }
 // approved time off for this team member covering a date (and the hours, if it's part of a day)
+// Holiday hours (Company Profile): the business's holiday on that day, and its hours in words
+const holidayOn = (date) => ((company && company.holidays) || []).find((h) => h.from <= date && h.to >= date);
+const holHours = (h) => (h.closed ? 'Closed' : `${fmtTime(h.start)} – ${fmtTime(h.end)}`);
 const offOn = (staffId, date, start, end) => (D.timeOff || []).find((r) => r.staffId === staffId && r.from <= date && r.to >= date && (!r.start || !start || (r.start < (end || start) && r.end > start)));
 const clientName = (id) => (byId(D.clients, id) || {}).name || '—';
 const staffDots = (ids) => (ids || []).map((id) => { const s = byId(D.staff, id); return s ? `<span title="${esc(s.name)}"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${esc(s.color)};margin-right:4px"></span>${esc(s.name)}</span>` : ''; }).join('<br>') || '<span class="muted">Unassigned</span>';
@@ -3199,6 +3202,8 @@ function jobScheduleOk(id, body) {
   if (clash.length && !confirm(`Schedule conflict: ${clash.map((c) => c.number + ' ' + c.title).join(', ')} overlaps for an assigned staff member. Save anyway?`)) return false;
   const offHours = (body.staffIds || []).map((s) => byId(D.staff, s)).filter((s) => s && !withinHours(s, body.date, body.startTime, body.endTime));
   const away = (body.staffIds || []).map((s) => [byId(D.staff, s), offOn(s, body.date, body.startTime, body.endTime)]).filter(([s, r]) => s && r);
+  const hol = holidayOn(body.date); // a closed holiday, or outside its shorter hours
+  if (hol && (hol.closed || (!body.anytime && (body.startTime < hol.start || body.endTime > hol.end))) && !confirm(`Holiday hours: ${hol.name} (${hol.closed ? 'closed that day' : `open ${holHours(hol)}`}). Save anyway?`)) return false;
   if (away.length && !confirm(`Time off: ${away.map(([s, r]) => `${s.name} (${r.when})`).join(', ')} ${away.length === 1 ? 'has' : 'have'} approved time off then. Save anyway?`)) return false;
   if (offHours.length && !confirm(`Outside working hours: ${offHours.map((s) => s.name).join(', ')} ${offHours.length === 1 ? "isn't" : "aren't"} scheduled to work then (see Manage team). Save anyway?`)) return false;
   return true;

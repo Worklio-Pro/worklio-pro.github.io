@@ -152,6 +152,22 @@ function readHours(raw) { // uses DAYS / HHMM from the team-hours code below (on
   for (const d of DAYS) { const x = h[d] || {}; const on = !!x.on; if (on && !(t(x.start) && t(x.end) && x.end > x.start)) return null; out[d] = { on, start: t(x.start) ? x.start : '09:00', end: t(x.end) ? x.end : '17:00' }; }
   return out;
 }
+// Holiday hours (App Settings → Company details, under Business hours): days the business is closed or keeps different hours.
+// Each is { id, name, from, to, closed, start, end }; ones over for more than 30 days are dropped whenever the list is saved.
+function readHolidays(raw) {
+  let L = raw; if (typeof L === 'string') { try { L = JSON.parse(L); } catch (e) { return null; } }
+  if (!Array.isArray(L) || L.length > 100) return null;
+  const day = /^\d{4}-\d{2}-\d{2}$/; const t = (v) => HHMM.test(v || ''); const cut = iso(new Date(Date.now() - 30 * 864e5)); const out = [];
+  for (const x of L) {
+    if (!x || !day.test(x.from || '')) return null;
+    const name = String(x.name || '').trim().slice(0, 60); if (!name) return null;
+    const closed = x.closed !== false; if (!closed && !(t(x.start) && t(x.end) && x.end > x.start)) return null;
+    const to = day.test(x.to || '') && x.to > x.from ? x.to : x.from; if (to < cut) continue;
+    out.push({ id: /^[\w-]{1,40}$/.test(x.id || '') ? x.id : uid(), name, from: x.from, to, closed, ...(closed ? {} : { start: x.start, end: x.end }) });
+  }
+  return out.sort((a, b) => a.from.localeCompare(b.from));
+}
+const holidayOn = (date) => (db.company.holidays || []).find((h) => h.from <= date && h.to >= date);
 
 // ---------- helpers ----------
 const round2 = (n) => Math.round(n * 100) / 100;
@@ -1815,6 +1831,7 @@ app.put('/api/company', (req, res) => {
   // the kind of business (asked at sign-up; lib/industries.js): saved as industry + industryOther
   if ('industry' in b) { const i = industries.choose(b.industry, b.industryOther); if (i.error) return res.status(400).json({ error: i.error }); Object.assign(db.company, i); }
   if ('hours' in b) { const h = readHours(b.hours); if (!h) return res.status(400).json({ error: 'Check the business hours: each open day needs an end time after its start time' }); b.hours = h; }
+  if ('holidays' in b) { const h = readHolidays(b.holidays); if (!h) return res.status(400).json({ error: 'Check the holiday hours: each needs a name and a date, and open days need an end time after the start time' }); b.holidays = h; }
   // social media pages (Company Profile): a link, or a handle for the networks that have them
   if (Object.keys(b).some((k) => k.startsWith('social_'))) {
     const social = {};
@@ -1826,7 +1843,7 @@ app.put('/api/company', (req, res) => {
     db.company.social = social;
   }
   const allowed = ['name', 'email', 'phone', 'website', 'address', 'logo', 'taxRate', 'paymentTermsDays', 'invoiceFooter', 'brandColor', 'accentColor', 'zelleRecipient', 'zelleName', 'quoteDisclaimer', 'invoiceDisclaimer', ...Object.keys(PREFIX_DEFAULTS),
-    ...ADDRESS_PARTS, 'taxIdName', 'taxIdNumber', 'taxName', 'taxDescription', 'hours', 'clientLang', ...Object.keys(REGIONAL)];
+    ...ADDRESS_PARTS, 'taxIdName', 'taxIdNumber', 'taxName', 'taxDescription', 'hours', 'holidays', 'clientLang', ...Object.keys(REGIONAL)];
   if ('clientLang' in b && !i18n.valid(b.clientLang)) return res.status(400).json({ error: 'Choose one of the languages listed' });
   const handles = {}; // Venmo / Cash App / PayPal.me: a pasted link and a leading @ or $ are fine
   for (const m of PAY_APPS) if (m.field in b) { const h = payHandle(b[m.field], m.host); if (h === null) return res.status(400).json({ error: `Enter your ${m.label} ${m.what}, like ${m.eg}` }); handles[m.field] = h; }
@@ -3960,7 +3977,8 @@ function surveySlots(staffId, skipTaskId) {
   const s = (db.staff || []).find((x) => x.id === staffId); if (!s) return [];
   const S = svySettings(); const now = new Date(); const earliest = now.getTime() + S.notice * 3600e3; const days = [];
   for (let i = 0; i <= S.ahead; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i); const date = svyYmd(d); const h = svyHours(s, date); if (!h) continue;
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i); const date = svyYmd(d); let h = svyHours(s, date); if (!h) continue;
+    const hol = holidayOn(date); if (hol) { if (hol.closed) continue; h = { start: h.start > hol.start ? h.start : hol.start, end: h.end < hol.end ? h.end : hol.end }; if (h.end <= h.start) continue; } // holiday hours: closed, or only inside its hours
     const busy = svyBusy(staffId, date, skipTaskId); const times = [];
     for (let m = Math.ceil(svyMin(h.start) / S.step) * S.step; m + S.minutes <= svyMin(h.end); m += S.step) {
       if (new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, m).getTime() < earliest) continue;
@@ -4194,7 +4212,8 @@ app.get('/api/portal/:token', (req, res) => {
   res.json({
     lang, locale: i18n.locale(lang), strings: i18n.strings(lang), // the portal's words in the client's language (public/pages.js pt())
     langNames: lang === 'en' ? null : { en: 'English', [lang]: i18n.LANGUAGES[lang].native }, // the language switch at the bottom of the portal's menu
-    company: { name: db.company.name, logo: db.company.logo, email: db.company.email, phone: db.company.phone, accentColor: accentColor(), address: db.company.addressPrivate ? '' : db.company.address, website: db.company.website, hours: db.company.showHours ? db.company.hours || null : null },
+    company: { name: db.company.name, logo: db.company.logo, email: db.company.email, phone: db.company.phone, accentColor: accentColor(), address: db.company.addressPrivate ? '' : db.company.address, website: db.company.website, hours: db.company.showHours ? db.company.hours || null : null,
+      holidays: db.company.showHours ? (db.company.holidays || []).filter((h) => h.to >= iso(new Date()) && h.from <= iso(new Date(Date.now() + 60 * 864e5))) : [] }, // holiday hours in the next 60 days
     client: { id: c.id, name: c.name, email: c.email, phone: c.phone, address: c.address, smsConsent: !!c.smsConsent, smsBrand: smsBrand() },
     referralLink: tenancy.has('referrals') ? referralLink(c) : null,
     reviews: !tenancy.has('reviews') ? null : (db.clientReviews || []).filter((r) => r.clientId === c.id && r.submittedAt).sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))

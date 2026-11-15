@@ -228,7 +228,7 @@ ${wait.length > SC_WAIT_MAX ? `<a class="sc-wmore" href="/quotes" data-link>+${w
     const lane = (c) => { const it = scColItems(c).filter((x) => x.anytime);
       const who = c.s === undefined ? D.staff.filter((st) => !scState.hidden.includes(st.id)) : c.s && c.s !== 'events' ? D.staff.filter((st) => st.id === c.s) : [];
       const off = who.filter((st) => { const r = offOn(st.id, c.d); return r && !r.start; });
-      return `<div class="sc-lane" data-d="${c.d}"${scSAttr(c)}>${off.map((st) => `<span class="sc-off" title="Approved time off">${esc(c.s ? 'Off' : st.name.split(' ')[0] + ' off')}</span>`).join('')}${it.map((x) => `<div class="sc-chip k-${x.kind}${x.done ? ' done' : ''}" style="--c:${esc(scColColor(x, c))}" data-kind="${x.kind}" data-id="${x.id}"${scSAttr(c)} ${edit ? 'data-drag="1"' : ''}>${esc(x.title)}</div>`).join('')}</div>`; };
+      return `<div class="sc-lane" data-d="${c.d}"${scSAttr(c)}>${holTag(c.d)}${off.map((st) => `<span class="sc-off" title="Approved time off">${esc(c.s ? 'Off' : st.name.split(' ')[0] + ' off')}</span>`).join('')}${it.map((x) => `<div class="sc-chip k-${x.kind}${x.done ? ' done' : ''}" style="--c:${esc(scColColor(x, c))}" data-kind="${x.kind}" data-id="${x.id}"${scSAttr(c)} ${edit ? 'data-drag="1"' : ''}>${esc(x.title)}</div>`).join('')}</div>`; };
     const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
     const col = (c) => `<div class="sc-col${c.d === today && !team ? ' today' : ''}" data-d="${c.d}"${scSAttr(c)}>${scLayout(scColItems(c).filter((x) => !x.anytime && x.start)).map((x) => { const top = (Math.max(x.s, SC_START * 60) - SC_START * 60) / 60 * SC_HOUR; const h = Math.max(18, (Math.min(x.e, SC_END * 60) - Math.max(x.s, SC_START * 60)) / 60 * SC_HOUR);
       return `<div class="sc-item k-${x.kind}${x.done ? ' done' : ''}" style="--c:${esc(scColColor(x, c))};top:${top}px;height:${h}px;left:calc(${(100 / x.cols) * x.col}% + 2px);width:calc(${100 / x.cols}% - 4px)" data-kind="${x.kind}" data-id="${x.id}" data-start="${x.start}" data-end="${scTime(x.e)}"${scSAttr(c)} ${edit ? 'data-drag="1"' : ''} title="${esc(`${fmtTime(x.start)}–${fmtTime(x.end)} · ${x.title}${x.sub ? ' · ' + x.sub : ''}`)}">
@@ -392,7 +392,7 @@ function scMonthHtml(first, today, edit) {
     const shown = its.length > SC_MONTH_MAX + 1 ? its.slice(0, SC_MONTH_MAX) : its;
     return `<div class="sc-mc${d.getMonth() !== first.getMonth() ? ' out' : ''}${s === today ? ' today' : ''}" data-d="${s}">
 <button type="button" class="sc-mn" data-act="scGo" data-d="${s}" data-day="1" aria-label="Open ${esc(d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }))}">${d.getDate() === 1 ? esc(d.toLocaleDateString('en-US', { month: 'short' })) + ' ' : ''}${d.getDate()}</button>
-${off.map((st) => `<span class="sc-off" title="Approved time off">${esc(st.name.split(' ')[0])} off</span>`).join('')}
+${holTag(s)}${off.map((st) => `<span class="sc-off" title="Approved time off">${esc(st.name.split(' ')[0])} off</span>`).join('')}
 ${shown.map((x) => { const any = x.anytime || !x.start; return `<div class="sc-mi k-${x.kind}${x.done ? ' done' : ''}${any ? ' any' : ''}" style="--c:${esc(scColor(x))}" data-kind="${x.kind}" data-id="${x.id}" ${edit ? 'data-drag="1"' : ''} title="${esc(`${any ? 'Anytime' : `${fmtTime(x.start)}–${fmtTime(x.end)}`} · ${x.title}${x.sub ? ' · ' + x.sub : ''}`)}">${any ? '' : `<span class="sc-t">${esc(short(x.start))}</span>`}<span class="sc-mt">${esc(x.title)}</span></div>`; }).join('')}
 ${its.length > shown.length ? `<button type="button" class="sc-more" data-act="scGo" data-d="${s}" data-day="1">+${its.length - shown.length} more</button>` : ''}</div>`; };
   return `<div class="sc-month"><div class="sc-mh">${Array.from({ length: 7 }, (_, i) => `<span>${addDays(start, i).toLocaleDateString('en-US', { weekday: 'short' })}</span>`).join('')}</div>
@@ -2629,7 +2629,8 @@ ${p.client.smsConsent ? `<p class="cp-sub" style="margin:4px 0 12px">${pt('You g
     contact: () => `${head(pt('Contact us'))}<div class="cp-card">${co.logo ? `<img src="${esc(co.logo)}" alt="" class="cp-card-logo">` : ''}<h2>${esc(co.name)}</h2>
 ${co.phone ? `<a class="cp-contact" href="tel:${esc(co.phone)}">${cpIcon('contact', 18)} ${esc(co.phone)}</a>` : ''}${co.email ? `<a class="cp-contact" href="mailto:${esc(co.email)}">✉ ${esc(co.email)}</a>` : ''}
 ${co.address ? `<div class="cp-contact cp-addr">${esc(co.address)}</div>` : ''}${co.website ? `<a class="cp-contact" href="${esc(/^https?:/.test(co.website) ? co.website : 'https://' + co.website)}" target="_blank" rel="noopener">${esc(co.website)}</a>` : ''}
-${co.hours ? `<h3 class="cp-sec">${pt('Business hours')}</h3><table class="cp-hours">${WEEK.map(([k, l]) => `<tr><td>${pt(l)}</td><td>${co.hours[k] && co.hours[k].on ? `${fmtTime(co.hours[k].start)} – ${fmtTime(co.hours[k].end)}` : pt('Closed')}</td></tr>`).join('')}</table>` : ''}</div>`,
+${co.hours ? `<h3 class="cp-sec">${pt('Business hours')}</h3><table class="cp-hours">${WEEK.map(([k, l]) => `<tr><td>${pt(l)}</td><td>${co.hours[k] && co.hours[k].on ? `${fmtTime(co.hours[k].start)} – ${fmtTime(co.hours[k].end)}` : pt('Closed')}</td></tr>`).join('')}</table>` : ''}
+${(co.holidays || []).length ? `<h3 class="cp-sec">${pt('Holiday hours')}</h3><table class="cp-hours">${co.holidays.map((h) => `<tr><td>${esc(h.name)}<small class="cp-hol-d">${cpDate(h.from)}${h.to !== h.from ? ' – ' + cpDate(h.to) : ''}</small></td><td>${h.closed ? pt('Closed') : `${fmtTime(h.start)} – ${fmtTime(h.end)}`}</td></tr>`).join('')}</table>` : ''}</div>`,
     // referral: their public referral link (never the private portal link) with copy / email / Outlook / Gmail options
     refer: () => { const link = p.referralLink; const subject = pt('Check out {name}', { name: co.name }); const body = pt('I recommend {name}. You can request service here:', { name: co.name }) + `\n${link}`;
       const q = (o) => Object.entries(o).map(([k, v]) => k + '=' + encodeURIComponent(v)).join('&');
@@ -2717,6 +2718,57 @@ function industryHtml(c) {
 ${fl('Your industry', `<input name="industryOther" maxlength="80" value="${esc(c.industryOther || '')}">`).replace('<label class="fl"', `<label class="fl" data-other ${c.industry === 'other' ? '' : 'hidden'}`)}</div>`;
 }
 const businessHours = (c) => staffHours({ hours: c.hours || { sat: { on: false, start: '09:00', end: '17:00' }, sun: { on: false, start: '09:00', end: '17:00' } } });
+// Holiday hours (Company Profile, under Business hours): days the business is closed or keeps different hours. They show on the calendar,
+// on the client portal with the business hours, warn when a job is scheduled then, and site surveys can't be booked when it's closed.
+const holTag = (date) => { const h = holidayOn(date); return h ? `<span class="sc-hol" title="${esc(`${h.name}: ${holHours(h)}`)}">${esc(h.name)}${h.closed ? ' · Closed' : ' · ' + esc(holHours(h))}</span>` : ''; };
+const holWhen = (h) => (h.to && h.to !== h.from ? `${fmtDate(h.from)} – ${fmtDate(h.to)}` : fmtDate(h.from));
+const holUpcoming = () => (company.holidays || []).filter((h) => h.to >= ymd(new Date()));
+const holRows = (L) => (L.length ? `<div class="hol-list">${L.map((h) => `<div class="hol-row"><span class="hol-n"><strong>${esc(h.name)}</strong><span class="muted">${esc(holWhen(h))}</span></span><span class="hol-h${h.closed ? ' off' : ''}">${esc(holHours(h))}</span>
+<button type="button" class="icon-btn" data-act="holEdit" data-id="${esc(h.id)}" title="Edit" aria-label="Edit ${esc(h.name)}">${PENCIL}</button><button type="button" class="icon-btn hol-x" data-act="holDel" data-id="${esc(h.id)}" title="Remove" aria-label="Remove ${esc(h.name)}">×</button></div>`).join('')}</div>` : '<p class="muted hol-none">No holidays added yet.</p>');
+function holidaysHtml(c) {
+  const us = !c.addrCountry || c.addrCountry === 'United States';
+  return `<div class="hol" data-hol><div class="cs-hours-h"><h3>Holiday hours</h3></div><p class="muted cs-note">Days you’re closed or keep different hours. They show on the calendar and with your business hours on the client portal, and clients can’t book site surveys on a day you’re closed.</p>
+<div class="hol-body">${holRows(holUpcoming())}</div>
+<div class="hol-form" hidden><input type="hidden" data-h="id"><label class="fl"><span>Name</span><input data-h="name" maxlength="60" placeholder="e.g. Thanksgiving"></label>
+<div class="fl-split"><label class="fl"><span>Date</span><input type="date" data-h="from"></label><label class="fl"><span>Last day (if more than one)</span><input type="date" data-h="to"></label></div>
+<label class="fl"><span>Hours</span><select data-h="closed"><option value="1">Closed all day</option><option value="0">Open, different hours</option></select></label>
+<div class="fl-split" data-h-times hidden><label class="fl"><span>Opens</span><input type="time" data-h="start"></label><label class="fl"><span>Closes</span><input type="time" data-h="end"></label></div>
+<div class="foot"><button type="button" class="btn alt" data-act="holCancel">Cancel</button><button type="button" class="btn" data-act="holSave">Save</button></div></div>
+<div class="hol-acts"><button type="button" class="btn alt sm" data-act="holAdd">+ Add holiday</button>${us ? '<button type="button" class="btn alt sm" data-act="holUs" title="New Year’s Day, Memorial Day, Independence Day, Labor Day, Thanksgiving and Christmas Day">Add US holidays</button>' : ''}</div></div>`;
+}
+// the usual US closures in the next 12 months
+function usHolidays() {
+  const nth = (y, m, wd, n) => { const d = new Date(y, m, 1); d.setDate(1 + ((wd - d.getDay() + 7) % 7) + (n - 1) * 7); return d; };
+  const last = (y, m, wd) => { const d = new Date(y, m + 1, 0); d.setDate(d.getDate() - ((d.getDay() - wd + 7) % 7)); return d; };
+  const today = ymd(new Date()); const end = ymd(addDays(new Date(), 365)); const out = [];
+  for (const y of [new Date().getFullYear(), new Date().getFullYear() + 1]) out.push(['New Year’s Day', new Date(y, 0, 1)], ['Memorial Day', last(y, 4, 1)], ['Independence Day', new Date(y, 6, 4)], ['Labor Day', nth(y, 8, 1, 1)], ['Thanksgiving', nth(y, 10, 4, 4)], ['Christmas Day', new Date(y, 11, 25)]);
+  return out.map(([name, d]) => ({ name, from: ymd(d), to: ymd(d), closed: true })).filter((h) => h.from >= today && h.from <= end);
+}
+const holRoot = () => $('[data-hol]');
+const holF = (k) => $(`[data-h="${k}"]`, holRoot());
+const holStore = async (list) => { const saved = await api('PUT', '/api/company', { holidays: list }); company = { ...company, ...saved }; $('.hol-body', holRoot()).innerHTML = holRows(holUpcoming()); };
+const holShow = (on) => { $('.hol-form', holRoot()).hidden = !on; $('.hol-acts', holRoot()).hidden = on; };
+function holOpen(h) {
+  holShow(true); holF('id').value = h.id || ''; holF('name').value = h.name || ''; holF('from').value = h.from || ''; holF('to').value = h.to && h.to !== h.from ? h.to : '';
+  holF('closed').value = h.closed === false ? '0' : '1'; holF('start').value = h.start || '09:00'; holF('end').value = h.end || '13:00';
+  const times = () => { $('[data-h-times]', holRoot()).hidden = holF('closed').value === '1'; }; holF('closed').onchange = times; times(); holF('name').focus();
+}
+A.holAdd = () => holOpen({});
+A.holEdit = (d) => holOpen((company.holidays || []).find((h) => h.id === d.id) || {});
+A.holCancel = () => holShow(false);
+A.holSave = async () => {
+  const h = { id: holF('id').value || undefined, name: holF('name').value.trim(), from: holF('from').value, to: holF('to').value || holF('from').value, closed: holF('closed').value === '1', start: holF('start').value, end: holF('end').value };
+  if (!h.name) { holF('name').focus(); return toast('Give the holiday a name', true); }
+  if (!h.from) return toast('Choose the date', true);
+  if (h.to < h.from) return toast('The last day can’t be before the first', true);
+  if (!h.closed && !(h.start && h.end && h.end > h.start)) return toast('The closing time must be after the opening time', true);
+  try { await holStore([...(company.holidays || []).filter((x) => x.id !== h.id), h]); holShow(false); toast('Holiday hours saved'); } catch (x) { toast(x.message, true); }
+};
+A.holDel = async (d) => { const h = (company.holidays || []).find((x) => x.id === d.id); if (!h || !confirm(`Remove ${h.name}?`)) return;
+  try { await holStore(company.holidays.filter((x) => x.id !== d.id)); toast('Holiday removed'); } catch (x) { toast(x.message, true); } };
+A.holUs = async () => { const have = new Set((company.holidays || []).map((h) => h.from)); const add = usHolidays().filter((h) => !have.has(h.from));
+  if (!add.length) return toast('The US holidays for the next 12 months are already on your list');
+  try { await holStore([...(company.holidays || []), ...add]); toast(`${add.length} holiday${add.length === 1 ? '' : 's'} added as closed. Edit any you’re open for.`); } catch (x) { toast(x.message, true); } };
 function companySettingsHtml(c, logoBox = '') {
   const hasParts = ['addrStreet1', 'addrStreet2', 'addrCity', 'addrState', 'addrZip'].some((k) => c[k]);
   const v = (k) => esc(c[k] ?? '');
@@ -2731,7 +2783,8 @@ ${industryHtml(c)}
 ${switchRow('addressPrivate', 'Keep address private', c.addressPrivate, 'We won’t show your address to clients in the client portal.')}
 <hr class="cs-hr"><div data-hours-root><div class="cs-hours-h"><h3>Business hours</h3>${hoursPencil('business hours')}</div><p class="muted cs-note">Your usual opening times.</p>
 ${autoHoursHtml(businessHours(c), 'Closed')}${hoursFoot}</div>
-${switchRow('showHours', 'Show business hours', c.showHours, 'Display your business hours on the client portal.')}</div>
+${switchRow('showHours', 'Show business hours', c.showHours, 'Display your business hours and upcoming holiday hours on the client portal.')}
+<hr class="cs-hr">${holidaysHtml(c)}</div>
 </div><div class="cs-col">${logoBox}<div class="card cs"><h2>Social media</h2><p class="muted cs-note">Paste a link to your page, or just your handle (like @yourbusiness). Leave any you don’t use blank.</p>
 <div class="cs-soc">${SOCIAL.map(([k, l, ph]) => fl(l, `<input name="social_${k}" value="${esc((c.social || {})[k] || '')}" placeholder="${ph}" autocomplete="off" autocapitalize="off" spellcheck="false">`)).join('')}</div></div>
 
@@ -2900,7 +2953,7 @@ ${full ? `<div class="as-tabs" role="tablist">${AS_TABS.map(([t, n]) => `<button
       try { const saved = await api('PUT', '/api/company', b); company = { ...company, ...saved }; last = key(); toast('Settings saved'); } catch (err) { toast(err.message, true); }
       busy = false; if (again) { again = false; saveFields(); }
     };
-    cf.addEventListener('change', (e) => { if (!e.target.closest('.hours-wrap')) saveFields(); });
+    cf.addEventListener('change', (e) => { if (!e.target.closest('.hours-wrap, [data-hol]')) saveFields(); });
     cf.addEventListener('submit', (e) => { e.preventDefault(); saveFields(); });
     wireHoursEditor($('[data-hours-root]', cf), businessHours(c), 'Closed', async (hours) => { const saved = await api('PUT', '/api/company', { hours }); company = { ...company, ...saved }; toast('Business hours saved'); });
   } else { // App Settings saves on its own too: a field as soon as it changes (its fields sit outside the form and say form="cf")
