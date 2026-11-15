@@ -2804,7 +2804,7 @@ function wireMx() {
   });
 }
 // App Settings → General → Team location (company.teamLocation, off by default): saves as soon as it's switched
-const teamLocCard = (c) => (!planHas('timesheets') && !planHas('dispatchMap') ? '' : `<div class="card" id="team-location"><h2>Team location</h2><p class="muted" style="margin-top:0">See where your team was when they clocked in, clocked out or sent On My Way. Timesheets show how far each one was from the job${planHas('dispatchMap') ? ', and Calendar → Map shows everyone’s last known spot today' : ''}.</p>
+const teamLocCard = (c) => (!planHas('teamLocation') ? '' : `<div class="card" id="team-location"><h2>Team location</h2><p class="muted" style="margin-top:0">See where your team was when they clocked in, clocked out or sent On My Way. Timesheets show how far each one was from the job${planHas('dispatchMap') ? ', and Calendar → Map shows everyone’s last known spot today' : ''}.</p>
 <form id="tlf">${switchRow('on', 'Save location at clock in, clock out and On My Way', !!c.teamLocation)}</form>
 <p class="muted sm" style="margin:10px 0 0">Location is never tracked in between or off the clock. Each person’s phone asks them first, and the Timesheets page tells them it’s on. If someone says no, they can still clock in. Some states require telling employees in writing that you record their location.</p></div>`);
 function wireTeamLoc() {

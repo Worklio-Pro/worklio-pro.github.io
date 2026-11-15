@@ -709,7 +709,7 @@ const entryHours = (e) => Math.max(0, ((e.end ? new Date(e.end) : new Date()) - 
 // Clock Out and On My Way (never in between). The timesheet shows how far each was from the job; the Dispatch map shows each person's last
 // known spot (db.lastSpot[staffId]). The browser asks each person first; if they say no, the action still goes through without it.
 // A spot: { lat, lng, acc (meters), at } or { none: 'denied' | 'unavailable' }. Turned off, nothing new is saved and saved spots are hidden.
-const teamLocOn = () => !!db.company.teamLocation;
+const teamLocOn = () => !!db.company.teamLocation && tenancy.has('teamLocation'); // a plan without the Team location feature saves and shows nothing
 function readSpot(b) {
   if (!teamLocOn() || !b) return null;
   const l = b.loc; if (l && typeof l === 'object' && isFinite(l.lat) && isFinite(l.lng) && Math.abs(l.lat) <= 90 && Math.abs(l.lng) <= 180)
@@ -1825,6 +1825,7 @@ app.put('/api/company', (req, res) => {
   for (const k of allowed) if (k in b) db.company[k] = k === 'taxRate' || k === 'paymentTermsDays' ? Number(b[k]) || 0 : typeof b[k] === 'string' ? b[k].trim().slice(0, 500) : b[k];
   Object.assign(db.company, handles);
   if (b.lateFee && typeof b.lateFee === 'object') { try { db.company.lateFee = cleanLateFee(b.lateFee, db.company.lateFee); } catch (e) { return res.status(400).json({ error: e.message }); } }
+  if ((b.teamLocation === true || b.teamLocation === 'on' || b.teamLocation === 'true') && !tenancy.has('teamLocation')) return res.status(403).json({ error: 'Team location isn’t included in your plan' });
   for (const k of ['addressPrivate', 'showHours', 'teamLocation']) if (k in b) db.company[k] = b[k] === true || b[k] === 'on' || b[k] === 'true';
   if (ADDRESS_PARTS.some((k) => k in b)) db.company.address = composeAddress(db.company); // the one-line address used everywhere else
   if ('savedDiscounts' in b) { // Saved discounts for quick select on quotes, jobs and invoices: a name, $ or %, and the amount

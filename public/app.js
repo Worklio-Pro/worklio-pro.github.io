@@ -3837,7 +3837,7 @@ const clockSince = (start) => { const m = Math.max(0, Math.floor((Date.now() - n
 const clockBadge = (j) => (onThisJob(j) ? `<span class="vsign clock-badge" title="You clocked in at ${esc(fmtTime(new Date(D.clock.open.start).toTimeString().slice(0, 5)))}">⏱ On the clock · ${clockSince(D.clock.open.start)}</span>` : '');
 // Team location (App Settings → General, off by default): the phone's location goes with Clock In, Clock Out and On My Way, never in between.
 // The browser asks the person first; if they say no (or there's no signal) the action still goes through, marked as no location.
-const teamLocOn = () => !!company.teamLocation;
+const teamLocOn = () => !!company.teamLocation && planHas('teamLocation');
 const getSpot = () => (!teamLocOn() ? Promise.resolve({}) : !navigator.geolocation ? Promise.resolve({ locErr: 'unavailable' }) : new Promise((ok) => {
   let done = false; const end = (v) => { if (!done) { done = true; ok(v); } };
   setTimeout(() => end({ locErr: 'unavailable' }), 12000);
