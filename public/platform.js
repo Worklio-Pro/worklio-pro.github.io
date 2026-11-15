@@ -2028,16 +2028,20 @@ ${copy(T.redirectUri, 'TikTok redirect URI')}
 ${form('tiktok', T, 'Client key', 'e.g. sbaw1234abcd5678', 'Client secret')}${I.localhost ? '<p class="muted ig-p">TikTok only sends people back to a public address: set <code>BASE_URL</code> (or <code>PLATFORM_DOMAIN</code>) first.</p>' : ''}`)
   + networkGroups(I, ig, on, copy, form, n) + googleLoginGroup(I, ig, on) + booksGroups(I, ig, on, copy, form, n) + slackGroup(I, ig, on, copy, form, n);
 }
-// "Waiting for approval" on the cards that have one (lib/social.js holds): a switch under the card's description. While it's on, the card's
-// status (and its tile) says Waiting for approval, and businesses see Coming soon in place of Connect.
+// "Coming soon" on every card with keys (lib/social.js holds): a switch at the top of the card, above its description. While it's on, the
+// card's status (and its tile) says Coming soon, and businesses see Coming soon in place of Connect, even with approved keys saved.
+const HOLD_NOTES = {
+  sms: 'Texts aren’t sent while it’s on: they’re only recorded in each account’s Notifications Log. Turn it off once Twilio approves your A2P 10DLC campaign.',
+  googlelogin: 'The Continue with Google button is hidden on the sign-up and login pages while it’s on.',
+  ai: 'Claude shows Coming soon in the App Marketplace. The AI switches below still decide which AI features work.',
+  stripe: 'Card payments show Coming soon in the App Marketplace and Account Connections. Businesses already set up keep taking payments.',
+};
 function addHolds(box, holds) {
   IG_TABS.forEach(([k, , title]) => {
     if (!(k in holds)) return; const sec = $$('section.ig', box).find((s) => $('h3', s).textContent === title); if (!sec) return;
-    const note = k === 'sms' ? 'Texts aren’t sent while it’s on: they’re only recorded in each account’s Notifications Log. Turn it off once Twilio approves your A2P 10DLC campaign.'
-      : 'Businesses see Coming soon in place of Connect, even with the keys saved. Businesses already connected keep working. Turn it off once the app is approved.';
-    const at = $('.ig-d', sec) || $('.ig-h', sec);
-    at.insertAdjacentHTML('afterend', `<label class="sw-row ig-hold"><span>Waiting for approval<small class="muted">${note}</small></span><input type="checkbox" class="sw" data-hold="${k}" ${holds[k] ? 'checked' : ''}><i></i></label>`);
-    const chip = $('.ig-h .cstatus', sec); if (holds[k] && chip) { chip.textContent = 'Waiting for approval'; chip.classList.remove('active'); }
+    const note = HOLD_NOTES[k] || 'Businesses see Coming soon in the App Marketplace in place of Connect, even with approved keys saved. Businesses already connected keep working.';
+    $('.ig-h', sec).insertAdjacentHTML('afterend', `<label class="sw-row ig-hold"><span>Coming soon<small class="muted">${note}</small></span><input type="checkbox" class="sw" data-hold="${k}" ${holds[k] ? 'checked' : ''}><i></i></label>`);
+    const chip = $('.ig-h .cstatus', sec); if (holds[k] && chip) { chip.textContent = 'Coming soon'; chip.classList.remove('active'); }
   });
   $$('input[data-hold]', box).forEach((c) => c.addEventListener('change', async () => {
     c.disabled = true;

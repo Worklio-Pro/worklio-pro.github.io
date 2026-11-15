@@ -332,7 +332,7 @@ function smtpSend({ host, port, user, pass }, { from, fromName, to, replyTo, sub
   });
 }
 // every account's email and texts go through the platform's own settings (Alpha → Settings → Integrations, or .env)
-const envTwilio = () => { if (social.held('sms')) return null; /* Alpha → Text messages → Waiting for approval: texts are only logged */ const { TWILIO_ACCOUNT_SID: sid, TWILIO_AUTH_TOKEN: token, TWILIO_FROM: from } = process.env; return sid && token && from ? { sid, token, from } : null; };
+const envTwilio = () => { if (social.held('sms')) return null; /* Alpha → Text messages → Coming soon: texts are only logged */ const { TWILIO_ACCOUNT_SID: sid, TWILIO_AUTH_TOKEN: token, TWILIO_FROM: from } = process.env; return sid && token && from ? { sid, token, from } : null; };
 const smsReady = () => !!envTwilio();
 // the platform's own mail server, set in Alpha → Settings → Integrations (e.g. a SiteGround mailbox); it takes priority over the .env settings
 const platformSmtp = () => { const m = tenancy.platform().mailServer; return m && m.host && m.user && m.pass ? m : null; };
@@ -4752,7 +4752,7 @@ app.get('/api/integrations', async (req, res) => {
     serverEmail: !!serverEmailProvider(),
     payments: !!stripeKey(), paymentsMode: stripeKey() ? stripeMode() : null,
     stripe: pay ? {
-      available: !!stripeLib.platformKey(), accountId: s.stripeAccountId || null, accountType: s.stripeAccountId ? s.stripeAccountType || 'standard' : null, methods: setupMethods(), bank: s.stripeBank || null, due: s.stripeDue || 0, payoutsEnabled: !!s.stripePayoutsEnabled,
+      available: !!stripeLib.platformKey() && !social.held('stripe'), accountId: s.stripeAccountId || null, accountType: s.stripeAccountId ? s.stripeAccountType || 'standard' : null, methods: setupMethods(), bank: s.stripeBank || null, due: s.stripeDue || 0, payoutsEnabled: !!s.stripePayoutsEnabled,
       chargesEnabled: !!s.stripeChargesEnabled, detailsSubmitted: !!s.stripeDetailsSubmitted, name: s.stripeAccountName || '',
       ownKeys: !!s.stripeSecretKey && !connectedAccount(), serverKey: tenancy.isDefault() && !s.stripeSecretKey && !connectedAccount() && !!process.env.STRIPE_SECRET_KEY,
       feePercent: Number(tenancy.platform().settings.platformFeePercent) || 0, // charged only on payments through Connect
@@ -5047,10 +5047,10 @@ function liveAppState(a, u) {
   const planOk = !a.feature || tenancy.has(a.feature);
   if (SOCIAL_KINDS.includes(a.id)) return { planOk, available: social.available(a.id), connected: !!connOf(a.id) };
   if (a.id === 'bluesky' || a.id === 'x') return { planOk, available: social.available(a.id), connected: !!connOf(a.id) }; // the business's own app password or X app: nothing for the platform to set up
-  if (a.id === 'stripe') { const s = secrets(); const on = !!stripeKey() && (!!s.stripeChargesEnabled || !!s.stripeSecretKey || (tenancy.isDefault() && !!process.env.STRIPE_SECRET_KEY)); return { planOk, available: on || !!stripeLib.platformKey(), connected: on }; }
-  if (a.id === 'homedepot') return { planOk, available: homeDepot.ready(), connected: !!hdSettings().on };
+  if (a.id === 'stripe') { const s = secrets(); const on = !!stripeKey() && (!!s.stripeChargesEnabled || !!s.stripeSecretKey || (tenancy.isDefault() && !!process.env.STRIPE_SECRET_KEY)); return { planOk, available: (on || !!stripeLib.platformKey()) && !social.held('stripe'), connected: on }; }
+  if (a.id === 'homedepot') return { planOk, available: homeDepot.ready() && !social.held('homedepot'), connected: !!hdSettings().on };
   if (a.id === 'slack') return { planOk, available: slack.ready() && !social.held('slack'), connected: !!(db.slack && secrets().slack) };
-  if (a.id === 'claude') { const on = !!process.env.ANTHROPIC_API_KEY; return { planOk, available: on, connected: on }; }
+  if (a.id === 'claude') { const on = !!process.env.ANTHROPIC_API_KEY && !social.held('ai'); return { planOk, available: on, connected: on }; }
   return { planOk, available: false, connected: false };
 }
 const marketplaceView = (u) => {
@@ -5067,7 +5067,7 @@ app.get('/api/home-depot', (req, res) => res.json(hdView()));
 app.put('/api/home-depot', (req, res) => {
   if (!marketplaceAdmin(req, res)) return; const b = req.body || {};
   if (!tenancy.has('services')) return res.status(403).json({ error: 'Products & services aren’t included in your plan' });
-  if (b.on && !homeDepot.ready()) return res.status(503).json({ error: 'Home Depot search isn’t available yet' });
+  if (b.on && (!homeDepot.ready() || social.held('homedepot'))) return res.status(503).json({ error: 'Home Depot search isn’t available yet' });
   const zip = String(b.zip || '').trim(); if (zip && !/^\d{5}$/.test(zip)) return res.status(400).json({ error: 'Enter a 5-digit ZIP code, or leave it empty' });
   const markup = Number(b.markup) || 0; if (markup < 0 || markup > 500) return res.status(400).json({ error: 'Markup must be between 0% and 500%' });
   db.homeDepot = { on: !!b.on, zip, markup: Math.round(markup * 10) / 10 }; save();
