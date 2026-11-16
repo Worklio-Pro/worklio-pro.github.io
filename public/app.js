@@ -1249,7 +1249,7 @@ const avHue = (s) => [...String(s || '')].reduce((h, ch) => (h * 31 + ch.charCod
 PAGES['/clients'] = {
   title: 'Clients',
   async render(main) {
-    const info = clientInfo(); const v = clientView; const today = ymd(new Date());
+    const info = clientInfo(); const v = clientView; const vst = phoneMq.matches ? 'all' : v.status; const today = ymd(new Date()); // phones: no status tabs, so every client but the archived
     const ago = (n) => ymd(addDays(new Date(), -n)); const yStart = new Date().getFullYear() + '-01-01';
     const created = (c) => (c.createdAt || '').slice(0, 10);
     const between = (c, from, to) => created(c) >= from && created(c) < to;
@@ -1270,7 +1270,7 @@ PAGES['/clients'] = {
       return f.late > 0 ? 'owes' : !info[c.id].active && !f.quotes && created(c) >= ago(60) ? 'lead' : info[c.id].active && f.lastJob && f.lastJob < ago(365) && !f.next ? 'quiet' : ''; };
     const inTab = (c, s) => (s === 'attention' ? !!why(c) : s === 'archived' ? !!c.archived : !c.archived && (s === 'all' || (s === 'lead') === !info[c.id].active));
     let list = D.clients.filter((c) => {
-      if (!inTab(c, v.status)) return false;
+      if (!inTab(c, vst)) return false;
       if (v.tag && !clientTags(c).includes(v.tag)) return false;
       if (v.since && created(c) < v.since) return false;
       if (v.dupes && !dup.ids.has(c.id)) return false;
@@ -1280,7 +1280,7 @@ PAGES['/clients'] = {
     const key = { name: (c) => (c.company || c.name || '').toLowerCase(), last: (c) => info[c.id].last, next: (c) => fin[c.id].next || '9999', paid: (c) => fin[c.id].paid, owed: (c) => fin[c.id].owed, created }[v.sort] || ((c) => (c.company || c.name || '').toLowerCase());
     list.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0) * v.dir);
     [...clientSel].forEach((id) => { if (!byId(D.clients, id)) clientSel.delete(id); });
-    const grouped = v.status === 'attention' && !v.dupes && v.sort === 'name' && v.dir === 1; // a column sort shows one plain list
+    const grouped = vst === 'attention' && !v.dupes && v.sort === 'name' && v.dir === 1; // a column sort shows one plain list
     const per = phoneMq.matches ? 10 : 20; const pages = grouped ? 1 : Math.max(1, Math.ceil(list.length / per)); v.page = Math.min(v.page, pages - 1);
     const shown = grouped ? list : list.slice(v.page * per, (v.page + 1) * per);
     const sinceLabel = v.since === yStart ? 'this year' : 'past 30 days';
@@ -1327,10 +1327,10 @@ ${cols.map((x) => x.td(c)).join('')}<td class="racts m-hide"><div>${acts(c)}</di
     const tabs = [['attention', 'Needs attention'], ['lead', 'Leads'], ['active', 'Active'], ['archived', 'Archived'], ['all', 'All']];
     main.innerHTML = `<div class="head"><h1>Clients</h1><div class="actions need-clients-edit"><button class="btn" data-act="newClient">New Client</button>
 </div></div>
-<div class="lstrip"><span class="ls-l">Past 30 days</span><button type="button" class="ls-b" data-act="clientCard" data-k="leads">New leads <strong>${leadsNow}</strong> ${change(leadsNow, leadsPrev)}</button>
+<div class="lstrip m-hide"><span class="ls-l">Past 30 days</span><button type="button" class="ls-b" data-act="clientCard" data-k="leads">New leads <strong>${leadsNow}</strong> ${change(leadsNow, leadsPrev)}</button>
 <button type="button" class="ls-b" data-act="clientCard" data-k="active">New clients <strong>${actNow}</strong> ${change(actNow, actPrev)}</button><button type="button" class="ls-b" data-act="clientCard" data-k="ytd">This year <strong>${ytd}</strong> new client${ytd === 1 ? '' : 's'}</button></div>
 ${dup.count && !v.dupes ? `<div class="notice admin-only cl-dupes"><span>${dup.count} possible duplicate client${dup.count === 1 ? '' : 's'} found. Merging them keeps each client’s history in one profile.</span><button type="button" class="btn alt sm" data-act="clientDupes">Review and merge</button></div>` : ''}
-<div class="ltabs" role="tablist" aria-label="Client status">${tabs.map(([s, label]) => `<button type="button" role="tab" aria-selected="${v.status === s}" class="ltab${v.status === s ? ' on' : ''}" data-act="clientTab" data-s="${s}"><span class="lt-t">${label}<span class="lt-n">${count(s)}</span></span></button>`).join('')}</div>
+<div class="ltabs m-hide" role="tablist" aria-label="Client status">${tabs.map(([s, label]) => `<button type="button" role="tab" aria-selected="${v.status === s}" class="ltab${v.status === s ? ' on' : ''}" data-act="clientTab" data-s="${s}"><span class="lt-t">${label}<span class="lt-n">${count(s)}</span></span></button>`).join('')}</div>
 <div class="cfilters"><label class="pill m-hide">Tag<select data-cv="tag"><option value="">All tags</option>${tags.map((t) => `<option ${v.tag === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
 ${v.since ? `<button class="pill on" data-act="clientClear" data-k="since">Created ${sinceLabel} ×</button>` : ''}${v.dupes ? '<button class="pill on" data-act="clientClear" data-k="dupes">Possible duplicates ×</button>' : ''}
 <input id="cq" class="csearch" type="search" placeholder="Search clients…" value="${esc(v.q)}"><span class="m-hide">${colPicker('clients', CCOLS, cols)}</span></div>
@@ -3078,7 +3078,7 @@ ${mTextSec(kind, d, 'message', 'Client message', d.notes, 'Add a message for the
 ${mTextSec(kind, d, 'terms', 'Contract / disclaimer', d.disclaimer, 'Add a contract or disclaimer')}</div>
 <div class="md-pane" data-pane="notes" hidden>${mNotesPane(kind, d, d.internalNotes ? mTextSec(kind, d, 'notes', 'Internal notes', d.internalNotes, '') : '')}</div></div>`;
 }
-phoneMq.addEventListener('change', () => { if (/^\/(quotes|invoices|jobs|services|clients\/view|notifications|settings\/roles)(\/|$)/.test(curPath()) && !mOpenNow()) refresh(); });
+phoneMq.addEventListener('change', () => { if (/^\/(quotes|invoices|jobs|services|clients(\/view)?|notifications|settings\/roles)(\/|$)/.test(curPath()) && !mOpenNow()) refresh(); });
 // phones: Add client, a full-screen chooser: search, Create New Client, then clients by most recent activity (person or building
 // icon, last activity and street, Lead marked). Its own layer, so it can open over a phone edit sheet without closing it.
 function clientSheet({ onPick, onNew, current = '' }) {
