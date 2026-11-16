@@ -2467,3 +2467,6 @@ input[type=date]:not([data-nativecal]){cursor:pointer}
 .bc-d.out{color:var(--muted);opacity:.6}.bc-d.today{box-shadow:inset 0 0 0 2px var(--brand);font-weight:700}.bc-d.focus{outline:2px solid var(--link);outline-offset:-2px}
 .bc-d.sel{background:var(--brand);color:#fff;font-weight:700}.bc-d:disabled{opacity:.3;cursor:default;background:transparent}
 .bc-f{display:flex;justify-content:flex-end;margin-top:8px}
+/* Products: names on one line; descriptions narrow, two lines at most (the whole text on hover) */
+.svc-nm{white-space:nowrap}.ctable th.svc-ds,.ctable td.svc-ds{width:260px;max-width:260px}
+.svc-ds span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:var(--muted);font-size:13px}
