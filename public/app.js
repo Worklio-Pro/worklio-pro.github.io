@@ -1286,7 +1286,7 @@ PAGES['/clients'] = {
       const s = [c.name, c.company, c.email, c.phone, c.address, ...clientTags(c)].join(' ').toLowerCase();
       return !v.q || s.includes(v.q.toLowerCase());
     });
-    const key = { name: (c) => (c.company || c.name || '').toLowerCase(), last: (c) => info[c.id].last, next: (c) => fin[c.id].next || '9999', paid: (c) => fin[c.id].paid, owed: (c) => fin[c.id].owed, created }[v.sort] || ((c) => (c.company || c.name || '').toLowerCase());
+    const key = { name: (c) => (c.name || c.company || '').toLowerCase(), last: (c) => info[c.id].last, next: (c) => fin[c.id].next || '9999', paid: (c) => fin[c.id].paid, owed: (c) => fin[c.id].owed, created }[v.sort] || ((c) => (c.name || c.company || '').toLowerCase());
     list.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0) * v.dir);
     [...clientSel].forEach((id) => { if (!byId(D.clients, id)) clientSel.delete(id); });
     const grouped = vst === 'attention' && !v.dupes && v.sort === 'name' && v.dir === 1; // a column sort shows one plain list
@@ -1319,9 +1319,9 @@ PAGES['/clients'] = {
       { k: 'last', label: 'Last activity', th: `<th class="m-hide">${thb('last', 'Last activity')}</th>`, td: (c) => `<td class="m-hide cl-nowrap">${activityLabel(info[c.id].last)}</td>` },
     ];
     const cols = listCols('clients', CCOLS); const has = (k) => cols.some((x) => x.k === k);
-    const row = (c) => { const nm = c.company || c.name; const contact = has('phone') || has('email') ? '' : [telA(c), mailA(c)].filter(Boolean).join(' · ');
+    const row = (c) => { const nm = c.name || c.company; const contact = has('phone') || has('email') ? '' : [telA(c), mailA(c)].filter(Boolean).join(' · ');
       return `<tr class="crow" data-id="${c.id}"><td class="admin-only sel-td"><input type="checkbox" class="sel" value="${c.id}" ${clientSel.has(c.id) ? 'checked' : ''} aria-label="Select ${esc(c.name)}"></td>
-<td class="cl-name"><div class="cl-who"><span class="av av${avHue(nm)}" aria-hidden="true">${esc(clientInitials(nm))}</span><div class="cl-txt"><div class="cl-top"><strong>${esc(nm)}</strong>${has('status') ? '' : `<span class="m-hide">${stBadge(c)}</span>`}</div>${c.company && c.name && c.name !== c.company ? `<div>${esc(c.name)}</div>` : ''}${contact ? `<div class="m-hide muted sm-l cl-contact">${contact}</div>` : ''}<div class="m-only cl-sub">${stBadge(c)}${c.address ? `<span class="cl-addr">${esc(c.address)}</span>` : ''}</div></div></div></td>
+<td class="cl-name"><div class="cl-who"><span class="av av${avHue(nm)}" aria-hidden="true">${esc(clientInitials(nm))}</span><div class="cl-txt"><div class="cl-top"><strong>${esc(nm)}</strong>${has('status') ? '' : `<span class="m-hide">${stBadge(c)}</span>`}</div>${c.company && c.name && c.name !== c.company ? `<div>${esc(c.company)}</div>` : ''}${contact ? `<div class="m-hide muted sm-l cl-contact">${contact}</div>` : ''}<div class="m-only cl-sub">${stBadge(c)}${c.address ? `<span class="cl-addr">${esc(c.address)}</span>` : ''}</div></div></div></td>
 ${cols.map((x) => x.td(c)).join('')}<td class="racts m-hide"><div>${acts(c)}</div></td></tr>`; };
     const grp = (dot, title, note) => `<tr class="lgrp"><td colspan="11"><div><i class="dot ${dot}"></i><strong>${title}</strong><span class="muted">${note}</span></div></td></tr>`;
     let body;
@@ -1378,7 +1378,7 @@ A.mergeClients = () => {
   const picked = [...clientSel].map((id) => byId(D.clients, id)).filter(Boolean);
   const count = (c) => ['quotes', 'jobs', 'invoices'].map((k) => D[k].filter((x) => x.clientId === c.id).length).reduce((a, b) => a + b, 0);
   const mb = modal(`Merge ${picked.length} clients`, `<form><p>Choose the profile to keep. The other ${picked.length - 1 === 1 ? 'profile is' : 'profiles are'} merged into it and deleted:</p>
-<div class="merge-pick">${picked.map((c, i) => `<label><input type="radio" name="keep" value="${c.id}" ${i === 0 ? 'checked' : ''}><span><strong>${esc(c.company || c.name)}</strong>${c.company ? ` · ${esc(c.name)}` : ''}<br><span class="muted">${esc([c.email, c.phone, c.address].filter(Boolean).join(' · ')) || 'No contact details'} · ${count(c)} quotes/jobs/invoices</span></span></label>`).join('')}</div>
+<div class="merge-pick">${picked.map((c, i) => `<label><input type="radio" name="keep" value="${c.id}" ${i === 0 ? 'checked' : ''}><span><strong>${esc(c.name || c.company)}</strong>${c.company && c.company !== c.name ? ` · ${esc(c.company)}` : ''}<br><span class="muted">${esc([c.email, c.phone, c.address].filter(Boolean).join(' · ')) || 'No contact details'} · ${count(c)} quotes/jobs/invoices</span></span></label>`).join('')}</div>
 <p class="muted">All quotes, jobs, invoices and messages move to the kept profile. Empty details on it (email, phone, address, company) are filled in from the others, tags are combined, and notes are added together.</p>
 <div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Merge clients</button></div></form>`);
   $('form', mb).addEventListener('submit', async (e) => {
@@ -3553,7 +3553,7 @@ PAGES['/quotes'] = {
     const sum = (l) => l.reduce((s, q) => s + (q.total || 0), 0);
     const change = (now, prev, pts) => (prev ? `<span class="chg ${now >= prev ? 'up' : 'down'}">${now >= prev ? '↑' : '↓'} ${pts ? Math.abs(now - prev) + ' pts' : Math.abs(Math.round(((now - prev) / prev) * 100)) + '%'}</span>` : '');
     const since = { '30': ago(30), '90': ago(90), year: new Date().getFullYear() + '-01-01' }[v.date] || '';
-    const cname = (q) => { const c = byId(D.clients, q.clientId); return c ? c.company || c.name : '—'; };
+    const cname = (q) => { const c = byId(D.clients, q.clientId); return c ? c.name || c.company : '—'; };
     const list = D.quotes.filter((q) => {
       if (!quoteInTab(q, v.status)) return false;
       if (since && day(q.createdAt) < since) return false;
@@ -3734,7 +3734,7 @@ PAGES['/invoices'] = {
     const paidIn = [[payDays(false), 'residential'], [payDays(true), 'commercial']].filter(([n]) => n !== null).map(([n, l]) => `${daysTxt(n)} ${l}`).join(' · ');
     const group = (s) => D.invoices.filter((i) => i.displayStatus === s);
     const since = { '30': ago(30), '90': ago(90), year: new Date().getFullYear() + '-01-01' }[v.date] || '';
-    const cname = (i) => { const c = byId(D.clients, i.clientId); return c ? c.company || c.name : '—'; };
+    const cname = (i) => { const c = byId(D.clients, i.clientId); return c ? c.name || c.company : '—'; };
     const list = D.invoices.filter((i) => {
       if (!invInTab(i, v.status)) return false;
       if (since && day(i.issueDate) < since) return false;
@@ -4379,7 +4379,7 @@ PAGES['/jobs'] = {
     const upcoming = D.jobs.filter((j) => j.status === 'scheduled' && j.date >= today && j.date <= ahead(30));
     const sum = (l) => l.reduce((s, j) => s + (jobTotal(j) || 0), 0);
     const change = (now, prev) => (prev ? `<span class="chg ${now >= prev ? 'up' : 'down'}">${now >= prev ? '↑' : '↓'} ${Math.abs(Math.round(((now - prev) / prev) * 100))}%</span>` : '');
-    const cname = (j) => { const c = byId(D.clients, j.clientId); return c ? c.company || c.name : '—'; };
+    const cname = (j) => { const c = byId(D.clients, j.clientId); return c ? c.name || c.company : '—'; };
     const list = D.jobs.filter((j) => {
       if (!jobInTab(j, v.status)) return false;
       if (v.staff && !(j.staffIds || []).includes(v.staff)) return false;

@@ -4325,7 +4325,7 @@ PAGES['/payments'] = {
       return { ...r, status: (ch && ch.status) || refundStatus(r.amount, r.refunded || 0), payout: r.method === 'stripe' ? (S.loading && !ch ? 'Checking Stripe…' : S.failed ? '—' : ch && ch.payoutDate ? fmtDate(ch.payoutDate) : ch && ch.paidOut ? 'Paid out' : 'In Stripe') : online(r.method) ? 'Demo: no payout' : 'Manually deposited',
         payoutKey: ch && ch.payoutDate ? ch.payoutDate : '', methodLabel: r.method === 'stripe' ? 'Online (Stripe)' : online(r.method) ? 'Demo checkout' : payLabel(r.method) };
     });
-    const cname = (r) => { const c = byId(D.clients, r.clientId); return c ? c.company || c.name : 'Unknown client'; };
+    const cname = (r) => { const c = byId(D.clients, r.clientId); return c ? c.name || c.company : 'Unknown client'; };
     const change = (now, prev, lowerIsBetter) => { if (now === null || !prev) return '<span class="chg flat">—%</span>'; const up = now >= prev; const good = lowerIsBetter ? !up : up; return `<span class="chg ${now === prev ? 'flat' : good ? 'up' : 'down'}">${up ? '↑' : '↓'} ${Math.abs(Math.round(((now - prev) / prev) * 100))}%</span>`; };
     const commercialOf = (i) => !!(byId(D.clients, i.clientId) || {}).company;
     // average days from issue to payment (invoices paid in the window), and the share of invoices paid by their due date
