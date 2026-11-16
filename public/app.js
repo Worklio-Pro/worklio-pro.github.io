@@ -813,8 +813,8 @@ function wireItems(root) {
 }
 // catalog suggestions under a line item's name box (replaces the browser's datalist popup, which it positions badly)
 const svcAc = { input: null, box: null, idx: -1, list: [] };
-// catalog items to pick from, grouped by category (A–Z, items without one last) when the catalog has categories; head(c) draws a group's heading
-const svcGrouped = (list) => { const k = (s) => String(s.category || '').trim().toLowerCase(); return svcCats().length ? [...list].sort((a, b) => (k(a) ? 0 : 1) - (k(b) ? 0 : 1) || k(a).localeCompare(k(b))) : list; };
+// catalog items to pick from, A–Z, grouped by category (A–Z, items without one last) when the catalog has categories; head(c) draws a group's heading
+const svcGrouped = (list) => { const k = (s) => String(s.category || '').trim().toLowerCase(); const n = (a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base', numeric: true }); return [...list].sort(svcCats().length ? (a, b) => (k(a) ? 0 : 1) - (k(b) ? 0 : 1) || k(a).localeCompare(k(b)) || n(a, b) : n); };
 const svcRows = (list, row, head) => { const on = svcCats().length; let last = null; return list.map((s, i) => { const c = String(s.category || '').trim(); const h = on && c.toLowerCase() !== last ? head(c || 'No category') : ''; last = c.toLowerCase(); return h + row(s, i); }).join(''); };
 function svcAcClose() { if (svcAc.box) svcAc.box.remove(); Object.assign(svcAc, { input: null, box: null, idx: -1, list: [] }); }
 function svcAcOpen(input) {
@@ -2908,7 +2908,7 @@ ${mField('Due date', `<input type="date" name="dueDate" value="${esc(d.dueDate |
     const svc = x.svc && D.services.find((s) => s.id === x.svc);
     const it = i >= 0 ? d.items[i] : svc ? { qty: 1, desc: svc.name, details: svc.description || '', cost: svc.price } : { qty: 1 };
     const f = mSheet(i >= 0 ? 'Edit line item' : 'Add line item', `<div class="item-row m-item">${mField('Name', `<input class="desc" name="desc" list="mSvc" value="${esc(it.desc || '')}" maxlength="200" autocomplete="off">`)}
-<datalist id="mSvc">${D.services.map((s) => `<option value="${esc(s.name)}">`).join('')}</datalist>
+<datalist id="mSvc">${svcGrouped(D.services).map((s) => `<option value="${esc(s.name)}">`).join('')}</datalist>
 <label class="mf"><span>Description</span><textarea class="details" name="details" rows="4">${esc(it.details || '')}</textarea>${aiOn() ? AI_BTN : ''}</label></div>
 ${mField('Unit cost', `<span class="mf-in"><b class="pre">$</b><input name="cost" type="number" inputmode="decimal" step="any" min="0" value="${it.cost ?? it.price ?? ''}" placeholder="0"></span>`)}
 <div class="mseg mk-seg" role="radiogroup" aria-label="Markup type">${[['percent', 'Percent (%)'], ['flat', 'Fixed ($)']].map(([k, l]) => `<label><input type="radio" name="markupType" value="${k}" ${(it.markupType === 'flat') === (k === 'flat') ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div>
