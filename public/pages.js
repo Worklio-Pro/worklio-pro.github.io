@@ -3467,7 +3467,7 @@ PAGES['/settings/business-page'] = {
 <div class="bp-edit">${BP_TABS.map(([t, , secs], ti) => `<nav class="bp-nav" data-tab="${t}" ${ti ? 'hidden' : ''}>${secs.map(([k, n], i) => `<button type="button" data-act="bpSec" data-sec="${k}" class="${i || ti ? '' : 'on'}">${n}</button>`).join('')}</nav>`).join('')}
 <form class="card bp-form" id="bpForm" novalidate><fieldset class="bp-fs" ${admin ? '' : 'disabled'}>
 <section data-sec="info"><h2>Your information</h2>
-<span class="bp-lbl">Company logo</span><div class="bp-img">${bpPick('bpLogo', 'bpLogoFile', 'logo', `<button type="button" class="logo-trash" data-act="bpLogo" data-v="" title="Remove the logo" aria-label="Remove the logo">${BP_TRASH}</button>`)}${V.companyLogo ? '<button type="button" class="btn alt sm" data-act="bpLogo" data-v="company">Use company logo</button>' : ''}</div>
+<span class="bp-lbl">Company logo</span><div class="bp-img">${bpPick('bpLogo', 'bpLogoFile', 'logo', `<button type="button" class="logo-trash" data-act="bpLogo" data-v="" title="Remove the logo" aria-label="Remove the logo">${BP_TRASH}</button>`, V.companyLogo ? '<button type="button" class="btn alt" data-act="bpLogo" data-v="company">Use company logo</button>' : '')}</div>
 <span class="bp-lbl">Logo opacity</span>${range('logoOpacity')}
 <label>Company name<input name="name" maxlength="100" required></label>
 <label>Company description<textarea name="description" rows="3" maxlength="500" placeholder="What you do, in a sentence or two"></textarea></label>
@@ -3558,10 +3558,13 @@ function bpGo(sec) {
   $('#bpNextBtn').textContent = BP_ORDER[i + 1] && BP_ORDER[i + 1][1] !== tab ? 'Next: QR code appearance →' : 'Next →';
 }
 // an image field on the Business Page: click the box to upload (like Settings → Company → Logo); the trash icon under it removes the image
-const bpPick = (id, fileId, what, trash) => `<div class="logo-slot bp-pick"><label class="logo-pick light" id="${id}" title="Upload a ${what}"><span>Click to upload</span><input type="file" accept="image/png,image/jpeg,image/webp" hidden id="${fileId}"></label><div class="logo-under" hidden>${trash}</div></div>`;
+// extra: a button beside the trash icon, after a separator (the Company logo's Use company logo); it shows even with no image
+const bpPick = (id, fileId, what, trash, extra = '') => `<div class="logo-slot bp-pick"><label class="logo-pick light" id="${id}" title="Upload a ${what}"><span>Click to upload</span><input type="file" accept="image/png,image/jpeg,image/webp" hidden id="${fileId}"></label><div class="logo-under bp-under"${extra ? '' : ' hidden'}><span class="bp-trash" hidden>${trash}</span>${extra ? `<span class="bp-sep" hidden aria-hidden="true"></span>${extra}` : ''}</div></div>`;
 function bpPickShow(id, u) {
   const box = $(id); if (!box) return; const old = box.querySelector('img, span'); if (old) old.outerHTML = u ? `<img src="${esc(u)}" alt="">` : '<span>Click to upload</span>';
-  box.title = u ? 'Replace the image' : 'Upload an image'; box.closest('.bp-pick').querySelector('.logo-under').hidden = !u;
+  box.title = u ? 'Replace the image' : 'Upload an image';
+  const under = box.closest('.bp-pick').querySelector('.bp-under'); const sep = under.querySelector('.bp-sep');
+  under.querySelector('.bp-trash').hidden = !u; if (sep) sep.hidden = !u; under.hidden = !u && !sep;
 }
 // the parts of the form drawn from bp.page: the logo, the chosen cover, the opacity numbers
 function bpDraw() {
