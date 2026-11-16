@@ -2499,3 +2499,10 @@ body.col-rzing{cursor:col-resize;user-select:none}
 #billingBar span{flex:1}#billingBar svg{flex:none}#billingBar .btn{white-space:nowrap;background:#fff;color:#b91c1c;border-color:#fff}
 @media (max-width:900px){#billingBar{padding:10px 14px;flex-wrap:wrap}}
 body.p404-only #billingBar{display:none!important}
+/* Account and Billing: every box title the same (same band, padding and size, with or without a button), Billing details and Payment
+   history side by side at the same height (history scrolls inside when longer), Change subscription and the supporter code side by side */
+#main:not(.portal) .card>.bill-h:first-child{min-height:58px;box-sizing:border-box}
+.bill-h h2{font-size:18px;line-height:1.3}
+.bill-grid{align-items:stretch}.bill-change{grid-column:auto}
+.bill-histcard{display:flex;flex-direction:column}.bill-scroll{flex:1 1 auto;min-height:0;overflow:auto}
+@media (min-width:901px){.bill-histcard{contain:size}}
