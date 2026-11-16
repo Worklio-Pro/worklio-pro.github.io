@@ -3559,12 +3559,12 @@ function bpGo(sec) {
 }
 // an image field on the Business Page: click the box to upload (like Settings → Company → Logo); the trash icon under it removes the image
 // extra: a button beside the trash icon, after a separator (the Company logo's Use company logo); it shows even with no image
-const bpPick = (id, fileId, what, trash, extra = '') => `<div class="logo-slot bp-pick"><label class="logo-pick light" id="${id}" title="Upload a ${what}"><span>Click to upload</span><input type="file" accept="image/png,image/jpeg,image/webp" hidden id="${fileId}"></label><div class="logo-under bp-under"${extra ? '' : ' hidden'}><span class="bp-trash" hidden>${trash}</span>${extra ? `<span class="bp-sep" hidden aria-hidden="true"></span>${extra}` : ''}</div></div>`;
+const bpPick = (id, fileId, what, trash, extra = '') => `<div class="logo-slot bp-pick"><label class="logo-pick light" id="${id}" title="Upload a ${what}"><span>Click to upload</span><input type="file" accept="image/png,image/jpeg,image/webp" hidden id="${fileId}"></label><div class="logo-under bp-under"${extra ? '' : ' hidden'}><span class="bp-trash-wrap" hidden>${trash}</span>${extra ? `<span class="bp-sep" hidden aria-hidden="true"></span>${extra}` : ''}</div></div>`;
 function bpPickShow(id, u) {
   const box = $(id); if (!box) return; const old = box.querySelector('img, span'); if (old) old.outerHTML = u ? `<img src="${esc(u)}" alt="">` : '<span>Click to upload</span>';
   box.title = u ? 'Replace the image' : 'Upload an image';
   const under = box.closest('.bp-pick').querySelector('.bp-under'); const sep = under.querySelector('.bp-sep');
-  under.querySelector('.bp-trash').hidden = !u; if (sep) sep.hidden = !u; under.hidden = !u && !sep;
+  under.querySelector('.bp-trash-wrap').hidden = !u; if (sep) sep.hidden = !u; under.hidden = !u && !sep;
 }
 // the parts of the form drawn from bp.page: the logo, the chosen cover, the opacity numbers
 function bpDraw() {

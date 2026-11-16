@@ -1701,7 +1701,7 @@ button.mn-x{border:0;padding:0;cursor:pointer}
 .bp-thumb{width:56px;height:56px;border:1px solid var(--line);background:var(--surface-2) center/contain no-repeat;flex:none;display:flex;align-items:center;justify-content:center;color:var(--muted)}.bp-thumb.round{border-radius:50%}
 /* the Business Page's image fields: the Company logo box (.logo-pick) at its size, the trash icon only with an image */
 .bp-pick{flex:0 1 220px;gap:4px}.bp-pick .logo-under{min-height:0}.bp-pick .logo-under[hidden]{display:none}.bp-img:has(.bp-pick){align-items:flex-start}
-.bp-under{align-items:center;gap:12px;margin-top:4px}.bp-under>[hidden]{display:none}.bp-trash{display:inline-flex}
+.bp-under{align-items:center;gap:12px;margin-top:4px}.bp-under>[hidden]{display:none}.bp-trash-wrap{display:inline-flex}
 .bp-sep{width:1px;height:24px;background:var(--line);flex:none}.bp-under .btn{margin:0;white-space:nowrap}
 /* beside a button, the trash icon is a bordered square of the button's height (38px) */
 .bp-under:has(.btn) .logo-trash{width:38px;height:38px;border:1px solid var(--border);background:var(--card);border-radius:8px}
