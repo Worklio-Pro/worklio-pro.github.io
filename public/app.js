@@ -282,7 +282,7 @@ function fillSide(path) {
   timeOffBadge();
 }
 const isOnPage = (p, path) => p === path || (!navPaths.includes(path) && path.startsWith(p + '/'));
-const SIDE_BREAKS = ['Money', 'Marketing']; // a line above these sections; the main menu shows no section names
+const SIDE_BREAKS = ['Money', 'Marketing', 'Records']; // a line above these sections; the main menu shows no section names
 function sideHtml(path) {
   const items = me ? [['/profile', 'My Profile'], ...settingsFor()] : settingsFor(); // everyone can edit their own profile
   const brand = `<div class="brand">${company.logoDark || company.logo ? `<a href="/" data-link class="brand-logo" title="Home"><img src="${esc(company.logoDark || company.logo)}" alt="Home"></a>` : brandImg(company.account && company.account.product, 'dark')}<span>${esc(company.name || (company.account && company.account.productName) || 'Worklio Pro')}</span></div>`;
