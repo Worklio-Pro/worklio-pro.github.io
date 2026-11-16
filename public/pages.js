@@ -4584,9 +4584,11 @@ const shortName = (n) => { const [first, ...rest] = String(n || 'Support').trim(
 const SUPPORT_STATUS = { pending: 'Waiting for approval', granted: 'Granted', expired: 'Expired', revoked: 'Revoked', declined: 'Declined', cancelled: 'Withdrawn' };
 // /settings/support-access is the Support page: a list of ways to get help (Get support, Help Center, the tour, device diagnostics,
 // Support access); an open or granted access request shows above it. ?access=1 is Support access itself.
-const SUP_ICO = { clip: '<path d="M21.4 11.1l-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/>' };
+const SUP_ICO = { mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>', clip: '<path d="M21.4 11.1l-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/>' };
 const supRow = (attrs, title, sub, ico) => `<${attrs.startsWith('href') ? 'a' : 'button type="button"'} class="sup-row" ${attrs}><span class="sup-t"><strong>${title}</strong><span>${sub}</span></span><span class="sup-ic">${svgIcon(ico, 24)}</span></${attrs.startsWith('href') ? 'a' : 'button'}>`;
 // Share device diagnostics: what support needs to know about this device and login, copied to paste into a message
+// Support chat: the chat panel (public/chat.js), which has no floating button in the app; with chat turned off, the message form
+A.supportChat = () => { if (!(window.openSupportChat && window.openSupportChat())) A.supportForm({}); };
 A.copyDiagnostics = async () => {
   const a = company.account || {}; const v = (($$('script[src*="app.js"]')[0] || {}).src || '').split('v=')[1] || '';
   const text = [`${a.productName || 'Worklio Pro'} device diagnostics`, `Time: ${new Date().toString()}`, `Time zone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}`,
@@ -4604,7 +4606,8 @@ PAGES['/settings/support-access'] = {
     const a = company.account || {}; const name = esc(a.productName || 'Worklio Pro'); const open = r && ['pending', 'granted'].includes(r.status);
     if (new URLSearchParams(location.search).get('access') !== '1') {
       main.innerHTML = `<div class="sup"><h1 class="sup-title">Support</h1>${open ? `<a class="notice sup-alert" href="/settings/support-access?access=1" data-link>${r.status === 'pending' ? `<strong>${esc(shortName(r.adminName))}</strong> from support is asking for access to your login. Review the request →` : `Support has access to your login until ${fmtDate(r.expiresAt.slice(0, 10))}. Manage it →`}</a>` : ''}
-<div class="sup-list">${supRow('data-act="supportForm"', 'Get support', 'Send our team a message and we’ll reply by email', ICONS.chat)}
+<div class="sup-list">${supRow('data-act="supportChat"', 'Support chat', 'Get support from our team', ICONS.chat)}
+${supRow('data-act="supportForm"', 'Email support', 'Send our team a message and we’ll reply by email', SUP_ICO.mail)}
 ${a.helpUrl ? supRow(`href="${esc(a.helpUrl)}" target="_blank" rel="noopener"`, 'Help Center', `Read articles about every feature in ${name}`, ICONS.link) : supRow('data-act="openHelp"', 'Help Center', `Read articles about every feature in ${name}`, ICONS.book)}
 ${typeof startTour === 'function' ? supRow('data-act="startTour"', 'Take a tour', 'A quick walk through the app', ICONS.compass) : ''}
 ${supRow('data-act="copyDiagnostics"', 'Share device diagnostics', 'Copy device diagnostics to your clipboard to share with support', SUP_ICO.clip)}

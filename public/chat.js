@@ -34,7 +34,7 @@
 .btn:hover{transform:scale(1.05)}.btn svg{width:28px;height:28px}
 .badge{position:absolute;top:-2px;right:-2px;min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:#dc2626;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid #fff}
 .panel{position:fixed;right:20px;bottom:${where === 'app' ? '158px' : '90px'};z-index:2147483000;width:370px;max-width:calc(100vw - 32px);height:560px;max-height:calc(100vh - ${where === 'app' ? '188px' : '120px'});background:var(--c-bg);color:var(--c-text);border-radius:16px;box-shadow:0 18px 50px rgba(15,23,42,.3);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--c-line)}
-.panel[hidden],.badge[hidden]{display:none}
+.panel[hidden],.badge[hidden],.btn[hidden]{display:none}
 .top{background:var(--brand,#2563eb);color:#fff;padding:14px 16px;display:flex;align-items:center;gap:10px}
 .top strong{display:block;font-size:16px}.top small{display:flex;align-items:center;gap:6px;font-size:12px;opacity:.9}
 .dot{width:8px;height:8px;border-radius:50%;background:#4ade80}.dot.off{background:#cbd5e1}
@@ -84,7 +84,7 @@ textarea:focus,input:focus{outline:2px solid var(--brand,#2563eb);outline-offset
 ${where === 'app' ? '@media (max-width:760px){.btn{bottom:calc(var(--bnav-h,64px) + 12px + var(--chat-lift,0px))}.panel{bottom:calc(var(--bnav-h,64px) + 82px + var(--chat-lift,0px));max-height:calc(100vh - var(--bnav-h,64px) - 110px - var(--chat-lift,0px))}}' : ''}
 @media (max-width:480px){.panel{right:0;bottom:0;width:100vw;max-width:100vw;height:100%;max-height:100%;border-radius:0}.btn{${where === 'app' ? '' : 'bottom:16px;'}right:16px}}
 </style>
-<button class="btn" type="button" aria-label="Chat with us"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 3h14a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3h-7.6l-4.7 3.8A1 1 0 0 1 5 21v-3a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3z"/><path d="M7.5 8.5h9M7.5 12h6" stroke="var(--brand,#2563eb)" stroke-width="1.8" stroke-linecap="round"/></svg><span class="badge" hidden></span></button>
+<button class="btn" type="button" aria-label="Chat with us"${where === 'app' ? ' hidden' : ''}><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 3h14a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3h-7.6l-4.7 3.8A1 1 0 0 1 5 21v-3a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3z"/><path d="M7.5 8.5h9M7.5 12h6" stroke="var(--brand,#2563eb)" stroke-width="1.8" stroke-linecap="round"/></svg><span class="badge" hidden></span></button>
 <section class="panel" hidden role="dialog" aria-label="Chat"><div class="top"><span class="av hav"></span><div><strong>${esc(C.bot.name)}<span class="ai">AI</span></strong><small><i class="dot"></i><span class="st"></span></small></div><div class="tools"><button class="more" type="button" aria-label="Chat options" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></button><div class="menu" hidden role="menu"><button class="opt snd" type="button" role="menuitemcheckbox" aria-checked="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>Chat sound<i class="sw"></i></button></div><button class="x" type="button" aria-label="Close chat">×</button></div></div>
 <div class="list" aria-live="polite"></div><div class="drop" hidden>Drop files to send</div><div class="chips"></div><div class="foot"></div></section>`;
     // colors follow the page's light or dark theme
@@ -117,9 +117,10 @@ ${where === 'app' ? '@media (max-width:760px){.btn{bottom:calc(var(--bnav-h,64px
     if (!S) { msgs = [{ id: 'g', from: 'bot', text: C.greeting, at: new Date().toISOString() }]; draw(); } else refresh();
     poll(3000); setTimeout(() => { const t = $('textarea'); if (t) t.focus(); }, 50);
   }
-  function hide() { open = false; $('.panel').hidden = true; $('.btn').setAttribute('aria-expanded', 'false'); poll(S && ['waiting', 'live'].includes(S.status) ? 15000 : 0); }
+  function hide() { open = false; $('.panel').hidden = true; badge(); $('.btn').setAttribute('aria-expanded', 'false'); poll(S && ['waiting', 'live'].includes(S.status) ? 15000 : 0); }
   function poll(ms) { clearInterval(timer); timer = ms ? setInterval(refresh, ms) : null; }
-  function badge() { const b = $('.badge'); b.hidden = !unread; b.textContent = unread; }
+  function badge() { const b = $('.badge'); b.hidden = !unread; b.textContent = unread; if (where === 'app') $('.btn').hidden = !unread && !open; } // the business app: no floating button (Settings → Support → Support chat opens it), except while the team’s reply is unread
+  window.openSupportChat = () => { if (!C) return false; show(); return true; };
   async function refresh() {
     if (!S) return;
     try {
