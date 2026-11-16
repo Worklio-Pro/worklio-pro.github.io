@@ -4582,10 +4582,35 @@ A.billKeep = (d, el) => billGo('/api/account/billing/cancel', { undo: true }, el
 /* ===== /settings/support-access: let the support team into your login for four weeks (everyone; the owner also sees the whole team) ===== */
 const shortName = (n) => { const [first, ...rest] = String(n || 'Support').trim().split(/\s+/); return rest.length ? `${first} ${rest[rest.length - 1][0].toUpperCase()}.` : first; };
 const SUPPORT_STATUS = { pending: 'Waiting for approval', granted: 'Granted', expired: 'Expired', revoked: 'Revoked', declined: 'Declined', cancelled: 'Withdrawn' };
+// /settings/support-access is the Support page: a list of ways to get help (Get support, Help Center, the tour, device diagnostics,
+// Support access); an open or granted access request shows above it. ?access=1 is Support access itself.
+const SUP_ICO = { clip: '<path d="M21.4 11.1l-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/>' };
+const supRow = (attrs, title, sub, ico) => `<${attrs.startsWith('href') ? 'a' : 'button type="button"'} class="sup-row" ${attrs}><span class="sup-t"><strong>${title}</strong><span>${sub}</span></span><span class="sup-ic">${svgIcon(ico, 24)}</span></${attrs.startsWith('href') ? 'a' : 'button'}>`;
+// Share device diagnostics: what support needs to know about this device and login, copied to paste into a message
+A.copyDiagnostics = async () => {
+  const a = company.account || {}; const v = (($$('script[src*="app.js"]')[0] || {}).src || '').split('v=')[1] || '';
+  const text = [`${a.productName || 'Worklio Pro'} device diagnostics`, `Time: ${new Date().toString()}`, `Time zone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}`,
+    `Business: ${company.name || ''}`, `Login: ${me.name || ''} (${me.role || ''})`, a.plan ? `Plan: ${a.plan.name}` : '', `App version: ${v}`, `Page: ${location.pathname}`,
+    `Browser: ${navigator.userAgent}`, `Language: ${navigator.language}`, `Screen: ${screen.width}×${screen.height} @${devicePixelRatio}x, window ${innerWidth}×${innerHeight}`,
+    `Installed app: ${matchMedia('(display-mode: standalone)').matches || navigator.standalone === true ? 'Yes' : 'No'}`, `Online: ${navigator.onLine ? 'Yes' : 'No'}`].filter(Boolean).join('\n');
+  try { await navigator.clipboard.writeText(text); }
+  catch { const t = document.createElement('textarea'); t.value = text; t.setAttribute('readonly', ''); t.style.cssText = 'position:fixed;opacity:0'; document.body.append(t); t.select(); document.execCommand('copy'); t.remove(); }
+  toast('Device diagnostics copied. Paste them into your message to support.');
+};
 PAGES['/settings/support-access'] = {
-  title: 'Support Access',
+  title: 'Support',
   async render(main) {
     const S = await api('GET', '/api/account/support-access'); const r = S.current; const product = esc(S.productName || 'our');
+    const a = company.account || {}; const name = esc(a.productName || 'Worklio Pro'); const open = r && ['pending', 'granted'].includes(r.status);
+    if (new URLSearchParams(location.search).get('access') !== '1') {
+      main.innerHTML = `<div class="sup"><h1 class="sup-title">Support</h1>${open ? `<a class="notice sup-alert" href="/settings/support-access?access=1" data-link>${r.status === 'pending' ? `<strong>${esc(shortName(r.adminName))}</strong> from support is asking for access to your login. Review the request →` : `Support has access to your login until ${fmtDate(r.expiresAt.slice(0, 10))}. Manage it →`}</a>` : ''}
+<div class="sup-list">${supRow('data-act="supportForm"', 'Get support', 'Send our team a message and we’ll reply by email', ICONS.chat)}
+${a.helpUrl ? supRow(`href="${esc(a.helpUrl)}" target="_blank" rel="noopener"`, 'Help Center', `Read articles about every feature in ${name}`, ICONS.link) : supRow('data-act="openHelp"', 'Help Center', `Read articles about every feature in ${name}`, ICONS.book)}
+${typeof startTour === 'function' ? supRow('data-act="startTour"', 'Take a tour', 'A quick walk through the app', ICONS.compass) : ''}
+${supRow('data-act="copyDiagnostics"', 'Share device diagnostics', 'Copy device diagnostics to your clipboard to share with support', SUP_ICO.clip)}
+${supRow('href="/settings/support-access?access=1" data-link', 'Support access', 'Allow our support team to sign in as you when troubleshooting', ICONS.shield)}</div></div>`;
+      return;
+    }
     const ends = fmtDate((r && r.expiresAt ? new Date(r.expiresAt) : addDays(new Date(), S.grantDays)).toISOString().slice(0, 10));
     const who = `your ${product} ${S.isOwner ? 'account' : 'login'}`;
     const terms = `<p>By providing access to ${who}, you’re granting ${product} support:</p>
@@ -4604,7 +4629,7 @@ PAGES['/settings/support-access'] = {
 ${S.team.map((x) => `<tr><td>${esc(x.userName)}</td><td>${esc(shortName(x.adminName))}${x.reason ? `<div class="muted">${esc(x.reason)}</div>` : ''}</td><td>${x.status === 'granted' ? `Granted until ${fmtDate(x.expiresAt.slice(0, 10))}` : SUPPORT_STATUS.pending}</td>
 <td class="r"><button type="button" class="btn alt sm sa-revoke" data-act="supportAnswer" data-id="${esc(x.id)}" data-a="revoke" data-who="${esc(x.userName)}">${x.status === 'granted' ? 'Revoke' : 'Cancel request'}</button></td></tr>`).join('')}</tbody></table></div>` : '';
     const col = S.isOwner; // the owner's history covers the whole team
-    main.innerHTML = `<h1 class="sa-title">Grant Access to Your Account</h1>${card}${team}
+    main.innerHTML = `<a href="/settings/support-access" data-link class="back">← Support</a><h1 class="sa-title">Grant Access to Your Account</h1>${card}${team}
 <h2 class="sa-h">Previous Requests</h2><div class="card sa-hist"><table><thead><tr>${col ? '<th>Team member</th>' : ''}<th>Requested by</th><th>Status</th><th class="r">Ended</th></tr></thead><tbody>
 ${S.history.length ? S.history.map((h) => `<tr>${col ? `<td>${esc(h.userName || '')}</td>` : ''}<td>${esc(shortName(h.adminName))}${h.reason ? `<div class="muted">${esc(h.reason)}</div>` : ''}</td><td>${SUPPORT_STATUS[h.status] || esc(h.status)}</td><td class="r">${h.endedAt ? fmtDate(h.endedAt.slice(0, 10)) : '—'}</td></tr>`).join('')
   : `<tr><td colspan="${col ? 4 : 3}" class="muted">No previous requests.</td></tr>`}</tbody></table></div>`;

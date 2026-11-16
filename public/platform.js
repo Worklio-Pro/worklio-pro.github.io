@@ -516,14 +516,14 @@ ${a.status === 'active' ? '' : a.status === 'pending' ? '<p class="muted" style=
   });
   f.addEventListener('submit', async (e) => { e.preventDefault(); const b = Object.fromEntries(new FormData(f)); if (!b.industry) delete b.industry; try { await api('PUT', `/api/platform/accounts/${a.id}`, b); toast('Saved'); await load(); render(); A.editAccount({ id: a.id }); } catch (x) { toast(x.message, true); } });
 };
-// Support Access: ask any of the account's logins; they approve it on their Support Access page, and while it's granted
+// Support Access: ask any of the account's logins; they approve it under Support → Support access, and while it's granted
 // you can open the account as them (with their access level). They, or the account owner, can revoke it any time.
 const ROLE_NAMES = { owner: 'Owner', admin: 'Admin', manager: 'Manager', technician: 'Technician' };
 function supportSection(a) {
   const rows = a.support.map((r) => `<tr><td><strong>${esc(r.userName)}</strong><div class="sm">${r.status === 'granted' ? `Granted until ${fmtDate(r.expiresAt)}` : `Waiting for approval · requested ${fmtDate(r.requestedAt)} by ${esc(r.adminName)}`}</div></td>
 <td><div class="acts">${r.status === 'granted' ? `<button type="button" class="btn sm" data-act="supportOpen" data-id="${a.id}" data-r="${esc(r.id)}">Open account</button>` : ''}<button type="button" class="btn alt sm" data-act="supportEnd" data-id="${a.id}" data-r="${esc(r.id)}">${r.status === 'granted' ? 'End access' : 'Withdraw'}</button></div></td></tr>`).join('');
   const busy = new Set(a.support.map((r) => r.userId)); const free = a.logins.filter((u) => u.active && !busy.has(u.id));
-  return `<p class="muted" style="font-size:14px;margin:0 0 8px">Ask someone on the account to let you in as them to troubleshoot. They get an email and approve it on their Support Access page. Access lasts four weeks unless they or the owner revoke it, and you sign in with their access level.</p>
+  return `<p class="muted" style="font-size:14px;margin:0 0 8px">Ask someone on the account to let you in as them to troubleshoot. They get an email and approve it under Support → Support access. Access lasts four weeks unless they or the owner revoke it, and you sign in with their access level.</p>
 ${rows ? `<table class="acc" style="margin-bottom:10px">${rows}</table>` : ''}
 ${free.length ? `<form id="saf"><div class="linkbox" style="margin-bottom:8px"><select name="userId" aria-label="Who to ask">${free.map((u) => `<option value="${esc(u.id)}">${esc(u.name)} · ${ROLE_NAMES[u.role] || esc(u.role)} · ${esc(u.email)}</option>`).join('')}</select></div>
 <div class="linkbox"><input name="reason" maxlength="500" placeholder="Reason, shown to them (optional)" aria-label="Reason for access"><button class="btn alt">Request access</button></div></form>`

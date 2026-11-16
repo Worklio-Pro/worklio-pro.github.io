@@ -203,7 +203,7 @@ const NAV = [
   ['Records', [['/project-gallery', 'Project Gallery'], ['/notifications', 'Notifications Log']]],
 ];
 // the Settings pages open in their own sidebar column (Settings at the bottom of the sidebar), in these groups
-const SETTINGS_NAV = [['/settings/company', 'Company Profile'], ['/settings/business-page', 'Business Page'], ['/team', 'Manage Team'], ['/requests', 'Team Requests'], ['/settings/roles', 'Roles & Permissions'], ['/settings/emails', 'Email Templates'], ['/settings/job-forms', 'Checklists & Forms'], ['/settings', 'App Settings'], ['/settings/preferences', 'Preferences'], ['/settings/import-export', 'Import & Export'], ['/settings/connections', 'Account Connections'], ['/settings/booking', 'Online Booking'], ['/settings/accounting', 'QuickBooks & Xero'], ['/marketplace', 'App Marketplace'], ['/settings/billing', 'Account and Billing'], ['/rewards', 'Refer & Earn'], ['/settings/support-access', 'Support Access']];
+const SETTINGS_NAV = [['/settings/company', 'Company Profile'], ['/settings/business-page', 'Business Page'], ['/team', 'Manage Team'], ['/requests', 'Team Requests'], ['/settings/roles', 'Roles & Permissions'], ['/settings/emails', 'Email Templates'], ['/settings/job-forms', 'Checklists & Forms'], ['/settings', 'App Settings'], ['/settings/preferences', 'Preferences'], ['/settings/import-export', 'Import & Export'], ['/settings/connections', 'Account Connections'], ['/settings/booking', 'Online Booking'], ['/settings/accounting', 'QuickBooks & Xero'], ['/marketplace', 'App Marketplace'], ['/settings/billing', 'Account and Billing'], ['/rewards', 'Refer & Earn'], ['/settings/support-access', 'Support']];
 const SETTINGS_GROUPS = [['My Business', ['/settings/company', '/settings/business-page', '/profile', '/team', '/requests', '/settings/roles', '/settings/billing']], ['Business Services', ['/settings/emails', '/settings/job-forms', '/settings/connections', '/settings/booking', '/settings/accounting', '/marketplace']], ['Other Settings', ['/settings', '/settings/preferences', '/settings/import-export', '/rewards', '/settings/support-access']]];
 const navPaths = [...NAV.flatMap(([, items]) => items.map(([p]) => p)), ...SETTINGS_NAV.map(([p]) => p)];
 const curPath = () => location.pathname.replace(/\/+$/, '') || '/';
@@ -485,7 +485,7 @@ ${topics.map((t) => `<button type="button" class="hp-topic" data-act="helpTopic"
   }
   const foot = `<div class="hp-foot">
 <div class="hp-link">${svgIcon(ICONS.user, 18)}<span>${esc(company.name || product)}${a.plan ? ` · ${esc(a.plan.name)} plan` : ''}</span></div>
-${memberCan('/settings/support-access') ? `<a class="hp-link hp-nav" href="/settings/support-access" data-link>${svgIcon(ICONS.shield, 18)}<span>Support Access</span></a>` : ''}
+${memberCan('/settings/support-access') ? `<a class="hp-link hp-nav" href="/settings/support-access" data-link>${svgIcon(ICONS.shield, 18)}<span>Support</span></a>` : ''}
 <button type="button" class="btn hp-wide" data-act="supportForm">${svgIcon(ICONS.chat, 18)} Get Support</button><p class="muted hp-note">Send us a message and we’ll reply by email.</p><p class="hp-legal"><a href="/terms" target="_blank" rel="noopener">Terms of Service</a> · <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a></p>
 </div>`;
   return head + `<div class="hp-body">${body}</div>` + foot;
