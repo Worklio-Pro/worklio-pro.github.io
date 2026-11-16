@@ -3467,8 +3467,8 @@ PAGES['/settings/business-page'] = {
 <div class="bp-edit">${BP_TABS.map(([t, , secs], ti) => `<nav class="bp-nav" data-tab="${t}" ${ti ? 'hidden' : ''}>${secs.map(([k, n], i) => `<button type="button" data-act="bpSec" data-sec="${k}" class="${i || ti ? '' : 'on'}">${n}</button>`).join('')}</nav>`).join('')}
 <form class="card bp-form" id="bpForm" novalidate><fieldset class="bp-fs" ${admin ? '' : 'disabled'}>
 <section data-sec="info"><h2>Your information</h2>
-<span class="bp-lbl">Company logo</span><div class="bp-img">${bpPick('bpLogo', 'bpLogoFile', 'logo', `<button type="button" class="logo-trash" data-act="bpLogo" data-v="" title="Remove the logo" aria-label="Remove the logo">${BP_TRASH}</button>`, V.companyLogo ? '<button type="button" class="btn alt" data-act="bpLogo" data-v="company">Use company logo</button>' : '')}</div>
-<span class="bp-lbl">Logo opacity</span>${range('logoOpacity')}
+<div class="bp-logo-row"><div><span class="bp-lbl">Company logo</span><div class="bp-img">${bpPick('bpLogo', 'bpLogoFile', 'logo', `<button type="button" class="logo-trash" data-act="bpLogo" data-v="" title="Remove the logo" aria-label="Remove the logo">${BP_TRASH}</button>`, V.companyLogo ? '<button type="button" class="btn alt" data-act="bpLogo" data-v="company">Use company logo</button>' : '')}</div></div>
+<div><span class="bp-lbl">Logo opacity</span>${range('logoOpacity')}</div></div>
 <label>Company name<input name="name" maxlength="100" required></label>
 <label>Company description<textarea name="description" rows="3" maxlength="500" placeholder="What you do, in a sentence or two"></textarea></label>
 <div class="bp-two"><label>Email address<input name="email" type="email" maxlength="120"></label><label>Website<input name="website" maxlength="300" placeholder="yourbusiness.com"></label></div>
