@@ -306,8 +306,9 @@ function invoiceCredits(inv, ignoreStatus) {
   // inv.depositCreditRemoved: the admin deleted the deposit line from this invoice, so it isn't credited here
   const credit = q && q.depositPaidAt && first && first.id === inv.id && !inv.depositCreditRemoved ? Math.min(inv.total || 0, Math.max(0, round2((Number(q.depositPaidAmount ?? q.depositFee) || 0) - refundedOf(q.depositRefunds)))) : 0;
   const paid = round2((inv.payments || []).reduce((s, p) => s + paidPart(p), 0));
-  const balance = Math.max(0, round2((inv.total || 0) - credit - paid));
-  return { depositApplied: credit, depositAppliedAt: credit ? q.depositPaidAt : null, depositQuote: credit ? q.number : null, depositQuoteId: credit ? q.id : null, amountPaid: paid, balanceDue: !ignoreStatus && inv.status === 'paid' ? 0 : balance };
+  const ref = referralOnInvoice(inv, credit); // client referral rewards on this invoice (see "referral rewards")
+  const balance = Math.max(0, round2((inv.total || 0) - credit - ref.amount - paid));
+  return { referralApplied: ref.amount, referralCredits: ref.list, depositApplied: credit, depositAppliedAt: credit ? q.depositPaidAt : null, depositQuote: credit ? q.number : null, depositQuoteId: credit ? q.id : null, amountPaid: paid, balanceDue: !ignoreStatus && inv.status === 'paid' ? 0 : balance };
 }
 const withStatus = (inv) => ({ ...inv, displayStatus: invoiceStatus(inv), ...invoiceCredits(inv) });
 
@@ -958,7 +959,7 @@ function billMembership(m) {
     const inv = computeTotals({ id: uid(), number: nextNumber('invoices'), clientId: c.id, membershipId: m.id, subject: `${m.name} service plan`, status: 'draft', issueDate: from, dueDate: addDaysYmd(from, terms), paymentTerms: String(terms),
       paidAt: null, token: token(), createdAt: iso(new Date()), notes: '', disclaimer: db.company.invoiceDisclaimer ?? '', taxRate: m.taxable ? db.company.taxRate : 0, discountType: 'flat', discountValue: 0,
       items: [{ desc: `${m.name} service plan`, details: `${niceDate(from)} – ${niceDate(to)}`, qty: 1, cost: m.price, markup: 0, markupType: 'percent', price: m.price }] });
-    db.invoices.push(inv); made.push(inv); m.bills++; m.nextBill = addMonthsYmd(m.start, m.bills * PLAN_MONTHS[m.interval]);
+    db.invoices.push(inv); attachReferralCredits(inv); made.push(inv); m.bills++; m.nextBill = addMonthsYmd(m.start, m.bills * PLAN_MONTHS[m.interval]);
     if (m.autoSend && c.email) { inv.status = 'sent'; const email = inClientLang(c.id, () => renderEmail('invoice', docVars('invoice', inv)));
       notify({ clientId: c.id, channel: 'email', kind: 'invoice', refId: inv.id, refNumber: inv.number, subject: email.subject, html: email.html, body: email.body }).catch((e) => console.error('service plan invoice email:', e.message)); }
   }
@@ -1852,6 +1853,7 @@ app.put('/api/company', (req, res) => {
   for (const m of PAY_APPS) if (m.field in b) { const h = payHandle(b[m.field], m.host); if (h === null) return res.status(400).json({ error: `Enter your ${m.label} ${m.what}, like ${m.eg}` }); handles[m.field] = h; }
   for (const k of allowed) if (k in b) db.company[k] = k === 'taxRate' || k === 'paymentTermsDays' ? Number(b[k]) || 0 : typeof b[k] === 'string' ? b[k].trim().slice(0, 500) : b[k];
   Object.assign(db.company, handles);
+  if (b.referralRewards && typeof b.referralRewards === 'object') { try { db.company.referralRewards = cleanReferralRewards(b.referralRewards, db.company.referralRewards); } catch (e) { return res.status(400).json({ error: e.message }); } }
   if (b.lateFee && typeof b.lateFee === 'object') { try { db.company.lateFee = cleanLateFee(b.lateFee, db.company.lateFee); } catch (e) { return res.status(400).json({ error: e.message }); } }
   if ((b.teamLocation === true || b.teamLocation === 'on' || b.teamLocation === 'true') && !tenancy.has('teamLocation')) return res.status(403).json({ error: 'Team location isn’t included in your plan' });
   if (b.survey && typeof b.survey === 'object') db.company.survey = cleanSurvey(b.survey); // App Settings → Site surveys
@@ -2203,7 +2205,7 @@ app.post('/api/:col', (req, res, next) => {
   }
   if (col === 'expenses') { doc.amount = Number(b.amount) || 0; doc.bizCat = cleanCat(b.bizCat); }
   if (col === 'services') { doc.price = Number(b.price) || 0; doc.category = cleanCat(b.category); homeDepot.clean(doc); catMaps.delete(db.services); }
-  db[col].push(doc); save(); if (col === 'clients') optInText(doc).catch(() => {}); if (col === 'jobs') pushScheduleChange(null, doc, currentUser(req));
+  db[col].push(doc); if (col === 'invoices') attachReferralCredits(doc); save(); if (col === 'clients') optInText(doc).catch(() => {}); if (col === 'jobs') pushScheduleChange(null, doc, currentUser(req));
   res.status(201).json(col === 'invoices' ? withStatus(doc) : col === 'jobs' && isMemberReq(req) ? jobForMember(doc) : col === 'clients' && isMemberReq(req) ? clientForMember(doc) : doc);
 });
 
@@ -2265,6 +2267,7 @@ app.put('/api/:col/:id', (req, res, next) => {
     doc.signedAt = null; doc.signedName = null; delete doc.signature;
   }
   if (col === 'jobs') { if (db.jobs[i].signature) doc.signature = db.jobs[i].signature; else delete doc.signature; } // signatures only via /signature
+  if (col === 'invoices' && upd.referralCreditRemoved === 'yes') detachReferralCredits(db.invoices[i]); if (col === 'invoices') delete doc.referralCreditRemoved;
   if (col === 'invoices') { // payments change only through their own endpoints, never through an invoice edit
     if (db.invoices[i].payments) doc.payments = db.invoices[i].payments; else delete doc.payments;
     if ((doc.payments || []).length) settleInvoice(doc);
@@ -2631,10 +2634,10 @@ app.post('/api/jobs/:id/create-invoice', (req, res) => {
     inv = computeTotals({ ...base, items: l.items, taxRate: l.taxRate, discountType: l.discountType, discountValue: l.discountValue, discountName: l.discountName });
     applyMemberDiscount(inv); computeTotals(inv); // a service plan member's discount, when the job had none
   }
-  db.invoices.push(inv);
+  db.invoices.push(inv); attachReferralCredits(inv);
   // the quote's deposit already covers the whole invoice: it starts paid in full (paidByDeposit: no money of its own, so cash reports don't count it twice)
   const cr = invoiceCredits(inv, true);
-  if (inv.total > 0 && cr.depositApplied > 0 && cr.balanceDue <= 0.004) { const q = db.quotes.find((x) => x.id === cr.depositQuoteId) || {}; Object.assign(inv, { status: 'paid', paidAt: cr.depositAppliedAt, paymentMethod: q.depositMethod || 'other', paidByDeposit: true }); }
+  if (inv.total > 0 && cr.depositApplied > 0 && cr.balanceDue <= 0.004) { const q = db.quotes.find((x) => x.id === cr.depositQuoteId) || {}; Object.assign(inv, { status: 'paid', paidAt: cr.depositAppliedAt, paymentMethod: q.depositMethod || 'other', paidByDeposit: true }); referralEarned(inv); }
   save(); res.status(201).json(withStatus(inv));
 });
 // what a job's invoice is made of: the job's own lines win (else its quote's, with options the chosen one's), with the same tax and discount
@@ -2694,7 +2697,7 @@ app.post('/api/invoices/batch', async (req, res) => {
       subject: one ? j.title : `${g.length} jobs${first ? `, ${niceDate(first)}${last && last !== first ? ` – ${niceDate(last)}` : ''}` : ''}`,
       status: 'draft', issueDate: today, dueDate: addDaysYmd(today, terms), paymentTerms: String(terms), paidAt: null, token: token(), createdAt: iso(new Date()), notes: '',
       disclaimer: db.company.invoiceDisclaimer ?? '', items, taxRate: l.taxRate, discountType: one ? l.discountType : 'flat', discountValue: one ? l.discountValue : 0, discountName: one ? l.discountName : '' });
-    applyMemberDiscount(inv); computeTotals(inv); db.invoices.push(inv); made.push(inv);
+    applyMemberDiscount(inv); computeTotals(inv); db.invoices.push(inv); attachReferralCredits(inv); made.push(inv);
   }
   let sent = 0;
   if (b.send) for (const inv of made) {
@@ -2895,6 +2898,7 @@ function docPdfIn(kind, d) {
   if (!q) {
     const paid = (d.payments || []).reduce((n, pm) => n + (Number(pm.amount) || 0), 0);
     if (d.depositApplied > 0) row(tx('Deposit collected'), '-' + money(d.depositApplied));
+    if (d.referralApplied > 0) row(tx('Referral credit'), '-' + money(d.referralApplied));
     if (paid > 0) row(tx('Payments'), '-' + money(paid));
     row(tx('Balance due'), money(x.balanceDue ?? d.total), true);
   }
@@ -2930,7 +2934,7 @@ function settleInvoice(inv) {
     Object.assign(inv, { status: 'paid', paidAt: last.date, paymentMethod: last.method });
   } else if (inv.status === 'paid') { Object.assign(inv, { status: 'sent', paidAt: null, paymentMethod: null }); }
   else if (inv.status === 'draft' && (inv.payments || []).length) inv.status = 'sent';
-  if (!wasPaid && inv.status === 'paid') { askForReview('invoice', inv); slackInvoicePaid(inv); }
+  if (!wasPaid && inv.status === 'paid') { askForReview('invoice', inv); slackInvoicePaid(inv); referralEarned(inv); }
 }
 function slackInvoicePaid(inv) {
   const c = findClient(inv.clientId);
@@ -2952,7 +2956,7 @@ app.post('/api/invoices/:id/mark-paid', (req, res) => {
   if (!inv) return res.status(404).json({ error: 'Not found' });
   const method = PAY_METHODS[req.body.method] ? req.body.method : 'other'; const owed = invoiceCredits(inv, true).balanceDue; const u = currentUser(req);
   if (owed > 0) inv.payments = [...(inv.payments || []), { id: uid(), amount: owed, method, date: iso(new Date()), reference: '', recordedBy: u ? u.name : '', createdAt: new Date().toISOString() }];
-  settleInvoice(inv); if (inv.status !== 'paid') { Object.assign(inv, { status: 'paid', paidAt: iso(new Date()), paymentMethod: method }); askForReview('invoice', inv); slackInvoicePaid(inv); }
+  settleInvoice(inv); if (inv.status !== 'paid') { Object.assign(inv, { status: 'paid', paidAt: iso(new Date()), paymentMethod: method }); askForReview('invoice', inv); slackInvoicePaid(inv); referralEarned(inv); }
   save(); res.json(withStatus(inv));
 });
 
@@ -3034,7 +3038,7 @@ function itemsTable(d, o = {}) {
   const row = (label, value) => `<tr><td colspan="${span}" class="r">${label}</td><td class="r">${value}</td></tr>`;
   return `<table><tr><th>${tx('Description')}</th>${qty ? `<th class="r">${tx('Qty')}</th>` : ''}${unit ? `<th class="r">${tx('Price')}</th>` : ''}<th class="r">${line ? tx('Amount') : ''}</th></tr>${d.items.map((i) => { const inc = included(i); const hd = heading(i); return `<tr><td${i.sub ? ' style="padding-left:28px"' : ''}>${hd ? `<strong>${esc(i.desc)}</strong>` : esc(i.desc)}${i.details ? `<div class="muted" style="white-space:pre-line">${esc(i.details)}</div>` : ''}</td>${qty ? `<td class="r">${inc || hd ? '' : i.qty}</td>` : ''}${unit ? `<td class="r">${inc || hd ? '' : money(i.price)}</td>` : ''}<td class="r">${hd ? '' : inc ? (line || !unit ? tx('Included') : '') : line ? money(i.qty * i.price) : ''}</td></tr>`; }).join('')}
 ${row(tx('Subtotal'), money(d.subtotal))}${d.discount > 0 ? row(esc(discLabel(d)), '−' + money(d.discount)) : ''}${row(`${esc(Number(d.taxRate) === Number(db.company.taxRate) && db.company.taxName ? db.company.taxName : tx('Tax'))} (${d.taxRate}%)`, money(d.tax))}${row(`<strong>${tx('Total')}</strong>`, `<strong>${money(d.total)}</strong>`)}
-${o.invoice ? (d.depositApplied > 0 ? row(tx('Deposit collected (quote {number}, {date})', { number: esc(d.depositQuote), date: esc(niceDate(d.depositAppliedAt)) }), '−' + money(d.depositApplied)) + row(`<strong>${tx('Balance due')}</strong>`, `<strong>${money(d.balanceDue)}</strong>`) : '')
+${o.invoice ? (d.depositApplied > 0 ? row(tx('Deposit collected (quote {number}, {date})', { number: esc(d.depositQuote), date: esc(niceDate(d.depositAppliedAt)) }), '−' + money(d.depositApplied)) : '') + (d.referralApplied > 0 ? row(tx('Referral credit'), '−' + money(d.referralApplied)) : '') + (d.depositApplied > 0 || d.referralApplied > 0 ? row(`<strong>${tx('Balance due')}</strong>`, `<strong>${money(d.balanceDue)}</strong>`) : '')
     : d.depositFee > 0 ? row(`${tx('Deposit')}${d.depositType === 'percent' ? ` (${d.depositValue}%)` : ''}`, money(d.depositFee)) + row(tx('Balance after deposit'), money(d.total - d.depositFee)) : ''}</table>`;
 }
 
@@ -4274,7 +4278,7 @@ app.get('/api/portal/:token', (req, res) => {
       holidays: db.company.showHours ? (db.company.holidays || []).filter((h) => h.to >= iso(new Date()) && h.from <= iso(new Date(Date.now() + 60 * 864e5))) : [] }, // holiday hours in the next 60 days
     sentWith: { url: poweredBy.url('portal'), product: poweredBy.product() }, // "Sent with …" at the bottom of the menu (lib/powered-by.js)
     client: { id: c.id, name: c.name, email: c.email, phone: c.phone, address: c.address, smsConsent: !!c.smsConsent, smsBrand: smsBrand() },
-    referralLink: tenancy.has('referrals') ? referralLink(c) : null,
+    referralLink: tenancy.has('referrals') ? referralLink(c) : null, referralReward: tenancy.has('referrals') ? referralRewardFor(c) : null,
     reviews: !tenancy.has('reviews') ? null : (db.clientReviews || []).filter((r) => r.clientId === c.id && r.submittedAt).sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
       .map(reviewForClient),
     reviewable: tenancy.has('reviews') ? reviewableFor(c) : [],
@@ -4285,6 +4289,80 @@ app.get('/api/portal/:token', (req, res) => {
     quotes: db.quotes.filter((q) => q.clientId === c.id).map((q) => ({ ...forClient(q), link: quoteLink(q), stage: estDoc(q) ? 'estimate' : 'quote' })), // stage: still an estimate (Estimate first), or the quote
     invoices: db.invoices.filter((i) => i.clientId === c.id).map((i) => ({ ...forClient(withStatus(i)), link: invoiceLink(i) })),
   });
+});
+
+// ---------- referral rewards (App Settings → General → Referral rewards, db.company.referralRewards) ----------
+// { on, type: flat|percent, amount: what the client who referred someone earns when that friend pays their first invoice in full,
+//   friendOn, friendType, friendAmount: an optional welcome credit for the friend, on their own first invoice; since: the day it was turned on }
+// Credits live in db.referralCredits: { id, clientId (who gets it), kind: referrer|friend, friendId, referrerId, type, amount, earnedAt, invoiceId }.
+// A credit with no invoice (or whose invoice was deleted) waits, and goes on the client's next new invoice, after tax and after any deposit.
+// A percent credit is that share of the invoice it lands on. Taking it off an unpaid invoice puts it back to wait for the next one.
+const REF_MAX = { flat: 10000, percent: 100 };
+function cleanReferralRewards(b, old = {}) {
+  const yes = (v) => v === true || v === 'true' || v === 'on';
+  const one = (type, amount, on, who) => { const t = type === 'percent' ? 'percent' : 'flat'; const a = round2(Math.max(0, Number(amount) || 0));
+    if (on && !(a > 0)) throw new Error(`Enter the ${who} reward`); if (a > REF_MAX[t]) throw new Error(t === 'percent' ? 'A reward can be at most 100%' : 'A reward can be at most $10,000'); return [t, a]; };
+  const on = yes(b.on); const friendOn = on && yes(b.friendOn);
+  const [type, amount] = one(b.type, b.amount, on, 'referral'); const [friendType, friendAmount] = one(b.friendType, b.friendAmount, friendOn, 'friend’s');
+  return { on, type, amount, friendOn, friendType, friendAmount, since: on ? (old.on && old.since) || new Date().toISOString() : '' };
+}
+const refCfg = () => (tenancy.has('referrals') && db.company.referralRewards && db.company.referralRewards.on ? db.company.referralRewards : null);
+const refAmountText = (type, amount) => (type === 'percent' ? `${amount}%` : money(amount));
+// on the referral page: what the friend gets
+const referralOffer = () => { const r = refCfg(); return r && r.friendOn && r.friendAmount > 0 ? `Get ${refAmountText(r.friendType, r.friendAmount)} off your first invoice.` : ''; };
+// in the client portal's Refer a friend: what the client earns (the portal translates it)
+const referralRewardFor = () => { const r = refCfg(); return r && r.amount > 0 ? { earn: refAmountText(r.type, r.amount), percent: r.type === 'percent', friend: r.friendOn && r.friendAmount > 0 ? refAmountText(r.friendType, r.friendAmount) : '' } : null; };
+const refCredits = () => (db.referralCredits = db.referralCredits || []);
+const refWaiting = (r) => !r.invoiceId || !db.invoices.some((i) => i.id === r.invoiceId);
+function referralOnInvoice(inv, deposit = 0) {
+  const list = (db.referralCredits || []).filter((r) => r.invoiceId && r.invoiceId === inv.id); if (!list.length) return { amount: 0, list: [] };
+  const total = Number(inv.total) || 0; let left = Math.max(0, round2(total - deposit)); const out = [];
+  for (const r of list) { const a = Math.min(left, round2(r.type === 'percent' ? total * r.amount / 100 : r.amount)); left = round2(left - a);
+    const f = findClient(r.kind === 'friend' ? r.referrerId : r.friendId); out.push({ id: r.id, kind: r.kind, amount: a, type: r.type, value: r.amount, who: f ? f.name : '' }); }
+  return { amount: round2(out.reduce((s, x) => s + x.amount, 0)), list: out };
+}
+// a new invoice takes the client's waiting credits (not a $0 invoice, or one made already paid)
+function attachReferralCredits(inv) {
+  if (!inv || !(Number(inv.total) > 0) || inv.status === 'paid' || !inv.clientId) return;
+  for (const r of refCredits()) if (r.clientId === inv.clientId && refWaiting(r)) r.invoiceId = inv.id;
+}
+function detachReferralCredits(inv) { if (!inv || inv.status === 'paid' || (inv.payments || []).length) return; for (const r of refCredits()) if (r.invoiceId === inv.id) r.invoiceId = null; }
+// the friend's welcome credit, when they arrive through a referral link
+function friendCredit(friend, referrer) {
+  const r = refCfg(); if (!r || !r.friendOn || !(r.friendAmount > 0)) return;
+  refCredits().push({ id: uid(), clientId: friend.id, kind: 'friend', friendId: friend.id, referrerId: referrer.id, type: r.friendType, amount: r.friendAmount, earnedAt: new Date().toISOString(), invoiceId: null });
+}
+// an invoice is paid in full: if it's the first for a client who was referred (after rewards were turned on), the client who referred them earns their credit
+// a paid invoice that could only use part of a flat credit (the invoice was smaller): the rest waits for the client's next invoice
+function carryReferralLeftover(inv) {
+  const used = referralOnInvoice(inv, invoiceCredits(inv, true).depositApplied).list;
+  for (const r of refCredits().filter((x) => x.invoiceId === inv.id && x.type === 'flat')) {
+    const u = (used.find((x) => x.id === r.id) || {}).amount || 0; const rest = round2(r.amount - u); if (!(rest > 0.004)) continue;
+    r.amount = u; refCredits().push({ ...r, id: uid(), amount: rest, invoiceId: null, carriedFrom: r.id });
+  }
+}
+function referralEarned(inv) {
+  try {
+    carryReferralLeftover(inv);
+    const r = refCfg(); const friend = inv && findClient(inv.clientId); if (!r || !friend || !friend.referredBy || !(r.amount > 0)) return;
+    if ((friend.createdAt || '') < String(r.since || '').slice(0, 10)) return; // referred before rewards were on
+    if (refCredits().some((x) => x.kind === 'referrer' && x.friendId === friend.id)) return; // once per friend
+    const referrer = findClient(friend.referredBy); if (!referrer || referrer.id === friend.id) return;
+    refCredits().push({ id: uid(), clientId: referrer.id, kind: 'referrer', friendId: friend.id, referrerId: referrer.id, type: r.type, amount: r.amount, earnedAt: new Date().toISOString(), invoiceId: null });
+    // an open draft for the referrer takes it now; otherwise it waits for their next invoice
+    const draft = db.invoices.filter((i) => i.clientId === referrer.id && i.status === 'draft' && !(i.payments || []).length && Number(i.total) > 0).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))[0];
+    if (draft) attachReferralCredits(draft);
+  } catch (e) { console.error('referral credit:', e.message); }
+}
+// App Settings → Referral rewards: who refers the most, and the credits waiting
+app.get('/api/referrals', (req, res) => {
+  if (!tenancy.has('referrals')) return res.json({ referrers: [] });
+  const by = new Map();
+  for (const c of db.clients) if (c.referredBy) { const e = by.get(c.referredBy) || { referred: 0, paying: 0 }; e.referred++; if (db.invoices.some((i) => i.clientId === c.id && i.status === 'paid')) e.paying++; by.set(c.referredBy, e); }
+  const referrers = [...by.entries()].map(([id, e]) => { const c = findClient(id); const mine = refCredits().filter((r) => r.clientId === id && r.kind === 'referrer');
+    return c && { clientId: id, name: c.name, ...e, earned: mine.filter((r) => !r.carriedFrom).length, waiting: mine.filter(refWaiting).length, used: round2(mine.filter((r) => !refWaiting(r)).reduce((s, r) => s + referralOnInvoice(db.invoices.find((i) => i.id === r.invoiceId) || {}).list.filter((x) => x.id === r.id).reduce((t, x) => t + x.amount, 0), 0)) }; })
+    .filter(Boolean).sort((a, b) => b.paying - a.paying || b.referred - a.referred || a.name.localeCompare(b.name)).slice(0, 10);
+  res.json({ referrers });
 });
 
 // ---------- referrals ----------
@@ -4305,7 +4383,7 @@ function referPage(c, { error, values = {} } = {}) {
   const v = (k) => esc(values[k] || '');
   const first = String(c.name || '').trim().split(/\s+/)[0];
   return shell(`${db.company.name}: request service`, `<h1>Get work done with ${esc(db.company.name)}</h1>
-<p class="muted">${first ? `${esc(first)} recommended us. ` : ''}Tell us what you need and we'll get back to you${db.company.phone ? `, or call <a href="tel:${esc(db.company.phone)}">${esc(db.company.phone)}</a>` : ''}.</p>
+${referralOffer() ? `<p style="font-weight:700;margin:0 0 6px">${esc(referralOffer())}</p>` : ''}<p class="muted">${first ? `${esc(first)} recommended us. ` : ''}Tell us what you need and we'll get back to you${db.company.phone ? `, or call <a href="tel:${esc(db.company.phone)}">${esc(db.company.phone)}</a>` : ''}.</p>
 ${error ? `<p style="color:#b91c1c;font-weight:600">${esc(error)}</p>` : ''}
 <form method="post" style="margin-top:16px">
 <label>Your name*<input name="name" required maxlength="100" value="${v('name')}" autocomplete="name"></label>
@@ -4339,7 +4417,7 @@ app.post('/refer/:code', async (req, res) => {
   hits.push(now); referHits.set(ip, hits);
   const created = iso(new Date());
   const lead = { id: uid(), name, email, phone, address: clip('address', 300), company: '', tags: ['Referral'], notes: `Referred by ${c.name}`, referredBy: c.id, smsConsent: smsConsentFrom(b, phone, 'referral form'), portalToken: token(), createdAt: created };
-  db.clients.push(lead);
+  db.clients.push(lead); friendCredit(lead, c);
   db.requests = db.requests || [];
   const r = { id: uid(), clientId: lead.id, title, details: clip('details', 4000), address: lead.address, preferredDate: '', preferredTime: 'any', status: 'new', referredBy: c.id, createdAt: new Date().toISOString() };
   db.requests.push(r);
@@ -5250,7 +5328,7 @@ function booksPayments(inv) {
   if ((inv.payments || []).length) {
     for (const p of inv.payments) { const amount = paidPart(p); if (amount > 0 && !/^demo/.test(p.method || '')) out.push({ key: p.id, amount, date: p.date, reference: p.reference || '', note: `${p.method || 'Payment'} (Worklio Pro)` }); }
   } else if (inv.status === 'paid' && inv.paidAt && !/^demo/.test(inv.paymentMethod || '')) {
-    const amount = round2(Math.min(Number(inv.paidAmount || inv.total) || 0, (inv.total || 0) - cr.depositApplied)); if (amount > 0) out.push({ key: 'i-' + inv.id, amount, date: inv.paidAt, reference: '', note: `${inv.paymentMethod || 'Payment'} (Worklio Pro)` });
+    const amount = round2(Math.min(Number(inv.paidAmount || inv.total) || 0, (inv.total || 0) - cr.depositApplied - (cr.referralApplied || 0))); if (amount > 0) out.push({ key: 'i-' + inv.id, amount, date: inv.paidAt, reference: '', note: `${inv.paymentMethod || 'Payment'} (Worklio Pro)` });
   }
   return out;
 }

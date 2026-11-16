@@ -1093,6 +1093,12 @@ const optRow = ({ label, name, value, type, pctLabel, dname }) => { const on = N
 <span class="t-rm-c"><button type="button" class="t-rm" data-act="rmOpt" aria-label="Remove ${label.toLowerCase()}" title="Remove ${label.toLowerCase()}" ${on ? '' : 'hidden'}>${TRASH}</button></span></div>`; };
 const TRASH = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg>';
 // invoice: take the quote deposit credit off this invoice (or put it back); saved with the invoice
+// invoice: referral credits (server referralOnInvoice): what each takes off a total, and the line's note
+const refWho = (r) => (r.kind === 'friend' ? `welcome offer${r.who ? `, referred by ${esc(r.who)}` : ''}` : `for referring ${esc(r.who || 'a friend')}`);
+const refAmounts = (refs, total, deposit) => { let left = Math.max(0, round2(total - deposit)); return refs.map((r) => { const a = Math.min(left, round2(r.type === 'percent' ? total * r.value / 100 : r.value)); left = round2(left - a); return { ...r, amount: a }; }); };
+const setRefCredit = (el, removed) => { const form = el.closest('form'); $('[name=referralCreditRemoved]', form).value = removed ? 'yes' : ''; recalc(form); };
+A.rmRefCredit = (d, el) => setRefCredit(el, true);
+A.applyRefCredit = (d, el) => setRefCredit(el, false);
 const setDepCredit = (el, removed) => { const form = el.closest('form'); $('[name=depositCreditRemoved]', form).value = removed ? 'yes' : ''; recalc(form); };
 A.applyDepCredit = (d, el) => setDepCredit(el, false);
 A.addOpt = (d, el) => {
@@ -2174,7 +2180,7 @@ function invoiceForm(main, doc, preset) {
 <dt>Issued</dt><dd><input type="date" name="issueDate" value="${esc(issue)}" aria-label="Issue date"></dd>
 <dt>Payment terms</dt><dd><select name="paymentTerms" aria-label="Payment terms">${TERMS.map(([k, l]) => `<option value="${k}" ${terms === k ? 'selected' : ''}>${l}</option>`).join('')}</select></dd>
 <dt>Due date</dt><dd><input type="date" name="dueDate" value="${esc(due)}" aria-label="Due date"></dd></dl></div>
-${itemsCard(items, `<input type="hidden" name="depositCreditRemoved" value="${d.depositCreditRemoved ? 'yes' : ''}"><div class="icredit"></div>`, d)}
+${itemsCard(items, `<input type="hidden" name="depositCreditRemoved" value="${d.depositCreditRemoved ? 'yes' : ''}"><input type="hidden" name="referralCreditRemoved" value=""><div class="icredit"></div>`, d)}
 <div class="qcard"><h2>Client message</h2><div class="ai-box"><textarea name="notes" rows="3" placeholder="A message to your client, shown on the invoice">${esc(d.notes || '')}</textarea>${aiTextBar('invoice', 'notes')}</div></div>
 ${discCard('invoice', d.id ? d.disclaimer || '' : company.invoiceDisclaimer ?? '')}
 </div>
@@ -2197,10 +2203,14 @@ ${c.phone ? `<a class="qphone" href="tel:${esc(c.phone)}">${esc(c.phone)}</a>` :
   form._afterRecalc = (total) => {
     const found = invDepositCredit(d, $('[name=jobId]', form).value, total); const removed = $('[name=depositCreditRemoved]', form).value === 'yes';
     const credit = removed ? null : found; const pays = d.payments || []; const paid = pays.reduce((s, p) => s + (Number(p.amount) || 0), 0);
-    const balance = Math.max(0, round2(total - (credit ? credit.amount : 0) - paid));
+    const refOff = $('[name=referralCreditRemoved]', form).value === 'yes'; const refs = refAmounts(d.referralCredits || [], total, credit ? credit.amount : 0);
+    const refTotal = refOff ? 0 : round2(refs.reduce((s, r) => s + r.amount, 0)); const refEdit = d.status !== 'paid' && !pays.length;
+    const balance = Math.max(0, round2(total - (credit ? credit.amount : 0) - refTotal - paid));
     const others = D.invoices.filter((i) => i.clientId === $('[name=clientId]', form).value && i.id !== d.id && i.status !== 'paid' && i.status !== 'draft').reduce((s, i) => s + invBalance(i), 0);
     $('.icredit', form).innerHTML = `${credit ? `<div class="crow-line dep-credit"><span>Deposit collected <span class="muted">· quote ${esc(credit.quote)}, ${fmtDate(credit.date)}</span></span><span>−${money(credit.amount)}</span></div>`
       : found ? `<div class="crow-line dep-credit off"><span class="muted">Deposit of ${money(found.amount)} from quote ${esc(found.quote)} not applied</span><button type="button" class="link-btn" data-act="applyDepCredit">Apply deposit</button></div>` : ''}
+${refOff ? (refs.length ? `<div class="crow-line dep-credit off"><span class="muted">Referral credit taken off. It goes on this client’s next invoice when you save.</span><button type="button" class="link-btn" data-act="applyRefCredit">Put it back</button></div>` : '')
+  : refs.map((r) => `<div class="crow-line dep-credit"><span>Referral credit <span class="muted">· ${refWho(r)}${r.type === 'percent' ? ` (${r.value}%)` : ''}</span>${refEdit ? ' <button type="button" class="link-btn" data-act="rmRefCredit">Remove</button>' : ''}</span><span>−${money(r.amount)}</span></div>`).join('')}
 ${[...pays].sort((a, b) => a.date.localeCompare(b.date)).map((p) => `<div class="crow-line dep-credit"><span>Payment · ${esc(payLabel(p.method))} <span class="muted">· ${fmtDate(p.date)}${p.reference ? ' · ' + esc(p.reference) : ''}</span></span><span>−${money(p.amount)}</span></div>`).join('')}
 ${d.id && d.status !== 'paid' && balance > 0 ? `<div class="collect-row"><button type="button" class="btn alt sm" data-act="collectPayment" data-id="${d.id}">+ Collect payment</button></div>` : ''}
 <div class="ibal"><div><strong>Invoice balance</strong><strong>${money(d.status === 'paid' ? 0 : balance)}</strong></div><div><span>Account balance (including this ${d.status === 'paid' ? 'invoice' : d.status === 'draft' || !d.id ? 'draft' : 'invoice'})</span><span>${money(others + (d.status === 'paid' ? 0 : balance))}</span></div></div>`;
@@ -2724,7 +2734,7 @@ ${c.phone || c.email ? `<div class="vclient-c">${c.phone ? `<a href="tel:${esc(c
 <dl class="qmeta"><dt>Invoice #</dt><dd>${esc(d.number)}</dd>${job ? `<dt>Invoice for</dt><dd><a href="/jobs/edit?id=${job.id}" data-link>${esc(job.number + ' · ' + job.title)}</a></dd>` : ''}
 <dt>Issued</dt><dd>${fmtDate(d.issueDate)}</dd><dt>Payment terms</dt><dd>${esc(termsLabel)}</dd><dt>Due date</dt><dd>${fmtDate(d.dueDate)}</dd></dl></div></div>
 <div class="qcard"><div class="qcard-h"><h2>Product / Service</h2>${editBtn('invoice', d, 'items')}</div>${viewItems(d)}
-<div class="vtotals">${viewTotals(d)}${d.depositApplied ? vt(payLink('q-' + d.depositQuoteId, 'Deposit collected', d.depositAppliedAt, ` <span class="muted">· quote ${esc(d.depositQuote)}</span>`), '−' + money(d.depositApplied)) : ''}
+<div class="vtotals">${viewTotals(d)}${d.depositApplied ? vt(payLink('q-' + d.depositQuoteId, 'Deposit collected', d.depositAppliedAt, ` <span class="muted">· quote ${esc(d.depositQuote)}</span>`), '−' + money(d.depositApplied)) : ''}${(d.referralCredits || []).filter((r) => r.amount > 0).map((r) => vt(`Referral credit <span class="muted">· ${refWho(r)}</span>`, '−' + money(r.amount))).join('')}
 ${pays.map((p) => vt(payLink(p.id, 'Payment collected', p.date, ` <span class="muted">· ${esc(payLabel(p.method))}${p.tip ? ` · plus ${money(p.tip)} tip` : ''}</span>`), '−' + money(p.amount))).join('')}
 ${!pays.length && d.status === 'paid' && d.paidAt ? vt(payLink('i-' + d.id, 'Paid', d.paidAt, d.paymentMethod ? ` <span class="muted">· ${esc(payLabel(d.paymentMethod))}</span>` : ''), '') : ''}
 ${vt('Invoice balance', money(invBalance(d)), 'strong')}${vt(`Account balance <span class="muted">(including this ${d.status === 'draft' ? 'draft' : 'invoice'})</span>`, money(others + invBalance(d)))}</div></div>
@@ -3069,6 +3079,7 @@ function mobileDocPage(kind, d) {
     + (q ? mTapRow(kind, d, 'deposit', 'Required deposit', money(d.depositFee || 0))
       + (d.depositPaidAt ? mRow(payLink('q-' + d.id, 'Deposit collected', d.depositPaidAt), '−' + money(paid)) + mRow('Outstanding deposit', money(Math.max(0, round2((d.depositFee || 0) - paid)))) : '')
       : (d.depositApplied ? mRow(payLink('q-' + d.depositQuoteId, 'Deposit collected', d.depositAppliedAt), '−' + money(d.depositApplied)) : '')
+      + (d.referralCredits || []).filter((r) => r.amount > 0).map((r) => mRow('Referral credit', '−' + money(r.amount))).join('')
       + pays.map((p) => mRow(payLink(p.id, 'Payment collected', p.date, ` · ${esc(payLabel(p.method))}`), '−' + money(p.amount))).join('')
       + (!pays.length && d.status === 'paid' && d.paidAt ? mRow(payLink('i-' + d.id, 'Paid', d.paidAt), '') : '')
       + mRow('Balance due', money(invBalance(d)), 'b'));

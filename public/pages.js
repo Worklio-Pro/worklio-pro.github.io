@@ -2667,7 +2667,7 @@ ${(co.holidays || []).length ? `<h3 class="cp-sec">${pt('Holiday hours')}</h3><t
     // referral: their public referral link (never the private portal link) with copy / email / Outlook / Gmail options
     refer: () => { const link = p.referralLink; const subject = pt('Check out {name}', { name: co.name }); const body = pt('I recommend {name}. You can request service here:', { name: co.name }) + `\n${link}`;
       const q = (o) => Object.entries(o).map(([k, v]) => k + '=' + encodeURIComponent(v)).join('&');
-      return `<div class="cp-refer-card"><h1>${pt('Share Your Referral Link')}</h1><p>${pt('Help us serve our community by recommending us to your friends and family!')}</p><p class="cp-refer-lead">${pt('Copy or share our link below:')}</p>
+      return `<div class="cp-refer-card"><h1>${pt('Share Your Referral Link')}</h1><p>${pt('Help us serve our community by recommending us to your friends and family!')}</p>${p.referralReward ? `<p class="cp-refer-reward"><strong>${pt('Get {amount} off your next invoice for every friend who becomes a client.', { amount: p.referralReward.earn })}</strong>${p.referralReward.friend ? ` ${pt('Your friends get {amount} off their first invoice.', { amount: p.referralReward.friend })}` : ''}</p>` : ''}<p class="cp-refer-lead">${pt('Copy or share our link below:')}</p>
 <div class="cp-copy"><label class="fl"><span>${pt('Referral link')}</span><input id="cpRefLink" readonly value="${esc(link)}" onclick="this.select()"></label><button type="button" class="cp-out" data-cp-copy><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h2"/></svg><span>${pt('Copy Link')}</span></button></div>
 <a class="cp-out wide" href="mailto:?${q({ subject, body })}">${pt('Email')}</a>
 <a class="cp-out wide" href="https://outlook.live.com/mail/0/deeplink/compose?${q({ subject, body })}" target="_blank" rel="noopener">Outlook</a>
@@ -2925,6 +2925,36 @@ function wireMx() {
     try { const saved = await api('PUT', '/api/company', { matrixItems: b }); company = { ...company, ...saved }; toast(b.on ? 'Matrix line items saved' : 'Matrix line items are off'); } catch (err) { toast(err.message, true); }
   });
 }
+// App Settings → General → Referral rewards (company.referralRewards, server cleanReferralRewards): a credit off the next invoice for a client whose
+// referred friend pays their first invoice in full, an optional welcome offer for the friend, and the top referrers (GET /api/referrals). Saves on change.
+function referralCard(c) {
+  if (!planHas('referrals')) return '';
+  const r = c.referralRewards || {}; const opt = (v, l, cur) => `<option value="${v}" ${String(cur) === String(v) ? 'selected' : ''}>${l}</option>`;
+  const amt = (name, type, val, kind, label) => `<label>${label}<div class="lf-amt"><input name="${name}" type="number" min="0" step="any" inputmode="decimal" value="${val || ''}" placeholder="e.g. 25"><select name="${kind}" aria-label="${label} type">${opt('flat', '$ off', type || 'flat')}${opt('percent', '% off', type)}</select></div></label>`;
+  return `<div class="card" id="referral-rewards"><h2>Referral rewards</h2><p class="muted" style="margin-top:0">Clients share their referral link from <strong>Refer a Friend</strong> in their client portal. When a friend they referred pays their first invoice in full, the client earns a credit that comes off their next invoice, after tax. You can take it off any unpaid invoice, and it waits for the next one.</p>
+<form id="rrf">${switchRow('on', 'Give referral rewards', !!r.on)}
+<div class="rr-fields"${r.on ? '' : ' hidden'}>${amt('amount', r.type, r.amount, 'type', 'Reward for each friend who becomes a paying client')}<p class="muted sm" style="margin:2px 0 10px">Taken off the referring client’s next invoice. A percentage is of that invoice.</p>
+${switchRow('friendOn', 'Give the friend a welcome offer too', !!r.friendOn, 'Shown on the referral page, and taken off the friend’s first invoice')}
+<div class="rr-friend"${r.friendOn ? '' : ' hidden'}>${amt('friendAmount', r.friendType, r.friendAmount, 'friendType', 'Welcome offer')}</div></div></form>
+<h3 style="margin:16px 0 6px;font-size:15px">Top referrers</h3><div class="rr-top"><p class="muted" style="margin:0">Loading…</p></div></div>`;
+}
+function wireReferrals() {
+  const f = $('#rrf'); if (!f) return;
+  const top = $('#referral-rewards .rr-top');
+  api('GET', '/api/referrals').then(({ referrers }) => {
+    top.innerHTML = referrers.length ? `<div class="tablewrap"><table><tr><th>Client</th><th class="r">Referred</th><th class="r">Became paying clients</th><th class="r">Credits earned</th></tr>${referrers.map((x) => `<tr><td><a href="/clients/view?id=${esc(x.clientId)}" data-link>${esc(x.name)}</a></td><td class="r">${x.referred}</td><td class="r">${x.paying}</td><td class="r">${x.earned}${x.waiting ? ` <span class="muted">(${x.waiting} waiting)</span>` : ''}</td></tr>`).join('')}</table></div>`
+      : '<p class="muted" style="margin:0">No referrals yet. Friends who send a request from a client’s referral link show up here.</p>';
+  }).catch(() => { top.innerHTML = ''; });
+  f.addEventListener('submit', (e) => e.preventDefault());
+  f.addEventListener('change', async () => {
+    const fd = new FormData(f); const on = (k) => fd.getAll(k).includes('on');
+    const b = { on: on('on'), type: fd.get('type'), amount: fd.get('amount'), friendOn: on('friendOn'), friendType: fd.get('friendType'), friendAmount: fd.get('friendAmount') };
+    $('.rr-fields', f).hidden = !b.on; $('.rr-friend', f).hidden = !b.friendOn;
+    if (b.on && !(Number(b.amount) > 0)) return $('[name=amount]', f).focus(); // waits for the amount
+    if (b.on && b.friendOn && !(Number(b.friendAmount) > 0)) return $('[name=friendAmount]', f).focus();
+    try { const saved = await api('PUT', '/api/company', { referralRewards: b }); company = { ...company, ...saved }; toast(b.on ? 'Referral rewards saved' : 'Referral rewards are off'); } catch (err) { toast(err.message, true); }
+  });
+}
 // App Settings → General → Team location (company.teamLocation, off by default): saves as soon as it's switched
 const teamLocCard = (c) => (!planHas('teamLocation') ? '' : `<div class="card" id="team-location"><h2>Team location</h2><p class="muted" style="margin-top:0">See where your team was when they clocked in, clocked out or sent On My Way. Timesheets show how far each one was from the job${planHas('dispatchMap') ? ', and Calendar → Map shows everyone’s last known spot today' : ''}.</p>
 <form id="tlf">${switchRow('on', 'Save location at clock in, clock out and On My Way', !!c.teamLocation)}</form>
@@ -2967,11 +2997,11 @@ async function companyPage(main, full) {
 <div class="row3"><label>Venmo username<input form="cf" name="venmoHandle" value="${esc(c.venmoHandle ? '@' + c.venmoHandle : '')}" placeholder="@YourBusiness" autocomplete="off"></label><label>Cash App $Cashtag<input form="cf" name="cashappTag" value="${esc(c.cashappTag ? '$' + c.cashappTag : '')}" placeholder="$YourBusiness" autocomplete="off"></label><label>PayPal.me name<input form="cf" name="paypalHandle" value="${esc(c.paypalHandle ? 'paypal.me/' + c.paypalHandle : '')}" placeholder="paypal.me/YourBusiness" autocomplete="off"></label></div></div>` : '';
   main.innerHTML = `<div class="head"><div><h1>${full ? 'App Settings' : 'Company settings'}</h1>${full ? '<p class="sub">Defaults, white label and payments for every quote and invoice. Business details, social media and tax settings are on <a href="/settings/company" data-link>Company Profile</a>.</p>' : ''}</div></div>
 ${full ? `<div class="as-tabs" role="tablist">${AS_TABS.map(([t, n]) => `<button type="button" role="tab" data-as-tab="${t}" aria-controls="as-${t}">${n}</button>`).join('')}</div>
-<div class="as-panel" id="as-general" role="tabpanel">${planCard(c.account)}<div class="as-cols"><div class="as-col">${regionalBox(c)}${languagesBox(c)}${mxCard()}</div><div class="as-col">${defaultsBox}${surveyCard(c)}${savedDiscCard()}${prefixBox}${teamLocCard(c)}</div></div></div>
+<div class="as-panel" id="as-general" role="tabpanel">${planCard(c.account)}<div class="as-cols"><div class="as-col">${regionalBox(c)}${languagesBox(c)}${referralCard(c)}${mxCard()}</div><div class="as-col">${defaultsBox}${surveyCard(c)}${savedDiscCard()}${prefixBox}${teamLocCard(c)}</div></div></div>
 <div class="as-panel" id="as-white-label" role="tabpanel"><div class="as-cols"><div class="as-col">${webAddressCard(c.account)}</div><div class="as-col">${brandBox || `<div class="card"><h2>Branding</h2><p class="muted" style="margin:0">Your own brand and accent colors on quotes, invoices, emails and the client portal come with a plan that includes Branding.</p></div>`}</div></div></div>
 <div class="as-panel" id="as-payments" role="tabpanel"><div class="as-cols"><div class="as-col">${payCard(integ)}${zelleBox}</div><div class="as-col">${appsBox}${lateFeeCard(c)}</div></div></div>
 <form id="cf"></form>` :`<form id="cf" class="cs-form">${companySettingsHtml(c, logoBox)}</form>`}`;
-  if (full) { wireLateFees(); wireMx(); wireTeamLoc(); wireAsTabs(main); }
+  if (full) { wireLateFees(); wireMx(); wireTeamLoc(); wireReferrals(); wireAsTabs(main); }
   $$('.prefix-row input').forEach((i) => i.addEventListener('input', () => { i.nextElementSibling.textContent = 'e.g. ' + i.value.trim() + i.dataset.sample; }));
   const ind = $('#cf select[name=industry]', main); if (ind) ind.addEventListener('change', () => { $('#cf [data-other]', main).hidden = ind.value !== 'other'; });
   if (!full) { // Company Profile saves on its own: a field as soon as it changes, the business hours with their pencil
