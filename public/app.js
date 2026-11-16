@@ -591,7 +591,7 @@ async function render() {
     xb.innerHTML = `<span><strong>${m.title}.</strong> ${m.text} Until then you can look around, but you can’t create, change or delete anything.</span>${m.btn && path !== '/settings/billing' ? `<a class="btn sm" href="/settings/billing" data-link>${m.btn}</a>` : ''}`; }
   else if (!xb.hidden) { const owner = role() === 'owner'; const ce = company.account.contactEmail;
     xb.innerHTML = `<span><strong>${xp.daysLeft < 0 ? 'Your access has ended.' : xp.prepaid ? `Your prepaid months end ${esc(xp.when)}${xp.daysLeft > 1 ? ` (${xp.daysLeft} days left)` : ''}.` : xp.trial ? `Your free trial ends ${esc(xp.when)}${xp.daysLeft > 1 ? ` (${xp.daysLeft} days left)` : ''}.` : `Your access to ${esc(company.account.productName)} ends ${esc(xp.when)}${xp.daysLeft > 1 ? ` (${xp.daysLeft} days left)` : ''}.`}</strong> ${owner ? (xp.trial ? 'Add a card to keep your account.' : 'Choose a plan to keep your account.') : 'Ask your account owner to choose a plan.'}${ce ? ` Questions? <a href="mailto:${esc(ce)}">${esc(ce)}</a>` : ''}</span>${owner && path !== '/settings/billing' ? `<a class="btn sm" href="/settings/billing" data-link>${xp.trial ? 'Add a card' : 'Choose a plan'}</a>` : ''}`; }
-  textsBar(path, portal);
+  textsBar(path, portal); billingBar(path, portal);
   showInstallBar(portal);
   pausedOverlay(path, portal);
   if (pausedNow() && !portal && !isAdminMe()) { document.title = 'Account paused'; main.innerHTML = `<div class="card paused-card">${svgIcon(ICONS.shield, 28)}<h1>Your company’s account is paused</h1><p class="muted">You can’t use ${esc(company.name || 'your company')}’s account right now. Contact your company owner or admin to get it running again.</p></div>`; return; }
@@ -608,6 +608,15 @@ async function render() {
 window.addEventListener('popstate', render);
 // texts this month: owners and admins see a banner at 80% of the plan's texts and when they're used up. Closing it hides it
 // for the rest of the month, until the next step (80% → used up)
+// a plan payment that didn't go through: a red bar for owners and admins on every page until it's paid (not closable).
+// The owner gets a button to Account and Billing; admins are told the owner can fix it
+function billingBar(path, portal) {
+  const b = $('#billingBar'); const x = !portal && company.account && company.account.billingIssue;
+  b.hidden = !x || !isAdminMe() || pausedNow(); if (b.hidden) return;
+  const owner = role() === 'owner'; const amt = x.amount ? ` of ${money(x.amount)}` : '';
+  const next = x.nextTry ? ` We’ll try again on ${fmtDate(x.nextTry.slice(0, 10))}.` : '';
+  b.innerHTML = `${svgIcon('<circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>', 20)}<span><strong>There was a problem with your ${esc(company.account.productName || 'subscription')} payment${amt}.</strong> ${owner ? `Please retry or update your payment method so you don’t lose access.${next}` : `The account owner needs to update the payment method so you don’t lose access.${next}`}</span>${owner && path !== '/settings/billing' ? '<a class="btn sm" href="/settings/billing" data-link>View billing →</a>' : ''}`;
+}
 function textsBar(path, portal) {
   const b = $('#textsBar'); const t = !portal && company.account && company.account.texts;
   const full = t && t.sent >= t.limit; const level = !t ? '' : full ? 'full' : t.sent >= Math.ceil(t.limit * t.warnAt) ? 'warn' : '';

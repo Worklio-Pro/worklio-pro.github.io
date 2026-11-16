@@ -1800,6 +1800,8 @@ function accountInfo() {
     cardSetupType: secrets().stripeAccountId ? secrets().stripeAccountType || 'standard' : stripeKey() ? 'server' : null, payoutBank: secrets().stripeBank || null,
     expiry: (() => { const x = expiryOf(t); return x && { ...x, when: whenText(x) }; })(),
     paused: pausedInfo(t),
+    // a plan payment that didn't go through (red bar for owners and admins until it's paid): how much, since when, Stripe's next try
+    billingIssue: (() => { const b = t.billing || {}; const p = b.payIssue; if (pausedInfo(t) || !(p || b.subscriptionStatus === 'past_due')) return null; return { amount: p ? p.amount : null, since: p ? p.since : null, nextTry: p ? p.nextTry : null }; })(),
     texts: (() => { const u = smsUsage(); return u.limit && tenancy.has('sms') ? { sent: u.sent, limit: u.limit, warnAt: SMS_WARN_AT, plan: u.plan } : null; })(), // texts this month (the app's banner at 80% and 100%)
     industries: industries.CHOICES, // the Industry choices in Company Profile
     featureList: tenancy.FEATURES.filter((f) => f.key !== 'ai' || tenancy.aiForBusinesses()).map(({ key, label, desc }) => ({ key, label, desc, beta: tenancy.isBeta(key), included: tenancy.featuresOf(t).has(key) })), alwaysIncluded: tenancy.ALWAYS_INCLUDED,
@@ -6165,6 +6167,13 @@ function sendVerifyEmail(t) {
   const tok = crypto.randomBytes(32).toString('hex'); u.emailVerify = { hash: sha(tok), expires: Date.now() + 7 * 864e5 }; save();
   return sendTemplate('verifyEmail', u.email, { name: u.name, business: db.company.name || t.name, link: `${baseUrl()}/api/auth/verify-email?token=${tok}`, account_url: baseUrl() }, { server: true }).catch(() => null);
 }
+// a plan payment didn't go through (the billing webhook in lib/platform.js): tell the owner, with a link to update the card
+function sendBillingFailed(t, issue) {
+  const u = db.users.find((x) => x.role === 'owner'); if (!u || !u.email) return Promise.resolve(null);
+  const next = issue.nextTry ? niceDate(issue.nextTry.slice(0, 10)) : '';
+  return sendTemplate('billingFailed', u.email, { name: u.name, business: db.company.name || t.name, amount: money(issue.amount || 0), plan: tenancy.planOf(t).name,
+    next_try: next ? `We’ll try the card again on ${next}.` : 'We won’t try the card again on our own, so please update it soon.', billing_url: `${baseUrl()}/settings/billing`, account_url: baseUrl() }, { server: true }).catch(() => null);
+}
 // a fresh link for the owner: choose a password (not set yet) or reset it
 function ownerLink(t) {
   const u = db.users.find((x) => x.role === 'owner'); if (!u) return null;
@@ -6201,7 +6210,7 @@ const legal = require('./lib/legal');
 const dataImport = require('./lib/data-import')({ db, save, uid, token, iso, round2, computeTotals, cleanCat, invoiceCredits, nextNumber, docPrefix, NUMBERING });
 const platformApp = require('./lib/platform')({
   hashPassword, checkPassword, sha, normEmail, cookies, tooMany, recordFailure, clearFailures: (k) => failures.delete(k),
-  createOwner, ownerLink, sendVerifyEmail, sendPasswordReset, loginsFor, handoffUrl, tenantStats, endSupportSessions, sendEmail, sendTemplate, sendSms, emailProvider: serverEmailProvider, applyStripeSession, syncStripeAccount, resetDemo, saveConnection, saveAccounting, saveSlack, setCompanyEmail: (e) => { if (!db.company.email) { db.company.email = e; save(); } }, setCompanyPhone: (p) => { if (p && !db.company.phone) { db.company.phone = p; save(); } },
+  createOwner, ownerLink, sendVerifyEmail, sendBillingFailed, sendPasswordReset, loginsFor, handoffUrl, tenantStats, endSupportSessions, sendEmail, sendTemplate, sendSms, emailProvider: serverEmailProvider, applyStripeSession, syncStripeAccount, resetDemo, saveConnection, saveAccounting, saveSlack, setCompanyEmail: (e) => { if (!db.company.email) { db.company.email = e; save(); } }, setCompanyPhone: (p) => { if (p && !db.company.phone) { db.company.phone = p; save(); } },
   setCompanyIndustry: (i) => { Object.assign(db.company, i); save(); },
   planProduct, // the Stripe product for a plan (Alpha → an account → Subscription → Change plan)
   planItem, seatItem, seatParams, extraCount, extraLines, matrixItem, syncSeats, // a subscription’s plan line, extra logins line and add-on lines

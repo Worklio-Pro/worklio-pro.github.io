@@ -2494,3 +2494,8 @@ body.col-rzing{cursor:col-resize;user-select:none}
 .vhead,.mp-inv,.mdoc{position:relative}
 .paid-stamp{position:absolute;top:6px;right:24px;z-index:1;padding:6px 22px;border:5px double #dc2626;border-radius:10px;color:#dc2626;font-size:44px;font-weight:900;letter-spacing:.12em;line-height:1.1;transform:rotate(-12deg);opacity:.85;pointer-events:none}
 .mdoc>.paid-stamp{top:56px;right:16px;font-size:34px;padding:4px 16px}.mp-inv>.paid-stamp{top:44px;right:12px;font-size:34px;padding:4px 16px}
+/* a plan payment that didn't go through: red bar at the top for owners and admins */
+#billingBar{display:flex;align-items:center;gap:12px;padding:10px 28px;background:#b91c1c;color:#fff;font-size:14px;line-height:1.4}#billingBar[hidden]{display:none}
+#billingBar span{flex:1}#billingBar svg{flex:none}#billingBar .btn{white-space:nowrap;background:#fff;color:#b91c1c;border-color:#fff}
+@media (max-width:900px){#billingBar{padding:10px 14px;flex-wrap:wrap}}
+body.p404-only #billingBar{display:none!important}
