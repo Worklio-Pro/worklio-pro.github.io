@@ -2236,6 +2236,11 @@ app.put('/api/:col/:id', (req, res, next) => {
     const r = customNumber(col, req.body.number, req.params.id); if (r.error) return res.status(400).json({ error: r.error }); upd.number = r.number;
   }
   if (col === 'jobs' && isMemberReq(req)) upd = Object.fromEntries(Object.entries(upd).filter(([k]) => MEMBER_JOB_FIELDS.includes(k)));
+  // a completed job is read-only: Reopen it first (status back to scheduled, or cancelled). Values sent unchanged don't count
+  if (col === 'jobs' && db.jobs[i].status === 'completed' && (!upd.status || upd.status === 'completed')) {
+    delete upd.unbilled; delete upd.paidInFull;
+    if (Object.keys(upd).some((k) => JSON.stringify(upd[k]) !== JSON.stringify(db.jobs[i][k]))) return res.status(400).json({ error: 'This job is completed. Reopen it to make changes.' });
+  }
   if (col === 'quotes' && !tenancy.has('quoteOptions') && Array.isArray(upd.options) && upd.options.length) delete upd.options; // Good / Better / Best is a plan feature (turning options off always works)
   if (col === 'tasks' || col === 'events') { const bad = calItemProblem({ ...db[col][i], ...upd }); if (bad) return res.status(400).json({ error: bad }); }
   if (col === 'clients' && 'lang' in upd) upd.lang = i18n.valid(upd.lang) ? upd.lang : '';

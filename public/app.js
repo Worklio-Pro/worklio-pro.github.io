@@ -2525,7 +2525,7 @@ function signatureDialog(onConfirm) {
    turns just that section into fields, with Cancel / Save at its bottom right. Payments show as links to their payment page and can't be edited anywhere. ===== */
 const PENCIL = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
 const SECTION_NAMES = { visit: 'scheduled visit', top: 'details', items: 'products and services', message: 'client message', terms: 'contract / disclaimer', notes: 'internal notes', payments: 'client payments', clientView: 'client view' };
-const editBtn = (kind, d, sec) => `<button type="button" class="icon-btn sec-edit${kind === 'job' ? ' need-jobs-edit' : ''}" data-act="editDoc" data-kind="${kind}" data-id="${d.id}" data-sec="${sec}" title="Edit ${SECTION_NAMES[sec]}" aria-label="Edit ${SECTION_NAMES[sec]}">${PENCIL}</button>`;
+const editBtn = (kind, d, sec) => (kind === 'job' && jobLocked(d) ? '' : `<button type="button" class="icon-btn sec-edit${kind === 'job' ? ' need-jobs-edit' : ''}" data-act="editDoc" data-kind="${kind}" data-id="${d.id}" data-sec="${sec}" title="Edit ${SECTION_NAMES[sec]}" aria-label="Edit ${SECTION_NAMES[sec]}">${PENCIL}</button>`);
 // a signed quote with its deposit paid: confirm first that editing removes the client's signature
 A.editDoc = (x) => {
   const q = x.kind === 'quote' && byId(D.quotes, x.id);
@@ -3273,19 +3273,19 @@ A.mJobMore = (x) => {
 ${edit && !jobPaidInFull(j) ? `<button type="button" data-act="jobRemind" data-id="${j.id}">${planHas('sms') && byId(D.clients, j.clientId)?.smsConsent ? 'Text' : 'Email'} reminder to client</button>` : ''}
 ${planHas('invoices') && canInvoiceJob(j) ? `<button type="button" class="need-invoices" data-act="jobInvoice" data-id="${j.id}">Create invoice</button>` : ''}
 ${planHas('timeOff') && me && me.staffId && (j.staffIds || []).includes(me.staffId) && j.date >= ymd(new Date()) ? `<button type="button" data-act="jobRequestOff" data-id="${j.id}">Request off for this job</button>` : ''}
-<a href="/calendar" data-link>Open calendar</a>${edit ? `${j.repeat && j.repeat.next && planHas('recurringJobs') ? `<button type="button" data-act="stopRepeat" data-id="${j.id}">Stop repeating after this visit</button>` : ''}<a href="/jobs/edit?id=${j.id}&full=1" data-link>Edit everything at once</a><button type="button" class="danger-text" data-act="delJob" data-id="${j.id}">Delete job</button>` : ''}</div>`);
+<a href="/calendar" data-link>Open calendar</a>${edit ? `${j.repeat && j.repeat.next && planHas('recurringJobs') ? `<button type="button" data-act="stopRepeat" data-id="${j.id}">Stop repeating after this visit</button>` : ''}${jobLocked(j) ? '' : `<a href="/jobs/edit?id=${j.id}&full=1" data-link>Edit everything at once</a>`}<button type="button" class="danger-text" data-act="delJob" data-id="${j.id}">Delete job</button>` : ''}</div>`);
   f.addEventListener('click', (e) => { if (e.target.closest('a, button[data-act]')) mClose(true); });
 };
 function mobileJobPage(j) {
   if (mUnsign) mUnsign = '';
-  const d = jobDoc(j); const edit = canDo('jobs.edit'); const prices = canDo('jobs.prices');
+  const d = jobDoc(j); const edit = canDo('jobs.edit') && !jobLocked(j); const prices = canDo('jobs.prices');
   const c = byId(D.clients, j.clientId) || {}; const q = byId(D.quotes, j.quoteId); const st = jobStatus(j); const invs = jobInvoices(j);
   // read-only for team members who can't edit jobs: the same sections, not tappable
   const tap = (sec, inner, cls = '', extra = '') => (edit ? mTap('job', j, sec, inner, cls, extra) : `<div class="${cls}">${inner.replace(ARROW, '')}</div>`);
   const tapRow = (sec, l, v) => tap(sec, `<span>${l}</span><span class="md-v">${v}</span>`, 'md-tr');
   const textSec = (sec, title, text, empty) => tap(sec, `<span class="md-sh">${title}${ARROW}</span>${text ? `<span class="md-text">${esc(text)}</span>` : `<span class="md-text muted">${edit ? empty : 'None'}</span>`}`, 'md-sec');
   const btn = (act, label, cls = '') => `<button type="button" class="btn ${cls}" data-act="${act}" data-id="${j.id}">${label}</button>`;
-  const acts = [onThisJob(j) ? clockBtn(j) : '', ...(edit ? [j.status === 'scheduled' ? btn('completeJob', 'Mark Complete') : btn('reopenJob', 'Reopen', 'alt'), st === 'invoice' && planHas('invoices') ? btn('jobInvoice', 'Create Invoice', 'need-invoices') : ''] : [])];
+  const acts = [onThisJob(j) ? clockBtn(j) : '', ...(canDo('jobs.edit') ? [j.status === 'scheduled' ? btn('completeJob', 'Mark Complete') : btn('reopenJob', 'Reopen', 'alt'), st === 'invoice' && planHas('invoices') ? btn('jobInvoice', 'Create Invoice', 'need-invoices') : ''] : [])];
   const team = (j.staffIds || []).map((id) => byId(D.staff, id)).filter(Boolean);
   const items = (d.items || []).map((it, i) => (it.mx ? mxLineHtml(d.items, it, i) : tap('item', mItemInner(d.items, it, i), `md-item${it.sub ? ' sub' : ''}`, `data-i="${i}"`))).join('');
   const paid = q ? depositPaid(q) : 0;
@@ -3299,7 +3299,7 @@ function mobileJobPage(j) {
 ${tap('jobDetails', `<span class="md-h">Job #${esc(j.number)} for ${esc(c.name || 'no client')}${prices && jobTotal(j) !== null ? ` for ${money(jobTotal(j))}` : ''}</span>${j.title ? `<span class="md-sub">${esc(j.title)}</span>` : ''}
 <span class="md-addr">${esc(j.address || c.address || '')}</span>`, 'md-head')}
 ${c.phone || c.email ? `<div class="md-contact">${c.phone ? `<a href="tel:${esc(c.phone)}">${CHEV('M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z')}Call</a>` : ''}${c.phone ? `<a href="sms:${esc(c.phone)}">${CHEV('M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z')}Text</a>` : ''}${c.email ? `<a href="mailto:${esc(c.email)}">${CHEV('M4 4h16v16H4zM4 6l8 7 8-7')}Email</a>` : ''}${j.address || c.address ? `<a href="https://maps.google.com/?q=${encodeURIComponent(j.address || c.address)}" target="_blank" rel="noopener">${CHEV('M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12zM12 11.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z')}Map</a>` : ''}</div>` : ''}
-<div class="md-acts">${acts.filter(Boolean).join('')}<button type="button" class="btn alt md-more" data-act="mJobMore" data-id="${j.id}" aria-label="More actions">⋯</button></div>
+<div class="md-acts">${acts.filter(Boolean).join('')}<button type="button" class="btn alt md-more" data-act="mJobMore" data-id="${j.id}" aria-label="More actions">⋯</button></div>${jobLocked(j) ? LOCK_NOTE('md-lock') : ''}
 <div class="md-tabs" role="tablist"><button type="button" role="tab" class="on" aria-selected="true" data-act="mTab" data-k="doc">Job</button><button type="button" role="tab" aria-selected="false" data-act="mTab" data-k="notes">Notes</button></div>
 <div class="md-pane" data-pane="doc">${tap('visit', `<span class="md-sh">Scheduled visit${ARROW}</span><span class="md-text">${esc(visitText(j))}</span>${j.repeat ? `<span class="md-text muted">↻ ${repeatLine(j)}</span>` : ''}`, 'md-sec')}
 ${tap('team', `<span class="md-sh">Assigned team${ARROW}</span>${team.length ? `<span class="md-team">${team.map((s) => `<span>${avatarHtml(s, 28)}${esc(s.name)}</span>`).join('')}</span>` : `<span class="md-text muted">${edit ? 'Assign team members' : 'No one assigned'}</span>`}`, 'md-sec')}
@@ -3309,7 +3309,7 @@ ${prices ? `<section class="md-block"><h2 class="md-sh">Product / Service</h2><d
 ${totals ? `<section class="md-block md-totals">${totals}</section>` : ''}` : ''}
 ${sig ? `<section class="md-block"><div class="md-lh"><h2 class="md-sh" style="margin:0">Client signature</h2>${planHas('signatures') ? `<button type="button" class="md-plus" data-act="collectSignature" data-id="${j.id}" aria-label="Collect another signature">${CHEV('M12 5v14M5 12h14')}</button>` : ''}</div><img class="sig-img" src="${esc(sig.file)}" alt="Signature of ${esc(sig.name)}"><p class="md-text">Signed by <strong>${esc(sig.name)}</strong> · ${esc(fmtStamp(sig.signedAt))}</p></section>`
     : planHas('signatures') ? `<button type="button" class="md-tap md-sec" data-act="collectSignature" data-id="${j.id}"><span class="md-sh">Client signature${ARROW}</span><span class="md-text muted">Collect the client’s signature</span></button>` : ''}
-${prices && planHas('invoices') ? `<section class="md-block need-invoices"><div class="md-lh"><h2 class="md-sh" style="margin:0">Billing</h2>${edit && canInvoiceJob(j) ? `<button type="button" class="md-plus" data-act="jobInvoice" data-id="${j.id}" aria-label="Create invoice">${CHEV('M12 5v14M5 12h14')}</button>` : ''}</div>
+${prices && planHas('invoices') ? `<section class="md-block need-invoices"><div class="md-lh"><h2 class="md-sh" style="margin:0">Billing</h2>${canDo('jobs.edit') && canInvoiceJob(j) ? `<button type="button" class="md-plus" data-act="jobInvoice" data-id="${j.id}" aria-label="Create invoice">${CHEV('M12 5v14M5 12h14')}</button>` : ''}</div>
 ${invs.map((i) => `<a class="md-inv" href="/invoices/view?id=${i.id}" data-link><span><strong>Invoice #${esc(i.number)}</strong><small>${esc(I_STATUS[i.displayStatus] || i.displayStatus)} · due ${fmtDate(i.dueDate)}</small></span><span>${money(i.total)}</span></a>`).join('') || '<p class="muted md-empty">No invoices yet. Create one when the work is done.</p>'}</section>` : ''}</div>
 <div class="md-pane" data-pane="notes" hidden>${mNotesPane('job', j, j.internalNotes ? textSec('notes', 'Internal notes', j.internalNotes, '') : '')}</div></div>`;
 }
@@ -4060,7 +4060,7 @@ function jobViewPage(j) {
   const none = (t) => `<span class="muted">${t}</span>`;
   return `<div class="qview jview"><div class="qpage"><div class="qmain"><div class="qtop"><div class="qtop-l"><a href="/jobs" data-link class="back">← Jobs</a><span class="cstatus ${J_CLASS[st]}">${J_STATUS[st]}</span>${j.signature ? '<span class="vsign">✓ Signed</span>' : ''}${omwBadge(j)}${clockBadge(j)}</div>
 <div class="actions">${jobMore(j)}${clockBtn(j)}${omwBtn(j)}${j.status === 'scheduled' ? `<button type="button" class="btn need-jobs-edit" data-act="completeJob" data-id="${j.id}">Mark Complete</button>` : `<button type="button" class="btn alt need-jobs-edit" data-act="reopenJob" data-id="${j.id}">↺ Reopen Job</button>`}</div></div>
-<div class="vhead"><div class="vtitle-row"><h1 class="vtitle">${esc(j.title || 'Untitled job')}</h1>${editBtn('job', j, 'top')}</div>
+${jobLocked(j) ? LOCK_NOTE('v-lock') : ''}<div class="vhead"><div class="vtitle-row"><h1 class="vtitle">${esc(j.title || 'Untitled job')}</h1>${editBtn('job', j, 'top')}</div>
 <div class="qhead"><div class="qclient"><div class="vclient"><span>${esc(c.name || 'No client')}</span>${c.id ? clientMenu(c) : ''}</div><div class="muted qlabel">Property address</div><div class="qaddr">${esc(j.address || c.address || '') || none('No address on file')}</div>
 ${c.phone || c.email ? `<div class="vclient-c">${c.phone ? `<a href="tel:${esc(c.phone)}">${esc(fmtUsPhone(c.phone))}</a>` : ''}${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ''}</div>` : ''}</div>
 <dl class="qmeta"><dt>Job #</dt><dd>${esc(j.number)}</dd><dt>Created</dt><dd>${fmtDate((j.createdAt || '').slice(0, 10))}</dd><dt>From quote</dt><dd>${q ? `<a href="/quotes/view?id=${q.id}" data-link>${esc(q.number)}</a>` : none('—')}</dd></dl></div></div>
@@ -4313,7 +4313,9 @@ PAGES['/jobs/edit'] = {
     const j = byId(D.jobs, qp('id'));
     if (!j) { main.innerHTML = '<div class="card"><h1>Job not found</h1><p><a href="/jobs" data-link>Back to Jobs</a></p></div>'; return; }
     if (phoneMq.matches && qp('full') !== '1') { main.innerHTML = mobileJobPage(j); return; } // phones: tap-to-edit (⋯ → Edit everything at once opens this form)
-    if (qp('full') === '1') return jobPage(main, j);
+    if (jobLocked(j) && qp('full') === '1') { toast('This job is completed. Reopen it to make changes.'); history.replaceState(null, '', '/jobs/edit?id=' + j.id); }
+    else if (qp('full') === '1') return jobPage(main, j);
+    if (phoneMq.matches) { main.innerHTML = mobileJobPage(j); return; }
     main.innerHTML = jobViewPage(j);
   },
 };
@@ -4333,6 +4335,9 @@ const jobInvoices = (j) => D.invoices.filter((i) => i.jobId === j.id || (i.jobId
 // gets no reminder to the client
 const canInvoiceJob = (j) => !!j && (!jobInvoices(j).length || (j.unbilled ?? 1) > 0.004);
 const jobPaidInFull = (j) => !!(j && j.paidInFull);
+// a completed job is read-only (the server refuses changes too): Reopen it to edit. Create invoice, signatures, checklists and notes still work
+const jobLocked = (j) => !!j && j.status === 'completed';
+const LOCK_NOTE = (cls) => `<p class="${cls} job-lock need-jobs-edit">This job is completed, so it can’t be edited. Reopen it to make changes.</p>`;
 function jobStatus(j) {
   const today = ymd(new Date());
   if (j.status === 'cancelled') return 'cancelled';

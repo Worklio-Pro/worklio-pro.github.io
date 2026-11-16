@@ -2473,3 +2473,20 @@ input[type=date]:not([data-nativecal]){cursor:pointer}
 .rz-table th[data-col]{position:relative}.col-rz{position:absolute;top:0;right:-4px;bottom:0;width:9px;cursor:col-resize;z-index:2;touch-action:none}
 .col-rz::after{content:"";position:absolute;top:25%;bottom:25%;left:4px;width:1px;background:var(--line)}.col-rz:hover::after,.col-rzing .col-rz::after{background:var(--brand);width:2px}
 body.col-rzing{cursor:col-resize;user-select:none}
+/* line items on a phone (the full form: ⋯ → Edit everything at once): each label above its box, Name and Description full width,
+   Quantity / Unit cost and Markup / Total side by side, taller boxes and 16px text (no zoom on iPhone) */
+@media (max-width:640px){
+.item-row.qi{grid-template-columns:18px minmax(0,1fr) minmax(0,1fr) 28px;gap:12px 10px}
+.item-row.qi .fl{flex-direction:column;align-items:stretch;gap:5px}
+.item-row.qi .fl>span,.item-row.qi .qi-name>span,.item-row.qi .qi-opt>span,.item-row.qi .qi-desc>span{width:auto;font-size:14px}
+.item-row.qi .fl>input,.item-row.qi .fl>select,.item-row.qi .fl>.affix,.item-row.qi .fl>.amt{flex:none;height:48px;font-size:16px}
+.item-row.qi .fl>textarea,.item-row.qi .fl .affix input,.item-row.qi .fl .affix select{font-size:16px}
+.item-row.qi .fl>.amt{font-weight:600}
+.item-row.qi .qi-desc .ai-bar{left:8px}
+.item-row.qi .qi-name .svc-ac{left:0}
+.item-row.qi .qi-opt{width:auto}
+.item-row.qi .drag-h,.item-row.qi .row-menu{margin-top:30px}
+}
+/* a completed job is read-only: the note on its page */
+.job-lock{margin:0 0 14px;padding:10px 14px;border-radius:10px;background:var(--tint);color:var(--muted);font-size:14px;line-height:1.4}
+.md-lock{margin:12px 0 0}
