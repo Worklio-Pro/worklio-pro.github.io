@@ -2436,6 +2436,10 @@ body.p404-only :is(#side,#sideMiniBtn,#menuBtn,#topbar,#bnav,#installBar,#suppor
 .cp-lang button{flex:1;min-width:0;padding:7px 6px;border:0;border-radius:99px;background:none;color:var(--cp-ink);font:inherit;font-size:13px;font-weight:600;cursor:pointer}
 .cp-lang button:hover{background:var(--cp-hover)}.cp-lang button.on{background:var(--brand);color:#fff}
 .cp-lang button:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.cp-sentwith{display:flex;flex-direction:column;gap:2px;margin:20px 4px 4px;padding:11px 14px;border:1px solid var(--cp-line);border-radius:10px;background:#fff;color:var(--cp-muted);font-size:12px;line-height:1.4;text-decoration:none;transition:border-color .15s,box-shadow .15s}
+.cp-sentwith strong{color:var(--cp-ink);font-size:13px;font-weight:600}.cp-sentwith i{font-style:normal;display:inline-block;transition:transform .15s}
+.cp-sentwith:hover{border-color:#cfcac2;box-shadow:0 2px 8px rgba(3,43,58,.07)}.cp-sentwith:hover i{transform:translateX(3px)}
+.cp-sentwith:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
 @media (min-width:761px){.cp-side{display:flex;flex-direction:column}.cp-navs{flex:1;display:flex;flex-direction:column}.cp-lang{margin-top:auto}}
 /* Company Profile → Logo: a box per background; click a box to choose an image, the trash under it deletes it */
 .logo-slots{display:flex;gap:20px;flex-wrap:wrap}
