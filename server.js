@@ -2131,7 +2131,7 @@ Plain text only: no markdown, no quotes around it, no heading and no comments ab
 app.get('/api/:col', (req, res, next) => {
   const col = req.params.col;
   if (!COLLECTIONS.includes(col)) return next();
-  if (col === 'jobs') return res.json(db.jobs.map((j) => withRepeat(isMemberReq(req) ? jobForMember(j) : j)));
+  if (col === 'jobs') return res.json(db.jobs.map((j) => withUnbilled(withRepeat(isMemberReq(req) ? jobForMember(j) : j))));
   if (col === 'clients' && isMemberReq(req)) return res.json(db.clients.map(clientForMember));
   res.json(col === 'invoices' ? db.invoices.map(withStatus) : db[col]);
 });
@@ -2164,7 +2164,7 @@ function customNumber(col, raw, id) {
 app.post('/api/:col', (req, res, next) => {
   const col = req.params.col;
   if (!COLLECTIONS.includes(col) || col === 'photos') return next();
-  let b = req.body || {}; delete b.noteEntries; delete b.seriesId; delete b.repeat; delete b.membershipId; delete b.memberDiscount; delete b.forms; // checklists only through /forms; notes only through /notes; repeats only through /repeat; service plans make their own
+  let b = req.body || {}; delete b.noteEntries; delete b.seriesId; delete b.repeat; delete b.unbilled; delete b.paidInFull; delete b.membershipId; delete b.memberDiscount; delete b.forms; // checklists only through /forms; notes only through /notes; repeats only through /repeat; service plans make their own
   if (col === 'jobs' && isMemberReq(req)) b = Object.fromEntries(Object.entries(b).filter(([k]) => MEMBER_JOB_FIELDS.includes(k)));
   if (col === 'staff') { // a new team member needs a name, an email and a mobile number
     const name = String(b.name || '').trim(); const email = String(b.email || '').trim(); const phone = String(b.phone || '').replace(/\D/g, '');
@@ -2274,7 +2274,7 @@ app.put('/api/:col/:id', (req, res, next) => {
   if (col === 'clients' && Array.isArray(upd.properties)) followPropertyAddresses(was, doc);
   if (col === 'tasks' && doc.survey && (doc.date !== was.date || doc.startTime !== was.startTime)) { doc.remindedAt = null; doc.survey = { ...doc.survey, bookedAt: new Date().toISOString() }; surveyEmail(doc, 'moved'); } // a site survey moved on the calendar: the client is told
   db[col][i] = doc; save(); if (col === 'clients' && doc.smsConsent && !was.smsConsent) optInText(doc).catch(() => {}); if (col === 'jobs') { pushScheduleChange(was, doc, currentUser(req)); if (doc.status === 'completed' && was.status !== 'completed') { askForReview('job', doc); jobPosts.maybeDraft(doc); } }
-  res.json(col === 'invoices' ? withStatus(doc) : col === 'jobs' ? { ...withRepeat(isMemberReq(req) ? jobForMember(doc) : doc), ...(following ? { following } : {}) } : col === 'clients' && isMemberReq(req) ? clientForMember(doc) : doc);
+  res.json(col === 'invoices' ? withStatus(doc) : col === 'jobs' ? { ...withUnbilled(withRepeat(isMemberReq(req) ? jobForMember(doc) : doc)), ...(following ? { following } : {}) } : col === 'clients' && isMemberReq(req) ? clientForMember(doc) : doc);
 });
 
 app.delete('/api/:col/:id', (req, res, next) => {
@@ -2611,9 +2611,18 @@ app.post('/api/quotes/:id/convert-to-job', (req, res) => {
 app.post('/api/jobs/:id/create-invoice', (req, res) => {
   const j = db.jobs.find((x) => x.id === req.params.id);
   if (!j) return res.status(404).json({ error: 'Not found' });
-  const l = jobLines(j);
-  const inv = computeTotals({ id: uid(), number: nextNumber('invoices'), clientId: j.clientId, jobId: j.id, subject: j.title, status: 'draft', issueDate: iso(new Date()), dueDate: iso(new Date()), paymentTerms: '0', paidAt: null, token: token(), createdAt: iso(new Date()), notes: '', items: l.items, taxRate: l.taxRate, discountType: l.discountType, discountValue: l.discountValue, discountName: l.discountName });
-  applyMemberDiscount(inv); computeTotals(inv); // a service plan member's discount, when the job had none
+  const { l, invs, billed, left } = jobBilling(j); const nums = invs.map((i) => i.number).join(', ');
+  // already invoiced in full: no second invoice for the same work. Partly invoiced (or the job grew since): an invoice for what's left
+  if (invs.length && left <= 0.004) return res.status(400).json({ error: `This job is already invoiced in full (${nums}). Open ${invs.length > 1 ? 'those invoices' : 'that invoice'} instead.` });
+  const base = { id: uid(), number: nextNumber('invoices'), clientId: j.clientId, jobId: j.id, subject: j.title, status: 'draft', issueDate: iso(new Date()), dueDate: iso(new Date()), paymentTerms: '0', paidAt: null, token: token(), createdAt: iso(new Date()), notes: '' };
+  let inv;
+  if (invs.length) { // one line for the rest, before tax, at the job's tax rate (a discount is already taken off the job's value)
+    const rate = Number(l.taxRate) || 0; const pre = round2(left / (1 + rate / 100));
+    inv = computeTotals({ ...base, items: [{ desc: `Remaining balance on job ${j.number}${j.title ? ` (${j.title})` : ''}`, details: `Already invoiced: ${nums} (${money(billed)})`, qty: 1, price: pre }], taxRate: rate, discountValue: 0 });
+  } else {
+    inv = computeTotals({ ...base, items: l.items, taxRate: l.taxRate, discountType: l.discountType, discountValue: l.discountValue, discountName: l.discountName });
+    applyMemberDiscount(inv); computeTotals(inv); // a service plan member's discount, when the job had none
+  }
   db.invoices.push(inv);
   // the quote's deposit already covers the whole invoice: it starts paid in full (paidByDeposit: no money of its own, so cash reports don't count it twice)
   const cr = invoiceCredits(inv, true);
@@ -2627,6 +2636,21 @@ function jobLines(j) {
   const src = own ? j : q || {};
   return { q, items: items.map((i) => ({ ...i })), taxRate: own ? j.taxRate : q ? q.taxRate : db.company.taxRate, discountType: src.discountType, discountValue: src.discountValue, discountName: src.discountName || '' };
 }
+
+// how much of a job is invoiced: its value (what Create invoice bills for it), what its invoices already bill (late fees aside; a combined
+// batch invoice counts only this job's lines, with tax), and what's left to invoice; paid: invoiced in full and nothing left to pay
+function jobBilling(j) {
+  const l = jobLines(j); const invs = db.invoices.filter((i) => i.jobId === j.id || (i.jobIds || []).includes(j.id));
+  const full = computeTotals({ clientId: j.clientId, items: l.items.map((i) => ({ ...i })), taxRate: l.taxRate, discountType: l.discountType, discountValue: l.discountValue, discountName: l.discountName });
+  applyMemberDiscount(full); computeTotals(full);
+  const lines = (i, f) => (i.items || []).filter(f).reduce((t, x) => t + (Number(x.qty) || 0) * (Number(x.price) || 0), 0);
+  const billed = round2(invs.reduce((s, i) => s + ((i.jobIds || []).length > 1 ? lines(i, (x) => x.job === j.id && !x.lateFee) * (1 + (Number(i.taxRate) || 0) / 100) : (i.total || 0) - lines(i, (x) => x.lateFee)), 0));
+  const left = Math.max(0, round2(full.total - billed));
+  return { l, invs, billed, left, paid: invs.length > 0 && left <= 0.004 && invs.every((i) => invoiceCredits(i).balanceDue <= 0.004) };
+}
+// the jobs list and a saved job tell the app what's left to invoice on a job that has invoices (the app hides Create invoice at 0),
+// and whether it's paid in full (the app hides the reminder to the client)
+const withUnbilled = (j) => { if (!j || !db.invoices.some((i) => i.jobId === j.id || (i.jobIds || []).includes(j.id))) return j; const b = jobBilling(j); return { ...j, unbilled: b.left, paidInFull: b.paid }; };
 
 // ---------- Batch invoicing (Invoices → Invoice completed jobs) ----------
 // Completed jobs with no invoice yet, invoiced in one go: one invoice per job, or one per client with their jobs together (each line keeps its

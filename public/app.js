@@ -3270,8 +3270,8 @@ ${mField('Status', `<select name="status">${[['scheduled', 'Scheduled'], ['compl
 A.mJobMore = (x) => {
   const j = byId(D.jobs, x.id); const edit = canDo('jobs.edit');
   const f = mSheet('More', `<div class="ms-list">${onThisJob(j) ? '' : clockBtn(j, '')}${omwBtn(j, '')}${planHas('signatures') ? `<button type="button" data-act="collectSignature" data-id="${j.id}">${j.signature ? 'Collect another signature' : 'Collect signature'}</button>` : ''}
-${edit ? `<button type="button" data-act="jobRemind" data-id="${j.id}">${planHas('sms') && byId(D.clients, j.clientId)?.smsConsent ? 'Text' : 'Email'} reminder to client</button>` : ''}
-${planHas('invoices') ? `<button type="button" class="need-invoices" data-act="jobInvoice" data-id="${j.id}">Create invoice</button>` : ''}
+${edit && !jobPaidInFull(j) ? `<button type="button" data-act="jobRemind" data-id="${j.id}">${planHas('sms') && byId(D.clients, j.clientId)?.smsConsent ? 'Text' : 'Email'} reminder to client</button>` : ''}
+${planHas('invoices') && canInvoiceJob(j) ? `<button type="button" class="need-invoices" data-act="jobInvoice" data-id="${j.id}">Create invoice</button>` : ''}
 ${planHas('timeOff') && me && me.staffId && (j.staffIds || []).includes(me.staffId) && j.date >= ymd(new Date()) ? `<button type="button" data-act="jobRequestOff" data-id="${j.id}">Request off for this job</button>` : ''}
 <a href="/calendar" data-link>Open calendar</a>${edit ? `${j.repeat && j.repeat.next && planHas('recurringJobs') ? `<button type="button" data-act="stopRepeat" data-id="${j.id}">Stop repeating after this visit</button>` : ''}<a href="/jobs/edit?id=${j.id}&full=1" data-link>Edit everything at once</a><button type="button" class="danger-text" data-act="delJob" data-id="${j.id}">Delete job</button>` : ''}</div>`);
   f.addEventListener('click', (e) => { if (e.target.closest('a, button[data-act]')) mClose(true); });
@@ -3309,7 +3309,7 @@ ${prices ? `<section class="md-block"><h2 class="md-sh">Product / Service</h2><d
 ${totals ? `<section class="md-block md-totals">${totals}</section>` : ''}` : ''}
 ${sig ? `<section class="md-block"><div class="md-lh"><h2 class="md-sh" style="margin:0">Client signature</h2>${planHas('signatures') ? `<button type="button" class="md-plus" data-act="collectSignature" data-id="${j.id}" aria-label="Collect another signature">${CHEV('M12 5v14M5 12h14')}</button>` : ''}</div><img class="sig-img" src="${esc(sig.file)}" alt="Signature of ${esc(sig.name)}"><p class="md-text">Signed by <strong>${esc(sig.name)}</strong> · ${esc(fmtStamp(sig.signedAt))}</p></section>`
     : planHas('signatures') ? `<button type="button" class="md-tap md-sec" data-act="collectSignature" data-id="${j.id}"><span class="md-sh">Client signature${ARROW}</span><span class="md-text muted">Collect the client’s signature</span></button>` : ''}
-${prices && planHas('invoices') ? `<section class="md-block need-invoices"><div class="md-lh"><h2 class="md-sh" style="margin:0">Billing</h2>${edit ? `<button type="button" class="md-plus" data-act="jobInvoice" data-id="${j.id}" aria-label="Create invoice">${CHEV('M12 5v14M5 12h14')}</button>` : ''}</div>
+${prices && planHas('invoices') ? `<section class="md-block need-invoices"><div class="md-lh"><h2 class="md-sh" style="margin:0">Billing</h2>${edit && canInvoiceJob(j) ? `<button type="button" class="md-plus" data-act="jobInvoice" data-id="${j.id}" aria-label="Create invoice">${CHEV('M12 5v14M5 12h14')}</button>` : ''}</div>
 ${invs.map((i) => `<a class="md-inv" href="/invoices/view?id=${i.id}" data-link><span><strong>Invoice #${esc(i.number)}</strong><small>${esc(I_STATUS[i.displayStatus] || i.displayStatus)} · due ${fmtDate(i.dueDate)}</small></span><span>${money(i.total)}</span></a>`).join('') || '<p class="muted md-empty">No invoices yet. Create one when the work is done.</p>'}</section>` : ''}</div>
 <div class="md-pane" data-pane="notes" hidden>${mNotesPane('job', j, j.internalNotes ? textSec('notes', 'Internal notes', j.internalNotes, '') : '')}</div></div>`;
 }
@@ -4049,8 +4049,8 @@ function jobMore(j) {
   const sms = planHas('sms') && byId(D.clients, j.clientId)?.smsConsent;
   const off = planHas('timeOff') && me && me.staffId && (j.staffIds || []).includes(me.staffId) && j.date >= ymd(new Date());
   return `<details class="menu more-menu">${MORE_SUM}<div class="menu-list">
-${planHas('invoices') ? b('jobInvoice', 'invoice', 'Create Invoice', 'need-invoices') : ''}${!planHas('signatures') ? '' : b('collectSignature', 'sign', j.signature ? 'Collect Another Signature' : 'Collect Signature')}
-<div class="need-jobs-edit"><hr class="mi-sep"><div class="mi-h">Send as…</div>${b('jobRemind', sms ? 'text' : 'email', `${sms ? 'Text' : 'Email'} Reminder`)}</div>
+${planHas('invoices') && canInvoiceJob(j) ? b('jobInvoice', 'invoice', 'Create Invoice', 'need-invoices') : ''}${!planHas('signatures') ? '' : b('collectSignature', 'sign', j.signature ? 'Collect Another Signature' : 'Collect Signature')}
+${jobPaidInFull(j) ? '' : `<div class="need-jobs-edit"><hr class="mi-sep"><div class="mi-h">Send as…</div>${b('jobRemind', sms ? 'text' : 'email', `${sms ? 'Text' : 'Email'} Reminder`)}</div>`}
 <hr class="mi-sep">${j.repeat && j.repeat.next && planHas('recurringJobs') ? b('stopRepeat', 'calendar', 'Stop Repeating After This Visit', 'need-jobs-edit') : ''}${off ? b('jobRequestOff', 'calendar', 'Request Off for This Job') : ''}<a class="mi" href="/calendar" data-link>${QM.calendar}Open Calendar</a>
 ${b('delJob', 'trash', 'Delete', 'need-jobs-edit')}</div></details>`;
 }
@@ -4074,7 +4074,7 @@ ${jobFormsCard(j)}${j.signature ? sigCard(j) : ''}${jobBilling(j, jobInvoices(j)
 <aside class="qside">${textCard('job', j, 'notes', 'Internal Notes', j.internalNotes, 'No internal notes. Clients never see these.')}${noteFilesCard('job', j)}</aside></div></div>`;
 }
 // the Billing card (job form and job page): the job's invoices, and Create invoice
-const jobBilling = (j, invs) => `<div class="qcard need-jobs-prices"><div class="qcard-h"><h2>Billing</h2>${j.id ? `<button type="button" class="btn alt" data-act="jobInvoice" data-id="${j.id}">+ Create invoice</button>` : ''}</div>
+const jobBilling = (j, invs) => `<div class="qcard need-jobs-prices"><div class="qcard-h"><h2>Billing</h2>${j.id && canInvoiceJob(j) ? `<button type="button" class="btn alt" data-act="jobInvoice" data-id="${j.id}">+ Create invoice</button>` : ''}</div>
 ${!j.id ? '<p class="muted">Save the job first, then create invoices from it.</p>' : invs.length ? `<div class="tablewrap"><table class="mini m-jinv"><tr><th>Invoice</th><th>Due date</th><th>Status</th><th>Subject</th><th class="r">Total</th><th class="r">Balance</th></tr>
 ${invs.map((i) => `<tr><td><a href="/invoices/view?id=${i.id}" data-link>${esc(i.number)}</a></td><td>${fmtDate(i.dueDate)}</td><td>${iBadge(i.displayStatus)}</td><td>${esc(invSubject(i))}</td><td class="r">${money(i.total)}</td><td class="r">${money(invBalance(i))}</td></tr>`).join('')}</table></div>`
     : '<p class="muted">No invoices yet. Create one when the work is done.</p>'}</div>`;
@@ -4178,7 +4178,7 @@ function jobPage(main, job, preset) {
 <div class="qtop"><div class="qtop-l"><a href="/jobs" data-link class="back">← Jobs</a><span class="cstatus ${J_CLASS[st]}">${J_STATUS[st]}</span></div>
 <div class="actions">${j.id ? `<details class="menu">${MORE_SUM}<div class="menu-list">
 ${!planHas('signatures') ? '' : `<button type="button" data-act="collectSignature" data-id="${j.id}">${j.signature ? 'Collect another signature' : 'Collect signature'}</button>`}${planHas('timeOff') && me && me.staffId && (j.staffIds || []).includes(me.staffId) && j.date >= ymd(new Date()) ? `<button type="button" data-act="jobRequestOff" data-id="${j.id}">Request off for this job</button>` : ''}
-<button type="button" class="need-jobs-edit" data-act="jobRemind" data-id="${j.id}">${planHas('sms') && byId(D.clients, j.clientId)?.smsConsent ? 'Text' : 'Email'} reminder to client</button>${planHas('invoices') ? `<button type="button" class="need-invoices" data-act="jobInvoice" data-id="${j.id}">Create invoice</button>` : ''}
+${jobPaidInFull(j) ? '' : `<button type="button" class="need-jobs-edit" data-act="jobRemind" data-id="${j.id}">${planHas('sms') && byId(D.clients, j.clientId)?.smsConsent ? 'Text' : 'Email'} reminder to client</button>`}${planHas('invoices') && canInvoiceJob(j) ? `<button type="button" class="need-invoices" data-act="jobInvoice" data-id="${j.id}">Create invoice</button>` : ''}
 <a href="/calendar" data-link>Open calendar</a><button type="button" class="danger-text need-jobs-edit" data-act="delJob" data-id="${j.id}">Delete job</button></div></details>
 ${j.status === 'scheduled' ? `<button type="button" class="btn alt need-jobs-edit" data-act="completeJob" data-id="${j.id}">Mark complete</button>` : `<button type="button" class="btn alt need-jobs-edit" data-act="reopenJob" data-id="${j.id}">↺ Reopen job</button>`}
 ` : ''}</div></div>
@@ -4323,12 +4323,16 @@ A.newJobOn = (d) => !canDo('jobs.edit') || navigate('/jobs/new?date=' + d.date);
 A.editJob = (d) => { closeModal(); navigate('/jobs/edit?id=' + d.id); };
 A.delJob = async (d) => { if (!confirm('Delete this job?')) return; await api('DELETE', '/api/jobs/' + d.id); closeModal(); toast('Job deleted'); curPath() === '/jobs/edit' ? navigate('/jobs') : refresh(); };
 A.reopenJob = async (d) => { await api('PUT', '/api/jobs/' + d.id, { status: 'scheduled' }); toast('Job reopened'); refresh(); };
-A.jobInvoice = async (d) => { const inv = await api('POST', `/api/jobs/${d.id}/create-invoice`, {}); closeModal(); toast(inv.status === 'paid' ? 'Invoice created, paid in full by the deposit' : 'Draft invoice created'); navigate('/invoices/view?id=' + inv.id); };
+A.jobInvoice = async (d) => { const inv = await api('POST', `/api/jobs/${d.id}/create-invoice`, {}); closeModal(); toast(inv.status === 'paid' ? 'Invoice created, paid in full by the deposit' : /^Remaining balance/.test((inv.items || [])[0]?.desc || '') ? 'Draft invoice created for the rest of the job' : 'Draft invoice created'); navigate('/invoices/view?id=' + inv.id); };
 A.jobRemind = async (d) => { const r = await api('POST', `/api/jobs/${d.id}/remind`, {}); const x = r.results[0]; toast(x.status === 'simulated' ? 'Reminder logged (no message provider connected)' : x.status === 'failed' ? x.detail || 'Reminder failed' : `Reminder sent by ${x.channel === 'sms' ? 'text' : 'email'}`, x.status === 'failed'); }; // the server texts clients who agreed to texts, and emails the rest
 // Job status as shown on the Jobs page, derived from the stored status (scheduled/completed/cancelled), the date and invoices
 const J_STATUS = { late: 'Late', today: 'Today', upcoming: 'Upcoming', invoice: 'Requires invoicing', archived: 'Archived', cancelled: 'Cancelled' };
 const J_CLASS = { late: 'q-declined', today: 'q-converted', upcoming: 'q-approved', invoice: 'q-sent', archived: 'q-draft', cancelled: 'q-draft' };
 const jobInvoices = (j) => D.invoices.filter((i) => i.jobId === j.id || (i.jobIds || []).includes(j.id)); // a batch invoice can cover several jobs
+// Create invoice shows until the job is invoiced in full (the server sends unbilled, what's left, on a job with invoices); a job paid in full
+// gets no reminder to the client
+const canInvoiceJob = (j) => !!j && (!jobInvoices(j).length || (j.unbilled ?? 1) > 0.004);
+const jobPaidInFull = (j) => !!(j && j.paidInFull);
 function jobStatus(j) {
   const today = ymd(new Date());
   if (j.status === 'cancelled') return 'cancelled';
