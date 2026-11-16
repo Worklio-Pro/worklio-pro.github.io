@@ -2490,7 +2490,7 @@ PAGES['/marketing/referrals'] = {
 
 A.jpSkip = async (d) => { try { await api('DELETE', '/api/social-posts/jobs/' + d.id); toast('Skipped. It won’t be posted.'); refresh(); } catch (x) { toast(x.message, true); } };
 PAGES['/social-posts'] = {
-  title: 'Social posting',
+  get title() { return mkHub() ? 'Social posting' : 'Marketing'; },
   async render(main) {
     const [R, C, J] = await Promise.all([api('GET', '/api/social-posts'), api('GET', '/api/connections'), planHas('jobPosts') ? api('GET', '/api/social-posts/jobs').catch(() => null) : null]);
     connReturnNotice();
@@ -4669,7 +4669,7 @@ function mkRow(B) {
   const x = B.marketingAddon; if (!x || !B.managed) return ''; const line = B.marketing; const p = line ? `${money(line.cents / 100).replace(/\.00$/, '')}/${line.interval}` : x.cents ? mkPrice(x) : '';
   const act = (a, l) => (B.isOwner ? ` · <button type="button" class="link-btn" data-act="${a}">${l}</button>` : '');
   const what = x.state === 'included' ? 'included in your plan' : x.state === 'trial' ? `free until ${fmtDate(x.trialEnds)}, then ${p}` : x.state === 'ending' ? `${p}, ends ${fmtDate(x.endsAt)}` : x.state === 'on' ? p : '';
-  if (x.state === 'off') return B.isOwner && x.cents && !B.paused ? `<div class="mk-billrow">Marketing suite <span class="muted">(${p}${x.trialDays ? `, first ${x.trialDays} days free` : ''})</span><div class="muted" style="font-size:13px">Performance, and email campaigns, an AI marketing plan and a website builder as they arrive · <button type="button" class="link-btn" data-act="mkAddon">${x.trialDays ? 'Start free trial' : 'Add it'}</button></div></div>` : '';
+  if (x.state === 'off') return B.isOwner && x.offered && x.cents && !B.paused ? `<div class="mk-billrow">Marketing suite <span class="muted">(${p}${x.trialDays ? `, first ${x.trialDays} days free` : ''})</span><div class="muted" style="font-size:13px">Performance, and email campaigns, an AI marketing plan and a website builder as they arrive · <button type="button" class="link-btn" data-act="mkAddon">${x.trialDays ? 'Start free trial' : 'Add it'}</button></div></div>` : '';
   return `<div class="mk-billrow">Marketing suite <span class="muted">(${what})</span><div class="muted" style="font-size:13px"><a href="/marketing/dashboard" data-link>Open Marketing</a>${x.state === 'on' || x.state === 'trial' ? act('mkAddonOff', 'Remove') : x.state === 'ending' ? act('mkAddon', 'Keep it') : ''}</div></div>`;
 }
 PAGES['/settings/billing'] = {

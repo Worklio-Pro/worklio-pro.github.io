@@ -199,7 +199,7 @@ const PAGES = {};
 const NAV = [
   ['Operations', [['/business-overview', 'Home'], ['/calendar', 'Calendar'], ['/clients', 'Clients'], ['/quotes', 'Quotes'], ['/jobs', 'Jobs'], ['/timesheets', 'Timesheets'], ['/service-plans', 'Service Plans'], ['/invoices', 'Invoices']]],
   ['Money', [['/payments', 'Payments'], ['/services', 'Products & Services'], ['/expenses', 'Expenses'], ['/reports', 'Reports']]],
-  ['Marketing', [['/marketing/dashboard', 'Marketing']]],
+  ['Marketing', [['/marketing/dashboard', 'Marketing'], ['/reviews', 'Reviews'], ['/social-posts', 'Marketing'], ['/automations', 'Automations']]], // the Marketing hub, or (with it off) its pages on their own
   ['Records', [['/project-gallery', 'Project Gallery'], ['/notifications', 'Notifications Log']]],
 ];
 // the Settings pages open in their own sidebar column (Settings at the bottom of the sidebar), in these groups
@@ -245,9 +245,11 @@ function navList() {
 // Marketing's tabs (pages.js draws them). Owners and admins open the hub; a team member with only Reviews, Social posts or
 // Automations gets the menu item pointed at the first of those they can open
 const MK_PAGES = ['/marketing/dashboard', '/reviews', '/social-posts', '/automations'];
-const mkPage = (path) => path === '/marketing/dashboard' || path.startsWith('/marketing/') || ['/reviews', '/social-posts', '/automations', '/automations/edit'].includes(path);
+// the hub is on while a plan on the pricing page includes the Marketing suite, or this account has it (Alpha → Plans & features)
+const mkHub = () => !(company.account && company.account.marketingHub === false);
+const mkPage = (path) => mkHub() && (path.startsWith('/marketing/') || ['/reviews', '/social-posts', '/automations', '/automations/edit'].includes(path));
 const mkEntry = () => MK_PAGES.find((p) => memberCan(p) && (p === '/marketing/dashboard' || !planLocked(p)));
-const navFor = () => navList().map(([g, items]) => [g, items.map(([p, l]) => (p === '/marketing/dashboard' ? (mkEntry() ? [mkEntry(), l] : null) : [p, l])).filter((x) => x && memberCan(x[0]) && !planLocked(x[0]))]).filter(([, items]) => items.length);
+const navFor = () => navList().map(([g, items]) => [g, items.filter(([p]) => (p === '/marketing/dashboard') === mkHub() || !MK_PAGES.includes(p)).map(([p, l]) => (p === '/marketing/dashboard' ? (mkEntry() ? [mkEntry(), l] : null) : [p, l])).filter((x) => x && memberCan(x[0]) && !planLocked(x[0]))]).filter(([, items]) => items.length);
 // Team Requests (in Settings) shows how many time-off requests are waiting for this approver, and so does the Settings button
 // a page in beta testing (Alpha → Pricing → Plans & features) says so in a banner at the top, instead of a tag in the menu
 const BETA_BAR = '<div class="beta-bar" role="status"><span class="beta-pill">Beta</span><span>This page is in beta testing. It works, but it may change and you might run into rough edges. <button type="button" class="link-btn" data-act="feedbackForm">Tell us</button> if something doesn’t look right.</span></div>';
@@ -291,7 +293,7 @@ function sideHtml(path) {
         .map(([g, ps]) => `<div class="grp">${g}</div>` + ps.map((p) => `<a href="${p}" data-link class="${isOnPage(p, path) ? 'on' : ''}">${label[p]}</a>`).join('')).join('') + '</div>';
   }
   return `<div class="side-nav">${brand}` +
-    navFor().map(([g, items]) => (SIDE_BREAKS.includes(g) ? '<hr class="side-div">' : '') + items.map(([p, l]) => `<a href="${p}" data-link class="nav-link ${p === path || (!navPaths.includes(path) && path.startsWith(p + '/')) || (MK_PAGES.includes(p) && mkPage(path)) ? 'on' : ''}">${navIcon(p)}<span class="nav-l">${l}</span></a>`).join('')).join('') + `</div>${items.length ? `<div class="side-set"><button type="button" class="side-set-btn" data-act="openSettings"><span class="nav-ic">${svgIcon(ICONS.gear, 19)}</span><span class="nav-l">Settings</span></button></div>` : ''}`;
+    navFor().map(([g, items]) => (SIDE_BREAKS.includes(g) ? '<hr class="side-div">' : '') + items.map(([p, l]) => `<a href="${p}" data-link class="nav-link ${p === path || (!navPaths.includes(path) && path.startsWith(p + '/')) || (MK_PAGES.includes(p) && mkHub() && mkPage(path)) ? 'on' : ''}">${navIcon(p)}<span class="nav-l">${l}</span></a>`).join('')).join('') + `</div>${items.length ? `<div class="side-set"><button type="button" class="side-set-btn" data-act="openSettings"><span class="nav-ic">${svgIcon(ICONS.gear, 19)}</span><span class="nav-l">Settings</span></button></div>` : ''}`;
 }
 // bottom tab bar (phones): the first four main pages this member can open, then More for the full menu
 // its real height (it grows with the iPhone's home bar) as --bnav-h, so save bars sit right on top of it, with no gap
@@ -324,7 +326,7 @@ const NAV_ICONS = {
   '/notifications': '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
 };
 // Alpha → Settings → Menu icons can change them (sent with the account info)
-const iconOf = (p) => { const ni = company.account && company.account.navIcons; return (ni && (ni[p] || (MK_PAGES.includes(p) && ni['/marketing/dashboard']))) || NAV_ICONS[MK_PAGES.includes(p) ? '/marketing/dashboard' : p]; };
+const iconOf = (p) => { const ni = company.account && company.account.navIcons; const hub = MK_PAGES.includes(p) && mkHub(); return (ni && (ni[p] || (hub && ni['/marketing/dashboard']))) || NAV_ICONS[hub ? '/marketing/dashboard' : p]; };
 const navIcon = (p) => (iconOf(p) ? `<span class="nav-ic">${bico(iconOf(p))}</span>` : '<span class="nav-ic"></span>');
 function renderBottomNav(path) {
   const items = BNAV.filter(([p]) => memberCan(p) && !planLocked(p)).slice(0, 4);
@@ -602,6 +604,7 @@ async function render() {
   pausedOverlay(path, portal);
   if (pausedNow() && !portal && !isAdminMe()) { document.title = 'Account paused'; main.innerHTML = `<div class="card paused-card">${svgIcon(ICONS.shield, 28)}<h1>Your company’s account is paused</h1><p class="muted">You can’t use ${esc(company.name || 'your company')}’s account right now. Contact your company owner or admin to get it running again.</p></div>`; return; }
   if (pausedNow() && !portal && isAdminMe() && /\/(new|edit|import)$/.test(path)) { toast('Your account is paused. Choose a plan to make changes again.', true); history.replaceState({}, '', '/settings/billing'); return render(); }
+  if (!portal && path.startsWith('/marketing/') && !mkHub()) { history.replaceState({}, '', '/social-posts'); return render(); } // the hub is off: its own pages go to Marketing (social posts) as before
   if (page && !memberCan(path)) { document.title = 'No access'; main.innerHTML = `<div class="card"><h1>You don't have access to this page</h1><p class="muted">Your access level doesn't include this page. Ask the account owner if you need more access.</p><p><a href="/calendar" data-link>Go to the job calendar</a></p></div>`; return; }
   if (page && planLocked(path) && mkPage(path) && typeof mkLockedPage === 'function') { document.title = page.title; await mkLockedPage(main, path); return; }
   if (page && planLocked(path)) { document.title = page.title; main.innerHTML = `<div class="card upgrade-card"><h1>${esc(page.title)} isn’t in your plan</h1><p class="muted">You’re on the ${esc(company.account.plan.name)} plan. Upgrade to get ${esc(page.title)} and more.</p><p><a href="/settings" data-link class="btn alt">See your plan</a></p></div>`; return; }

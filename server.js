@@ -1796,7 +1796,8 @@ function accountInfo() {
     aiDescriptions: tenancy.aiOn('aiDescriptions'), aiRewrite: tenancy.aiOn('aiRewrite'), // Alpha → Settings → Integrations → AI
     navIcons: iconsLib.navIcons(), navOrder: iconsLib.order(), // the menu's icons, order and sections (Alpha → Settings → Menu)
     productName: tenancy.platform().settings.productName, product: brandLib.brand(), contactEmail: tenancy.platform().settings.contactEmail, helpUrl: tenancy.helpUrl(), ideasUrl: tenancy.ideasUrl(), languages: i18n.list(), managed: !tenancy.isDefault(),
-    marketingAddon: marketingInfo(t), // the Marketing suite: included in the plan, or the paid add-on (Marketing tabs, Account and billing)
+    marketingAddon: marketingInfo(t), marketingHub: marketingOffered() || featuresHas(t, 'marketingSuite'), // the Marketing hub: off when no plan on the pricing page includes the suite and this account doesn't have it
+    // the Marketing suite: included in the plan, or the paid add-on (Marketing tabs, Account and billing)
     matrixPricing: matrixAllowed(t), matrixAddon: matrixInfo(t), // matrix line items: included by Alpha, or the paid add-on
     referrals: referrals.openTo(t), cardReady: !!stripeKey(), // card payments set up (App Settings → Payments → Card payments)
     // how: 'embedded' (set up in the app, payout bank changed in the app), 'standard' (own Stripe account), 'server' (the platform's own account), or null
@@ -5913,6 +5914,9 @@ app.post('/api/account/addons/matrix', async (req, res) => {
 const MARKETING_TRIAL_DAYS = 14;
 const marketingMonthly = () => { const v = Number(tenancy.platform().settings.marketingAddon); return v > 0 ? v : 39; };
 const marketingCharge = (p, interval) => stripeLib.addonCharge(marketingMonthly(), p, interval);
+// offered: a plan on the pricing page includes the suite. With none (unticked in Alpha → Plans & features), Marketing is off: no hub, no add-on
+const marketingOffered = () => tenancy.platform().plans.some((p) => !p.hidden && (p.features || []).includes('marketingSuite'));
+const featuresHas = (t, k) => tenancy.featuresOf(t).has(k);
 const marketingIncluded = (t, p = tenancy.planOf(t)) => tenancy.isDefault(t) || (p.features || []).includes('marketingSuite');
 const marketingBilled = (t, p) => { const a = t.addons && t.addons.marketing; return !!a && !a.endsAt && !a.trialEnds && !marketingIncluded(t, p); };
 function marketingInfo(t) {
@@ -5920,7 +5924,7 @@ function marketingInfo(t) {
   const c = marketingCharge(plan, (t.billing && t.billing.interval) || 'month');
   const state = marketingIncluded(t) ? 'included' : !a || (a.endsAt && a.endsAt < today) ? 'off' : a.endsAt ? 'ending' : a.trialEnds ? 'trial' : 'on';
   return { state, trialEnds: a && a.trialEnds ? a.trialEnds : null, endsAt: a && a.endsAt ? a.endsAt : null, cents: c ? c.cents : 0, interval: c ? c.interval : 'month', monthly: marketingMonthly(),
-    trialDays: !(t.addons && t.addons.marketingTrialUsed) && !onTrial(t) ? MARKETING_TRIAL_DAYS : 0 };
+    trialDays: !(t.addons && t.addons.marketingTrialUsed) && !onTrial(t) ? MARKETING_TRIAL_DAYS : 0, offered: marketingOffered() };
 }
 app.post('/api/account/addons/marketing', async (req, res) => {
   if (!ownerOnly(req, res)) return;
@@ -5931,6 +5935,7 @@ app.post('/api/account/addons/marketing', async (req, res) => {
   if (a && a.endsAt && a.endsAt < today) delete t.addons.marketing; // ended: as if never added
   const cur = t.addons && t.addons.marketing;
   if (on && cur && !cur.endsAt) return res.status(400).json({ error: 'The Marketing suite is already on' });
+  if (on && !marketingOffered() && !(cur && cur.endsAt)) return res.status(400).json({ error: 'The Marketing suite isn’t available right now' });
   if (!on && (!cur || cur.endsAt)) return res.status(400).json({ error: 'The Marketing suite isn’t on' });
   const plan = tenancy.planOf(t); const price = (c) => `${money(c.cents / 100).replace(/\.00$/, '')}/${c.interval}`;
   try {
