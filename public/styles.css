@@ -1699,6 +1699,8 @@ button.mn-x{border:0;padding:0;cursor:pointer}
 .bp-two{display:grid;grid-template-columns:1fr 1fr;gap:12px}.bp-sub{margin:4px 0 14px 0;max-width:240px}
 .bp-img{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:2px 0 14px}.bp-img label.btn{margin:0;cursor:pointer}
 .bp-thumb{width:56px;height:56px;border:1px solid var(--line);background:var(--surface-2) center/contain no-repeat;flex:none;display:flex;align-items:center;justify-content:center;color:var(--muted)}.bp-thumb.round{border-radius:50%}
+/* the Business Page's image fields: the Company logo box (.logo-pick) at its size, the trash icon only with an image */
+.bp-pick{flex:0 1 220px;gap:4px}.bp-pick .logo-under{min-height:0}.bp-pick .logo-under[hidden]{display:none}.bp-img:has(.bp-pick){align-items:flex-start}
 .bp-range{display:flex;align-items:center;gap:12px;margin-bottom:14px}.bp-range input{flex:1;margin:0;padding:0;accent-color:var(--brand)}.bp-range output{min-width:44px;font-size:14px;text-align:right}
 .bp-covers{display:flex;flex-wrap:wrap;gap:10px;margin:2px 0 14px}.bp-cov{width:44px;height:44px;border-radius:50%;border:2px solid var(--card);cursor:pointer;padding:0;margin:0;box-shadow:0 0 0 1px var(--line);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:20px}.bp-cov.on{box-shadow:0 0 0 2px var(--brand)}.bp-cov-up{background:var(--surface-2)}
 .bp-colors{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:4px 12px;margin-bottom:6px}.bp-color{display:flex;gap:6px;align-items:center}.bp-color input{margin:0}.bp-color input[type=color]{width:42px;height:38px;padding:2px;border:1px solid var(--line);border-radius:8px;background:none;flex:none;cursor:pointer}

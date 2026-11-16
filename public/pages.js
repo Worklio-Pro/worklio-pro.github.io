@@ -3467,7 +3467,7 @@ PAGES['/settings/business-page'] = {
 <div class="bp-edit">${BP_TABS.map(([t, , secs], ti) => `<nav class="bp-nav" data-tab="${t}" ${ti ? 'hidden' : ''}>${secs.map(([k, n], i) => `<button type="button" data-act="bpSec" data-sec="${k}" class="${i || ti ? '' : 'on'}">${n}</button>`).join('')}</nav>`).join('')}
 <form class="card bp-form" id="bpForm" novalidate><fieldset class="bp-fs" ${admin ? '' : 'disabled'}>
 <section data-sec="info"><h2>Your information</h2>
-<span class="bp-lbl">Company logo</span><div class="bp-img"><span class="bp-thumb round" id="bpLogo"></span><label class="btn alt sm">Browse<input type="file" accept="image/png,image/jpeg,image/webp" hidden id="bpLogoFile"></label>${V.companyLogo ? '<button type="button" class="btn alt sm" data-act="bpLogo" data-v="company">Use company logo</button>' : ''}<button type="button" class="link-btn danger" data-act="bpLogo" data-v="">Remove</button></div>
+<span class="bp-lbl">Company logo</span><div class="bp-img">${bpPick('bpLogo', 'bpLogoFile', 'logo', `<button type="button" class="logo-trash" data-act="bpLogo" data-v="" title="Remove the logo" aria-label="Remove the logo">${BP_TRASH}</button>`)}${V.companyLogo ? '<button type="button" class="btn alt sm" data-act="bpLogo" data-v="company">Use company logo</button>' : ''}</div>
 <span class="bp-lbl">Logo opacity</span>${range('logoOpacity')}
 <label>Company name<input name="name" maxlength="100" required></label>
 <label>Company description<textarea name="description" rows="3" maxlength="500" placeholder="What you do, in a sentence or two"></textarea></label>
@@ -3493,11 +3493,11 @@ ${sw('expOn', 'Expiry', 'After this date, scanning the QR code shows an “expir
 <span class="bp-lbl">Marker border</span><div class="bp-opts">${opt('border', 'square', 'Square')}${opt('border', 'rounded', 'Rounded')}${opt('border', 'circle', 'Circle')}</div>
 <span class="bp-lbl">Marker center</span><div class="bp-opts">${opt('center', 'square', 'Square')}${opt('center', 'circle', 'Circle')}</div>
 <span class="bp-lbl">Border and frame</span><div class="bp-opts wide">${opt('frame', 'none', 'None')}${opt('frame', 'border', 'Border')}${opt('frame', 'frame', 'Frame')}</div></section>
-<section data-sec="qrlogo" hidden><h2>Logo</h2><span class="bp-lbl">Upload image</span><div class="bp-img"><span class="bp-thumb" id="bpQrLogo"></span><label class="btn alt sm">Browse<input type="file" accept="image/png,image/jpeg,image/webp" hidden id="bpQrLogoFile"></label></div>
+<section data-sec="qrlogo" hidden><h2>Logo</h2><span class="bp-lbl">Upload image</span><div class="bp-img">${bpPick('bpQrLogo', 'bpQrLogoFile', 'logo', `<button type="button" class="logo-trash" data-act="bpQrLogo" data-v="" title="Remove the logo" aria-label="Remove the logo">${BP_TRASH}</button>`)}</div>
 <span class="bp-lbl">Or use one of these</span><div class="bp-logos"><button type="button" class="bp-lg" data-act="bpQrLogo" data-v="" title="No logo" aria-label="No logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/></svg></button>${V.qrLogos.filter((k) => k !== 'company' || V.companyLogo).map((k) => `<button type="button" class="bp-lg" data-act="bpQrLogo" data-v="${k}" title="${k === 'company' ? 'Company logo' : esc(k)}" aria-label="${k === 'company' ? 'Company logo' : esc(k)}"><img src="${esc(qrLogoHref(k, V.companyLogo))}" alt=""></button>`).join('')}</div>
 ${sw('qr_logoClear', 'Remove dots behind the logo', 'Clears the dots under the logo so it stands out. The code still scans.')}</section>
 <section data-sec="qrbg" hidden><h2>Page background</h2><p class="muted bp-note">A picture behind your QR code and its text. The code itself keeps its background color so it stays readable.</p>
-<span class="bp-lbl">Upload image</span><div class="bp-img"><span class="bp-thumb" id="bpQrBg"></span><label class="btn alt sm">Browse<input type="file" accept="image/png,image/jpeg,image/webp" hidden id="bpQrBgFile"></label><button type="button" class="link-btn danger" data-act="bpQrBgNone">Remove</button></div>
+<span class="bp-lbl">Upload image</span><div class="bp-img">${bpPick('bpQrBg', 'bpQrBgFile', 'background image', `<button type="button" class="logo-trash" data-act="bpQrBgNone" title="Remove the background image" aria-label="Remove the background image">${BP_TRASH}</button>`)}</div>
 <span class="bp-lbl">Transparency</span>${range('qr_bgOpacity')}</section>
 <section data-sec="qrrim" hidden><h2>Rim content</h2><p class="muted bp-note">Text above and below your QR code, like “Scan me” or your business name.</p>${rim('header', 'Header')}${rim('footer', 'Footer')}</section>
 <div class="bp-foot"><button type="button" class="btn alt" data-act="bpStep" data-d="-1" id="bpPrevBtn">← Previous</button><span class="bp-gap"></span><a class="btn alt" href="${esc(V.url)}?preview=1">View page</a><button type="button" class="btn alt" data-act="bpStep" data-d="1" id="bpNextBtn">Next →</button>${admin ? '<button class="btn" id="bpSave">Save changes</button>' : ''}</div>
@@ -3557,15 +3557,21 @@ function bpGo(sec) {
   $('#bpPrevBtn').disabled = i === 0; $('#bpNextBtn').hidden = i === BP_ORDER.length - 1;
   $('#bpNextBtn').textContent = BP_ORDER[i + 1] && BP_ORDER[i + 1][1] !== tab ? 'Next: QR code appearance →' : 'Next →';
 }
+// an image field on the Business Page: click the box to upload (like Settings → Company → Logo); the trash icon under it removes the image
+const bpPick = (id, fileId, what, trash) => `<div class="logo-slot bp-pick"><label class="logo-pick light" id="${id}" title="Upload a ${what}"><span>Click to upload</span><input type="file" accept="image/png,image/jpeg,image/webp" hidden id="${fileId}"></label><div class="logo-under" hidden>${trash}</div></div>`;
+function bpPickShow(id, u) {
+  const box = $(id); if (!box) return; const old = box.querySelector('img, span'); if (old) old.outerHTML = u ? `<img src="${esc(u)}" alt="">` : '<span>Click to upload</span>';
+  box.title = u ? 'Replace the image' : 'Upload an image'; box.closest('.bp-pick').querySelector('.logo-under').hidden = !u;
+}
 // the parts of the form drawn from bp.page: the logo, the chosen cover, the opacity numbers
 function bpDraw() {
   const P = bp.page; const logo = P.logo === 'company' ? bp.V.companyLogo : P.logo;
-  const box = $('#bpLogo'); if (!box) return; box.style.backgroundImage = logo ? `url("${logo}")` : ''; box.textContent = logo ? '' : '—';
+  if (!$('#bpLogo')) return; bpPickShow('#bpLogo', logo);
   $$('.bp-cov[data-c]').forEach((b) => b.classList.toggle('on', b.dataset.c === P.cover));
   const own = !bp.V.covers[P.cover]; const up = $('#bpCoverUp').parentElement; up.classList.toggle('on', own); up.style.background = own ? `url("${P.cover}") center/cover` : ''; $('#bpCoverUp').textContent = own ? '' : '+';
   $$('.bp-range output').forEach((o) => { o.textContent = `${o.dataset.for === 'qr_bgOpacity' ? P.qr.bgOpacity : P[o.dataset.for]}%`; });
   // QR code appearance: the chosen options and logo, the pictures, and the code itself
-  const Q = P.qr; const thumb = (id, u) => { const t = $(id); t.style.backgroundImage = u ? `url("${u}")` : ''; t.textContent = u ? '' : '—'; };
+  const Q = P.qr; const thumb = bpPickShow;
   $$('.bp-opt').forEach((b) => b.classList.toggle('on', Q[b.dataset.k] === b.dataset.v));
   $$('.bp-lg').forEach((b) => b.classList.toggle('on', (Q.logo || '') === b.dataset.v));
   thumb('#bpQrLogo', /^(data:|\/uploads\/)/.test(Q.logo || '') ? Q.logo : ''); thumb('#bpQrBg', Q.bgImg);
