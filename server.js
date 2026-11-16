@@ -4365,6 +4365,34 @@ app.get('/api/referrals', (req, res) => {
   res.json({ referrers });
 });
 
+// ---------- Marketing (the hub: Dashboard and Performance tabs) ----------
+// owners and admins only. Each tool says whether the plan has it (on) and a number or two; suite: the Marketing Suite
+// (Performance, Plan, Email campaigns, Website), included in Unlimited and sold as an add-on. Performance needs the suite.
+app.get('/api/marketing', async (req, res) => {
+  if (!isAdmin(currentUser(req))) return res.status(403).json({ error: 'Only the account owner or an admin can see Marketing' });
+  const has = (k) => tenancy.has(k); const now = Date.now(); const ago = (d) => new Date(now - d * 864e5).toISOString();
+  const done = clientReviews().filter((r) => r.submittedAt);
+  const auto = has('automations') ? await Promise.resolve(bizAuto.view()).catch(() => null) : null; const autos = (auto && auto.automations) || [];
+  const jp = db.jobPosts || []; const nets = Object.keys(networks.NETWORKS).filter((k) => connOf(k));
+  const tools = {
+    reviews: { on: has('reviews'), total: done.length, average: done.length ? Math.round(done.reduce((n, r) => n + r.stars, 0) / done.length * 10) / 10 : 0, unanswered: done.filter((r) => !r.reply).length, waiting: clientReviews().filter((r) => r.emailedAt && !r.submittedAt).length },
+    social: { on: has('socialPosts'), networks: nets.length, posts30: (db.socialPosts || []).filter((p) => p.createdAt >= ago(30)).length },
+    jobPosts: { on: has('jobPosts'), ready: jp.filter((d) => d.status === 'ready').length, posted: jp.filter((d) => d.status === 'posted').length },
+    automations: { on: has('automations'), active: autos.filter((a) => a.enabled).length, sent: autos.reduce((n, a) => n + (a.sentCount || 0), 0) },
+    referrals: { on: has('referrals'), rewards: !!refCfg(), referred: db.clients.filter((c) => c.referredBy).length, waiting: refCredits().filter((r) => r.kind === 'referrer' && refWaiting(r)).length },
+    businessPage: { on: true, scans: (db.businessPage && db.businessPage.scans) || 0 },
+    booking: { on: has('onlineBooking') },
+  };
+  const out = { suite: has('marketingSuite'), tools };
+  if (out.suite) { // Performance: where the last 90 days' new clients came from, and what they've paid since
+    const from = ago(90).slice(0, 10); const paid = paidByClient(from, new Date(now).toISOString().slice(0, 10)); const by = {};
+    for (const c of db.clients) if ((c.createdAt || '') >= from) { const k = leadSource(c); const e = by[k] || (by[k] = { source: k, leads: 0, clients: 0, revenue: 0 }); e.leads++; if (paid[c.id]) { e.clients++; e.revenue = round2(e.revenue + paid[c.id]); } }
+    const months = {}; for (const d of jp) for (const [m, n] of Object.entries(d.visits || {})) months[m] = (months[m] || 0) + n;
+    out.performance = { sources: Object.values(by).sort((a, b) => b.leads - a.leads || b.revenue - a.revenue), postVisits: Object.entries(months).sort().slice(-6).map(([month, visits]) => ({ month, visits })), reviews30: done.filter((r) => r.submittedAt >= ago(30)).length, posts30: tools.social.posts30 };
+  }
+  res.json(out);
+});
+
 // ---------- referrals ----------
 // Each client gets a public referral link (/refer/<code>) to share. It is separate from their private portal link.
 // A friend who opens it can send a work request: they're added as a new client (a lead) marked "referred by", and the business is emailed.

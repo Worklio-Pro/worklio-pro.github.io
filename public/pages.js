@@ -1776,7 +1776,7 @@ PAGES['/reviews'] = {
     await (google ? renderGoogleReviews : renderClientReviews)($('#rvBody', main));
   },
 };
-A.revSource = (d) => { revState.source = d.s; PAGES['/reviews'].render($('#main')); };
+A.revSource = (d) => { revState.source = d.s; refresh(); };
 const crvRef = (r) => { const what = `${r.kind === 'job' ? 'Job' : 'Invoice'} ${esc(r.refNumber || '')}`; const can = r.kind === 'job' ? canDo('jobs.view') : canDo('invoices'); return (can ? `<a href="/${r.kind === 'job' ? 'jobs/edit' : 'invoices/view'}?id=${r.refId}" data-link>${what}</a>` : what) + (r.title ? ` · ${esc(r.title)}` : ''); };
 const clientReviewCard = (r) => `<article class="card rv crv" data-id="${esc(r.id)}"><header><span class="rv-ini">${esc((r.clientName[0] || '?').toUpperCase())}</span><div><strong>${r.clientId && canDo('clients.view') ? `<a href="/clients/view?id=${r.clientId}" data-link>${esc(r.clientName)}</a>` : esc(r.clientName)}</strong><div>${starRow(r.stars)} <span class="muted">${fmtDate(r.submittedAt.slice(0, 10))}${r.editedAt ? ` · Edited by the client ${fmtDate(r.editedAt.slice(0, 10))}` : ''}</span></div></div></header>
 ${(r.answers || []).map((a) => `<div class="rv-ans"><strong>${esc(a.question)}</strong><div>${a.type === 'stars' ? starRow(a.answer) : esc(a.answer)}</div></div>`).join('')}${r.comment ? `<p class="rv-text">${esc(r.comment)}</p>` : (r.answers || []).length ? '' : '<p class="muted rv-text">A rating with no comment.</p>'}${(r.media || []).length ? rvMediaHtml(r.media) : ''}<p class="muted rv-for">${crvRef(r)}</p>${r.reply ? `<div class="rv-reply"><div class="rv-reply-h"><strong>Your reply</strong><span class="muted">${fmtDate(r.reply.updatedAt.slice(0, 10))}</span></div><p>${esc(r.reply.comment)}</p><div class="rv-acts"><button type="button" class="link-btn" data-act="crvEdit">Edit</button><button type="button" class="link-btn danger" data-act="crvDelete">Delete</button></div></div>` : '<div class="rv-acts"><button type="button" class="btn alt" data-act="crvEdit">Reply</button></div>'}</article>`;
@@ -2331,9 +2331,139 @@ A.jpRewrite = async (d, el) => {
   const btns = $$(`[data-act=jpRewrite][data-id="${d.id}"]`); btns.forEach((b) => { b.disabled = true; }); const was = el && el.textContent; if (el) el.textContent = 'Writing…';
   try { await api('POST', `/api/social-posts/jobs/${d.id}/caption`, { tone: d.tone }); refresh(); } catch (x) { btns.forEach((b) => { b.disabled = false; }); if (el) el.textContent = was; toast(x.message, true); }
 };
+/* ===== Marketing: one place for every marketing tool, in tabs (Dashboard, Performance, Plan, Reviews, Email campaigns, Website, More).
+   The Marketing suite (planHas('marketingSuite'): included in Unlimited, an add-on for the other plans) is Performance plus the pieces
+   still being built, which show what they'll do with a Coming soon badge. A tab the plan doesn't include keeps the tabs and says how to get it. ===== */
+const MK_SOON = { '/marketing/plan': 1, '/marketing/email': 1, '/marketing/website': 1 };
+const MK_MAIN = [['/marketing/dashboard', 'Dashboard'], ['/marketing/performance', 'Performance'], ['/marketing/plan', 'Plan'], ['/reviews', 'Reviews'], ['/marketing/email', 'Email Campaigns'], ['/marketing/website', 'Website']];
+const MK_MORE = [['/social-posts', 'Social posting'], ['/marketing/referrals', 'Referrals'], ['/automations', 'Automations']];
+const mkTabOn = (p, path) => p === path || (p === '/automations' && path === '/automations/edit');
+function mkTabs(path) {
+  const ok = ([p]) => memberCan(p.startsWith('/marketing/') ? '/marketing/dashboard' : p);
+  const a = ([p, l]) => `<a href="${p}" data-link class="${mkTabOn(p, path) ? 'on' : ''}"${mkTabOn(p, path) ? ' aria-current="page"' : ''}>${l}${MK_SOON[p] ? '<span class="mk-soon">Soon</span>' : ''}</a>`;
+  const more = MK_MORE.filter(ok); const inMore = more.some(([p]) => mkTabOn(p, path));
+  return `<nav class="mk-tabs" aria-label="Marketing">${MK_MAIN.filter(ok).map(a).join('')}${more.length ? `<details class="mk-more"><summary class="${inMore ? 'on' : ''}">${inMore ? esc(more.find(([p]) => mkTabOn(p, path))[1]) : 'More'} <span aria-hidden="true">▾</span></summary><div class="mk-menu">${more.map(a).join('')}</div></details>` : ''}</nav>`;
+}
+document.addEventListener('click', (e) => { $$('details.mk-more[open]').forEach((d) => { if (!d.contains(e.target) || e.target.closest('.mk-menu a')) d.open = false; }); });
+const mkHead = (title, sub) => `<div class="head"><div><h1>${title}</h1>${sub ? `<p class="sub">${sub}</p>` : ''}</div></div>`;
+const mkGetIt = (suite) => (role() === 'owner' ? `<a class="btn" href="/settings/billing" data-link>${suite ? 'See plans' : 'Upgrade your plan'}</a>` : '<p class="muted">Ask your account owner to upgrade.</p>');
+// what each tab does, for the Coming soon and upgrade pages
+const MK_PITCH = {
+  '/marketing/performance': ['Your marketing performance', 'See which marketing brings in paying clients, so you spend your time on what works.', ['New clients by where they came from: referrals, social posts, online booking, your Business Page', 'What those clients have paid you, per source', 'How often people open your booking page from your social posts', 'Reviews and posts this month at a glance']],
+  '/marketing/plan': ['A marketing plan that fills itself', 'Every week, AI suggests posts and emails for your business, based on your services, the season and your finished jobs. You check each one, change what you like and schedule it.', ['A week and month calendar of suggested posts and emails', 'Written in your business’s voice', 'Approve with one tap, or edit first', 'Posts go out to the accounts you connected']],
+  '/marketing/email': ['Email campaigns', 'Bring past clients back with emails that AI writes for you. Pick who gets it, check the preview and send it now or schedule it.', ['Pick clients by tag, service or how long since their last job', 'AI writes the email; you edit it', 'See opens, clicks and the jobs each campaign brought in', 'An unsubscribe link on every email, as the law requires']],
+  '/marketing/website': ['A website that books jobs', 'A full website for your business, built for you from your services, photos and reviews, with online booking on every page.', ['Pages for each service, your work and your reviews', 'Your colors and logo, on your own web address', 'Online booking and a request form built in', 'Looks right on phones'], '<p class="muted">Until then, your <a href="/settings/business-page" data-link>Business Page</a> gives clients a one-page site with your services, reviews and a booking button.</p>'],
+  '/marketing/referrals': ['Referrals', 'Every client gets a link to share. Friends who use it arrive as leads, and you can reward the client who sent them with a credit on their next invoice.', ['A referral link for every client, in their portal', 'Referral rewards: $ or % off their next invoice', 'An optional welcome offer for the friend', 'Top referrers at a glance']],
+  '/reviews': ['Reviews', 'Ask clients for a review after a job or a paid invoice, reply to them, and see your Google reviews in one place.', ['Review requests sent for you', 'Reply to your clients and on Google', 'Star ratings and comments with photos']],
+  '/social-posts': ['Social posting', 'Post your work to Facebook, Instagram, Google, Bluesky and more at once, and turn every finished job into a post.', ['One post, every account', 'Captions written by AI from the job', 'A booking link in every post']],
+  '/automations': ['Automations', 'Follow-ups and reminders that go out on their own: quote follow-ups, invoice reminders, thank-yous and more.', ['Start from a template', 'Email the client or your team', 'Only acts on what comes due after you turn it on']],
+};
+function mkPitchHtml(path, { soon, suite, locked }) {
+  const [title, text, points, extra] = MK_PITCH[path];
+  const note = soon && !locked ? '<p class="mk-note">Coming soon. It’s included in your plan, so it’ll appear here as soon as it’s ready.</p>'
+    : suite ? `<p class="mk-note"><strong>Part of the Marketing suite.</strong> Included in the Unlimited plan, and coming soon as an add-on for your plan.${soon ? ' This piece is coming soon.' : ''}</p>${mkGetIt(true)}`
+    : `<p class="mk-note">${esc(title)} isn’t in your ${esc((company.account && company.account.plan && company.account.plan.name) || '')} plan.</p>${mkGetIt(false)}`;
+  return `<section class="card mk-pitch">${soon ? '<span class="mk-badge">Coming soon</span>' : ''}<h1>${esc(title)}</h1><p class="mk-lead">${esc(text)}</p><ul class="mk-points">${points.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>${note}${extra || ''}</section>`;
+}
+// called by render() for a Marketing page the plan doesn't include
+async function mkLockedPage(main, path) {
+  const p = path === '/automations/edit' ? '/automations' : path;
+  main.innerHTML = mkTabs(path) + (MK_PITCH[p] ? mkPitchHtml(p, { soon: !!MK_SOON[p], suite: false, locked: true }) : `<div class="card upgrade-card"><h1>This isn’t in your plan</h1>${mkGetIt(false)}</div>`);
+}
+const mkSoonPage = (path, title) => ({ title, render(main) { main.innerHTML = mkTabs(path) + mkPitchHtml(path, { soon: true, suite: !planHas('marketingSuite'), locked: !planHas('marketingSuite') }); } });
+PAGES['/marketing/plan'] = mkSoonPage('/marketing/plan', 'Marketing plan');
+PAGES['/marketing/email'] = mkSoonPage('/marketing/email', 'Email campaigns');
+PAGES['/marketing/website'] = mkSoonPage('/marketing/website', 'Website');
+
+// Dashboard: what needs doing, a few numbers, and every tool grouped by what it does for the business
+const mkNum = (n) => Number(n || 0).toLocaleString('en-US');
+PAGES['/marketing/dashboard'] = {
+  title: 'Marketing',
+  async render(main) {
+    const M = await api('GET', '/api/marketing'); const T = M.tools; const suite = M.suite;
+    const todo = [
+      T.jobPosts.on && T.jobPosts.ready && [`${nOfW(T.jobPosts.ready, 'post from a finished job is', 'posts from finished jobs are')} ready to approve`, '/social-posts', 'Review'],
+      T.reviews.on && T.reviews.unanswered && [`${nOfW(T.reviews.unanswered, 'client review has', 'client reviews have')} no reply yet`, '/reviews', 'Reply'],
+      T.social.on && !T.social.networks && ['Connect your Facebook, Instagram or Google account to start posting', '/social-posts', 'Connect'],
+      T.automations.on && !T.automations.active && ['Turn on an automation, like a follow-up on quotes with no reply', '/automations', 'Set up'],
+      T.referrals.on && !T.referrals.rewards && ['Turn on referral rewards so clients have a reason to share their link', '/marketing/referrals', 'Turn on'],
+    ].filter(Boolean);
+    const stat = (n, l, href) => `<a class="mk-stat" href="${href}" data-link><strong>${n}</strong><span>${l}</span></a>`;
+    const stats = [
+      T.reviews.on && stat(T.reviews.total ? `${T.reviews.average}★` : '–', T.reviews.total ? `from ${nOfW(T.reviews.total, 'review', 'reviews')}` : 'No reviews yet', '/reviews'),
+      T.social.on && stat(mkNum(T.social.posts30), 'posts in the last 30 days', '/social-posts'),
+      T.automations.on && stat(mkNum(T.automations.sent), `messages sent by ${nOfW(T.automations.active, 'automation', 'automations')}`, '/automations'),
+      T.referrals.on && stat(mkNum(T.referrals.referred), 'clients came from referrals', '/marketing/referrals'),
+    ].filter(Boolean);
+    // status: on (with a short fact), set up, upgrade or soon
+    const tool = (href, icon, name, desc, st) => `<a class="mk-tool" href="${href}" data-link><span class="mk-tic">${svgIcon(icon, 18)}</span><span class="mk-tx"><strong>${name}</strong><small>${desc}</small></span><span class="mk-st ${st[0]}">${st[1]}</span></a>`;
+    const S = { up: ['up', 'Upgrade'], soon: ['soon', 'Coming soon'], set: ['set', 'Set up'] };
+    const onIf = (t, fact) => (!t.on ? S.up : fact ? ['on', fact] : S.set);
+    const ic = { page: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/>', cal: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>', mega: NAV_ICONS['/marketing/dashboard'], globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>', star: NAV_ICONS['/reviews'], img: NAV_ICONS['/project-gallery'], auto: NAV_ICONS['/automations'], mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>', gift: '<rect x="3" y="8" width="18" height="13" rx="1"/><path d="M12 8v13M3 12h18M12 8c-2-4-6-4-6-1s6 1 6 1zM12 8c2-4 6-4 6-1s-6 1-6 1z"/>' };
+    const groups = [
+      ['Get found online', [
+        tool('/settings/business-page', ic.page, 'Business Page', 'A page with your services, reviews and a booking button', ['on', T.businessPage.scans ? `${mkNum(T.businessPage.scans)} QR scans` : 'Ready']),
+        tool('/settings/booking', ic.cal, 'Online booking', 'Clients book from your page, Google and posts', T.booking.on ? ['on', 'On'] : S.up),
+        tool('/social-posts', ic.mega, 'Social posting', 'Post to every account at once', onIf(T.social, T.social.networks && `${nOfW(T.social.networks, 'account', 'accounts')}`)),
+        tool('/marketing/website', ic.globe, 'Website', 'A full website that books jobs', suite ? S.soon : S.up),
+      ]],
+      ['Build trust', [
+        tool('/reviews', ic.star, 'Reviews', 'Ask for reviews and reply to them', onIf(T.reviews, T.reviews.total && `${T.reviews.average}★`)),
+        tool('/social-posts', ic.img, 'Job showcase', 'Every finished job becomes a post', onIf(T.jobPosts, T.jobPosts.posted && `${mkNum(T.jobPosts.posted)} posted`)),
+      ]],
+      ['Win the job', [
+        tool('/automations', ic.auto, 'Automations', 'Follow-ups and reminders on their own', onIf(T.automations, T.automations.active && `${mkNum(T.automations.active)} on`)),
+        tool('/marketing/referrals', ic.gift, 'Referrals', 'Clients send you friends, and earn a credit', onIf(T.referrals, T.referrals.rewards && 'Rewards on')),
+        tool('/marketing/email', ic.mail, 'Email campaigns', 'Bring past clients back', suite ? S.soon : S.up),
+        tool('/marketing/plan', ic.cal, 'Marketing plan', 'Suggested posts and emails every week', suite ? S.soon : S.up),
+      ]],
+    ];
+    main.innerHTML = `${mkTabs('/marketing/dashboard')}${mkHead('Marketing', 'Get found, build trust and win more jobs. Everything that brings in work, in one place.')}
+${suite ? '' : `<div class="card mk-upsell"><div><strong>Get the Marketing suite</strong><p class="muted">See which marketing brings in paying clients, and get email campaigns, an AI marketing plan and a website builder as they arrive. Included in Unlimited, and coming soon as an add-on.</p></div>${mkGetIt(true)}</div>`}
+<div class="mk-dash"><div class="mk-left">
+${stats.length ? `<div class="mk-stats">${stats.join('')}</div>` : ''}
+<div class="card"><h2>Do this next</h2>${todo.length ? `<ul class="mk-todo">${todo.map(([t, h, b]) => `<li><span>${t}</span><a class="btn alt sm" href="${h}" data-link>${b}</a></li>`).join('')}</ul>` : (Object.values(T).some((t) => t.on && t !== T.businessPage) ? '<p class="muted" style="margin:0">You’re all caught up. Your automations and reviews keep working in the background.</p>' : `<p style="margin:0 0 12px">Your plan has your Business Page. Upgrade to ask clients for reviews, post your work to every social account at once, turn finished jobs into posts and send follow-ups on their own.</p>${mkGetIt(false)}`)}</div>
+</div><aside class="mk-right">${groups.map(([g, rows]) => `<div class="card mk-group"><h3>${g}</h3>${rows.join('')}</div>`).join('')}</aside></div>`;
+  },
+};
+const nOfW = (n, one, many) => `${mkNum(n)} ${n === 1 ? one : many}`;
+
+// Performance (Marketing suite): where new clients came from in the last 90 days and what they've paid
+PAGES['/marketing/performance'] = {
+  title: 'Performance',
+  async render(main) {
+    if (!planHas('marketingSuite')) { main.innerHTML = mkTabs('/marketing/performance') + mkPitchHtml('/marketing/performance', { suite: true, locked: true }); return; }
+    const [M, ref] = await Promise.all([api('GET', '/api/marketing'), planHas('referrals') ? api('GET', '/api/referrals').catch(() => ({ referrers: [] })) : { referrers: [] }]);
+    const P = M.performance || { sources: [], postVisits: [] }; const top = Math.max(1, ...P.sources.map((s) => s.leads));
+    const money = (n) => '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
+    const bars = P.sources.length ? `<div class="mk-bars">${P.sources.map((s) => `<div class="mk-bar"><span class="mk-bl">${esc(s.source)}</span><span class="mk-bt"><i style="width:${Math.max(3, s.leads / top * 100)}%"></i></span><span class="mk-bn"><strong>${nOfW(s.leads, 'lead', 'leads')}</strong> · ${nOfW(s.clients, 'paying', 'paying')} · ${money(s.revenue)}</span></div>`).join('')}</div>`
+      : '<p class="muted" style="margin:0">No new clients in the last 90 days yet. Once they come in, you’ll see where each one came from.</p>';
+    const vmax = Math.max(1, ...P.postVisits.map((v) => v.visits));
+    const mName = (m) => new Date(m + '-15T12:00:00Z').toLocaleString('en-US', { month: 'short' });
+    main.innerHTML = `${mkTabs('/marketing/performance')}${mkHead('Your marketing performance', 'See which marketing brings in clients and money, so you can focus on what works.')}
+<div class="mk-dash"><div class="mk-left">
+<div class="card"><h2>Where new clients came from</h2><p class="muted" style="margin-top:-6px">The last 90 days: new clients, how many have paid you, and what they’ve paid.</p>${bars}</div>
+<div class="card"><h2>Booking page visits from your posts</h2>${P.postVisits.length ? `<div class="mk-cols">${P.postVisits.map((v) => `<div class="mk-col"><span class="mk-cv">${mkNum(v.visits)}</span><i style="height:${Math.max(4, v.visits / vmax * 100)}%"></i><span class="mk-cl">${mName(v.month)}</span></div>`).join('')}</div>` : '<p class="muted" style="margin:0">None yet. Posts from finished jobs link to your booking page, and each visit shows up here.</p>'}</div>
+</div><aside class="mk-right">
+<div class="mk-stats mk-stats2"><a class="mk-stat" href="/reviews" data-link><strong>${mkNum(P.reviews30)}</strong><span>new reviews in 30 days</span></a><a class="mk-stat" href="/social-posts" data-link><strong>${mkNum(P.posts30)}</strong><span>posts in 30 days</span></a></div>
+${planHas('referrals') ? `<div class="card mk-group"><h3>Top referrers</h3>${ref.referrers.length ? ref.referrers.slice(0, 5).map((x) => `<a class="mk-tool" href="/clients/view?id=${esc(x.clientId)}" data-link><span class="mk-tx"><strong>${esc(x.name)}</strong><small>${nOfW(x.referred, 'friend referred', 'friends referred')}, ${mkNum(x.paying)} paying</small></span></a>`).join('') : '<p class="muted" style="margin:0">No referrers yet. Friends who use a client’s referral link show up here.</p>'}</div>` : ''}
+</aside></div>`;
+  },
+};
+
+// Referrals: the referral rewards settings and top referrers (the same card as App Settings → General)
+PAGES['/marketing/referrals'] = {
+  title: 'Referrals',
+  async render(main) {
+    if (!planHas('referrals')) { main.innerHTML = mkTabs('/marketing/referrals') + mkPitchHtml('/marketing/referrals', { locked: true }); return; }
+    main.innerHTML = `${mkTabs('/marketing/referrals')}${mkHead('Referrals', 'Every client has a referral link in their portal. Friends who use it arrive as new leads marked “Referred by”, and you can reward the client who sent them.')}<div class="mk-narrow">${referralCard(company)}</div>`;
+    wireReferrals();
+  },
+};
+
 A.jpSkip = async (d) => { try { await api('DELETE', '/api/social-posts/jobs/' + d.id); toast('Skipped. It won’t be posted.'); refresh(); } catch (x) { toast(x.message, true); } };
 PAGES['/social-posts'] = {
-  title: 'Marketing',
+  title: 'Social posting',
   async render(main) {
     const [R, C, J] = await Promise.all([api('GET', '/api/social-posts'), api('GET', '/api/connections'), planHas('jobPosts') ? api('GET', '/api/social-posts/jobs').catch(() => null) : null]);
     connReturnNotice();

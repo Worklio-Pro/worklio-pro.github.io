@@ -199,7 +199,7 @@ const PAGES = {};
 const NAV = [
   ['Operations', [['/business-overview', 'Home'], ['/calendar', 'Calendar'], ['/clients', 'Clients'], ['/quotes', 'Quotes'], ['/jobs', 'Jobs'], ['/timesheets', 'Timesheets'], ['/service-plans', 'Service Plans'], ['/invoices', 'Invoices']]],
   ['Money', [['/payments', 'Payments'], ['/services', 'Products & Services'], ['/expenses', 'Expenses'], ['/reports', 'Reports']]],
-  ['Marketing', [['/reviews', 'Reviews'], ['/social-posts', 'Marketing'], ['/automations', 'Automations']]],
+  ['Marketing', [['/marketing/dashboard', 'Marketing']]],
   ['Records', [['/project-gallery', 'Project Gallery'], ['/notifications', 'Notifications Log']]],
 ];
 // the Settings pages open in their own sidebar column (Settings at the bottom of the sidebar), in these groups
@@ -242,7 +242,12 @@ function navList() {
   const list = ord.filter((o) => label[o.path]); for (const p of Object.keys(label)) if (!list.some((o) => o.path === p)) list.push({ path: p, group: home[p] }); // pages Alpha doesn't know about yet
   return NAV.map(([g]) => [g, list.filter((o) => o.group === g).map((o) => [o.path, label[o.path]])]);
 }
-const navFor = () => navList().map(([g, items]) => [g, items.filter(([p]) => memberCan(p) && !planLocked(p))]).filter(([, items]) => items.length);
+// Marketing's tabs (pages.js draws them). Owners and admins open the hub; a team member with only Reviews, Social posts or
+// Automations gets the menu item pointed at the first of those they can open
+const MK_PAGES = ['/marketing/dashboard', '/reviews', '/social-posts', '/automations'];
+const mkPage = (path) => path === '/marketing/dashboard' || path.startsWith('/marketing/') || ['/reviews', '/social-posts', '/automations', '/automations/edit'].includes(path);
+const mkEntry = () => MK_PAGES.find((p) => memberCan(p) && (p === '/marketing/dashboard' || !planLocked(p)));
+const navFor = () => navList().map(([g, items]) => [g, items.map(([p, l]) => (p === '/marketing/dashboard' ? (mkEntry() ? [mkEntry(), l] : null) : [p, l])).filter((x) => x && memberCan(x[0]) && !planLocked(x[0]))]).filter(([, items]) => items.length);
 // Team Requests (in Settings) shows how many time-off requests are waiting for this approver, and so does the Settings button
 // a page in beta testing (Alpha → Pricing → Plans & features) says so in a banner at the top, instead of a tag in the menu
 const BETA_BAR = '<div class="beta-bar" role="status"><span class="beta-pill">Beta</span><span>This page is in beta testing. It works, but it may change and you might run into rough edges. <button type="button" class="link-btn" data-act="feedbackForm">Tell us</button> if something doesn’t look right.</span></div>';
@@ -286,7 +291,7 @@ function sideHtml(path) {
         .map(([g, ps]) => `<div class="grp">${g}</div>` + ps.map((p) => `<a href="${p}" data-link class="${isOnPage(p, path) ? 'on' : ''}">${label[p]}</a>`).join('')).join('') + '</div>';
   }
   return `<div class="side-nav">${brand}` +
-    navFor().map(([g, items]) => (SIDE_BREAKS.includes(g) ? '<hr class="side-div">' : '') + items.map(([p, l]) => `<a href="${p}" data-link class="nav-link ${p === path || (!navPaths.includes(path) && path.startsWith(p + '/')) ? 'on' : ''}">${navIcon(p)}<span class="nav-l">${l}</span></a>`).join('')).join('') + `</div>${items.length ? `<div class="side-set"><button type="button" class="side-set-btn" data-act="openSettings"><span class="nav-ic">${svgIcon(ICONS.gear, 19)}</span><span class="nav-l">Settings</span></button></div>` : ''}`;
+    navFor().map(([g, items]) => (SIDE_BREAKS.includes(g) ? '<hr class="side-div">' : '') + items.map(([p, l]) => `<a href="${p}" data-link class="nav-link ${p === path || (!navPaths.includes(path) && path.startsWith(p + '/')) || (MK_PAGES.includes(p) && mkPage(path)) ? 'on' : ''}">${navIcon(p)}<span class="nav-l">${l}</span></a>`).join('')).join('') + `</div>${items.length ? `<div class="side-set"><button type="button" class="side-set-btn" data-act="openSettings"><span class="nav-ic">${svgIcon(ICONS.gear, 19)}</span><span class="nav-l">Settings</span></button></div>` : ''}`;
 }
 // bottom tab bar (phones): the first four main pages this member can open, then More for the full menu
 // its real height (it grows with the iPhone's home bar) as --bnav-h, so save bars sit right on top of it, with no gap
@@ -314,11 +319,12 @@ const NAV_ICONS = {
   '/reviews': '<path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/>',
   '/automations': '<path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M10 8.5v7l5.5-3.5z"/>',
   '/social-posts': '<path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1z"/><path d="M15 9a4 4 0 0 1 0 6M18 6a8 8 0 0 1 0 12"/>',
+  '/marketing/dashboard': '<path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1z"/><path d="M15 9a4 4 0 0 1 0 6M18 6a8 8 0 0 1 0 12"/>',
   '/project-gallery': '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>',
   '/notifications': '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
 };
 // Alpha → Settings → Menu icons can change them (sent with the account info)
-const iconOf = (p) => (company.account && company.account.navIcons && company.account.navIcons[p]) || NAV_ICONS[p];
+const iconOf = (p) => { const ni = company.account && company.account.navIcons; return (ni && (ni[p] || (MK_PAGES.includes(p) && ni['/marketing/dashboard']))) || NAV_ICONS[MK_PAGES.includes(p) ? '/marketing/dashboard' : p]; };
 const navIcon = (p) => (iconOf(p) ? `<span class="nav-ic">${bico(iconOf(p))}</span>` : '<span class="nav-ic"></span>');
 function renderBottomNav(path) {
   const items = BNAV.filter(([p]) => memberCan(p) && !planLocked(p)).slice(0, 4);
@@ -359,7 +365,7 @@ const FEATURE_EXTRAS = [['/quotes/new', 'New quote', 'Quotes', 'create estimate'
 const FEATURE_WORDS = {
   '/business-overview': 'dashboard overview', '/calendar': 'schedule schedules appointments visits tasks events job calendar map dispatch route routes directions', '/clients': 'customers contacts',
   '/quotes': 'estimates proposals', '/jobs': 'work orders visits', '/timesheets': 'time tracking clock in out hours payroll timecard labor', '/service-plans': 'memberships maintenance agreements contracts recurring billing subscriptions club', '/invoices': 'billing', '/payments': 'card online stripe', '/services': 'catalog products price list items',
-  '/expenses': 'costs receipts spending', '/reports': 'financial revenue profit charts export csv invoices quotes visits clients lead source transactions timesheets expenses', '/tax-summary': 'sales tax', '/project-gallery': 'photos pictures', '/reviews': 'client google reviews ratings stars reply feedback', '/automations': 'automatic follow up reminder rules workflow messages overdue', '/social-posts': 'facebook instagram social media post marketing', '/notifications': 'emails texts sms sent messages log',
+  '/expenses': 'costs receipts spending', '/reports': 'financial revenue profit charts export csv invoices quotes visits clients lead source transactions timesheets expenses', '/tax-summary': 'sales tax', '/project-gallery': 'photos pictures', '/reviews': 'client google reviews ratings stars reply feedback', '/automations': 'automatic follow up reminder rules workflow messages overdue', '/social-posts': 'facebook instagram social media post marketing', '/marketing/dashboard': 'marketing dashboard performance leads referrals email campaigns website plan', '/notifications': 'emails texts sms sent messages log',
   '/requests': 'time off day off vacation sick leave request approve', '/settings/roles': 'roles permissions access manager technician what team can see do', '/settings/company': 'business details logo address phone social media facebook instagram tiktok tax', '/team': 'staff employees users access roles technicians', '/settings/emails': 'templates text messages sms reminders',
   '/settings/booking': 'online booking book now button widget website embed form wix wordpress squarespace schedule appointment request leads', '/settings/job-forms': 'checklists checklist forms form inspection safety check templates job photos required', '/settings/import-export': 'import export csv download upload spreadsheet excel backup clients quotes jobs invoices products services expenses timesheets payroll', '/settings/preferences': 'appearance theme dark mode light system push notifications alerts phone calendar link google calendar outlook apple ical ics feed sync subscribe', '/settings': 'number prefixes branding brand color zelle venmo cash app cashapp cashtag paypal defaults stripe card payments online payments regional time zone date format time format week', '/settings/connections': 'integrations google facebook instagram ai', '/settings/accounting': 'quickbooks xero accounting bookkeeping books sync accountant', '/settings/business-page': 'qr code business card digital card link in bio links save contact vcard scan limit expiry', '/marketplace': 'apps integrations connect quickbooks xero accounting home depot lowes supplies materials zapier chatgpt claude ai automation calendar slack gusto payroll', '/settings/billing': 'subscription plan upgrade payment method', '/settings/support-access': 'grant revoke help troubleshoot permission',
 };
@@ -597,10 +603,11 @@ async function render() {
   if (pausedNow() && !portal && !isAdminMe()) { document.title = 'Account paused'; main.innerHTML = `<div class="card paused-card">${svgIcon(ICONS.shield, 28)}<h1>Your company’s account is paused</h1><p class="muted">You can’t use ${esc(company.name || 'your company')}’s account right now. Contact your company owner or admin to get it running again.</p></div>`; return; }
   if (pausedNow() && !portal && isAdminMe() && /\/(new|edit|import)$/.test(path)) { toast('Your account is paused. Choose a plan to make changes again.', true); history.replaceState({}, '', '/settings/billing'); return render(); }
   if (page && !memberCan(path)) { document.title = 'No access'; main.innerHTML = `<div class="card"><h1>You don't have access to this page</h1><p class="muted">Your access level doesn't include this page. Ask the account owner if you need more access.</p><p><a href="/calendar" data-link>Go to the job calendar</a></p></div>`; return; }
+  if (page && planLocked(path) && mkPage(path) && typeof mkLockedPage === 'function') { document.title = page.title; await mkLockedPage(main, path); return; }
   if (page && planLocked(path)) { document.title = page.title; main.innerHTML = `<div class="card upgrade-card"><h1>${esc(page.title)} isn’t in your plan</h1><p class="muted">You’re on the ${esc(company.account.plan.name)} plan. Upgrade to get ${esc(page.title)} and more.</p><p><a href="/settings" data-link class="btn alt">See your plan</a></p></div>`; return; }
   if (!page) { document.title = 'Page not found'; document.body.classList.add('p404-only'); showTheme('light'); main.innerHTML = page404Html(); return; } // p404-only: no menus, bars or chat; always light (the next page puts the person's theme back)
   document.title = `${page.title} · ${company.name || (company.account && company.account.productName) || 'Worklio Pro'}`;
-  try { D = portal ? {} : await loadAll(); timeOffBadge(); await page.render(main); if (betaPage(path)) main.insertAdjacentHTML('afterbegin', BETA_BAR); }
+  try { D = portal ? {} : await loadAll(); timeOffBadge(); await page.render(main); if (mkPage(path) && typeof mkTabs === 'function' && !$('.mk-tabs', main)) main.insertAdjacentHTML('afterbegin', mkTabs(path)); if (betaPage(path)) main.insertAdjacentHTML('afterbegin', BETA_BAR); }
   catch (e) { main.innerHTML = `<div class="card"><h2>Something went wrong</h2><p>${esc(e.message)}</p></div>`; }
   if (!portal && me && me.supporterThanks && !pausedNow()) supporterThanks(); // just claimed a Founding Supporter code: the good news first, the tour after
   else if (!portal && me && me.tourNew && !pausedNow() && typeof startTour === 'function') startTour(); // a new login's first visit (public/tour.js)
