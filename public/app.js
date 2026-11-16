@@ -2991,7 +2991,7 @@ A.mMore = (x) => {
 ${d.status === 'sent' ? item('approveQuote', 'Mark approved') : ''}
 ${['draft', 'sent', 'approved'].includes(d.status) ? item('mSignQuote', d.signedAt ? 'Collect another signature' : 'Collect signature') : ''}
 ${d.status !== 'declined' && d.depositFee > 0 && !d.depositPaidAt ? item('markDepositPaid', `Record deposit payment${d.zelleSentAt ? ` (${sentName(d)} sent)` : ''}`) : ''}
-${canJob ? item('quoteToJob', 'Create job') : ''}${job ? `<a href="/jobs/edit?id=${job.id}" data-link>Go to job ${esc(job.number)}</a>` : ''}`
+${canJob ? item('quoteToJob', 'Create job') : ''}${job ? `<a href="/jobs/edit?id=${job.id}" data-link>Go to job ${esc(job.number)}</a>` : ''}${item('copyQuote', 'Create similar quote')}`
     : `<a href="/invoices/view?id=${d.id}&preview=1" data-link>${d.status === 'paid' ? 'View receipt' : 'View invoice'}</a>${d.status !== 'paid' ? item('collectPayment', 'Collect payment') : ''}${d.status !== 'paid' && invBalance(d) > 0 ? item('payQr', 'Show pay QR code') : ''}${planHas('signatures') ? item('mSignInvoice', d.signedAt ? 'Collect another signature' : 'Collect signature') : ''}`}
 <a href="/${x.kind}s/edit?id=${d.id}" data-link>Edit everything at once</a>
 ${item('delDoc', `Delete ${x.kind}`, `data-kind="${x.kind}" class="danger-text"`)}</div>`);
