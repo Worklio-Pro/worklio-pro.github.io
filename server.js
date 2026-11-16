@@ -1796,6 +1796,7 @@ function accountInfo() {
     aiDescriptions: tenancy.aiOn('aiDescriptions'), aiRewrite: tenancy.aiOn('aiRewrite'), // Alpha → Settings → Integrations → AI
     navIcons: iconsLib.navIcons(), navOrder: iconsLib.order(), // the menu's icons, order and sections (Alpha → Settings → Menu)
     productName: tenancy.platform().settings.productName, product: brandLib.brand(), contactEmail: tenancy.platform().settings.contactEmail, helpUrl: tenancy.helpUrl(), ideasUrl: tenancy.ideasUrl(), languages: i18n.list(), managed: !tenancy.isDefault(),
+    marketingAddon: marketingInfo(t), // the Marketing suite: included in the plan, or the paid add-on (Marketing tabs, Account and billing)
     matrixPricing: matrixAllowed(t), matrixAddon: matrixInfo(t), // matrix line items: included by Alpha, or the paid add-on
     referrals: referrals.openTo(t), cardReady: !!stripeKey(), // card payments set up (App Settings → Payments → Card payments)
     // how: 'embedded' (set up in the app, payout bank changed in the app), 'standard' (own Stripe account), 'server' (the platform's own account), or null
@@ -5744,7 +5745,7 @@ app.get('/api/account/billing', async (req, res) => {
     card: null, customer: null, subscription: null, invoices: [], endsAt: b.endsAt || null, trial: onTrial(t) ? { endsAt: t.expiresAt, code: b.trial.code, cancelled: !!b.trial.cancelled, prepaid: !!b.trial.prepaid } : null, prepaidUntil: supporters.lockedUntil(t), pendingPlan: b.pendingPlanId ? (P.plans.find((p) => p.id === b.pendingPlanId) || {}).name || null : null,
     retention: retentionInfo(t), usage: { clients: db.clients.length, quotes: db.quotes.length, jobs: db.jobs.length, invoices: db.invoices.length, logins: db.users.length, extraLogins: extraCount(plan), texts: smsUsage() } };
   const sc = stripeLib.seatCharge(plan, out.interval); if (sc && out.usage.extraLogins) out.extra = { count: out.usage.extraLogins, cents: sc.cents, interval: sc.interval };
-  out.matrixAddon = matrixInfo(t); // paid add-on (or included by Alpha); out.matrix below: its line on the subscription
+  out.marketingAddon = marketingInfo(t); out.matrixAddon = matrixInfo(t); // paid add-on (or included by Alpha); out.matrix below: its line on the subscription
   if (out.billed) {
     const get = (ep) => billingCall('GET', ep).catch((e) => { console.error('Billing:', e.message); return null; });
     const [cust, sub, inv] = await Promise.all([get(`customers/${encodeURIComponent(b.customerId)}?expand[]=invoice_settings.default_payment_method`),
@@ -5762,7 +5763,8 @@ app.get('/api/account/billing', async (req, res) => {
       out.interval = out.subscription.interval; out.plan.charge = charge = stripeLib.planCharge(plan, out.interval);
       if (charge && price && price.unit_amount != null && charge.interval === out.interval && !charge.regular) out.plan.charge = charge = { ...charge, cents: price.unit_amount }; // what Stripe really charges
       const sc2 = stripeLib.seatCharge(plan, out.interval);
-      if ((((seats && seats.quantity) || 0) !== extraCount(plan) || !!matrixItem(sub) !== matrixBilled(t)) && !tenancy.isDefault(t)) seatsChanged(); // out of step (e.g. a failed update): fix it for the next bill
+      if ((((seats && seats.quantity) || 0) !== extraCount(plan) || !!matrixItem(sub) !== matrixBilled(t) || !!addonItem(sub, 'marketing') !== marketingBilled(t)) && !tenancy.isDefault(t)) seatsChanged(); // out of step (e.g. a failed update): fix it for the next bill
+      const mk = addonItem(sub, 'marketing'); if (mk) out.marketing = { cents: (mk.price && mk.price.unit_amount) || 0, interval: (mk.price && mk.price.recurring && mk.price.recurring.interval) || out.interval };
       const mx = matrixItem(sub); if (mx) out.matrix = { cents: (mx.price && mx.price.unit_amount) || 0, interval: (mx.price && mx.price.recurring && mx.price.recurring.interval) || out.interval };
       out.extra = seats ? { count: seats.quantity || 0, cents: (seats.price && seats.price.unit_amount) || 0, interval: out.interval } : out.usage.extraLogins && sc2 ? { count: out.usage.extraLogins, cents: sc2.cents, interval: sc2.interval } : null;
     }
@@ -5795,7 +5797,7 @@ const seatProductId = () => ((tenancy.platform().stripeProducts || {})[`${stripe
 const productOf = (item) => (item && item.price && (typeof item.price.product === 'object' ? item.price.product.id : item.price.product)) || '';
 const isSeatItem = (item) => !!seatProductId() && productOf(item) === seatProductId();
 // the plan's own line on a subscription (not the extra logins or an add-on)
-const planItem = (sub) => { const items = (sub && sub.items && sub.items.data) || []; return items.find((i) => !isSeatItem(i) && !isMatrixItem(i)) || items[0]; };
+const planItem = (sub) => { const items = (sub && sub.items && sub.items.data) || []; return items.find((i) => !isSeatItem(i) && !isAddonItem(i)) || items[0]; };
 const seatItem = (sub) => ((sub && sub.items && sub.items.data) || []).find(isSeatItem) || null;
 // subscription update fields that set the extra logins line to `count` for plan p in `interval` (as items[n]); {} when nothing changes.
 // Sent in the same update as a plan or billing period change, since every line on a subscription must share one period.
@@ -5826,29 +5828,39 @@ const seatsChanged = () => { const t = tenancy.current(); if (!tenancy.isDefault
 const MATRIX_ADDON = 10; // dollars a month
 const matrixCharge = (p, interval) => stripeLib.addonCharge(MATRIX_ADDON, p, interval);
 const matrixBilled = (t) => !matrixFree(t) && !!(t.addons && t.addons.matrix && !t.addons.matrix.endsAt); // should have a line on the subscription
-async function matrixProduct() {
-  const P = tenancy.platform(); P.stripeProducts = P.stripeProducts || {}; const k = `${stripeLib.modeOf(stripeLib.platformKey())}:matrix`;
+// each paid add-on is one Stripe product per mode (`<mode>:<key>`), a line of its own on the subscription
+const ADDON_NAMES = { matrix: 'matrix pricing', marketing: 'Marketing suite' };
+async function addonProduct(key) {
+  const P = tenancy.platform(); P.stripeProducts = P.stripeProducts || {}; const k = `${stripeLib.modeOf(stripeLib.platformKey())}:${key}`;
   if (P.stripeProducts[k]) return P.stripeProducts[k];
-  const p = await billingCall('POST', 'products', { name: `${P.settings.productName} matrix pricing`, 'metadata[addon]': 'matrix' });
+  const p = await billingCall('POST', 'products', { name: `${P.settings.productName} ${ADDON_NAMES[key]}`, 'metadata[addon]': key });
   P.stripeProducts[k] = p.id; tenancy.savePlatform(); return p.id;
 }
-const matrixProductId = () => ((tenancy.platform().stripeProducts || {})[`${stripeLib.modeOf(stripeLib.platformKey())}:matrix`]) || '';
-const isMatrixItem = (item) => !!matrixProductId() && productOf(item) === matrixProductId();
-const matrixItem = (sub) => ((sub && sub.items && sub.items.data) || []).find(isMatrixItem) || null;
-// subscription update fields that put the matrix line on (or take it off) as items[n]; {} when nothing changes. A line already in the
+const addonProductId = (key) => ((tenancy.platform().stripeProducts || {})[`${stripeLib.modeOf(stripeLib.platformKey())}:${key}`]) || '';
+const isAddonItem = (item, key) => (key ? [key] : Object.keys(ADDON_NAMES)).some((k) => !!addonProductId(k) && productOf(item) === addonProductId(k));
+const addonItem = (sub, key) => ((sub && sub.items && sub.items.data) || []).find((i) => isAddonItem(i, key)) || null;
+// subscription update fields that put an add-on's line on (or take it off) as items[n]; {} when nothing changes. A line already in the
 // right period keeps its price (what they signed up at); a change of billing period reprices it.
-async function matrixParams(sub, p, interval, on, n = 1) {
-  const k = (f) => `items[${n}]${f}`; const cur = matrixItem(sub);
+async function addonParams(key, charge, sub, p, interval, on, n = 1) {
+  const k = (f) => `items[${n}]${f}`; const cur = addonItem(sub, key);
   if (!on) return cur ? { [k('[id]')]: cur.id, [k('[deleted]')]: 'true' } : {};
   if (cur && cur.price && cur.price.recurring && cur.price.recurring.interval === interval) return {};
-  const c = matrixCharge(p, interval); if (!c) return {};
-  return { ...(cur ? { [k('[id]')]: cur.id } : {}), [k('[quantity]')]: '1', [k('[price_data][currency]')]: 'usd', [k('[price_data][product]')]: await matrixProduct(),
+  const c = charge(p, interval); if (!c) return {};
+  return { ...(cur ? { [k('[id]')]: cur.id } : {}), [k('[quantity]')]: '1', [k('[price_data][currency]')]: 'usd', [k('[price_data][product]')]: await addonProduct(key),
     [k('[price_data][unit_amount]')]: String(c.cents), [k('[price_data][recurring][interval]')]: c.interval };
 }
-// every line beside the plan's (extra logins, then add-ons) from items[n] on, for a subscription update in plan p's `interval`
+const matrixProduct = () => addonProduct('matrix');
+const isMatrixItem = (item) => isAddonItem(item, 'matrix');
+const matrixItem = (sub) => addonItem(sub, 'matrix');
+const matrixParams = (sub, p, interval, on, n = 1) => addonParams('matrix', matrixCharge, sub, p, interval, on, n);
+const marketingParams = (sub, p, interval, on, n = 1) => addonParams('marketing', marketingCharge, sub, p, interval, on, n);
+// every line beside the plan's (extra logins, then add-ons) from items[n] on, for a subscription update in plan p's `interval`.
+// Moving to a plan that includes the Marketing suite ends that add-on (its line comes off).
 async function extraLines(sub, p, interval, count, t, n = 1) {
-  const s = await seatParams(sub, p, interval, count, n);
-  return { ...s, ...(await matrixParams(sub, p, interval, matrixBilled(t), Object.keys(s).length ? n + 1 : n)) };
+  if (t.addons && t.addons.marketing && marketingIncluded(t, p)) { delete t.addons.marketing; tenancy.savePlatform(); }
+  const out = {}; let i = n; const add = (o) => { if (Object.keys(o).length) { Object.assign(out, o); i++; } };
+  add(await seatParams(sub, p, interval, count, i)); add(await matrixParams(sub, p, interval, matrixBilled(t), i)); add(await marketingParams(sub, p, interval, marketingBilled(t, p), i));
+  return out;
 }
 // what the app and the billing page show about the add-on
 function matrixInfo(t) {
@@ -5892,6 +5904,90 @@ app.post('/api/account/addons/matrix', async (req, res) => {
     res.json({ ok: true, message, account: { matrixPricing: matrixAllowed(t), matrixAddon: matrixInfo(t) } });
   } catch (e) { stripeError(res, 'change matrix pricing', e); }
 });
+// ---------- paid add-ons: the Marketing suite (Marketing → Performance and the pieces as they arrive) ----------
+// Included in plans with the marketingSuite feature (Unlimited, Trial); for the others the owner adds it from Marketing or Account and
+// billing at Alpha's price (Alpha → Settings → Sign-ups, $39/month to start; yearly gets the plan's yearly discount).
+// The first time, a paying account gets 14 days free (t.addons.marketing.trialEnds: its last free day); billing starts the day after
+// (marketingTrials, hourly), and removing it before then costs nothing. On the account's own free trial it's free until that ends,
+// like matrix pricing: the line goes on the subscription made when a card is added. Removing it later keeps it until the period ends.
+const MARKETING_TRIAL_DAYS = 14;
+const marketingMonthly = () => { const v = Number(tenancy.platform().settings.marketingAddon); return v > 0 ? v : 39; };
+const marketingCharge = (p, interval) => stripeLib.addonCharge(marketingMonthly(), p, interval);
+const marketingIncluded = (t, p = tenancy.planOf(t)) => tenancy.isDefault(t) || (p.features || []).includes('marketingSuite');
+const marketingBilled = (t, p) => { const a = t.addons && t.addons.marketing; return !!a && !a.endsAt && !a.trialEnds && !marketingIncluded(t, p); };
+function marketingInfo(t) {
+  const plan = tenancy.planOf(t); const a = t.addons && t.addons.marketing; const today = iso(new Date());
+  const c = marketingCharge(plan, (t.billing && t.billing.interval) || 'month');
+  const state = marketingIncluded(t) ? 'included' : !a || (a.endsAt && a.endsAt < today) ? 'off' : a.endsAt ? 'ending' : a.trialEnds ? 'trial' : 'on';
+  return { state, trialEnds: a && a.trialEnds ? a.trialEnds : null, endsAt: a && a.endsAt ? a.endsAt : null, cents: c ? c.cents : 0, interval: c ? c.interval : 'month', monthly: marketingMonthly(),
+    trialDays: !(t.addons && t.addons.marketingTrialUsed) && !onTrial(t) ? MARKETING_TRIAL_DAYS : 0 };
+}
+app.post('/api/account/addons/marketing', async (req, res) => {
+  if (!ownerOnly(req, res)) return;
+  const t = tenancy.current(); const b = t.billing || (t.billing = {}); const u = currentUser(req); const on = !!(req.body && req.body.on);
+  if (marketingIncluded(t)) return res.status(400).json({ error: 'The Marketing suite is already included in your plan' });
+  if (t.status === 'suspended') return res.status(400).json({ error: 'Your account is paused. Choose a plan in Account and billing to reopen it first.' });
+  const today = iso(new Date()); const a = t.addons && t.addons.marketing;
+  if (a && a.endsAt && a.endsAt < today) delete t.addons.marketing; // ended: as if never added
+  const cur = t.addons && t.addons.marketing;
+  if (on && cur && !cur.endsAt) return res.status(400).json({ error: 'The Marketing suite is already on' });
+  if (!on && (!cur || cur.endsAt)) return res.status(400).json({ error: 'The Marketing suite isn’t on' });
+  const plan = tenancy.planOf(t); const price = (c) => `${money(c.cents / 100).replace(/\.00$/, '')}/${c.interval}`;
+  try {
+    const sub = stripeLib.platformKey() ? await liveSubscription(b) : null;
+    const item = sub && planItem(sub); const interval = (item && item.price && item.price.recurring && item.price.recurring.interval) || b.interval || 'month';
+    const c = marketingCharge(plan, interval); const paying = sub && sub.status !== 'trialing'; let message;
+    if (on) {
+      if (stripeLib.platformKey() && !sub && !onTrial(t) && !b.demo) return res.status(400).json({ error: supporters.lockedUntil(t) ? 'Your plan is prepaid with no card on file. Add a card in Account and billing first, or contact us to add the Marketing suite.' : 'Add-ons are billed with a paid plan. Choose one in Account and billing first.' });
+      const keep = !!(cur && cur.endsAt); // removed earlier this period, which is already paid for
+      const trial = !keep && paying && !t.addons?.marketingTrialUsed; // 14 days free, the first time
+      t.addons = t.addons || {};
+      if (trial) {
+        const ends = iso(new Date(Date.now() + (MARKETING_TRIAL_DAYS - 1) * 864e5));
+        t.addons.marketing = { since: today, by: u.email, trialEnds: ends }; t.addons.marketingTrialUsed = true;
+        message = `The Marketing suite is on, free for ${MARKETING_TRIAL_DAYS} days. If you keep it, ${c ? price(c) : 'its price'} is added to your subscription from ${niceDate(iso(new Date(Date.parse(ends + 'T12:00:00Z') + 864e5)))}. Remove it before then and you won’t be charged.`;
+      } else {
+        t.addons.marketing = { since: keep ? cur.since : today, by: u.email };
+        if (sub) await billingCall('POST', `subscriptions/${sub.id}`, { ...(await marketingParams(sub, plan, interval, true, 0)), proration_behavior: keep || !paying ? 'none' : 'create_prorations' });
+        message = !c || !stripeLib.platformKey() || b.demo ? 'The Marketing suite is on.'
+          : paying ? (keep ? `The Marketing suite is back on. It’s already paid through this billing period, then it’s ${price(c)} again.` : `The Marketing suite is on: ${price(c)}, added to your subscription. The part of this billing period that’s left is on your next bill.`)
+          : `The Marketing suite is on. It’s free until your trial ends${t.expiresAt ? ` on ${niceDate(t.expiresAt)}` : ''}, then ${price(c)} with your plan.`;
+      }
+      tellPlatform(`Add-on: ${t.name} added the Marketing suite`, `${u.name} (${u.email}) added the Marketing suite to ${t.name}${trial ? ` (${MARKETING_TRIAL_DAYS}-day free trial)` : c ? ` (${price(c)})` : ''}.`);
+    } else if (cur.trialEnds) { // during the free trial: off now, nothing charged
+      delete t.addons.marketing; message = 'The Marketing suite is off. You weren’t charged for it.';
+      tellPlatform(`Add-on: ${t.name} removed the Marketing suite`, `${u.name} (${u.email}) removed the Marketing suite from ${t.name} during its free trial.`);
+    } else {
+      if (sub) { const p = await marketingParams(sub, plan, interval, false, 0); if (Object.keys(p).length) await billingCall('POST', `subscriptions/${sub.id}`, { ...p, proration_behavior: 'none' }); }
+      const end = paying && periodEndOf(sub);
+      if (end && end > today) { cur.endsAt = iso(new Date(Date.parse(end + 'T12:00:00Z') - 864e5)); message = `The Marketing suite stays on until ${niceDate(cur.endsAt)}, the end of the period you’ve paid for. You won’t be charged for it again.`; }
+      else { delete t.addons.marketing; message = 'The Marketing suite is off.'; }
+      tellPlatform(`Add-on: ${t.name} removed the Marketing suite`, `${u.name} (${u.email}) removed the Marketing suite from ${t.name}.${cur.endsAt ? ` It stays on until ${niceDate(cur.endsAt)}.` : ''}`);
+    }
+    tenancy.savePlatform();
+    res.json({ ok: true, message, account: { features: [...tenancy.featuresOf(t)], lockedPages: tenancy.lockedPages(t), marketingAddon: marketingInfo(t) } });
+  } catch (e) { stripeError(res, 'change the Marketing suite', e); }
+});
+// hourly: a Marketing suite free trial past its last day starts billing (its line on the subscription; the rest of this period is on
+// the next bill). With no subscription to bill (e.g. the plan was cancelled), the add-on ends.
+async function marketingTrials() {
+  const today = iso(new Date());
+  for (const t of tenancy.platform().tenants) {
+    const a = t.addons && t.addons.marketing; if (!a || !a.trialEnds || a.trialEnds >= today) continue;
+    try {
+      await tenancy.run(t, async () => {
+        if (marketingIncluded(t)) { delete t.addons.marketing; return; }
+        const sub = stripeLib.platformKey() && t.billing ? await liveSubscription(t.billing) : null;
+        if (stripeLib.platformKey() && !sub && !(t.billing && t.billing.demo)) { delete t.addons.marketing; tellPlatform(`Add-on: ${t.name}'s Marketing suite trial ended`, `${t.name} had no subscription to bill, so the Marketing suite is off.`); return; }
+        delete a.trialEnds; a.billedFrom = today;
+        if (sub) { const plan = tenancy.planOf(t); const item = planItem(sub); const interval = (item && item.price && item.price.recurring && item.price.recurring.interval) || t.billing.interval || 'month';
+          const p = await marketingParams(sub, plan, interval, true, 0); if (Object.keys(p).length) await billingCall('POST', `subscriptions/${sub.id}`, { ...p, proration_behavior: 'create_prorations' }); }
+        tellPlatform(`Add-on: ${t.name}'s Marketing suite is now paid`, `The free trial ended, so the Marketing suite is now on ${t.name}'s subscription.`);
+      });
+    } catch (e) { if (!a.trialEnds) { a.trialEnds = iso(new Date(Date.now() - 864e5)); delete a.billedFrom; } console.error(`Marketing suite trial for ${t.slug}:`, e.message); } // tried again next hour
+    tenancy.savePlatform();
+  }
+}
 const periodEndOf = (sub) => unix(sub.current_period_end || (sub.items && sub.items.data[0] && sub.items.data[0].current_period_end));
 const tellPlatform = (title, message) => { const to = tenancy.platform().settings.contactEmail; if (to) sendTemplate('accountActivity', to, { title, message, link: tenancy.tenantUrl(tenancy.current()) }, { server: true }).catch(() => {}); };
 // "Get Support" in the app's help panel: saved for the platform console (Messages → Contact requests) and emailed to the contact address
@@ -6121,6 +6217,9 @@ async function subscribeSession(t, u, to, c, { trial = onTrial(t) } = {}) {
   const mc = matrixBilled(t) && matrixCharge(to, c.interval); const mi = sc ? 2 : 1; // the matrix pricing add-on, as the next line
   if (mc) Object.assign(p, { [`line_items[${mi}][quantity]`]: '1', [`line_items[${mi}][price_data][currency]`]: 'usd', [`line_items[${mi}][price_data][product]`]: await matrixProduct(),
     [`line_items[${mi}][price_data][unit_amount]`]: String(mc.cents), [`line_items[${mi}][price_data][recurring][interval]`]: mc.interval });
+  const kc = marketingBilled(t, to) && marketingCharge(to, c.interval); const ki = mi + (mc ? 1 : 0); // the Marketing suite add-on, next
+  if (kc) Object.assign(p, { [`line_items[${ki}][quantity]`]: '1', [`line_items[${ki}][price_data][currency]`]: 'usd', [`line_items[${ki}][price_data][product]`]: await addonProduct('marketing'),
+    [`line_items[${ki}][price_data][unit_amount]`]: String(kc.cents), [`line_items[${ki}][price_data][recurring][interval]`]: kc.interval });
   if (b.customerId) p.customer = b.customerId; else p.customer_email = u.email;
   Object.assign(p, stripeLib.saleLockMeta(to)); // a sale price is kept for good once this goes through (billing/return, or the webhook)
   Object.assign(p, referrals.bankedTrial(t)); // free months earned by referring other businesses
@@ -6347,7 +6446,7 @@ const platformApp = require('./lib/platform')({
   createOwner, ownerLink, sendVerifyEmail, sendBillingFailed, sendPasswordReset, loginsFor, handoffUrl, tenantStats, endSupportSessions, sendEmail, sendTemplate, sendSms, emailProvider: serverEmailProvider, applyStripeSession, syncStripeAccount, resetDemo, saveConnection, saveAccounting, saveSlack, setCompanyEmail: (e) => { if (!db.company.email) { db.company.email = e; save(); } }, setCompanyPhone: (p) => { if (p && !db.company.phone) { db.company.phone = p; save(); } },
   setCompanyIndustry: (i) => { Object.assign(db.company, i); save(); },
   planProduct, // the Stripe product for a plan (Alpha → an account → Subscription → Change plan)
-  planItem, seatItem, seatParams, extraCount, extraLines, matrixItem, syncSeats, // a subscription’s plan line, extra logins line and add-on lines
+  planItem, seatItem, seatParams, extraCount, extraLines, matrixItem, addonItem, syncSeats, // a subscription’s plan line, extra logins line and add-on lines
   dataImport, // Alpha → an account → Import data
 });
 // the visitor's own address. On SiteGround (and most hosts) the app sits behind the host's proxy, so every request arrives from the proxy's
@@ -6446,6 +6545,7 @@ setTimeout(remindExpiring, 10e3); setInterval(remindExpiring, 3600e3); // remind
 setTimeout(() => bizAuto.runAll().catch((e) => console.error('automations:', e.message)), 30e3); setInterval(() => bizAuto.runAll().catch((e) => console.error('automations:', e.message)), 3600e3); // checks every automation hourly
 const jobPostsMonthly = () => { for (const t of tenancy.platform().tenants) if (t.status === 'active') tenancy.run(t, () => { try { jobPosts.monthlyReport(); } catch (e) { console.error('job posts:', e.message); } }); };
 setTimeout(jobPostsMonthly, 40e3); setInterval(jobPostsMonthly, 3600e3); // Every job markets itself: last month's results on the 1st
+setTimeout(marketingTrials, 45e3); setInterval(marketingTrials, 3600e3); // Marketing suite add-on: billing starts when its free trial ends
 setTimeout(billMemberships, 35e3); setInterval(billMemberships, 3600e3); // service plans: each billing period's invoice
 setTimeout(surveyRemindersAll, 55e3); setInterval(surveyRemindersAll, 15 * 60e3); // site survey reminders, a day ahead
 setTimeout(lateFeesAll, 50e3); setInterval(lateFeesAll, 3600e3); // late fees on past-due invoices (App Settings → Payments → Late fees)

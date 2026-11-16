@@ -2346,7 +2346,34 @@ function mkTabs(path) {
 }
 document.addEventListener('click', (e) => { $$('details.mk-more[open]').forEach((d) => { if (!d.contains(e.target) || e.target.closest('.mk-menu a')) d.open = false; }); });
 const mkHead = (title, sub) => `<div class="head"><div><h1>${title}</h1>${sub ? `<p class="sub">${sub}</p>` : ''}</div></div>`;
-const mkGetIt = (suite) => (role() === 'owner' ? `<a class="btn" href="/settings/billing" data-link>${suite ? 'See plans' : 'Upgrade your plan'}</a>` : '<p class="muted">Ask your account owner to upgrade.</p>');
+// the Marketing suite add-on (company.account.marketingAddon: state 'off' | 'trial' | 'on' | 'ending' | 'included', its price, trialDays
+// when the first 14 days are free); only the owner adds or removes it
+const mkSuite = () => (company.account && company.account.marketingAddon) || null;
+const mkPrice = (x) => `${money(x.cents / 100).replace(/\.00$/, '')}/${x.interval}`;
+const mkGetIt = (suite) => {
+  const x = mkSuite(); const owner = role() === 'owner';
+  if (!suite || !x || x.state !== 'off' || !x.cents) return owner ? `<a class="btn" href="/settings/billing" data-link>${suite ? 'See plans' : 'Upgrade your plan'}</a>` : '<p class="muted">Ask your account owner to upgrade.</p>';
+  return owner ? `<div class="mk-cta"><button type="button" class="btn" data-act="mkAddon">${x.trialDays ? `Try it free for ${x.trialDays} days` : `Add it for ${mkPrice(x)}`}</button><a class="btn alt" href="/settings/billing" data-link>Or upgrade to Unlimited</a></div>` : '<p class="muted">Ask your account owner to add the Marketing suite.</p>';
+};
+const mkSuiteText = () => { const x = mkSuite(); return x && x.cents && x.state === 'off' ? `Add it to your plan for ${mkPrice(x)}${x.trialDays ? `, with the first ${x.trialDays} days free` : ''}, or get it included with Unlimited.` : 'Included in the Unlimited plan.'; };
+async function mkAddonSet(on) {
+  try { const r = await api('POST', '/api/account/addons/marketing', { on }); company.account = { ...company.account, ...r.account }; toast(r.message); refresh(); }
+  catch (e) { toast(e.message, true); }
+}
+A.mkAddon = () => {
+  const x = mkSuite(); if (!x) return;
+  const ok = x.state === 'ending' || confirm(x.trialDays ? `Start your free ${x.trialDays}-day trial of the Marketing suite?\n\nIf you keep it, ${mkPrice(x)} is added to your subscription when the trial ends. Remove it before then and you won’t be charged.`
+    : `Add the Marketing suite for ${mkPrice(x)}?\n\nIt’s added to your subscription, and the part of this billing period that’s left is on your next bill (free during a free trial). You can remove it anytime.`);
+  if (ok) mkAddonSet(true);
+};
+A.mkAddonOff = () => { const x = mkSuite(); if (x && confirm(x.state === 'trial' ? 'Remove the Marketing suite?\n\nYour free trial ends now and you won’t be charged.' : 'Remove the Marketing suite add-on?\n\nIt stays on until the end of the period you’ve paid for, and you won’t be charged for it again.')) mkAddonSet(false); };
+// on the Dashboard while the add-on is on trial or ending
+const mkSuiteBar = () => {
+  const x = mkSuite(); const owner = role() === 'owner'; if (!x) return '';
+  if (x.state === 'trial') return `<div class="card mk-upsell"><div><strong>Marketing suite free trial</strong><p class="muted">Free until ${fmtDate(x.trialEnds)}. If you keep it, ${mkPrice(x)} is added to your subscription after that.</p></div>${owner ? '<button type="button" class="btn alt" data-act="mkAddonOff">Remove</button>' : ''}</div>`;
+  if (x.state === 'ending') return `<div class="card mk-upsell"><div><strong>Marketing suite add-on removed</strong><p class="muted">It stays on until ${fmtDate(x.endsAt)}, the end of the period you’ve paid for.</p></div>${owner ? '<button type="button" class="btn" data-act="mkAddon">Keep it</button>' : ''}</div>`;
+  return '';
+};
 // what each tab does, for the Coming soon and upgrade pages
 const MK_PITCH = {
   '/marketing/performance': ['Your marketing performance', 'See which marketing brings in paying clients, so you spend your time on what works.', ['New clients by where they came from: referrals, social posts, online booking, your Business Page', 'What those clients have paid you, per source', 'How often people open your booking page from your social posts', 'Reviews and posts this month at a glance']],
@@ -2361,7 +2388,7 @@ const MK_PITCH = {
 function mkPitchHtml(path, { soon, suite, locked }) {
   const [title, text, points, extra] = MK_PITCH[path];
   const note = soon && !locked ? '<p class="mk-note">Coming soon. It’s included in your plan, so it’ll appear here as soon as it’s ready.</p>'
-    : suite ? `<p class="mk-note"><strong>Part of the Marketing suite.</strong> Included in the Unlimited plan, and coming soon as an add-on for your plan.${soon ? ' This piece is coming soon.' : ''}</p>${mkGetIt(true)}`
+    : suite ? `<p class="mk-note"><strong>Part of the Marketing suite.</strong> ${mkSuiteText()}${soon ? ' This piece is coming soon.' : ''}</p>${mkGetIt(true)}`
     : `<p class="mk-note">${esc(title)} isn’t in your ${esc((company.account && company.account.plan && company.account.plan.name) || '')} plan.</p>${mkGetIt(false)}`;
   return `<section class="card mk-pitch">${soon ? '<span class="mk-badge">Coming soon</span>' : ''}<h1>${esc(title)}</h1><p class="mk-lead">${esc(text)}</p><ul class="mk-points">${points.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>${note}${extra || ''}</section>`;
 }
@@ -2419,7 +2446,7 @@ PAGES['/marketing/dashboard'] = {
       ]],
     ];
     main.innerHTML = `${mkTabs('/marketing/dashboard')}${mkHead('Marketing', 'Get found, build trust and win more jobs. Everything that brings in work, in one place.')}
-${suite ? '' : `<div class="card mk-upsell"><div><strong>Get the Marketing suite</strong><p class="muted">See which marketing brings in paying clients, and get email campaigns, an AI marketing plan and a website builder as they arrive. Included in Unlimited, and coming soon as an add-on.</p></div>${mkGetIt(true)}</div>`}
+${suite ? mkSuiteBar() : `<div class="card mk-upsell"><div><strong>Get the Marketing suite</strong><p class="muted">See which marketing brings in paying clients, and get email campaigns, an AI marketing plan and a website builder as they arrive. ${mkSuiteText()}</p></div>${mkGetIt(true)}</div>`}
 <div class="mk-dash"><div class="mk-left">
 ${stats.length ? `<div class="mk-stats">${stats.join('')}</div>` : ''}
 <div class="card"><h2>Do this next</h2>${todo.length ? `<ul class="mk-todo">${todo.map(([t, h, b]) => `<li><span>${t}</span><a class="btn alt sm" href="${h}" data-link>${b}</a></li>`).join('')}</ul>` : (Object.values(T).some((t) => t.on && t !== T.businessPage) ? '<p class="muted" style="margin:0">You’re all caught up. Your automations and reviews keep working in the background.</p>' : `<p style="margin:0 0 12px">Your plan has your Business Page. Upgrade to ask clients for reviews, post your work to every social account at once, turn finished jobs into posts and send follow-ups on their own.</p>${mkGetIt(false)}`)}</div>
@@ -4637,6 +4664,14 @@ A.payBank = () => {
 // Plan changes, cancelling, the card and billing details all go through Stripe from here; Stripe charges the plan automatically.
 const CARD_BRANDS = { visa: 'Visa', mastercard: 'Mastercard', amex: 'American Express', discover: 'Discover', diners: 'Diners Club', jcb: 'JCB', unionpay: 'UnionPay' };
 let billingData = null; let billingAll = false;
+// Account and billing → Add-ons: the Marketing suite, on (with how to change it) or offered to the owner
+function mkRow(B) {
+  const x = B.marketingAddon; if (!x || !B.managed) return ''; const line = B.marketing; const p = line ? `${money(line.cents / 100).replace(/\.00$/, '')}/${line.interval}` : x.cents ? mkPrice(x) : '';
+  const act = (a, l) => (B.isOwner ? ` · <button type="button" class="link-btn" data-act="${a}">${l}</button>` : '');
+  const what = x.state === 'included' ? 'included in your plan' : x.state === 'trial' ? `free until ${fmtDate(x.trialEnds)}, then ${p}` : x.state === 'ending' ? `${p}, ends ${fmtDate(x.endsAt)}` : x.state === 'on' ? p : '';
+  if (x.state === 'off') return B.isOwner && x.cents && !B.paused ? `<div class="mk-billrow">Marketing suite <span class="muted">(${p}${x.trialDays ? `, first ${x.trialDays} days free` : ''})</span><div class="muted" style="font-size:13px">Performance, and email campaigns, an AI marketing plan and a website builder as they arrive · <button type="button" class="link-btn" data-act="mkAddon">${x.trialDays ? 'Start free trial' : 'Add it'}</button></div></div>` : '';
+  return `<div class="mk-billrow">Marketing suite <span class="muted">(${what})</span><div class="muted" style="font-size:13px"><a href="/marketing/dashboard" data-link>Open Marketing</a>${x.state === 'on' || x.state === 'trial' ? act('mkAddonOff', 'Remove') : x.state === 'ending' ? act('mkAddon', 'Keep it') : ''}</div></div>`;
+}
 PAGES['/settings/billing'] = {
   title: 'Account and billing',
   async render(main) {
@@ -4648,7 +4683,7 @@ PAGES['/settings/billing'] = {
     const B = billingData = await api('GET', '/api/account/billing'); const sub = B.subscription;
     const per = (i) => (i === 'year' ? 'yearly' : 'monthly');
     const ending = sub && sub.cancelAtPeriodEnd; const T = B.trial;
-    const withs = [B.extra && B.extra.count ? `${B.extra.count} extra login${B.extra.count === 1 ? '' : 's'}` : '', B.matrix ? 'matrix pricing' : ''].filter(Boolean); // the lines beside the plan's
+    const withs = [B.extra && B.extra.count ? `${B.extra.count} extra login${B.extra.count === 1 ? '' : 's'}` : '', B.matrix ? 'matrix pricing' : '', B.marketing ? 'the Marketing suite' : ''].filter(Boolean); // the lines beside the plan's
     const MX = B.matrixAddon && ['on', 'ending', 'included'].includes(B.matrixAddon.state) ? B.matrixAddon : null; // the overview's Add-ons row
     const statusText = T ? `${T.prepaid ? 'Prepaid until' : T.cancelled ? 'Trial cancelled, ends' : 'Free trial until'} ${fmtDate(T.endsAt)}` : ending ? `Active until ${fmtDate(sub.periodEnd)}` : sub && sub.status === 'past_due' ? 'Payment past due' : B.status === 'suspended' ? 'Paused' : 'Active';
     const contact = '<button type="button" class="btn alt" data-act="supportForm" data-title="Contact us" data-topic="Account and billing">Contact us</button>'; // the support form, sent to the platform's inbox
@@ -4659,7 +4694,7 @@ PAGES['/settings/billing'] = {
       : T ? `<p>You’re on a free trial of ${esc(B.plan.name)} until <strong>${fmtDate(T.endsAt)}</strong>, with no card on file. ${B.live ? `Add a card to keep your account after that: your first payment${B.plan.charge ? ` of ${money(B.plan.charge.cents / 100)}/${B.plan.charge.interval}` : ''} is taken when the trial ends, and you can cancel anytime before then.` : 'After that, the account is paused unless you choose a plan.'}</p>${B.live ? '<button type="button" class="btn" data-act="billCard">Add card</button>' : ''}`
       : ending && B.pendingPlan ? `<p>Your plan changes to <strong>${esc(B.pendingPlan)}</strong> on ${fmtDate(sub.periodEnd)}. You won’t be charged again.</p><button type="button" class="btn alt sm" data-act="billKeep">Stay on ${esc(B.plan.name)}</button>`
       : ending ? `<p>Your subscription is cancelled. You can keep using ${esc(B.productName)} until <strong>${fmtDate(sub.periodEnd)}</strong>, then the account is paused.</p><button type="button" class="btn" data-act="billKeep">Keep my subscription</button>`
-      : sub ? `${B.prepaidUntil ? `<p>Prepaid with your Founding Supporter code until <strong>${fmtDate(B.prepaidUntil)}</strong>.</p>` : ''}<p>You will be charged <strong>${money(sub.amount + (B.extra ? (B.extra.count * B.extra.cents) / 100 : 0) + (B.matrix ? B.matrix.cents / 100 : 0))} USD</strong> for your ${per(sub.interval)} ${esc(B.plan.name)} subscription${withs.length ? ` (with ${withs.join(' and ')})` : ''} on ${fmtDate(sub.periodEnd)}, and every ${sub.interval} after that. Plus taxes where applicable.</p>${sub.status === 'past_due' ? '<p class="bill-warn">Your last payment didn’t go through. Update your card and we’ll retry it right away.</p>' : ''}`
+      : sub ? `${B.prepaidUntil ? `<p>Prepaid with your Founding Supporter code until <strong>${fmtDate(B.prepaidUntil)}</strong>.</p>` : ''}<p>You will be charged <strong>${money(sub.amount + (B.extra ? (B.extra.count * B.extra.cents) / 100 : 0) + (B.matrix ? B.matrix.cents / 100 : 0) + (B.marketing ? B.marketing.cents / 100 : 0))} USD</strong> for your ${per(sub.interval)} ${esc(B.plan.name)} subscription${withs.length ? ` (with ${withs.join(' and ')})` : ''} on ${fmtDate(sub.periodEnd)}, and every ${sub.interval} after that. Plus taxes where applicable.</p>${sub.status === 'past_due' ? '<p class="bill-warn">Your last payment didn’t go through. Update your card and we’ll retry it right away.</p>' : ''}`
       : B.demo ? '<p class="muted">Your account was started with a demo checkout, so nothing is charged. Pick a plan to start a paid subscription.</p>'
       : !B.plan.charge ? `<p>You’re on the ${esc(B.plan.name)} plan${B.plan.price ? ` (${esc(B.plan.price)})` : ''}. There’s nothing to pay.</p>`
       : `<p class="muted">Your ${esc(B.plan.name)} plan isn’t billed automatically yet. Choose it under Modify subscription to set up automatic payments.</p>`;
@@ -4671,7 +4706,7 @@ PAGES['/settings/billing'] = {
 <dl class="bill-dl"><div><dt>Active since</dt><dd>${B.activeSince ? fmtDate(B.activeSince) : '—'}</dd></div><div><dt>Account status</dt><dd>${esc(statusText)}</dd></div>
 <div><dt>Current plan</dt><dd>${esc(B.plan.name)}${B.plan.charge ? ` <span class="muted">(${B.plan.charge.interval === 'year' ? 'yearly' : 'monthly'}, ${money(B.plan.charge.cents / 100).replace(/\.00$/, '')}/${B.plan.charge.interval})</span>` : B.plan.price ? ` <span class="muted">(${esc(B.plan.price)})</span>` : ''}${B.plan.locked ? `<div class="muted" style="font-size:13px">Your ${B.plan.locked.name ? `${esc(B.plan.locked.name)} ` : ''}price is locked since ${fmtDate(B.plan.locked.since)} for as long as you stay on ${esc(B.plan.name)}, monthly or yearly.</div>` : ''}</dd></div>
 <div><dt>Team logins</dt><dd>${B.usage.logins}${B.plan.maxUsers ? ` <span class="muted">(${B.plan.maxUsers} included${B.plan.extraUser ? `, then ${money(B.plan.extraUser).replace(/\.00$/, '')}/month each` : ''})</span>` : ' <span class="muted">(unlimited)</span>'}${B.extra && B.extra.count ? `<div class="muted" style="font-size:13px">${B.extra.count} extra login${B.extra.count === 1 ? '' : 's'} × ${money(B.extra.cents / 100).replace(/\.00$/, '')}/${B.extra.interval}</div>` : ''}</dd></div>
-${MX ? `<div><dt>Add-ons</dt><dd>Matrix pricing <span class="muted">(${MX.state === 'included' ? 'included' : `${money((B.matrix ? B.matrix.cents : MX.cents) / 100).replace(/\.00$/, '')}/${B.matrix ? B.matrix.interval : MX.interval}${MX.state === 'ending' ? `, ends ${fmtDate(MX.endsAt)}` : ''}`})</span><div class="muted" style="font-size:13px"><button type="button" class="link-btn" data-act="mxSee">Manage in App Settings</button></div></dd></div>` : ''}
+${MX || mkRow(B) ? `<div><dt>Add-ons</dt><dd>${mkRow(B)}${MX ? `<div>Matrix pricing <span class="muted">(${MX.state === 'included' ? 'included' : `${money((B.matrix ? B.matrix.cents : MX.cents) / 100).replace(/\.00$/, '')}/${B.matrix ? B.matrix.interval : MX.interval}${MX.state === 'ending' ? `, ends ${fmtDate(MX.endsAt)}` : ''}`})</span><div class="muted" style="font-size:13px"><button type="button" class="link-btn" data-act="mxSee">Manage in App Settings</button></div></div>` : ''}</dd></div>` : ''}
 ${B.usage.texts && B.usage.texts.limit ? `<div><dt>Texts this month</dt><dd>${B.usage.texts.sent.toLocaleString('en-US')} of ${B.usage.texts.limit.toLocaleString('en-US')}${B.usage.texts.sent >= B.usage.texts.limit ? ' <span class="muted">(used up: texts start again on the 1st)</span>' : ''}</dd></div>` : ''}</dl></div>
 <div class="bill-grid">
 <div class="card"><div class="bill-h"><h2>Billing details</h2>${B.live && B.managed ? '<button type="button" class="btn alt" data-act="billEdit">Edit</button>' : ''}</div>
