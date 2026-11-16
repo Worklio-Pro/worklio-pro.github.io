@@ -14,6 +14,7 @@ const BASE_URL = process.env.BASE_URL || `https://workliopro.com/public`;
 const tenancy = require('./lib/tenancy');
 const emails = require('./lib/emails');
 const i18n = require('./lib/i18n'); const { tx } = i18n; // what clients see, in each client's language
+const poweredBy = require('./lib/powered-by'); // "Sent with Worklio Pro · Try it free" on what businesses send their clients
 const brandLib = require('./lib/brand');
 const notFound = require('./lib/not-found'); // the Page not found page (Yoya) for the website, help centre and Ideas
 const referrals = require('./lib/referrals');
@@ -2531,7 +2532,7 @@ const inClientLang = (clientId, fn) => i18n.run(langFor(clientId), fn);
 const fmtUsPhone = (s) => { const t = String(s || '').trim(); let d = t.replace(/\D/g, ''); if (d.length === 11 && d[0] === '1') d = d.slice(1); else if (/^\+/.test(t)) return t; return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : t; };
 const companyBrand = (origin = baseUrl()) => ({ name: db.company.name || 'Your business', logoUrl: db.company.logo ? origin.replace(/\/+$/, '') + db.company.logo : '', color: db.company.brandColor,
   contact: [fmtUsPhone(db.company.phone), db.company.email, db.company.website] });
-function renderEmail(key, vars, t = emailTemplate(key), origin) { const m = emails.renderBusiness(t, { company_email: db.company.email || '', ...vars }, { ...companyBrand(origin), sentBy: tx('Sent by'), lang: i18n.current() }); return { ...m, body: m.text }; }
+function renderEmail(key, vars, t = emailTemplate(key), origin) { const m = emails.renderBusiness(t, { company_email: db.company.email || '', ...vars }, { ...companyBrand(origin), sentBy: tx('Sent by'), tryFree: tx('Try it free'), sentUrl: poweredBy.url('email'), lang: i18n.current() }); return { ...m, body: m.text }; }
 
 // Settings → Email Templates edits one language at a time: ?lang=es (English when it's left out)
 const tplLang = (req) => i18n.pick(req.query.lang);
@@ -2904,6 +2905,7 @@ function docPdfIn(kind, d) {
     y += 18; room(40); pdf.text(L, y, h.toUpperCase(), { size: 9, bold: true, color: soft }); y += 16;
     for (const para of String(t).split('\n')) { room(14 * Math.max(1, Math.ceil(pdf.width(para, 10) / (R - L)))); y = para.trim() ? pdf.para(L, y, para, R - L, { size: 10, color: '#334155', lineHeight: 14 }) : y + 8; }
   }
+  { const w = poweredBy.words(tx); pdf.text(306, 772, tx('{sent}. Try it free at {url}', { sent: w.sent, url: poweredBy.shortUrl() }), { size: 8, color: soft, align: 'center' }); } // lib/powered-by.js: at the foot of the last page
   return pdf.toBuffer(`${tx(q ? 'Quote' : 'Invoice')} ${d.number}`);
 }
 
@@ -2990,14 +2992,15 @@ app.post('/api/jobs/:id/on-my-way', async (req, res) => {
 
 // ---------- public payment + quote pages ----------
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-function shell(title, inner) {
+// where: which page, for the "Sent with …" link's counts (lib/powered-by.js)
+function shell(title, inner, where = 'page') {
   const co = db.company;
   return `<!doctype html><html lang="${i18n.current()}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><link rel="icon" href="/favicon.ico">
 <style>body{font-family:system-ui,sans-serif;background:#f4f6f8;margin:0;color:#111827}.card{max-width:640px;margin:24px auto;background:#fff;border-radius:12px;padding:28px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
 h1{margin:0 0 4px;font-size:22px}table{width:100%;border-collapse:collapse;margin:16px 0}td,th{padding:8px 4px;border-bottom:1px solid #e5e7eb;text-align:left}.r{text-align:right}
 .btn{background:${esc(co.brandColor)};color:#fff;border:0;border-radius:8px;padding:12px 20px;font-size:16px;cursor:pointer}.btn.alt{background:#fff;color:#111;border:1px solid #d1d5db}.muted{color:#6b7280;font-size:14px}.badge{display:inline-block;padding:2px 10px;border-radius:99px;background:#e5e7eb;font-size:13px}.paid{background:#dcfce7;color:#166534}
 input{padding:10px;border:1px solid #d1d5db;border-radius:8px;width:100%;box-sizing:border-box;margin:4px 0 10px}select.ph-cc{padding:10px 8px;border:1px solid #d1d5db;border-radius:8px;background:#fff;color:#111}</style><script src="/phone.js?v=2" defer></script></head><body><div class="card">
-<div class="sh-head" style="display:flex;align-items:center;gap:12px;margin-bottom:16px">${co.logo ? `<img src="${esc(co.logo)}" style="height:48px">` : ''}<div><strong>${esc(co.name)}</strong><div class="muted">${esc(co.email)} · ${esc(co.phone)}</div></div></div>${inner}</div></body></html>`;
+<div class="sh-head" style="display:flex;align-items:center;gap:12px;margin-bottom:16px">${co.logo ? `<img src="${esc(co.logo)}" style="height:48px">` : ''}<div><strong>${esc(co.name)}</strong><div class="muted">${esc(co.email)} · ${esc(co.phone)}</div></div></div>${inner}</div>${poweredBy.html(where, tx)}</body></html>`;
 }
 // a sub item at $0: the client sees "Included" instead of prices
 const included = (i) => !!i.sub && !(i.qty * i.price);
@@ -3458,7 +3461,7 @@ ${(() => { const next = st !== 'paid' && nextLateFee(inv); const v = next && { f
   return next ? `<p class="muted" style="text-align:right">${next.n > 1 ? tx('Another late fee of {fee} is added if this invoice isn’t paid by {date}.', v) : tx('A late fee of {fee} is added if this invoice isn’t paid by {date}.', v)}</p>` : ''; })()}
 ${inv.notes ? `<p style="white-space:pre-wrap">${esc(inv.notes)}</p>` : ''}
 ${previewNote}${st === 'paid' ? `<p>${tx('Paid on {date}. Thank you!', { date: esc(niceDate(inv.paidAt)) })}</p>${reviewPrompt(inv, preview)}` : payOff(card + zelle) + (!card && !zelle ? `<p class="muted">${tx('Please contact {name} at {contact} to arrange payment.', { name: esc(db.company.name), contact: esc(db.company.phone || db.company.email) })}</p>` : '')}
-${inv.disclaimer ? `<div style="margin:16px 0;padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px;white-space:pre-wrap" class="muted">${esc(inv.disclaimer)}</div>` : `<p class="muted">${esc(db.company.invoiceFooter)}</p>`}`));
+${inv.disclaimer ? `<div style="margin:16px 0;padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px;white-space:pre-wrap" class="muted">${esc(inv.disclaimer)}</div>` : `<p class="muted">${esc(db.company.invoiceFooter)}</p>`}`, 'pay'));
 });
 app.use('/pay', express.urlencoded({ extended: false }));
 // the client says they paid outside the app: zelleSentAt is when (for any method; the name is older than the others), sentVia is how.
@@ -3638,7 +3641,7 @@ ${chg ? `<div class="qv-note">${tx('You asked for changes on {date}:', { date: e
 ${many ? `<p class="qv-pick">${tx('{n} options: choose the one that suits you.', { n: parts.length })}</p>` : ''}${body}
 ${q.notes ? `<div class="qv-text">${esc(q.notes)}</div>` : ''}${q.disclaimer ? `<div class="qv-text">${esc(q.disclaimer)}</div>` : ''}
 <a class="qv-btn qv-pdf-m" href="${pdf}">${tx('Download PDF')}</a></div></details></div>
-${act.trim() ? `<div class="qv-act">${act}</div>` : ''}</div></main></div></div><script src="/phone.js?v=2" defer></script></body></html>`;
+${act.trim() ? `<div class="qv-act">${act}</div>` : ''}</div></main></div></div>${poweredBy.html('quote', tx)}<script src="/phone.js?v=2" defer></script></body></html>`;
 }
 // the client signs by drawing (finger, stylus or mouse) or by typing their name, which is written out in a script font; posted as a PNG data URL
 function quoteSignBox(q) {
@@ -3738,7 +3741,7 @@ function tellBusinessReview(r, edited) {
   }).catch(() => {});
 }
 const REVIEW_STYLE = '<style>.rv-stars{display:inline-flex;flex-direction:row-reverse;gap:4px;margin:4px 0 14px}.rv-stars input{position:absolute;opacity:0;width:1px;height:1px;margin:0;padding:0}.rv-stars label{font-size:42px;line-height:1;color:#d1d5db;cursor:pointer}.rv-stars input:checked~label,.rv-stars label:hover,.rv-stars label:hover~label{color:#f59e0b}.rv-stars input:focus-visible+label{outline:2px solid #2563eb;border-radius:4px}textarea{padding:10px;border:1px solid #d1d5db;border-radius:8px;width:100%;box-sizing:border-box;margin:4px 0 14px;font:inherit}.rv-shown{color:#f59e0b;font-size:28px;letter-spacing:2px}.rv-shown i{font-style:normal;color:#d1d5db}.rv-media{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}.rv-media img,.rv-media video{height:120px;max-width:100%;border-radius:8px;display:block;background:#000}.rv-add{display:block;width:100%;box-sizing:border-box;padding:12px;margin:0 0 14px;border:1px solid #d1d5db;border-radius:99px;background:#f3f4f6;color:#111827;font:inherit;font-weight:600;text-align:center;cursor:pointer}.rv-tiles{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}.rv-tile{position:relative;width:72px;height:72px;border-radius:8px;background:#111827;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;overflow:hidden}.rv-tile img{width:100%;height:100%;object-fit:cover}.rv-tile button{position:absolute;top:2px;right:2px;width:22px;height:22px;border:0;border-radius:50%;background:rgba(0,0,0,.7);color:#fff;cursor:pointer;line-height:1;padding:0}</style>';
-const reviewPage = (inner) => shell('Leave a review', REVIEW_STYLE + inner);
+const reviewPage = (inner) => shell('Leave a review', REVIEW_STYLE + inner, 'review');
 // the business's own questions (Reviews → Your questions): each is asked on the modules it picks. A review keeps the wording it was answered with, so later edits don't change it.
 const REVIEW_MODULES = ['job', 'invoice']; const REVIEW_Q_TYPES = ['stars', 'yesno', 'text'];
 const reviewQuestionsFor = (kind) => (db.reviewQuestions || []).filter((q) => q.modules.includes(kind));
@@ -4246,6 +4249,7 @@ app.get('/api/portal/:token', (req, res) => {
     langNames: lang === 'en' ? null : { en: 'English', [lang]: i18n.LANGUAGES[lang].native }, // the language switch at the bottom of the portal's menu
     company: { name: db.company.name, logo: db.company.logo, email: db.company.email, phone: db.company.phone, accentColor: accentColor(), address: db.company.addressPrivate ? '' : db.company.address, website: db.company.website, hours: db.company.showHours ? db.company.hours || null : null,
       holidays: db.company.showHours ? (db.company.holidays || []).filter((h) => h.to >= iso(new Date()) && h.from <= iso(new Date(Date.now() + 60 * 864e5))) : [] }, // holiday hours in the next 60 days
+    sentWith: { url: poweredBy.url('portal'), product: poweredBy.product() }, // "Sent with …" at the bottom of the menu (lib/powered-by.js)
     client: { id: c.id, name: c.name, email: c.email, phone: c.phone, address: c.address, smsConsent: !!c.smsConsent, smsBrand: smsBrand() },
     referralLink: tenancy.has('referrals') ? referralLink(c) : null,
     reviews: !tenancy.has('reviews') ? null : (db.clientReviews || []).filter((r) => r.clientId === c.id && r.submittedAt).sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
@@ -4380,7 +4384,7 @@ app.use('/book', (req, res, next) => (tenancy.has('onlineBooking') ? next() : re
 // It posts its height to the widget on load and whenever it changes. ?color=#hex: the widget's button color for the Send button too
 const bookEmbed = (req) => { const q = req.query || {}; return q.embed === '1' ? { popup: q.in === 'popup', color: HEX.test(q.color || '') ? q.color : '' } : null; };
 function bookShell(title, inner, embed) {
-  const html = shell(title, inner); if (!embed) return html;
+  const html = shell(title, inner, 'book'); if (!embed) return html;
   const css = `<style>html,body{background:transparent;color-scheme:light}.card{max-width:none;margin:0;box-shadow:none;${embed.popup ? 'border:0;border-radius:0;padding:24px 24px 20px}h1{padding-right:44px' : 'border:1px solid #e5e7eb;padding:24px'}}.sh-head{display:none!important}${embed.color ? `.btn{background:${embed.color}}` : ''}@media(max-width:480px){.card{padding:18px 16px}}</style>`;
   const js = `<script>(function(){var t=window.parent;if(t===window)return;var h=function(load){t.postMessage({wpBook:1,h:document.documentElement.scrollHeight,load:load?1:0},'*')};addEventListener('load',function(){h(1)});if(window.ResizeObserver)new ResizeObserver(function(){h(0)}).observe(document.body)})()</script>`;
   // links to the Terms and Privacy Policy open in a new tab, not inside the little frame
@@ -4456,6 +4460,7 @@ app.use('/card', express.urlencoded({ extended: false }));
 // What's new: the bell lists the latest three; See all changes opens ideas.<domain>/changelog
 app.get('/api/changelog', (req, res) => res.json(changelog.latest(Math.min(20, Number(req.query.limit) || 3))));
 app.get('/changelog', (req, res) => res.redirect(301, tenancy.ideasUrl() + '/changelog')); // the page moved to ideas.<domain>, for old links
+const cardSent = () => poweredBy.html('card', undefined, { color: 'inherit', style: 'opacity:.65' }); // the business card is in its own colors
 app.get('/card', (req, res) => {
   const p = bizPage();
   if (req.query.qr) {
@@ -4463,7 +4468,7 @@ app.get('/card', (req, res) => {
     if (!businessPage.qrActive(p, scans, localNow().date)) return res.status(410).send(businessPage.expiredPage(p.name));
     db.businessPage = { ...(db.businessPage || {}), scans: scans + 1 }; save();
   }
-  res.send(businessPage.render(p, { book: pageBook(), back: req.query.preview === '1' })); // ?preview=1: opened from the app, with a Back button
+  res.send(businessPage.render(p, { book: pageBook(), sent: cardSent(), back: req.query.preview === '1' })); // ?preview=1: opened from the app, with a Back button
 });
 app.get('/card/contact.vcf', (req, res) => {
   const p = bizPage(); res.setHeader('Content-Type', 'text/vcard; charset=utf-8');
@@ -4473,10 +4478,10 @@ app.get('/card/contact.vcf', (req, res) => {
 // Exchange contact: the visitor's details become a lead and a request, like an online booking
 app.post('/card/exchange', async (req, res) => {
   const p = bizPage(); const b = req.body || {}; const clip = (k, n) => String(b[k] || '').trim().slice(0, n);
-  const again = (status, error) => res.status(status).send(businessPage.render(p, { book: pageBook(), error, values: b }));
+  const again = (status, error) => res.status(status).send(businessPage.render(p, { book: pageBook(), sent: cardSent(), error, values: b }));
   if (!p.exchange) return res.redirect('/card');
   const spam = humanCheck.check(b, { form: 'business page', ip: req.ip }); // lib/human-check.js
-  if (spam && spam.bot) return res.send(businessPage.render(p, { book: pageBook(), done: true, values: b }));
+  if (spam && spam.bot) return res.send(businessPage.render(p, { book: pageBook(), sent: cardSent(), done: true, values: b }));
   if (spam) return again(400, spam.error);
   const ip = req.ip; const now = Date.now(); const hits = (bookHits.get(ip) || []).filter((t) => now - t < 3600e3);
   if (hits.length >= 5) return again(429, 'Too many messages from this connection. Please call or email us instead.');
@@ -4495,7 +4500,7 @@ app.post('/card/exchange', async (req, res) => {
   const details = emails.details([['Name', name + (isNew ? ' (new lead)' : '')], ['Phone', phone || c.phone], ['Email', email || c.email], ['From', 'Business page']]);
   const sent = await sendTemplate('workRequest', db.company.email, { client: name, title: r.title, details, request: r.details, business: db.company.name, account_url: baseUrl() });
   db.notifications.unshift({ id: uid(), at: r.createdAt, clientId: c.id, clientName: c.name, channel: 'email', kind: 'request', refId: r.id, refNumber: '', to: db.company.email || '', subject: `New request: ${r.title}`, body: sent.text, status: sent.status, detail: sent.detail });
-  save(); pushNewRequest('request', c, r); res.send(businessPage.render(p, { book: pageBook(), done: true, values: b }));
+  save(); pushNewRequest('request', c, r); res.send(businessPage.render(p, { book: pageBook(), sent: cardSent(), done: true, values: b }));
 });
 // Settings → Business Page: the page, its address, and how many times the QR code has been scanned
 const pageView = () => ({ page: bizPage(), scans: (db.businessPage && db.businessPage.scans) || 0, url: `${baseUrl()}/card`, companyLogo: db.company.logo || '', covers: businessPage.COVERS, icons: Object.fromEntries(Object.entries(businessPage.ICON_NAMES).map(([k, n]) => [k, { name: n, svg: businessPage.ICON[k] }])), qrLogos: businessPage.QR_LOGOS, qrFonts: businessPage.QR_FONTS, networks: Object.fromEntries(Object.entries(businessPage.NETWORKS).map(([k, [n, h]]) => [k, { name: n, handle: !!h }])) });
@@ -4536,7 +4541,7 @@ app.post('/api/business-page/preview', (req, res) => {
   const b = req.body || {}; let page; try { page = businessPage.clean(b); } catch (e) { return res.json({ error: e.message }); } // the preview keeps showing the last good version
   const pick = (v, old) => (PAGE_IMG.test(v || '') || v === '' || v === db.company.logo || v === old || businessPage.COVERS[v] ? v : old);
   const old = bizPage();
-  res.json({ html: businessPage.render({ ...old, ...page, logo: pick(b.logo, old.logo), cover: pick(b.cover, old.cover) }, { book: pageBook(), preview: true }) });
+  res.json({ html: businessPage.render({ ...old, ...page, logo: pick(b.logo, old.logo), cover: pick(b.cover, old.cover) }, { book: pageBook(), sent: cardSent(), preview: true }) });
 });
 
 // a client asks for work from their portal: saved as a request and emailed to the business
@@ -6227,7 +6232,7 @@ function clientIp(req) {
   return fwd[fwd.length - 1] || String(req.headers['x-real-ip'] || '').trim() || direct;
 }
 // which app answers: the platform's (its own domain, or /alpha… while developing) or an account's
-const PLATFORM_PATHS = /^\/(alpha(\/.*)?|platform(\/.*)?|stripe\/go\/[a-z]+|oauth\/(google|meta|tiktok|linkedin|pinterest|threads|quickbooks|xero|slack)\/callback|home|features|marketing|partners(\/[a-f0-9]+)?|go\/[A-Za-z0-9_-]+|quote-from-photos|good-better-best|pricing|signup|sign-in(\/(google|apple)(\/callback)?)?|supporters|industries(\/[a-z-]+)?|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;
+const PLATFORM_PATHS = /^\/(alpha(\/.*)?|platform(\/.*)?|stripe\/go\/[a-z]+|oauth\/(google|meta|tiktok|linkedin|pinterest|threads|quickbooks|xero|slack)\/callback|home|features|marketing|partners(\/[a-f0-9]+)?|go\/[A-Za-z0-9_-]+|from\/[a-z0-9-]+|quote-from-photos|good-better-best|pricing|signup|sign-in(\/(google|apple)(\/callback)?)?|supporters|industries(\/[a-z-]+)?|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;
 function dispatch(req, res) {
   req.ip = clientIp(req); // who's asking (login limits, spam checks)
   // browser safety on every reply: files are only treated as the type we say (an upload can't pass itself off as a script),
