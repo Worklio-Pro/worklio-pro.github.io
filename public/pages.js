@@ -987,16 +987,25 @@ const colWSave = (key, all) => { try { localStorage.setItem(colWKey(key), JSON.s
 const colWStyle = (key, col, def, last) => { const w = last ? 0 : colW(key)[col] || def; return w ? ` style="width:${w}px"` : ''; };
 function colResize(table, key, defs) {
   if (!table || phoneMq.matches) return; table.classList.add('rz-table');
-  const ths = $$('th[data-col]', table); ths.slice(0, -1).forEach((th) => {
+  const ths = $$('th[data-col]', table); const sized = ths.slice(0, -1); if (!sized.length) return;
+  // everything fits the table's box (no sideways scrolling): the last column keeps at least LAST_MIN
+  const LAST_MIN = 140; const MIN = 60;
+  const room = () => table.parentElement.clientWidth - ($('th.sel-td', table) ? 44 : 0) - LAST_MIN;
+  const px = (th) => parseInt(th.style.width, 10) || th.getBoundingClientRect().width;
+  const fit = () => { if (!table.isConnected) return removeEventListener('resize', fit); const sum = sized.reduce((t, th) => t + px(th), 0); const r = room();
+    if (sum > r && r > 0) sized.forEach((th) => { th.style.width = Math.max(MIN, Math.floor(px(th) * r / sum)) + 'px'; }); };
+  fit(); addEventListener('resize', fit);
+  sized.forEach((th) => {
     const h = document.createElement('span'); h.className = 'col-rz'; h.title = 'Drag to resize. Double-click for the default width.'; th.append(h);
     h.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
     h.addEventListener('pointerdown', (e) => {
-      e.preventDefault(); e.stopPropagation(); const x0 = e.clientX; const w0 = th.getBoundingClientRect().width; h.setPointerCapture(e.pointerId); document.body.classList.add('col-rzing');
-      const move = (ev) => { th.style.width = Math.max(60, Math.round(w0 + ev.clientX - x0)) + 'px'; };
-      const up = () => { h.removeEventListener('pointermove', move); h.removeEventListener('pointerup', up); document.body.classList.remove('col-rzing'); const all = colW(key); all[th.dataset.col] = parseInt(th.style.width, 10); colWSave(key, all); };
+      e.preventDefault(); e.stopPropagation(); const x0 = e.clientX; const w0 = px(th); h.setPointerCapture(e.pointerId); document.body.classList.add('col-rzing');
+      const max = room() - sized.filter((x) => x !== th).reduce((t, x) => t + px(x), 0);
+      const move = (ev) => { th.style.width = Math.max(MIN, Math.min(max, Math.round(w0 + ev.clientX - x0))) + 'px'; };
+      const up = () => { h.removeEventListener('pointermove', move); h.removeEventListener('pointerup', up); document.body.classList.remove('col-rzing'); const all = colW(key); all[th.dataset.col] = px(th); colWSave(key, all); };
       h.addEventListener('pointermove', move); h.addEventListener('pointerup', up);
     });
-    h.addEventListener('dblclick', (e) => { e.stopPropagation(); const all = colW(key); delete all[th.dataset.col]; colWSave(key, all); th.style.width = (defs[th.dataset.col] || 150) + 'px'; });
+    h.addEventListener('dblclick', (e) => { e.stopPropagation(); const all = colW(key); delete all[th.dataset.col]; colWSave(key, all); th.style.width = (defs[th.dataset.col] || 150) + 'px'; fit(); });
   });
 }
 const SVC_COLW = { name: 280, desc: 260, cat: 160, type: 120 };
