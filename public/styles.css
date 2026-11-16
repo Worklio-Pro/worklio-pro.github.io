@@ -2490,3 +2490,7 @@ body.col-rzing{cursor:col-resize;user-select:none}
 /* a completed job is read-only: the note on its page */
 .job-lock{margin:0 0 14px;padding:10px 14px;border-radius:10px;background:var(--tint);color:var(--muted);font-size:14px;line-height:1.4}
 .md-lock{margin:12px 0 0}
+/* an invoice paid in full: a big red PAID stamp (desktop page, phone page, client-view preview) */
+.vhead,.mp-inv,.mdoc{position:relative}
+.paid-stamp{position:absolute;top:6px;right:24px;z-index:1;padding:6px 22px;border:5px double #dc2626;border-radius:10px;color:#dc2626;font-size:44px;font-weight:900;letter-spacing:.12em;line-height:1.1;transform:rotate(-12deg);opacity:.85;pointer-events:none}
+.mdoc>.paid-stamp{top:56px;right:16px;font-size:34px;padding:4px 16px}.mp-inv>.paid-stamp{top:44px;right:12px;font-size:34px;padding:4px 16px}

@@ -2895,6 +2895,7 @@ function docPdfIn(kind, d) {
     if (paid > 0) row(tx('Payments'), '-' + money(paid));
     row(tx('Balance due'), money(x.balanceDue ?? d.total), true);
   }
+  if (!q && d.status === 'paid') pdf.stamp(440, 230, tx('PAID'), { page: 0 }); // paid in full: a big red stamp on the first page
   // the client message and the contract / disclaimer
   for (const [h, t] of [[tx('Message'), d.notes], [tx(q ? 'Contract / Disclaimer' : 'Terms'), d.disclaimer]]) {
     if (!String(t || '').trim()) continue;
@@ -3447,7 +3448,7 @@ app.get('/pay/:token', (req, res) => {
   const preview = !!currentUser(req); const payOff = (html) => (preview ? previewOff(html, 'opacity:.55') : html);
   const previewNote = preview ? `<p style="margin:12px 0;padding:12px 16px;border-radius:10px;background:#fdf2dc;color:#6b4a00;font-size:14px">${PREVIEW_NOTE}</p>` : '';
   res.send(shell(`${tx('Invoice')} ${inv.number}`, `<h1>${tx('Invoice')} ${esc(inv.number)} <span class="badge ${st === 'paid' ? 'paid' : ''}">${esc(stName)}</span></h1>
-${st === 'overdue' && on('showLateStamp') ? '<div style="display:inline-block;margin:8px 0;padding:4px 14px;border:2px solid #dc2626;color:#dc2626;border-radius:6px;font-weight:800;letter-spacing:.08em;transform:rotate(-2deg)">' + tx('PAST DUE') + '</div>' : ''}
+${st === 'paid' ? '<div style="float:right;margin:4px 4px 12px 16px;padding:6px 22px;border:5px double #dc2626;color:#dc2626;border-radius:10px;font-size:44px;font-weight:900;letter-spacing:.12em;line-height:1.1;transform:rotate(-12deg);opacity:.85">' + tx('PAID') + '</div>' : ''}${st === 'overdue' && on('showLateStamp') ? '<div style="display:inline-block;margin:8px 0;padding:4px 14px;border:2px solid #dc2626;color:#dc2626;border-radius:6px;font-weight:800;letter-spacing:.08em;transform:rotate(-2deg)">' + tx('PAST DUE') + '</div>' : ''}
 ${db.company.taxIdNumber ? `<div class="muted">${esc(db.company.taxIdName || tx('Tax ID'))}: ${esc(db.company.taxIdNumber)}</div>` : ''}<div class="muted">${tx('Billed to {name}', { name: esc(c?.name) })}${inv.subject ? ` · ${esc(inv.subject)}` : ''} · ${tx('Issued {date}', { date: esc(niceDate(inv.issueDate)) })} · ${inv.dueDate && inv.dueDate <= inv.issueDate ? tx('Due upon receipt') : tx('Due {date}', { date: esc(niceDate(inv.dueDate)) })}</div>
 ${itemsTable(x, { qty: on('showQty'), unit: on('showUnit'), line: on('showLineTotals'), invoice: true })}
 ${on('showAccountBalance') && st !== 'paid' && account > 0 ? `<p class="muted" style="text-align:right">${tx('Account balance (all open invoices):')} <strong>${money(account)}</strong></p>` : ''}

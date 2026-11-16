@@ -2698,6 +2698,8 @@ ${docCards('quote', d)}</div>${docSide('quote', d)}</div></div>`;
 }
 // an invoice's property address when it differs from the billing address: its own, else its job's
 const invProperty = (own, job, c) => { const a = own || (job && job.address) || ''; return a && a !== (c || {}).address ? a : ''; };
+// a big red PAID stamp on an invoice that's paid in full (desktop page, phone page and the client-view preview)
+const paidStamp = (d) => (d && d.status === 'paid' ? '<div class="paid-stamp" aria-label="Paid in full">PAID</div>' : '');
 function invoicePage(d) {
   const c = byId(D.clients, d.clientId) || {}; const job = byId(D.jobs, d.jobId); const st = d.displayStatus || d.status;
   const termsLabel = (TERMS.find(([k]) => k === String(d.paymentTerms)) || [, 'Custom date'])[1];
@@ -2706,7 +2708,7 @@ function invoicePage(d) {
   return `<div class="qview"><div class="qpage"><div class="qmain"><div class="qtop"><div class="qtop-l"><a href="/invoices" data-link class="back">← Invoices</a>${iBadge(st)}${d.zelleSentAt && d.status !== 'paid' ? `<span class="badge zelle">${sentName(d)} sent</span>` : ''}</div>
 <div class="actions">${invoiceMore(d, c)}
 ${d.status !== 'paid' ? sendBtn('invoice', d) : ''}</div></div>
-<div class="vhead"><div class="vtitle-row"><h1 class="vtitle">${esc(d.subject || `Invoice ${d.number}`)}</h1>${editBtn('invoice', d, 'top')}</div>
+<div class="vhead">${paidStamp(d)}<div class="vtitle-row"><h1 class="vtitle">${esc(d.subject || `Invoice ${d.number}`)}</h1>${editBtn('invoice', d, 'top')}</div>
 <div class="qhead"><div class="qclient"><div class="vclient"><span>${esc(c.name || 'No client')}</span>${c.id ? clientMenu(c) : ''}</div><div class="muted qlabel">Billing address</div><div class="qaddr">${esc(c.address || '') || '<span class="muted">No address on file</span>'}</div>
 <div class="muted qlabel" style="margin-top:10px">Property address</div><div class="qaddr">${invProperty(d.address, job, c) ? esc(invProperty(d.address, job, c)) : '(Same as billing address)'}</div>
 ${c.phone || c.email ? `<div class="vclient-c">${c.phone ? `<a href="tel:${esc(c.phone)}">${esc(c.phone)}</a>` : ''}${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ''}</div>` : ''}</div>
@@ -3018,7 +3020,7 @@ function mobileInvoicePreview(d) {
   const c = byId(D.clients, d.clientId) || {}; const receipts = invReceipts(d); const on = (k) => d[k] !== 'off';
   const items = (d.items || []).map((it) => `<div class="mp-item${it.sub ? ' sub' : ''}"><div><strong>${esc(it.desc)}</strong>${it.details ? `<small>${esc(it.details)}</small>` : ''}${!it.matrix && (on('showQty') || on('showUnit')) ? `<small>${[on('showQty') ? `Qty ${esc(it.qty)}` : '', on('showUnit') ? money(it.price) : ''].filter(Boolean).join(' × ')}</small>` : ''}</div>${on('showLineTotals') && !it.matrix ? `<span>${money(round2(it.qty * it.price))}</span>` : ''}</div>`).join('');
   const row = (l, v, cls = '') => `<div class="mp-row ${cls}"><span>${l}</span><span>${v}</span></div>`;
-  const invoice = `<div class="mp-inv"><div class="mp-title"><h2>Invoice #${esc(d.number)}</h2>${iBadge(d.displayStatus || d.status)}</div>
+  const invoice = `<div class="mp-inv">${paidStamp(d)}<div class="mp-title"><h2>Invoice #${esc(d.number)}</h2>${iBadge(d.displayStatus || d.status)}</div>
 <p class="mp-meta">Billed to ${esc(c.name || 'no client')}${d.subject ? ` · ${esc(d.subject)}` : ''}<br>Issued ${fmtDate((d.issueDate || '').slice(0, 10))} · Due ${d.dueDate && d.dueDate > d.issueDate ? fmtDate(d.dueDate) : 'upon receipt'}</p>
 ${items}<div class="mp-totals">${row('Subtotal', money(d.subtotal || 0))}${d.discount ? row(esc(discLabel(d)), '−' + money(d.discount)) : ''}${d.tax ? row(`Tax${Number(d.taxRate) ? ` (${d.taxRate}%)` : ''}`, money(d.tax)) : ''}${row('Total', money(d.total || 0), 'b')}${d.status === 'paid' ? '' : row('Balance due', money(invBalance(d)), 'b')}</div>
 ${d.notes ? `<p class="mp-note">${esc(d.notes)}</p>` : ''}${d.disclaimer ? `<p class="mp-note muted">${esc(d.disclaimer)}</p>` : ''}</div>`;
@@ -3067,7 +3069,7 @@ function mobileDocPage(kind, d) {
   const on = (k) => d[k] !== 'off';
   const viewSec = q ? '' : mTap(kind, d, 'clientView', `<span class="md-sh">Client view${ARROW}</span><span class="md-text muted">${[['showQty', 'Quantities'], ['showUnit', 'Unit prices'], ['showLineTotals', 'Line totals'], ['showAccountBalance', 'Account balance'], ['showLateStamp', 'Late stamp']].filter(([k]) => on(k)).map(([, l]) => l).join(', ') || 'Totals only'}</span>`, 'md-sec');
   return `<div class="mdoc"><a href="/${kind}s" data-link class="md-back" aria-label="Back to ${kind}s">${CHEV('M15 18l-6-6 6-6')}</a>
-<div class="md-st">${q ? qBadge(st) : iBadge(st)}${d.signedAt ? `<span class="vsign">✓ Signed${d.signedName ? ' by ' + esc(d.signedName) : ''}</span>` : ''}</div>
+${q ? '' : paidStamp(d)}<div class="md-st">${q ? qBadge(st) : iBadge(st)}${d.signedAt ? `<span class="vsign">✓ Signed${d.signedName ? ' by ' + esc(d.signedName) : ''}</span>` : ''}</div>
 ${mTap(kind, d, 'details', `<span class="md-h">${q ? 'Quote' : 'Invoice'} #${esc(d.number)} for ${esc(c.name || 'no client')} ${q && qHasOpts(d) && !d.chosenOption ? `· ${d.options.length} options from ${money(Math.min(...Object.values(d.optionTotals || {}).map((t) => t.total)))}` : `for ${money(d.total || 0)}`}</span>${(q ? d.title : d.subject) ? `<span class="md-sub">${esc(q ? d.title : d.subject)}</span>` : ''}
 <span class="md-dates"><span><small>${q ? 'Created' : 'Issued'}</small>${fmtDate(((q ? d.createdAt : d.issueDate) || '').slice(0, 10))}</span>${second && second[1] ? `<span><small>${second[0]}</small>${fmtDate(String(second[1]).slice(0, 10))}</span>` : ''}</span>`, 'md-head')}
 <div class="md-acts">${acts.filter(Boolean).join('')}<button type="button" class="btn alt md-more" data-act="mMore" data-kind="${kind}" data-id="${d.id}" aria-label="More actions">⋯</button></div>
