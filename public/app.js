@@ -4337,7 +4337,44 @@ A.editJob = (d) => { closeModal(); navigate('/jobs/edit?id=' + d.id); };
 A.delJob = async (d) => { if (!confirm('Delete this job?')) return; await api('DELETE', '/api/jobs/' + d.id); closeModal(); toast('Job deleted'); curPath() === '/jobs/edit' ? navigate('/jobs') : refresh(); };
 A.reopenJob = async (d) => { await api('PUT', '/api/jobs/' + d.id, { status: 'scheduled' }); toast('Job reopened'); refresh(); };
 A.jobInvoice = async (d) => { const inv = await api('POST', `/api/jobs/${d.id}/create-invoice`, {}); closeModal(); toast(inv.status === 'paid' ? 'Invoice created, paid in full by the deposit' : /^Remaining balance/.test((inv.items || [])[0]?.desc || '') ? 'Draft invoice created for the rest of the job' : 'Draft invoice created'); navigate('/invoices/view?id=' + inv.id); };
-A.jobRemind = async (d) => { const r = await api('POST', `/api/jobs/${d.id}/remind`, {}); const x = r.results[0]; toast(x.status === 'simulated' ? 'Reminder logged (no message provider connected)' : x.status === 'failed' ? x.detail || 'Reminder failed' : `Reminder sent by ${x.channel === 'sms' ? 'text' : 'email'}`, x.status === 'failed'); }; // the server texts clients who agreed to texts, and emails the rest
+// Email reminder: a box to edit the email (To, Subject, Message) on the left and the email as the client will see it on the right,
+// redrawn as you type (server.js remind-draft / remind-preview). A client who agreed to texts (with texting on the plan) gets the text straight away, as before.
+function remindDialog(j) {
+  const c = byId(D.clients, j.clientId) || {}; let typed = false; let seq = 0; let timer = null;
+  const mb = modal(`Email reminder to ${c.name || 'the client'}`, `<form class="em-form rm-form" data-sticky novalidate><div class="rm-grid"><div class="em-main">
+<label class="fl"><span>To</span><input name="to" value="${esc(c.email || '')}" placeholder="Email address (separate several with commas)" autocomplete="off"></label>
+<label class="fl"><span>Subject</span><input name="subject" maxlength="200" placeholder="Loading…"></label>
+<label class="fl"><span>Message</span><textarea name="message" rows="12" placeholder="Loading…"></textarea></label>
+<p class="muted em-note rm-note">Starts from your Appointment reminder email template (Settings → Email templates). Changes here are for this email only.</p></div>
+<div class="rm-side"><h3>Preview</h3><div class="rm-subj muted"></div><iframe class="rm-frame" title="Email preview" sandbox="allow-popups allow-popups-to-escape-sandbox"></iframe></div></div>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Send Email</button></div></form>`, true);
+  const f = $('form', mb); const frame = $('.rm-frame', mb);
+  const draw = async () => {
+    const n = ++seq;
+    try { const r = await api('POST', `/api/jobs/${j.id}/remind-preview`, { subject: f.subject.value, message: f.message.value }); if (n !== seq) return;
+      $('.rm-subj', mb).textContent = r.subject ? `Subject: ${r.subject}` : ''; frame.srcdoc = r.html; } catch (x) { /* keep the last preview */ }
+  };
+  const later = () => { typed = true; clearTimeout(timer); timer = setTimeout(draw, 350); };
+  f.subject.addEventListener('input', later); f.message.addEventListener('input', later);
+  api('GET', `/api/jobs/${j.id}/remind-draft`).then((r) => {
+    if (!typed) { f.subject.value = r.subject; f.message.value = r.message; } f.subject.placeholder = ''; f.message.placeholder = ''; if (!f.to.value) f.to.value = r.to || '';
+    const L = r.lang && r.lang !== 'en' && ((company.account && company.account.languages) || []).find((l) => l.code === r.lang); // the client's language
+    if (L) $('.rm-note', mb).insertAdjacentHTML('beforeend', ` <strong>Sends in ${esc(L.native)}:</strong> this client’s language is ${esc(L.name)}.`);
+    draw();
+  }).catch((x) => toast(x.message, true));
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault(); const btn = e.submitter || $('.foot .btn:not(.alt)', mb);
+    if (!f.message.value.trim()) return toast('Write a message first', true);
+    let r; try { btn.disabled = true; r = await api('POST', `/api/jobs/${j.id}/remind`, { email: { to: f.to.value, subject: f.subject.value, message: f.message.value } }); }
+    catch (x) { btn.disabled = false; return toast(x.message, true); }
+    closeModal(); const bad = r.results.find((x) => x.status === 'failed');
+    toast(bad ? bad.detail || 'Reminder failed' : r.results.some((x) => x.status === 'simulated') ? 'Reminder logged (no message provider connected)' : `Reminder emailed to ${r.results.map((x) => x.to).filter(Boolean).join(', ') || c.name || 'the client'}`, !!bad);
+  });
+}
+A.jobRemind = async (d) => {
+  const j = byId(D.jobs, d.id); const c = j && byId(D.clients, j.clientId);
+  if (j && !(planHas('sms') && c && c.smsConsent)) return remindDialog(j); // Email reminder: the preview box
+  const r = await api('POST', `/api/jobs/${d.id}/remind`, {}); const x = r.results[0]; toast(x.status === 'simulated' ? 'Reminder logged (no message provider connected)' : x.status === 'failed' ? x.detail || 'Reminder failed' : `Reminder sent by ${x.channel === 'sms' ? 'text' : 'email'}`, x.status === 'failed'); }; // the server texts clients who agreed to texts, and emails the rest
 // Job status as shown on the Jobs page, derived from the stored status (scheduled/completed/cancelled), the date and invoices
 const J_STATUS = { late: 'Late', today: 'Today', upcoming: 'Upcoming', invoice: 'Requires invoicing', archived: 'Archived', cancelled: 'Cancelled' };
 const J_CLASS = { late: 'q-declined', today: 'q-converted', upcoming: 'q-approved', invoice: 'q-sent', archived: 'q-draft', cancelled: 'q-draft' };

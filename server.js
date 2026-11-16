@@ -2956,15 +2956,38 @@ app.post('/api/invoices/:id/mark-paid', (req, res) => {
   save(); res.json(withStatus(inv));
 });
 
+// the job reminder email (the Appointment reminder template). The Email reminder box (public/app.js remindDialog) starts from
+// remind-draft, shows remind-preview as the client will see it, and sends what the box holds with POST remind ({ email: { to, subject, message } }).
+const remindVars = (j) => ({ client_name: findClient(j.clientId)?.name || '', company_name: db.company.name, company_email: db.company.email || '', job_number: j.number, job_title: j.title, date: niceDate(j.date), time: j.startTime, address: j.address || '' });
+const remindJob = (req, res) => { const j = db.jobs.find((x) => x.id === req.params.id); if (!j) res.status(404).json({ error: 'Not found' }); return j; };
+// the box's starting subject and message: the template's, filled in, without its heading or markup, in the client's language
+app.get('/api/jobs/:id/remind-draft', (req, res) => {
+  const j = remindJob(req, res); if (!j) return;
+  res.json(inClientLang(j.clientId, () => {
+    const t = emailTemplate('reminder'); const v = remindVars(j);
+    const message = fillVars(t.body.split('\n').filter((l) => !/^#\s/.test(l)).join('\n'), v).replace(/\*\*(.+?)\*\*/g, '$1').replace(/^>\s?/gm, '').replace(/\n{3,}/g, '\n\n').trim();
+    return { to: findClient(j.clientId)?.email || '', subject: fillVars(t.subject, v), message, lang: i18n.current() };
+  }));
+});
+const remindMail = (j, e) => inClientLang(j.clientId, () => renderEmail('reminder', remindVars(j), { subject: String(e.subject || '').slice(0, 200), body: String(e.message || '').slice(0, 10000) }));
+app.post('/api/jobs/:id/remind-preview', (req, res) => { const j = remindJob(req, res); if (!j) return; const m = remindMail(j, req.body || {}); res.json({ subject: m.subject, html: m.html }); });
 app.post('/api/jobs/:id/remind', async (req, res) => {
-  const j = db.jobs.find((x) => x.id === req.params.id);
-  if (!j) return res.status(404).json({ error: 'Not found' });
-  const co = db.company.name;
-  const channels = (req.body.channels && req.body.channels.length) ? req.body.channels : [tenancy.has('sms') && findClient(j.clientId)?.smsConsent ? 'sms' : 'email'];
-  const email = inClientLang(j.clientId, () => renderEmail('reminder', { client_name: findClient(j.clientId)?.name || '', company_name: co, job_number: j.number, job_title: j.title, date: niceDate(j.date), time: j.startTime, address: j.address || '' }));
+  const j = remindJob(req, res); if (!j) return;
+  const e = req.body.email; // from the Email reminder box: its addresses, subject and message
+  const channels = e ? ['email'] : (req.body.channels && req.body.channels.length) ? req.body.channels : [tenancy.has('sms') && findClient(j.clientId)?.smsConsent ? 'sms' : 'email'];
+  let to = [null];
+  if (e) {
+    to = [...new Set(String(e.to || '').split(/[\s,;]+/).filter(Boolean))];
+    if (!to.length) return res.status(400).json({ error: 'Enter an email address to send to' });
+    if (to.length > 5) return res.status(400).json({ error: 'Send to 5 email addresses at most' });
+    const bad = to.find((a) => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(a)); if (bad) return res.status(400).json({ error: `“${bad}” isn’t an email address` });
+    if (!String(e.message || '').trim()) return res.status(400).json({ error: 'Write a message first' });
+    if (!String(e.subject || '').trim()) return res.status(400).json({ error: 'Add a subject' });
+  }
+  const email = e ? remindMail(j, e) : inClientLang(j.clientId, () => renderEmail('reminder', remindVars(j)));
   const results = [];
-  for (const ch of channels) {
-    results.push(await notify({ clientId: j.clientId, channel: ch, kind: 'job', refId: j.id, refNumber: j.number,
+  for (const ch of channels) for (const addr of ch === 'email' ? to : [null]) {
+    results.push(await notify({ clientId: j.clientId, channel: ch, kind: 'job', refId: j.id, refNumber: j.number, ...(addr ? { to: addr } : {}),
       subject: email.subject, html: ch === 'email' ? email.html : '', body: ch === 'email' ? email.body : `Reminder for "${j.title}" on ${j.date} at ${j.startTime}. Reply STOP to opt out.` }));
   }
   res.json({ results }); save();
