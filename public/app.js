@@ -4534,3 +4534,10 @@ ${j.onMyWay ? `<p class="notice">${esc(j.onMyWay.name)} already sent this ${ymd(
     } catch (err) { b.disabled = false; toast(err.message, true); }
   });
 };
+// the side menu scrolls on its own: when it's too short to scroll, the wheel over it doesn't scroll the page behind it either
+// (CSS overscroll-behavior covers a menu that scrolls; search results open inside the menu scroll themselves)
+document.addEventListener('wheel', (e) => {
+  const side = e.target.closest && e.target.closest('#side'); if (!side || e.ctrlKey) return;
+  if (e.target.closest('.tb-results')) return;
+  if (side.scrollHeight <= side.clientHeight + 1) e.preventDefault();
+}, { passive: false });
