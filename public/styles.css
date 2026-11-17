@@ -2731,3 +2731,6 @@ body.p404-only #billingBar{display:none!important}
 .addr-ac div>span{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;min-width:0}
 .addr-ac div svg{flex:none;width:15px;height:15px;align-self:center;color:var(--muted)}
 .addr-ac .addr-ac-osm{margin:4px 10px 2px;font-size:11px;color:var(--muted)}
+/* a Beta tag in a card's title on a dark card (dark theme): a yellow ring so it doesn't sink into the background */
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]) .card :is(h1,h2,h3,h4) .beta-tag{box-shadow:inset 0 0 0 1px #facc15}}
+:root[data-theme=dark] .card :is(h1,h2,h3,h4) .beta-tag{box-shadow:inset 0 0 0 1px #facc15}
