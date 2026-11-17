@@ -2535,6 +2535,17 @@ body.p404-only #billingBar{display:none!important}
 .mk-menu{position:absolute;z-index:30;background:var(--card);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.14);padding:6px;min-width:180px;margin-top:2px}
 .mk-menu a{display:block;padding:8px 10px;border-radius:6px;color:var(--text);text-decoration:none;font-size:14px}
 .mk-menu a:hover,.mk-menu a.on{background:var(--bg)}
+/* Marketing tabs on phones: a button with the page you're on that opens every tab as a list (in the page, so nothing clips it) */
+.mk-phone{display:none;margin:0 0 16px}
+.mk-phone>summary{list-style:none;display:flex;align-items:center;gap:8px;min-height:48px;padding:0 14px;border:1px solid var(--border);border-radius:12px;background:var(--card);cursor:pointer;font-size:16px}
+.mk-phone>summary::-webkit-details-marker{display:none}
+.mk-ph-k{color:var(--muted);font-size:13px;font-weight:600}.mk-phone>summary strong{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mk-ph-ar{color:var(--muted);transition:transform .15s}.mk-phone[open] .mk-ph-ar{transform:rotate(180deg)}
+.mk-phone[open]>summary{border-radius:12px 12px 0 0;border-bottom-color:var(--line)}
+.mk-ph-list{border:1px solid var(--border);border-top:0;border-radius:0 0 12px 12px;background:var(--card);padding:6px}
+.mk-ph-list a{display:flex;align-items:center;gap:8px;min-height:46px;padding:0 12px;border-radius:8px;color:var(--text);text-decoration:none;font-size:16px}
+.mk-ph-list a.on{background:var(--tint);color:var(--tint-fg);font-weight:600}
+@media (max-width:760px){.mk-phone{display:block}.mk-tabs{display:none}}
 .mk-soon{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:1px 6px;border-radius:99px;background:color-mix(in srgb,var(--brand) 14%,transparent);color:var(--link)}
 .mk-dash{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:18px;align-items:start}
 .mk-left>.card,.mk-right>.card{margin-bottom:16px}

@@ -2342,9 +2342,12 @@ function mkTabs(path) {
   const ok = ([p]) => memberCan(p.startsWith('/marketing/') ? '/marketing/dashboard' : p);
   const a = ([p, l]) => `<a href="${p}" data-link class="${mkTabOn(p, path) ? 'on' : ''}"${mkTabOn(p, path) ? ' aria-current="page"' : ''}>${l}${MK_SOON[p] ? '<span class="mk-soon">Soon</span>' : ''}</a>`;
   const more = MK_MORE.filter(ok); const inMore = more.some(([p]) => mkTabOn(p, path));
-  return `<nav class="mk-tabs" aria-label="Marketing">${MK_MAIN.filter(ok).map(a).join('')}${more.length ? `<details class="mk-more"><summary class="${inMore ? 'on' : ''}">${inMore ? esc(more.find(([p]) => mkTabOn(p, path))[1]) : 'More'} <span aria-hidden="true">▾</span></summary><div class="mk-menu">${more.map(a).join('')}</div></details>` : ''}</nav>`;
+  // phones: one button with the page you're on, opening a list of every tab (More's too) in the page instead of a strip to scroll
+  const all = [...MK_MAIN.filter(ok), ...more]; const cur = all.find(([p]) => mkTabOn(p, path));
+  const phone = `<details class="mk-phone"><summary><span class="mk-ph-k">Marketing</span><strong>${cur ? esc(cur[1]) : 'Menu'}</strong><span class="mk-ph-ar" aria-hidden="true">▾</span></summary><div class="mk-ph-list">${all.map(a).join('')}</div></details>`;
+  return phone + `<nav class="mk-tabs" aria-label="Marketing">${MK_MAIN.filter(ok).map(a).join('')}${more.length ? `<details class="mk-more"><summary class="${inMore ? 'on' : ''}">${inMore ? esc(more.find(([p]) => mkTabOn(p, path))[1]) : 'More'} <span aria-hidden="true">▾</span></summary><div class="mk-menu">${more.map(a).join('')}</div></details>` : ''}</nav>`;
 }
-document.addEventListener('click', (e) => { $$('details.mk-more[open]').forEach((d) => { if (!d.contains(e.target) || e.target.closest('.mk-menu a')) d.open = false; }); });
+document.addEventListener('click', (e) => { $$('details.mk-more[open], details.mk-phone[open]').forEach((d) => { if (!d.contains(e.target) || e.target.closest('.mk-menu a, .mk-ph-list a')) d.open = false; }); });
 const mkHead = (title, sub) => `<div class="head"><div><h1>${title}</h1>${sub ? `<p class="sub">${sub}</p>` : ''}</div></div>`;
 // the Marketing suite add-on (company.account.marketingAddon: state 'off' | 'trial' | 'on' | 'ending' | 'included', its price, trialDays
 // when the first 14 days are free); only the owner adds or removes it
