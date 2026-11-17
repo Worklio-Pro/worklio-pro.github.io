@@ -2408,6 +2408,50 @@ const plTabOf = (x) => (x.status === 'failed' ? 'action' : x.status === 'posting
 const plState = { tab: '', extra: {} }; // extra: photos added from the device to a suggestion on this visit, by id (JPEG data URLs)
 const plWhen = (x) => `${new Date(x.day + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}, ${fmtTime(x.time)}`;
 const plDayAfter = (d, n) => { const t = new Date(d + 'T12:00:00'); t.setDate(t.getDate() + n); return t.toLocaleDateString('en-CA'); };
+// each suggestion's picture, drawn here in the business's brand color with its logo: a 1080px square JPEG (fits every network).
+// A review post shows its stars and the client's words; the others show the post's headline (x.art, editable on the card).
+const plImg = (src) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+function plShade(hex, f) { const n = parseInt(hex.slice(1), 16); const ch = (v) => Math.round(f < 0 ? v * (1 + f) : v + (255 - v) * f); return `rgb(${ch(n >> 16)},${ch((n >> 8) & 255)},${ch(n & 255)})`; }
+function plWrap(g, text, w) { const out = []; let line = ''; for (const word of String(text).split(/\s+/).filter(Boolean)) { const t = line ? line + ' ' + word : word; if (line && g.measureText(t).width > w) { out.push(line); line = word; } else line = t; } if (line) out.push(line); return out; }
+async function plArt(x, P, words) {
+  const B = P.brand; const S = 1080; const c = document.createElement('canvas'); c.width = c.height = S; const g = c.getContext('2d');
+  try { await document.fonts.ready; } catch (e) { /* draw with what's there */ }
+  const font = getComputedStyle(document.body).fontFamily || 'system-ui, sans-serif';
+  const n = parseInt(B.color.slice(1), 16); const lum = (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
+  const ink = lum > 0.65 ? '#111827' : '#ffffff';
+  const bg = g.createLinearGradient(0, 0, S, S); bg.addColorStop(0, plShade(B.color, 0.08)); bg.addColorStop(1, plShade(B.color, -0.35)); g.fillStyle = bg; g.fillRect(0, 0, S, S);
+  g.fillStyle = ink; g.globalAlpha = 0.07; for (const [cx, cy, r] of [[S * 0.95, S * 0.06, 300], [S * 0.02, S * 0.98, 230], [S * 0.86, S * 0.9, 90]]) { g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fill(); } g.globalAlpha = 1;
+  const M = 90; g.textBaseline = 'alphabetic';
+  // top: the logo on a white card, or the business name
+  let logoOk = false;
+  if (B.logo) { try { const im = await plImg(B.logo); const h = 96; const w = Math.min(460, (im.width * h) / im.height); g.fillStyle = '#fff'; g.beginPath(); if (g.roundRect) g.roundRect(M - 22, M - 22, w + 44, h + 44, 22); else g.rect(M - 22, M - 22, w + 44, h + 44); g.fill(); g.drawImage(im, M, M, w, h); logoOk = true; } catch (e) { /* no logo then */ } }
+  g.fillStyle = ink;
+  if (!logoOk && B.name) { g.font = `700 46px ${font}`; g.fillText(plWrap(g, B.name, S - 2 * M)[0], M, M + 40); }
+  // the middle
+  const top = 300; const bottom = S - 190; const W = S - 2 * M;
+  if (x.review) {
+    g.font = `400 84px ${font}`; g.fillStyle = '#fbbf24'; g.fillText('★'.repeat(x.review.stars), M, top);
+    g.fillStyle = ink; let size = 60; let lines = [];
+    for (; size >= 36; size -= 4) { g.font = `600 ${size}px ${font}`; lines = plWrap(g, `“${x.review.comment.trim()}”`, W); if (lines.length * size * 1.3 <= bottom - top - 140) break; }
+    size = Math.max(size, 36); g.font = `600 ${size}px ${font}`;
+    const max = Math.floor((bottom - top - 140) / (size * 1.3)); if (lines.length > max) { lines = lines.slice(0, max); lines[max - 1] = lines[max - 1].replace(/[\s,.;:!?”]*$/, '') + '…”'; }
+    lines.forEach((l, i) => g.fillText(l, M, top + 80 + size + i * size * 1.3));
+    g.font = `400 38px ${font}`; g.globalAlpha = 0.85; g.fillText('One of our clients', M, top + 80 + size + lines.length * size * 1.3 + 30); g.globalAlpha = 1;
+  } else {
+    const text = String(words || '').trim() || x.title || ''; let size = 112; let lines = [];
+    for (; size >= 56; size -= 6) { g.font = `800 ${size}px ${font}`; lines = plWrap(g, text, W); if (lines.length <= 4 && lines.every((l) => g.measureText(l).width <= W)) break; }
+    size = Math.max(size, 56); lines = lines.slice(0, 5); const lh = size * 1.12; const kindH = 70; const block = kindH + lines.length * lh; let y = top + Math.max(0, (bottom - top - block) / 2);
+    g.font = `700 32px ${font}`; g.globalAlpha = 0.8; g.fillText(String(x.kindName || '').toUpperCase(), M, y + 32); g.globalAlpha = 1;
+    g.fillRect(M, y + 52, 90, 8); y += kindH + size * 0.9;
+    g.font = `800 ${size}px ${font}`; lines.forEach((l, i) => g.fillText(l, M, y + i * lh));
+  }
+  // the bottom: name and town
+  const nm = logoOk ? B.name || '' : ''; // without a logo the name is already at the top
+  if (nm || B.town) { g.globalAlpha = 0.25; g.fillRect(M, S - 150, S - 2 * M, 2); g.globalAlpha = 1; }
+  g.font = `700 40px ${font}`; g.fillText(nm, M, S - 82);
+  if (B.town) { const w = g.measureText(nm).width; g.font = `400 40px ${font}`; g.globalAlpha = 0.8; g.fillText((nm ? '  ·  ' : '') + B.town, M + w, S - 82); g.globalAlpha = 1; }
+  return c.toDataURL('image/jpeg', 0.9);
+}
 function plCard(x, P, R) {
   const nets = SP_NETS.filter(([k]) => P.nets.includes(k) && R[k]);
   const chips = (res) => Object.entries(res || {}).map(([k, r]) => (r.status === 'posted' && r.url ? `<a class="conn-chip on" href="${esc(r.url)}" target="_blank" rel="noopener"><i></i>${SP_NAMES[k] || k}</a>` : r.status === 'posted' ? `<span class="conn-chip on"><i></i>${SP_NAMES[k] || k}</span>` : `<span class="conn-chip off" title="${esc(r.error || '')}"><i></i>${SP_NAMES[k] || k} failed</span>`)).join('');
@@ -2428,8 +2472,9 @@ function plCard(x, P, R) {
   return `<form class="jp-draft pl-draft" data-id="${x.id}" id="pl-${x.id}"><div class="jp-top">${label}${x.jobId ? `<a class="mk-link" href="/jobs/edit?id=${x.jobId}" data-link>${esc(x.jobTitle || 'Open job')}</a>` : ''}</div>
 ${x.review ? `<blockquote class="pl-review">${'★'.repeat(x.review.stars)} “${esc(x.review.comment)}”</blockquote>` : ''}
 ${x.photos.length ? `<p class="muted jp-hint">Tick the photos to post (up to 10). The first one ticked is the cover.</p><div class="jp-photos">${x.photos.map((p) => `<label title="${esc(p.label)}"><input type="checkbox" name="pic" value="${esc(p.url)}" ${p.picked ? 'checked' : ''}><img src="${esc(p.url)}" alt="${esc(p.label)} photo" loading="lazy"><span>${esc(p.label)}</span></label>`).join('')}</div>` : ''}
+${P.settings.graphics ? `<div class="pl-art"><img data-art="${x.id}" alt="Picture made for this post"><div><label class="sp-chk"><input type="checkbox" name="art" ${x.photos.length ? '' : 'checked'}> Post this picture${x.photos.length ? ' too' : ''}</label>${x.review ? '<small class="muted">Made from the review: its stars and the client’s words, with your logo and colors.</small>' : `<label>Words on the picture<input name="artText" maxlength="60" value="${esc(x.art)}"></label><small class="muted">Made with your logo and brand color. Change the words and it redraws.</small>`}</div></div>` : ''}
 ${extra.length ? `<div class="jp-photos">${extra.map((src, i) => `<label><input type="checkbox" name="xpic" value="${i}" checked><img src="${src}" alt="Your photo"><span>Added</span></label>`).join('')}</div>` : ''}
-<div class="pl-add"><label class="btn alt sm">+ Add photos<input type="file" accept="image/*" multiple hidden data-add="${x.id}"></label><small class="muted">${x.photos.length || extra.length || !P.nets.some((k) => ['instagram', 'pinterest'].includes(k)) ? '' : `${P.nets.filter((k) => ['instagram', 'pinterest'].includes(k)).map((k) => SP_NAMES[k]).join(' and ')} posts need a photo. `}Photos you add here are kept until you approve or leave this page.</small></div>
+<div class="pl-add"><label class="btn alt sm">+ Add photos<input type="file" accept="image/*" multiple hidden data-add="${x.id}"></label><small class="muted">${x.photos.length || extra.length || P.settings.graphics || !P.nets.some((k) => ['instagram', 'pinterest'].includes(k)) ? '' : `${P.nets.filter((k) => ['instagram', 'pinterest'].includes(k)).map((k) => SP_NAMES[k]).join(' and ')} posts need a photo. `}Photos you add here are kept until you approve or leave this page.</small></div>
 <label>Post${x.ai ? ' <small class="muted">written by AI for your business. Change anything you like.</small>' : ''}<textarea name="caption" rows="6" maxlength="2200">${esc(x.caption)}</textarea></label>
 ${P.ai ? `<div class="jp-tones"><span class="muted">Write it again:</span>${JP_TONES.map(([k, n]) => `<button type="button" class="btn alt sm" data-act="plRewrite" data-id="${x.id}" data-tone="${k}">${n}</button>`).join('')}</div>` : ''}
 <div class="pl-when"><label>Day<input type="date" name="day" value="${x.day}" min="${P.today}"></label><label>Time<input type="time" name="time" value="${x.time}" step="300"></label></div>
@@ -2452,7 +2497,7 @@ PAGES['/marketing/plan'] = {
     if (!plState.tab || (plState.tab === 'action' && !n('action'))) plState.tab = n('action') ? 'action' : n('suggested') || P.making ? 'suggested' : 'scheduled';
     const list = P.items.filter((x) => plTabOf(x) === plState.tab); if (['posted', 'skipped'].includes(plState.tab)) list.reverse();
     const empty = { action: 'Nothing needs your attention.', suggested: P.making ? 'Writing this week’s posts… This takes about a minute.' : P.settings.on ? 'Nothing to approve right now. New suggestions come every Monday morning, or tap Suggest new posts.' : 'Weekly suggestions are turned off. Turn them on in Plan settings below, or tap Suggest new posts.', scheduled: 'No posts scheduled. Approve a suggestion and it shows up here.', posted: 'Nothing posted from your plan yet.', skipped: 'Nothing skipped.' }[plState.tab];
-    const S = P.settings;
+    const S = P.settings; plState.P = P;
     main.innerHTML = `${mkTabs('/marketing/plan')}${mkHead('Marketing plan', 'Every week, AI suggests posts for your business, the season and your finished jobs. Check each one, change what you like and approve it. Nothing is posted until you approve it.')}
 ${P.nets.length ? '' : '<div class="card mk-upsell"><div><strong>Connect a social account first</strong><p class="muted">Your plan posts to the accounts you connect: Facebook, Instagram, Google Business Profile, LinkedIn and more.</p></div><a class="btn" href="/social-posts" data-link>Connect accounts</a></div>'}
 <div class="card pl-top"><div class="pl-bar"><div><h2>Next 7 days</h2><p class="muted" style="margin:0">${P.lastBatch ? `Last suggestions: ${fmtDate(new Date(P.lastBatch.at).toLocaleDateString('en-CA'))}.` : 'Your first suggestions are on the way.'}${P.ai ? ` ${P.aiLeft} of ${P.aiMonthly} AI rewrites left this month.` : ''}</p></div>
@@ -2462,6 +2507,7 @@ ${P.nets.length ? '' : '<div class="card mk-upsell"><div><strong>Connect a socia
 <details class="card pl-set"><summary><strong>Plan settings</strong></summary>
 <label class="sp-chk"><input type="checkbox" id="plOn" ${S.on ? 'checked' : ''}> Suggest posts every Monday morning</label>
 <label class="sp-chk">Posts a week <select id="plPer">${[3, 4, 5].map((k) => `<option ${S.perWeek === k ? 'selected' : ''}>${k}</option>`).join('')}</select></label>
+<label class="sp-chk"><input type="checkbox" id="plArt" ${S.graphics ? 'checked' : ''}> Make a picture for each post, with your logo and brand color</label>
 <label class="sp-chk"><input type="checkbox" id="plMail" ${S.notify ? 'checked' : ''}> Email the owner when new suggestions are ready</label>
 <p class="muted" style="font-size:13px;margin:0">${P.ai ? 'Posts are written by AI from your trade, services, town, the season, your finished jobs with photos and your new reviews. It never names your clients or their street.' : 'AI writing isn’t available right now, so suggestions are simple posts from your jobs and reviews for you to edit.'}${P.booking ? ' A link to your booking page is added where the network allows it, so you can see the requests your posts bring in.' : ''}</p></details>`;
     if (P.making) setTimeout(() => { if (location.pathname === '/marketing/plan') refresh(); }, 5000);
@@ -2470,13 +2516,21 @@ ${P.nets.length ? '' : '<div class="card mk-upsell"><div><strong>Connect a socia
 };
 function bindPlan() {
   const set = (id, key, val) => { const el = $('#' + id); if (el) el.addEventListener('change', async () => { try { await api('PUT', '/api/marketing/plan/settings', { [key]: val(el) }); toast('Saved'); } catch (x) { toast(x.message, true); refresh(); } }); };
-  set('plOn', 'on', (el) => el.checked); set('plMail', 'notify', (el) => el.checked); set('plPer', 'perWeek', (el) => Number(el.value));
+  set('plOn', 'on', (el) => el.checked); set('plArt', 'graphics', (el) => { setTimeout(refresh, 400); return el.checked; }); set('plMail', 'notify', (el) => el.checked); set('plPer', 'perWeek', (el) => Number(el.value));
   for (const inp of $$('input[data-add]')) inp.addEventListener('change', async () => {
     const id = inp.dataset.add; const files = [...inp.files].slice(0, 10); inp.value = '';
     try { const add = []; for (const f of files) add.push(await toJpeg(await readFileAsDataUrl(f), 1440)); plState.extra[id] = [...(plState.extra[id] || []), ...add].slice(0, 10); refresh(); } catch (x) { toast('Couldn’t read that photo', true); }
   });
+  const P = plState.P;
   for (const f of $$('form.pl-draft')) {
-    const id = f.dataset.id; const cap = f.caption; let saved = cap.value;
+    const id = f.dataset.id; const cap = f.caption; let saved = cap.value; const x = P && P.items.find((y) => y.id === id);
+    const pic = $('img[data-art]', f); const words = f.artText; let artSaved = words ? words.value : ''; let timer = 0;
+    const draw = async () => { if (!pic || !x) return; try { pic.src = await plArt(x, P, words ? words.value : ''); } catch (e) { pic.closest('.pl-art').hidden = true; } };
+    draw();
+    if (words) {
+      words.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(draw, 250); });
+      words.addEventListener('blur', () => { if (words.value !== artSaved) { artSaved = words.value; save({ art: words.value }); } });
+    }
     const save = async (body) => { try { await api('PUT', '/api/marketing/plan/' + id, body); } catch (x) { toast(x.message, true); } };
     $$('input[name=pic]', f).forEach((c) => c.addEventListener('change', () => save({ picked: $$('input[name=pic]:checked', f).map((x) => x.value) })));
     $$('input[name=to]', f).forEach((c) => c.addEventListener('change', () => save({ to: $$('input[name=to]:checked', f).map((x) => x.value) })));
@@ -2485,7 +2539,8 @@ function bindPlan() {
     f.time.addEventListener('change', () => { if (f.time.value) save({ time: f.time.value }); });
     f.addEventListener('submit', async (e) => {
       e.preventDefault(); const btn = $('.sp-foot .btn:not(.alt)', f); const to = $$('input[name=to]:checked', f).map((x) => x.value); const text = cap.value.trim();
-      const pics = [...$$('input[name=pic]:checked', f).map((x) => x.value), ...$$('input[name=xpic]:checked', f).map((x) => (plState.extra[id] || [])[Number(x.value)])].filter(Boolean);
+      const art = f.art && f.art.checked && x && pic && !pic.closest('.pl-art').hidden ? [await plArt(x, P, words ? words.value : '')] : [];
+      const pics = [...(x && x.photos.length ? [] : art), ...$$('input[name=pic]:checked', f).map((x) => x.value), ...$$('input[name=xpic]:checked', f).map((x) => (plState.extra[id] || [])[Number(x.value)]), ...(x && x.photos.length ? art : [])].filter(Boolean);
       if (!to.length) return toast('Choose where to post', true);
       if (!f.day.value || !f.time.value) return toast('Pick a day and time', true);
       if (pics.length > 10) return toast('Up to 10 photos per post', true);
@@ -2499,7 +2554,7 @@ function bindPlan() {
       btn.disabled = true; btn.textContent = 'Scheduling…';
       try {
         const images = []; for (const src of pics) images.push(await toJpeg(src, 1440, to.includes('bluesky') ? 950000 : 0));
-        await api('POST', `/api/marketing/plan/${id}/approve`, { caption: cap.value, to, images, day: f.day.value, time: f.time.value });
+        await api('POST', `/api/marketing/plan/${id}/approve`, { caption: cap.value, to, images, ...(words ? { art: words.value } : {}), day: f.day.value, time: f.time.value });
         delete plState.extra[id]; toast(`Approved. It goes out ${plWhen({ day: f.day.value, time: f.time.value })}.`); refresh();
       } catch (x) { btn.disabled = false; btn.textContent = 'Approve and schedule'; toast(x.message, true); }
     });

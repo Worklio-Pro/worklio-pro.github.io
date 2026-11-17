@@ -2657,3 +2657,8 @@ body.p404-only #billingBar{display:none!important}
 @keyframes plFlash{0%,40%{box-shadow:0 0 0 3px var(--brand)}100%{box-shadow:0 0 0 0 transparent}}
 .pl-set{margin-top:18px}.pl-set summary{cursor:pointer}.pl-set[open] summary{margin-bottom:12px}.pl-set select{width:auto;margin-left:8px}
 @media (max-width:760px){.pl-week{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:132px;overflow-x:auto;padding-bottom:4px}.pl-row{grid-template-columns:56px minmax(0,1fr)}.pl-row img,.pl-row .sp-noimg{width:56px;height:56px}.pl-btns{grid-column:1/-1;flex-direction:row;justify-content:flex-end}}
+.pl-art{display:flex;gap:14px;align-items:flex-start;margin:0 0 12px}
+.pl-art img{width:150px;height:150px;flex:none;border-radius:10px;object-fit:cover;background:var(--surface-2);box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.pl-art>div{display:flex;flex-direction:column;gap:6px;flex:1;min-width:0}
+.pl-art label input[name=artText]{width:100%;margin-top:4px}
+@media (max-width:600px){.pl-art img{width:110px;height:110px}}
