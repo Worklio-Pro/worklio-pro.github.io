@@ -2477,7 +2477,7 @@ function plCard(x, P, R) {
     return `<div class="sp-row pl-row" id="pl-${x.id}">${img}<div><p class="pl-rt">${label}</p><p>${esc(x.caption)}</p><div class="sp-meta">${meta}</div></div><div class="pl-btns">${btns}</div></div>`;
   }
   if (x.status === 'skipped' || x.status === 'expired') {
-    return `<div class="sp-row pl-row" id="pl-${x.id}"><span class="sp-noimg"></span><div><p class="pl-rt">${label}</p><p>${esc(x.caption)}</p><div class="sp-meta"><span class="muted">${x.status === 'expired' ? `Not approved before ${plWhen(x)}` : 'Skipped'}</span></div></div><div class="pl-btns"><button type="button" class="btn alt sm" data-act="plRevive" data-id="${x.id}">Use it</button></div></div>`;
+    return `<div class="sp-row pl-row" id="pl-${x.id}"><span class="sp-noimg"></span><div><p class="pl-rt">${label}</p><p>${esc(x.caption)}</p><div class="sp-meta"><span class="muted">${x.status === 'expired' ? `Not approved before ${plWhen(x)}` : 'Skipped'}</span></div></div><div class="pl-btns"><button type="button" class="btn alt sm" data-act="plRevive" data-id="${x.id}">Use it</button><button type="button" class="btn alt sm danger-text" data-act="plDelete" data-id="${x.id}">Delete</button></div></div>`;
   }
   const extra = plState.extra[x.id] || [];
   return `<form class="jp-draft pl-draft" data-id="${x.id}" id="pl-${x.id}"><div class="jp-top">${label}${x.jobId ? `<a class="mk-link" href="/jobs/edit?id=${x.jobId}" data-link>${esc(x.jobTitle || 'Open job')}</a>` : ''}</div>
@@ -2690,6 +2690,7 @@ A.plSkip = (d) => plDo('DELETE', '/api/marketing/plan/' + d.id, 'Skipped. It won
 A.plUnschedule = (d) => { plState.tab = 'suggested'; plDo('POST', `/api/marketing/plan/${d.id}/unschedule`, 'Unscheduled. Change it and approve it again.'); };
 A.plRetry = (d) => plDo('POST', `/api/marketing/plan/${d.id}/retry`, 'Trying again. It goes out within a minute.');
 // a skipped or expired post, back to To approve for tomorrow at the same time
+A.plDelete = (d) => { if (confirm('Delete this post? It’s removed for good.')) plDo('POST', `/api/marketing/plan/${d.id}/delete`, 'Deleted'); };
 A.plRevive = async (d) => { try { await api('POST', `/api/marketing/plan/${d.id}/revive`); plState.tab = 'suggested'; refresh(); } catch (x) { toast(x.message, true); } };
 A.plSuggest = async (d, el) => {
   if (!confirm('Suggest new posts for the next 7 days?\n\nPosts waiting for approval are replaced. Scheduled posts stay as they are.')) return;

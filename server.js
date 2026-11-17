@@ -5756,6 +5756,7 @@ app.post('/api/marketing/plan/:id/rewrite', mkPlanRoute((req) => mkPlan.rewrite(
 app.post('/api/marketing/plan/:id/approve', mkPlanRoute((req) => mkPlan.approve(req.params.id, req.body || {}, currentUser(req).name || '')));
 app.post('/api/marketing/plan/:id/unschedule', mkPlanRoute((req) => mkPlan.unschedule(req.params.id)));
 app.post('/api/marketing/plan/:id/revive', mkPlanRoute((req) => mkPlan.revive(req.params.id)));
+app.post('/api/marketing/plan/:id/delete', mkPlanRoute((req) => mkPlan.remove(req.params.id)));
 app.post('/api/marketing/plan/:id/retry', mkPlanRoute((req) => mkPlan.retry(req.params.id)));
 app.delete('/api/marketing/plan/:id', mkPlanRoute((req) => mkPlan.skip(req.params.id)));
 // Every job markets itself: Marketing → Ready to post (anyone with Social posts); the on/off switch and the owner's emails: owner or admin
