@@ -2629,8 +2629,8 @@ body.p404-only #billingBar{display:none!important}
 .mk-row4{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:stretch;margin-bottom:20px}
 .mk-row4>.card{margin:0}
 @media (max-width:1000px){.mk-row4{grid-template-columns:1fr}}
-/* dark mode: boxes with a shaded title band get a darker body, so the band stands out */
-:root{--titled-card:var(--card)}
-:root[data-theme=dark]{--titled-card:#0c1322}
-@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--titled-card:#0c1322}}
-#main:not(.portal) .card:not(.sa-card):has(>h2:first-child,>.bill-h:first-child,>.plan-head:first-child,>.tpl-head:first-child,>.pay-card-h:first-child){background:var(--titled-card)}
+/* boxes with a shaded title band are dark in both themes: they get the dark theme's tokens, so text, lines, inputs and badges inside follow */
+#main:not(.portal) .card:not(.sa-card):has(>h2:first-child,>.bill-h:first-child,>.plan-head:first-child,>.tpl-head:first-child,>.pay-card-h:first-child){--link:color-mix(in srgb,var(--brand) 45%,#fff);--bg:#0b1220;--card:#0c1322;--text:#e2e8f0;--muted:#94a3b8;--line:#22304d;--border:#2f3e5e;
+--surface-2:#0f172a;--tint:#172440;--tint-strong:#1e2f57;--tint-border:#30457a;--tint-fg:#c7d7fe;--switch-off:#3a4a68;--danger:#ef4444;--ok:#22c55e;--warn:#f59e0b;
+--ok-bg:#0f2f1f;--ok-fg:#86efac;--info-bg:#172554;--info-fg:#93c5fd;--bad-bg:#3b1219;--bad-fg:#fca5a5;--warn-bg:#352708;--warn-fg:#fcd34d;--warn-border:#5c4310;
+--violet-bg:#2b1d57;--violet-fg:#c4b5fd;--neutral-bg:#1e293b;--neutral-fg:#cbd5e1;color-scheme:dark;background:var(--card);color:var(--text);border-color:var(--line)}
