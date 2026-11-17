@@ -1107,13 +1107,17 @@ const dayJobs = (date) => db.jobs.filter((j) => j.date === date && j.status !== 
 app.get('/api/dispatch', async (req, res) => {
   const date = String(req.query.date || ''); if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'Choose a day' });
   const jobs = dayJobs(date); const base = String(db.company.address || '').trim();
-  const pending = await placeAddresses([base, ...jobs.map(jobAddress)]);
+  const svys = (db.tasks || []).filter((t) => t.survey && t.date === date && jobAddress(t)); // site surveys with a place to go show on the map too
+  const pending = await placeAddresses([base, ...jobs.map(jobAddress), ...svys.map(jobAddress)]);
   const u = currentUser(req); const spots = teamLocOn() && canManageTime(u) ? Object.entries(db.lastSpot || {}).filter(([id, x]) => db.staff.find((s) => s.id === id) && Date.now() - new Date(x.at) < 864e5)
     .map(([staffId, x]) => { const j = x.jobId && db.jobs.find((y) => y.id === x.jobId); return { staffId, lat: x.lat, lng: x.lng, acc: x.acc, at: x.at, what: x.what, job: j ? { id: j.id, number: j.number, title: j.title || '' } : null }; }) : [];
   res.json({ date, pending, spots, base: base ? { address: base, ...(placeOf(base) || {}) } : null,
     jobs: jobs.map((j) => { const c = findClient(j.clientId) || {}; const addr = jobAddress(j);
       return { id: j.id, number: j.number, title: j.title, client: c.company || c.name || '', address: addr, startTime: j.startTime, endTime: j.endTime, anytime: !!j.anytime,
-        staffIds: j.staffIds || [], status: j.status, seriesId: j.seriesId || '', ...(placeOf(addr) || {}), unplaced: !!addr && !placeOf(addr) && !!(db.geo || {})[geoKey(addr)] }; }) });
+        staffIds: j.staffIds || [], status: j.status, seriesId: j.seriesId || '', ...(placeOf(addr) || {}), unplaced: !!addr && !placeOf(addr) && !!(db.geo || {})[geoKey(addr)] }; })
+      .concat(svys.map((t) => { const c = findClient(t.clientId) || {}; const addr = jobAddress(t);
+        return { id: t.id, kind: 'survey', number: '', title: 'Site survey', client: c.company || c.name || '', address: addr, startTime: t.startTime, endTime: t.endTime, anytime: !!t.anytime,
+          staffIds: t.staffIds || [], status: t.done ? 'completed' : 'scheduled', ...(placeOf(addr) || {}), unplaced: !placeOf(addr) && !!(db.geo || {})[geoKey(addr)] }; })) });
 });
 // a person's best order for the day, and new times: the day starts at `start` (or their first visit), each visit keeps its length
 // (anytime visits take an hour) and the drive between stops is added. With apply: true the times are saved.

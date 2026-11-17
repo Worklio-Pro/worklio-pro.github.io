@@ -1944,6 +1944,7 @@ label.bk-auto input{width:auto;margin:0}
 .dm-tip{font-size:12px}
 .dm-pin span{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--c);color:#fff;font:700 13px/1 system-ui,sans-serif;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35)}
 .dm-pin.done span{opacity:.55}
+.dm-pin.svy span,.dm-n.svy{border-radius:6px} /* site surveys: square pins and numbers */
 .dm-home span{display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:#111827;color:#fff;font-size:18px;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35)}
 .dm-pop{display:flex;flex-direction:column;gap:3px;font-size:13px;min-width:190px}.dm-pop strong{font-size:14px}
 .dm-assign{display:flex;flex-direction:column;gap:3px;margin:6px 0 4px;font-size:12px}.dm-assign select{font:inherit;padding:4px 6px;background:#fff;color:#111827;border:1px solid #cbd5e1;border-radius:6px}.dm-pop .muted{color:#64748b}

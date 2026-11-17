@@ -456,9 +456,9 @@ async function scMapRender(main, edit, bar) {
     .filter((g) => g.id || g.jobs.length);
   const owner = {}; groups.forEach((g) => g.jobs.forEach((j, i) => { if (!owner[j.id]) owner[j.id] = { g, n: i + 1 }; })); // a visit with two people shows in the first one's color
   const item = (g, j, i) => `<li class="dm-job${j.status === 'completed' ? ' done' : ''}" data-id="${j.id}" data-g="${esc(g.id)}" ${edit ? 'draggable="true"' : ''}>
-<span class="dm-n" style="--c:${esc(g.color)}">${i + 1}</span><span class="dm-t"><span class="dm-when">${esc(dmWhen(j))}${j.status === 'completed' ? ' · Completed' : ''}</span>
+<span class="dm-n${j.kind === 'survey' ? ' svy' : ''}" style="--c:${esc(g.color)}" ${j.kind === 'survey' ? 'title="Site survey"' : ''}>${i + 1}</span><span class="dm-t"><span class="dm-when">${esc(dmWhen(j))}${j.status === 'completed' ? ' · Completed' : ''}</span>
 <strong>${esc(j.title || 'Job #' + j.number)}</strong><span class="muted">${esc([j.client, j.address].filter(Boolean).join(' · ') || 'No address')}</span>${j.address && j.lat === undefined ? `<span class="dm-warn">${j.unplaced ? 'Address not found on the map' : 'Finding on the map…'}</span>` : ''}</span></li>`;
-  const movable = (g) => g.jobs.filter((j) => j.status !== 'completed' && j.lat !== undefined).length;
+  const movable = (g) => g.jobs.filter((j) => j.kind !== 'survey' && j.status !== 'completed' && j.lat !== undefined).length; // Best order moves jobs; site surveys keep their booked time
   $('#dmList').innerHTML = `${data.base && data.base.lat === undefined ? `<p class="dm-note">${data.pending ? 'Finding your business address on the map…' : 'Your business address (Settings → Company Profile) couldn’t be found on the map, so routes start at the first visit.'}</p>` : !data.base ? '<p class="dm-note">Add your business address in Settings → Company Profile so routes start there.</p>' : ''}
 ${data.pending ? `<p class="dm-note">Finding ${data.pending} address${data.pending === 1 ? '' : 'es'} on the map…</p>` : ''}
 ${!data.jobs.length ? `<p class="muted dm-empty">No jobs on ${esc(fmtDate(date))}.</p>` : ''}
@@ -480,11 +480,12 @@ ${edit && data.jobs.length ? '<p class="muted dm-tip">Drag a visit onto someone 
   for (const j of data.jobs) {
     if (j.lat === undefined) continue; const { g, n } = owner[j.id]; pts.push([j.lat, j.lng]);
     const others = j.staffIds.map((x) => byId(D.staff, x)).filter(Boolean);
-    const m = L.marker([j.lat, j.lng], { icon: L.divIcon({ className: 'dm-pin' + (j.status === 'completed' ? ' done' : ''), html: `<span style="--c:${esc(g.color)}">${n}</span>`, iconSize: [28, 28], iconAnchor: [14, 14] }), title: j.title }).addTo(dmMap);
+    const svy = j.kind === 'survey';
+    const m = L.marker([j.lat, j.lng], { icon: L.divIcon({ className: 'dm-pin' + (svy ? ' svy' : '') + (j.status === 'completed' ? ' done' : ''), html: `<span style="--c:${esc(g.color)}">${n}</span>`, iconSize: [28, 28], iconAnchor: [14, 14] }), title: svy ? `Site survey: ${j.client}` : j.title }).addTo(dmMap);
     m.bindPopup(`<div class="dm-pop"><span class="muted">${esc(dmWhen(j))}</span><strong>${esc(j.title || 'Job #' + j.number)}</strong><span>${esc(j.client)}</span><span class="muted">${esc(j.address)}</span>
 <span class="muted">${others.length ? esc(others.map((s) => s.name).join(', ')) : 'Unassigned'}</span>
-${edit && j.status !== 'completed' ? `<label class="dm-assign">Assign to <select data-id="${j.id}"><option value="">Unassigned</option>${team.map((s) => `<option value="${s.id}" ${j.staffIds[0] === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>` : ''}
-<a href="/jobs/edit?id=${j.id}" data-dm-open="${j.id}">Open job #${esc(String(j.number))} ›</a></div>`);
+${edit && j.status !== 'completed' ? `<label class="dm-assign">Assign to <select data-id="${j.id}" data-kind="${svy ? 'survey' : 'job'}">${svy ? '' : '<option value="">Unassigned</option>'}${team.map((s) => `<option value="${s.id}" ${j.staffIds[0] === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>` : ''}
+${svy ? `<a href="#" data-dm-svy="${j.id}">Open site survey ›</a>` : `<a href="/jobs/edit?id=${j.id}" data-dm-open="${j.id}">Open job #${esc(String(j.number))} ›</a>`}</div>`);
     dmPins[j.id] = m;
   }
   // Team location: each person's last known spot today (from Clock In, Clock Out or On My Way), managers only; sent by the server only while it's on
@@ -498,27 +499,30 @@ ${edit && j.status !== 'completed' ? `<label class="dm-assign">Assign to <select
   if (pts.length) dmMap.fitBounds(pts, { padding: [40, 40], maxZoom: 14 }); else dmMap.setView([39.5, -98.35], 4);
   dmMap.on('popupopen', (e) => { const el = e.popup.getElement(); const sel = $('select', el); const open = $('[data-dm-open]', el);
     if (open) open.addEventListener('click', (ev) => { ev.preventDefault(); navigate('/jobs/edit?id=' + open.dataset.dmOpen); });
-    if (sel) sel.addEventListener('change', () => dmAssign(sel.dataset.id, null, sel.value)); });
+    const svy = $('[data-dm-svy]', el); if (svy) svy.addEventListener('click', (ev) => { ev.preventDefault(); const r = svy.getBoundingClientRect(); dmMap.closePopup(); scOpen('task', svy.dataset.dmSvy, r.left, r.top); });
+    if (sel) sel.addEventListener('change', () => dmAssign(sel.dataset.id, null, sel.value, sel.dataset.kind === 'survey')); });
   setTimeout(() => dmMap && dmMap.invalidateSize(), 0);
   // clicking a visit in the list shows its pin; dragging assigns it
   $$('.dm-job', main).forEach((li) => {
     li.addEventListener('click', () => { const m = dmPins[li.dataset.id]; if (!m) return; dmMap.setView(m.getLatLng(), Math.max(dmMap.getZoom(), 13)); m.openPopup(); if (innerWidth < 900) $('#dmMap').scrollIntoView({ behavior: 'smooth', block: 'center' }); });
-    if (edit) li.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/plain', JSON.stringify({ id: li.dataset.id, from: li.dataset.g })); e.dataTransfer.effectAllowed = 'move'; li.classList.add('dm-dragging'); });
+    if (edit) li.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/plain', JSON.stringify({ id: li.dataset.id, from: li.dataset.g, svy: !!$('.dm-n.svy', li) })); e.dataTransfer.effectAllowed = 'move'; li.classList.add('dm-dragging'); });
     li.addEventListener('dragend', () => li.classList.remove('dm-dragging'));
   });
   if (edit) $$('.dm-g', main).forEach((sec) => {
     sec.addEventListener('dragover', (e) => { e.preventDefault(); sec.classList.add('dm-over'); });
     sec.addEventListener('dragleave', (e) => { if (!sec.contains(e.relatedTarget)) sec.classList.remove('dm-over'); });
-    sec.addEventListener('drop', (e) => { e.preventDefault(); sec.classList.remove('dm-over'); let d; try { d = JSON.parse(e.dataTransfer.getData('text/plain')); } catch (x) { return; } if (d.from !== sec.dataset.g) dmAssign(d.id, d.from, sec.dataset.g); });
+    sec.addEventListener('drop', (e) => { e.preventDefault(); sec.classList.remove('dm-over'); let d; try { d = JSON.parse(e.dataTransfer.getData('text/plain')); } catch (x) { return; } if (d.from !== sec.dataset.g) dmAssign(d.id, d.from, sec.dataset.g, d.svy); });
   });
   if (data.pending) setTimeout(() => { if (token === dmToken && curPath() === '/calendar' && scState.view === 'map') scMapRender(main, edit, bar); }, 1500); // more addresses are being looked up
 }
 // moves a visit from one person to another (from: null replaces the whole team, as the pin's Assign to does)
-async function dmAssign(id, from, to) {
-  const j = byId(D.jobs, id); if (!j) return;
+// a site survey (svy) is a task and always has one person taking it
+async function dmAssign(id, from, to, svy) {
+  const j = byId(svy ? D.tasks : D.jobs, id); if (!j) return;
+  if (svy && !to) return toast('A site survey needs someone to take it', true);
   const now = (j.staffIds || []).filter((x) => byId(D.staff, x));
-  const ids = from === null ? (to ? [to] : []) : to ? [...new Set(now.map((x) => (x === from ? to : x)).concat(from ? [] : [to]))] : now.filter((x) => x !== from);
-  try { await api('PUT', '/api/jobs/' + id, { staffIds: ids }); const s = byId(D.staff, to); toast(s ? `Assigned to ${s.name}` : 'Unassigned'); refresh(); } catch (x) { toast(x.message, true); }
+  const ids = svy ? [to] : from === null ? (to ? [to] : []) : to ? [...new Set(now.map((x) => (x === from ? to : x)).concat(from ? [] : [to]))] : now.filter((x) => x !== from);
+  try { await api('PUT', (svy ? '/api/tasks/' : '/api/jobs/') + id, { staffIds: ids }); const s = byId(D.staff, to); toast(s ? `Assigned to ${s.name}` : 'Unassigned'); refresh(); } catch (x) { toast(x.message, true); }
 }
 // Best order: shows the new order and times first; Save sets them
 A.dmOptimize = async (d) => {
