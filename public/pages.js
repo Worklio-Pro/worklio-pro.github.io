@@ -3168,7 +3168,7 @@ async function companyPage(main, full) {
 <div class="row3"><label>Venmo username<input form="cf" name="venmoHandle" value="${esc(c.venmoHandle ? '@' + c.venmoHandle : '')}" placeholder="@YourBusiness" autocomplete="off"></label><label>Cash App $Cashtag<input form="cf" name="cashappTag" value="${esc(c.cashappTag ? '$' + c.cashappTag : '')}" placeholder="$YourBusiness" autocomplete="off"></label><label>PayPal.me name<input form="cf" name="paypalHandle" value="${esc(c.paypalHandle ? 'paypal.me/' + c.paypalHandle : '')}" placeholder="paypal.me/YourBusiness" autocomplete="off"></label></div></div>` : '';
   main.innerHTML = `<div class="head"><div><h1>${full ? 'App Settings' : 'Company settings'}</h1>${full ? '<p class="sub">Defaults, white label and payments for every quote and invoice. Business details, social media and tax settings are on <a href="/settings/company" data-link>Company Profile</a>.</p>' : ''}</div></div>
 ${full ? `<div class="as-tabs" role="tablist">${AS_TABS.map(([t, n]) => `<button type="button" role="tab" data-as-tab="${t}" aria-controls="as-${t}">${n}</button>`).join('')}</div>
-<div class="as-panel" id="as-general" role="tabpanel">${planCard(c.account)}<div class="as-cols"><div class="as-col">${regionalBox(c)}${languagesBox(c)}${referralCard(c)}${mxCard()}</div><div class="as-col">${defaultsBox}${surveyCard(c)}${savedDiscCard()}${prefixBox}${teamLocCard(c)}</div></div></div>
+<div class="as-panel" id="as-general" role="tabpanel"><div class="as-cols"><div class="as-col">${regionalBox(c)}${languagesBox(c)}${referralCard(c)}${mxCard()}</div><div class="as-col">${defaultsBox}${surveyCard(c)}${savedDiscCard()}${prefixBox}${teamLocCard(c)}</div></div></div>
 <div class="as-panel" id="as-white-label" role="tabpanel"><div class="as-cols"><div class="as-col">${webAddressCard(c.account)}</div><div class="as-col">${brandBox || `<div class="card"><h2>Branding</h2><p class="muted" style="margin:0">Your own brand and accent colors on quotes, invoices, emails and the client portal come with a plan that includes Branding.</p></div>`}</div></div></div>
 <div class="as-panel" id="as-payments" role="tabpanel"><div class="as-cols"><div class="as-col">${payCard(integ)}${zelleBox}</div><div class="as-col">${appsBox}${lateFeeCard(c)}</div></div></div>
 <form id="cf"></form>` :`<form id="cf" class="cs-form">${companySettingsHtml(c, logoBox)}</form>`}`;
@@ -3232,7 +3232,7 @@ ${full ? `<div class="as-tabs" role="tablist">${AS_TABS.map(([t, n]) => `<button
     } catch (err) { toast(err.message, true); }
   }));
 }
-/* ===== App Settings: plan, web address, card payments ===== */
+/* ===== the plan box (Account and Billing, under Account overview); App Settings: web address, card payments ===== */
 function planCard(a) {
   if (!a) return '';
   const beta = (f) => (f.beta ? ' <span class="beta-tag" title="This feature is in beta testing">Beta</span>' : '');
@@ -4749,6 +4749,7 @@ PAGES['/settings/billing'] = {
 <div><dt>Team logins</dt><dd>${B.usage.logins}${B.plan.maxUsers ? ` <span class="muted">(${B.plan.maxUsers} included${B.plan.extraUser ? `, then ${money(B.plan.extraUser).replace(/\.00$/, '')}/month each` : ''})</span>` : ' <span class="muted">(unlimited)</span>'}${B.extra && B.extra.count ? `<div class="muted" style="font-size:13px">${B.extra.count} extra login${B.extra.count === 1 ? '' : 's'} × ${money(B.extra.cents / 100).replace(/\.00$/, '')}/${B.extra.interval}</div>` : ''}</dd></div>
 ${MX || mkRow(B) ? `<div><dt>Add-ons</dt><dd>${mkRow(B)}${MX ? `<div>Matrix pricing <span class="muted">(${MX.state === 'included' ? 'included' : `${money((B.matrix ? B.matrix.cents : MX.cents) / 100).replace(/\.00$/, '')}/${B.matrix ? B.matrix.interval : MX.interval}${MX.state === 'ending' ? `, ends ${fmtDate(MX.endsAt)}` : ''}`})</span><div class="muted" style="font-size:13px"><button type="button" class="link-btn" data-act="mxSee">Manage in App Settings</button></div></div>` : ''}</dd></div>` : ''}
 ${B.usage.texts && B.usage.texts.limit ? `<div><dt>Texts this month</dt><dd>${B.usage.texts.sent.toLocaleString('en-US')} of ${B.usage.texts.limit.toLocaleString('en-US')}${B.usage.texts.sent >= B.usage.texts.limit ? ' <span class="muted">(used up: texts start again on the 1st)</span>' : ''}</dd></div>` : ''}</dl></div>
+${planCard(company.account)}
 <div class="bill-grid">
 <div class="card"><div class="bill-h"><h2>Billing details</h2>${B.live && B.managed ? '<button type="button" class="btn alt" data-act="billEdit">Edit</button>' : ''}</div>
 ${B.card ? `<div class="bill-card"><span class="bill-brand">${esc(CARD_BRANDS[B.card.brand] || B.card.brand)}</span><div><small class="muted">CARD NUMBER</small><div>•••• ${esc(B.card.last4)}</div></div><div class="r"><small class="muted">EXPIRY</small><div>${String(B.card.expMonth).padStart(2, '0')}/${String(B.card.expYear).slice(-2)}</div></div></div>`
