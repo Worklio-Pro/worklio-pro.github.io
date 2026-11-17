@@ -1827,10 +1827,13 @@ async function colorsCard(box) {
   const reset = (k) => (cur[k] || cur[k + ':dark'] ? `<button type="button" class="btn alt sm" data-act="colorReset" data-k="${esc(k)}">Reset</button>` : '');
   const row = (r) => `<div class="sc-row"><span class="sc-sw">${swatch(r.key, r.light, r.dark ? r.label + ', light mode' : r.label)}${r.dark ? swatch(r.key + ':dark', r.dark, r.label + ', dark mode') : ''}</span><div class="sc-l"><strong>${esc(r.label)}</strong>${r.note ? `<small class="muted">${esc(r.note)}</small>` : ''}</div>${reset(r.key)}</div>`;
   const sf = { text: '', headings: '', size: 100, ...(D.settings.siteFont || {}) };
-  const fontSel = (name, label) => `<label>${label}<select data-sf="${name}">${SC.fonts.map((f) => `<option value="${esc(f.key)}" ${f.key === sf[name] ? 'selected' : ''}>${esc(f.label)}</option>`).join('')}</select></label>`;
-  // the preview loads the chosen Google fonts here so they can be seen before the next page load
-  const fams = [...new Set([sf.text, sf.headings].filter(Boolean))];
   const fam = (f) => (f ? `'${esc(f)}',${(SC.fonts.find((x) => x.key === f) || {}).kind || 'sans-serif'}` : 'inherit');
+  // a font menu of our own (a <select> list can't show each font): every name is written in its own font
+  const fontSel = (name, label) => { const cur = SC.fonts.find((f) => f.key === sf[name]) || SC.fonts[0];
+    return `<div class="sf-pick"><span class="sf-lbl" id="sf-${name}-l">${label}</span><input type="hidden" data-sf="${name}" value="${esc(cur.key)}"><button type="button" class="sf-btn" data-sf-open aria-haspopup="listbox" aria-expanded="false" aria-labelledby="sf-${name}-l" style="font-family:${fam(cur.key)}">${esc(cur.label)}</button>
+<div class="sf-list" role="listbox" aria-labelledby="sf-${name}-l" hidden>${SC.fonts.map((f) => `<button type="button" role="option" data-sf-pick="${name}" data-v="${esc(f.key)}" aria-selected="${f.key === cur.key}" style="font-family:${fam(f.key)}">${esc(f.label)}</button>`).join('')}</div></div>`; };
+  // every Google font is loaded here (a file downloads only once its name is shown), for the menus and the preview
+  const fams = SC.fonts.map((f) => f.key).filter(Boolean);
   box.innerHTML = `${fams.length ? `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?${fams.map((f) => 'family=' + f.replace(/ /g, '+') + ':wght@400;700').join('&')}&display=swap">` : ''}<h2>Website style</h2>
 <h3 class="sc-g">Fonts</h3><p class="muted" style="font-size:13px;margin-top:0">The fonts and text size on your public website, the Help Center, Alpha and every business’s app. Fonts other than the device’s own come from Google Fonts. Changes show the next time a page loads.</p>
 <div class="row sf-row">${fontSel('text', 'Text font')}${fontSel('headings', 'Headings font')}</div>
@@ -1841,9 +1844,19 @@ async function colorsCard(box) {
 <details class="sc-other" ${scOpen ? 'open' : ''}><summary>All other colors (${SC.others.length})</summary><p class="muted" style="font-size:13px">Every remaining color in the site’s styles, most used first, shown with where it’s first used. Changing one changes it everywhere it appears.</p><div class="sc-pair">${SC.others.map((o) => `<div class="sc-row"><span class="sc-sw">${swatch(o.color, o.color, o.color)}</span><div class="sc-l"><strong>${esc(o.color)}</strong><small class="muted">Used ${o.n} time${o.n === 1 ? '' : 's'}, first in <code>${esc(o.where)}</code></small></div>${reset(o.color)}</div>`).join('')}</div></details>
 ${Object.keys(cur).length ? '<div class="lg-acts"><button type="button" class="btn alt sm" data-act="colorResetAll">Reset all colors</button></div>' : ''}`;
   $('.sc-other', box).addEventListener('toggle', (e) => { scOpen = e.target.open; });
+  const fontVals = () => Object.fromEntries($$('[data-sf]', box).map((i) => [i.dataset.sf, i.dataset.sf === 'size' ? Number(i.value) : i.value]));
+  const closeLists = () => $$('.sf-list', box).forEach((l) => { l.hidden = true; l.previousElementSibling.setAttribute('aria-expanded', 'false'); });
+  $$('[data-sf-open]', box).forEach((b) => b.addEventListener('click', () => { const l = b.nextElementSibling; const was = !l.hidden; closeLists(); if (was) return; l.hidden = false; b.setAttribute('aria-expanded', 'true'); const on = $('[aria-selected=true]', l); if (on) { on.focus(); on.scrollIntoView({ block: 'nearest' }); } }));
+  $$('[data-sf-pick]', box).forEach((o) => o.addEventListener('click', () => { $(`[data-sf=${o.dataset.sfPick}]`, box).value = o.dataset.v; closeLists(); saveFont(fontVals()); }));
+  $$('.sf-list', box).forEach((l) => l.addEventListener('keydown', (e) => {
+    const opts = $$('[role=option]', l); const i = opts.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); opts[Math.max(0, Math.min(opts.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)))].focus(); }
+    if (e.key === 'Escape' || e.key === 'Tab') { closeLists(); if (e.key === 'Escape') l.previousElementSibling.focus(); }
+  }));
+  if (!colorsCard.outside) { colorsCard.outside = true; document.addEventListener('click', (e) => { if (!e.target.closest('.sf-pick')) $$('#colorsCard .sf-list').forEach((l) => { l.hidden = true; l.previousElementSibling.setAttribute('aria-expanded', 'false'); }); }); }
   const rng = $('[data-sf=size]', box); rng.oninput = () => { $('[data-sf-out]', box).textContent = rng.value + '%'; };
   box.onchange = (e) => {
-    if (e.target.dataset.sf) return saveFont(Object.fromEntries($$('[data-sf]', box).map((i) => [i.dataset.sf, i.dataset.sf === 'size' ? Number(i.value) : i.value])));
+    if (e.target.dataset.sf) return saveFont(fontVals());
     saveColors(Object.fromEntries($$('input[type=color]', box).filter((i) => i.value !== i.dataset.def).map((i) => [i.dataset.k, i.value])));
   };
 }
