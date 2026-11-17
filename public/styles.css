@@ -2456,8 +2456,11 @@ body.p404-only :is(#side,#sideMiniBtn,#menuBtn,#topbar,#bnav,#installBar,#suppor
 .cp-sentwith:hover{border-color:#cfcac2;box-shadow:0 2px 8px rgba(3,43,58,.07)}.cp-sentwith:hover i{transform:translateX(3px)}
 .cp-sentwith:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
 @media (min-width:761px){.cp-side{display:flex;flex-direction:column}.cp-navs{flex:1;display:flex;flex-direction:column}.cp-lang{margin-top:auto}}
-/* Company Profile → Logo: a box per background; click a box to choose an image, the trash under it deletes it */
+/* App Settings → Branding → Logo and colors: a box per background; click a box to choose an image, the trash under it deletes it */
 .logo-slots{display:flex;gap:20px;flex-wrap:wrap}
+/* App Settings → Branding → Logo and colors: big color swatches, the same width as the logo boxes */
+#logo-colors input[type=color]{height:96px;max-width:220px;padding:6px;margin-top:6px;cursor:pointer;border-radius:10px}
+#logo-colors input[type=color]::-webkit-color-swatch-wrapper{padding:0}#logo-colors input[type=color]::-webkit-color-swatch{border:0;border-radius:6px}#logo-colors input[type=color]::-moz-color-swatch{border:0;border-radius:6px}
 .logo-slot{display:flex;flex-direction:column;gap:6px;flex:1 1 160px;min-width:0}
 .logo-lbl{font-weight:600;font-size:14px}
 .logo-pick{width:100%;max-width:220px;height:96px;border:1px dashed var(--border);border-radius:10px;display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer;padding:10px;margin:0;transition:border-color .15s}
