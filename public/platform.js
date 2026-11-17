@@ -730,7 +730,7 @@ let igTab = ''; // '' shows the cards
 // Integrations is one page (setTab 'integrations'): a grid of cards, or one service's settings (igTab) with a link back to the cards.
 // Links elsewhere open a service directly with data-k="integrations:<service>".
 const SET_GROUPS = [
-  ['Product', [['product', 'Your product'], ['colors', 'Website colors'], ['icons', 'Menu'], ['login', 'Login page'], ['home', 'Home page notice'], ['seo', 'SEO'], ['terms', 'Terms and privacy']]],
+  ['Product', [['product', 'Your product'], ['colors', 'Website style'], ['icons', 'Menu'], ['login', 'Login page'], ['home', 'Home page notice'], ['seo', 'SEO'], ['terms', 'Terms and privacy']]],
   ['Team & access', [['team', 'Alpha team'], ['expiry', 'Access end dates'], ['reserved', 'Reserved addresses']]],
   ['System', [['integrations', 'Integrations'], ['maintenance', 'Maintenance mode']]],
 ];
@@ -1816,27 +1816,46 @@ function iconCard(box) {
     }; r.readAsDataURL(f);
   });
 }
-// Settings → Website colors (lib/brand.js): every color of the public site, Help Center, Alpha and the businesses' apps. Only changes from the defaults are saved.
+// Settings → Website style (lib/brand.js): the fonts and text size, and every color of the public site, Help Center, Alpha and the businesses' apps. Only color changes from the defaults are saved.
 let SC = null; let scOpen = false;
 const reloadTheme = () => { const l = $('link[href^="/theme.css"]'); if (l) l.href = '/theme.css?v=' + Date.now(); $$('link[rel=stylesheet][href^="/styles.css"]').forEach((c) => { c.href = c.href.split('&')[0] + '&t=' + Date.now(); }); };
 async function colorsCard(box) {
   if (!box) return;
-  if (!SC) { try { SC = await api('GET', '/api/platform/site-colors'); } catch (x) { box.innerHTML = `<h2>Website colors</h2><p class="muted">${esc(x.message)}</p>`; return; } }
+  if (!SC) { try { SC = await api('GET', '/api/platform/site-colors'); } catch (x) { box.innerHTML = `<h2>Website style</h2><p class="muted">${esc(x.message)}</p>`; return; } }
   const cur = D.settings.siteColors || {};
   const swatch = (k, def, label) => `<input type="color" data-k="${esc(k)}" data-def="${esc(def)}" value="${esc(cur[k] || def)}" aria-label="${esc(label)}" title="${esc(label)}">`;
   const reset = (k) => (cur[k] || cur[k + ':dark'] ? `<button type="button" class="btn alt sm" data-act="colorReset" data-k="${esc(k)}">Reset</button>` : '');
   const row = (r) => `<div class="sc-row"><span class="sc-sw">${swatch(r.key, r.light, r.dark ? r.label + ', light mode' : r.label)}${r.dark ? swatch(r.key + ':dark', r.dark, r.label + ', dark mode') : ''}</span><div class="sc-l"><strong>${esc(r.label)}</strong>${r.note ? `<small class="muted">${esc(r.note)}</small>` : ''}</div>${reset(r.key)}</div>`;
-  box.innerHTML = `<h2>Website colors</h2><p class="muted" style="font-size:13px;margin-top:0">Every color on your public website, the Help Center, Alpha and every business’s app. Where there are two swatches, the first is light mode and the second is dark mode; one swatch is used in both. A business’s accent color (App Settings) changes only its client portal. Changes show the next time a page loads.</p>
+  const sf = { text: '', headings: '', size: 100, ...(D.settings.siteFont || {}) };
+  const fontSel = (name, label) => `<label>${label}<select data-sf="${name}">${SC.fonts.map((f) => `<option value="${esc(f.key)}" ${f.key === sf[name] ? 'selected' : ''}>${esc(f.label)}</option>`).join('')}</select></label>`;
+  // the preview loads the chosen Google fonts here so they can be seen before the next page load
+  const fams = [...new Set([sf.text, sf.headings].filter(Boolean))];
+  const fam = (f) => (f ? `'${esc(f)}',${(SC.fonts.find((x) => x.key === f) || {}).kind || 'sans-serif'}` : 'inherit');
+  box.innerHTML = `${fams.length ? `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?${fams.map((f) => 'family=' + f.replace(/ /g, '+') + ':wght@400;700').join('&')}&display=swap">` : ''}<h2>Website style</h2>
+<h3 class="sc-g">Fonts</h3><p class="muted" style="font-size:13px;margin-top:0">The fonts and text size on your public website, the Help Center, Alpha and every business’s app. Fonts other than the device’s own come from Google Fonts. Changes show the next time a page loads.</p>
+<div class="row sf-row">${fontSel('text', 'Text font')}${fontSel('headings', 'Headings font')}</div>
+<label class="sf-size">Text size <strong data-sf-out>${sf.size}%</strong><input type="range" data-sf="size" min="${SC.size.min}" max="${SC.size.max}" step="5" value="${sf.size}"><span class="muted sf-ends"><span>Smaller</span>${sf.size !== 100 ? '<button type="button" class="linkbtn" data-act="fontSizeReset">Reset to 100%</button>' : ''}<span>Larger</span></span></label>
+<div class="sf-preview" style="font-size:${15 * sf.size / 100}px;font-family:${fam(sf.text)}"><strong style="display:block;font-size:${22 * sf.size / 100}px;font-family:${fam(sf.headings)}">Quotes, jobs and invoices in one place</strong>Send a quote, schedule the job and get paid, all from your phone.</div>
+<h3 class="sc-g" style="margin-top:22px">Colors</h3><p class="muted" style="font-size:13px;margin-top:0">Every color on your public website, the Help Center, Alpha and every business’s app. Where there are two swatches, the first is light mode and the second is dark mode; one swatch is used in both. A business’s accent color (App Settings) changes only its client portal. Changes show the next time a page loads.</p>
 <div class="sc-pair">${SC.groups.map((g) => `<section class="sc-group"><h3 class="sc-g">${esc(g.name)}</h3>${g.rows.map(row).join('')}</section>`).join('')}</div>
 <details class="sc-other" ${scOpen ? 'open' : ''}><summary>All other colors (${SC.others.length})</summary><p class="muted" style="font-size:13px">Every remaining color in the site’s styles, most used first, shown with where it’s first used. Changing one changes it everywhere it appears.</p><div class="sc-pair">${SC.others.map((o) => `<div class="sc-row"><span class="sc-sw">${swatch(o.color, o.color, o.color)}</span><div class="sc-l"><strong>${esc(o.color)}</strong><small class="muted">Used ${o.n} time${o.n === 1 ? '' : 's'}, first in <code>${esc(o.where)}</code></small></div>${reset(o.color)}</div>`).join('')}</div></details>
 ${Object.keys(cur).length ? '<div class="lg-acts"><button type="button" class="btn alt sm" data-act="colorResetAll">Reset all colors</button></div>' : ''}`;
   $('.sc-other', box).addEventListener('toggle', (e) => { scOpen = e.target.open; });
-  box.onchange = () => saveColors(Object.fromEntries($$('input[type=color]', box).filter((i) => i.value !== i.dataset.def).map((i) => [i.dataset.k, i.value])));
+  const rng = $('[data-sf=size]', box); rng.oninput = () => { $('[data-sf-out]', box).textContent = rng.value + '%'; };
+  box.onchange = (e) => {
+    if (e.target.dataset.sf) return saveFont(Object.fromEntries($$('[data-sf]', box).map((i) => [i.dataset.sf, i.dataset.sf === 'size' ? Number(i.value) : i.value])));
+    saveColors(Object.fromEntries($$('input[type=color]', box).filter((i) => i.value !== i.dataset.def).map((i) => [i.dataset.k, i.value])));
+  };
 }
 const saveColors = async (siteColors) => {
   try { D.settings = await api('PUT', '/api/platform/settings', { siteColors }); reloadTheme(); toast('Website colors saved'); } catch (x) { toast(x.message, true); }
   colorsCard($('#colorsCard'));
 };
+const saveFont = async (siteFont) => {
+  try { D.settings = await api('PUT', '/api/platform/settings', { siteFont }); reloadTheme(); toast('Fonts saved'); } catch (x) { toast(x.message, true); }
+  colorsCard($('#colorsCard'));
+};
+A.fontSizeReset = () => saveFont({ text: '', headings: '', ...(D.settings.siteFont || {}), size: 100 });
 A.colorReset = (d) => { const c = { ...(D.settings.siteColors || {}) }; delete c[d.k]; delete c[d.k + ':dark']; saveColors(c); };
 A.colorResetAll = () => { if (confirm('Put every website color back to its default?')) saveColors({}); };
 // a settings form saves itself: text a moment after typing stops (or on leaving the field), switches and menus right away.
