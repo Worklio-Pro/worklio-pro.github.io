@@ -2690,7 +2690,7 @@ body.p404-only #billingBar{display:none!important}
 .pl-add{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:0 0 12px}.pl-add .btn{margin:0;cursor:pointer}.pl-add small{font-size:12px}
 .pl-when{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px}.pl-when label{margin:0;flex:0 1 180px}
 .pl-btns{display:flex;flex-direction:column;gap:6px;align-items:flex-end}
-.pl-btns.pl-skip{flex-direction:row;align-items:center;gap:4px}.pl-skip .btn{min-width:96px}.pl-del{color:var(--muted)}.pl-del:hover{color:var(--danger);background:var(--surface-2)}.pl-del svg{width:18px;height:18px}
+.pl-btns.pl-skip{flex-direction:row;align-items:center;align-self:center;gap:4px}.pl-skip .btn{min-width:96px}.pl-del{color:var(--muted)}.pl-del:hover{color:var(--danger);background:var(--surface-2)}.pl-del svg{width:18px;height:18px}
 .pl-bad{color:var(--danger);font-weight:500}
 .pl-flash{animation:plFlash 1.6s ease}
 @keyframes plFlash{0%,40%{box-shadow:0 0 0 3px var(--brand)}100%{box-shadow:0 0 0 0 transparent}}
