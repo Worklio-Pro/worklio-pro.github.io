@@ -234,6 +234,9 @@ function permClasses() { const b = document.body; const lim = !isAdminMe(); b.cl
 // the account's plan (from /api/company): features it includes and pages it doesn't. The server enforces the same.
 const planHas = (f) => !(company.account && company.account.features) || company.account.features.includes(f);
 const planLocked = (path) => !!(company.account && (company.account.lockedPages || []).includes(path));
+// a feature marked Beta in Alpha (for a tag on a feature that has no page of its own, e.g. the Calendar's Map view)
+const featBeta = (k) => !!(company.account && (company.account.featureList || []).some((f) => f.key === k && f.beta));
+const betaTagHtml = (k) => (featBeta(k) ? '<span class="beta-tag" title="This feature is in beta testing">Beta</span>' : '');
 const betaPage = (path) => !!(company.account && (company.account.betaPages || []).includes(path));
 // the menu in the order and sections set in Alpha → Settings → Menu (sent with the account info); NAV is the default
 function navList() {

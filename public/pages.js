@@ -203,7 +203,7 @@ PAGES['/calendar'] = {
     if (scState.view === 'map' && !planHas('dispatchMap')) scState.view = 'day';
     if (scState.view === 'team' && !hasTeam) scState.view = 'day';
     const days = scDays(); const today = ymd(new Date()); const edit = canDo('jobs.edit'); const team = scState.view === 'team';
-    const views = `<div class="sc-views">${[['day', 'Day'], ['week', 'Week'], ['month', 'Month'], ...(hasTeam ? [['team', 'Team']] : []), ...(planHas('dispatchMap') ? [['map', 'Map']] : [])].map(([k, l]) => `<button type="button" class="${scState.view === k ? 'on' : ''}" data-act="scView" data-v="${k}">${l}</button>`).join('')}</div>`;
+    const views = `<div class="sc-views">${[['day', 'Day'], ['week', 'Week'], ['month', 'Month'], ...(hasTeam ? [['team', 'Team']] : []), ...(planHas('dispatchMap') ? [['map', 'Map']] : [])].map(([k, l]) => `<button type="button" class="${scState.view === k ? 'on' : ''}" data-act="scView" data-v="${k}">${l}${k === 'map' ? betaTagHtml('dispatchMap') : ''}</button>`).join('')}</div>`;
     if (scState.view === 'map') return scMapRender(main, edit, `<div class="sc-bar"><button type="button" class="btn alt sm" data-act="scToday">Today</button><button type="button" class="btn alt sm sc-arrow" data-act="scStep" data-n="-1" aria-label="Previous day">‹</button><button type="button" class="btn alt sm sc-arrow" data-act="scStep" data-n="1" aria-label="Next day">›</button>
 <h2 class="sc-range">${esc(scState.anchor.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }))}</h2><span style="flex:1"></span>${views}</div>`);
     const a = scState.anchor; const first = new Date(a.getFullYear(), a.getMonth(), 1); const gridStart = startOfWeek(first);
