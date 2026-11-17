@@ -2575,7 +2575,13 @@ function bindPlan() {
       const art = f.art && f.art.checked && x && pic && !pic.closest('.pl-art').hidden ? [await plArt(x, P, words ? words.value : '', bg)] : [];
       const pics = [...(x && x.photos.length ? [] : art), ...$$('input[name=pic]:checked', f).map((x) => x.value), ...$$('input[name=xpic]:checked', f).map((x) => (plState.extra[id] || [])[Number(x.value)]), ...(x && x.photos.length ? art : [])].filter(Boolean);
       if (!to.length) return toast('Choose where to post', true);
-      const tt = plState.tt[id]; if (to.includes('tiktok') && !(tt && tt.privacy)) return toast('Choose who can see the TikTok post', true);
+      const tt = plState.tt[id];
+      if (to.includes('tiktok') && !(tt && tt.privacy)) { // show where: the TikTok box under the networks, or why it couldn't load
+        const box = $('[data-tt]', f); const sel = box && $('[name=ttPrivacy]', box); const err = box && $('.sp-err', box);
+        if (box) { box.hidden = false; box.scrollIntoView({ behavior: 'smooth', block: 'center' }); box.classList.remove('pl-flash'); void box.offsetWidth; box.classList.add('pl-flash'); }
+        if (sel) sel.focus();
+        return toast(err ? `TikTok: ${err.textContent}` : sel ? 'Choose who can see the TikTok post (under TikTok, below the networks)' : 'Reload the page to see the TikTok options', true);
+      }
       if (!f.day.value || !f.time.value) return toast('Pick a day and time', true);
       if (pics.length > 10) return toast('Up to 10 photos per post', true);
       for (const k of to) {
