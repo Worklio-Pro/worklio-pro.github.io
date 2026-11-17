@@ -5629,12 +5629,11 @@ app.delete('/api/reviews/reply', async (req, res) => {
 // Bluesky gets the photos themselves (jpegs); a Google post gets a Book button while the Business Profile's booking button is on
 const POST_TO = { facebook: (c, p) => social.facebookPost(c, p), instagram: (c, p) => networks.NETWORKS.instagram.post(c, p), bluesky: (c, p) => bluesky.post(c, p),
   google: (c, p) => social.googlePost(c, { ...p, book: p.ref || (c.booking && tenancy.has('onlineBooking') ? bookingUrl() : '') }), // p.ref: a job post's tracked booking link
-  // LinkedIn uploads the photos itself; a Pin links to the business's website (or its booking page); TikTok fetches the photos from the
-  // <slug>.<root domain> address, the one verified in the TikTok app, with the options picked in the form
+  // LinkedIn uploads the photos itself; a Pin links to the business's website (or its booking page); TikTok gets the options picked in the form
   linkedin: (c, p) => networks.NETWORKS.linkedin.post(c, p),
   pinterest: (c, p) => networks.NETWORKS.pinterest.post(c, { ...p, link: p.ref || db.company.website || (tenancy.has('onlineBooking') ? bookingUrl() : baseUrl()) }),
   threads: (c, p) => networks.NETWORKS.threads.post(c, p),
-  tiktok: (c, p) => networks.NETWORKS.tiktok.post(c, { ...p, images: p.paths.map((u) => tenancy.subdomainUrl(tenancy.current()) + u) }),
+  tiktok: (c, p) => networks.NETWORKS.tiktok.post(c, p),
   // YouTube takes only the post's video; X gets the photos themselves, posted with the business's own X app
   youtube: (c, p) => networks.NETWORKS.youtube.post(c, p),
   x: (c, p) => xposts.post(c, p),
@@ -5753,13 +5752,16 @@ function postProblem({ to, caption, bufs }) {
 }
 // a tracked link to the booking page for a post (a job's post or a plan post), so visits and requests from it are counted
 const bookingRef = (id) => (tenancy.has('onlineBooking') ? `${bookingUrl()}?ref=${id}` : '');
+// where the networks download a post's photos from: always the <slug>.<root domain> address, which has a working certificate (a custom
+// domain may not have one yet, and Facebook, Instagram and Threads then can't fetch the photos); it's also the domain verified in the TikTok app
+const mediaBase = () => tenancy.subdomainUrl(tenancy.current());
 // posts to each network (the photos already saved in uploads, and as JPEG buffers) and keeps the post in Social posting's list
 async function sendPost({ to, caption, images, bufs, ref = '', video = null, tiktok, youtube, by = '', planId }) {
   const capFor = (k) => { if (!ref || !['facebook', 'linkedin', 'threads'].includes(k)) return caption; const c = `${caption}\n\nBook online: ${ref}`; return c.length <= ((POST_LIMITS[k] || {}).text || Infinity) ? c : caption; };
   const post = { id: uid(), caption, images, ...(video ? { video: true } : {}), ...(planId ? { planId } : {}), results: {}, createdAt: new Date().toISOString(), by };
   for (const k of to) {
     try {
-      const r = await POST_TO[k](connOf(k), { caption: capFor(k), ref, images: images.map((u) => baseUrl() + u), paths: images, jpegs: bufs, video, options: k === 'tiktok' ? tiktok : k === 'youtube' ? youtube : undefined });
+      const r = await POST_TO[k](connOf(k), { caption: capFor(k), ref, images: images.map((u) => mediaBase() + u), paths: images, jpegs: bufs, video, options: k === 'tiktok' ? tiktok : k === 'youtube' ? youtube : undefined });
       markWorking(k);
       post.results[k] = { status: 'posted', url: k === 'facebook' ? `https://www.facebook.com/${r.post_id || r.id}` : k === 'bluesky' || k === 'x' || networks.has(k) ? r.url : k === 'google' ? r.searchUrl || connOf('google').mapsUrl || '' : r.permalink || `https://www.instagram.com/${connOf(k).username}` };
     } catch (e) { markBroken(k, e); post.results[k] = { status: 'failed', error: e.message, ...(e.reconnect ? { reconnect: true } : {}) }; }
