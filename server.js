@@ -1958,6 +1958,7 @@ app.post('/api/account/domains/:host/check', async (req, res) => {
   const { t, d } = accountDomain(req); if (!d) return res.status(404).json({ error: 'Domain not found' });
   const r = await tenancy.checkDns(d.host, t);
   if (r.ok && !d.verified) { d.verified = true; d.verifiedAt = new Date().toISOString(); if (!t.domains.some((x) => x.primary)) d.primary = true; tenancy.savePlatform(); }
+  if (r.ok) { d.https = await tenancy.httpsWorks(d.host); tenancy.savePlatform(); if (!d.https) Object.assign(r, { https: false, detail: `${d.host} points here, but its secure connection (SSL certificate) isn’t set up yet. Until it is, links keep using ${tenancy.subdomainUrl(t).replace(/^https?:\/\//, '')}.` }); }
   res.json({ ...r, account: accountInfo() });
 });
 app.post('/api/account/domains/:host/primary', (req, res) => {
@@ -6638,6 +6639,7 @@ const jobPostsMonthly = () => { for (const t of tenancy.platform().tenants) if (
 let planBusy = false;
 const planTick = async () => { if (planBusy) return; planBusy = true; try { for (const t of tenancy.platform().tenants) if (t.status === 'active') await tenancy.run(t, async () => { try { await mkPlan.tick(); } catch (e) { console.error('marketing plan:', e.message); } }); } finally { planBusy = false; } };
 setTimeout(planTick, 60e3); setInterval(planTick, 60e3);
+setTimeout(() => tenancy.checkHttpsAll().catch(() => {}), 5e3); setInterval(() => tenancy.checkHttpsAll().catch(() => {}), 30 * 60e3); // custom domains: links use one only while its HTTPS works
 setTimeout(jobPostsMonthly, 40e3); setInterval(jobPostsMonthly, 3600e3); // Every job markets itself: last month's results on the 1st
 setTimeout(marketingTrials, 45e3); setInterval(marketingTrials, 3600e3); // Marketing suite add-on: billing starts when its free trial ends
 setTimeout(billMemberships, 35e3); setInterval(billMemberships, 3600e3); // service plans: each billing period's invoice
