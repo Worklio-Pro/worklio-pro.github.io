@@ -90,7 +90,7 @@ ${S.allowSignups ? `<a class="btn ${i === mid ? '' : 'alt'}" href="#signup" data
   drawPlans(); drawCompare(S, amount); drawMatrix(S, amount);
   if (location.hash === '#compare' || location.hash === '#matrix') { const el = $(location.hash); if (el) el.scrollIntoView(); } // the sections draw after the page loads, so jump again
   document.addEventListener('click', (e) => { const b = e.target.closest('[data-period]'); if (!b) return; period = b.dataset.period; drawPlans(); const sel = $('#sf [name=interval]'); if (sel) { sel.value = period; sel.dispatchEvent(new Event('change')); } });
-  $('#foot').innerHTML = 'Questions? <a href="#contact" data-contact="">Contact us</a> · <a href="/terms">Terms of Service</a> · <a href="/privacy">Privacy Policy</a>'; if (window.cookieChoicesLink) window.cookieChoicesLink();
+  $('#foot').innerHTML = 'Questions? <a href="#contact" data-contact="">Contact us</a> · <a href="/terms">Terms of Service</a> · <a href="/privacy">Privacy Policy</a>' + ($('#owner') ? ` · ${$('#owner').innerHTML.replace('<span id="yr"></span>', new Date().getFullYear())}` : ''); if (window.cookieChoicesLink) window.cookieChoicesLink();
   document.addEventListener('click', (e) => { const b = e.target.closest('[data-contact]'); if (b) { e.preventDefault(); openContact(S, b.dataset.contact); } });
   if (location.hash === '#contact') openContact(S, ''); // a link straight to the contact form (e.g. from the chat when no one is available)
   if (!S.allowSignups) return;
