@@ -702,6 +702,7 @@ const IG_TABS = [
   ['slack', 'Slack', 'Slack', 'Businesses get messages in a Slack channel about new work and payments'],
   ['homedepot', 'Home Depot', 'Home Depot', 'Home Depot prices in the product and service form (SerpApi)'],
   ['ai', 'AI', 'AI', 'Write with AI, Rewrite, social captions and the help chat'],
+  ['photos', 'Stock photos', 'Stock photos (Pexels)', 'Real photos of the subject on businesses’ Marketing plan posts'],
   ['marketplace', 'App Marketplace', 'App Marketplace', 'The App Marketplace in every account, and Home Depot prices'],
 ];
 const IG_ICONS = {
@@ -712,6 +713,7 @@ const IG_ICONS = {
   meta: '<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="22" fill="#1877F2"/><path fill="#fff" d="M26.6 46V30.2h5.3l.8-6.2h-6.1v-3.9c0-1.8.5-3 3.1-3H33v-5.5c-.6-.1-2.5-.3-4.7-.3-4.6 0-7.8 2.8-7.8 8V24h-5.2v6.2h5.2V46z"/></svg>',
   instagram: '<svg viewBox="0 0 48 48" aria-hidden="true"><defs><radialGradient id="igg" cx="30%" cy="107%" r="150%"><stop offset="0" stop-color="#fdf497"/><stop offset=".05" stop-color="#fdf497"/><stop offset=".45" stop-color="#fd5949"/><stop offset=".6" stop-color="#d6249f"/><stop offset=".9" stop-color="#285AEB"/></radialGradient></defs><rect x="3" y="3" width="42" height="42" rx="11" fill="url(#igg)"/><rect x="12" y="12" width="24" height="24" rx="7" fill="none" stroke="#fff" stroke-width="3"/><circle cx="24" cy="24" r="5.5" fill="none" stroke="#fff" stroke-width="3"/><circle cx="31" cy="17" r="1.8" fill="#fff"/></svg>',
   tiktok: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#000"/><path fill="#fff" d="M26.5 11h4.3c.3 2.9 2.3 5 5.2 5.3v4.3c-1.9 0-3.7-.6-5.2-1.6v9a7.6 7.6 0 1 1-7.6-7.6l1.1.1v4.4a3.2 3.2 0 1 0 2.2 3.1z"/></svg>',
+  photos: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#05A081"/><rect x="12" y="15" width="24" height="18" rx="2.5" fill="none" stroke="#fff" stroke-width="2.6"/><circle cx="19" cy="21" r="2.4" fill="#fff"/><path fill="#fff" d="M14 31l7-7 4 4 3-3 6 6z"/></svg>',
   ai: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#7C3AED"/><path fill="#fff" d="M22 11l2.6 7.4L32 21l-7.4 2.6L22 31l-2.6-7.4L12 21l7.4-2.6zM33 27l1.3 3.7L38 32l-3.7 1.3L33 37l-1.3-3.7L28 32l3.7-1.3z"/></svg>',
   quickbooks: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#2CA01C"/><text x="24" y="30.5" text-anchor="middle" font-family="system-ui,sans-serif" font-size="18" font-weight="700" fill="#fff">qb</text></svg>',
   xero: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="3" width="42" height="42" rx="10" fill="#13B5EA"/><text x="24" y="30.5" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="#fff">xero</text></svg>',
@@ -1918,6 +1920,9 @@ ${[['aiDescriptions', 'Descriptions', 'Write with AI on products and services, a
 <p class="muted ig-p">With Descriptions and Client messages and contracts both off, AI descriptions also leaves your pricing page and plan lists.</p>
 <h4>Anthropic API key</h4><p class="muted ig-p">In the <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Claude Console</a>, go to API keys → <strong>Create key</strong>, then paste it here. Usage is billed to that Console account.</p>
 ${envForm(I, 'ai', [['ANTHROPIC_API_KEY', 'API key', 'sk-ant-…', true]])}`)}
+${ig('Stock photos (Pexels)', on(I.photos), `<p class="ig-d">Real photos of each post’s subject (a lawn, gutters, a kitchen…) behind the headline on businesses’ Marketing plan pictures. Pexels photos are free to use in marketing, with no credit needed.</p>
+<ol class="ig-steps"><li>Sign up at <a href="https://www.pexels.com/api/" target="_blank" rel="noopener">pexels.com/api</a> and request an API key (free; it shows right away).</li><li>Paste the key here, or set <code>PEXELS_API_KEY</code> in <code>.env</code>. The free key allows 200 searches an hour and 20,000 a month; each business’s searches are kept for a day.</li></ol>
+${envForm(I, 'photos', [['PEXELS_API_KEY', 'API key', 'Your Pexels API key', true]])}`)}
 ${ig('App Marketplace', on(D.settings.marketplace !== false, 'On', 'Off'), `<p class="ig-d">Settings → App Marketplace in every account: owners and admins browse apps, connect the ones that work today and vote for the rest (see Messages → App requests).</p>
 <label class="switchline"><input type="checkbox" id="mkOn" ${D.settings.marketplace !== false ? 'checked' : ''}> Show the App Marketplace in every account</label>
 <label class="switchline"><input type="checkbox" id="mkBeta" ${D.settings.marketplaceBeta ? 'checked' : ''}> Mark the App Marketplace as Beta <span class="beta-tag">Beta</span></label>

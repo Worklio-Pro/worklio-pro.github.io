@@ -5746,6 +5746,15 @@ const mkPlanRoute = (fn) => async (req, res) => {
   } catch (e) { if (!e.status) console.error('marketing plan:', e.message); res.status(e.status || 500).json({ error: e.status ? e.message : 'Something went wrong' }); }
 };
 app.get('/api/marketing/plan', mkPlanRoute(() => mkPlan.view()));
+// stock photos of a post's subject (lib/stock-photos.js), and each photo through this address so the page can draw it
+const stockPhotos = require('./lib/stock-photos');
+app.get('/api/marketing/plan/photos', mkPlanRoute(async (req) => ({ photos: await stockPhotos.search(req.query.q) })));
+app.get('/api/marketing/plan/photo', async (req, res) => {
+  try {
+    if (!isAdmin(currentUser(req)) || !tenancy.has('marketingSuite')) return res.status(403).end();
+    const { type, buf } = await stockPhotos.image(String(req.query.u || '')); res.setHeader('Content-Type', type); res.setHeader('Cache-Control', 'private, max-age=86400'); res.end(buf);
+  } catch (e) { if (!e.status) console.error('stock photo:', e.message); res.status(e.status || 500).end(); }
+});
 app.post('/api/marketing/plan/suggest', mkPlanRoute(() => mkPlan.makeBatch({ manual: true })));
 app.put('/api/marketing/plan/settings', mkPlanRoute((req) => mkPlan.setSettings(req.body || {})));
 app.put('/api/marketing/plan/:id', mkPlanRoute((req) => mkPlan.edit(req.params.id, req.body || {})));

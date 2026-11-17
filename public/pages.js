@@ -2405,7 +2405,7 @@ PAGES['/marketing/website'] = mkSoonPage('/marketing/website', 'Website');
    posts go out at their day and time. Tabs: Needs action (didn't go out), To approve, Scheduled, Posted, Skipped. ===== */
 const PL_TABS = [['action', 'Needs action'], ['suggested', 'To approve'], ['scheduled', 'Scheduled'], ['posted', 'Posted'], ['skipped', 'Skipped']];
 const plTabOf = (x) => (x.status === 'failed' ? 'action' : x.status === 'posting' ? 'scheduled' : x.status === 'expired' ? 'skipped' : x.status);
-const plState = { tab: '', extra: {} }; // extra: photos added from the device to a suggestion on this visit, by id (JPEG data URLs)
+const plState = { tab: '', extra: {}, photos: {} }; // extra: photos added from the device to a suggestion on this visit, by id (JPEG data URLs)
 const plWhen = (x) => `${new Date(x.day + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}, ${fmtTime(x.time)}`;
 const plDayAfter = (d, n) => { const t = new Date(d + 'T12:00:00'); t.setDate(t.getDate() + n); return t.toLocaleDateString('en-CA'); };
 // each suggestion's picture, drawn here in the business's brand color with its logo: a 1080px square JPEG (fits every network).
@@ -2413,14 +2413,23 @@ const plDayAfter = (d, n) => { const t = new Date(d + 'T12:00:00'); t.setDate(t.
 const plImg = (src) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
 function plShade(hex, f) { const n = parseInt(hex.slice(1), 16); const ch = (v) => Math.round(f < 0 ? v * (1 + f) : v + (255 - v) * f); return `rgb(${ch(n >> 16)},${ch((n >> 8) & 255)},${ch(n & 255)})`; }
 function plWrap(g, text, w) { const out = []; let line = ''; for (const word of String(text).split(/\s+/).filter(Boolean)) { const t = line ? line + ' ' + word : word; if (line && g.measureText(t).width > w) { out.push(line); line = word; } else line = t; } if (line) out.push(line); return out; }
-async function plArt(x, P, words) {
+const plPhoto = (bg) => '/api/marketing/plan/photo?u=' + encodeURIComponent(bg.src);
+const plStockKind = (x, P) => P.stock && !x.review && !x.photos.length && x.kind !== 'showcase';
+async function plArt(x, P, words, bg) {
   const B = P.brand; const S = 1080; const c = document.createElement('canvas'); c.width = c.height = S; const g = c.getContext('2d');
   try { await document.fonts.ready; } catch (e) { /* draw with what's there */ }
   const font = getComputedStyle(document.body).fontFamily || 'system-ui, sans-serif';
   const n = parseInt(B.color.slice(1), 16); const lum = (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
-  const ink = lum > 0.65 ? '#111827' : '#ffffff';
-  const bg = g.createLinearGradient(0, 0, S, S); bg.addColorStop(0, plShade(B.color, 0.08)); bg.addColorStop(1, plShade(B.color, -0.35)); g.fillStyle = bg; g.fillRect(0, 0, S, S);
-  g.fillStyle = ink; g.globalAlpha = 0.07; for (const [cx, cy, r] of [[S * 0.95, S * 0.06, 300], [S * 0.02, S * 0.98, 230], [S * 0.86, S * 0.9, 90]]) { g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fill(); } g.globalAlpha = 1;
+  let photo = null; if (bg && bg.src) { try { photo = await plImg(plPhoto(bg)); } catch (e) { /* the brand color then */ } }
+  const ink = photo ? '#ffffff' : lum > 0.65 ? '#111827' : '#ffffff';
+  if (photo) { // the photo fills the square (cropped to fit), darker toward the words so they stay readable, with a brand-color bar at the bottom
+    const k = Math.max(S / photo.width, S / photo.height); g.drawImage(photo, (S - photo.width * k) / 2, (S - photo.height * k) / 2, photo.width * k, photo.height * k);
+    const sh = g.createLinearGradient(0, 0, 0, S); sh.addColorStop(0, 'rgba(0,0,0,.25)'); sh.addColorStop(0.35, 'rgba(0,0,0,.35)'); sh.addColorStop(1, 'rgba(0,0,0,.78)'); g.fillStyle = sh; g.fillRect(0, 0, S, S);
+    g.fillStyle = B.color; g.fillRect(0, S - 16, S, 16);
+  } else {
+    const grad = g.createLinearGradient(0, 0, S, S); grad.addColorStop(0, plShade(B.color, 0.08)); grad.addColorStop(1, plShade(B.color, -0.35)); g.fillStyle = grad; g.fillRect(0, 0, S, S);
+    g.fillStyle = ink; g.globalAlpha = 0.07; for (const [cx, cy, r] of [[S * 0.95, S * 0.06, 300], [S * 0.02, S * 0.98, 230], [S * 0.86, S * 0.9, 90]]) { g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fill(); } g.globalAlpha = 1;
+  }
   const M = 90; g.textBaseline = 'alphabetic';
   // top: the logo on a white card, or the business name
   let logoOk = false;
@@ -2440,9 +2449,9 @@ async function plArt(x, P, words) {
   } else {
     const text = String(words || '').trim() || x.title || ''; let size = 112; let lines = [];
     for (; size >= 56; size -= 6) { g.font = `800 ${size}px ${font}`; lines = plWrap(g, text, W); if (lines.length <= 4 && lines.every((l) => g.measureText(l).width <= W)) break; }
-    size = Math.max(size, 56); lines = lines.slice(0, 5); const lh = size * 1.12; const kindH = 70; const block = kindH + lines.length * lh; let y = top + Math.max(0, (bottom - top - block) / 2);
+    size = Math.max(size, 56); lines = lines.slice(0, 5); const lh = size * 1.12; const kindH = 70; const block = kindH + lines.length * lh; let y = photo ? Math.max(top, bottom - block - 10) : top + Math.max(0, (bottom - top - block) / 2);
     g.font = `700 32px ${font}`; g.globalAlpha = 0.8; g.fillText(String(x.kindName || '').toUpperCase(), M, y + 32); g.globalAlpha = 1;
-    g.fillRect(M, y + 52, 90, 8); y += kindH + size * 0.9;
+    if (photo) g.fillStyle = B.color; g.fillRect(M, y + 52, 90, 8); g.fillStyle = ink; y += kindH + size * 0.9;
     g.font = `800 ${size}px ${font}`; lines.forEach((l, i) => g.fillText(l, M, y + i * lh));
   }
   // the bottom: name and town
@@ -2472,7 +2481,7 @@ function plCard(x, P, R) {
   return `<form class="jp-draft pl-draft" data-id="${x.id}" id="pl-${x.id}"><div class="jp-top">${label}${x.jobId ? `<a class="mk-link" href="/jobs/edit?id=${x.jobId}" data-link>${esc(x.jobTitle || 'Open job')}</a>` : ''}</div>
 ${x.review ? `<blockquote class="pl-review">${'★'.repeat(x.review.stars)} “${esc(x.review.comment)}”</blockquote>` : ''}
 ${x.photos.length ? `<p class="muted jp-hint">Tick the photos to post (up to 10). The first one ticked is the cover.</p><div class="jp-photos">${x.photos.map((p) => `<label title="${esc(p.label)}"><input type="checkbox" name="pic" value="${esc(p.url)}" ${p.picked ? 'checked' : ''}><img src="${esc(p.url)}" alt="${esc(p.label)} photo" loading="lazy"><span>${esc(p.label)}</span></label>`).join('')}</div>` : ''}
-${P.settings.graphics ? `<div class="pl-art"><img data-art="${x.id}" alt="Picture made for this post"><div><label class="sp-chk"><input type="checkbox" name="art" ${x.photos.length ? '' : 'checked'}> Post this picture${x.photos.length ? ' too' : ''}</label>${x.review ? '<small class="muted">Made from the review: its stars and the client’s words, with your logo and colors.</small>' : `<label>Words on the picture<input name="artText" maxlength="60" value="${esc(x.art)}"></label><small class="muted">Made with your logo and brand color. Change the words and it redraws.</small>`}</div></div>` : ''}
+${P.settings.graphics ? `<div class="pl-art"><img data-art="${x.id}" alt="Picture made for this post"><div><label class="sp-chk"><input type="checkbox" name="art" ${x.photos.length ? '' : 'checked'}> Post this picture${x.photos.length ? ' too' : ''}</label>${x.review ? '<small class="muted">Made from the review: its stars and the client’s words, with your logo and colors.</small>' : `<label>Words on the picture<input name="artText" maxlength="60" value="${esc(x.art)}"></label><small class="muted">Made with your logo and brand color. Change the words and it redraws.</small>`}${plStockKind(x, P) ? `<div class="pl-bgs"><span class="muted">Background</span><div class="pl-bgrow" data-bgs><button type="button" class="pl-bg pl-bgc" data-bg="" style="background:${esc(P.brand.color)}" title="Your brand color" aria-label="Your brand color"></button><span class="muted pl-bgwait">Finding photos…</span></div><div class="pl-bgfind"><input name="bgq" value="${esc(x.photo)}" placeholder="What should the photo show?" maxlength="60"><button type="button" class="btn alt sm" data-bgsearch>Find photos</button></div><small class="muted pl-credit"></small></div>` : ''}</div></div>` : ''}
 ${extra.length ? `<div class="jp-photos">${extra.map((src, i) => `<label><input type="checkbox" name="xpic" value="${i}" checked><img src="${src}" alt="Your photo"><span>Added</span></label>`).join('')}</div>` : ''}
 <div class="pl-add"><label class="btn alt sm">+ Add photos<input type="file" accept="image/*" multiple hidden data-add="${x.id}"></label><small class="muted">${x.photos.length || extra.length || P.settings.graphics || !P.nets.some((k) => ['instagram', 'pinterest'].includes(k)) ? '' : `${P.nets.filter((k) => ['instagram', 'pinterest'].includes(k)).map((k) => SP_NAMES[k]).join(' and ')} posts need a photo. `}Photos you add here are kept until you approve or leave this page.</small></div>
 <label>Post${x.ai ? ' <small class="muted">written by AI for your business. Change anything you like.</small>' : ''}<textarea name="caption" rows="6" maxlength="2200">${esc(x.caption)}</textarea></label>
@@ -2525,8 +2534,30 @@ function bindPlan() {
   for (const f of $$('form.pl-draft')) {
     const id = f.dataset.id; const cap = f.caption; let saved = cap.value; const x = P && P.items.find((y) => y.id === id);
     const pic = $('img[data-art]', f); const words = f.artText; let artSaved = words ? words.value : ''; let timer = 0;
-    const draw = async () => { if (!pic || !x) return; try { pic.src = await plArt(x, P, words ? words.value : ''); } catch (e) { pic.closest('.pl-art').hidden = true; } };
-    draw();
+    let bg = x && x.bg ? x.bg : ''; // '' = the brand color
+    const draw = async () => { if (!pic || !x) return; try { pic.src = await plArt(x, P, words ? words.value : '', bg); } catch (e) { pic.closest('.pl-art').hidden = true; } };
+    const row = $('[data-bgs]', f); const credit = $('.pl-credit', f);
+    const mark = () => { if (!row) return; $$('.pl-bg', row).forEach((b) => b.classList.toggle('on', (b.dataset.bg || '') === (bg ? bg.id : ''))); if (credit) credit.innerHTML = bg ? `Photo by ${esc(bg.by || 'a Pexels photographer')} on <a href="${esc(bg.link)}" target="_blank" rel="noopener">Pexels</a>` : ''; };
+    const pick = (b, keep) => { bg = b; mark(); draw(); if (!keep) save({ bg: b || '' }); };
+    const find = async (q, auto) => {
+      if (!row) return; $$('.pl-bgp, .pl-bgwait', row).forEach((e) => e.remove()); row.insertAdjacentHTML('beforeend', '<span class="muted pl-bgwait">Finding photos…</span>');
+      try {
+        const list = plState.photos[q] || (plState.photos[q] = (await api('GET', '/api/marketing/plan/photos?q=' + encodeURIComponent(q))).photos);
+        $$('.pl-bgwait', row).forEach((e) => e.remove());
+        const shown = [...(bg && !list.some((p) => p.id === bg.id) ? [bg] : []), ...list.slice(0, 8)];
+        row.insertAdjacentHTML('beforeend', shown.length ? shown.map((p) => `<button type="button" class="pl-bg pl-bgp" data-bg="${esc(p.id)}" title="${esc(p.alt || 'Photo by ' + p.by)}"><img src="${esc(p.thumb)}" alt="" loading="lazy"></button>`).join('') : '<span class="muted pl-bgwait">No photos found. Try other words.</span>');
+        $$('.pl-bgp', row).forEach((b) => b.addEventListener('click', () => pick(shown.find((p) => p.id === b.dataset.bg))));
+        if (auto && list[0]) pick(list[0]); else mark();
+      } catch (e) { $$('.pl-bgwait', row).forEach((el) => { el.textContent = e.message; }); }
+    };
+    if (row) {
+      $('.pl-bgc', row).addEventListener('click', () => pick(''));
+      const q = f.bgq; const go = () => { const v = q.value.trim(); if (v) { find(v); save({ photo: v }); } };
+      $('[data-bgsearch]', f).addEventListener('click', go);
+      q.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); go(); } }); // not Approve
+      setTimeout(() => find(q.value.trim() || x.title, x.bg === null), 0); // a new suggestion gets the first photo found
+    }
+    mark(); draw();
     if (words) {
       words.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(draw, 250); });
       words.addEventListener('blur', () => { if (words.value !== artSaved) { artSaved = words.value; save({ art: words.value }); } });
@@ -2539,7 +2570,7 @@ function bindPlan() {
     f.time.addEventListener('change', () => { if (f.time.value) save({ time: f.time.value }); });
     f.addEventListener('submit', async (e) => {
       e.preventDefault(); const btn = $('.sp-foot .btn:not(.alt)', f); const to = $$('input[name=to]:checked', f).map((x) => x.value); const text = cap.value.trim();
-      const art = f.art && f.art.checked && x && pic && !pic.closest('.pl-art').hidden ? [await plArt(x, P, words ? words.value : '')] : [];
+      const art = f.art && f.art.checked && x && pic && !pic.closest('.pl-art').hidden ? [await plArt(x, P, words ? words.value : '', bg)] : [];
       const pics = [...(x && x.photos.length ? [] : art), ...$$('input[name=pic]:checked', f).map((x) => x.value), ...$$('input[name=xpic]:checked', f).map((x) => (plState.extra[id] || [])[Number(x.value)]), ...(x && x.photos.length ? art : [])].filter(Boolean);
       if (!to.length) return toast('Choose where to post', true);
       if (!f.day.value || !f.time.value) return toast('Pick a day and time', true);
