@@ -2505,7 +2505,7 @@ const plShown = (x) => { const f = plCal.f; return (!f.kind.length || f.kind.inc
 function plChip(x, wide) {
   const icons = x.to.filter((k) => CONN_ICONS[k]).map((k) => CONN_ICONS[k]).join('');
   const st = PL_ST[plTabOf(x)] + (x.status === 'expired' ? ' (not approved in time)' : '');
-  return `<button type="button" class="pl-chip ${x.status}" data-act="plGo" data-id="${x.id}" data-tab="${plTabOf(x)}" title="${esc(`${fmtTime(x.time)} · ${x.title} · ${st}`)}"><span class="pl-ct">${wide ? '' : `<b>${fmtTime(x.time)}</b> `}${esc(x.title)}</span>${icons ? `<span class="pl-ci">${icons}</span>` : ''}${wide ? `<span class="pl-cm">${fmtTime(x.time)} · ${esc(st)}</span>` : ''}</button>`;
+  return `<button type="button" class="pl-chip ${x.status}"${!wide && ['suggested', 'scheduled', 'expired'].includes(x.status) ? ' data-drag="1"' : ''} data-act="plGo" data-id="${x.id}" data-tab="${plTabOf(x)}" title="${esc(`${fmtTime(x.time)} · ${x.title} · ${st}`)}"><span class="pl-ct">${wide ? '' : `<b>${fmtTime(x.time)}</b> `}${esc(x.title)}</span>${icons ? `<span class="pl-ci">${icons}</span>` : ''}${wide ? `<span class="pl-cm">${fmtTime(x.time)} · ${esc(st)}</span>` : ''}</button>`;
 }
 function plFilterMenu(P) {
   const nets = P.nets.filter((k) => SP_NAMES[k]); // the social accounts connected now
@@ -2526,7 +2526,7 @@ function plCalHtml(P) {
     title = f(first, { month: 'long', year: 'numeric' });
     body = `<div class="pl-mgrid"><div class="pl-mh">${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((w) => `<span>${w}</span>`).join('')}</div>${Array.from({ length: weeks * 7 }, (_, i) => {
       const d = plDayAfter(start, i); const its = on(d); const more = its.length > 3;
-      return `<div class="pl-mday${d.slice(0, 7) === m ? '' : ' out'}${d === P.today ? ' today' : ''}"><span class="pl-md">${Number(d.slice(8))}</span>${its.slice(0, more ? 2 : 3).map((x) => plChip(x)).join('')}${more ? `<button type="button" class="pl-more" data-act="plCalDay" data-d="${d}">+${its.length - 2} more</button>` : ''}</div>`;
+      return `<div data-d="${d}" class="pl-mday${d.slice(0, 7) === m ? '' : ' out'}${d === P.today ? ' today' : ''}"><span class="pl-md">${Number(d.slice(8))}</span>${its.slice(0, more ? 2 : 3).map((x) => plChip(x)).join('')}${more ? `<button type="button" class="pl-more" data-act="plCalDay" data-d="${d}">+${its.length - 2} more</button>` : ''}</div>`;
     }).join('')}</div>`;
   } else {
     const start = plSunday(a); const end = plDayAfter(start, 6);
@@ -2554,6 +2554,27 @@ A.plCalMove = (d) => {
   else plCal.anchor = plDayAfter(a, 7 * n);
   plCalDraw();
 };
+// month view: drag a post (to approve, scheduled or expired) to another day, like the Calendar page. A tap still opens it.
+document.addEventListener('pointerdown', (e) => {
+  const el = e.target.closest && e.target.closest('.pl-mday .pl-chip[data-drag]'); if (!el || e.button !== 0) return;
+  const cells = $$('.pl-mday'); const sx = e.clientX; const sy = e.clientY; const box = el.getBoundingClientRect(); let ghost = null; let target = null;
+  const move = (m) => {
+    if (!ghost && Math.hypot(m.clientX - sx, m.clientY - sy) < 5) return;
+    if (!ghost) { ghost = el.cloneNode(true); ghost.classList.add('sc-ghost'); ghost.style.width = box.width + 'px'; document.body.appendChild(ghost); el.classList.add('sc-dragging'); }
+    ghost.style.left = m.clientX - (sx - box.left) + 'px'; ghost.style.top = m.clientY - (sy - box.top) + 'px';
+    const c = cells.find((x) => { const r = x.getBoundingClientRect(); return m.clientX >= r.left && m.clientX <= r.right && m.clientY >= r.top && m.clientY <= r.bottom; });
+    const ok = c && plState.P && c.dataset.d >= plState.P.today; cells.forEach((x) => x.classList.toggle('drop', ok && x === c)); target = ok ? c.dataset.d : null;
+  };
+  const up = async () => {
+    removeEventListener('pointermove', move); removeEventListener('pointerup', up);
+    if (!ghost) return; // a tap: its click opens the post
+    ghost.remove(); el.classList.remove('sc-dragging'); cells.forEach((x) => x.classList.remove('drop'));
+    const stop = (c) => { c.stopPropagation(); c.preventDefault(); }; addEventListener('click', stop, true); setTimeout(() => removeEventListener('click', stop, true), 0); // no click after a drag
+    if (!target || target === el.closest('.pl-mday').dataset.d) return;
+    try { await api('POST', `/api/marketing/plan/${el.dataset.id}/move`, { day: target }); toast(`Moved to ${fmtDate(target)}`); refresh(); } catch (x) { toast(x.message, true); }
+  };
+  addEventListener('pointermove', move); addEventListener('pointerup', up);
+});
 A.plCalView = (d) => { plCal.view = d.v; plCalDraw(); };
 A.plCalDay = (d) => { plCal.view = 'week'; plCal.anchor = d.d; plCalDraw(); };
 A.plCalOpen = () => { plCal.open = !plCal.open; plCalDraw(plCal.open); };
