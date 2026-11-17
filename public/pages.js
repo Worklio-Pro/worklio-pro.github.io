@@ -2491,7 +2491,7 @@ ${nets.some(([k]) => k === 'tiktok') ? '<div class="sp-tt pl-tt" data-tt hidden>
 <div class="sp-foot"><button type="button" class="btn alt" data-act="plSkip" data-id="${x.id}">Skip</button><button class="btn"${nets.length ? '' : ' disabled'}>Approve and schedule</button></div></form>`;
 }
 // the calendar: a week (Sun–Sat) or a month, each post as a chip on its day. ‹ › move a week or a month; the filter picks
-// content types, networks and statuses (none picked in a group = all). The view and filter are kept on this device.
+// content types, social accounts and statuses (none picked in a group = all). The view and filter are kept on this device.
 const PL_ST = { action: 'Needs action', suggested: 'To approve', scheduled: 'Scheduled', posted: 'Posted', skipped: 'Skipped' };
 const plCal = { view: 'week', anchor: '', f: { kind: [], net: [], st: [] }, open: false };
 try { const s = JSON.parse(localStorage.getItem('plCal') || '{}'); if (s.view === 'month') plCal.view = 'month'; if (s.f) for (const k of ['kind', 'net', 'st']) if (Array.isArray(s.f[k])) plCal.f[k] = s.f[k]; } catch (e) { /* private mode */ }
@@ -2505,11 +2505,11 @@ function plChip(x, wide) {
   return `<button type="button" class="pl-chip ${x.status}" data-act="plGo" data-id="${x.id}" data-tab="${plTabOf(x)}" title="${esc(`${fmtTime(x.time)} · ${x.title} · ${st}`)}"><span class="pl-ct">${wide ? '' : `<b>${fmtTime(x.time)}</b> `}${esc(x.title)}</span>${icons ? `<span class="pl-ci">${icons}</span>` : ''}${wide ? `<span class="pl-cm">${fmtTime(x.time)} · ${esc(st)}</span>` : ''}</button>`;
 }
 function plFilterMenu(P) {
-  const nets = [...new Set([...P.nets, ...P.items.flatMap((x) => x.to)])].filter((k) => SP_NAMES[k]);
-  const groups = [['kind', 'Content', Object.entries(P.kinds || {})], ['net', 'Posts to', nets.map((k) => [k, SP_NAMES[k]])], ['st', 'Status', Object.entries(PL_ST)]];
+  const nets = P.nets.filter((k) => SP_NAMES[k]); // the social accounts connected now
+  const groups = [['kind', 'Content', Object.entries(P.kinds || {})], ['st', 'Status', Object.entries(PL_ST)]];
   const opt = (g, k, l) => `<button type="button" class="pl-fo${plCal.f[g].includes(k) ? ' on' : ''}" data-act="plCalF" data-g="${g}" data-k="${esc(k)}" role="menuitemcheckbox" aria-checked="${plCal.f[g].includes(k)}">${esc(l)}</button>`;
   return `<div class="pl-fmenu" role="menu"><div class="pl-ftop"><input type="search" placeholder="Search" aria-label="Search filters" data-fsearch><button type="button" class="pl-flink" data-act="plCalF" data-g="">Reset</button></div>
-<div class="pl-flist"><button type="button" class="pl-fo${plFiltered() ? '' : ' on'}" data-act="plCalF" data-g="" role="menuitemcheckbox" aria-checked="${!plFiltered()}">All</button>${groups.filter(([, , o]) => o.length).map(([g, h, o]) => `<div class="pl-fg"><span class="pl-fh">${h}</span>${o.map(([k, l]) => opt(g, k, l)).join('')}</div>`).join('')}</div></div>`;
+<div class="pl-flist"><button type="button" class="pl-fo${plFiltered() ? '' : ' on'}" data-act="plCalF" data-g="" role="menuitemcheckbox" aria-checked="${!plFiltered()}">All</button>${groups.filter(([, , o]) => o.length).map(([g, h, o]) => `<div class="pl-fg"><span class="pl-fh">${h}</span>${o.map(([k, l]) => opt(g, k, l)).join('')}${g === 'kind' ? nets.map((k) => opt('net', k, SP_NAMES[k] + ' posts')).join('') : ''}</div>`).join('')}</div></div>`;
 }
 function plCalHtml(P) {
   const a = plCal.anchor || (plCal.anchor = P.today); const month = plCal.view === 'month';
@@ -2533,7 +2533,7 @@ function plCalHtml(P) {
   const nf = plFiltered();
   return `<div class="pl-cbar"><div class="pl-nav"><button type="button" class="btn alt sm" data-act="plCalMove" data-n="-1" aria-label="${month ? 'Previous month' : 'Previous week'}">‹</button><button type="button" class="btn alt sm" data-act="plCalMove" data-n="1" aria-label="${month ? 'Next month' : 'Next week'}">›</button><h2>${esc(title)}</h2><button type="button" class="btn alt sm" data-act="plCalMove" data-n="0">Today</button></div>
 <div class="pl-tools"><div class="pl-seg" role="group" aria-label="Calendar view"><button type="button" class="${month ? 'on' : ''}" data-act="plCalView" data-v="month" aria-pressed="${month}">Month</button><button type="button" class="${month ? '' : 'on'}" data-act="plCalView" data-v="week" aria-pressed="${!month}">Week</button></div>
-<div class="pl-filter"><button type="button" class="btn alt sm pl-fbtn${nf ? ' on' : ''}" data-act="plCalOpen" aria-haspopup="menu" aria-expanded="${plCal.open}" title="Filter by content type, network and status"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>Filter${nf ? ` <span class="pl-fn">${nf}</span>` : ''}</button>${plCal.open ? plFilterMenu(P) : ''}</div></div></div>
+<div class="pl-filter"><button type="button" class="btn alt sm pl-fbtn${nf ? ' on' : ''}" data-act="plCalOpen" aria-haspopup="menu" aria-expanded="${plCal.open}" aria-label="Filter" title="Filter by content, social account and status"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>${nf ? ` <span class="pl-fn">${nf}</span>` : ''}</button>${plCal.open ? plFilterMenu(P) : ''}</div></div></div>
 ${nf && !items.length ? '<p class="muted pl-fnone">No posts match the filter. <button type="button" class="pl-flink" data-act="plCalF" data-g="">Show all</button></p>' : ''}${body}`;
 }
 // redraw just the calendar (the post cards below keep what's typed in them)
