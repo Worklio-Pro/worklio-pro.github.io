@@ -2710,6 +2710,16 @@ body.p404-only #billingBar{display:none!important}
 .pl-bg.on{border-color:var(--brand);box-shadow:0 0 0 2px var(--brand)}
 .pl-bgfind{display:flex;gap:6px}.pl-bgfind input{flex:1;min-width:0}
 .pl-credit a{color:inherit}
+/* Plan on a phone: the week is a list of days (no sideways scroll), the picture sits above its controls, and the week title can wrap */
+@media (max-width:600px){
+  .pl-week{grid-auto-flow:row;grid-auto-columns:auto;grid-template-columns:minmax(0,1fr);overflow:visible;gap:6px}
+  .pl-day{min-height:0;flex-direction:row;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:8px 10px}
+  .pl-day .pl-dn{flex:none;min-width:64px}.pl-day .pl-none{flex:1}.pl-day .pl-chip{flex:0 0 100%}
+  .pl-nav{flex:1 1 100%;min-width:0}.pl-nav h2{flex:1;min-width:0;font-size:16px;line-height:1.2;margin:0 4px;white-space:normal}
+  .pl-mday{min-height:56px;gap:3px}.pl-mday .pl-chip{min-height:10px;padding:0;border:0;border-radius:99px;font-size:0;background:var(--muted)}.pl-mday .pl-chip>*{display:none}
+  .pl-mday .pl-chip.suggested{background:var(--warn)}.pl-mday .pl-chip.scheduled,.pl-mday .pl-chip.posting{background:var(--brand)}.pl-mday .pl-chip.posted{background:var(--ok)}.pl-mday .pl-chip.failed{background:var(--danger)}.pl-mday .pl-more{font-size:11px}
+  .pl-art{flex-direction:column;gap:10px}.pl-art img{width:100%;max-width:300px;height:auto;aspect-ratio:1}.pl-art>div{width:100%}
+}
 
 /* our own color picker (color-picker.js): opens from any color box instead of the browser's small one */
 .cpk{position:fixed;z-index:3100;width:360px;max-width:calc(100vw - 16px);padding:14px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow-lg);display:flex;flex-direction:column;gap:12px}
