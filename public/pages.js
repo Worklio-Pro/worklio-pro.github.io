@@ -3261,7 +3261,7 @@ function upAddons(a) {
     more: a.marketingHub || mkHas ? `<a class="link-btn" href="/marketing/dashboard" data-link>${mkHas ? 'Open Marketing' : 'Take a look'}</a>` : '', buy: !mkHas && owner ? `<button type="button" class="btn sm" data-act="mkAddon">${mk.trialDays ? 'Start free trial' : 'Add Marketing suite'}</button>` : '' });
   return out;
 }
-A.upMx = () => { const el = document.getElementById('matrix-items'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+A.upMx = () => A.mxSee(); // the plan box is on Account and Billing; the Matrix line items box is on App Settings
 function upgradePanel(a, not, beta, contact) {
   const owner = memberCan('/settings/billing'); const ads = upAddons(a);
   const addons = ads.length ? `<aside class="up-addons"><span class="up-kicker">Add-ons</span><h4>${ads.every((x) => x.has) ? 'Your add-ons' : 'Add to the plan you have'}</h4>${ads.map((x) => `<div class="up-addon${x.has ? ' is-on' : ''}"><div class="up-addon-h"><span class="up-ic">${svgIcon(x.icon, 18)}</span><strong>${x.name}</strong><span class="up-price">${x.price}</span></div>${x.tag ? `<span class="up-tag">${x.has ? '✓ ' : ''}${x.tag}</span>` : ''}<p>${x.pitch}</p><div class="up-addon-act">${x.buy}${x.more}</div></div>`).join('')}${ads.some((x) => !x.has) && !ads.some((x) => x.buy) ? '<p class="muted sm" style="margin:0">Ask your account owner to add them.</p>' : ''}</aside>` : '';
