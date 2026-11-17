@@ -3224,9 +3224,15 @@ function planCard(a) {
   const beta = (f) => (f.beta ? ' <span class="beta-tag" title="This feature is in beta testing">Beta</span>' : '');
   const inc = a.featureList.filter((f) => f.included); const not = a.featureList.filter((f) => !f.included);
   const contact = a.contactEmail ? `<a href="mailto:${esc(a.contactEmail)}?subject=${encodeURIComponent('Plan change for ' + (company.name || a.slug))}">${esc(a.contactEmail)}</a>` : 'us';
-  return `<div class="card plan-card"><div class="plan-head"><div><h2>Your plan: ${esc(a.plan.name)}</h2><p class="muted" style="margin:0">${a.maxUsers ? (a.extraUser ? `${a.maxUsers} login${a.maxUsers === 1 ? '' : 's'} included, more at ${money(a.extraUser).replace(/\.00$/, '')}/month each` : `Up to ${a.maxUsers} login${a.maxUsers === 1 ? '' : 's'}`) : 'Unlimited logins'} · ${inc.length + a.alwaysIncluded.length} features</p></div>${not.length ? `<p class="muted" style="margin:0">To change your plan, contact ${contact}.</p>` : ''}</div>
+  return `<div class="card plan-card"><div class="plan-head"><div><h2>Your plan: ${esc(a.plan.name)}</h2><p class="muted" style="margin:0">${a.maxUsers ? (a.extraUser ? `${a.maxUsers} login${a.maxUsers === 1 ? '' : 's'} included, more at ${money(a.extraUser).replace(/\.00$/, '')}/month each` : `Up to ${a.maxUsers} login${a.maxUsers === 1 ? '' : 's'}`) : 'Unlimited logins'} · ${inc.length + a.alwaysIncluded.length} features</p></div></div>
 <div class="plan-cols"><div><h3>Included</h3><ul class="feat-list">${a.alwaysIncluded.map((l) => `<li class="on">${esc(l)}</li>`).join('')}${inc.map((f) => `<li class="on" title="${esc(f.desc)}"><span>${esc(f.label)}${beta(f)}</span></li>`).join('')}</ul></div>
-${not.length ? `<div><h3>Available on other plans</h3><ul class="feat-list">${not.map((f) => `<li title="${esc(f.desc)}"><span>${esc(f.label)}${beta(f)}</span></li>`).join('')}</ul></div>` : ''}</div></div>`;
+</div>${not.length ? upgradePanel(a, not, beta, contact) : ''}</div>`;
+}
+// the features this plan doesn't have, as an invitation to upgrade: a photo, what they'd get, and See plans (owner) or who to ask
+function upgradePanel(a, not, beta, contact) {
+  const owner = memberCan('/settings/billing');
+  const act = owner ? '<a class="btn" href="/settings/billing?upgrade=1" data-link>See plans and upgrade</a>' : '<p class="muted sm" style="margin:0">Ask your account owner about upgrading.</p>';
+  return `<div class="up-panel"><img class="up-photo" src="/img/upgrade-worker.jpg" alt="A smiling field technician in a work uniform" loading="lazy" width="240" height="280"><div class="up-body"><span class="up-kicker">Ready to grow?</span><h3>Unlock ${not.length} more feature${not.length === 1 ? '' : 's'} for your business</h3><p class="muted" style="margin:0 0 12px">Win more jobs, get paid faster and spend less time on paperwork. Upgrade any time and keep everything you’ve set up.</p><ul class="feat-list up-list">${not.map((f) => `<li title="${esc(f.desc)}"><span>${esc(f.label)}${beta(f)}</span></li>`).join('')}</ul><div class="up-act">${act}${!owner || !a.contactEmail ? '' : `<span class="muted sm">Questions? Contact ${contact}.</span>`}</div></div></div>`;
 }
 function webAddressCard(a) {
   if (!a) return '';
