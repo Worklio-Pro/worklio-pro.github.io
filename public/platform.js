@@ -691,7 +691,7 @@ const IG_TABS = [
   ['stripe', 'Stripe', 'Stripe', 'Plan payments at sign-up and businesses’ card payments'],
   ['google', 'Google', 'Google Business Profile', 'Google reviews, posts and online booking on Google'],
   ['meta', 'Facebook', 'Facebook (Meta)', 'Businesses connect their Facebook Page and post to it'],
-  ['instagram', 'Instagram', 'Instagram', 'Businesses connect Instagram with Instagram Login'],
+  ['instagram', 'Instagram', 'Instagram', 'Businesses connect their Instagram and post to it'],
   ['tiktok', 'TikTok', 'TikTok', 'Your own TikTok account, and businesses’ posts'],
   ['linkedin', 'LinkedIn', 'LinkedIn', 'Businesses post their work to their LinkedIn company page'],
   ['pinterest', 'Pinterest', 'Pinterest', 'Businesses save project photos as Pins'],
@@ -2021,13 +2021,19 @@ ${copy(M.redirectUri, 'Meta redirect URI')}
 <ol class="ig-steps" start="3"><li>Request Advanced Access in App Review for <code>pages_show_list</code>, <code>pages_read_engagement</code>, <code>pages_manage_posts</code>, <code>business_management</code>. Until Meta approves them, only people with a role on your app can connect.</li>
 <li>App settings → Basic has the App ID and App secret. Paste them here, or set <code>META_APP_ID</code> and <code>META_APP_SECRET</code> in <code>.env</code>.</li></ol>
 ${form('meta', M, 'App ID', '1234567890123456', 'App secret')}`)
-  + ig('Instagram', on(IN.id && IN.secret, 'Ready', 'Not set up'), `<p class="ig-d">Businesses sign in with Instagram itself (no Facebook account or Page needed) in Account Connections, then post project photos. Their Instagram must be a Business or Creator account. ${n('', IN.connected)}.</p>
-<ol class="ig-steps"><li>On <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener">Meta for Developers</a>, open your app (or create a <strong>Business</strong> app) and add the use case <strong>Manage messaging &amp; content on Instagram</strong>. Choose <strong>API setup with Instagram login</strong>.</li>
-<li>Under <strong>Set up Instagram business login</strong> → Business login settings, add this <strong>OAuth redirect URI</strong>:</li></ol>
-${copy(IN.redirectUri, 'Instagram redirect URI')}
-<ol class="ig-steps" start="3"><li>Request Advanced Access in App Review for <code>instagram_business_basic</code> and <code>instagram_business_content_publish</code>. Until Meta approves them, only Instagram accounts added as testers on your app can connect.</li>
-<li>The same page shows the <strong>Instagram app ID</strong> and <strong>Instagram app secret</strong> (not the Meta App ID). Paste them here, or set <code>INSTAGRAM_APP_ID</code> and <code>INSTAGRAM_APP_SECRET</code> in <code>.env</code>.</li></ol>
-${form('instagram', IN, 'Instagram app ID', '1234567890123456', 'Instagram app secret')}${I.localhost ? '<p class="muted ig-p">Instagram only sends people back to a public address: set <code>BASE_URL</code> (or <code>PLATFORM_DOMAIN</code>) first.</p>' : ''}`)
+  + ig('Instagram', on(IN.unified || (IN.id && IN.secret), 'Ready', 'Not set up'), `<p class="ig-d">Businesses sign in with Instagram (or Facebook) in Account Connections and choose their Instagram account, then post project photos. Their Instagram must be a Business or Creator account. ${n('', IN.connected)}.</p>
+<p class="muted ig-p">This uses Meta’s <strong>Unified login</strong>, the only Instagram setup Meta offers new apps. It signs in with the <strong>Facebook (Meta)</strong> app above, so save its App ID and App secret first${IN.metaReady ? ' (saved)' : ''}.</p>
+<ol class="ig-steps"><li>On <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener">Meta for Developers</a>, open the same app and add the use case <strong>Manage messaging &amp; content on Instagram</strong>. Click <strong>Customize</strong>, then <strong>API setup with Unified login</strong>. Connect a business portfolio if it asks.</li>
+<li>Under <strong>Redirect URL</strong>, register this address and save:</li></ol>
+${copy(IN.redirectUri, 'Instagram redirect URL')}
+<ol class="ig-steps" start="3"><li><strong>Create new configuration</strong> with the <code>instagram_basic</code> and <code>instagram_content_publish</code> permissions. Then open <strong>Facebook Login for Business → Configurations</strong>, edit that configuration and add <code>business_management</code>: without it, Meta doesn’t hand over the Instagram account.</li>
+<li>Request Advanced Access in App Review for <code>instagram_basic</code>, <code>instagram_content_publish</code>, <code>business_management</code> and <code>public_profile</code>. Until Meta approves them, only people with a role on your app (or Instagram testers) can connect.</li>
+<li>Paste the configuration’s <strong>Configuration ID</strong> here, or set <code>INSTAGRAM_CONFIG_ID</code> in <code>.env</code>.</li></ol>
+<form class="oa-form" data-p="instagram"><div class="row"><label>Configuration ID<input name="configId" value="${esc(IN.configFromEnv ? '' : IN.configId)}" placeholder="${IN.configFromEnv ? esc(IN.configId) + ' (from .env)' : '1234567890123456'}" autocomplete="off" spellcheck="false"></label></div>
+<details class="ig-p"><summary class="muted">Older app with Instagram Login?</summary><p class="muted">Apps made before Meta switched to Unified login may still have <strong>API setup with Instagram login</strong>, with its own Instagram app ID and secret. They’re used only when no Configuration ID is saved. Businesses already connected that way keep posting either way.</p>
+<div class="row"><label>Instagram app ID<input name="id" value="${esc(IN.fromEnv ? '' : IN.id)}" placeholder="${IN.fromEnv ? esc(IN.id) + ' (from .env)' : '1234567890123456'}" autocomplete="off" spellcheck="false"></label>
+<label>Instagram app secret<input name="secret" type="password" autocomplete="new-password" placeholder="${IN.secret ? 'Saved. Leave blank to keep it' : ''}"></label></div></details>
+<div class="acts" style="justify-content:flex-start"><button class="btn alt">Save</button>${(IN.configId && !IN.configFromEnv) || (IN.id && !IN.fromEnv) ? '<button type="button" class="btn danger sm" data-act="rmOauthApp" data-p="instagram">Remove</button>' : ''}</div></form>${I.localhost ? '<p class="muted ig-p">Instagram only sends people back to a public address: set <code>BASE_URL</code> (or <code>PLATFORM_DOMAIN</code>) first.</p>' : ''}`)
   + ig('TikTok', on(T.id && T.secret, T.connected ? 'Connected' : 'Ready', 'Not set up'), `<p class="ig-d">Your own TikTok account, for posting from <a href="#social">Social</a>. Businesses don’t use this.</p>
 <ol class="ig-steps"><li>On <a href="https://developers.tiktok.com/apps/" target="_blank" rel="noopener">TikTok for Developers</a>, create an app with <strong>Login Kit</strong> and the <strong>Content Posting API</strong> (with Direct Post on), and the scopes <code>user.info.basic</code>, <code>video.publish</code> and <code>video.upload</code>.</li>
 <li>In Login Kit, add this <strong>Redirect URI</strong> under Web:</li></ol>
