@@ -4625,7 +4625,7 @@ app.use('/card', express.urlencoded({ extended: false }));
 // What's new: the bell lists the latest three; See all changes opens ideas.<domain>/changelog
 app.get('/api/changelog', (req, res) => res.json(changelog.latest(Math.min(20, Number(req.query.limit) || 3))));
 app.get('/changelog', (req, res) => res.redirect(301, tenancy.ideasUrl() + '/changelog')); // the page moved to ideas.<domain>, for old links
-const cardSent = () => poweredBy.html('card', undefined, { color: 'inherit', style: 'opacity:.65' }); // the business card is in its own colors
+const cardSent = () => poweredBy.html('card', undefined, { color: 'inherit', style: 'opacity:.65', lead: 'Created by {product}' }); // the business card is in its own colors
 app.get('/card', (req, res) => {
   const p = bizPage();
   if (req.query.qr) {
