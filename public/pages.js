@@ -2696,7 +2696,7 @@ async function plTikTok(f, id) {
   const box = $('[data-tt]', f); if (!box) return; const on = $$('input[name=to]:checked', f).some((c) => c.value === 'tiktok'); box.hidden = !on; if (!on || box.dataset.loaded) return;
   box.dataset.loaded = '1'; box.innerHTML = '<p class="muted" style="margin:0">Checking your TikTok account…</p>';
   let c; try { c = plState.ttInfo || (plState.ttInfo = await api('GET', '/api/social-posts/tiktok')); } catch (x) { box.innerHTML = `<p class="sp-err" style="margin:0">${esc(x.message)}</p>`; delete box.dataset.loaded; return; }
-  const t = plState.tt[id] = plState.tt[id] || { privacy: c.privacy.length === 1 ? c.privacy[0].id : '', comments: !c.commentsOff, brand: true };
+  const t = plState.tt[id] = plState.tt[id] || { privacy: ttDefault(c), comments: !c.commentsOff, brand: true };
   const only = c.privacy.length === 1 && c.privacy[0].id === 'SELF_ONLY';
   box.innerHTML = `<h3>${CONN_ICONS.tiktok}TikTok · posting as ${esc(c.nickname)}${c.username ? ` <span class="muted">@${esc(c.username)}</span>` : ''}</h3>
 <div class="sp-tt-row"><label>Who can see this post<select name="ttPrivacy"><option value="">Choose…</option>${c.privacy.map((o) => `<option value="${o.id}" ${t.privacy === o.id ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select></label>
@@ -2938,12 +2938,14 @@ async function spYouTube() {
 }
 // a network signed the business out: owners and admins get a button to fix it; everyone else is told who can
 const spReconnect = () => ['owner', 'admin'].includes(role()) ? '<p style="margin:6px 0 0"><a class="btn sm" href="/settings/connections" data-link>Go to Account Connections to reconnect</a></p>' : '<p class="muted" style="margin:6px 0 0">Ask the account owner or an admin to connect it again.</p>';
+// TikTok's "Who can see this post" starts on Everyone when TikTok offers it for the account (the app is approved), or on the only choice it offers
+const ttDefault = (c) => (c.privacy.some((o) => o.id === 'PUBLIC_TO_EVERYONE') ? 'PUBLIC_TO_EVERYONE' : c.privacy.length === 1 ? c.privacy[0].id : '');
 const TT_HINT = { SELF_ONLY: 'Until TikTok approves this app, posts can only be private.' };
 async function spTikTok() {
   const box = $('#spTt'); if (!box) return; const on = spDraft.to.includes('tiktok'); box.hidden = !on; if (!on || box.dataset.loaded) return;
   box.dataset.loaded = '1'; box.innerHTML = '<p class="muted" style="margin:0">Checking your TikTok account…</p>';
   let c; try { c = await api('GET', '/api/social-posts/tiktok'); } catch (x) { box.innerHTML = `<p class="sp-err" style="margin:0">${esc(x.message)}</p>${x.data && x.data.reconnect ? spReconnect() : ''}`; delete box.dataset.loaded; return; }
-  const t = spDraft.tiktok = spDraft.tiktok || { privacy: '', comments: !c.commentsOff, brand: false };
+  const t = spDraft.tiktok = spDraft.tiktok || { privacy: ttDefault(c), comments: !c.commentsOff, brand: false };
   const only = c.privacy.length === 1 && c.privacy[0].id === 'SELF_ONLY';
   box.innerHTML = `<h3>${CONN_ICONS.tiktok}TikTok · posting as ${esc(c.nickname)}${c.username ? ` <span class="muted">@${esc(c.username)}</span>` : ''}</h3>
 <div class="sp-tt-row"><label>Who can see this post<select name="ttPrivacy"><option value="">Choose…</option>${c.privacy.map((o) => `<option value="${o.id}" ${t.privacy === o.id ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select></label>
