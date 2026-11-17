@@ -6465,7 +6465,7 @@ function clientIp(req) {
   return fwd[fwd.length - 1] || String(req.headers['x-real-ip'] || '').trim() || direct;
 }
 // which app answers: the platform's (its own domain, or /alpha… while developing) or an account's
-const PLATFORM_PATHS = /^\/(alpha(\/.*)?|platform(\/.*)?|stripe\/go\/[a-z]+|oauth\/(google|meta|tiktok|linkedin|pinterest|threads|quickbooks|xero|slack)\/callback|home|features|marketing|partners(\/[a-f0-9]+)?|go\/[A-Za-z0-9_-]+|from\/[a-z0-9-]+|quote-from-photos|good-better-best|pricing|signup|sign-in(\/(google|apple)(\/callback)?)?|supporters|industries(\/[a-z-]+)?|compare(\/[a-z-]+)?|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;
+const PLATFORM_PATHS = /^\/(alpha(\/.*)?|platform(\/.*)?|stripe\/go\/[a-z]+|oauth\/(google|meta|tiktok|linkedin|pinterest|threads|quickbooks|xero|slack)\/callback|home|features|marketing|partners(\/[a-f0-9]+)?|go\/[A-Za-z0-9_-]+|from\/[a-z0-9-]+|quote-from-photos|good-better-best|pricing|signup|sign-in(\/(google|apple)(\/callback)?)?|supporters|industries(\/[a-z-]+)?|compare(\/[a-z-]+)?|tools\/pricing-calculator(\/[a-z-]+)?|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;
 function dispatch(req, res) {
   req.ip = clientIp(req); // who's asking (login limits, spam checks)
   // browser safety on every reply: files are only treated as the type we say (an upload can't pass itself off as a script),
