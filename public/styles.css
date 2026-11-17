@@ -2458,9 +2458,6 @@ body.p404-only :is(#side,#sideMiniBtn,#menuBtn,#topbar,#bnav,#installBar,#suppor
 @media (min-width:761px){.cp-side{display:flex;flex-direction:column}.cp-navs{flex:1;display:flex;flex-direction:column}.cp-lang{margin-top:auto}}
 /* App Settings → Branding → Logo and colors: a box per background; click a box to choose an image, the trash under it deletes it */
 .logo-slots{display:flex;gap:20px;flex-wrap:wrap}
-/* App Settings → Branding → Logo and colors: big color swatches, the same width as the logo boxes */
-#logo-colors input[type=color]{height:96px;max-width:220px;padding:6px;margin-top:6px;cursor:pointer;border-radius:10px}
-#logo-colors input[type=color]::-webkit-color-swatch-wrapper{padding:0}#logo-colors input[type=color]::-webkit-color-swatch{border:0;border-radius:6px}#logo-colors input[type=color]::-moz-color-swatch{border:0;border-radius:6px}
 .logo-slot{display:flex;flex-direction:column;gap:6px;flex:1 1 160px;min-width:0}
 .logo-lbl{font-weight:600;font-size:14px}
 .logo-pick{width:100%;max-width:220px;height:96px;border:1px dashed var(--border);border-radius:10px;display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer;padding:10px;margin:0;transition:border-color .15s}
@@ -2699,3 +2696,19 @@ body.p404-only #billingBar{display:none!important}
 .pl-bg.on{border-color:var(--brand);box-shadow:0 0 0 2px var(--brand)}
 .pl-bgfind{display:flex;gap:6px}.pl-bgfind input{flex:1;min-width:0}
 .pl-credit a{color:inherit}
+
+/* our own color picker (color-picker.js): opens from any color box instead of the browser's small one */
+.cpk{position:fixed;z-index:3100;width:360px;max-width:calc(100vw - 16px);padding:14px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow-lg);display:flex;flex-direction:column;gap:12px}
+.cpk-sv{position:relative;height:260px;border-radius:10px;cursor:crosshair;touch-action:none;background-image:linear-gradient(to top,#000,transparent),linear-gradient(to right,#fff,transparent)}
+.cpk-dot{position:absolute;width:22px;height:22px;margin:-11px 0 0 -11px;border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,.35),0 2px 6px rgba(0,0,0,.3);pointer-events:none}
+.cpk-hue{position:relative;height:20px;border-radius:10px;cursor:pointer;touch-action:none;background:linear-gradient(to right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)}
+.cpk-hue i{position:absolute;top:50%;width:24px;height:24px;margin:-12px 0 0 -12px;border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,.35),0 2px 6px rgba(0,0,0,.3);pointer-events:none}
+.cpk-sv:focus-visible,.cpk-hue:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.cpk-row{display:flex;gap:8px;align-items:center}
+.cpk-now{flex:none;width:40px;height:40px;border-radius:8px;border:1px solid var(--border)}
+.cpk .cpk-hex{flex:1;min-width:0;height:40px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:lowercase}
+.cpk-done{flex:none;height:40px}
+.cpk-quick{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+.cpk-quick button{height:30px;border:1px solid var(--border);border-radius:8px;padding:0;cursor:pointer}
+.cpk-quick button:hover,.cpk-quick button:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+@media (max-width:600px){.cpk{left:0!important;right:0;top:auto!important;bottom:0;width:auto;max-width:none;border-radius:16px 16px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom))}.cpk-sv{height:240px}.cpk-quick button{height:36px}}
