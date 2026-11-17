@@ -1607,7 +1607,7 @@ document.addEventListener('input', async (e) => {
 const ADDR_SPLIT = 'input[name=street1], input[data-k=street1], input[name=street], input[name=addrStreet1]';
 const ADDR_LINE = 'input[name=address]:not([type=hidden]), input[name=billingAddress]';
 const addrAc = { input: null, box: null, idx: -1, list: [], seq: 0, timer: 0 };
-function addrAcClose() { clearTimeout(addrAc.timer); addrAc.seq++; if (addrAc.box) addrAc.box.remove(); Object.assign(addrAc, { input: null, box: null, idx: -1, list: [] }); }
+function addrAcClose() { clearTimeout(addrAc.timer); addrAc.seq++; if (addrAc.box) addrAc.box.remove(); Object.assign(addrAc, { input: null, box: null, idx: -1, list: [], all: [] }); }
 const addrAcBox = (input) => input.closest('.ce-prop, .pfm-col, .pf-addr, .addr, .fl-group') || input.form;
 const addrAcField = (box, ...ks) => { for (const k of ks) { const el = box && $(`[name=${k}], [data-k=${k}]`, box); if (el) return el; } return null; };
 const addrAcState = (a) => (a.country === 'United States' && (US_STATES.find(([k, n]) => n.toLowerCase() === a.state.toLowerCase()) || [])[0]) || a.state;
@@ -1638,16 +1638,27 @@ async function addrAcDirect(q, countryName) {
   } catch (e) { /* no suggestions */ }
   return out;
 }
+let addrAcDirectOnly = false; // this server has no /api/address-suggest
+// each word typed starts a word of the address ('s glen' matches South Glenstone), so the list already showing narrows at once while typing on
+const addrAcFits = (a, q) => { const w = addrAcLine(a).toLowerCase().split(/[\s,]+/); return q.toLowerCase().split(/[\s,]+/).filter((t) => t.length > 1 || /\d/.test(t)).every((t) => w.some((x) => x.startsWith(t))); };
+const addrAcSeen = new Map(); // answers already fetched on this page, by what was typed
 function addrAcAsk(input) {
   clearTimeout(addrAc.timer); const q = input.value.trim();
   if (q.length < 4 || !/[a-z]/i.test(q) || (input.matches(ADDR_LINE) && q.split(',').length > 2)) { addrAc.list = []; return addrAcDraw(); } // a full address is already there
-  const country = addrAcField(addrAcBox(input), 'country', 'addrCountry'); const seq = ++addrAc.seq;
+  const country = addrAcField(addrAcBox(input), 'country', 'addrCountry'); const cv = (country && country.value) || ''; const key = q.toLowerCase() + '|' + cv;
+  const show = (list) => { addrAc.list = list.slice(0, 6); addrAc.idx = -1; addrAcDraw(); };
+  if (addrAcSeen.has(key)) { addrAc.seq++; return show(addrAcSeen.get(key)); }
+  if ((addrAc.all || []).length) show(addrAc.all.filter((x) => addrAcFits(x, q))); // instant: only what still fits, until the fresh answer comes
+  const seq = ++addrAc.seq;
   addrAc.timer = setTimeout(async () => {
-    let list = null; try { const r = await fetch('/api/address-suggest?q=' + encodeURIComponent(q) + (country && country.value ? '&country=' + encodeURIComponent(country.value) : '')); if (r.ok) list = await r.json(); } catch (e) { /* asked directly below */ }
-    if (!Array.isArray(list)) list = await addrAcDirect(q, country && country.value); // the server couldn't answer: ask Photon from here
-    if (seq !== addrAc.seq || addrAc.input !== input) return; // typed on, or left the box
-    addrAc.list = Array.isArray(list) ? list : []; addrAc.idx = -1; addrAcDraw();
-  }, 250);
+    let list = null;
+    if (!addrAcDirectOnly) { try { const r = await fetch('/api/address-suggest?q=' + encodeURIComponent(q) + (cv ? '&country=' + encodeURIComponent(cv) : '')); if (r.ok) list = await r.json(); else if (r.status === 404) addrAcDirectOnly = true; } catch (e) { /* asked directly below */ } }
+    if (!Array.isArray(list)) list = await addrAcDirect(q, cv); // the server couldn't answer: ask Photon from here
+    addrAcSeen.set(key, list);
+    if (addrAc.input !== input) return; // left the box
+    if (seq === addrAc.seq) { addrAc.all = list; return show(list); }
+    const fit = list.filter((x) => addrAcFits(x, input.value.trim())); if (fit.length && !addrAc.list.length) show(fit); // typed on: still useful while the newer one comes
+  }, 150);
 }
 function addrAcPick(i) {
   const a = addrAc.list[i]; const input = addrAc.input; if (!a || !input) return; addrAcClose();
