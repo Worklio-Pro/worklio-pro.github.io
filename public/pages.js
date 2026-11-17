@@ -3223,20 +3223,29 @@ function planCard(a) {
   if (!a) return '';
   const beta = (f) => (f.beta ? ' <span class="beta-tag" title="This feature is in beta testing">Beta</span>' : '');
   const inc = a.featureList.filter((f) => f.included); const not = a.featureList.filter((f) => !f.included);
-  // the add-ons too, when this account doesn't have them: Marketing suite (if it isn't already listed) and matrix line items
-  const mk = a.marketingAddon; const mx = a.matrixAddon;
-  if (mk && mk.state === 'off' && !a.featureList.some((f) => f.key === 'marketingSuite')) not.push({ key: 'marketingSuite', label: 'Marketing suite', desc: 'Marketing dashboard, performance, plan, reviews, email campaigns and website' });
-  if (mx && mx.state === 'off' && !a.matrixPricing) not.push({ key: 'matrix', label: 'Matrix line items', desc: 'For items sold in sizes and colors: a grid with a cost for each size, on quotes, jobs and invoices' });
   const contact = a.contactEmail ? `<a href="mailto:${esc(a.contactEmail)}?subject=${encodeURIComponent('Plan change for ' + (company.name || a.slug))}">${esc(a.contactEmail)}</a>` : 'us';
   return `<div class="card plan-card"><div class="plan-head"><div><h2>Your plan: ${esc(a.plan.name)}</h2><p class="muted" style="margin:0">${a.maxUsers ? (a.extraUser ? `${a.maxUsers} login${a.maxUsers === 1 ? '' : 's'} included, more at ${money(a.extraUser).replace(/\.00$/, '')}/month each` : `Up to ${a.maxUsers} login${a.maxUsers === 1 ? '' : 's'}`) : 'Unlimited logins'} · ${inc.length + a.alwaysIncluded.length} features</p></div></div>
 <div class="plan-cols"><div><h3>Included</h3><ul class="feat-list">${a.alwaysIncluded.map((l) => `<li class="on">${esc(l)}</li>`).join('')}${inc.map((f) => `<li class="on" title="${esc(f.desc)}"><span>${esc(f.label)}${beta(f)}</span></li>`).join('')}</ul></div>
-</div>${not.length ? upgradePanel(a, not, beta, contact) : ''}</div>`;
+</div>${not.length || upAddons(a).length ? upgradePanel(a, not, beta, contact) : ''}</div>`;
 }
 // the features this plan doesn't have, as an invitation to upgrade: a photo, what they'd get, and See plans (owner) or who to ask
+// the add-ons this account could buy and doesn't have: matrix line items, and the Marketing suite (when it's sold)
+function upAddons(a) {
+  const out = []; const mk = a.marketingAddon; const mx = a.matrixAddon; const owner = role() === 'owner';
+  const price = (x) => `${money(x.cents / 100).replace(/\.00$/, '')}<small>/${x.interval === 'year' ? 'yr' : 'mo'}</small>`;
+  if (mx && mx.state === 'off' && !a.matrixPricing && mx.cents) out.push({ icon: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>', name: 'Matrix line items', price: price(mx),
+    pitch: 'Sell shirts, hats and uniforms by size and color in one grid. Totals add up as you type.', more: '<button type="button" class="link-btn" data-act="upMx">See how it works</button>', buy: owner ? '<button type="button" class="btn sm" data-act="mxBuy">Add matrix pricing</button>' : '' });
+  if (mk && mk.state === 'off' && mk.offered && mk.cents) out.push({ icon: '<path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>', name: 'Marketing suite', price: price(mk), tag: mk.trialDays ? `${mk.trialDays} days free` : '',
+    pitch: 'Turn happy clients into new ones: reviews, email campaigns, a website, referrals and a plan that shows where your best jobs come from.', more: a.marketingHub ? '<a class="link-btn" href="/marketing/dashboard" data-link>Take a look</a>' : '', buy: owner ? `<button type="button" class="btn sm" data-act="mkAddon">${mk.trialDays ? 'Start free trial' : 'Add Marketing suite'}</button>` : '' });
+  return out;
+}
+A.upMx = () => { const el = document.getElementById('matrix-items'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
 function upgradePanel(a, not, beta, contact) {
-  const owner = memberCan('/settings/billing');
+  const owner = memberCan('/settings/billing'); const ads = upAddons(a);
+  const addons = ads.length ? `<aside class="up-addons"><span class="up-kicker">Add-ons</span><h4>Add to the plan you have</h4>${ads.map((x) => `<div class="up-addon"><div class="up-addon-h"><span class="up-ic">${svgIcon(x.icon, 18)}</span><strong>${x.name}</strong><span class="up-price">${x.price}</span></div>${x.tag ? `<span class="up-tag">${x.tag}</span>` : ''}<p>${x.pitch}</p><div class="up-addon-act">${x.buy}${x.more}</div></div>`).join('')}${ads.some((x) => x.buy) ? '' : '<p class="muted sm" style="margin:0">Ask your account owner to add them.</p>'}</aside>` : '';
+  if (!not.length) return `<div class="up-panel up-only-addons"><img class="up-photo" src="/img/upgrade-worker.jpg" alt="A smiling field technician in a work uniform" loading="lazy" width="240" height="280">${addons}</div>`;
   const act = owner ? '<a class="btn" href="/settings/billing?upgrade=1" data-link>See plans and upgrade</a>' : '<p class="muted sm" style="margin:0">Ask your account owner about upgrading.</p>';
-  return `<div class="up-panel"><img class="up-photo" src="/img/upgrade-worker.jpg" alt="A smiling field technician in a work uniform" loading="lazy" width="240" height="280"><div class="up-body"><span class="up-kicker">Ready to grow?</span><h3>Unlock ${not.length} more feature${not.length === 1 ? '' : 's'} for your business</h3><p class="muted" style="margin:0 0 12px">Win more jobs, get paid faster and spend less time on paperwork. Upgrade any time and keep everything you’ve set up.</p><ul class="feat-list up-list">${not.map((f) => `<li title="${esc(f.desc)}"><span>${esc(f.label)}${beta(f)}</span></li>`).join('')}</ul><div class="up-act">${act}${!owner || !a.contactEmail ? '' : `<span class="muted sm">Questions? Contact ${contact}.</span>`}</div></div></div>`;
+  return `<div class="up-panel${addons ? ' has-addons' : ''}"><img class="up-photo" src="/img/upgrade-worker.jpg" alt="A smiling field technician in a work uniform" loading="lazy" width="240" height="280"><div class="up-body"><span class="up-kicker">Ready to grow?</span><h3>Unlock ${not.length} more feature${not.length === 1 ? '' : 's'} for your business</h3><p class="muted" style="margin:0 0 12px">Win more jobs, get paid faster and spend less time on paperwork. Upgrade any time and keep everything you’ve set up.</p><ul class="feat-list up-list">${not.map((f) => `<li title="${esc(f.desc)}"><span>${esc(f.label)}${beta(f)}</span></li>`).join('')}</ul><div class="up-act">${act}${!owner || !a.contactEmail ? '' : `<span class="muted sm">Questions? Contact ${contact}.</span>`}</div></div>${addons}</div>`;
 }
 function webAddressCard(a) {
   if (!a) return '';
