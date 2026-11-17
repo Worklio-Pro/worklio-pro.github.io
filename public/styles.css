@@ -2629,3 +2629,8 @@ body.p404-only #billingBar{display:none!important}
 .mk-row4{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:stretch;margin-bottom:20px}
 .mk-row4>.card{margin:0}
 @media (max-width:1000px){.mk-row4{grid-template-columns:1fr}}
+/* dark mode: boxes with a shaded title band get a darker body, so the band stands out */
+:root{--titled-card:var(--card)}
+:root[data-theme=dark]{--titled-card:#0c1322}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--titled-card:#0c1322}}
+#main:not(.portal) .card:not(.sa-card):has(>h2:first-child,>.bill-h:first-child,>.plan-head:first-child,>.tpl-head:first-child,>.pay-card-h:first-child){background:var(--titled-card)}
