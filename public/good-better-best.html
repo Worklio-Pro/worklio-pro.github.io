@@ -10,7 +10,7 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="stylesheet" href="/styles.css?v=53">
   <link rel="stylesheet" href="/theme.css">
-  <link rel="stylesheet" href="/home.css?v=24">
+  <link rel="stylesheet" href="/home.css?v=25">
   <link rel="stylesheet" href="/trial.css?v=1">
   <style>
     /* Good / Better / Best: the page's own pieces, on the site's theme colors (theme.css sets light and dark) */
@@ -195,7 +195,7 @@
 
   <footer class="h-foot"><div class="h-wrap">
     <span>© <span id="yr"></span> <span class="pname">Worklio Pro</span><!--legal-owner--></span>
-    <nav aria-label="Footer"><a href="/pricing">Pricing</a><a href="/features">Features</a><a href="/marketing">Job marketing</a><a href="/quote-from-photos">Quote from photos</a><a href="/good-better-best">Good / Better / Best</a><a href="/industries">Industries</a><!--supporters-link--><a href="/terms">Terms of Service</a><a href="/privacy">Privacy Policy</a><a href="/sms-consent">Text Message Opt-In</a></nav>
+    <nav aria-label="Footer"><a href="/pricing">Pricing</a><a href="/features">Features</a><a href="/compare">Compare</a><a href="/marketing">Job marketing</a><a href="/quote-from-photos">Quote from photos</a><a href="/good-better-best">Good / Better / Best</a><a href="/industries">Industries</a><!--supporters-link--><a href="/terms">Terms of Service</a><a href="/privacy">Privacy Policy</a><a href="/sms-consent">Text Message Opt-In</a></nav>
   </div></footer>
   <script>/* captions: iPhone Safari won't play a video that already has a captions track when it starts loading, so the track is added once the video has loaded */
     document.querySelectorAll('video').forEach(function (v) { var ts = v.querySelectorAll('template[data-track]'); if (!ts.length) return; var add = function () { ts.forEach(function (t) { v.appendChild(t.content.cloneNode(true)); t.remove(); }); }; if (v.readyState >= 1) add(); else v.addEventListener('loadedmetadata', add, { once: true }); });</script>

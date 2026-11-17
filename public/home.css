@@ -280,3 +280,21 @@ body{background-color:var(--card);background-image:var(--h-dots);background-size
 /* dark mode: the bands are almost white with a hint of blue, so what's inside them uses the light theme's colors */
 @media (prefers-color-scheme:dark){:root:not([data-theme=light]) .h-trades,:root:not([data-theme=light]) .f-more,:root:not([data-theme=light]) #faq{--link:var(--brand);--bg:#f1f5fb;--card:#fff;--text:#0f172a;--muted:#475569;--line:#cdd8e8;--border:#d1d5db;--surface-2:#f8fafc;--tint:#eef3fb;--tint-strong:#e0e7ff;--tint-border:#c7d2fe;--tint-fg:#1e3a8a;--ok:#16a34a;--ok-bg:#dcfce7;--ok-fg:#166534;--info-bg:#dbeafe;--info-fg:#1e40af;--bad-bg:#fee2e2;--bad-fg:#991b1b;--warn-bg:#fef3c7;--warn-fg:#92400e;--warn-border:#fde68a;--violet-bg:#ede9fe;--violet-fg:#5b21b6;--neutral-bg:#f1f5f9;--neutral-fg:#475569;--h-bandaccent:var(--brand);--h-bandmuted:#475569;color-scheme:light;color:var(--text)}}
 :root[data-theme=dark] .h-trades,:root[data-theme=dark] .f-more,:root[data-theme=dark] #faq{--link:var(--brand);--bg:#f1f5fb;--card:#fff;--text:#0f172a;--muted:#475569;--line:#cdd8e8;--border:#d1d5db;--surface-2:#f8fafc;--tint:#eef3fb;--tint-strong:#e0e7ff;--tint-border:#c7d2fe;--tint-fg:#1e3a8a;--ok:#16a34a;--ok-bg:#dcfce7;--ok-fg:#166534;--info-bg:#dbeafe;--info-fg:#1e40af;--bad-bg:#fee2e2;--bad-fg:#991b1b;--warn-bg:#fef3c7;--warn-fg:#92400e;--warn-border:#fde68a;--violet-bg:#ede9fe;--violet-fg:#5b21b6;--neutral-bg:#f1f5f9;--neutral-fg:#475569;--h-bandaccent:var(--brand);--h-bandmuted:#475569;color-scheme:light;color:var(--text)}
+/* comparison pages (/compare, lib/alternatives.js) */
+.cmp-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:18px;background:var(--card)}
+.cmp-table{width:100%;border-collapse:collapse;font-size:16px;min-width:520px}
+.cmp-table th,.cmp-table td{padding:16px 18px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+.cmp-table tbody tr:last-child th,.cmp-table tbody tr:last-child td{border-bottom:0}
+.cmp-table thead th{font-size:14px;color:var(--muted);font-weight:600;background:var(--tint)}
+.cmp-table thead th:nth-child(2){color:var(--brand)}
+.cmp-table td b{display:block;font-size:20px}.cmp-table td span{display:block;color:var(--muted);font-size:13px;margin-top:2px}
+.cmp-table td:nth-child(2) b{color:var(--brand)}
+.cmp-save{font-weight:700;color:var(--ok);white-space:nowrap}
+.cmp-note{color:var(--muted);font-size:14px;line-height:1.55;margin:14px 0 0;text-align:center}.cmp-legal{margin-top:28px;font-size:13px}
+.cmp-fit{max-width:780px;margin:0 auto;padding:28px;border-radius:18px;background:var(--tint);border-left:4px solid var(--brand)}
+.cmp-fit h2{margin:0 0 10px;font-size:22px}.cmp-fit p{margin:0 0 10px;color:var(--muted);line-height:1.6}.cmp-fit p:last-child{margin:0}
+.cmp-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+.cmp-card{display:flex;flex-direction:column;gap:8px;padding:24px;border:1px solid var(--line);border-radius:18px;background:var(--card);color:var(--text);text-decoration:none;transition:transform .15s,box-shadow .15s}
+.cmp-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}.cmp-card b{font-size:18px}.cmp-card span{color:var(--muted);font-size:15px;line-height:1.5}
+.cmp-card .cmp-go{color:var(--link);font-weight:600;margin-top:auto}
+@media (max-width:640px){.cmp-table th,.cmp-table td{padding:12px}.cmp-table td b{font-size:17px}}

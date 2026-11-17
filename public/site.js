@@ -37,7 +37,7 @@ ${for10 ? `<tr><td>A crew of 10</td><td class="us"><b>${amount(for10.m)}/mo</b><
 <tr><td>That plan for a year</td><td class="us"><b>${yr(priceOf(team))}</b></td>${RIVALS.map((r) => `<td>${yr(r.team)}</td>`).join('')}</tr>
 <tr><td>You keep each year with ${esc(S.productName)}</td><td class="us">—</td>${RIVALS.map((r) => { const d = r.team * 12 - ourYear; return `<td class="save">${d > 0 ? amount(d) : '—'}</td>`; }).join('')}</tr>
 </tbody></table></div>
-<p class="v-note">Competitor prices are their monthly list prices as published on their own pricing pages, checked ${CHECKED}; user counts vary by plan and add-ons cost extra. Prices and features change, so check their sites for the latest. Jobber and Housecall Pro are trademarks of their owners; ${esc(S.productName)} is not affiliated with them.</p>
+<p class="v-note">Competitor prices are their monthly list prices as published on their own pricing pages, checked ${CHECKED}; user counts vary by plan and add-ons cost extra. Prices and features change, so check their sites for the latest. Jobber and Housecall Pro are trademarks of their owners; ${esc(S.productName)} is not affiliated with them. <a href="/compare">See the full comparisons</a></p>
 <div class="v-gets"><h3>Everything on ${esc(team.name)} for ${amount(priceOf(team))}/month</h3><ul>${gets.map((f) => `<li class="${NEW.has(f.key) ? 'nw' : ''}">${esc(label[f.key])}${NEW.has(f.key) ? ' · New' : ''}</li>`).join('')}${S.alwaysIncluded.map((l) => `<li>${esc(l)}</li>`).join('')}</ul></div>`;
 }
 
