@@ -2413,14 +2413,13 @@ const plDayAfter = (d, n) => { const t = new Date(d + 'T12:00:00'); t.setDate(t.
 const plImg = (src) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
 function plShade(hex, f) { const n = parseInt(hex.slice(1), 16); const ch = (v) => Math.round(f < 0 ? v * (1 + f) : v + (255 - v) * f); return `rgb(${ch(n >> 16)},${ch((n >> 8) & 255)},${ch(n & 255)})`; }
 function plWrap(g, text, w) { const out = []; let line = ''; for (const word of String(text).split(/\s+/).filter(Boolean)) { const t = line ? line + ' ' + word : word; if (line && g.measureText(t).width > w) { out.push(line); line = word; } else line = t; } if (line) out.push(line); return out; }
-const plPhoto = (bg) => '/api/marketing/plan/photo?u=' + encodeURIComponent(bg.src);
 const plStockKind = (x, P) => P.stock && !x.review && !x.photos.length && x.kind !== 'showcase';
 async function plArt(x, P, words, bg) {
   const B = P.brand; const S = 1080; const c = document.createElement('canvas'); c.width = c.height = S; const g = c.getContext('2d');
   try { await document.fonts.ready; } catch (e) { /* draw with what's there */ }
   const font = getComputedStyle(document.body).fontFamily || 'system-ui, sans-serif';
   const n = parseInt(B.color.slice(1), 16); const lum = (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
-  let photo = null; if (bg && bg.src) { try { photo = await plImg(plPhoto(bg)); } catch (e) { /* the brand color then */ } }
+  let photo = null; if (bg && /^\/uploads\//.test(bg.src || '')) { try { photo = await plImg(bg.src); } catch (e) { /* the brand color then */ } }
   const ink = photo ? '#ffffff' : lum > 0.65 ? '#111827' : '#ffffff';
   if (photo) { // the photo fills the square (cropped to fit), darker toward the words so they stay readable, with a brand-color bar at the bottom
     const k = Math.max(S / photo.width, S / photo.height); g.drawImage(photo, (S - photo.width * k) / 2, (S - photo.height * k) / 2, photo.width * k, photo.height * k);
@@ -2538,8 +2537,14 @@ function bindPlan() {
     let bg = x && x.bg ? x.bg : ''; // '' = the brand color
     const draw = async () => { if (!pic || !x) return; try { pic.src = await plArt(x, P, words ? words.value : '', bg); } catch (e) { pic.closest('.pl-art').hidden = true; } };
     const row = $('[data-bgs]', f); const credit = $('.pl-credit', f);
-    const mark = () => { if (!row) return; $$('.pl-bg', row).forEach((b) => b.classList.toggle('on', (b.dataset.bg || '') === (bg ? bg.id : ''))); if (credit) credit.innerHTML = bg ? `Photo by ${esc(bg.by || 'a Pexels photographer')} on <a href="${esc(bg.link)}" target="_blank" rel="noopener">Pexels</a>` : ''; };
-    const pick = (b, keep) => { bg = b; mark(); draw(); if (!keep) save({ bg: b || '' }); };
+    const mark = () => { if (!row) return; $$('.pl-bg', row).forEach((b) => b.classList.toggle('on', (b.dataset.bg || '') === (bg ? bg.id : ''))); if (credit) credit.innerHTML = bg && bg.saving ? 'Getting the photo…' : bg ? `Photo by ${esc(bg.by || 'a photographer')} on <a href="${esc(bg.link || (bg.source === 'Pexels' ? 'https://www.pexels.com' : 'https://pixabay.com'))}" target="_blank" rel="noopener">${esc(bg.source || 'Pixabay')}</a>` : ''; };
+    // a photo is saved in your files when it's picked (the photo sites ask for that), then the picture is drawn from that copy
+    const pick = async (b) => {
+      if (!b) { bg = ''; mark(); draw(); return save({ bg: '' }); }
+      const was = bg; bg = { ...b, saving: true }; mark();
+      try { bg = (await api('PUT', '/api/marketing/plan/' + id, { bg: b })).bg || ''; } catch (x) { bg = was; toast(x.message, true); }
+      mark(); draw();
+    };
     const find = async (q, auto) => {
       if (!row) return; $$('.pl-bgp, .pl-bgwait', row).forEach((e) => e.remove()); row.insertAdjacentHTML('beforeend', '<span class="muted pl-bgwait">Finding photos…</span>');
       try {

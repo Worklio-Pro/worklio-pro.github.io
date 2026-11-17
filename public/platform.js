@@ -702,7 +702,7 @@ const IG_TABS = [
   ['slack', 'Slack', 'Slack', 'Businesses get messages in a Slack channel about new work and payments'],
   ['homedepot', 'Home Depot', 'Home Depot', 'Home Depot prices in the product and service form (SerpApi)'],
   ['ai', 'AI', 'AI', 'Write with AI, Rewrite, social captions and the help chat'],
-  ['photos', 'Stock photos', 'Stock photos (Pexels)', 'Real photos of the subject on businesses’ Marketing plan posts'],
+  ['photos', 'Stock photos', 'Stock photos (Pixabay)', 'Real photos of the subject on businesses’ Marketing plan posts'],
   ['marketplace', 'App Marketplace', 'App Marketplace', 'The App Marketplace in every account, and Home Depot prices'],
 ];
 const IG_ICONS = {
@@ -1920,9 +1920,9 @@ ${[['aiDescriptions', 'Descriptions', 'Write with AI on products and services, a
 <p class="muted ig-p">With Descriptions and Client messages and contracts both off, AI descriptions also leaves your pricing page and plan lists.</p>
 <h4>Anthropic API key</h4><p class="muted ig-p">In the <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Claude Console</a>, go to API keys → <strong>Create key</strong>, then paste it here. Usage is billed to that Console account.</p>
 ${envForm(I, 'ai', [['ANTHROPIC_API_KEY', 'API key', 'sk-ant-…', true]])}`)}
-${ig('Stock photos (Pexels)', on(I.photos), `<p class="ig-d">Real photos of each post’s subject (a lawn, gutters, a kitchen…) behind the headline on businesses’ Marketing plan pictures. Pexels photos are free to use in marketing, with no credit needed.</p>
-<ol class="ig-steps"><li>Sign up at <a href="https://www.pexels.com/api/" target="_blank" rel="noopener">pexels.com/api</a> and request an API key (free; it shows right away).</li><li>Paste the key here, or set <code>PEXELS_API_KEY</code> in <code>.env</code>. The free key allows 200 searches an hour and 20,000 a month; each business’s searches are kept for a day.</li></ol>
-${envForm(I, 'photos', [['PEXELS_API_KEY', 'API key', 'Your Pexels API key', true]])}`)}
+${ig('Stock photos (Pixabay)', on(I.photos), `<p class="ig-d">Real photos of each post’s subject (a lawn, gutters, a kitchen…) behind the headline on businesses’ Marketing plan pictures. Pixabay photos are free to use in marketing, with no credit needed (the card still names the photographer).</p>
+<ol class="ig-steps"><li>Sign up or log in at <a href="https://pixabay.com/api/docs/" target="_blank" rel="noopener">pixabay.com/api/docs</a>. Your key shows on that page under <strong>Parameters → key</strong> (free).</li><li>Paste the key here, or set <code>PIXABAY_API_KEY</code> in <code>.env</code>. Searches are kept for a day, and a photo picked for a post is saved in that business’s files, as Pixabay asks. (A <code>PEXELS_API_KEY</code> in <code>.env</code> also works, if you have one from before Pexels paused new keys.)</li></ol>
+${envForm(I, 'photos', [['PIXABAY_API_KEY', 'API key', 'Your Pixabay API key', true]])}`)}
 ${ig('App Marketplace', on(D.settings.marketplace !== false, 'On', 'Off'), `<p class="ig-d">Settings → App Marketplace in every account: owners and admins browse apps, connect the ones that work today and vote for the rest (see Messages → App requests).</p>
 <label class="switchline"><input type="checkbox" id="mkOn" ${D.settings.marketplace !== false ? 'checked' : ''}> Show the App Marketplace in every account</label>
 <label class="switchline"><input type="checkbox" id="mkBeta" ${D.settings.marketplaceBeta ? 'checked' : ''}> Mark the App Marketplace as Beta <span class="beta-tag">Beta</span></label>
