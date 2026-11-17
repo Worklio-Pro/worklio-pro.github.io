@@ -2402,6 +2402,30 @@ PAGES['/marketing/plan'] = mkSoonPage('/marketing/plan', 'Marketing plan');
 PAGES['/marketing/email'] = mkSoonPage('/marketing/email', 'Email campaigns');
 PAGES['/marketing/website'] = mkSoonPage('/marketing/website', 'Website');
 
+// the top of the Dashboard: a photo, what marketing does for the business, and (without the suite) how to get it
+function mkHero(suite) {
+  const x = mkSuite();
+  const act = suite ? `<p class="mkd-hero-ok">${x && x.state === 'included' ? 'The Marketing suite is included in your plan.' : 'You have the Marketing suite.'} Here’s what needs doing and how it’s going.</p>`
+    : `<p class="mkd-hero-price">${esc(mkSuiteText())}</p>${mkGetIt(true)}`;
+  return `<section class="mkd-hero"><div class="mkd-hero-tx"><span class="mkd-kicker">Marketing</span><h1>Turn every job into your next job</h1><p class="mkd-hero-lead">You do great work. Worklio Pro makes sure people hear about it. Get found online, collect 5-star reviews, follow up on every quote and bring past clients back, without hiring an agency or spending your evenings on it.</p><ul class="mkd-hero-pts"><li>Works while you’re on the job</li><li>No marketing experience needed</li><li>Everything in one place, with your jobs and clients</li></ul>${act}</div><div class="mkd-hero-ph"><img src="/img/marketing-worker.jpg" alt="A smiling tradeswoman in a hard hat holding a drill, looking at the camera" width="900" height="675"></div></section>`;
+}
+// what the Marketing suite does for a business, one card per benefit, each opening its tool
+const MK_BENEFITS = [
+  ['globe', 'Get found by new clients', 'Your Business Page, online booking and posts on Facebook, Instagram and Google put you in front of people looking for your services.', '/settings/business-page'],
+  ['star', 'Build a 5-star reputation', 'Review requests go out after every job, so happy clients leave reviews while the work is fresh. Reply to them all in one place.', '/reviews'],
+  ['img', 'Show off your work', 'Every finished job becomes a post with its photos and a caption written for you. Approve it and it goes to every account.', '/social-posts'],
+  ['auto', 'Win more quotes', 'Follow-ups go out on their own when a quote has no reply, so jobs don’t slip away while you’re busy.', '/automations'],
+  ['gift', 'Turn clients into referrals', 'Every client gets a link to share. Reward them with a credit when a friend books, and watch word of mouth grow.', '/marketing/referrals'],
+  ['chart', 'Know what’s working', 'See which marketing brings in paying clients and what they’ve paid you, so you spend time and money on what works.', '/marketing/performance'],
+  ['mail', 'Bring past clients back', 'Email campaigns written by AI remind past clients it’s time for their next service. Coming soon.', '/marketing/email'],
+  ['cal', 'A plan that fills itself', 'Every week, AI suggests posts and emails for your business. You approve them with a tap. Coming soon.', '/marketing/plan'],
+];
+function mkBenefits(suite) {
+  const ic = { globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>', star: NAV_ICONS['/reviews'], img: NAV_ICONS['/project-gallery'], auto: NAV_ICONS['/automations'],
+    gift: '<rect x="3" y="8" width="18" height="13" rx="1"/><path d="M12 8v13M3 12h18M12 8c-2-4-6-4-6-1s6 1 6 1zM12 8c2-4 6-4 6-1s-6 1-6 1z"/>', chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+    mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>', cal: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>' };
+  return `<section class="mkd-bens"><h2>${suite ? 'What the Marketing suite does for you' : 'Everything you need to grow, in one place'}</h2><div class="mkd-ben-grid">${MK_BENEFITS.map(([i, t, d, h]) => `<a class="mkd-ben" href="${h}" data-link><span class="mkd-ben-ic">${svgIcon(ic[i], 20)}</span><strong>${t}</strong><span>${d}</span></a>`).join('')}</div></section>`;
+}
 // Dashboard: what needs doing, a few numbers, and every tool grouped by what it does for the business
 const mkNum = (n) => Number(n || 0).toLocaleString('en-US');
 PAGES['/marketing/dashboard'] = {
@@ -2445,12 +2469,11 @@ PAGES['/marketing/dashboard'] = {
         tool('/marketing/plan', ic.cal, 'Marketing plan', 'Suggested posts and emails every week', suite ? S.soon : S.up),
       ]],
     ];
-    main.innerHTML = `${mkTabs('/marketing/dashboard')}${mkHead('Marketing', 'Get found, build trust and win more jobs. Everything that brings in work, in one place.')}
-${suite ? mkSuiteBar() : `<div class="card mk-upsell"><div><strong>Get the Marketing suite</strong><p class="muted">See which marketing brings in paying clients, and get email campaigns, an AI marketing plan and a website builder as they arrive. ${mkSuiteText()}</p></div>${mkGetIt(true)}</div>`}
+    main.innerHTML = `${mkTabs('/marketing/dashboard')}${mkHero(suite)}${suite ? mkSuiteBar() : mkBenefits(suite)}
 <div class="mk-dash"><div class="mk-left">
 ${stats.length ? `<div class="mk-stats">${stats.join('')}</div>` : ''}
 <div class="card"><h2>Do this next</h2>${todo.length ? `<ul class="mk-todo">${todo.map(([t, h, b]) => `<li><span>${t}</span><a class="btn alt sm" href="${h}" data-link>${b}</a></li>`).join('')}</ul>` : (Object.values(T).some((t) => t.on && t !== T.businessPage) ? '<p class="muted" style="margin:0">You’re all caught up. Your automations and reviews keep working in the background.</p>' : `<p style="margin:0 0 12px">Your plan has your Business Page. Upgrade to ask clients for reviews, post your work to every social account at once, turn finished jobs into posts and send follow-ups on their own.</p>${mkGetIt(false)}`)}</div>
-</div><aside class="mk-right">${groups.map(([g, rows]) => `<div class="card mk-group"><h3>${g}</h3>${rows.join('')}</div>`).join('')}</aside></div>`;
+</div><aside class="mk-right">${groups.map(([g, rows]) => `<div class="card mk-group"><h3>${g}</h3>${rows.join('')}</div>`).join('')}</aside></div>${suite ? mkBenefits(suite) : ''}`;
   },
 };
 const nOfW = (n, one, many) => `${mkNum(n)} ${n === 1 ? one : many}`;
