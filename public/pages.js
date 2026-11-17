@@ -3223,6 +3223,10 @@ function planCard(a) {
   if (!a) return '';
   const beta = (f) => (f.beta ? ' <span class="beta-tag" title="This feature is in beta testing">Beta</span>' : '');
   const inc = a.featureList.filter((f) => f.included); const not = a.featureList.filter((f) => !f.included);
+  // the add-ons too, when this account doesn't have them: Marketing suite (if it isn't already listed) and matrix line items
+  const mk = a.marketingAddon; const mx = a.matrixAddon;
+  if (mk && mk.state === 'off' && !a.featureList.some((f) => f.key === 'marketingSuite')) not.push({ key: 'marketingSuite', label: 'Marketing suite', desc: 'Marketing dashboard, performance, plan, reviews, email campaigns and website' });
+  if (mx && mx.state === 'off' && !a.matrixPricing) not.push({ key: 'matrix', label: 'Matrix line items', desc: 'For items sold in sizes and colors: a grid with a cost for each size, on quotes, jobs and invoices' });
   const contact = a.contactEmail ? `<a href="mailto:${esc(a.contactEmail)}?subject=${encodeURIComponent('Plan change for ' + (company.name || a.slug))}">${esc(a.contactEmail)}</a>` : 'us';
   return `<div class="card plan-card"><div class="plan-head"><div><h2>Your plan: ${esc(a.plan.name)}</h2><p class="muted" style="margin:0">${a.maxUsers ? (a.extraUser ? `${a.maxUsers} login${a.maxUsers === 1 ? '' : 's'} included, more at ${money(a.extraUser).replace(/\.00$/, '')}/month each` : `Up to ${a.maxUsers} login${a.maxUsers === 1 ? '' : 's'}`) : 'Unlimited logins'} · ${inc.length + a.alwaysIncluded.length} features</p></div></div>
 <div class="plan-cols"><div><h3>Included</h3><ul class="feat-list">${a.alwaysIncluded.map((l) => `<li class="on">${esc(l)}</li>`).join('')}${inc.map((f) => `<li class="on" title="${esc(f.desc)}"><span>${esc(f.label)}${beta(f)}</span></li>`).join('')}</ul></div>
