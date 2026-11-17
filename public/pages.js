@@ -2490,13 +2490,71 @@ ${nets.length ? `<div class="sp-dests">${nets.map(([k, n, who]) => `<label class
 ${nets.some(([k]) => k === 'tiktok') ? '<div class="sp-tt pl-tt" data-tt hidden></div>' : ''}
 <div class="sp-foot"><button type="button" class="btn alt" data-act="plSkip" data-id="${x.id}">Skip</button><button class="btn"${nets.length ? '' : ' disabled'}>Approve and schedule</button></div></form>`;
 }
-// the week strip: the next 7 days, with each post as a chip in its day
-function plWeek(P) {
-  return `<div class="pl-week">${Array.from({ length: 7 }, (_, i) => plDayAfter(P.today, i)).map((d) => {
-    const its = P.items.filter((x) => x.day === d && !['skipped', 'expired'].includes(x.status));
-    return `<div class="pl-day${d === P.today ? ' today' : ''}"><span class="pl-dn">${new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' })} <b>${Number(d.slice(8))}</b></span>${its.map((x) => `<button type="button" class="pl-chip ${x.status}" data-act="plGo" data-id="${x.id}" data-tab="${plTabOf(x)}" title="${esc(x.title)}">${fmtTime(x.time)} ${esc(x.title)}</button>`).join('') || '<span class="pl-none">—</span>'}</div>`;
-  }).join('')}</div>`;
+// the calendar: a week (Sun–Sat) or a month, each post as a chip on its day. ‹ › move a week or a month; the filter picks
+// content types, networks and statuses (none picked in a group = all). The view and filter are kept on this device.
+const PL_ST = { action: 'Needs action', suggested: 'To approve', scheduled: 'Scheduled', posted: 'Posted', skipped: 'Skipped' };
+const plCal = { view: 'week', anchor: '', f: { kind: [], net: [], st: [] }, open: false };
+try { const s = JSON.parse(localStorage.getItem('plCal') || '{}'); if (s.view === 'month') plCal.view = 'month'; if (s.f) for (const k of ['kind', 'net', 'st']) if (Array.isArray(s.f[k])) plCal.f[k] = s.f[k]; } catch (e) { /* private mode */ }
+const plCalSave = () => { try { localStorage.setItem('plCal', JSON.stringify({ view: plCal.view, f: plCal.f })); } catch (e) { /* private mode */ } };
+const plSunday = (d) => plDayAfter(d, -new Date(d + 'T12:00:00').getDay());
+const plFiltered = () => plCal.f.kind.length + plCal.f.net.length + plCal.f.st.length;
+const plShown = (x) => { const f = plCal.f; return (!f.kind.length || f.kind.includes(x.kind)) && (!f.net.length || x.to.some((k) => f.net.includes(k))) && (!f.st.length || f.st.includes(plTabOf(x))); };
+function plChip(x, wide) {
+  const icons = x.to.filter((k) => CONN_ICONS[k]).map((k) => CONN_ICONS[k]).join('');
+  const st = PL_ST[plTabOf(x)] + (x.status === 'expired' ? ' (not approved in time)' : '');
+  return `<button type="button" class="pl-chip ${x.status}" data-act="plGo" data-id="${x.id}" data-tab="${plTabOf(x)}" title="${esc(`${fmtTime(x.time)} · ${x.title} · ${st}`)}"><span class="pl-ct">${wide ? '' : `<b>${fmtTime(x.time)}</b> `}${esc(x.title)}</span>${icons ? `<span class="pl-ci">${icons}</span>` : ''}${wide ? `<span class="pl-cm">${fmtTime(x.time)} · ${esc(st)}</span>` : ''}</button>`;
 }
+function plFilterMenu(P) {
+  const nets = [...new Set([...P.nets, ...P.items.flatMap((x) => x.to)])].filter((k) => SP_NAMES[k]);
+  const groups = [['kind', 'Content', Object.entries(P.kinds || {})], ['net', 'Posts to', nets.map((k) => [k, SP_NAMES[k]])], ['st', 'Status', Object.entries(PL_ST)]];
+  const opt = (g, k, l) => `<button type="button" class="pl-fo${plCal.f[g].includes(k) ? ' on' : ''}" data-act="plCalF" data-g="${g}" data-k="${esc(k)}" role="menuitemcheckbox" aria-checked="${plCal.f[g].includes(k)}">${esc(l)}</button>`;
+  return `<div class="pl-fmenu" role="menu"><div class="pl-ftop"><input type="search" placeholder="Search" aria-label="Search filters" data-fsearch><button type="button" class="pl-flink" data-act="plCalF" data-g="">Reset</button></div>
+<div class="pl-flist"><button type="button" class="pl-fo${plFiltered() ? '' : ' on'}" data-act="plCalF" data-g="" role="menuitemcheckbox" aria-checked="${!plFiltered()}">All</button>${groups.filter(([, , o]) => o.length).map(([g, h, o]) => `<div class="pl-fg"><span class="pl-fh">${h}</span>${o.map(([k, l]) => opt(g, k, l)).join('')}</div>`).join('')}</div></div>`;
+}
+function plCalHtml(P) {
+  const a = plCal.anchor || (plCal.anchor = P.today); const month = plCal.view === 'month';
+  const items = P.items.filter(plShown); const on = (d) => items.filter((x) => x.day === d);
+  const f = (d, o) => new Date(d + 'T12:00:00').toLocaleDateString('en-US', o);
+  let title; let body;
+  if (month) {
+    const first = a.slice(0, 8) + '01'; const m = first.slice(0, 7); const start = plSunday(first);
+    const last = plDayAfter(plDayAfter(first, 31).slice(0, 8) + '01', -1);
+    const weeks = Math.ceil((Math.round((new Date(last + 'T12:00:00') - new Date(start + 'T12:00:00')) / 864e5) + 1) / 7);
+    title = f(first, { month: 'long', year: 'numeric' });
+    body = `<div class="pl-mgrid"><div class="pl-mh">${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((w) => `<span>${w}</span>`).join('')}</div>${Array.from({ length: weeks * 7 }, (_, i) => {
+      const d = plDayAfter(start, i); const its = on(d); const more = its.length > 3;
+      return `<div class="pl-mday${d.slice(0, 7) === m ? '' : ' out'}${d === P.today ? ' today' : ''}"><span class="pl-md">${Number(d.slice(8))}</span>${its.slice(0, more ? 2 : 3).map((x) => plChip(x)).join('')}${more ? `<button type="button" class="pl-more" data-act="plCalDay" data-d="${d}">+${its.length - 2} more</button>` : ''}</div>`;
+    }).join('')}</div>`;
+  } else {
+    const start = plSunday(a); const end = plDayAfter(start, 6);
+    title = `${f(start, { month: 'short', day: 'numeric' })} – ${start.slice(0, 7) === end.slice(0, 7) ? Number(end.slice(8)) : f(end, { month: 'short', day: 'numeric' })}, ${end.slice(0, 4)}`;
+    body = `<div class="pl-week">${Array.from({ length: 7 }, (_, i) => plDayAfter(start, i)).map((d) => `<div class="pl-day${d === P.today ? ' today' : ''}${d < P.today ? ' past' : ''}"><span class="pl-dn">${f(d, { weekday: 'short' })} <b>${Number(d.slice(8))}</b>${d === P.today ? ' <em>Today</em>' : ''}</span>${on(d).map((x) => plChip(x, true)).join('') || '<span class="pl-none">Nothing scheduled</span>'}</div>`).join('')}</div>`;
+  }
+  const nf = plFiltered();
+  return `<div class="pl-cbar"><div class="pl-nav"><button type="button" class="btn alt sm" data-act="plCalMove" data-n="-1" aria-label="${month ? 'Previous month' : 'Previous week'}">‹</button><button type="button" class="btn alt sm" data-act="plCalMove" data-n="1" aria-label="${month ? 'Next month' : 'Next week'}">›</button><h2>${esc(title)}</h2><button type="button" class="btn alt sm" data-act="plCalMove" data-n="0">Today</button></div>
+<div class="pl-tools"><div class="pl-seg" role="group" aria-label="Calendar view"><button type="button" class="${month ? 'on' : ''}" data-act="plCalView" data-v="month" aria-pressed="${month}">Month</button><button type="button" class="${month ? '' : 'on'}" data-act="plCalView" data-v="week" aria-pressed="${!month}">Week</button></div>
+<div class="pl-filter"><button type="button" class="btn alt sm pl-fbtn${nf ? ' on' : ''}" data-act="plCalOpen" aria-haspopup="menu" aria-expanded="${plCal.open}" title="Filter by content type, network and status"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>Filter${nf ? ` <span class="pl-fn">${nf}</span>` : ''}</button>${plCal.open ? plFilterMenu(P) : ''}</div></div></div>
+${nf && !items.length ? '<p class="muted pl-fnone">No posts match the filter. <button type="button" class="pl-flink" data-act="plCalF" data-g="">Show all</button></p>' : ''}${body}`;
+}
+// redraw just the calendar (the post cards below keep what's typed in them)
+function plCalDraw(focusSearch) {
+  const box = $('#plCal'); if (!box || !plState.P) return; box.innerHTML = plCalHtml(plState.P); plCalSave();
+  const q = $('[data-fsearch]', box); if (!q) return; if (focusSearch) q.focus();
+  q.addEventListener('input', () => { const t = q.value.trim().toLowerCase(); $$('.pl-fo', box).forEach((b) => { b.hidden = !!t && !b.textContent.toLowerCase().includes(t); }); $$('.pl-fg', box).forEach((g) => { g.hidden = !$$('.pl-fo', g).some((b) => !b.hidden); }); });
+  q.addEventListener('keydown', (e) => { if (e.key === 'Escape') { plCal.open = false; plCalDraw(); $('.pl-fbtn')?.focus(); } });
+}
+document.addEventListener('click', (e) => { if (plCal.open && !e.target.closest('.pl-filter')) { plCal.open = false; plCalDraw(); } });
+A.plCalMove = (d) => {
+  const n = Number(d.n); const a = plCal.anchor || plState.P.today;
+  if (!n) plCal.anchor = plState.P.today;
+  else if (plCal.view === 'month') { const t = new Date(a.slice(0, 8) + '15T12:00:00'); t.setMonth(t.getMonth() + n); plCal.anchor = t.toLocaleDateString('en-CA'); }
+  else plCal.anchor = plDayAfter(a, 7 * n);
+  plCalDraw();
+};
+A.plCalView = (d) => { plCal.view = d.v; plCalDraw(); };
+A.plCalDay = (d) => { plCal.view = 'week'; plCal.anchor = d.d; plCalDraw(); };
+A.plCalOpen = () => { plCal.open = !plCal.open; plCalDraw(plCal.open); };
+A.plCalF = (d) => { if (!d.g) plCal.f = { kind: [], net: [], st: [] }; else { const l = plCal.f[d.g]; const i = l.indexOf(d.k); if (i < 0) l.push(d.k); else l.splice(i, 1); } plCalDraw(); };
 PAGES['/marketing/plan'] = {
   title: 'Marketing plan',
   async render(main) {
@@ -2509,8 +2567,8 @@ PAGES['/marketing/plan'] = {
     const S = P.settings; plState.P = P;
     main.innerHTML = `${mkTabs('/marketing/plan')}${mkHead('Marketing plan', 'Every week, AI suggests posts for your business, the season and your finished jobs. Check each one, change what you like and approve it. Nothing is posted until you approve it.')}
 ${P.nets.length ? '' : '<div class="card mk-upsell"><div><strong>Connect a social account first</strong><p class="muted">Your plan posts to the accounts you connect: Facebook, Instagram, Google Business Profile, LinkedIn and more.</p></div><a class="btn" href="/social-posts" data-link>Connect accounts</a></div>'}
-<div class="card pl-top"><div class="pl-bar"><div><h2>Next 7 days</h2><p class="muted" style="margin:0">${P.lastBatch ? `Last suggestions: ${fmtDate(new Date(P.lastBatch.at).toLocaleDateString('en-CA'))}.` : 'Your first suggestions are on the way.'}${P.ai ? ` ${P.aiLeft} of ${P.aiMonthly} AI rewrites left this month.` : ''}</p></div>
-<button type="button" class="btn alt" data-act="plSuggest"${P.making ? ' disabled' : ''}>${P.making ? 'Writing…' : 'Suggest new posts'}</button></div>${plWeek(P)}</div>
+<div class="card pl-top"><div class="pl-bar"><div><h2>Your plan</h2><p class="muted" style="margin:0">${P.lastBatch ? `Last suggestions: ${fmtDate(new Date(P.lastBatch.at).toLocaleDateString('en-CA'))}.` : 'Your first suggestions are on the way.'}${P.ai ? ` ${P.aiLeft} of ${P.aiMonthly} AI rewrites left this month.` : ''}</p></div>
+<button type="button" class="btn alt" data-act="plSuggest"${P.making ? ' disabled' : ''}>${P.making ? 'Writing…' : 'Suggest new posts'}</button></div><div id="plCal">${plCalHtml(P)}</div></div>
 <div class="tabs pl-tabs" role="tablist">${PL_TABS.filter(([k]) => k !== 'action' || n('action')).map(([k, l]) => `<button type="button" role="tab" class="${plState.tab === k ? 'on' : ''}" data-act="plTab" data-tab="${k}">${l}${n(k) ? ` (${n(k)})` : ''}</button>`).join('')}</div>
 <div class="card pl-list">${list.length ? (plState.tab === 'suggested' ? list.map((x) => plCard(x, P, R)).join('') : `<div class="sp-list">${list.map((x) => plCard(x, P, R)).join('')}</div>`) : `<p class="muted" style="margin:0">${empty}</p>`}</div>
 <details class="card pl-set"><summary><strong>Plan settings</strong></summary>
