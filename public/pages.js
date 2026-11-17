@@ -2477,7 +2477,7 @@ function plCard(x, P, R) {
     return `<div class="sp-row pl-row" id="pl-${x.id}">${img}<div><p class="pl-rt">${label}</p><p>${esc(x.caption)}</p><div class="sp-meta">${meta}</div></div><div class="pl-btns">${btns}</div></div>`;
   }
   if (x.status === 'skipped' || x.status === 'expired') {
-    return `<div class="sp-row pl-row" id="pl-${x.id}"><span class="sp-noimg"></span><div><p class="pl-rt">${label}</p><p>${esc(x.caption)}</p><div class="sp-meta"><span class="muted">${x.status === 'expired' ? `Not approved before ${plWhen(x)}` : 'Skipped'}</span></div></div><div class="pl-btns"><button type="button" class="btn alt sm" data-act="plRevive" data-id="${x.id}">Use it</button><button type="button" class="btn alt sm danger-text" data-act="plDelete" data-id="${x.id}">Delete</button></div></div>`;
+    return `<div class="sp-row pl-row" id="pl-${x.id}"><span class="sp-noimg"></span><div><p class="pl-rt">${label}</p><p>${esc(x.caption)}</p><div class="sp-meta"><span class="muted">${x.status === 'expired' ? `Not approved before ${plWhen(x)}` : 'Skipped'}</span></div></div><div class="pl-btns pl-skip"><button type="button" class="btn alt" data-act="plRevive" data-id="${x.id}">Use it</button><button type="button" class="icon-btn pl-del" data-act="plDelete" data-id="${x.id}" aria-label="Delete this post" title="Delete">${TRASH}</button></div></div>`;
   }
   const extra = plState.extra[x.id] || [];
   return `<form class="jp-draft pl-draft" data-id="${x.id}" id="pl-${x.id}"><div class="jp-top">${label}${x.jobId ? `<a class="mk-link" href="/jobs/edit?id=${x.jobId}" data-link>${esc(x.jobTitle || 'Open job')}</a>` : ''}</div>
