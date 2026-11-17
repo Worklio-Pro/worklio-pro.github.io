@@ -2405,7 +2405,7 @@ PAGES['/marketing/website'] = mkSoonPage('/marketing/website', 'Website');
    posts go out at their day and time. Tabs: Needs action (didn't go out), To approve, Scheduled, Posted, Skipped. ===== */
 const PL_TABS = [['action', 'Needs action'], ['suggested', 'To approve'], ['scheduled', 'Scheduled'], ['posted', 'Posted'], ['skipped', 'Skipped']];
 const plTabOf = (x) => (x.status === 'failed' ? 'action' : x.status === 'posting' ? 'scheduled' : x.status === 'expired' ? 'skipped' : x.status);
-const plState = { tab: '', extra: {}, photos: {} }; // extra: photos added from the device to a suggestion on this visit, by id (JPEG data URLs)
+const plState = { tab: '', extra: {}, photos: {}, tt: {} }; // tt: TikTok choices by post, kept until it's approved // extra: photos added from the device to a suggestion on this visit, by id (JPEG data URLs)
 const plWhen = (x) => `${new Date(x.day + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}, ${fmtTime(x.time)}`;
 const plDayAfter = (d, n) => { const t = new Date(d + 'T12:00:00'); t.setDate(t.getDate() + n); return t.toLocaleDateString('en-CA'); };
 // each suggestion's picture, drawn here in the business's brand color with its logo: a 1080px square JPEG (fits every network).
@@ -2488,6 +2488,7 @@ ${extra.length ? `<div class="jp-photos">${extra.map((src, i) => `<label><input 
 ${P.ai ? `<div class="jp-tones"><span class="muted">Write it again:</span>${JP_TONES.map(([k, n]) => `<button type="button" class="btn alt sm" data-act="plRewrite" data-id="${x.id}" data-tone="${k}">${n}</button>`).join('')}</div>` : ''}
 <div class="pl-when"><label>Day<input type="date" name="day" value="${x.day}" min="${P.today}"></label><label>Time<input type="time" name="time" value="${x.time}" step="300"></label></div>
 ${nets.length ? `<div class="sp-dests">${nets.map(([k, n, who]) => `<label class="sp-dest"><input type="checkbox" name="to" value="${k}" ${x.to.includes(k) ? 'checked' : ''}>${CONN_ICONS[k]}<span><strong>${n}</strong><small>${esc(who(R))}</small></span></label>`).join('')}</div>` : '<p class="muted">Connect a social account in <a href="/social-posts" data-link>Social posting</a> to approve this.</p>'}
+${nets.some(([k]) => k === 'tiktok') ? '<div class="sp-tt pl-tt" data-tt hidden></div>' : ''}
 <div class="sp-foot"><button type="button" class="btn alt" data-act="plSkip" data-id="${x.id}">Skip</button><button class="btn"${nets.length ? '' : ' disabled'}>Approve and schedule</button></div></form>`;
 }
 // the week strip: the next 7 days, with each post as a chip in its day
@@ -2564,7 +2565,8 @@ function bindPlan() {
     }
     const save = async (body) => { try { await api('PUT', '/api/marketing/plan/' + id, body); } catch (x) { toast(x.message, true); } };
     $$('input[name=pic]', f).forEach((c) => c.addEventListener('change', () => save({ picked: $$('input[name=pic]:checked', f).map((x) => x.value) })));
-    $$('input[name=to]', f).forEach((c) => c.addEventListener('change', () => save({ to: $$('input[name=to]:checked', f).map((x) => x.value) })));
+    $$('input[name=to]', f).forEach((c) => c.addEventListener('change', () => { save({ to: $$('input[name=to]:checked', f).map((x) => x.value) }); plTikTok(f, id); }));
+    plTikTok(f, id);
     cap.addEventListener('blur', () => { if (cap.value !== saved) { saved = cap.value; save({ caption: cap.value }); } });
     f.day.addEventListener('change', () => { if (f.day.value) save({ day: f.day.value }); });
     f.time.addEventListener('change', () => { if (f.time.value) save({ time: f.time.value }); });
@@ -2573,6 +2575,7 @@ function bindPlan() {
       const art = f.art && f.art.checked && x && pic && !pic.closest('.pl-art').hidden ? [await plArt(x, P, words ? words.value : '', bg)] : [];
       const pics = [...(x && x.photos.length ? [] : art), ...$$('input[name=pic]:checked', f).map((x) => x.value), ...$$('input[name=xpic]:checked', f).map((x) => (plState.extra[id] || [])[Number(x.value)]), ...(x && x.photos.length ? art : [])].filter(Boolean);
       if (!to.length) return toast('Choose where to post', true);
+      const tt = plState.tt[id]; if (to.includes('tiktok') && !(tt && tt.privacy)) return toast('Choose who can see the TikTok post', true);
       if (!f.day.value || !f.time.value) return toast('Pick a day and time', true);
       if (pics.length > 10) return toast('Up to 10 photos per post', true);
       for (const k of to) {
@@ -2585,11 +2588,28 @@ function bindPlan() {
       btn.disabled = true; btn.textContent = 'Scheduling…';
       try {
         const images = []; for (const src of pics) images.push(await toJpeg(src, 1440, to.includes('bluesky') ? 950000 : 0));
-        await api('POST', `/api/marketing/plan/${id}/approve`, { caption: cap.value, to, images, ...(words ? { art: words.value } : {}), day: f.day.value, time: f.time.value });
-        delete plState.extra[id]; toast(`Approved. It goes out ${plWhen({ day: f.day.value, time: f.time.value })}.`); refresh();
+        await api('POST', `/api/marketing/plan/${id}/approve`, { caption: cap.value, to, images, ...(to.includes('tiktok') ? { tiktok: tt } : {}), ...(words ? { art: words.value } : {}), day: f.day.value, time: f.time.value });
+        delete plState.extra[id]; delete plState.tt[id]; toast(`Approved. It goes out ${plWhen({ day: f.day.value, time: f.time.value })}.`); refresh();
       } catch (x) { btn.disabled = false; btn.textContent = 'Approve and schedule'; toast(x.message, true); }
     });
   }
+}
+// TikTok asks for these on every post (as in Social posting): who can see it, comments, and whether it promotes the business
+async function plTikTok(f, id) {
+  const box = $('[data-tt]', f); if (!box) return; const on = $$('input[name=to]:checked', f).some((c) => c.value === 'tiktok'); box.hidden = !on; if (!on || box.dataset.loaded) return;
+  box.dataset.loaded = '1'; box.innerHTML = '<p class="muted" style="margin:0">Checking your TikTok account…</p>';
+  let c; try { c = plState.ttInfo || (plState.ttInfo = await api('GET', '/api/social-posts/tiktok')); } catch (x) { box.innerHTML = `<p class="sp-err" style="margin:0">${esc(x.message)}</p>`; delete box.dataset.loaded; return; }
+  const t = plState.tt[id] = plState.tt[id] || { privacy: c.privacy.length === 1 ? c.privacy[0].id : '', comments: !c.commentsOff, brand: true };
+  const only = c.privacy.length === 1 && c.privacy[0].id === 'SELF_ONLY';
+  box.innerHTML = `<h3>${CONN_ICONS.tiktok}TikTok · posting as ${esc(c.nickname)}${c.username ? ` <span class="muted">@${esc(c.username)}</span>` : ''}</h3>
+<div class="sp-tt-row"><label>Who can see this post<select name="ttPrivacy"><option value="">Choose…</option>${c.privacy.map((o) => `<option value="${o.id}" ${t.privacy === o.id ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select></label>
+<label class="sp-chk"><input type="checkbox" name="ttComments" ${t.comments && !c.commentsOff ? 'checked' : ''} ${c.commentsOff ? 'disabled' : ''}> Allow comments</label>
+<label class="sp-chk"><input type="checkbox" name="ttBrand" ${t.brand ? 'checked' : ''}> This post promotes my business</label></div>
+${only ? `<p class="muted">${TT_HINT.SELF_ONLY}</p>` : ''}<p class="muted" data-ttnote ${t.brand ? '' : 'hidden'}>TikTok labels it “Promotional content”.</p>
+<p class="muted">TikTok posts the photos with music it picks. By approving, you agree to TikTok’s <a href="${MUSIC_TERMS}" target="_blank" rel="noopener">Music Usage Confirmation</a>.</p>`;
+  $('[name=ttPrivacy]', box).addEventListener('change', (e) => { t.privacy = e.target.value; });
+  $('[name=ttComments]', box).addEventListener('change', (e) => { t.comments = e.target.checked; });
+  $('[name=ttBrand]', box).addEventListener('change', (e) => { t.brand = e.target.checked; $('[data-ttnote]', box).hidden = !t.brand; });
 }
 const plDo = async (method, url, msg) => { try { await api(method, url); if (msg) toast(msg); refresh(); } catch (x) { toast(x.message, true); } };
 A.plTab = (d) => { plState.tab = d.tab; refresh(); };
