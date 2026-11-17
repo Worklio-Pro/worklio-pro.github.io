@@ -51,7 +51,7 @@ A.homeNoticeClose = (d) => { homeSet('homeNotice', d.s); const n = $('#hmNotice'
 function homeSetupHtml(setup) {
   if (!isAdminMe() || !setup || homeGet('homeSetupHidden')) return '';
   const steps = [
-    [setup.logo, 'Add your logo and business details', '/settings/company'],
+    [setup.logo, 'Add your logo', '/settings#logo-colors'],
     [D.services.length > 0, 'Add the services you offer', '/services'],
     [D.clients.length > 0, 'Add your first client', '/clients'],
     [D.quotes.some((q) => q.status !== 'draft'), 'Send a quote', '/quotes'],
@@ -3271,7 +3271,7 @@ A.holDel = async (d) => { const h = (company.holidays || []).find((x) => x.id ==
 A.holUs = async () => { const have = new Set((company.holidays || []).map((h) => h.from)); const add = usHolidays().filter((h) => !have.has(h.from));
   if (!add.length) return toast('The US holidays for the next 12 months are already on your list');
   try { await holStore([...(company.holidays || []), ...add]); toast(`${add.length} holiday${add.length === 1 ? '' : 's'} added as closed. Edit any you’re open for.`); } catch (x) { toast(x.message, true); } };
-function companySettingsHtml(c, logoBox = '') {
+function companySettingsHtml(c) {
   const hasParts = ['addrStreet1', 'addrStreet2', 'addrCity', 'addrState', 'addrZip'].some((k) => c[k]);
   const v = (k) => esc(c[k] ?? '');
   const country = c.addrCountry || 'United States';
@@ -3287,7 +3287,7 @@ ${switchRow('addressPrivate', 'Keep address private', c.addressPrivate, 'We won�
 ${autoHoursHtml(businessHours(c), 'Closed')}${hoursFoot}</div>
 ${switchRow('showHours', 'Show business hours', c.showHours, 'Display your business hours and upcoming holiday hours on the client portal.')}
 <hr class="cs-hr">${holidaysHtml(c)}</div>
-</div><div class="cs-col">${logoBox}<div class="card cs"><h2>Social media</h2><p class="muted cs-note">Paste a link to your page, or just your handle (like @yourbusiness). Leave any you don’t use blank.</p>
+</div><div class="cs-col"><div class="card cs"><h2>Social media</h2><p class="muted cs-note">Paste a link to your page, or just your handle (like @yourbusiness). Leave any you don’t use blank.</p>
 <div class="cs-soc">${SOCIAL.map(([k, l, ph]) => fl(l, `<input name="social_${k}" value="${esc((c.social || {})[k] || '')}" placeholder="${ph}" autocomplete="off" autocapitalize="off" spellcheck="false">`)).join('')}</div></div>
 
 <div class="card cs"><h2>Tax settings</h2>
@@ -3434,10 +3434,10 @@ function wireTeamLoc() {
     try { const saved = await api('PUT', '/api/company', { teamLocation: on }); company = { ...company, ...saved }; toast(on ? 'Team location is on' : 'Team location is off'); } catch (err) { toast(err.message, true); }
   });
 }
-// App Settings tabs; the hash keeps the tab (links to #payments, #zelle, #pay-apps or #late-fees open Payments). Every card stays in the page so form="cf" fields still save.
-const AS_TABS = [['general', 'General'], ['white-label', 'White Label'], ['payments', 'Payments']];
+// App Settings tabs; the hash keeps the tab (links to #payments, #zelle, #pay-apps or #late-fees open Payments; #logo-colors and the old #white-label open Branding). Every card stays in the page so form="cf" fields still save.
+const AS_TABS = [['general', 'General'], ['branding', 'Branding'], ['payments', 'Payments']];
 function wireAsTabs(main) {
-  const tabOf = (h) => (['saved-discounts', 'team-location'].includes(h) ? 'general' : ['zelle', 'pay-apps', 'late-fees'].includes(h) ? 'payments' : AS_TABS.some(([t]) => t === h) ? h : 'general');
+  const tabOf = (h) => (['saved-discounts', 'team-location'].includes(h) ? 'general' : ['zelle', 'pay-apps', 'late-fees'].includes(h) ? 'payments' : ['white-label', 'logo-colors'].includes(h) ? 'branding' : AS_TABS.some(([t]) => t === h) ? h : 'general');
   const show = (t, keep) => {
     $$('[data-as-tab]', main).forEach((b) => { const on = b.dataset.asTab === t; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); });
     $$('.as-panel', main).forEach((p) => { p.hidden = p.id !== 'as-' + t; });
@@ -3452,8 +3452,8 @@ async function companyPage(main, full) {
   // two logos: one for light backgrounds (quotes, invoices, emails, client portal) and one for dark ones (the app's side menu, dark mode); click a box to choose an image
   const logoSlot = (kind, src, label, note) => `<div class="logo-slot"><span class="logo-lbl">${label}</span><label class="logo-pick ${kind}" title="${src ? 'Replace' : 'Upload'} the logo for ${label.toLowerCase()}">${src ? `<img src="${esc(src)}" alt="">` : '<span>Click to upload</span>'}<input type="file" class="logo-file" data-kind="${kind}" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" hidden></label>
 <div class="logo-under">${src ? `<button type="button" class="logo-trash" data-act="removeLogo" data-kind="${kind}" title="Delete this logo" aria-label="Delete the logo for ${label.toLowerCase()}">${BP_TRASH}</button>` : ''}</div><span class="muted logo-note">${note}</span></div>`;
-  const logoBox = planHas('branding') ? `<div class="card${full ? '' : ' cs'}"><h2>Logo</h2><div class="logo-slots">${logoSlot('light', c.logo, 'Light backgrounds', 'Quotes, invoices, emails and the client portal.')}${logoSlot('dark', c.logoDark, 'Dark backgrounds', 'The side menu and dark mode. Uses the light one if blank.')}</div></div>` : '';
-  const brandBox = full && planHas('branding') ? `<div class="card"><h2>Branding</h2><div class="row"><label>Brand color<input form="cf" name="brandColor" type="color" value="${esc(c.brandColor || '#2563eb')}"><span class="muted">Used on quotes, invoices and emails to clients.</span></label><label>Accent color<input form="cf" name="accentColor" type="color" value="${esc(c.accentColor || c.defaultAccent)}"><span class="muted">Used on your client portal.${c.accentColor ? ' <button type="button" class="linkbtn" data-act="resetAccent">Reset</button>' : ''}</span></label></div></div>` : '';
+  // App Settings → Branding → Logo and colors: the two logos, then the brand and accent colors
+  const brandBox = full && planHas('branding') ? `<div class="card" id="logo-colors"><h2>Logo and colors</h2><div class="logo-slots">${logoSlot('light', c.logo, 'Light backgrounds', 'Quotes, invoices, emails and the client portal.')}${logoSlot('dark', c.logoDark, 'Dark backgrounds', 'The side menu and dark mode. Uses the light one if blank.')}</div><div class="row" style="margin-top:16px"><label>Brand color<input form="cf" name="brandColor" type="color" value="${esc(c.brandColor || '#2563eb')}"><span class="muted">Used on quotes, invoices and emails to clients.</span></label><label>Accent color<input form="cf" name="accentColor" type="color" value="${esc(c.accentColor || c.defaultAccent)}"><span class="muted">Used on your client portal.${c.accentColor ? ' <button type="button" class="linkbtn" data-act="resetAccent">Reset</button>' : ''}</span></label></div></div>` : '';
   const defaultsBox = full ? `<div class="card"><h2>Defaults</h2><label>Invoice footer message<input form="cf" name="invoiceFooter" value="${esc(c.invoiceFooter)}"></label>
 <label class="sw-row"><span>Send new quotes as estimates first<small class="muted">${ESTIMATE_NOTE} You can change it on each quote.</small></span><input form="cf" type="hidden" name="quoteEstimateFirst" value="off"><input form="cf" type="checkbox" class="sw" name="quoteEstimateFirst" value="on" ${c.quoteEstimateFirst ? 'checked' : ''}><i></i></label></div>` : '';
   const prefixBox = full ? planHas('numberPrefixes') ? `<div class="card"><h2>Number prefixes</h2><p class="muted" style="margin-top:0">The label in front of each quote, job and invoice number. Changes apply to new ones only; existing numbers stay as they are.</p>
@@ -3462,12 +3462,12 @@ async function companyPage(main, full) {
 <div class="row"><label>Zelle email or phone<input form="cf" name="zelleRecipient" value="${esc(c.zelleRecipient || '')}" placeholder="payments@yourbusiness.com or +17135550100"></label><label>Name registered with Zelle<input form="cf" name="zelleName" value="${esc(c.zelleName || '')}" placeholder="e.g. TLB Group LLC"></label></div></div>` : '';
   const appsBox = full && planHas('zelle') ? `<div class="card" id="pay-apps"><h2>Venmo, Cash App and PayPal</h2><p class="muted" style="margin-top:0">Clients get a button that opens the app with the amount filled in, on the invoice pay page and the quote deposit step. Leave one blank to hide it. Use a business profile: Venmo and Cash App don’t allow business payments to personal accounts. These payments can’t be confirmed automatically: when a client reports one, check the app, then use Collect Payment.</p>
 <div class="row3"><label>Venmo username<input form="cf" name="venmoHandle" value="${esc(c.venmoHandle ? '@' + c.venmoHandle : '')}" placeholder="@YourBusiness" autocomplete="off"></label><label>Cash App $Cashtag<input form="cf" name="cashappTag" value="${esc(c.cashappTag ? '$' + c.cashappTag : '')}" placeholder="$YourBusiness" autocomplete="off"></label><label>PayPal.me name<input form="cf" name="paypalHandle" value="${esc(c.paypalHandle ? 'paypal.me/' + c.paypalHandle : '')}" placeholder="paypal.me/YourBusiness" autocomplete="off"></label></div></div>` : '';
-  main.innerHTML = `<div class="head"><div><h1>${full ? 'App Settings' : 'Company settings'}</h1>${full ? '<p class="sub">Defaults, white label and payments for every quote and invoice. Business details, social media and tax settings are on <a href="/settings/company" data-link>Company Profile</a>.</p>' : ''}</div></div>
+  main.innerHTML = `<div class="head"><div><h1>${full ? 'App Settings' : 'Company settings'}</h1>${full ? '<p class="sub">Defaults, branding and payments for every quote and invoice. Business details, social media and tax settings are on <a href="/settings/company" data-link>Company Profile</a>.</p>' : ''}</div></div>
 ${full ? `<div class="as-tabs" role="tablist">${AS_TABS.map(([t, n]) => `<button type="button" role="tab" data-as-tab="${t}" aria-controls="as-${t}">${n}</button>`).join('')}</div>
 <div class="as-panel" id="as-general" role="tabpanel"><div class="as-cols"><div class="as-col">${regionalBox(c)}${languagesBox(c)}${referralCard(c)}${mxCard()}</div><div class="as-col">${defaultsBox}${surveyCard(c)}${savedDiscCard()}${prefixBox}${teamLocCard(c)}</div></div></div>
-<div class="as-panel" id="as-white-label" role="tabpanel"><div class="as-cols"><div class="as-col">${webAddressCard(c.account)}</div><div class="as-col">${brandBox || `<div class="card"><h2>Branding</h2><p class="muted" style="margin:0">Your own brand and accent colors on quotes, invoices, emails and the client portal come with a plan that includes Branding.</p></div>`}</div></div></div>
+<div class="as-panel" id="as-branding" role="tabpanel"><div class="as-cols"><div class="as-col">${brandBox || `<div class="card" id="logo-colors"><h2>Logo and colors</h2><p class="muted" style="margin:0">Your own logo and brand and accent colors on quotes, invoices, emails and the client portal come with a plan that includes Branding.</p></div>`}</div><div class="as-col">${webAddressCard(c.account)}</div></div></div>
 <div class="as-panel" id="as-payments" role="tabpanel"><div class="as-cols"><div class="as-col">${payCard(integ)}${zelleBox}</div><div class="as-col">${appsBox}${lateFeeCard(c)}</div></div></div>
-<form id="cf"></form>` :`<form id="cf" class="cs-form">${companySettingsHtml(c, logoBox)}</form>`}`;
+<form id="cf"></form>` :`<form id="cf" class="cs-form">${companySettingsHtml(c)}</form>`}`;
   if (full) { wireLateFees(); wireMx(); wireTeamLoc(); wireReferrals(); wireAsTabs(main); }
   $$('.prefix-row input').forEach((i) => i.addEventListener('input', () => { i.nextElementSibling.textContent = 'e.g. ' + i.value.trim() + i.dataset.sample; }));
   const ind = $('#cf select[name=industry]', main); if (ind) ind.addEventListener('change', () => { $('#cf [data-other]', main).hidden = ind.value !== 'other'; });
@@ -3519,7 +3519,7 @@ ${full ? `<div class="as-tabs" role="tablist">${AS_TABS.map(([t, n]) => `<button
     try { const saved = await api('DELETE', '/api/company/logo' + (dark ? '?kind=dark' : '')); company = { ...company, ...saved }; toast('Logo deleted'); refresh(); } catch (err) { toast(err.message, true); }
   };
   wireAccountCards(main);
-  if (full) { stripeReturnNotice(integ); const to = ['#zelle', '#pay-apps', '#late-fees', '#team-location'].includes(location.hash) ? $(location.hash, main) : null; if (to) to.scrollIntoView({ block: 'start' }); } // back from Stripe, or a link to Card payments
+  if (full) { stripeReturnNotice(integ); const to = ['#zelle', '#pay-apps', '#late-fees', '#team-location', '#logo-colors'].includes(location.hash) ? $(location.hash, main) : null; if (to) to.scrollIntoView({ block: 'start' }); } // back from Stripe, or a link to Card payments
   $$('.logo-file', main).forEach((inp) => inp.addEventListener('change', async (e) => {
     const f = e.target.files[0]; e.target.value = ''; if (!f) return; if (f.size > 4e6) return toast('Logo must be under 4 MB', true);
     try {
