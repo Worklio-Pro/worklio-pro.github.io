@@ -2334,7 +2334,7 @@ A.jpRewrite = async (d, el) => {
 /* ===== Marketing: one place for every marketing tool, in tabs (Dashboard, Performance, Plan, Reviews, Email campaigns, Website, More).
    The Marketing suite (planHas('marketingSuite'): included in Unlimited, an add-on for the other plans) is Performance plus the pieces
    still being built, which show what they'll do with a Coming soon badge. A tab the plan doesn't include keeps the tabs and says how to get it. ===== */
-const MK_SOON = { '/marketing/plan': 1, '/marketing/email': 1, '/marketing/website': 1 };
+const MK_SOON = { '/marketing/email': 1, '/marketing/website': 1 };
 const MK_MAIN = [['/marketing/dashboard', 'Dashboard'], ['/marketing/performance', 'Performance'], ['/marketing/plan', 'Plan'], ['/reviews', 'Reviews'], ['/marketing/email', 'Email Campaigns'], ['/marketing/website', 'Website']];
 const MK_MORE = [['/social-posts', 'Social posting'], ['/marketing/referrals', 'Referrals'], ['/automations', 'Automations']];
 const mkTabOn = (p, path) => p === path || (p === '/automations' && path === '/automations/edit');
@@ -2377,7 +2377,7 @@ const mkSuiteBar = () => {
 // what each tab does, for the Coming soon and upgrade pages
 const MK_PITCH = {
   '/marketing/performance': ['Your marketing performance', 'See which marketing brings in paying clients, so you spend your time on what works.', ['New clients by where they came from: referrals, social posts, online booking, your Business Page', 'What those clients have paid you, per source', 'How often people open your booking page from your social posts', 'Reviews and posts this month at a glance']],
-  '/marketing/plan': ['A marketing plan that fills itself', 'Every week, AI suggests posts and emails for your business, based on your services, the season and your finished jobs. You check each one, change what you like and schedule it.', ['A week and month calendar of suggested posts and emails', 'Written in your business’s voice', 'Approve with one tap, or edit first', 'Posts go out to the accounts you connected']],
+  '/marketing/plan': ['A marketing plan that fills itself', 'Every week, AI suggests 3 to 5 posts for your business, based on your services, the season, your finished jobs and your new reviews. You check each one, change what you like and approve it.', ['A week of suggested posts, ready every Monday', 'Written in your business’s voice', 'Approve with one tap, or edit first: nothing is posted until you approve it', 'Posts go out at their time to the accounts you connected']],
   '/marketing/email': ['Email campaigns', 'Bring past clients back with emails that AI writes for you. Pick who gets it, check the preview and send it now or schedule it.', ['Pick clients by tag, service or how long since their last job', 'AI writes the email; you edit it', 'See opens, clicks and the jobs each campaign brought in', 'An unsubscribe link on every email, as the law requires']],
   '/marketing/website': ['A website that books jobs', 'A full website for your business, built for you from your services, photos and reviews, with online booking on every page.', ['Pages for each service, your work and your reviews', 'Your colors and logo, on your own web address', 'Online booking and a request form built in', 'Looks right on phones'], '<p class="muted">Until then, your <a href="/settings/business-page" data-link>Business Page</a> gives clients a one-page site with your services, reviews and a booking button.</p>'],
   '/marketing/referrals': ['Referrals', 'Every client gets a link to share. Friends who use it arrive as leads, and you can reward the client who sent them with a credit on their next invoice.', ['A referral link for every client, in their portal', 'Referral rewards: $ or % off their next invoice', 'An optional welcome offer for the friend', 'Top referrers at a glance']],
@@ -2398,9 +2398,130 @@ async function mkLockedPage(main, path) {
   main.innerHTML = mkTabs(path) + (MK_PITCH[p] ? mkPitchHtml(p, { soon: !!MK_SOON[p], suite: false, locked: true }) : `<div class="card upgrade-card"><h1>This isn’t in your plan</h1>${mkGetIt(false)}</div>`);
 }
 const mkSoonPage = (path, title) => ({ title, render(main) { main.innerHTML = mkTabs(path) + mkPitchHtml(path, { soon: true, suite: !planHas('marketingSuite'), locked: !planHas('marketingSuite') }); } });
-PAGES['/marketing/plan'] = mkSoonPage('/marketing/plan', 'Marketing plan');
 PAGES['/marketing/email'] = mkSoonPage('/marketing/email', 'Email campaigns');
 PAGES['/marketing/website'] = mkSoonPage('/marketing/website', 'Website');
+
+/* ===== Marketing → Plan (lib/marketing-plan.js): a week of suggested posts. Each is checked, changed if needed, and approved; approved
+   posts go out at their day and time. Tabs: Needs action (didn't go out), To approve, Scheduled, Posted, Skipped. ===== */
+const PL_TABS = [['action', 'Needs action'], ['suggested', 'To approve'], ['scheduled', 'Scheduled'], ['posted', 'Posted'], ['skipped', 'Skipped']];
+const plTabOf = (x) => (x.status === 'failed' ? 'action' : x.status === 'posting' ? 'scheduled' : x.status === 'expired' ? 'skipped' : x.status);
+const plState = { tab: '', extra: {} }; // extra: photos added from the device to a suggestion on this visit, by id (JPEG data URLs)
+const plWhen = (x) => `${new Date(x.day + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}, ${fmtTime(x.time)}`;
+const plDayAfter = (d, n) => { const t = new Date(d + 'T12:00:00'); t.setDate(t.getDate() + n); return t.toLocaleDateString('en-CA'); };
+function plCard(x, P, R) {
+  const nets = SP_NETS.filter(([k]) => P.nets.includes(k) && R[k]);
+  const chips = (res) => Object.entries(res || {}).map(([k, r]) => (r.status === 'posted' && r.url ? `<a class="conn-chip on" href="${esc(r.url)}" target="_blank" rel="noopener"><i></i>${SP_NAMES[k] || k}</a>` : r.status === 'posted' ? `<span class="conn-chip on"><i></i>${SP_NAMES[k] || k}</span>` : `<span class="conn-chip off" title="${esc(r.error || '')}"><i></i>${SP_NAMES[k] || k} failed</span>`)).join('');
+  const label = `<span class="pl-kind">${esc(x.kindName)}</span><strong>${esc(x.title)}</strong>`;
+  if (['scheduled', 'posting', 'posted', 'failed'].includes(x.status)) {
+    const img = x.images[0] ? `<img src="${esc(x.images[0])}" alt="" loading="lazy">` : '<span class="sp-noimg"></span>';
+    const meta = x.status === 'posted' ? `<span class="muted">Posted ${plWhen(x)}${x.by ? ' · approved by ' + esc(x.by) : ''}</span>${chips(x.results)}${P.booking ? `<span class="muted">${x.visits} visit${x.visits === 1 ? '' : 's'} · ${x.requests} request${x.requests === 1 ? '' : 's'}</span>` : ''}`
+      : x.status === 'failed' ? `<span class="pl-bad">Didn’t go out: ${esc(x.error)}</span>${chips(x.results)}`
+      : `<span class="muted">${x.status === 'posting' ? 'Posting now…' : `Goes out ${plWhen(x)}`} to ${x.to.map((k) => SP_NAMES[k] || k).join(', ')}${x.images.length ? ` · ${x.images.length} photo${x.images.length === 1 ? '' : 's'}` : ''}</span>`;
+    const btns = x.status === 'failed' ? `<button type="button" class="btn sm" data-act="plRetry" data-id="${x.id}">Try again now</button><button type="button" class="btn alt sm" data-act="plUnschedule" data-id="${x.id}">Edit</button>`
+      : x.status === 'scheduled' ? `<button type="button" class="btn alt sm" data-act="plUnschedule" data-id="${x.id}">Unschedule to edit</button>` : '';
+    return `<div class="sp-row pl-row" id="pl-${x.id}">${img}<div><p class="pl-rt">${label}</p><p>${esc(x.caption)}</p><div class="sp-meta">${meta}</div></div><div class="pl-btns">${btns}</div></div>`;
+  }
+  if (x.status === 'skipped' || x.status === 'expired') {
+    return `<div class="sp-row pl-row" id="pl-${x.id}"><span class="sp-noimg"></span><div><p class="pl-rt">${label}</p><p>${esc(x.caption)}</p><div class="sp-meta"><span class="muted">${x.status === 'expired' ? `Not approved before ${plWhen(x)}` : 'Skipped'}</span></div></div><div class="pl-btns"><button type="button" class="btn alt sm" data-act="plRevive" data-id="${x.id}">Use it</button></div></div>`;
+  }
+  const extra = plState.extra[x.id] || [];
+  return `<form class="jp-draft pl-draft" data-id="${x.id}" id="pl-${x.id}"><div class="jp-top">${label}${x.jobId ? `<a class="mk-link" href="/jobs/edit?id=${x.jobId}" data-link>${esc(x.jobTitle || 'Open job')}</a>` : ''}</div>
+${x.review ? `<blockquote class="pl-review">${'★'.repeat(x.review.stars)} “${esc(x.review.comment)}”</blockquote>` : ''}
+${x.photos.length ? `<p class="muted jp-hint">Tick the photos to post (up to 10). The first one ticked is the cover.</p><div class="jp-photos">${x.photos.map((p) => `<label title="${esc(p.label)}"><input type="checkbox" name="pic" value="${esc(p.url)}" ${p.picked ? 'checked' : ''}><img src="${esc(p.url)}" alt="${esc(p.label)} photo" loading="lazy"><span>${esc(p.label)}</span></label>`).join('')}</div>` : ''}
+${extra.length ? `<div class="jp-photos">${extra.map((src, i) => `<label><input type="checkbox" name="xpic" value="${i}" checked><img src="${src}" alt="Your photo"><span>Added</span></label>`).join('')}</div>` : ''}
+<div class="pl-add"><label class="btn alt sm">+ Add photos<input type="file" accept="image/*" multiple hidden data-add="${x.id}"></label><small class="muted">${x.photos.length || extra.length || !P.nets.some((k) => ['instagram', 'pinterest'].includes(k)) ? '' : `${P.nets.filter((k) => ['instagram', 'pinterest'].includes(k)).map((k) => SP_NAMES[k]).join(' and ')} posts need a photo. `}Photos you add here are kept until you approve or leave this page.</small></div>
+<label>Post${x.ai ? ' <small class="muted">written by AI for your business. Change anything you like.</small>' : ''}<textarea name="caption" rows="6" maxlength="2200">${esc(x.caption)}</textarea></label>
+${P.ai ? `<div class="jp-tones"><span class="muted">Write it again:</span>${JP_TONES.map(([k, n]) => `<button type="button" class="btn alt sm" data-act="plRewrite" data-id="${x.id}" data-tone="${k}">${n}</button>`).join('')}</div>` : ''}
+<div class="pl-when"><label>Day<input type="date" name="day" value="${x.day}" min="${P.today}"></label><label>Time<input type="time" name="time" value="${x.time}" step="300"></label></div>
+${nets.length ? `<div class="sp-dests">${nets.map(([k, n, who]) => `<label class="sp-dest"><input type="checkbox" name="to" value="${k}" ${x.to.includes(k) ? 'checked' : ''}>${CONN_ICONS[k]}<span><strong>${n}</strong><small>${esc(who(R))}</small></span></label>`).join('')}</div>` : '<p class="muted">Connect a social account in <a href="/social-posts" data-link>Social posting</a> to approve this.</p>'}
+<div class="sp-foot"><button type="button" class="btn alt" data-act="plSkip" data-id="${x.id}">Skip</button><button class="btn"${nets.length ? '' : ' disabled'}>Approve and schedule</button></div></form>`;
+}
+// the week strip: the next 7 days, with each post as a chip in its day
+function plWeek(P) {
+  return `<div class="pl-week">${Array.from({ length: 7 }, (_, i) => plDayAfter(P.today, i)).map((d) => {
+    const its = P.items.filter((x) => x.day === d && !['skipped', 'expired'].includes(x.status));
+    return `<div class="pl-day${d === P.today ? ' today' : ''}"><span class="pl-dn">${new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' })} <b>${Number(d.slice(8))}</b></span>${its.map((x) => `<button type="button" class="pl-chip ${x.status}" data-act="plGo" data-id="${x.id}" data-tab="${plTabOf(x)}" title="${esc(x.title)}">${fmtTime(x.time)} ${esc(x.title)}</button>`).join('') || '<span class="pl-none">—</span>'}</div>`;
+  }).join('')}</div>`;
+}
+PAGES['/marketing/plan'] = {
+  title: 'Marketing plan',
+  async render(main) {
+    if (!planHas('marketingSuite')) { main.innerHTML = mkTabs('/marketing/plan') + mkPitchHtml('/marketing/plan', { suite: true, locked: true }); return; }
+    const [P, R] = await Promise.all([api('GET', '/api/marketing/plan'), api('GET', '/api/social-posts')]);
+    const n = (t) => P.items.filter((x) => plTabOf(x) === t).length;
+    if (!plState.tab || (plState.tab === 'action' && !n('action'))) plState.tab = n('action') ? 'action' : n('suggested') || P.making ? 'suggested' : 'scheduled';
+    const list = P.items.filter((x) => plTabOf(x) === plState.tab); if (['posted', 'skipped'].includes(plState.tab)) list.reverse();
+    const empty = { action: 'Nothing needs your attention.', suggested: P.making ? 'Writing this week’s posts… This takes about a minute.' : P.settings.on ? 'Nothing to approve right now. New suggestions come every Monday morning, or tap Suggest new posts.' : 'Weekly suggestions are turned off. Turn them on in Plan settings below, or tap Suggest new posts.', scheduled: 'No posts scheduled. Approve a suggestion and it shows up here.', posted: 'Nothing posted from your plan yet.', skipped: 'Nothing skipped.' }[plState.tab];
+    const S = P.settings;
+    main.innerHTML = `${mkTabs('/marketing/plan')}${mkHead('Marketing plan', 'Every week, AI suggests posts for your business, the season and your finished jobs. Check each one, change what you like and approve it. Nothing is posted until you approve it.')}
+${P.nets.length ? '' : '<div class="card mk-upsell"><div><strong>Connect a social account first</strong><p class="muted">Your plan posts to the accounts you connect: Facebook, Instagram, Google Business Profile, LinkedIn and more.</p></div><a class="btn" href="/social-posts" data-link>Connect accounts</a></div>'}
+<div class="card pl-top"><div class="pl-bar"><div><h2>Next 7 days</h2><p class="muted" style="margin:0">${P.lastBatch ? `Last suggestions: ${fmtDate(new Date(P.lastBatch.at).toLocaleDateString('en-CA'))}.` : 'Your first suggestions are on the way.'}${P.ai ? ` ${P.aiLeft} of ${P.aiMonthly} AI rewrites left this month.` : ''}</p></div>
+<button type="button" class="btn alt" data-act="plSuggest"${P.making ? ' disabled' : ''}>${P.making ? 'Writing…' : 'Suggest new posts'}</button></div>${plWeek(P)}</div>
+<div class="tabs pl-tabs" role="tablist">${PL_TABS.filter(([k]) => k !== 'action' || n('action')).map(([k, l]) => `<button type="button" role="tab" class="${plState.tab === k ? 'on' : ''}" data-act="plTab" data-tab="${k}">${l}${n(k) ? ` (${n(k)})` : ''}</button>`).join('')}</div>
+<div class="card pl-list">${list.length ? (plState.tab === 'suggested' ? list.map((x) => plCard(x, P, R)).join('') : `<div class="sp-list">${list.map((x) => plCard(x, P, R)).join('')}</div>`) : `<p class="muted" style="margin:0">${empty}</p>`}</div>
+<details class="card pl-set"><summary><strong>Plan settings</strong></summary>
+<label class="sp-chk"><input type="checkbox" id="plOn" ${S.on ? 'checked' : ''}> Suggest posts every Monday morning</label>
+<label class="sp-chk">Posts a week <select id="plPer">${[3, 4, 5].map((k) => `<option ${S.perWeek === k ? 'selected' : ''}>${k}</option>`).join('')}</select></label>
+<label class="sp-chk"><input type="checkbox" id="plMail" ${S.notify ? 'checked' : ''}> Email the owner when new suggestions are ready</label>
+<p class="muted" style="font-size:13px;margin:0">${P.ai ? 'Posts are written by AI from your trade, services, town, the season, your finished jobs with photos and your new reviews. It never names your clients or their street.' : 'AI writing isn’t available right now, so suggestions are simple posts from your jobs and reviews for you to edit.'}${P.booking ? ' A link to your booking page is added where the network allows it, so you can see the requests your posts bring in.' : ''}</p></details>`;
+    if (P.making) setTimeout(() => { if (location.pathname === '/marketing/plan') refresh(); }, 5000);
+    bindPlan();
+  },
+};
+function bindPlan() {
+  const set = (id, key, val) => { const el = $('#' + id); if (el) el.addEventListener('change', async () => { try { await api('PUT', '/api/marketing/plan/settings', { [key]: val(el) }); toast('Saved'); } catch (x) { toast(x.message, true); refresh(); } }); };
+  set('plOn', 'on', (el) => el.checked); set('plMail', 'notify', (el) => el.checked); set('plPer', 'perWeek', (el) => Number(el.value));
+  for (const inp of $$('input[data-add]')) inp.addEventListener('change', async () => {
+    const id = inp.dataset.add; const files = [...inp.files].slice(0, 10); inp.value = '';
+    try { const add = []; for (const f of files) add.push(await toJpeg(await readFileAsDataUrl(f), 1440)); plState.extra[id] = [...(plState.extra[id] || []), ...add].slice(0, 10); refresh(); } catch (x) { toast('Couldn’t read that photo', true); }
+  });
+  for (const f of $$('form.pl-draft')) {
+    const id = f.dataset.id; const cap = f.caption; let saved = cap.value;
+    const save = async (body) => { try { await api('PUT', '/api/marketing/plan/' + id, body); } catch (x) { toast(x.message, true); } };
+    $$('input[name=pic]', f).forEach((c) => c.addEventListener('change', () => save({ picked: $$('input[name=pic]:checked', f).map((x) => x.value) })));
+    $$('input[name=to]', f).forEach((c) => c.addEventListener('change', () => save({ to: $$('input[name=to]:checked', f).map((x) => x.value) })));
+    cap.addEventListener('blur', () => { if (cap.value !== saved) { saved = cap.value; save({ caption: cap.value }); } });
+    f.day.addEventListener('change', () => { if (f.day.value) save({ day: f.day.value }); });
+    f.time.addEventListener('change', () => { if (f.time.value) save({ time: f.time.value }); });
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault(); const btn = $('.sp-foot .btn:not(.alt)', f); const to = $$('input[name=to]:checked', f).map((x) => x.value); const text = cap.value.trim();
+      const pics = [...$$('input[name=pic]:checked', f).map((x) => x.value), ...$$('input[name=xpic]:checked', f).map((x) => (plState.extra[id] || [])[Number(x.value)])].filter(Boolean);
+      if (!to.length) return toast('Choose where to post', true);
+      if (!f.day.value || !f.time.value) return toast('Pick a day and time', true);
+      if (pics.length > 10) return toast('Up to 10 photos per post', true);
+      for (const k of to) {
+        const Lm = SP_LIMITS[k]; const nm = SP_NAMES[k]; const len = Lm.graphemes ? graphemeCount(text) : text.length;
+        if (len > Lm.text) return toast(`${nm} posts can be up to ${Lm.text.toLocaleString('en-US')} characters. Shorten the post or untick ${nm}.`, true);
+        if (Lm.needsText && !text) return toast(`${nm} posts need text`, true);
+        if (Lm.needsPhoto && !pics.length) return toast(`${nm} posts need a photo. Add one or untick ${nm}.`, true);
+        if (Lm.maxPhotos && pics.length > Lm.maxPhotos) return toast(`${nm} posts can have up to ${Lm.maxPhotos} photos. Untick some photos or untick ${nm}.`, true);
+      }
+      btn.disabled = true; btn.textContent = 'Scheduling…';
+      try {
+        const images = []; for (const src of pics) images.push(await toJpeg(src, 1440, to.includes('bluesky') ? 950000 : 0));
+        await api('POST', `/api/marketing/plan/${id}/approve`, { caption: cap.value, to, images, day: f.day.value, time: f.time.value });
+        delete plState.extra[id]; toast(`Approved. It goes out ${plWhen({ day: f.day.value, time: f.time.value })}.`); refresh();
+      } catch (x) { btn.disabled = false; btn.textContent = 'Approve and schedule'; toast(x.message, true); }
+    });
+  }
+}
+const plDo = async (method, url, msg) => { try { await api(method, url); if (msg) toast(msg); refresh(); } catch (x) { toast(x.message, true); } };
+A.plTab = (d) => { plState.tab = d.tab; refresh(); };
+A.plGo = (d) => { plState.tab = d.tab; refresh(); setTimeout(() => { const el = $('#pl-' + d.id); if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('pl-flash'); } }, 300); };
+A.plSkip = (d) => plDo('DELETE', '/api/marketing/plan/' + d.id, 'Skipped. It won’t be posted.');
+A.plUnschedule = (d) => { plState.tab = 'suggested'; plDo('POST', `/api/marketing/plan/${d.id}/unschedule`, 'Unscheduled. Change it and approve it again.'); };
+A.plRetry = (d) => plDo('POST', `/api/marketing/plan/${d.id}/retry`, 'Trying again. It goes out within a minute.');
+// a skipped or expired post, back to To approve for tomorrow at the same time
+A.plRevive = async (d) => { try { await api('POST', `/api/marketing/plan/${d.id}/revive`); plState.tab = 'suggested'; refresh(); } catch (x) { toast(x.message, true); } };
+A.plSuggest = async (d, el) => {
+  if (!confirm('Suggest new posts for the next 7 days?\n\nPosts waiting for approval are replaced. Scheduled posts stay as they are.')) return;
+  if (el) { el.disabled = true; el.textContent = 'Writing…'; }
+  try { await api('POST', '/api/marketing/plan/suggest'); plState.tab = 'suggested'; toast('New posts are ready to check'); refresh(); } catch (x) { if (el) { el.disabled = false; el.textContent = 'Suggest new posts'; } toast(x.message, true); }
+};
+A.plRewrite = async (d, el) => {
+  const btns = $$(`[data-act=plRewrite][data-id="${d.id}"]`); btns.forEach((b) => { b.disabled = true; }); const was = el && el.textContent; if (el) el.textContent = 'Writing…';
+  try { await api('POST', `/api/marketing/plan/${d.id}/rewrite`, { tone: d.tone }); refresh(); } catch (x) { btns.forEach((b) => { b.disabled = false; }); if (el) el.textContent = was; toast(x.message, true); }
+};
 
 // the top of the Dashboard: a photo, what marketing does for the business, and (without the suite) how to get it
 function mkHero(suite) {
@@ -2418,7 +2539,7 @@ const MK_BENEFITS = [
   ['gift', 'Turn clients into referrals', 'Every client gets a link to share. Reward them with a credit when a friend books, and watch word of mouth grow.', '/marketing/referrals'],
   ['chart', 'Know what’s working', 'See which marketing brings in paying clients and what they’ve paid you, so you spend time and money on what works.', '/marketing/performance'],
   ['mail', 'Bring past clients back', 'Email campaigns written by AI remind past clients it’s time for their next service. Coming soon.', '/marketing/email'],
-  ['cal', 'A plan that fills itself', 'Every week, AI suggests posts and emails for your business. You approve them with a tap. Coming soon.', '/marketing/plan'],
+  ['cal', 'A plan that fills itself', 'Every week, AI suggests posts for your business and the season. You approve each one, and it goes out on its day.', '/marketing/plan'],
 ];
 function mkBenefits(suite) {
   const ic = { globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>', star: NAV_ICONS['/reviews'], img: NAV_ICONS['/project-gallery'], auto: NAV_ICONS['/automations'],
@@ -2459,7 +2580,7 @@ PAGES['/marketing/dashboard'] = {
         tool('/automations', ic.auto, 'Automations', 'Follow-ups and reminders on their own', onIf(T.automations, T.automations.active && `${mkNum(T.automations.active)} on`)),
         tool('/marketing/referrals', ic.gift, 'Referrals', 'Clients send you friends, and earn a credit', onIf(T.referrals, T.referrals.rewards && 'Rewards on')),
         tool('/marketing/email', ic.mail, 'Email campaigns', 'Bring past clients back', suite ? S.soon : S.up),
-        tool('/marketing/plan', ic.cal, 'Marketing plan', 'Suggested posts and emails every week', suite ? S.soon : S.up),
+        tool('/marketing/plan', ic.cal, 'Marketing plan', 'Suggested posts every week, for you to approve', !suite ? S.up : T.plan && T.plan.failed ? ['set', `${nOfW(T.plan.failed, 'post', 'posts')} didn’t go out`] : T.plan && T.plan.suggested ? ['on', `${mkNum(T.plan.suggested)} to approve`] : T.plan && T.plan.scheduled ? ['on', `${mkNum(T.plan.scheduled)} scheduled`] : ['on', 'On']),
       ]],
     ];
     main.innerHTML = `${mkTabs('/marketing/dashboard')}${mkHero(suite)}${suite ? mkSuiteBar() : mkBenefits(suite)}
@@ -4710,7 +4831,7 @@ function mkRow(B) {
   const x = B.marketingAddon; if (!x || !B.managed) return ''; const line = B.marketing; const p = line ? `${money(line.cents / 100).replace(/\.00$/, '')}/${line.interval}` : x.cents ? mkPrice(x) : '';
   const act = (a, l) => (B.isOwner ? ` · <button type="button" class="link-btn" data-act="${a}">${l}</button>` : '');
   const what = x.state === 'included' ? 'included in your plan' : x.state === 'trial' ? `free until ${fmtDate(x.trialEnds)}, then ${p}` : x.state === 'ending' ? `${p}, ends ${fmtDate(x.endsAt)}` : x.state === 'on' ? p : '';
-  if (x.state === 'off') return B.isOwner && x.offered && x.cents && !B.paused ? `<div class="mk-billrow">Marketing suite <span class="muted">(${p}${x.trialDays ? `, first ${x.trialDays} days free` : ''})</span><div class="muted" style="font-size:13px">Performance, and email campaigns, an AI marketing plan and a website builder as they arrive · <button type="button" class="link-btn" data-act="mkAddon">${x.trialDays ? 'Start free trial' : 'Add it'}</button></div></div>` : '';
+  if (x.state === 'off') return B.isOwner && x.offered && x.cents && !B.paused ? `<div class="mk-billrow">Marketing suite <span class="muted">(${p}${x.trialDays ? `, first ${x.trialDays} days free` : ''})</span><div class="muted" style="font-size:13px">Performance, the AI marketing plan, and email campaigns and a website builder as they arrive · <button type="button" class="link-btn" data-act="mkAddon">${x.trialDays ? 'Start free trial' : 'Add it'}</button></div></div>` : '';
   return `<div class="mk-billrow">Marketing suite <span class="muted">(${what})</span><div class="muted" style="font-size:13px"><a href="/marketing/dashboard" data-link>Open Marketing</a>${x.state === 'on' || x.state === 'trial' ? act('mkAddonOff', 'Remove') : x.state === 'ending' ? act('mkAddon', 'Keep it') : ''}</div></div>`;
 }
 PAGES['/settings/billing'] = {

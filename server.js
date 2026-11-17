@@ -1588,9 +1588,9 @@ function pushTo(users, kind, message) {
 }
 // the date and hour now where the business is (the server's clock can be on another time zone's day)
 function localNow() {
-  const at = (tz) => Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23' }).formatToParts(new Date()).map((x) => [x.type, x.value]));
+  const at = (tz) => Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date()).map((x) => [x.type, x.value]));
   let p; try { p = at(db.company.timezone || SERVER_TZ || undefined); } catch (e) { p = at(undefined); }
-  return { date: `${p.year}-${p.month}-${p.day}`, hour: Number(p.hour) };
+  return { date: `${p.year}-${p.month}-${p.day}`, hour: Number(p.hour), time: `${p.hour}:${p.minute}` }; // time: 'HH:MM'
 }
 const pushTime = (t) => { if (db.company.timeFormat === '24') return t; const [h, m] = String(t).split(':').map(Number); return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`; };
 const usersWhoCan = (perm) => db.users.filter((u) => can(u, perm));
@@ -4384,12 +4384,13 @@ app.get('/api/marketing', async (req, res) => {
     referrals: { on: has('referrals'), rewards: !!refCfg(), referred: db.clients.filter((c) => c.referredBy).length, waiting: refCredits().filter((r) => r.kind === 'referrer' && refWaiting(r)).length },
     businessPage: { on: true, scans: (db.businessPage && db.businessPage.scans) || 0 },
     booking: { on: has('onlineBooking') },
+    plan: has('marketingSuite') ? mkPlan.counts() : null,
   };
   const out = { suite: has('marketingSuite'), tools };
   if (out.suite) { // Performance: where the last 90 days' new clients came from, and what they've paid since
     const from = ago(90).slice(0, 10); const paid = paidByClient(from, new Date(now).toISOString().slice(0, 10)); const by = {};
     for (const c of db.clients) if ((c.createdAt || '') >= from) { const k = leadSource(c); const e = by[k] || (by[k] = { source: k, leads: 0, clients: 0, revenue: 0 }); e.leads++; if (paid[c.id]) { e.clients++; e.revenue = round2(e.revenue + paid[c.id]); } }
-    const months = {}; for (const d of jp) for (const [m, n] of Object.entries(d.visits || {})) months[m] = (months[m] || 0) + n;
+    const months = mkPlan.monthVisits(); for (const d of jp) for (const [m, n] of Object.entries(d.visits || {})) months[m] = (months[m] || 0) + n; // job posts and Plan posts
     out.performance = { sources: Object.values(by).sort((a, b) => b.leads - a.leads || b.revenue - a.revenue), postVisits: Object.entries(months).sort().slice(-6).map(([month, visits]) => ({ month, visits })), reviews30: done.filter((r) => r.submittedAt >= ago(30)).length, posts30: tools.social.posts30 };
   }
   res.json(out);
@@ -4548,7 +4549,7 @@ ${smsConsentBox(values)}
 <input name="website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">${humanCheck.fields()}
 <button class="btn">Send booking request</button></form>`, embed);
 }
-app.get('/book', (req, res) => { if (req.query.ref) jobPosts.visit(String(req.query.ref)); res.send(bookPage({ embed: bookEmbed(req) })); }); // ?ref=<post>: opened from a job's social post
+app.get('/book', (req, res) => { if (req.query.ref) { const ref = String(req.query.ref); if (!mkPlan.visit(ref)) jobPosts.visit(ref); } res.send(bookPage({ embed: bookEmbed(req) })); }); // ?ref=<post>: opened from a job's social post or a Plan post
 app.post('/book', async (req, res) => {
   const b = req.body || {}; const clip = (k, n) => String(b[k] || '').trim().slice(0, n); const embed = bookEmbed(req);
   const done = bookShell('Booking request sent', `<h1>Thanks${clip('name', 100) ? ', ' + esc(clip('name', 100).split(/\s+/)[0]) : ''}!</h1><p class="muted">We got your request and will be in touch soon to confirm a time.</p>${smsSignedUp(b, clip('phone', 40))}`, embed);
@@ -4575,7 +4576,7 @@ app.post('/book', async (req, res) => {
   const preferredDate = /^\d{4}-\d{2}-\d{2}$/.test(b.preferredDate || '') && b.preferredDate >= iso(new Date()) ? b.preferredDate : '';
   const preferredTime = ['morning', 'afternoon', 'evening'].includes(b.preferredTime) ? b.preferredTime : 'any';
   db.requests = db.requests || [];
-  const r = { id: uid(), clientId: c.id, title, details: clip('details', 4000), address: clip('address', 300) || c.address || '', preferredDate, preferredTime, status: 'new', source: 'booking', ...(site ? { site } : {}), ...(jobPosts.refOf(String(req.query.ref || '')) ? { fromPost: String(req.query.ref) } : {}), createdAt: new Date().toISOString() };
+  const r = { id: uid(), clientId: c.id, title, details: clip('details', 4000), address: clip('address', 300) || c.address || '', preferredDate, preferredTime, status: 'new', source: 'booking', ...(site ? { site } : {}), ...(jobPosts.refOf(String(req.query.ref || '')) || mkPlan.refOf(String(req.query.ref || '')) ? { fromPost: String(req.query.ref) } : {}), createdAt: new Date().toISOString() };
   db.requests.push(r);
   const details = emails.details([['Name', name + (isNew ? ' (new lead)' : '')], ['Phone', phone || c.phone], ['Email', email || c.email], ['Address', r.address || 'not given'], ['Preferred', `${preferredDate || 'any day'}, ${preferredTime === 'any' ? 'any time' : preferredTime}`], ['From', site ? `Booking form on ${site}` : 'Online booking']]);
   const sent = await sendTemplate('workRequest', db.company.email, { client: name, title, details, request: r.details, business: db.company.name, account_url: baseUrl() });
@@ -5672,8 +5673,7 @@ app.post('/api/social-posts', async (req, res) => {
   // a job's drafted post (Every job markets itself): its link to the booking page is tagged so visits and requests from it are counted
   const draft = b.draftId ? jobPosts.waiting(String(b.draftId)) : null;
   if (b.draftId && !draft) return res.status(400).json({ error: 'This post has already gone out or was skipped' });
-  const ref = draft && tenancy.has('onlineBooking') ? `${bookingUrl()}?ref=${draft.id}` : '';
-  const capFor = (k) => { if (!ref || !['facebook', 'linkedin', 'threads'].includes(k)) return caption; const c = `${caption}\n\nBook online: ${ref}`; return c.length <= ((POST_LIMITS[k] || {}).text || Infinity) ? c : caption; };
+  const ref = draft ? bookingRef(draft.id) : '';
   const to = Object.keys(POST_TO).filter((k) => (b.to || []).includes(k) && connOf(k));
   if (!to.length) return res.status(400).json({ error: 'Choose where to post' });
   const imgs = Array.isArray(b.images) ? b.images : [];
@@ -5696,24 +5696,65 @@ app.post('/api/social-posts', async (req, res) => {
     const m = /^data:image\/jpeg;base64,(.+)$/.exec(d || ''); if (!m) return res.status(400).json({ error: 'Photos must be JPEG images' });
     const buf = Buffer.from(m[1], 'base64'); if (buf.length > 8e6) return res.status(400).json({ error: 'Each photo must be under 8 MB' }); bufs.push(buf);
   }
-  if (to.includes('bluesky')) { const bad = bluesky.problem({ caption, jpegs: bufs }); if (bad) return res.status(400).json({ error: bad }); } // before posting anywhere
-  if (to.includes('x')) { const bad = xposts.problem({ caption, jpegs: bufs }); if (bad) return res.status(400).json({ error: bad }); }
-  if (to.includes('google') && caption.length > social.GOOGLE_POST_MAX) return res.status(400).json({ error: `Google posts can be up to ${social.GOOGLE_POST_MAX.toLocaleString('en-US')} characters` });
-  if (to.includes('google') && !caption) return res.status(400).json({ error: 'Google posts need a caption' });
+  const bad = postProblem({ to, caption, bufs }); if (bad) return res.status(400).json({ error: bad }); // before posting anywhere
   const images = bufs.map((buf) => { const file = `post-${Date.now()}-${uid()}.jpg`; fs.writeFileSync(path.join(uploadDir(), file), buf); return `/uploads/${file}`; });
-  const post = { id: uid(), caption, images, ...(video ? { video: true } : {}), results: {}, createdAt: new Date().toISOString(), by: currentUser(req).name || '' };
+  const post = await sendPost({ to, caption, images, bufs, ref, video, tiktok: b.tiktok, youtube: b.youtube, by: currentUser(req).name || '' });
+  if (video && post.results.youtube.status === 'posted') fs.rm(video.file, { force: true }, () => {}); // kept after a failure, so posting again doesn't need a new upload
+  if (draft) { post.jobId = draft.jobId; if (Object.values(post.results).some((r) => r.status === 'posted')) jobPosts.posted(draft.id, post, currentUser(req).name || ''); save(); }
+  res.status(201).json(post);
+});
+// Bluesky, X and Google's own checks on a post, before posting anywhere (Social posting, and Marketing → Plan when approving and posting)
+function postProblem({ to, caption, bufs }) {
+  for (const k of to) {
+    const L = POST_LIMITS[k]; if (!L) continue;
+    if (caption.length > L.text) return `${NET_NAMES[k]} posts can be up to ${L.text.toLocaleString('en-US')} characters`;
+    if (L.needsPhoto && !bufs.length) return `${NET_NAMES[k]} posts need at least one photo`;
+    if (L.needsText && !caption) return `${NET_NAMES[k]} posts need a caption`;
+  }
+  if (to.includes('bluesky')) { const bad = bluesky.problem({ caption, jpegs: bufs }); if (bad) return bad; }
+  if (to.includes('x')) { const bad = xposts.problem({ caption, jpegs: bufs }); if (bad) return bad; }
+  if (to.includes('google') && caption.length > social.GOOGLE_POST_MAX) return `Google posts can be up to ${social.GOOGLE_POST_MAX.toLocaleString('en-US')} characters`;
+  if (to.includes('google') && !caption) return 'Google posts need a caption';
+  if (!bufs.length && !caption && !to.includes('youtube')) return 'Add a photo or write a caption';
+  return '';
+}
+// a tracked link to the booking page for a post (a job's post or a plan post), so visits and requests from it are counted
+const bookingRef = (id) => (tenancy.has('onlineBooking') ? `${bookingUrl()}?ref=${id}` : '');
+// posts to each network (the photos already saved in uploads, and as JPEG buffers) and keeps the post in Social posting's list
+async function sendPost({ to, caption, images, bufs, ref = '', video = null, tiktok, youtube, by = '', planId }) {
+  const capFor = (k) => { if (!ref || !['facebook', 'linkedin', 'threads'].includes(k)) return caption; const c = `${caption}\n\nBook online: ${ref}`; return c.length <= ((POST_LIMITS[k] || {}).text || Infinity) ? c : caption; };
+  const post = { id: uid(), caption, images, ...(video ? { video: true } : {}), ...(planId ? { planId } : {}), results: {}, createdAt: new Date().toISOString(), by };
   for (const k of to) {
     try {
-      const r = await POST_TO[k](connOf(k), { caption: capFor(k), ref, images: images.map((u) => baseUrl() + u), paths: images, jpegs: bufs, video, options: k === 'tiktok' ? b.tiktok : k === 'youtube' ? b.youtube : undefined });
+      const r = await POST_TO[k](connOf(k), { caption: capFor(k), ref, images: images.map((u) => baseUrl() + u), paths: images, jpegs: bufs, video, options: k === 'tiktok' ? tiktok : k === 'youtube' ? youtube : undefined });
       markWorking(k);
       post.results[k] = { status: 'posted', url: k === 'facebook' ? `https://www.facebook.com/${r.post_id || r.id}` : k === 'bluesky' || k === 'x' || networks.has(k) ? r.url : k === 'google' ? r.searchUrl || connOf('google').mapsUrl || '' : r.permalink || `https://www.instagram.com/${connOf(k).username}` };
     } catch (e) { markBroken(k, e); post.results[k] = { status: 'failed', error: e.message, ...(e.reconnect ? { reconnect: true } : {}) }; }
   }
-  if (video && post.results.youtube.status === 'posted') fs.rm(video.file, { force: true }, () => {}); // kept after a failure, so posting again doesn't need a new upload
-  if (draft) { post.jobId = draft.jobId; if (Object.values(post.results).some((r) => r.status === 'posted')) jobPosts.posted(draft.id, post, currentUser(req).name || ''); }
   db.socialPosts = [post, ...(db.socialPosts || [])].slice(0, 500); save();
-  res.status(201).json(post);
-});
+  return post;
+}
+// Marketing → Plan (lib/marketing-plan.js): a week of suggested posts, each approved before it's posted at its time. Marketing pages are
+// for the owner and admins only, like /api/marketing.
+const connectedNets = () => Object.keys(POST_TO).filter((k) => { const c = connOf(k); return c && !c.broken; });
+const mkPlan = require('./lib/marketing-plan')({ db, save, uid, tenancy, aiClient, localNow, pushTo, usersWhoCan, sendTemplate, baseUrl, jobPosts, uploadDir, sendPost, postProblem, connected: connectedNets, bookingRef });
+const mkPlanRoute = (fn) => async (req, res) => {
+  try {
+    if (!isAdmin(currentUser(req))) throw Object.assign(new Error('Only the account owner or an admin can use the marketing plan'), { status: 403 });
+    if (!tenancy.has('marketingSuite')) throw Object.assign(new Error('The marketing plan is part of the Marketing suite'), { status: 403 });
+    res.json(await fn(req));
+  } catch (e) { if (!e.status) console.error('marketing plan:', e.message); res.status(e.status || 500).json({ error: e.status ? e.message : 'Something went wrong' }); }
+};
+app.get('/api/marketing/plan', mkPlanRoute(() => mkPlan.view()));
+app.post('/api/marketing/plan/suggest', mkPlanRoute(() => mkPlan.makeBatch({ manual: true })));
+app.put('/api/marketing/plan/settings', mkPlanRoute((req) => mkPlan.setSettings(req.body || {})));
+app.put('/api/marketing/plan/:id', mkPlanRoute((req) => mkPlan.edit(req.params.id, req.body || {})));
+app.post('/api/marketing/plan/:id/rewrite', mkPlanRoute((req) => mkPlan.rewrite(req.params.id, String((req.body || {}).tone || ''))));
+app.post('/api/marketing/plan/:id/approve', mkPlanRoute((req) => mkPlan.approve(req.params.id, req.body || {}, currentUser(req).name || '')));
+app.post('/api/marketing/plan/:id/unschedule', mkPlanRoute((req) => mkPlan.unschedule(req.params.id)));
+app.post('/api/marketing/plan/:id/revive', mkPlanRoute((req) => mkPlan.revive(req.params.id)));
+app.post('/api/marketing/plan/:id/retry', mkPlanRoute((req) => mkPlan.retry(req.params.id)));
+app.delete('/api/marketing/plan/:id', mkPlanRoute((req) => mkPlan.skip(req.params.id)));
 // Every job markets itself: Marketing → Ready to post (anyone with Social posts); the on/off switch and the owner's emails: owner or admin
 const jpRoute = (fn) => async (req, res) => { try { res.json(await fn(req)); } catch (e) { if (!e.status) console.error('job posts:', e.message); res.status(e.status || 500).json({ error: e.status ? e.message : 'Something went wrong' }); } };
 const jpPlan = () => { if (!tenancy.has('jobPosts')) throw Object.assign(new Error('Every job markets itself isn’t included in your plan'), { status: 403 }); };
@@ -6549,6 +6590,10 @@ if (rts > 0) { // lost the phone and the backup codes: node server.js --reset-pl
 setTimeout(remindExpiring, 10e3); setInterval(remindExpiring, 3600e3); // reminder emails before an account's last day of access
 setTimeout(() => bizAuto.runAll().catch((e) => console.error('automations:', e.message)), 30e3); setInterval(() => bizAuto.runAll().catch((e) => console.error('automations:', e.message)), 3600e3); // checks every automation hourly
 const jobPostsMonthly = () => { for (const t of tenancy.platform().tenants) if (t.status === 'active') tenancy.run(t, () => { try { jobPosts.monthlyReport(); } catch (e) { console.error('job posts:', e.message); } }); };
+// Marketing → Plan: the Monday batch of suggested posts, and approved posts going out at their time
+let planBusy = false;
+const planTick = async () => { if (planBusy) return; planBusy = true; try { for (const t of tenancy.platform().tenants) if (t.status === 'active') await tenancy.run(t, async () => { try { await mkPlan.tick(); } catch (e) { console.error('marketing plan:', e.message); } }); } finally { planBusy = false; } };
+setTimeout(planTick, 60e3); setInterval(planTick, 60e3);
 setTimeout(jobPostsMonthly, 40e3); setInterval(jobPostsMonthly, 3600e3); // Every job markets itself: last month's results on the 1st
 setTimeout(marketingTrials, 45e3); setInterval(marketingTrials, 3600e3); // Marketing suite add-on: billing starts when its free trial ends
 setTimeout(billMemberships, 35e3); setInterval(billMemberships, 3600e3); // service plans: each billing period's invoice
