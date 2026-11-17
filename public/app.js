@@ -1623,12 +1623,28 @@ function addrAcDraw() {
     + '<p class="addr-ac-osm">Addresses © OpenStreetMap</p>';
   addrAcPlace();
 }
+// the same lookup as /api/address-suggest, straight from the browser (Photon allows it), used when the server can't answer
+async function addrAcDirect(q, countryName) {
+  const names = { US: 'United States', CA: 'Canada', MX: 'Mexico' }; const want = Object.keys(names).find((k) => names[k] === (countryName || 'United States')) || '';
+  const num = (/^(\d+[a-z]?(-\d+)?)\s/i.exec(q) || [])[1] || ''; const seen = new Set(); const out = [];
+  try {
+    const r = await fetch('https://photon.komoot.io/api/?limit=10&lang=en&layer=house&layer=street&q=' + encodeURIComponent(q)); if (!r.ok) return [];
+    for (const p of ((await r.json()).features || []).map((f) => f.properties || {})) {
+      const cc = String(p.countrycode || '').toUpperCase(); if (want && cc && cc !== want) continue;
+      const road = p.type === 'street' ? p.name : p.street; if (!road) continue;
+      const x = { street: [p.housenumber || num, road].filter(Boolean).join(' '), city: p.city || p.town || p.village || p.district || p.county || '', state: p.state || '', zip: p.postcode || '', country: names[cc] || p.country || '' };
+      const k = [x.street, x.city, x.state].join('|').toLowerCase(); if (seen.has(k)) continue; seen.add(k); out.push(x); if (out.length === 6) break;
+    }
+  } catch (e) { /* no suggestions */ }
+  return out;
+}
 function addrAcAsk(input) {
   clearTimeout(addrAc.timer); const q = input.value.trim();
   if (q.length < 4 || !/[a-z]/i.test(q) || (input.matches(ADDR_LINE) && q.split(',').length > 2)) { addrAc.list = []; return addrAcDraw(); } // a full address is already there
   const country = addrAcField(addrAcBox(input), 'country', 'addrCountry'); const seq = ++addrAc.seq;
   addrAc.timer = setTimeout(async () => {
-    let list = []; try { const r = await fetch('/api/address-suggest?q=' + encodeURIComponent(q) + (country && country.value ? '&country=' + encodeURIComponent(country.value) : '')); if (r.ok) list = await r.json(); } catch (e) { /* no suggestions */ }
+    let list = null; try { const r = await fetch('/api/address-suggest?q=' + encodeURIComponent(q) + (country && country.value ? '&country=' + encodeURIComponent(country.value) : '')); if (r.ok) list = await r.json(); } catch (e) { /* asked directly below */ }
+    if (!Array.isArray(list)) list = await addrAcDirect(q, country && country.value); // the server couldn't answer: ask Photon from here
     if (seq !== addrAc.seq || addrAc.input !== input) return; // typed on, or left the box
     addrAc.list = Array.isArray(list) ? list : []; addrAc.idx = -1; addrAcDraw();
   }, 250);
@@ -1638,7 +1654,7 @@ function addrAcPick(i) {
   const set = (el, v) => {
     if (!el || v == null) return;
     if (el.tagName === 'SELECT') { const o = [...el.options].find((x) => [x.value, x.text].some((t) => t.toLowerCase() === String(v).toLowerCase())); if (!o) return; el.value = o.value; } else el.value = v;
-    el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true }));
+    addrAc.filling = true; try { el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); } finally { addrAc.filling = false; }
   };
   if (input.matches(ADDR_LINE)) return set(input, addrAcLine(a));
   const box = addrAcBox(input); const country = addrAcField(box, 'country', 'addrCountry');
@@ -1651,7 +1667,7 @@ function addrAcPick(i) {
 }
 document.addEventListener('focusin', (e) => { if (addrAc.input && e.target !== addrAc.input && !e.target.closest('.addr-ac')) addrAcClose(); });
 document.addEventListener('input', (e) => {
-  const t = e.target; if (!t.matches || !t.matches(`${ADDR_SPLIT}, ${ADDR_LINE}`) || !e.isTrusted) return; // not the values filled in by a pick
+  const t = e.target; if (!t.matches || !t.matches(`${ADDR_SPLIT}, ${ADDR_LINE}`) || addrAc.filling) return; // not the values filled in by a pick
   if (addrAc.input !== t) { addrAcClose(); addrAc.input = t; t.setAttribute('autocomplete', 'off'); }
   addrAcAsk(t);
 });

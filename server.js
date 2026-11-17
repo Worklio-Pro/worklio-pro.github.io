@@ -1066,11 +1066,11 @@ app.get('/api/address-suggest', async (req, res) => {
     try {
       const url = 'https://photon.komoot.io/api/?limit=10&lang=en&layer=house&layer=street&q=' + encodeURIComponent(q) + (base ? `&lat=${base.lat}&lon=${base.lng}` : '');
       const r = await fetch(url, { headers: { 'User-Agent': 'WorklioPro/1.0 (address suggestions)' }, signal: AbortSignal.timeout(4000) });
-      if (!r.ok) return res.json([]);
+      if (!r.ok) return res.status(502).json({ error: "Address lookup unavailable" }); // the page then asks Photon itself
       hit = { at: Date.now(), list: ((await r.json()).features || []).map((f) => f.properties || {}) };
       if (addrSuggestCache.size > 5000) addrSuggestCache.delete(addrSuggestCache.keys().next().value);
       addrSuggestCache.set(key, hit);
-    } catch (e) { return res.json([]); }
+    } catch (e) { return res.status(502).json({ error: "Address lookup unavailable" }); }
   }
   const num = (/^(\d+[a-z]?(-\d+)?)\s/i.exec(q) || [])[1] || '';
   const seen = new Set(); const out = [];
