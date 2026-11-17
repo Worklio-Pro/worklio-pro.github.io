@@ -2405,7 +2405,7 @@ PAGES['/marketing/website'] = mkSoonPage('/marketing/website', 'Website');
 // the top of the Dashboard: a photo, what marketing does for the business, and (without the suite) how to get it
 function mkHero(suite) {
   const x = mkSuite();
-  const act = suite ? `<p class="mkd-hero-ok">${x && x.state === 'included' ? 'The Marketing suite is included in your plan.' : 'You have the Marketing suite.'} Here’s what needs doing and how it’s going.</p>`
+  const act = suite ? `<p class="mkd-hero-ok">${x && x.state === 'included' ? 'The Marketing suite is included in your plan.' : 'You have the Marketing suite.'} Here’s how your marketing tools are set up.</p>`
     : `<p class="mkd-hero-price">${esc(mkSuiteText())}</p>${mkGetIt(true)}`;
   return `<section class="mkd-hero"><div class="mkd-hero-tx"><span class="mkd-kicker">Marketing</span><h1>Turn every job into your next job</h1><p class="mkd-hero-lead">You do great work. Worklio Pro makes sure people hear about it. Get found online, collect 5-star reviews, follow up on every quote and bring past clients back, without hiring an agency or spending your evenings on it.</p><ul class="mkd-hero-pts"><li>Works while you’re on the job</li><li>No marketing experience needed</li><li>Everything in one place, with your jobs and clients</li></ul>${act}</div><div class="mkd-hero-ph"><img src="/img/marketing-worker.jpg" alt="A smiling tradeswoman in a hard hat holding a drill, looking at the camera" width="900" height="675"></div></section>`;
 }
@@ -2432,13 +2432,6 @@ PAGES['/marketing/dashboard'] = {
   title: 'Marketing',
   async render(main) {
     const M = await api('GET', '/api/marketing'); const T = M.tools; const suite = M.suite;
-    const todo = [
-      T.jobPosts.on && T.jobPosts.ready && [`${nOfW(T.jobPosts.ready, 'post from a finished job is', 'posts from finished jobs are')} ready to approve`, '/social-posts', 'Review'],
-      T.reviews.on && T.reviews.unanswered && [`${nOfW(T.reviews.unanswered, 'client review has', 'client reviews have')} no reply yet`, '/reviews', 'Reply'],
-      T.social.on && !T.social.networks && ['Connect your Facebook, Instagram or Google account to start posting', '/social-posts', 'Connect'],
-      T.automations.on && !T.automations.active && ['Turn on an automation, like a follow-up on quotes with no reply', '/automations', 'Set up'],
-      T.referrals.on && !T.referrals.rewards && ['Turn on referral rewards so clients have a reason to share their link', '/marketing/referrals', 'Turn on'],
-    ].filter(Boolean);
     const stat = (n, l, href) => `<a class="mk-stat" href="${href}" data-link><strong>${n}</strong><span>${l}</span></a>`;
     const stats = [
       T.reviews.on && stat(T.reviews.total ? `${T.reviews.average}★` : '–', T.reviews.total ? `from ${nOfW(T.reviews.total, 'review', 'reviews')}` : 'No reviews yet', '/reviews'),
@@ -2471,8 +2464,7 @@ PAGES['/marketing/dashboard'] = {
     ];
     main.innerHTML = `${mkTabs('/marketing/dashboard')}${mkHero(suite)}${suite ? mkSuiteBar() : mkBenefits(suite)}
 ${stats.length ? `<div class="mk-stats">${stats.join('')}</div>` : ''}
-<div class="mk-row4"><div class="card mk-group mk-next"><h3>Do this next</h3>${todo.length ? `<ul class="mk-todo">${todo.map(([t, h, b]) => `<li><span>${t}</span><a class="btn alt sm" href="${h}" data-link>${b}</a></li>`).join('')}</ul>` : (Object.values(T).some((t) => t.on && t !== T.businessPage) ? '<p class="muted" style="margin:0">You’re all caught up. Your automations and reviews keep working in the background.</p>' : `<p style="margin:0 0 12px">Your plan has your Business Page. Upgrade to ask clients for reviews, post your work to every social account at once, turn finished jobs into posts and send follow-ups on their own.</p>${mkGetIt(false)}`)}</div>
-${groups.map(([g, rows]) => `<div class="card mk-group"><h3>${g}</h3>${rows.join('')}</div>`).join('')}</div>${suite ? mkBenefits(suite) : ''}`;
+<div class="mk-row4">${groups.map(([g, rows]) => `<div class="card mk-group"><h3>${g}</h3>${rows.join('')}</div>`).join('')}</div>${suite ? mkBenefits(suite) : ''}`;
   },
 };
 const nOfW = (n, one, many) => `${mkNum(n)} ${n === 1 ? one : many}`;
