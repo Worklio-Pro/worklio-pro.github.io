@@ -2470,10 +2470,9 @@ PAGES['/marketing/dashboard'] = {
       ]],
     ];
     main.innerHTML = `${mkTabs('/marketing/dashboard')}${mkHero(suite)}${suite ? mkSuiteBar() : mkBenefits(suite)}
-<div class="mk-dash"><div class="mk-left">
 ${stats.length ? `<div class="mk-stats">${stats.join('')}</div>` : ''}
-<div class="card"><h2>Do this next</h2>${todo.length ? `<ul class="mk-todo">${todo.map(([t, h, b]) => `<li><span>${t}</span><a class="btn alt sm" href="${h}" data-link>${b}</a></li>`).join('')}</ul>` : (Object.values(T).some((t) => t.on && t !== T.businessPage) ? '<p class="muted" style="margin:0">You’re all caught up. Your automations and reviews keep working in the background.</p>' : `<p style="margin:0 0 12px">Your plan has your Business Page. Upgrade to ask clients for reviews, post your work to every social account at once, turn finished jobs into posts and send follow-ups on their own.</p>${mkGetIt(false)}`)}</div>
-</div><aside class="mk-right">${groups.map(([g, rows]) => `<div class="card mk-group"><h3>${g}</h3>${rows.join('')}</div>`).join('')}</aside></div>${suite ? mkBenefits(suite) : ''}`;
+<div class="mk-row4"><div class="card mk-group mk-next"><h3>Do this next</h3>${todo.length ? `<ul class="mk-todo">${todo.map(([t, h, b]) => `<li><span>${t}</span><a class="btn alt sm" href="${h}" data-link>${b}</a></li>`).join('')}</ul>` : (Object.values(T).some((t) => t.on && t !== T.businessPage) ? '<p class="muted" style="margin:0">You’re all caught up. Your automations and reviews keep working in the background.</p>' : `<p style="margin:0 0 12px">Your plan has your Business Page. Upgrade to ask clients for reviews, post your work to every social account at once, turn finished jobs into posts and send follow-ups on their own.</p>${mkGetIt(false)}`)}</div>
+${groups.map(([g, rows]) => `<div class="card mk-group"><h3>${g}</h3>${rows.join('')}</div>`).join('')}</div>${suite ? mkBenefits(suite) : ''}`;
   },
 };
 const nOfW = (n, one, many) => `${mkNum(n)} ${n === 1 ? one : many}`;
