@@ -3189,7 +3189,7 @@ const COUNTRIES = ['United States', 'Canada', 'Mexico', 'United Kingdom', 'Irela
 const fl = (label, input) => `<label class="fl"><span>${label}</span>${input}</label>`;
 const flSelect = (label, name, opts, cur) => fl(label, `<select name="${name}">${opts.map(([v, l]) => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`);
 const tzOffset = (tz) => { try { return new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'longOffset' }).formatToParts(new Date()).find((p) => p.type === 'timeZoneName').value.replace(/^GMT$/, 'GMT+00:00'); } catch (e) { return ''; } };
-// Company Profile: company details (contact, address, business hours), tax settings and regional settings
+// Company Profile: company details (contact, address, business hours) and social media
 // social media pages (Company Profile); the server turns a handle into the page's link
 const SOCIAL = [['facebook', 'Facebook', 'facebook.com/yourbusiness'], ['instagram', 'Instagram', '@yourbusiness'], ['tiktok', 'TikTok', '@yourbusiness'], ['x', 'X (Twitter)', '@yourbusiness'],
   ['youtube', 'YouTube', '@yourbusiness'], ['linkedin', 'LinkedIn', 'linkedin.com/company/yourbusiness'], ['google', 'Google Business Profile', 'Link to your Google business page or reviews'], ['yelp', 'Yelp', 'yelp.com/biz/yourbusiness'], ['nextdoor', 'Nextdoor', 'nextdoor.com/pages/yourbusiness']];
@@ -3288,15 +3288,15 @@ ${autoHoursHtml(businessHours(c), 'Closed')}${hoursFoot}</div>
 ${switchRow('showHours', 'Show business hours', c.showHours, 'Display your business hours and upcoming holiday hours on the client portal.')}
 <hr class="cs-hr">${holidaysHtml(c)}</div>
 </div><div class="cs-col"><div class="card cs"><h2>Social media</h2><p class="muted cs-note">Paste a link to your page, or just your handle (like @yourbusiness). Leave any you don’t use blank.</p>
-<div class="cs-soc">${SOCIAL.map(([k, l, ph]) => fl(l, `<input name="social_${k}" value="${esc((c.social || {})[k] || '')}" placeholder="${ph}" autocomplete="off" autocapitalize="off" spellcheck="false">`)).join('')}</div></div>
-
-<div class="card cs"><h2>Tax settings</h2>
-<div class="row">${fl('Tax ID name (ex: GST)', `<input name="taxIdName" value="${v('taxIdName')}">`)}${fl('Tax ID number', `<input name="taxIdNumber" value="${v('taxIdNumber')}">`)}</div>
+<div class="cs-soc">${SOCIAL.map(([k, l, ph]) => fl(l, `<input name="social_${k}" value="${esc((c.social || {})[k] || '')}" placeholder="${ph}" autocomplete="off" autocapitalize="off" spellcheck="false">`)).join('')}</div></div></div></div>`;
+}
+// App Settings → Payments → Tax settings; its fields sit outside the form, so they say form="cf"
+const taxCard = (c) => { const v = (k) => esc(c[k] ?? ''); return `<div class="card cs" id="tax-settings"><h2>Tax settings</h2>
+<div class="row">${fl('Tax ID name (ex: GST)', `<input form="cf" name="taxIdName" value="${v('taxIdName')}">`)}${fl('Tax ID number', `<input form="cf" name="taxIdNumber" value="${v('taxIdNumber')}">`)}</div>
 <p class="muted cs-note">Tax ID name and number will appear on invoices.</p>
 <h3>Default tax rate</h3>
-<div class="tax-rate">${fl('Tax name', `<input name="taxName" value="${v('taxName')}" placeholder="e.g. TX Sales Tax">`)}${fl('Tax rate (%)', `<input name="taxRate" type="number" step="any" min="0" value="${c.taxRate ?? 0}">`)}${fl('Internal tax description', `<input name="taxDescription" value="${v('taxDescription')}">`)}</div>
-<p class="muted cs-note">Used on new quotes, jobs and invoices. The tax name shows on documents that use this rate.</p></div></div></div>`;
-}
+<div class="tax-rate">${fl('Tax name', `<input form="cf" name="taxName" value="${v('taxName')}" placeholder="e.g. TX Sales Tax">`)}${fl('Tax rate (%)', `<input form="cf" name="taxRate" type="number" step="any" min="0" value="${c.taxRate ?? 0}">`)}${fl('Internal tax description', `<input form="cf" name="taxDescription" value="${v('taxDescription')}">`)}</div>
+<p class="muted cs-note">Used on new quotes, jobs and invoices. The tax name shows on documents that use this rate.</p></div>`; };
 // App Settings → Payments → Late fees (company.lateFee): its own little form, saved as soon as something changes. The server adds the fee hourly.
 function lateFeeCard(c) {
   const lf = c.lateFee || {}; const opt = (v, l, cur) => `<option value="${v}" ${String(cur) === String(v) ? 'selected' : ''}>${l}</option>`;
@@ -3317,7 +3317,7 @@ function wireLateFees() {
     try { const saved = await api('PUT', '/api/company', { lateFee: b }); company = { ...company, ...saved }; toast(b.on ? 'Late fees saved' : 'Late fees are off'); } catch (err) { toast(err.message, true); }
   });
 }
-// App Settings → General → Saved discounts: the list, and Edit (the dialog in app.js, also opened from a document's discount menu)
+// App Settings → Payments → Saved discounts: the list, and Edit (the dialog in app.js, also opened from a document's discount menu)
 const savedDiscCard = () => `<div class="card" id="saved-discounts"><h2>Saved discounts</h2><p class="muted" style="margin-top:0">Discounts you give often, each with a name. Pick one on a quote, job or invoice instead of typing it; its name shows to your client.</p>
 ${savedDiscs().length ? `<div class="sd-view">${savedDiscs().map((x) => `<div><span>${esc(x.name)}</span><span class="muted">${discAmt(x)}</span></div>`).join('')}</div>` : '<p class="muted">None yet.</p>'}
 <button type="button" class="btn alt sm" data-act="sdEdit">${savedDiscs().length ? 'Edit saved discounts' : '+ Add a discount'}</button></div>`;
@@ -3434,10 +3434,10 @@ function wireTeamLoc() {
     try { const saved = await api('PUT', '/api/company', { teamLocation: on }); company = { ...company, ...saved }; toast(on ? 'Team location is on' : 'Team location is off'); } catch (err) { toast(err.message, true); }
   });
 }
-// App Settings tabs; the hash keeps the tab (links to #payments, #zelle, #pay-apps or #late-fees open Payments; #logo-colors and the old #white-label open Branding). Every card stays in the page so form="cf" fields still save.
+// App Settings tabs; the hash keeps the tab (links to #payments, #zelle, #pay-apps, #late-fees, #saved-discounts or #tax-settings open Payments; #logo-colors and the old #white-label open Branding). Every card stays in the page so form="cf" fields still save.
 const AS_TABS = [['general', 'General'], ['branding', 'Branding'], ['payments', 'Payments']];
 function wireAsTabs(main) {
-  const tabOf = (h) => (['saved-discounts', 'team-location'].includes(h) ? 'general' : ['zelle', 'pay-apps', 'late-fees'].includes(h) ? 'payments' : ['white-label', 'logo-colors'].includes(h) ? 'branding' : AS_TABS.some(([t]) => t === h) ? h : 'general');
+  const tabOf = (h) => (['team-location'].includes(h) ? 'general' : ['zelle', 'pay-apps', 'late-fees', 'saved-discounts', 'tax-settings'].includes(h) ? 'payments' : ['white-label', 'logo-colors'].includes(h) ? 'branding' : AS_TABS.some(([t]) => t === h) ? h : 'general');
   const show = (t, keep) => {
     $$('[data-as-tab]', main).forEach((b) => { const on = b.dataset.asTab === t; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); });
     $$('.as-panel', main).forEach((p) => { p.hidden = p.id !== 'as-' + t; });
@@ -3462,11 +3462,11 @@ async function companyPage(main, full) {
 <div class="row"><label>Zelle email or phone<input form="cf" name="zelleRecipient" value="${esc(c.zelleRecipient || '')}" placeholder="payments@yourbusiness.com or +17135550100"></label><label>Name registered with Zelle<input form="cf" name="zelleName" value="${esc(c.zelleName || '')}" placeholder="e.g. TLB Group LLC"></label></div></div>` : '';
   const appsBox = full && planHas('zelle') ? `<div class="card" id="pay-apps"><h2>Venmo, Cash App and PayPal</h2><p class="muted" style="margin-top:0">Clients get a button that opens the app with the amount filled in, on the invoice pay page and the quote deposit step. Leave one blank to hide it. Use a business profile: Venmo and Cash App don’t allow business payments to personal accounts. These payments can’t be confirmed automatically: when a client reports one, check the app, then use Collect Payment.</p>
 <div class="row3"><label>Venmo username<input form="cf" name="venmoHandle" value="${esc(c.venmoHandle ? '@' + c.venmoHandle : '')}" placeholder="@YourBusiness" autocomplete="off"></label><label>Cash App $Cashtag<input form="cf" name="cashappTag" value="${esc(c.cashappTag ? '$' + c.cashappTag : '')}" placeholder="$YourBusiness" autocomplete="off"></label><label>PayPal.me name<input form="cf" name="paypalHandle" value="${esc(c.paypalHandle ? 'paypal.me/' + c.paypalHandle : '')}" placeholder="paypal.me/YourBusiness" autocomplete="off"></label></div></div>` : '';
-  main.innerHTML = `<div class="head"><div><h1>${full ? 'App Settings' : 'Company settings'}</h1>${full ? '<p class="sub">Defaults, branding and payments for every quote and invoice. Business details, social media and tax settings are on <a href="/settings/company" data-link>Company Profile</a>.</p>' : ''}</div></div>
+  main.innerHTML = `<div class="head"><div><h1>${full ? 'App Settings' : 'Company settings'}</h1>${full ? '<p class="sub">Defaults, branding and payments for every quote and invoice. Business details and social media are on <a href="/settings/company" data-link>Company Profile</a>.</p>' : ''}</div></div>
 ${full ? `<div class="as-tabs" role="tablist">${AS_TABS.map(([t, n]) => `<button type="button" role="tab" data-as-tab="${t}" aria-controls="as-${t}">${n}</button>`).join('')}</div>
-<div class="as-panel" id="as-general" role="tabpanel"><div class="as-cols"><div class="as-col">${regionalBox(c)}${languagesBox(c)}${referralCard(c)}${mxCard()}</div><div class="as-col">${defaultsBox}${surveyCard(c)}${savedDiscCard()}${prefixBox}${teamLocCard(c)}</div></div></div>
+<div class="as-panel" id="as-general" role="tabpanel"><div class="as-cols"><div class="as-col">${regionalBox(c)}${languagesBox(c)}${referralCard(c)}${mxCard()}</div><div class="as-col">${defaultsBox}${surveyCard(c)}${prefixBox}${teamLocCard(c)}</div></div></div>
 <div class="as-panel" id="as-branding" role="tabpanel"><div class="as-cols"><div class="as-col">${brandBox || `<div class="card" id="logo-colors"><h2>Logo and colors</h2><p class="muted" style="margin:0">Your own logo and brand and accent colors on quotes, invoices, emails and the client portal come with a plan that includes Branding.</p></div>`}</div><div class="as-col">${webAddressCard(c.account)}</div></div></div>
-<div class="as-panel" id="as-payments" role="tabpanel"><div class="as-cols"><div class="as-col">${payCard(integ)}${zelleBox}</div><div class="as-col">${appsBox}${lateFeeCard(c)}</div></div></div>
+<div class="as-panel" id="as-payments" role="tabpanel"><div class="as-cols"><div class="as-col">${payCard(integ)}${taxCard(c)}${zelleBox}</div><div class="as-col">${savedDiscCard()}${appsBox}${lateFeeCard(c)}</div></div></div>
 <form id="cf"></form>` :`<form id="cf" class="cs-form">${companySettingsHtml(c)}</form>`}`;
   if (full) { wireLateFees(); wireMx(); wireTeamLoc(); wireReferrals(); wireAsTabs(main); }
   $$('.prefix-row input').forEach((i) => i.addEventListener('input', () => { i.nextElementSibling.textContent = 'e.g. ' + i.value.trim() + i.dataset.sample; }));
@@ -3519,7 +3519,7 @@ ${full ? `<div class="as-tabs" role="tablist">${AS_TABS.map(([t, n]) => `<button
     try { const saved = await api('DELETE', '/api/company/logo' + (dark ? '?kind=dark' : '')); company = { ...company, ...saved }; toast('Logo deleted'); refresh(); } catch (err) { toast(err.message, true); }
   };
   wireAccountCards(main);
-  if (full) { stripeReturnNotice(integ); const to = ['#zelle', '#pay-apps', '#late-fees', '#team-location', '#logo-colors'].includes(location.hash) ? $(location.hash, main) : null; if (to) to.scrollIntoView({ block: 'start' }); } // back from Stripe, or a link to Card payments
+  if (full) { stripeReturnNotice(integ); const to = ['#zelle', '#pay-apps', '#late-fees', '#team-location', '#logo-colors', '#saved-discounts', '#tax-settings'].includes(location.hash) ? $(location.hash, main) : null; if (to) to.scrollIntoView({ block: 'start' }); } // back from Stripe, or a link to Card payments
   $$('.logo-file', main).forEach((inp) => inp.addEventListener('change', async (e) => {
     const f = e.target.files[0]; e.target.value = ''; if (!f) return; if (f.size > 4e6) return toast('Logo must be under 4 MB', true);
     try {
