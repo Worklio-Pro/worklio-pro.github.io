@@ -2725,3 +2725,9 @@ body.p404-only #billingBar{display:none!important}
 .cpk-quick button{height:30px;border:1px solid var(--border);border-radius:8px;padding:0;cursor:pointer}
 .cpk-quick button:hover,.cpk-quick button:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
 @media (max-width:600px){.cpk{left:0!important;right:0;top:auto!important;bottom:0;width:auto;max-width:none;border-radius:16px 16px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom))}.cpk-sv{height:240px}.cpk-quick button{height:36px}}
+/* address suggestions under a street or address box (fixed, so modals and phone pages don't clip them) */
+.svc-ac.addr-ac{position:fixed;right:auto;z-index:200;max-height:300px}
+.addr-ac div{justify-content:flex-start}
+.addr-ac div>span{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;min-width:0}
+.addr-ac div svg{flex:none;width:15px;height:15px;align-self:center;color:var(--muted)}
+.addr-ac .addr-ac-osm{margin:4px 10px 2px;font-size:11px;color:var(--muted)}

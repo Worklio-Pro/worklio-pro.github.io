@@ -1051,6 +1051,39 @@ async function placeAddresses(list, budgetMs = 7000) {
   return todo.filter((a) => !db.geo[a]).length; // still waiting
 }
 const placeOf = (addr) => { const g = (db.geo || {})[geoKey(addr)]; return g && !g.miss ? { lat: g.lat, lng: g.lng } : null; };
+// Address suggestions while typing a client's, property's or billing address: Photon (OpenStreetMap data, free, no key), nearest the business first.
+// OpenStreetMap doesn't know every US house number, so when only the street is found, the number that was typed is kept.
+// Answers are kept in memory for a day (shared by every account on this server); a failed lookup just shows no suggestions.
+const addrSuggestCache = new Map();
+const ADDR_COUNTRY = { 'united states': 'US', canada: 'CA', mexico: 'MX' };
+app.get('/api/address-suggest', async (req, res) => {
+  const q = String(req.query.q || '').trim().replace(/\s+/g, ' ').slice(0, 120); if (q.length < 3 || !/[a-z]/i.test(q)) return res.json([]);
+  const want = ADDR_COUNTRY[String(req.query.country || 'United States').toLowerCase()] || '';
+  const base = placeOf(String(db.company.address || '').trim()); if (!base && db.company.address) placeAddresses([db.company.address], 3000).catch(() => {}); // near the business from the next search on
+  const key = [q.toLowerCase(), want, base ? base.lat.toFixed(1) + ',' + base.lng.toFixed(1) : ''].join('|');
+  let hit = addrSuggestCache.get(key);
+  if (!hit || Date.now() - hit.at > 864e5) {
+    try {
+      const url = 'https://photon.komoot.io/api/?limit=10&lang=en&layer=house&layer=street&q=' + encodeURIComponent(q) + (base ? `&lat=${base.lat}&lon=${base.lng}` : '');
+      const r = await fetch(url, { headers: { 'User-Agent': 'WorklioPro/1.0 (address suggestions)' }, signal: AbortSignal.timeout(4000) });
+      if (!r.ok) return res.json([]);
+      hit = { at: Date.now(), list: ((await r.json()).features || []).map((f) => f.properties || {}) };
+      if (addrSuggestCache.size > 5000) addrSuggestCache.delete(addrSuggestCache.keys().next().value);
+      addrSuggestCache.set(key, hit);
+    } catch (e) { return res.json([]); }
+  }
+  const num = (/^(\d+[a-z]?(-\d+)?)\s/i.exec(q) || [])[1] || '';
+  const seen = new Set(); const out = [];
+  for (const p of hit.list) {
+    if (want && p.countrycode && p.countrycode.toUpperCase() !== want) continue;
+    const road = p.type === 'street' ? p.name : p.street; if (!road) continue;
+    const street = [p.housenumber || num, road].filter(Boolean).join(' ');
+    const a = { street, city: p.city || p.town || p.village || p.district || p.county || '', state: p.state || '', zip: p.postcode || '', country: { US: 'United States', CA: 'Canada', MX: 'Mexico' }[String(p.countrycode || '').toUpperCase()] || p.country || '' };
+    const k = [a.street, a.city, a.state].join('|').toLowerCase(); if (seen.has(k)) continue; seen.add(k); out.push(a);
+    if (out.length === 6) break;
+  }
+  res.json(out);
+});
 const jobAddress = (j) => String(j.address || (findClient(j.clientId) || {}).address || '').trim();
 const roadMiles = (a, b) => { const R = 3958.8; const r = (x) => (x * Math.PI) / 180; const dLat = r(b.lat - a.lat); const dLng = r(b.lng - a.lng);
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(dLng / 2) ** 2; return 2 * R * Math.asin(Math.min(1, Math.sqrt(h))) * 1.3; };

@@ -1602,6 +1602,72 @@ document.addEventListener('input', async (e) => {
   };
   put(city, pl['place name']); put(state, pl['state abbreviation']);
 });
+// address suggestions while typing a street (client, property, billing, job and profile addresses), from /api/address-suggest.
+// Picking one fills the street, city, state, ZIP and country boxes beside it; a one-line address box gets the whole address.
+const ADDR_SPLIT = 'input[name=street1], input[data-k=street1], input[name=street], input[name=addrStreet1]';
+const ADDR_LINE = 'input[name=address]:not([type=hidden]), input[name=billingAddress]';
+const addrAc = { input: null, box: null, idx: -1, list: [], seq: 0, timer: 0 };
+function addrAcClose() { clearTimeout(addrAc.timer); addrAc.seq++; if (addrAc.box) addrAc.box.remove(); Object.assign(addrAc, { input: null, box: null, idx: -1, list: [] }); }
+const addrAcBox = (input) => input.closest('.ce-prop, .pfm-col, .pf-addr, .addr, .fl-group') || input.form;
+const addrAcField = (box, ...ks) => { for (const k of ks) { const el = box && $(`[name=${k}], [data-k=${k}]`, box); if (el) return el; } return null; };
+const addrAcState = (a) => (a.country === 'United States' && (US_STATES.find(([k, n]) => n.toLowerCase() === a.state.toLowerCase()) || [])[0]) || a.state;
+const addrAcLine = (a) => [a.street, a.city, [addrAcState(a), a.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+function addrAcPlace() {
+  const r = addrAc.input.getBoundingClientRect(); const s = addrAc.box.style;
+  s.left = r.left + 'px'; s.width = Math.max(r.width, 280) + 'px'; s.top = r.bottom + 4 + 'px';
+}
+function addrAcDraw() {
+  const { input, list } = addrAc; if (!input || !list.length) { if (addrAc.box) addrAc.box.remove(); addrAc.box = null; return; }
+  if (!addrAc.box) { addrAc.box = document.createElement('div'); addrAc.box.className = 'svc-ac addr-ac'; addrAc.box.setAttribute('role', 'listbox'); document.body.append(addrAc.box); }
+  addrAc.box.innerHTML = list.map((a, i) => `<div role="option" class="${i === addrAc.idx ? 'on' : ''}" data-i="${i}"><span>${QI('<path d="M12 22s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/>')}<strong>${esc(a.street)}</strong> <span class="muted">${esc([a.city, addrAcState(a), a.zip].filter(Boolean).join(', '))}</span></span></div>`).join('')
+    + '<p class="addr-ac-osm">Addresses © OpenStreetMap</p>';
+  addrAcPlace();
+}
+function addrAcAsk(input) {
+  clearTimeout(addrAc.timer); const q = input.value.trim();
+  if (q.length < 4 || !/[a-z]/i.test(q) || (input.matches(ADDR_LINE) && q.split(',').length > 2)) { addrAc.list = []; return addrAcDraw(); } // a full address is already there
+  const country = addrAcField(addrAcBox(input), 'country', 'addrCountry'); const seq = ++addrAc.seq;
+  addrAc.timer = setTimeout(async () => {
+    let list = []; try { const r = await fetch('/api/address-suggest?q=' + encodeURIComponent(q) + (country && country.value ? '&country=' + encodeURIComponent(country.value) : '')); if (r.ok) list = await r.json(); } catch (e) { /* no suggestions */ }
+    if (seq !== addrAc.seq || addrAc.input !== input) return; // typed on, or left the box
+    addrAc.list = Array.isArray(list) ? list : []; addrAc.idx = -1; addrAcDraw();
+  }, 250);
+}
+function addrAcPick(i) {
+  const a = addrAc.list[i]; const input = addrAc.input; if (!a || !input) return; addrAcClose();
+  const set = (el, v) => {
+    if (!el || v == null) return;
+    if (el.tagName === 'SELECT') { const o = [...el.options].find((x) => [x.value, x.text].some((t) => t.toLowerCase() === String(v).toLowerCase())); if (!o) return; el.value = o.value; } else el.value = v;
+    el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  if (input.matches(ADDR_LINE)) return set(input, addrAcLine(a));
+  const box = addrAcBox(input); const country = addrAcField(box, 'country', 'addrCountry');
+  if (country && a.country) set(country, a.country); // first: the phone form swaps its state box by country
+  set(input, a.street);
+  const city = addrAcField(box, 'city', 'addrCity'), state = addrAcField(box, 'state', 'addrState'), zip = addrAcField(box, 'zip', 'addrZip');
+  set(city, a.city); set(state, addrAcState(a));
+  set(zip, a.zip);
+  const two = addrAcField(box, 'street2', 'addrStreet2'); if (two) two.focus();
+}
+document.addEventListener('focusin', (e) => { if (addrAc.input && e.target !== addrAc.input && !e.target.closest('.addr-ac')) addrAcClose(); });
+document.addEventListener('input', (e) => {
+  const t = e.target; if (!t.matches || !t.matches(`${ADDR_SPLIT}, ${ADDR_LINE}`) || !e.isTrusted) return; // not the values filled in by a pick
+  if (addrAc.input !== t) { addrAcClose(); addrAc.input = t; t.setAttribute('autocomplete', 'off'); }
+  addrAcAsk(t);
+});
+document.addEventListener('keydown', (e) => {
+  if (!addrAc.box || e.target !== addrAc.input) return; const n = addrAc.list.length;
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); addrAc.idx = (addrAc.idx + (e.key === 'ArrowDown' ? 1 : -1) + n + (addrAc.idx < 0 && e.key === 'ArrowUp' ? 1 : 0)) % n; addrAcDraw(); }
+  else if (e.key === 'Enter' && addrAc.idx >= 0) { e.preventDefault(); e.stopPropagation(); addrAcPick(addrAc.idx); }
+  else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); addrAcClose(); }
+  else if (e.key === 'Tab') addrAcClose();
+}, true);
+document.addEventListener('mousedown', (e) => {
+  const opt = e.target.closest('.addr-ac [data-i]');
+  if (opt) { e.preventDefault(); addrAcPick(Number(opt.dataset.i)); } else if (e.target.closest('.addr-ac')) e.preventDefault(); else if (addrAc.box && e.target !== addrAc.input) addrAcClose();
+});
+window.addEventListener('scroll', () => { if (addrAc.box && addrAc.input) { if (!addrAc.input.isConnected) addrAcClose(); else addrAcPlace(); } }, true);
+window.addEventListener('resize', () => { if (addrAc.box) addrAcClose(); });
 const PI = { // icons for what can be made for a client or property (QI is defined further down the file, so they're made when used)
   get request() { return QI('<path d="M4 14v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5"/><path d="M4 14h4l1.5 2h5l1.5-2h4M12 3v9M8.5 8.5L12 12l3.5-3.5"/>', 'pi-req'); },
   get quote() { return QI('<circle cx="10" cy="10" r="6"/><path d="M14.5 14.5L20 20M8 10h4"/>', 'pi-quote'); },
