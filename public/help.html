@@ -9,7 +9,7 @@
   <link rel="icon" href="/favicon.ico">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <script>try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
-  <link rel="stylesheet" href="/help.css?v=13">
+  <link rel="stylesheet" href="/help.css?v=15">
   <link rel="stylesheet" href="/theme.css">
 </head>
 <body>
@@ -32,9 +32,16 @@
   </div></header>
   <main id="main" tabindex="-1"></main>
   <footer class="hc-foot"><div class="wrap"><span>© <span id="year"></span> <span class="hc-product"></span><!--legal-owner--></span><span><a href="/" data-link>Help Center home</a> · <a href="/contact" data-link>Contact support</a> · <a href="/terms">Terms of Service</a> · <a href="/privacy">Privacy Policy</a> · <a id="siteLink" href="/">Website</a></span></div></footer>
+  <!-- phones: the bottom tab bar (Topics opens the slide-out menu) -->
+  <nav class="hc-bnav" aria-label="Help center sections">
+    <a href="/" data-link data-tab="home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/></svg><span>Home</span></a>
+    <button type="button" data-hc-menu data-tab="topics" aria-label="Browse topics"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></svg><span>Topics</span></button>
+    <a href="/contact" data-link data-tab="contact"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Contact</span></a>
+    <a class="hc-bapp" href="/"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg><span>App</span></a>
+  </nav>
   <script src="/brand.js?v=1"></script>
-  <script src="/help.js?v=13"></script>
+  <script src="/help.js?v=14"></script>
   <script src="/phone.js?v=2" defer></script>
-  <script src="/chat.js?v=10" data-where="help" defer></script>
+  <script src="/chat.js?v=11" data-where="help" defer></script>
 </body>
 </html>

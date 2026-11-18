@@ -160,6 +160,9 @@ function render() {
   wireTracks($('#main'));
   $$('.hc-search', $('#main')).forEach(wireSearch);
   wirePage(); fitLatest(); $('.hc-topics').open = false;
+  // phones: light up the bottom tab for this page
+  const p = location.pathname; const tab = p === '/' ? 'home' : p.startsWith('/contact') ? 'contact' : p.startsWith('/topics/') || p.startsWith('/articles/') ? 'topics' : '';
+  $$('.hc-bnav [data-tab]').forEach((t) => { t.classList.toggle('on', t.dataset.tab === tab); if (t.tagName === 'A') { if (t.dataset.tab === tab) t.setAttribute('aria-current', 'page'); else t.removeAttribute('aria-current'); } });
 }
 function go(url) { history.pushState({}, '', url); window.scrollTo(0, 0); render(); $('#main').focus({ preventScroll: true }); }
 window.addEventListener('popstate', render);
@@ -178,6 +181,7 @@ document.addEventListener('click', (e) => { const d = $('.hc-topics'); if (d.ope
     if (open) $('.hc-close').focus(); else if (refocus) burger.focus();
   };
   burger.addEventListener('click', () => set(true));
+  $$('[data-hc-menu]').forEach((b) => b.addEventListener('click', () => set(true))); // the bottom bar's Topics on phones
   $('.hc-close').addEventListener('click', () => set(false, true));
   scrim.addEventListener('click', () => set(false, true));
   panel.addEventListener('click', (e) => { if (isOpen() && e.target.closest('a')) set(false); }); // a link was tapped: go there with the menu shut
@@ -238,7 +242,7 @@ Promise.all([fetch('/api/help/content').then((r) => r.json()), fetch('/api/help/
   product = i.productName || product; ideas = i.ideasUrl || ideas;
   $$('.hc-product').forEach((el) => { el.textContent = product; });
   if (i.brand && i.brand.logo) { $('.hc-brand .hc-mark').outerHTML = brandImg(i.brand, 'dark'); if (i.brand.logoHasName) $('.hc-brand .hc-product').hidden = true; } // the logo from the platform console
-  $('#appLink').textContent = `Go to ${product}`; $('#appLink').href = i.siteUrl || '/'; $('#siteLink').href = i.siteUrl || '/';
+  $('#appLink').textContent = `Go to ${product}`; $('#appLink').href = i.siteUrl || '/'; $('#siteLink').href = i.siteUrl || '/'; $('.hc-bapp').href = i.siteUrl || '/';
   $('#topicMenu').innerHTML = $('#drawerTopics').innerHTML = TOPICS.map((t) => `<a href="/topics/${t.slug}" data-link>${ic(ICONS[t.icon] || ICONS.help, 18)}${esc(t.title)}</a>`).join(''); // the header dropdown, and the phone menu's list
   render();
 }).catch(() => { $('#main').innerHTML = '<div class="wrap" style="padding:48px 20px">The help center couldn’t load. Refresh the page to try again.</div>'; });
