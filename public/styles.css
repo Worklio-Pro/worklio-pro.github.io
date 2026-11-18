@@ -2818,3 +2818,9 @@ body.p404-only #billingBar{display:none!important}
  .sc-who select{height:52px;padding:0 44px 0 20px;border-radius:999px;font-size:17px;font-weight:600;border:1.5px solid color-mix(in srgb,var(--brand) 45%,var(--border))}
  .sc-grid.team.one>*{min-width:0}
 }
+/* phones: every search box has rounded (pill) ends */
+@media (max-width:760px){
+ :is(#main,#topbar,#side,.modal,.mpage,.msheet,.mcs,body) input[type=search]{border-radius:999px}
+ .ml-search,.mli-search,.rpt-findw{border-radius:999px;padding-left:18px;padding-right:18px}
+ .ml-search input,.mli-search input,.rpt-findw input{border-radius:0}
+}
