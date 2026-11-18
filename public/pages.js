@@ -2402,7 +2402,7 @@ function mkPitchHtml(path, { soon, suite, locked }) {
 // called by render() for a Marketing page the plan doesn't include
 async function mkLockedPage(main, path) {
   const p = path === '/automations/edit' ? '/automations' : path;
-  main.innerHTML = mkTabs(path) + (MK_PITCH[p] ? mkPitchHtml(p, { soon: !!MK_SOON[p], suite: false, locked: true }) : `<div class="card upgrade-card"><h1>This isn’t in your plan</h1>${mkGetIt(false)}</div>`);
+  main.innerHTML = mkTabs(path) + (MK_PITCH[p] ? mkPitchHtml(p, { soon: !!MK_SOON[p], suite: p === '/automations' || p === '/marketing/referrals', locked: true }) : `<div class="card upgrade-card"><h1>This isn’t in your plan</h1>${mkGetIt(false)}</div>`);
 }
 const mkSoonPage = (path, title) => ({ title, render(main) { main.innerHTML = mkTabs(path) + mkPitchHtml(path, { soon: true, suite: !planHas('marketingSuite'), locked: !planHas('marketingSuite') }); } });
 PAGES['/marketing/email'] = mkSoonPage('/marketing/email', 'Email campaigns');
@@ -2821,7 +2821,7 @@ ${planHas('referrals') ? `<div class="card mk-group"><h3>Top referrers</h3>${ref
 PAGES['/marketing/referrals'] = {
   title: 'Referrals',
   async render(main) {
-    if (!planHas('referrals')) { main.innerHTML = mkTabs('/marketing/referrals') + mkPitchHtml('/marketing/referrals', { locked: true }); return; }
+    if (!planHas('referrals')) { main.innerHTML = mkTabs('/marketing/referrals') + mkPitchHtml('/marketing/referrals', { suite: true, locked: true }); return; }
     main.innerHTML = `${mkTabs('/marketing/referrals')}${mkHead('Referrals', 'Every client has a referral link in their portal. Friends who use it arrive as new leads marked “Referred by”, and you can reward the client who sent them.')}<div class="mk-narrow">${referralCard(company)}</div>`;
     wireReferrals();
   },
