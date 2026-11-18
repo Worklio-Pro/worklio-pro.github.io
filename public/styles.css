@@ -2833,3 +2833,12 @@ body.p404-only #billingBar{display:none!important}
 .arw{display:inline-flex!important;align-items:center;justify-content:center;padding:0 0 .12em!important;line-height:1!important;font-size:20px!important;text-align:center}
 .btn.arw{width:36px;min-width:36px;height:36px;min-height:36px}
 @media (max-width:760px){:is(#app,#main,.modal,.mpage,.msheet) .btn.arw{width:50px;min-width:50px;height:50px;min-height:50px;font-size:24px!important}}
+/* phones: the company logo in the top bar is a round badge, a little bigger than the 34px profile avatar */
+@media (max-width:760px){
+ #topbar .tb-logo{flex:none;width:42px;height:42px;max-width:none;border-radius:50%;overflow:hidden;justify-content:center;background:#fff;box-shadow:0 0 0 1px var(--line)}
+ #topbar .tb-logo img{width:100%;height:100%;max-width:none;max-height:none;object-fit:contain;padding:4px;box-sizing:border-box;border-radius:50%}
+ #topbar .tb-logo:has(img.lg-dark){background:var(--card)}
+ @media (prefers-color-scheme:light){#topbar .tb-logo:has(img.lg-dark){background:#fff}}
+ #topbar .tb-logo span{font-size:15px;color:var(--text)}
+ #topbar .tb-logo:not(:has(img)){width:auto;height:auto;border-radius:0;background:none;box-shadow:none;max-width:96px}
+}
