@@ -72,6 +72,8 @@ ${groups.map((g) => `<tr class="grp"><td colspan="${plans.length + 1}">${esc(g)}
   // a plan on sale (Alpha → Pricing): the sale price for that period, shown with the regular one struck through
   const onSale = (p, per) => (p.sale && p.sale[per === 'year' ? 'yearly' : 'monthly']) || null;
   const saleEnds = (p) => (p.sale && p.sale.ends ? ` · ends ${new Date(p.sale.ends + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : '');
+  // "price locked for life" on a sale opens the FAQ that explains it (kept while you stay on the plan)
+  document.addEventListener('click', (e) => { const a = e.target.closest && e.target.closest('a.s-lock'); const d = document.getElementById('faq-lock'); if (!a || !d) return; e.preventDefault(); d.open = true; d.scrollIntoView({ behavior: 'smooth', block: 'center' }); });
   // a sale for the first so many businesses: how many spots are left
   const spotsLeft = (p) => (p.sale && p.sale.spotsLeft > 0 ? ` · <strong>${p.sale.spotsLeft} ${p.sale.spotsLeft === 1 ? 'spot' : 'spots'} left</strong>` : '');
   const priceHtml = (p) => {
@@ -79,7 +81,7 @@ ${groups.map((g) => `<tr class="grp"><td colspan="${plans.length + 1}">${esc(g)}
     if (!reg) return `<div class="price">${esc(p.priceLabel || p.price || 'Contact us')}</div><div class="per">&nbsp;</div>`;
     const yearly = y || !p.monthly; const s = onSale(p, yearly ? 'year' : 'month'); const v = s || reg;
     const yr = onSale(p, 'year') || p.yearly; const save = p.monthly && yr ? Math.round((1 - yr / ((onSale(p, 'month') || p.monthly) * 12)) * 100) : 0;
-    return `${s ? `<div class="s-sale">${esc(p.sale.name || 'Sale')}${saleEnds(p)}${spotsLeft(p)} · yours for good</div>` : ''}<div class="price">${s ? `<s class="was">${amount(reg)}</s> ` : ''}${amount(v)}<small>/${yearly ? 'year' : 'month'}</small></div><div class="per">${yearly ? `${amount(Math.round(v / 12 * 100) / 100)}/month, billed yearly${save > 0 ? ` · <strong>save ${save}%</strong>` : ''}` : period === 'year' ? 'Billed monthly only' : p.yearly ? `or ${amount(yr)}/year` : 'Billed monthly'}</div>`;
+    return `${s ? `<div class="s-sale">${esc(p.sale.name || 'Sale')}${saleEnds(p)}${spotsLeft(p)} · <a href="#faq-lock" class="s-lock">price locked for life</a></div>` : ''}<div class="price">${s ? `<s class="was">${amount(reg)}</s> ` : ''}${amount(v)}<small>/${yearly ? 'year' : 'month'}</small></div><div class="per">${yearly ? `${amount(Math.round(v / 12 * 100) / 100)}/month, billed yearly${save > 0 ? ` · <strong>save ${save}%</strong>` : ''}` : period === 'year' ? 'Billed monthly only' : p.yearly ? `or ${amount(yr)}/year` : 'Billed monthly'}</div>`;
   };
   const drawPlans = () => {
     $('#period').innerHTML = both ? `<div class="s-period" role="radiogroup" aria-label="Billing period">${[['month', 'Monthly'], ['year', `Yearly${best > 0 ? ` <span class="s-save">Save up to ${best}%</span>` : ''}`]].map(([k, l]) => `<button type="button" role="radio" aria-checked="${period === k}" class="${period === k ? 'on' : ''}" data-period="${k}">${l}</button>`).join('')}</div>` : '';
