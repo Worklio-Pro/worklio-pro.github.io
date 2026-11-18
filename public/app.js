@@ -684,7 +684,7 @@ function bcDraw() {
     const d = new Date(start); d.setDate(start.getDate() + i); const v = ymd(d); const off = (min && v < min) || (max && v > max);
     cells += `<button type="button" class="bc-d${d.getMonth() !== month.getMonth() ? ' out' : ''}${v === today ? ' today' : ''}${v === val ? ' sel' : ''}${v === bcState.focus ? ' focus' : ''}" data-v="${v}" tabindex="-1"${off ? ' disabled' : ''}${v === val ? ' aria-selected="true"' : ''} aria-label="${d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}">${d.getDate()}</button>`;
   }
-  pop.innerHTML = `<div class="bc-h"><button type="button" class="bc-nav" data-n="-1" aria-label="Previous month">‹</button><strong>${month.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</strong><button type="button" class="bc-nav" data-n="1" aria-label="Next month">›</button></div>
+  pop.innerHTML = `<div class="bc-h"><button type="button" class="bc-nav arw" data-n="-1" aria-label="Previous month">‹</button><strong>${month.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</strong><button type="button" class="bc-nav arw" data-n="1" aria-label="Next month">›</button></div>
 <div class="bc-w">${names.map((n) => `<span>${n}</span>`).join('')}</div><div class="bc-g" role="grid">${cells}</div>
 <div class="bc-f"><button type="button" class="link-btn" data-today${(min && today < min) || (max && today > max) ? ' disabled' : ''}>Today</button></div>`;
 }
@@ -1377,7 +1377,7 @@ ${clientSel.size ? `<div class="bulk admin-only"><strong>${clientSel.size} selec
 <th>${thb('name', 'Client')}</th>${cols.map((x) => x.th).join('')}<th class="m-hide" aria-label="Actions"></th></tr>
 ${body || `<tr><td colspan="11" class="empty">${v.status === 'attention' && !v.q && !v.tag && !v.since && D.clients.length ? 'Nothing needs attention: no one owes you money past due, every new lead has a quote, and no regular has gone quiet.' : D.clients.length ? 'No clients match these filters' : 'No clients yet'}</td></tr>`}</table></div>
 ${!grouped && list.length > per ? `<div class="tfoot"><span>Showing ${v.page * per + 1}–${Math.min(list.length, (v.page + 1) * per)} of ${list.length}</span>
-<span class="pager"><button class="btn alt sm" data-act="clientPage" data-d="-1" ${v.page ? '' : 'disabled'} aria-label="Previous page">‹</button><button class="btn alt sm" data-act="clientPage" data-d="1" ${v.page < pages - 1 ? '' : 'disabled'} aria-label="Next page">›</button></span></div>` : ''}</div>`;
+<span class="pager"><button class="btn alt sm arw" data-act="clientPage" data-d="-1" ${v.page ? '' : 'disabled'} aria-label="Previous page">‹</button><button class="btn alt sm arw" data-act="clientPage" data-d="1" ${v.page < pages - 1 ? '' : 'disabled'} aria-label="Next page">›</button></span></div>` : ''}</div>`;
     $$('[data-cv]').forEach((s) => s.addEventListener('change', (e) => { clientView[e.target.dataset.cv] = e.target.value; clientView.page = 0; refresh(); }));
     let t; $('#cq').addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(async () => { clientView.q = e.target.value; clientView.page = 0; await refresh(); const q = $('#cq'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 250); });
     $('#selAll').addEventListener('change', (e) => { shown.forEach((c) => (e.target.checked ? clientSel.add(c.id) : clientSel.delete(c.id))); refresh(); });
