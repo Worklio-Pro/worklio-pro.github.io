@@ -2774,3 +2774,10 @@ body.p404-only #billingBar{display:none!important}
  :where(#main,.modal,.mpage,.msheet) input:where(:not([type=checkbox],[type=radio],[type=range],[type=color],[type=file])),:where(#main,.modal,.mpage,.msheet) select,:where(#main,.modal,.mpage,.msheet) textarea{border-radius:16px}
  .side-search input,#side a.nav-link,#side .side-settings a,.side-set-btn,.side-back{border-radius:16px}
 }
+/* phones: the top bar floats too, a rounded see-through glass box like the bottom menu, with content scrolling behind it */
+@media (max-width:760px){
+ #topbar{top:calc(env(safe-area-inset-top) + var(--bnav-gap));margin:var(--bnav-gap) var(--bnav-gap) 0;padding:0 8px 0 14px;border:1px solid var(--line);border-radius:calc(var(--scr-r) - var(--bnav-gap));background:color-mix(in srgb,var(--card) 68%,transparent);-webkit-backdrop-filter:saturate(190%) blur(24px);backdrop-filter:saturate(190%) blur(24px);box-shadow:inset 0 1px 0 rgba(255,255,255,.55),0 8px 24px rgba(15,23,42,.14),0 1px 3px rgba(15,23,42,.08)}
+ #topbar .icon-btn,#topbar button{border-radius:999px}
+ .tb-news .menu-list{top:calc(env(safe-area-inset-top,0px) + 74px)}
+ #main{padding-top:16px}
+}
