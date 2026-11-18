@@ -2164,7 +2164,7 @@ label.bk-auto input{width:auto;margin:0}
 .item-row.np-on::before{content:"Needs a price";position:absolute;top:-9px;left:12px;padding:1px 8px;border-radius:99px;background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn-fg);font-size:11px;font-weight:700;line-height:15px;pointer-events:none}
 .item-row.np-on+.item-row{border-top-color:transparent}
 .item-row.np-on .cost{background:var(--warn-bg)}
-.ms-snap{width:100%;margin-top:10px}
+.ms-snap{width:100%;margin-top:10px;display:inline-flex;align-items:center;justify-content:center;gap:8px}.ms-snap svg,.snap-bar .btn svg{flex:none}.snap-bar .btn[data-act=snapQuote]{display:inline-flex;align-items:center;justify-content:center;gap:6px}
 /* Snap to quote not in the plan: the bar is highlighted, with Get more details and ✕ */
 @keyframes snapAdGlow{0%,100%{box-shadow:0 0 0 0 transparent}40%{box-shadow:0 0 0 5px color-mix(in srgb,var(--brand) 25%,transparent)}}
 .snap-bar.snap-ad{flex-wrap:nowrap;gap:12px;border:1.5px solid var(--brand);background:linear-gradient(100deg,color-mix(in srgb,var(--brand) 14%,var(--card)) 0%,var(--card) 80%);box-shadow:var(--shadow-sm);animation:snapAdGlow 1.8s ease 2}
@@ -2824,3 +2824,5 @@ body.p404-only #billingBar{display:none!important}
  .ml-search,.mli-search,.rpt-findw{border-radius:999px;padding-left:18px;padding-right:18px}
  .ml-search input,.mli-search input,.rpt-findw input{border-radius:0}
 }
+/* phones: every button is a pill, even ones with their own corner size (like Save on the new quote, job and invoice pages) */
+@media (max-width:760px){:is(#app,#main,.modal,.mpage,.msheet,#helpPanel) .btn{border-radius:999px}}

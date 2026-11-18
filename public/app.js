@@ -3258,7 +3258,7 @@ function mobileNew(kind, main, preset) {
 <form class="mnew-f" novalidate><h2 class="mn-sh">Service for</h2><div class="mn-who"></div><h2 class="mn-sh">Overview</h2>
 ${mField(kind === 'invoice' ? 'Subject' : 'Title', `<input name="${kind === 'invoice' ? 'subject' : 'title'}" maxlength="120" placeholder="${q ? 'e.g. Backyard cleanup' : job ? 'e.g. Streamer Install' : 'e.g. Camera System Install'}" value="${esc((preset.copy || {}).title || '')}">`)}
 ${job ? mField('Date', `<input type="date" name="date" value="${esc(preset.date || ymd(new Date()))}">`) + repeatCard({}, preset.date || ymd(new Date())) : ''}${q ? estCard(preset.copy || {}) : ''}
-<button class="btn ms-save">Save</button>${q && (planHas('snapQuote') || canDo('quotes')) ? '<button class="btn alt ms-snap" data-snap="1">Snap to quote: draft from photos</button>' : ''}<p class="muted mn-next">${job ? 'You’ll set the time and team next.' : 'You’ll add line items next.'}</p></form></div>`;
+<button class="btn ms-save">Save</button>${q && (planHas('snapQuote') || canDo('quotes')) ? `<button class="btn alt ms-snap" data-snap="1">${svgIcon(SNAP_CAM, 20)}<span>Snap to quote: draft from photos</span></button>` : ''}<p class="muted mn-next">${job ? 'You’ll set the time and team next.' : 'You’ll add line items next.'}</p></form></div>`;
   const f = $('form', main); const who = $('.mn-who', f); if (job) wireRepeat(f);
   const draw = () => {
     if (client) {
@@ -3464,7 +3464,7 @@ ${(ai.questions || []).length ? `<details open><summary>Check before sending (${
   }
   if ((d.items || []).some((i) => i.desc) || !(planHas('snapQuote') || canDo('quotes'))) return '';
   if (!planHas('snapQuote')) return snapAdHidden() ? '' : snapAd(); // not in the plan: highlighted, links to /quotes/snap-to-quote, ✕ hides it in this browser
-  return `<div class="snap-bar"><span><strong>Snap to quote</strong> Take photos of the job and say what the client needs. AI drafts the line items from your price list.</span><button type="button" class="btn alt sm" data-act="snapQuote" data-quote-id="${esc(d.id || '')}">Draft from photos</button></div>`;
+  return `<div class="snap-bar"><span><strong>Snap to quote</strong> Take photos of the job and say what the client needs. AI drafts the line items from your price list.</span><button type="button" class="btn alt sm" data-act="snapQuote" data-quote-id="${esc(d.id || '')}">${svgIcon(SNAP_CAM, 18)}<span>Draft from photos</span></button></div>`;
 }
 const SNAP_AD_KEY = 'snapAd:hidden';
 const snapAdHidden = () => { try { return localStorage.getItem(SNAP_AD_KEY) === '1'; } catch (e) { return false; } };
