@@ -14,7 +14,7 @@
   <script>/* apply the saved theme before first paint; a client's portal link (/client-portal?c=…) is always light */
   if(/^\/client-portal\/?$/.test(location.pathname)&&/[?&]c=/.test(location.search)){document.documentElement.dataset.theme="light";document.querySelector('meta[name="color-scheme"]').content="light"}
   else try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
-  <link rel="stylesheet" href="/styles.css?v=232">
+  <link rel="stylesheet" href="/styles.css?v=233">
   <link rel="stylesheet" href="/theme.css">
 </head>
 <body>
@@ -36,6 +36,9 @@
   <div id="helpShade" class="noprint" hidden></div>
   <aside id="helpPanel" class="noprint" role="dialog" aria-modal="true" aria-labelledby="helpTitle" aria-hidden="true"></aside>
   <div id="toast"></div>
+  <!-- phones are upright only: a sideways phone sees this cover (browsers can't lock rotation on iPhone); an installed app on Android is locked upright -->
+  <div id="rotateCover" class="noprint" aria-hidden="true"><svg viewBox="0 0 24 24" width="56" height="56" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></svg><p>Turn your phone upright</p></div>
+  <script>try { var s = window.screen; if (Math.min(s.width, s.height) < 500 && matchMedia('(display-mode: standalone)').matches && s.orientation && s.orientation.lock) s.orientation.lock('portrait').catch(function () {}); } catch (e) {}</script>
   <script src="/brand.js?v=1"></script>
   <script src="/qr.js?v=2"></script>
   <script src="/phone.js?v=2"></script>

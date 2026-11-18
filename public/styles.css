@@ -2842,3 +2842,13 @@ body.p404-only #billingBar{display:none!important}
  #topbar .tb-logo span{font-size:15px;color:var(--text)}
  #topbar .tb-logo:not(:has(img)){width:auto;height:auto;border-radius:0;background:none;box-shadow:none;max-width:96px}
 }
+/* phones are upright only: turned sideways, a cover asks to turn the phone back (tablets and computers rotate freely) */
+#rotateCover{display:none}
+@media (orientation:landscape) and (max-height:500px) and (hover:none) and (pointer:coarse){
+ #rotateCover{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;position:fixed;inset:0;z-index:2147483000;background:var(--bg);color:var(--text);text-align:center;padding:24px}
+ #rotateCover svg{color:var(--brand);transform:rotate(90deg);animation:rc-turn 1.6s ease-in-out infinite alternate}
+ #rotateCover p{margin:0;font-size:18px;font-weight:700}
+ body:has(#rotateCover){overflow:hidden}
+}
+@keyframes rc-turn{to{transform:rotate(0)}}
+@media (prefers-reduced-motion:reduce){#rotateCover svg{animation:none;transform:none}}
