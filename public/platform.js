@@ -600,8 +600,13 @@ ${money$(p, i, 'extraUser', 'none', 'Each extra login, a month')}
 <label>Short description<textarea rows="3" data-i="${i}" data-k="description" maxlength="200" aria-label="Description for ${esc(p.name)}">${esc(p.description)}</textarea></label>
 <div class="pc-foot"><label class="switchline"><input type="checkbox" data-hide="${i}" ${p.hidden ? 'checked' : ''}> Hide from public</label>${rm}</div></div>`;
 // a feature ticked as Beta shows a "Beta" tag to businesses (pricing page, checkout, their plan and menu)
-const betaTag = (f) => `<span class="beta-tag" data-beta-tag="${f.key}" ${draftBeta.includes(f.key) ? '' : 'hidden'}>Beta</span>`;
-const betaBox = (f) => `<input type="checkbox" data-beta="${f.key}" ${draftBeta.includes(f.key) ? 'checked' : ''} title="Show a Beta tag on this feature to businesses" aria-label="${esc(f.label)} is in beta">`;
+// betaWith: its Beta follows another feature's tick (Reviews and Social posting follow the Marketing suite), so its own box can't be changed
+const betaKey = (f) => f.betaWith || f.key;
+const betaLead = (f) => esc((D.features.find((x) => x.key === f.betaWith) || {}).label || '');
+const betaTag = (f) => `<span class="beta-tag" data-beta-tag="${f.key}" ${draftBeta.includes(betaKey(f)) ? '' : 'hidden'}>Beta</span>`;
+const betaBox = (f) => (f.betaWith
+  ? `<input type="checkbox" data-beta-of="${f.betaWith}" ${draftBeta.includes(f.betaWith) ? 'checked' : ''} disabled title="In Beta whenever ${betaLead(f)} is" aria-label="${esc(f.label)} is in beta with ${betaLead(f)}">`
+  : `<input type="checkbox" data-beta="${f.key}" ${draftBeta.includes(f.key) ? 'checked' : ''} title="Show a Beta tag on this feature to businesses" aria-label="${esc(f.label)} is in beta">`);
 // a feature that needs another one (Google reviews and Social posts need Account connections) is hidden from a plan without it
 const offered = (p, f) => !f.needs || p.features.includes(f.needs);
 const tickedCount = (p) => D.features.filter((f) => offered(p, f) && p.features.includes(f.key)).length;
@@ -655,6 +660,8 @@ ${savebar}</div>`;
   $$('input[data-beta]', main).forEach((c) => c.addEventListener('change', () => {
     const k = c.dataset.beta; const on = new Set(draftBeta); if (c.checked) on.add(k); else on.delete(k);
     draftBeta = D.features.map((f) => f.key).filter((x) => on.has(x)); $(`[data-beta-tag="${k}"]`, main).hidden = !c.checked; markDirty(main);
+    for (const f of D.features.filter((x) => x.betaWith === k)) { const t = $(`[data-beta-tag="${f.key}"]`, main); if (t) t.hidden = !c.checked; }
+    $(`input[data-beta-of="${k}"]`, main).forEach((b) => { b.checked = c.checked; });
   }));
 }
 // the plans grid scrolls sideways from a bar pinned to the top of the save bar, so it's always in reach instead of only at the bottom of the table
