@@ -830,7 +830,8 @@ a.hp-nav{color:var(--text);text-decoration:none;padding:6px 8px;margin:0 -8px 10
 /* phone menu: a hamburger opens the header links + Get started as a drawer from the right (home, pricing, industries; public/menu.js) */
 .h-has-drawer .h-panel{display:contents}
 .h-has-drawer .h-burger,.h-has-drawer .h-close,.h-scrim{display:none}
-@media (max-width:640px){
+@media (max-width:640px), (orientation:landscape) and (max-height:500px) and (pointer:coarse){
+  .h-has-drawer .h-brand{white-space:nowrap}
   /* backdrop-filter would make the header the containing block for the fixed drawer */
   .h-top.h-has-drawer{background:var(--header-bg,var(--card));backdrop-filter:none;-webkit-backdrop-filter:none}
   .h-has-drawer .h-burger{display:grid;place-items:center;margin-left:auto;width:44px;height:44px;border:0;border-radius:10px;background:none;color:var(--header-text,var(--text));cursor:pointer}

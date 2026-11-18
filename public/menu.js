@@ -10,7 +10,7 @@ document.querySelectorAll('.h-menu').forEach((m) => {
 // The phone menu on the public pages (home, pricing, industries): the hamburger slides the header links and Get started in from the right
 document.querySelectorAll('.h-has-drawer').forEach((h) => {
   const burger = h.querySelector('.h-burger'); const panel = h.querySelector('.h-panel'); const scrim = document.querySelector('.h-scrim');
-  const phone = window.matchMedia('(max-width:640px)');
+  const phone = window.matchMedia('(max-width:640px), (orientation:landscape) and (max-height:500px) and (pointer:coarse)'); // phones, upright or sideways
   const isOpen = () => panel.classList.contains('open');
   const set = (open, refocus) => {
     panel.classList.toggle('open', open); if (scrim) scrim.classList.toggle('open', open);
