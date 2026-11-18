@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Founding Member Flyer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;0,800;1,700;1,800;1,900&family=Barlow:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  @page { size: 8.5in 11in; margin: 0; }
+  :root {
+    --navy: #06143a;
+    --navy-2: #0a3a72;     /* logo navy */
+    --blue: #0788ff;       /* logo bright blue */
+    --royal: #1d4fd8;
+    --yellow: #ffc81a;
+    --yellow-2: #ffe066;
+    --ink: #0b1d42;
+    --white: #ffffff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 816px; height: 1056px; background: var(--navy); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { font-family: Barlow, system-ui, sans-serif; color: var(--white); overflow: hidden; }
+  .cond { font-family: "Barlow Condensed", sans-serif; }
+
+  .page { position: relative; width: 816px; height: 1056px; overflow: hidden;
+    background:
+      radial-gradient(ellipse 60% 45% at 75% 48%, rgba(7,136,255,.55), transparent 70%),
+      radial-gradient(ellipse 50% 40% at 10% 100%, rgba(29,79,216,.6), transparent 70%),
+      linear-gradient(160deg, #0b2a6b 0%, var(--navy) 45%, #061033 100%);
+  }
+  /* light swoosh panel behind the logo, top right */
+  .swoosh { position: absolute; right: -200px; top: -240px; width: 610px; height: 470px; border-radius: 50%;
+    background: linear-gradient(200deg, #ffffff 30%, #dce8fb 100%);
+    box-shadow: -14px 14px 0 var(--blue), -28px 28px 0 rgba(7,136,255,.35); }
+  .logo { position: absolute; right: 36px; top: 30px; text-align: center; }
+  .logo img { width: 176px; display: block; margin: 0 auto; }
+  .logo .word { font-family: "Barlow Condensed", sans-serif; font-weight: 800; font-size: 40px; letter-spacing: .02em; color: var(--navy-2); margin-top: 6px; line-height: 1; }
+  .logo .word span { color: var(--blue); }
+
+  /* headline */
+  .head { position: absolute; left: 30px; top: 18px; font-family: "Barlow Condensed", sans-serif; font-style: italic; font-weight: 900; text-transform: uppercase; line-height: .84; letter-spacing: -.01em; }
+  .head .a { font-size: 46px; display: block; color: #fff; padding-left: 52px; }
+  .head .b { font-size: 90px; display: block; background: linear-gradient(180deg, #ffffff 0%, #ffffff 48%, #b8c7e0 52%, #f2f6fc 100%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 4px 0 rgba(0,0,0,.35)); }
+  .head .c { font-size: 112px; display: block; background: linear-gradient(180deg, #fff3a8 0%, var(--yellow) 50%, #f29b05 100%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 4px 0 rgba(0,0,0,.35)); padding-left: 40px; }
+  .underline { position: absolute; left: 14px; top: 238px; width: 400px; height: 14px; }
+
+  .intro { position: absolute; left: 30px; top: 258px; width: 360px; font-family: "Barlow Condensed", sans-serif; font-weight: 600; font-size: 21px; line-height: 1.12; }
+  .intro b { color: var(--yellow); font-weight: 800; }
+
+  /* panels on the left */
+  .panel { position: absolute; left: 22px; width: 360px; background: linear-gradient(180deg, #ffffff, #e8effb); border-radius: 18px; color: var(--ink); box-shadow: 0 10px 26px rgba(0,0,0,.4); border: 3px solid rgba(255,255,255,.7); }
+  .tab { position: absolute; left: 14px; top: -20px; background: linear-gradient(180deg, #2a6cf0, #0d3aa8); color: #fff; font-family: "Barlow Condensed", sans-serif; font-style: italic; font-weight: 800; font-size: 23px; text-transform: uppercase; padding: 4px 18px 5px; border-radius: 12px; border: 2px solid #fff; box-shadow: 0 4px 10px rgba(0,0,0,.3); }
+  .does { top: 372px; padding: 26px 14px 6px; }
+  .feat { display: flex; gap: 12px; align-items: center; padding: 6px 0; border-bottom: 1px solid #cfdaee; }
+  .feat:last-child { border-bottom: 0; }
+  .ic { flex: none; width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center;
+    background: radial-gradient(circle at 35% 30%, #3b8bff, #0a3aa8 75%); box-shadow: 0 3px 0 #06205e, inset 0 0 0 3px rgba(255,255,255,.85); }
+  .ic svg { width: 28px; height: 28px; stroke: #fff; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .feat h3 { font-family: "Barlow Condensed", sans-serif; font-weight: 800; font-size: 22px; text-transform: uppercase; color: var(--navy-2); line-height: 1; }
+  .feat p { font-size: 13px; font-weight: 600; color: #33415c; line-height: 1.2; margin-top: 2px; }
+
+  .inds { top: 712px; padding: 24px 10px 8px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); row-gap: 4px; }
+  .ind { text-align: center; padding: 2px 0; }
+  .ind svg { width: 34px; height: 34px; stroke: var(--royal); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .ind div { font-family: "Barlow Condensed", sans-serif; font-weight: 800; font-size: 14.5px; text-transform: uppercase; color: var(--ink); }
+  .grid > .ind:nth-child(3n+2) { border-left: 1px solid #cfdaee; border-right: 1px solid #cfdaee; }
+  .more { text-align: center; font-family: "Barlow Condensed", sans-serif; font-style: italic; font-weight: 800; font-size: 19px; color: var(--royal); margin-top: 0; }
+
+  /* devices */
+  .laptop { position: absolute; left: 418px; top: 262px; width: 372px; transform: perspective(1400px) rotateY(-12deg) rotateX(2deg); transform-origin: left center; }
+  .lid { background: #1b1f27; border-radius: 16px 16px 4px 4px; padding: 10px 10px 14px; box-shadow: 0 0 0 2px #4a505c, 0 20px 40px rgba(0,0,0,.55); }
+  .lid img { display: block; width: 100%; border-radius: 4px; }
+  .base { height: 18px; margin: 0 -26px; background: linear-gradient(180deg, #c9ced8, #7d8492); border-radius: 0 0 18px 18px; position: relative; }
+  .base::before { content: ""; position: absolute; left: 50%; top: 0; width: 80px; height: 6px; transform: translateX(-50%); background: #5d6370; border-radius: 0 0 8px 8px; }
+
+  .phone { position: absolute; left: 398px; top: 470px; width: 165px; height: 340px; background: #111; border-radius: 30px; padding: 8px; transform: rotate(-4deg); box-shadow: 0 0 0 2px #59606d, 0 22px 40px rgba(0,0,0,.6); z-index: 3; }
+  .phone img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 23px; }
+  .phone::before { content: ""; position: absolute; left: 50%; top: 13px; width: 52px; height: 12px; border-radius: 8px; background: #111; transform: translateX(-50%); z-index: 2; }
+
+  /* call to action */
+  .cta { position: absolute; left: 582px; top: 494px; width: 212px; background: linear-gradient(180deg, #0d2d78, #071a4d); border: 4px solid var(--yellow); border-radius: 18px; padding: 12px 10px 12px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,.5); z-index: 4; }
+  .cta .t { font-family: "Barlow Condensed", sans-serif; font-style: italic; font-weight: 900; text-transform: uppercase; color: var(--yellow); font-size: 25px; line-height: .95; }
+  .qr { width: 96px; height: 96px; margin: 9px auto 6px; background: #fff; padding: 6px; border-radius: 10px; }
+  .qr img { width: 100%; height: 100%; display: block; }
+  .row { background: linear-gradient(180deg, #2a6cf0, #0d3aa8); border-radius: 12px; padding: 6px 8px; margin-top: 6px; border: 2px solid rgba(255,255,255,.5); }
+  .row .k { font-family: "Barlow Condensed", sans-serif; font-style: italic; font-weight: 800; font-size: 15px; color: var(--yellow); text-transform: uppercase; line-height: 1; }
+  .row .v { font-family: "Barlow Condensed", sans-serif; font-weight: 800; font-size: 27px; line-height: 1.05; }
+  .row .code { font-style: italic; font-size: 34px; letter-spacing: .02em; }
+  .or { display: inline-grid; place-items: center; width: 34px; height: 34px; margin: -6px auto -12px; position: relative; z-index: 2; border-radius: 50%; background: #fff; color: var(--royal); font-family: "Barlow Condensed", sans-serif; font-weight: 800; font-size: 16px; border: 3px solid var(--royal); }
+  .free { font-family: "Barlow Condensed", sans-serif; font-style: italic; font-weight: 900; text-transform: uppercase; color: var(--yellow); font-size: 24px; line-height: .95; margin-top: 10px; }
+
+  /* bottom band */
+  .band { position: absolute; left: 0; right: 0; bottom: 0; height: 72px; background: linear-gradient(180deg, #082060, #040d2b); border-top: 3px solid var(--yellow); display: flex; align-items: center; justify-content: space-around; padding: 0 20px; }
+  .band .it { display: flex; align-items: center; gap: 10px; font-family: "Barlow Condensed", sans-serif; font-weight: 800; font-size: 19px; text-transform: uppercase; }
+  .band .bi { width: 38px; height: 38px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #3b8bff, #0a3aa8 75%); display: grid; place-items: center; box-shadow: inset 0 0 0 2px rgba(255,255,255,.8); }
+  .band .bi svg { width: 20px; height: 20px; stroke: #fff; fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+  .band .sep { width: 1px; height: 34px; background: rgba(255,255,255,.3); }
+
+  .risk { position: absolute; left: 0; right: 0; top: 908px; text-align: center; }
+  .risk .r1 { font-family: "Barlow Condensed", sans-serif; font-style: italic; font-weight: 900; font-size: 44px; text-transform: uppercase; line-height: 1; text-shadow: 0 3px 0 rgba(0,0,0,.4); }
+  .risk .r2 { font-family: "Barlow Condensed", sans-serif; font-style: italic; font-weight: 700; font-size: 19px; color: var(--yellow); margin-top: 4px; }
+  .checks { list-style: none; padding: 2px 6px 4px; }
+  .checks li { position: relative; padding: 7px 0 7px 34px; font-size: 15px; font-weight: 600; color: #33415c; border-bottom: 1px solid #cfdaee; line-height: 1.2; }
+  .checks li:last-child { border-bottom: 0; }
+  .checks li b { color: var(--navy-2); font-weight: 800; }
+  .checks li::before { content: "✓"; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; border-radius: 50%; background: #16a34a; color: #fff; font-weight: 800; font-size: 14px; display: grid; place-items: center; }
+  .spots { display: inline-block; margin-top: 6px; background: #e11d48; color: #fff; font-family: "Barlow Condensed", sans-serif; font-weight: 800; font-style: italic; text-transform: uppercase; font-size: 15px; padding: 2px 12px; border-radius: 999px; transform: rotate(-3deg); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="swoosh"></div>
+  <div class="logo">
+    <img src="worklio-logo.png" alt="Worklio Pro logo">
+    <div class="word">WORKLIO <span>PRO</span></div>
+  </div>
+
+  <h1 class="head">
+    <span class="a">Become a</span>
+    <span class="b">Founding</span>
+    <span class="c">Member</span>
+  </h1>
+  <svg class="underline" viewBox="0 0 440 14" preserveAspectRatio="none"><path d="M0 12 Q220 -6 440 6 Q220 2 0 12Z" fill="#ffc81a"/></svg>
+
+  <p class="intro">For trades owners with a <b>small crew</b>. Get in early, <b>lock in your price for life</b> and help shape the app.</p>
+
+  <!-- why join -->
+  <div class="panel does">
+    <div class="tab">Why owners join early:</div>
+    <div class="feat">
+      <div class="ic"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/><path d="M12 15v2"/></svg></div>
+      <div><h3>Price locked for life</h3><p>Your rate never goes up while you stay.</p></div>
+    </div>
+    <div class="feat">
+      <div class="ic"><svg viewBox="0 0 24 24"><path d="M17 20v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M21 20v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></svg></div>
+      <div><h3>Made for small crews</h3><p>5 logins on Advanced, then $15 each.</p></div>
+    </div>
+    <div class="feat">
+      <div class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M15 9.5c-.5-1-1.6-1.5-3-1.5-1.7 0-3 .8-3 2s1.3 1.7 3 2 3 .8 3 2-1.3 2-3 2c-1.5 0-2.6-.6-3-1.6M12 6v2M12 16v2"/></svg></div>
+      <div><h3>Paid straight to you</h3><p>Card and bank go to your own Stripe.</p></div>
+    </div>
+    <div class="feat">
+      <div class="ic"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></svg></div>
+      <div><h3>A say in what's next</h3><p>Talk to the founder. Shape the app.</p></div>
+    </div>
+  </div>
+
+  <!-- switching worries -->
+  <div class="panel inds">
+    <div class="tab">Worried about switching?</div>
+    <ul class="checks">
+      <li><b>We move your clients over</b> for you. Free.</li>
+      <li><b>Keep your old app</b> while you try it.</li>
+      <li><b>Nothing to install.</b> Works on any phone.</li>
+      <li><b>No contract.</b> Cancel anytime.</li>
+    </ul>
+  </div>
+
+  <!-- devices -->
+  <div class="laptop">
+    <div class="lid"><img src="../public/img/features/overview.webp" alt=""></div>
+    <div class="base"></div>
+  </div>
+  <div class="phone"><img src="../public/img/features/mobile.webp" alt=""></div>
+
+  <!-- call to action -->
+  <div class="cta">
+    <div class="t">Claim your<br>spot!</div>
+    <div class="spots">Limited spots</div>
+    <div class="qr"><img src="qr-workliopro.svg" alt="QR code to workliopro.com"></div>
+    <div class="row"><div class="k">Visit</div><div class="v">workliopro.com</div></div>
+    <div class="or">OR</div>
+    <div class="row"><div class="k">Use code at sign-up</div><div class="v code">TRIAL26</div></div>
+    <div class="free">First 30 days free!</div>
+  </div>
+
+  <div class="risk">
+    <div class="r1">Small crew. Big-league tools.</div>
+    <div class="r2">Try it free for 30 days. If it's not for you, walk away.</div>
+  </div>
+
+  <div class="band">
+    <div class="it"><span class="bi"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span>Price locked for life</div>
+    <div class="sep"></div>
+    <div class="it"><span class="bi"><svg viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></svg></span>Free setup help</div>
+    <div class="sep"></div>
+    <div class="it"><span class="bi"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18M4 4l16 16"/></svg></span>No credit card needed</div>
+  </div>
+
+</div>
+</body>
+</html>
