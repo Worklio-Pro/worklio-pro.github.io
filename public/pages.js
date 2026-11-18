@@ -4273,7 +4273,7 @@ function mktList() {
   // everything: the featured apps, then each category
   return `<h2 class="mkt-h">Featured</h2>${grid(pick.filter((a) => a.featured))}` + MKT.categories.map((k) => { const L = pick.filter((a) => a.category === k); return L.length ? `<h2 class="mkt-h">${esc(k)}</h2>${grid(L)}` : ''; }).join('');
 }
-const mktShow = () => { const box = $('#mktList'); if (box) box.innerHTML = mktList(); $$('.mkt-tabs button').forEach((b) => { const on = b.dataset.cat === mktView.cat; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); }); };
+const mktShow = () => { const box = $('#mktList'); if (box) box.innerHTML = mktList(); const sel = $('#mcat'); if (sel) sel.value = mktView.cat; };
 PAGES['/marketplace'] = {
   title: 'App Marketplace',
   async render(main) {
@@ -4283,18 +4283,19 @@ PAGES['/marketplace'] = {
     else if (back.get('connect_error') === 'slack') toast(back.get('reason') === 'cancelled' ? 'Slack wasn’t connected' : back.get('reason') || 'Slack couldn’t connect', back.get('reason') !== 'cancelled');
     if (back.has('connected') || back.has('connect_error')) history.replaceState(history.state, '', location.pathname);
     MKT = await api('GET', '/api/marketplace');
-    const tabs = [['', 'All apps'], ...(MKT.apps.some((a) => a.live && a.connected && a.planOk) ? [['connected', 'Connected']] : []), ...MKT.categories.map((k) => [k, k])];
+    const conn = MKT.apps.filter((a) => a.live && a.connected && a.planOk).length;
+    const tabs = [['', `All apps (${MKT.apps.length})`], ...(conn ? [['connected', `Connected (${conn})`]] : []), ...MKT.categories.map((k) => [k, `${k} (${MKT.apps.filter((a) => a.category === k).length})`])];
     main.innerHTML = `<div class="head"><div><h1>App Marketplace</h1><p class="sub">Connect the apps your business already uses. Apps marked <strong>Coming soon</strong> are on the way: tap <strong>I want this</strong> and the most-wanted ones are built first.</p></div>
 <button type="button" class="btn alt" data-act="mktSuggest">Suggest an app</button></div>
-<div class="cfilters"><div class="search-x"><input id="mq" type="search" placeholder="Search apps" value="${esc(mktView.q)}" aria-label="Search apps"><button type="button" class="icon-btn" data-act="mktClear" aria-label="Clear search" ${mktView.q ? '' : 'hidden'}>✕</button></div></div>
-<div class="tabs mkt-tabs" role="group" aria-label="Categories">${tabs.map(([k, l]) => `<button type="button" data-act="mktCat" data-cat="${esc(k)}">${esc(l)}</button>`).join('')}</div>
+<div class="cfilters mkt-filters"><div class="search-x"><input id="mq" type="search" placeholder="Search apps" value="${esc(mktView.q)}" aria-label="Search apps"><button type="button" class="icon-btn" data-act="mktClear" aria-label="Clear search" ${mktView.q ? '' : 'hidden'}>✕</button></div>
+<select id="mcat" class="mkt-cat-sel" aria-label="Category">${tabs.map(([k, l]) => `<option value="${esc(k)}">${esc(l)}</option>`).join('')}</select></div>
 <div id="mktList"></div>`;
     if (!tabs.some(([k]) => k === mktView.cat)) mktView.cat = '';
     mktShow();
+    $('#mcat').addEventListener('change', (e) => { mktView.cat = e.target.value; mktShow(); });
     $('#mq').addEventListener('input', (e) => { mktView.q = e.target.value; $('[data-act="mktClear"]').hidden = !mktView.q; mktShow(); });
   },
 };
-A.mktCat = (d) => { mktView.cat = d.cat; mktShow(); };
 A.mktClear = () => { mktView.q = ''; const q = $('#mq'); q.value = ''; $('[data-act="mktClear"]').hidden = true; mktShow(); q.focus(); };
 // an app's details: what it is, what connecting it does, and its button
 A.mktApp = (d) => {

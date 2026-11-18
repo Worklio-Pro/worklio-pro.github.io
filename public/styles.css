@@ -2826,3 +2826,6 @@ body.p404-only #billingBar{display:none!important}
 }
 /* phones: every button is a pill, even ones with their own corner size (like Save on the new quote, job and invoice pages) */
 @media (max-width:760px){:is(#app,#main,.modal,.mpage,.msheet,#helpPanel) .btn{border-radius:999px}}
+/* App Marketplace: a Category dropdown next to the search instead of a row of category tabs */
+.mkt-filters .search-x{flex:1 1 320px}.mkt-filters .mkt-cat-sel{flex:0 1 260px;width:auto;min-width:0;font-weight:600}
+@media (max-width:760px){.mkt-filters .mkt-cat-sel{flex:1 1 100%;width:100%;border-radius:999px;padding:0 44px 0 20px;font-size:16px}}
