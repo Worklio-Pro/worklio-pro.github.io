@@ -5245,13 +5245,18 @@ app.get('/api/integrations', async (req, res) => {
 // ---------- Account Connections: Google Business Profile, Facebook and Instagram (lib/social.js), and Bluesky (lib/bluesky.js) ----------
 // The sign-in returns to the platform address, which calls saveConnection inside this account. Tokens stay in the account's secrets.
 const SOCIAL_KINDS = ['google', 'facebook', ...Object.keys(networks.NETWORKS)];
-const connOf = (kind) => (secrets().social || {})[kind] || null;
+// Alpha → Settings → Integrations → Coming soon also pauses a network for businesses already connected: nothing posts, reads or replies there
+// (connOf returns null, so it's off Connections, Marketing, Plan and Social posting). The sign-in is kept and renewed (connStored), so turning
+// Coming soon off brings it straight back. YouTube signs in with the Google app, but the Google card's switch leaves it alone.
+const connStored = (kind) => (secrets().social || {})[kind] || null;
+const connPaused = (kind) => kind !== 'youtube' && social.held(social.appKey(kind));
+const connOf = (kind) => (connPaused(kind) ? null : connStored(kind));
 function setConnection(kind, conn) {
   const sec = { ...secrets() }; sec.social = { ...(sec.social || {}) }; if (conn) sec.social[kind] = conn; else delete sec.social[kind]; db.secrets = sec; save();
   const t = tenancy.current(); t.social = Object.keys(sec.social); tenancy.savePlatform(); // Alpha shows how many businesses use each connection
 }
 function saveConnection(kind, conn) {
-  const old = connOf(kind); if (kind === 'google' && old && old.booking && old.location === conn.location) conn.booking = true; // reconnecting keeps online booking on
+  const old = connStored(kind); if (kind === 'google' && old && old.booking && old.location === conn.location) conn.booking = true; // reconnecting keeps online booking on
   setConnection(kind, conn);
 }
 // a refreshed sign-in is saved at once (lib/networks.js, lib/social.js), inside the account whose request or check refreshed it
@@ -5260,15 +5265,15 @@ networks.onRenew(() => save()); social.onRenew(() => save());
 // emailed once. Connecting again replaces the connection, which clears it; a later call that works clears it too.
 const CONN_LABEL = { google: 'Google Business Profile', facebook: 'Facebook', instagram: 'Instagram', linkedin: 'LinkedIn', pinterest: 'Pinterest', threads: 'Threads', tiktok: 'TikTok', youtube: 'YouTube' };
 function markBroken(kind, e) {
-  const c = connOf(kind); if (!c || !e || !e.reconnect) return;
+  const c = connStored(kind); if (!c || !e || !e.reconnect) return;
   if (c.broken) return; c.broken = { at: new Date().toISOString() }; save();
   const name = CONN_LABEL[kind] || kind; const o = db.users.find((x) => x.role === 'owner');
   if (o && o.email) sendTemplate('accountActivity', o.email, { title: `Reconnect ${name}`, message: `${name} has signed Worklio Pro out, so posts can’t go there until it’s connected again. Open Account Connections and click Reconnect next to ${name}, then sign in to ${name}. It takes about a minute, and nothing you’ve posted is lost.`, link: `${baseUrl()}/settings/connections#conn-${kind}` }, { server: true }).catch(() => {});
 }
-const markWorking = (kind) => { const c = connOf(kind); if (c && c.broken) { delete c.broken; save(); } };
+const markWorking = (kind) => { const c = connStored(kind); if (c && c.broken) { delete c.broken; save(); } };
 // LinkedIn makes the business sign in again once a year however often the sign-in is renewed: warn the owner two weeks ahead, once
 function warnEnding(kind) {
-  const c = connOf(kind); if (!c || c.broken || !c.refreshExpiresAt || c.refreshExpiresAt - Date.now() > 14 * 864e5 || c.endWarned === c.refreshExpiresAt) return;
+  const c = connStored(kind); if (!c || c.broken || !c.refreshExpiresAt || c.refreshExpiresAt - Date.now() > 14 * 864e5 || c.endWarned === c.refreshExpiresAt) return;
   c.endWarned = c.refreshExpiresAt; save();
   const name = CONN_LABEL[kind] || kind; const o = db.users.find((x) => x.role === 'owner'); const when = new Date(c.refreshExpiresAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
   if (o && o.email) sendTemplate('accountActivity', o.email, { title: `Reconnect ${name} by ${when}`, message: `${name} asks you to sign in again every so often, and your sign-in ends on ${when}. Open Account Connections and click Reconnect next to ${name} before then so posts keep going out.`, link: `${baseUrl()}/settings/connections#conn-${kind}` }, { server: true }).catch(() => {});
@@ -5281,7 +5286,7 @@ async function keepConnections() {
     for (const t of tenancy.platform().tenants.filter((x) => x.status === 'active')) { // every account: t.social isn't set on accounts that connected before it was added
       await tenancy.run(t, async () => {
         for (const kind of Object.keys(secrets().social || {})) {
-          const c = connOf(kind); if (!c || c.broken || !(kind === 'google' || networks.has(kind))) continue;
+          const c = connStored(kind); if (!c || c.broken || !(kind === 'google' || networks.has(kind))) continue;
           try { if (kind === 'google') { if (c.refreshToken) await social.googleKeepAlive(c); } else await networks.keepAlive(kind, c); }
           catch (e) { if (e.reconnect) markBroken(kind, e); else console.error('keeping connections:', t.slug, kind, e.message); }
           warnEnding(kind);
@@ -5333,11 +5338,11 @@ app.post('/api/connections/:kind/start', (req, res) => {
   res.json({ url: (networks.has(kind) ? networks.startUrl : social.startUrl)(kind, tenancy.current().id, currentUser(req).id, back) });
 });
 app.delete('/api/connections/:kind', async (req, res) => {
-  const kind = connKind(req, res); if (!kind) return; const c = connOf(kind);
+  const kind = connKind(req, res); if (!kind) return; const c = connStored(kind);
   if (c && kind === 'google') { if (c.bookingLink) await social.googleBookingLink(c, '').catch(() => {}); await social.googleRevoke(c); }
   if (c && networks.has(kind) && networks.NETWORKS[kind].revoke) await networks.NETWORKS[kind].revoke(c);
   // Facebook and an Instagram connected the old way (through Facebook) share one Facebook sign-in: only give up its access once neither uses it
-  if (c && c.userToken && (kind === 'facebook' || kind === 'instagram')) { const other = connOf(kind === 'facebook' ? 'instagram' : 'facebook'); if (!other || other.userToken !== c.userToken) await social.metaRevoke(c); }
+  if (c && c.userToken && (kind === 'facebook' || kind === 'instagram')) { const other = connStored(kind === 'facebook' ? 'instagram' : 'facebook'); if (!other || other.userToken !== c.userToken) await social.metaRevoke(c); }
   setConnection(kind, null); res.json(connectionsView());
 });
 // another Business Profile location, Facebook Page, LinkedIn page or Pinterest board the same sign-in manages
@@ -5380,6 +5385,7 @@ app.put('/api/connections/:kind', async (req, res) => {
 // Only records dated on or after the start date are sent, so books already kept by hand don't get duplicates.
 const books = () => db.accounting || null;
 const booksConn = () => secrets().accounting || null;
+const booksPaused = () => { const B = books(); return !!(B && social.held(B.provider)); }; // Alpha → Coming soon on QuickBooks or Xero: nothing syncs until it's off
 const hashOf = (o) => crypto.createHash('sha1').update(JSON.stringify(o)).digest('hex').slice(0, 16);
 const booksDay = (s) => String(s || '').slice(0, 10);
 const BOOKS_MAP = () => ({ clients: {}, invoices: {}, payments: {}, expenses: {} });
@@ -5412,6 +5418,7 @@ const booksRunning = new Set(); // accounts syncing right now
 async function syncBooks({ limit = 150, retry = false } = {}) {
   const B = books(); const conn = booksConn(); const P = B && accounting.PROVIDERS[B.provider];
   if (!B || !conn || !P) throw Object.assign(new Error('Connect QuickBooks or Xero first'), { status: 400 });
+  if (booksPaused()) throw Object.assign(new Error(`Syncing with ${P.name} is paused for now. Please try again later.`), { status: 503 });
   const tid = tenancy.current().id; if (booksRunning.has(tid)) return { busy: true };
   booksRunning.add(tid);
   B.map = { ...BOOKS_MAP(), ...(B.map || {}) }; B.errors = B.errors || {}; B.log = B.log || []; const map = B.map;
@@ -5516,7 +5523,7 @@ async function syncAllBooks() {
   if (booksTick) return; booksTick = true;
   try {
     for (const t of tenancy.platform().tenants.filter((x) => x.accounting && x.status === 'active')) {
-      await tenancy.run(t, async () => { const B = books(); if (!B || !B.auto || B.needsReconnect || !booksConn() || !tenancy.has('accounting') || !social.ready(B.provider)) return; await syncBooks({ limit: 100 }); })
+      await tenancy.run(t, async () => { const B = books(); if (!B || !B.auto || B.needsReconnect || !booksConn() || booksPaused() || !tenancy.has('accounting') || !social.ready(B.provider)) return; await syncBooks({ limit: 100 }); })
         .catch((e) => console.error('accounting sync:', t.slug, e.message));
     }
   } finally { booksTick = false; }
@@ -5563,7 +5570,7 @@ app.get('/api/home-depot/search', async (req, res) => {
 // the webhook and token stay in the secrets. A message that Slack refuses for good (channel removed, app uninstalled) marks it broken.
 function slackSend(event, text, link) {
   const S = db.slack; const conn = secrets().slack;
-  if (!S || !conn || S.broken || !slack.ready() || !marketplace.isOn(tenancy.platform()) || (S.events || {})[event] === false) return;
+  if (!S || !conn || S.broken || !slack.ready() || social.held('slack') || !marketplace.isOn(tenancy.platform()) || (S.events || {})[event] === false) return;
   const t = tenancy.current();
   slack.post(conn, text, link).catch((e) => {
     if (!e.reconnect) return console.error('slack:', t.slug, e.message);
