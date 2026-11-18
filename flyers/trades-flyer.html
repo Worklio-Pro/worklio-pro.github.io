@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Worklio Pro Flyer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Inter:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  @page { size: 8.5in 11in; margin: 0; }
+  :root {
+    --navy: #0a1640;
+    --blue: #2563eb;
+    --sky: #60a5fa;
+    --yellow: #facc15;
+    --ink: #0f172a;
+    --white: #ffffff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 8.5in; height: 11in; background: var(--navy); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { font-family: Inter, system-ui, sans-serif; color: var(--white); overflow: hidden; }
+
+  .page { position: relative; width: 8.5in; height: 11in; overflow: hidden;
+    background:
+      radial-gradient(circle at 92% 8%, rgba(37,99,235,.85) 0, rgba(37,99,235,0) 42%),
+      radial-gradient(circle at 0% 62%, rgba(96,165,250,.35) 0, rgba(96,165,250,0) 38%),
+      var(--navy);
+  }
+  /* subtle dot grid for texture */
+  .page::before { content: ""; position: absolute; inset: 0;
+    background-image: radial-gradient(rgba(255,255,255,.07) 1.2px, transparent 1.3px);
+    background-size: 18px 18px; }
+
+  .top { position: relative; display: flex; align-items: center; justify-content: space-between; padding: .5in .55in 0; }
+  .brand { display: flex; align-items: center; gap: 12px; font-family: "Bricolage Grotesque", sans-serif; font-weight: 800; font-size: 26px; letter-spacing: -.01em; }
+  .brand svg { width: 46px; height: 46px; border-radius: 12px; background: var(--white); }
+  .tagline { font-weight: 600; font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--sky); }
+
+  .headline { position: relative; padding: .38in .55in 0; font-family: "Bricolage Grotesque", sans-serif; font-weight: 800; line-height: .9; letter-spacing: -.035em; }
+  .headline .l1 { font-size: 86px; display: block; }
+  .headline .l2 { font-size: 104px; display: inline-block; color: var(--navy); background: var(--yellow); padding: 4px 18px 12px; margin-top: 10px; border-radius: 14px; transform: rotate(-2deg); box-shadow: 8px 8px 0 var(--blue); }
+  .sub { position: relative; padding: .3in .55in 0; font-size: 21px; font-weight: 500; line-height: 1.35; color: #dbe6ff; max-width: 7.6in; }
+  .sub b { color: var(--white); font-weight: 700; }
+
+  /* photo cards */
+  .photos { position: relative; height: 3.6in; margin-top: .5in; }
+  .card { position: absolute; width: 2.6in; background: var(--white); padding: 9px 9px 0; border-radius: 10px; box-shadow: 0 14px 30px rgba(0,0,0,.45); }
+  .card img { display: block; width: 100%; height: 2.25in; object-fit: cover; border-radius: 5px; }
+  .card .cap { font-family: "Bricolage Grotesque", sans-serif; font-weight: 800; font-size: 27px; color: var(--ink); letter-spacing: -.02em; padding: 7px 4px 10px; display: flex; align-items: center; gap: 8px; }
+  .card .cap i { font-style: normal; display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--blue); color: var(--white); font-size: 16px; }
+  .c1 { left: .4in; top: .12in; transform: rotate(-6deg); }
+  .c2 { left: 2.95in; top: .34in; transform: rotate(2.5deg); z-index: 2; }
+  .c3 { left: 5.48in; top: .08in; transform: rotate(-3deg); }
+
+  /* 30 days free sticker */
+  .sticker { position: absolute; right: .5in; top: 2.05in; width: 1.55in; height: 1.55in; border-radius: 50%;
+    background: var(--yellow); color: var(--navy); display: grid; place-items: center; text-align: center;
+    transform: rotate(12deg); box-shadow: 0 10px 24px rgba(0,0,0,.4); border: 4px dashed rgba(10,22,64,.35); z-index: 5; }
+  .sticker div { font-family: "Bricolage Grotesque", sans-serif; font-weight: 800; line-height: .9; }
+  .sticker .n { font-size: 52px; letter-spacing: -.04em; display: block; }
+  .sticker .t { font-size: 17px; letter-spacing: .02em; display: block; margin-top: 2px; }
+
+  /* bottom panel */
+  .bottom { position: absolute; left: .4in; right: .4in; bottom: .4in; background: var(--white); color: var(--ink);
+    border-radius: 22px; padding: .26in .3in; display: flex; align-items: center; gap: .3in; }
+  .qr { flex: none; width: 1.5in; height: 1.5in; padding: 6px; border-radius: 12px; border: 3px solid var(--blue); background: #fff; }
+  .qr img { width: 100%; height: 100%; display: block; }
+  .cta { flex: 1; }
+  .cta .scan { font-family: "Bricolage Grotesque", sans-serif; font-weight: 800; font-size: 36px; letter-spacing: -.025em; line-height: 1; }
+  .cta .scan span { color: var(--blue); }
+  .cta .url { font-family: "Bricolage Grotesque", sans-serif; font-weight: 800; font-size: 26px; color: var(--blue); margin-top: 6px; }
+  .ticks { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .ticks li { font-size: 13.5px; font-weight: 700; background: #eef3fb; color: #1e3a8a; padding: 7px 12px; border-radius: 999px; white-space: nowrap; }
+  .ticks li::before { content: "✓ "; color: #16a34a; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="top">
+    <div class="brand">
+      <svg viewBox="0 0 1024 1024" aria-hidden="true"><path d="M232 330 L352 714 L512 446 L672 714 L792 330" fill="none" stroke="#2563eb" stroke-width="110" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Worklio Pro
+    </div>
+    <div class="tagline">For the trades</div>
+  </div>
+
+  <h1 class="headline">
+    <span class="l1">Less paperwork.</span>
+    <span class="l2">More jobs.</span>
+  </h1>
+
+  <p class="sub">Quotes, scheduling and payments. <b>Run it all from your phone.</b></p>
+
+  <div class="photos">
+    <div class="card c1"><img src="../public/img/industries/lawn-care.jpg" alt=""><div class="cap"><i>1</i>Quote it</div></div>
+    <div class="card c2"><img src="../public/img/industries/hvac.jpg" alt=""><div class="cap"><i>2</i>Book it</div></div>
+    <div class="card c3"><img src="../public/img/industries/pressure-washing.jpg" alt=""><div class="cap"><i>3</i>Get paid</div></div>
+  </div>
+
+  <div class="sticker"><div><span class="n">30</span><span class="t">DAYS FREE</span></div></div>
+
+  <div class="bottom">
+    <div class="qr"><img src="qr-workliopro.svg" alt="QR code to workliopro.com"></div>
+    <div class="cta">
+      <div class="scan">Scan to <span>start free</span></div>
+      <div class="url">workliopro.com</div>
+      <ul class="ticks">
+        <li>No credit card</li>
+        <li>Any phone</li>
+        <li>Set up in minutes</li>
+      </ul>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
