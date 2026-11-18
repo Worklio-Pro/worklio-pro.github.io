@@ -211,6 +211,11 @@ PAGES['/calendar'] = {
       : `${days[0].toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}–${days[0].getMonth() === days[6].getMonth() ? days[6].getDate() : days[6].toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}, ${days[6].getFullYear()}`;
     const week = scState.view === 'month' ? [] : days.map(ymd);
     const cols = scState.view === 'month' ? [] : scCols(days);
+    // phones, Team view: one person at a time, picked from a dropdown, instead of columns side by side
+    const allCols = [...cols]; const onePick = team && cols.length > 1 && matchMedia('(max-width:760px)').matches;
+    if (onePick) cols.splice(0, cols.length, cols.find((c) => c.s === scState.who) || cols.find((c) => c.s && c.s !== 'events') || cols[0]);
+    const colName = (c) => { const st = c.s && c.s !== 'events' ? byId(D.staff, c.s) : null; return st ? st.name : c.s ? 'Events' : 'Unassigned'; };
+    const whoPick = onePick ? `<label class="sc-who"><select id="scWho" aria-label="Team member">${allCols.map((c) => `<option value="${esc(c.s)}"${c === cols[0] ? ' selected' : ''}>${esc(colName(c))}</option>`).join('')}</select></label>` : '';
     if (cols.length) scFit(cols.flatMap(scColItems)); else { SC_START = SC_DAY_START; SC_END = SC_DAY_END; }
     const mini = `<div class="sc-mini"><div class="sc-mini-h"><strong>${first.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</strong><span><button type="button" data-act="scMonth" data-n="-1" aria-label="Previous month">‹</button><button type="button" data-act="scMonth" data-n="1" aria-label="Next month">›</button></span></div>
 <div class="sc-mini-g">${Array.from({ length: 7 }, (_, i) => `<span class="dow">${addDays(gridStart, i).toLocaleDateString('en-US', { weekday: 'short' }).slice(0, 2)}</span>`).join('')}${Array.from({ length: 42 }, (_, i) => { const d = addDays(gridStart, i); const s = ymd(d);
@@ -233,7 +238,7 @@ ${wait.length > SC_WAIT_MAX ? `<a class="sc-wmore" href="/quotes" data-link>+${w
     const col = (c) => `<div class="sc-col${c.d === today && !team ? ' today' : ''}" data-d="${c.d}"${scSAttr(c)}>${scLayout(scColItems(c).filter((x) => !x.anytime && x.start)).map((x) => { const top = (Math.max(x.s, SC_START * 60) - SC_START * 60) / 60 * SC_HOUR; const h = Math.max(18, (Math.min(x.e, SC_END * 60) - Math.max(x.s, SC_START * 60)) / 60 * SC_HOUR);
       return `<div class="sc-item k-${x.kind}${x.done ? ' done' : ''}" style="--c:${esc(scColColor(x, c))};top:${top}px;height:${h}px;left:calc(${(100 / x.cols) * x.col}% + 2px);width:calc(${100 / x.cols}% - 4px)" data-kind="${x.kind}" data-id="${x.id}" data-start="${x.start}" data-end="${scTime(x.e)}"${scSAttr(c)} ${edit ? 'data-drag="1"' : ''} title="${esc(`${fmtTime(x.start)}–${fmtTime(x.end)} · ${x.title}${x.sub ? ' · ' + x.sub : ''}`)}">
 <span class="sc-t">${esc(fmtTime(x.start))}</span><strong>${esc(x.title)}</strong>${x.sub && h > 40 ? `<span class="sc-s">${esc(x.sub)}</span>` : ''}${edit ? '<span class="sc-rz" title="Drag to change how long it takes"></span>' : ''}</div>`; }).join('')}${c.d === today && nowMin >= SC_START * 60 && nowMin < SC_END * 60 ? `<div class="sc-now" style="top:${(nowMin - SC_START * 60) / 60 * SC_HOUR}px"></div>` : ''}</div>`;
-    const grid = team && !cols.length ? '<div class="card muted">Everyone is hidden. Tick team members under Team calendars to see their day.</div>' : `<div class="sc-grid${team ? ' team' : ''}" style="--days:${cols.length}">
+    const grid = team && !cols.length ? '<div class="card muted">Everyone is hidden. Tick team members under Team calendars to see their day.</div>' : `<div class="sc-grid${team ? ' team' : ''}${onePick ? ' one' : ''}" style="--days:${cols.length}">
 <div class="sc-head"><div class="sc-gut">${esc(Intl.DateTimeFormat().resolvedOptions().timeZone.split('/').pop().replace('_', ' '))}</div>${team ? cols.map(personHead).join('') : days.map(dayHead).join('')}</div>
 <div class="sc-head sc-anyrow"><div class="sc-gut">Anytime</div>${cols.map(lane).join('')}</div>
 <div class="sc-body" id="scBody"><div class="sc-hours">${Array.from({ length: SC_END - SC_START }, (_, i) => `<div style="height:${SC_HOUR}px"><span>${fmtTime(scTime((SC_START + i) * 60)).replace(':00', '')}</span></div>`).join('')}</div>
@@ -242,10 +247,11 @@ ${wait.length > SC_WAIT_MAX ? `<a class="sc-wmore" href="/quotes" data-link>+${w
 <aside class="sc-side">${mini}${waitHtml}<div class="sc-team"><h3>Team calendars</h3>${teamCals.map(([id, n, c]) => `<label><input type="checkbox" data-act="scTeam" data-id="${esc(id)}" ${scState.hidden.includes(id) ? '' : 'checked'} style="accent-color:${esc(c)}"> ${esc(n)}</label>`).join('')}</div></aside>
 <section class="sc-main"><div class="sc-bar"><button type="button" class="btn alt sm" data-act="scToday">Today</button><button type="button" class="btn alt sm sc-arrow" data-act="scStep" data-n="-1" aria-label="Previous">‹</button><button type="button" class="btn alt sm sc-arrow" data-act="scStep" data-n="1" aria-label="Next">›</button>
 <h2 class="sc-range">${esc(range)}</h2><span style="flex:1"></span>${wait.length ? `<button type="button" class="btn alt sm sc-wait-btn" data-act="scWaitList">To schedule (${wait.length})</button>` : ''}${views}</div>
-${scState.view === 'month' ? scMonthHtml(first, today, edit) : grid}</section></div>`;
+${scState.view === 'month' ? scMonthHtml(first, today, edit) : whoPick + grid}</section></div>`;
     if (scState.view === 'month') return scMonthWire(main, edit);
     const body = $('#scBody'); const nowH = new Date().getHours(); if (body) body.scrollTop = Math.max(0, ((week.includes(today) ? nowH - 1 : 7) - SC_START) * SC_HOUR);
     scWire(main, edit);
+    const who = $('#scWho'); if (who) who.addEventListener('change', () => { scState.who = who.value; scGoTo(); });
   },
 };
 // the add/edit box belongs to the day and time it was opened on: changing the view, the day or who's shown closes it
