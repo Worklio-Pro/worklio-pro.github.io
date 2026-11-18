@@ -2747,3 +2747,30 @@ body.p404-only #billingBar{display:none!important}
 /* a Beta tag in a card's title on a dark card (dark theme): a yellow ring so it doesn't sink into the background */
 @media (prefers-color-scheme:dark){:root:not([data-theme=light]) .card :is(h1,h2,h3,h4) .beta-tag{box-shadow:inset 0 0 0 1px #facc15}}
 :root[data-theme=dark] .card :is(h1,h2,h3,h4) .beta-tag{box-shadow:inset 0 0 0 1px #facc15}
+
+/* phones: feel like a native app. The bottom menu floats in a rounded box whose corners follow the screen's corners
+   (screen corner minus the gap around it), every button is a pill, and cards, boxes and sheets have big round corners */
+@media (max-width:760px){
+ :root{--bnav-gap:7px;--scr-r:52px}
+ html,body{-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none}
+ #bnav{left:var(--bnav-gap);right:var(--bnav-gap);bottom:var(--bnav-gap);padding:8px 8px max(8px,calc(env(safe-area-inset-bottom) - 14px));border:1px solid var(--line);border-radius:calc(var(--scr-r) - var(--bnav-gap));background:color-mix(in srgb,var(--card) 68%,transparent);-webkit-backdrop-filter:saturate(190%) blur(24px);backdrop-filter:saturate(190%) blur(24px);box-shadow:inset 0 1px 0 rgba(255,255,255,.55),0 10px 30px rgba(15,23,42,.18),0 1px 3px rgba(15,23,42,.08);-webkit-user-select:none;user-select:none}
+ #bnav a,#bnav button{padding:8px 2px;border-radius:999px;transition:background .15s,transform .1s}
+ #bnav a.on,#bnav button[aria-expanded="true"]{background:color-mix(in srgb,var(--brand) 13%,transparent)}
+ #bnav a:active,#bnav button:active{transform:scale(.94)}
+ #main{padding-bottom:calc(110px + env(safe-area-inset-bottom))}
+ /* the More menu runs behind the see-through tab bar, like a native app */
+ #side{bottom:0;padding-bottom:calc(var(--bnav-h,90px) + var(--bnav-gap) + 24px)}
+ #toast{bottom:calc(var(--bnav-h,90px) + var(--bnav-gap) + 12px)}
+ /* save bars float just above the tab bar, rounded to match it */
+ .qsave,.ce-foot,.rpm+.rp-save{left:var(--bnav-gap);right:var(--bnav-gap);bottom:calc(var(--bnav-h,90px) + var(--bnav-gap) * 2);border:1px solid var(--line);border-radius:28px;box-shadow:0 8px 24px rgba(15,23,42,.14)}
+ #main:has(.qsave,.ce-foot,.rpm+.rp-save){padding-bottom:calc(var(--bnav-h,90px) + 130px)}
+ /* pill buttons, pressed feel */
+ :where(#main,.modal,.mpage,.msheet) .btn,:where(#main,.modal,.mpage,.msheet) .btn.sm,.ms-foot .btn,.md-acts .btn,.pfm-foot .btn{border-radius:999px}
+ .btn,.icon-btn{transition:transform .1s}.btn:active,.icon-btn:active{transform:scale(.97)}
+ .icon-btn{border-radius:999px}
+ /* big round corners on cards, boxes and pop-ups */
+ .card:not(.sched-card){border-radius:22px}
+ .modal{border-radius:26px}.msheet.bottom .ms-panel{border-radius:28px 28px 0 0}
+ :where(#main,.modal,.mpage,.msheet) input:where(:not([type=checkbox],[type=radio],[type=range],[type=color],[type=file])),:where(#main,.modal,.mpage,.msheet) select,:where(#main,.modal,.mpage,.msheet) textarea{border-radius:16px}
+ .side-search input,#side a.nav-link,#side .side-settings a,.side-set-btn,.side-back{border-radius:16px}
+}
