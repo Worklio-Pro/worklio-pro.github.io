@@ -1966,6 +1966,8 @@ label.bk-auto input{width:auto;margin:0}
  .m-tprod :is(th,td):not(:first-child):not(:nth-last-child(-n+2)),.m-aging :is(th,td):not(:first-child):not(:last-child),.m-jprofit :is(th,td):not(:first-child):last-child{display:none}
  /* a row with an Edit or View button opens it when tapped (app.js); the button is hidden, and its column when nothing else is in it */
  .row-edit{display:none!important}
+ /* Expenses and Payments → Payouts: headings wrap, and a payout’s Stripe ID is cut short, so the table fits the screen */
+ .m-exp th,.po-table th{white-space:normal}.m-exp .th-btn,.po-table .th-btn{text-align:left}.po-table .po-id{max-width:34vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
  tr:has(.row-edit){cursor:pointer;-webkit-tap-highlight-color:transparent}tr:has(.row-edit):active{background:var(--surface-2)}
  table:not(:has(td.actions>:not(.row-edit))) td.actions,table:not(:has(td.actions>:not(.row-edit))):has(.row-edit) th:empty:last-child{display:none}
  /* one size for buttons and boxes everywhere in the app, as big as on the quote, job and invoice pages */
