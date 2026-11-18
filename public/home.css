@@ -322,9 +322,3 @@ body{background-color:var(--card);background-image:var(--h-dots);background-size
 .calc-trades a:hover{border-color:var(--brand);color:var(--brand)}
 @media (max-width:860px){.calc{grid-template-columns:1fr}.calc-out{position:static}}
 @media (max-width:480px){.calc-grid{grid-template-columns:1fr}.calc-form,.calc-out{padding:18px}}
-/* phones are upright only: turned sideways, the page is covered by "Turn your phone upright" (browsers can't lock rotation on iPhone); tablets and computers rotate freely */
-@media (orientation:landscape) and (max-height:500px) and (hover:none) and (pointer:coarse){
- html,body{overflow:hidden}
- body::after{content:"Turn your phone upright";position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;padding:96px 24px 24px;text-align:center;font-size:18px;font-weight:700;color:var(--text,#0f172a);
-  background:var(--bg,#fff) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%233b82f6' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='6' y='2' width='12' height='20' rx='2.5'/%3E%3Cpath d='M11 18h2'/%3E%3C/svg%3E") no-repeat center calc(50% - 30px)/56px 56px}
-}
