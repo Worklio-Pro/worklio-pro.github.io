@@ -2785,7 +2785,7 @@ body.p404-only #billingBar{display:none!important}
 .me-m{display:none}
 @media (max-width:760px){
  .me-m{display:block}
- #topbar :is(.tb-ref,.tb-fb,.tb-news,[data-act=openHelp]){display:none!important}
+ #topbar>:is(.tb-ref,.tb-fb,.tb-news,[data-act=openHelp]){display:none!important}
  #topbar{gap:8px}
  #topbar .tb-logo{flex:none;max-width:96px}#topbar .tb-logo img{max-height:34px;max-width:96px}#topbar .tb-logo span{font-size:15px}
  #topbar .tb-search{flex:1;width:auto;min-width:0;margin:0;position:static}
