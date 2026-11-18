@@ -275,7 +275,7 @@ function renderSide(path) {
 let sideMini = (() => { try { return localStorage.getItem('sideMini') === '1'; } catch (e) { return false; } })();
 const applyMini = () => { const side = $('#side'); side.classList.toggle('mini', sideMini && !$('.side-settings', side)); };
 function fillSide(path) {
-  const side = $('#side'); side.innerHTML = sideHtml(path); $('.brand', side).after(searchBox()); applyMini();
+  const side = $('#side'); side.innerHTML = sideHtml(path); placeSearch(); applyMini();
   // the round button on the menu's edge, by Settings; not on the Settings column, which always shows in full
   const btn = $('#sideMiniBtn'); btn.hidden = !!$('.side-settings', side); const mini = side.classList.contains('mini');
   const l = mini ? 'Expand menu' : 'Collapse menu'; btn.setAttribute('aria-label', l); btn.title = l;
@@ -422,7 +422,7 @@ function searchBox() {
 // "/" and the help panel's Search features: on a phone or narrow window the sidebar is a drawer, so open it first
 function focusSearch() {
   closeHelp(); const side = $('#side');
-  if (getComputedStyle(side).position === 'fixed') setTimeout(() => side.classList.add('open')); // after the click that would close the drawer
+  if (getComputedStyle(side).position === 'fixed' && side.contains($('#featSearch'))) setTimeout(() => side.classList.add('open')); // after the click that would close the drawer
   $('#featSearch').focus();
 }
 // What's new: the bell lists the latest three updates; a dot shows until the newest one has been seen
@@ -449,8 +449,17 @@ function renderTopbar(path) {
   if (!me) return;
   $('summary', mine).innerHTML = avatarHtml(me, 34);
   $('#meMenu').innerHTML = `<div class="me-head"><a href="/profile" data-link class="me-who${path === '/profile' ? ' on' : ''}" title="My profile">${avatarHtml(me, 40)}<span><strong>${esc(me.name)}</strong><small>${esc(me.email)}</small></span></a>
-<button type="button" class="tb-icon me-qr" data-act="businessQr" title="QR code" aria-label="Show QR code">${svgIcon(ICONS.qr)}</button></div><hr class="mi-sep"><button type="button" class="me-out" data-act="logout">Log out</button>`;
+<button type="button" class="tb-icon me-qr" data-act="businessQr" title="QR code" aria-label="Show QR code">${svgIcon(ICONS.qr)}</button></div><hr class="mi-sep">
+<div class="me-m">${referralsOn() && memberCan('/rewards') ? `<a class="mi" href="/rewards" data-link>${svgIcon(ICONS.gift, 18)}Refer &amp; earn</a>` : ''}<button type="button" class="mi" data-act="feedbackForm">${svgIcon(ICONS.feedback, 18)}Feedback</button><a class="mi" href="${esc(((company.account && company.account.ideasUrl) || '') + '/changelog')}" target="_blank" rel="noopener">${svgIcon(ICONS.megaphone, 18)}What’s new</a><button type="button" class="mi" data-act="openHelp">${svgIcon(ICONS.help, 18)}Help and support</button><hr class="mi-sep"></div><button type="button" class="me-out" data-act="logout">Log out</button>`;
+  placeSearch();
 }
+// phones: the search sits in the top bar (help, feedback, what's new and rewards move into the name menu); wider screens: in the sidebar under the logo
+function placeSearch() {
+  const el = searchBox(); const mine = $('.tb-me'); const brand = $('#side .brand');
+  if (matchMedia('(max-width:760px)').matches && mine) { if (el.nextElementSibling !== mine) mine.before(el); }
+  else if (brand && brand.nextElementSibling !== el) brand.after(el);
+}
+matchMedia('(max-width:760px)').addEventListener('change', () => placeSearch());
 // the business's QR code: its online booking page (or its web address when the plan has no booking), to print or share
 // the business page (Settings → Business Page) that the QR code opens; ?qr=1 counts the scan
 const pageLink = () => ((company.account && company.account.url) || location.origin) + '/card';
