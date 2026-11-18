@@ -2509,7 +2509,7 @@ const plShown = (x) => { const f = plCal.f; return (!f.kind.length || f.kind.inc
 function plChip(x, wide) {
   const icons = x.to.filter((k) => CONN_ICONS[k]).map((k) => CONN_ICONS[k]).join('');
   const st = PL_ST[plTabOf(x)] + (x.status === 'expired' ? ' (not approved in time)' : '');
-  return `<button type="button" class="pl-chip ${x.status}"${!wide && ['suggested', 'scheduled', 'expired'].includes(x.status) ? ' data-drag="1"' : ''} data-act="plGo" data-id="${x.id}" data-tab="${plTabOf(x)}" title="${esc(`${fmtTime(x.time)} · ${x.title} · ${st}`)}"><span class="pl-ct">${wide ? '' : `<b>${fmtTime(x.time)}</b> `}${esc(x.title)}</span>${icons ? `<span class="pl-ci">${icons}</span>` : ''}${wide ? `<span class="pl-cm">${fmtTime(x.time)} · ${esc(st)}</span>` : ''}</button>`;
+  return `<button type="button" class="pl-chip ${x.status}"${!wide && ['suggested', 'scheduled', 'expired', 'skipped'].includes(x.status) ? ' data-drag="1"' : ''} data-act="plGo" data-id="${x.id}" data-tab="${plTabOf(x)}" title="${esc(`${fmtTime(x.time)} · ${x.title} · ${st}`)}"><span class="pl-ct">${wide ? '' : `<b>${fmtTime(x.time)}</b> `}${esc(x.title)}</span>${icons ? `<span class="pl-ci">${icons}</span>` : ''}${wide ? `<span class="pl-cm">${fmtTime(x.time)} · ${esc(st)}</span>` : ''}</button>`;
 }
 function plFilterMenu(P) {
   const nets = P.nets.filter((k) => SP_NAMES[k]); // the social accounts connected now
@@ -2558,7 +2558,7 @@ A.plCalMove = (d) => {
   else plCal.anchor = plDayAfter(a, 7 * n);
   plCalDraw();
 };
-// month view: drag a post (to approve, scheduled or expired) to another day, like the Calendar page. A tap still opens it.
+// month view: drag a post (to approve, scheduled, expired or skipped) to another day; a skipped or expired one goes back to To approve, like the Calendar page. A tap still opens it.
 document.addEventListener('pointerdown', (e) => {
   const el = e.target.closest && e.target.closest('.pl-mday .pl-chip[data-drag]'); if (!el || e.button !== 0) return;
   const cells = $$('.pl-mday'); const sx = e.clientX; const sy = e.clientY; const box = el.getBoundingClientRect(); let ghost = null; let target = null;
@@ -2575,7 +2575,8 @@ document.addEventListener('pointerdown', (e) => {
     ghost.remove(); el.classList.remove('sc-dragging'); cells.forEach((x) => x.classList.remove('drop'));
     const stop = (c) => { c.stopPropagation(); c.preventDefault(); }; addEventListener('click', stop, true); setTimeout(() => removeEventListener('click', stop, true), 0); // no click after a drag
     if (!target || target === el.closest('.pl-mday').dataset.d) return;
-    try { await api('POST', `/api/marketing/plan/${el.dataset.id}/move`, { day: target }); toast(`Moved to ${fmtDate(target)}`); refresh(); } catch (x) { toast(x.message, true); }
+    const back = el.classList.contains('skipped') || el.classList.contains('expired');
+    try { await api('POST', `/api/marketing/plan/${el.dataset.id}/move`, { day: target }); toast(`Moved to ${fmtDate(target)}${back ? '. It’s back in To approve.' : ''}`); refresh(); } catch (x) { toast(x.message, true); }
   };
   addEventListener('pointermove', move); addEventListener('pointerup', up);
 });
