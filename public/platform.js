@@ -576,7 +576,10 @@ const saleText = (p) => {
   if (bad) return { t: 'Check prices', c: 'bad', err: p[bad[1]] > 0 ? `The ${bad[1]} sale price must be lower than $${p[bad[1]]}.` : `A ${bad[1]} sale price needs a regular ${bad[1]} price.` };
   const day = p.saleEnds ? new Date(p.saleEnds + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
   if (p.saleEnds && p.saleEnds < ymdLocal(new Date())) return { t: `Ended ${day}`, c: '' };
-  return { t: day ? `On until ${day}` : 'On now', c: 'on' };
+  const taken = Number(p.saleTaken) || 0;
+  if (p.saleSpots > 0 && taken >= p.saleSpots) return { t: `All ${p.saleSpots} spots taken`, c: '' };
+  const spots = p.saleSpots > 0 ? ` · ${p.saleSpots - taken} of ${p.saleSpots} spots left` : '';
+  return { t: (day ? `On until ${day}` : 'On now') + spots, c: 'on' };
 };
 const saleTag = (p) => { const s = saleText(p); return `<span class="pc-tag ${s.c}">${esc(s.t)}</span>`; };
 const money$ = (p, i, k, ph, l) => `<label>${l}<span class="money"><input type="number" inputmode="decimal" min="0" step="0.01" data-i="${i}" data-k="${k}" value="${p[k] ?? ''}" placeholder="${ph}" aria-label="${l} for ${esc(p.name)}"></span></label>`;
@@ -591,8 +594,9 @@ const planFields = (p, i, used = '', rm = '') => `<div class="pc">
 <div class="pc-sec"><span>Sale</span><span data-sale="${i}">${saleTag(p)}</span></div>
 <div class="pr-pair">${money$(p, i, 'saleMonthly', '39', 'Monthly')}${money$(p, i, 'saleYearly', '390', 'Yearly')}</div>
 <div class="pc-err" data-saleerr="${i}">${esc(saleText(p).err || '')}</div>
-<label>Sale name <span class="muted">(optional)</span><input data-i="${i}" data-k="saleName" value="${esc(p.saleName || '')}" maxlength="30" placeholder="Early Bird, Christmas, New Year" aria-label="Sale name for ${esc(p.name)}"></label>
+<label>Sale name <span class="muted">(optional)</span><input data-i="${i}" data-k="saleName" value="${esc(p.saleName || '')}" maxlength="30" placeholder="Founding Member, Christmas" aria-label="Sale name for ${esc(p.name)}"></label>
 <label>Last day <span class="muted">(optional)</span><input type="date" data-i="${i}" data-k="saleEnds" value="${esc(p.saleEnds || '')}" aria-label="Last day of the sale for ${esc(p.name)}"></label>
+<label>Spots <span class="muted">(optional; ends when they’re taken${p.saleTaken ? `, ${p.saleTaken} taken so far` : ''})</span><input type="number" inputmode="numeric" min="${p.saleTaken || 0}" data-i="${i}" data-k="saleSpots" value="${p.saleSpots || ''}" placeholder="25" aria-label="How many accounts can get the ${esc(p.name)} sale"></label>
 <div class="pc-sec"><span>Details</span></div>
 <label>Team logins <span class="muted">(0 = unlimited)</span><input type="number" inputmode="numeric" min="0" data-i="${i}" data-k="maxUsers" value="${p.maxUsers || 0}" aria-label="Team logins for ${esc(p.name)}"></label>
 ${money$(p, i, 'extraUser', 'none', 'Each extra login, a month')}
@@ -646,9 +650,9 @@ ${savebar}</div>`;
   const PRICES = ['monthly', 'yearly', 'saleMonthly', 'saleYearly', 'extraUser'];
   $$('input[data-k], textarea[data-k]', main).forEach((i) => i.addEventListener('input', () => {
     const p = P[i.dataset.i]; const k = i.dataset.k;
-    p[k] = k === 'maxUsers' || k === 'smsLimit' ? Math.max(0, parseInt(i.value, 10) || 0) : PRICES.includes(k) ? (Number(i.value) > 0 ? Number(i.value) : null) : i.value;
+    p[k] = k === 'maxUsers' || k === 'smsLimit' || k === 'saleSpots' ? Math.max(0, parseInt(i.value, 10) || 0) : PRICES.includes(k) ? (Number(i.value) > 0 ? Number(i.value) : null) : i.value;
     if ((k === 'saleEnds' || k === 'saleName') && !i.value) delete p[k];
-    if (PRICES.includes(k) || k === 'saleEnds') { $(`[data-save="${i.dataset.i}"]`, main).textContent = saveText(p); $(`[data-sale="${i.dataset.i}"]`, main).innerHTML = saleTag(p); $(`[data-saleerr="${i.dataset.i}"]`, main).textContent = saleText(p).err || ''; }
+    if (PRICES.includes(k) || k === 'saleEnds' || k === 'saleSpots') { $(`[data-save="${i.dataset.i}"]`, main).textContent = saveText(p); $(`[data-sale="${i.dataset.i}"]`, main).innerHTML = saleTag(p); $(`[data-saleerr="${i.dataset.i}"]`, main).textContent = saleText(p).err || ''; }
     if (k === 'name') { const tabBtn = $(`.pl-pick [data-i="${i.dataset.i}"]`, main); if (tabBtn) tabBtn.firstChild.textContent = i.value || 'Untitled'; }
     markDirty(main);
   }));
