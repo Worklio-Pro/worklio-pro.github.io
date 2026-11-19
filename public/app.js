@@ -4004,12 +4004,22 @@ async function resendMany(kind, list, what, done) {
   const lang = (d) => (byId(D.clients, d.clientId) || {}).lang || ''; const mixed = new Set(ok.map(lang)).size > 1;
   let draft; try { draft = await api('GET', `/api/${kind}s/${((mixed && ok.find((d) => !lang(d))) || ok[0]).id}/email-draft?raw=1`); } catch (x) { return toast(x.message, true); }
   const who = ok.map((d) => `${esc(clientName(d.clientId))} <span class="muted">· ${esc(d.number)}</span>`);
-  const m = modal(`Email a ${what}`, `<form id="rmF"><p style="margin-top:0">To ${ok.length} client${s(ok.length)}: ${who.slice(0, 6).join(', ')}${ok.length > 6 ? ` and ${ok.length - 6} more` : ''}.${skip ? ` <span class="muted">${skip} without an email address ${skip === 1 ? 'is' : 'are'} skipped.</span>` : ''}</p>
-<label>Subject<input name="subject" value="${esc(draft.subject)}" required maxlength="200"></label>
-<label>Message<textarea name="message" rows="9" required>${esc(draft.message)}</textarea></label>
-<p class="muted" style="font-size:13px">Words in double braces, like {{client_name}}, are filled in for each client. A button to their ${kind} goes under the message.${mixed ? ' Some of these clients use another language: left as it is, each gets this email in their own language; changed, they all get your version.' : ''}</p>
-<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Send ${ok.length} email${s(ok.length)}</button></div></form>`);
-  const f = $('#rmF', m);
+  // the email on the right as one client will get it (their name, number, link and language), redrawn as you type; pick another client to see theirs
+  const m = modal(`Email a ${what}`, `<form id="rmF" class="em-form rm-form" data-sticky><div class="rm-grid"><div class="em-main"><p style="margin-top:0">To ${ok.length} client${s(ok.length)}: ${who.slice(0, 6).join(', ')}${ok.length > 6 ? ` and ${ok.length - 6} more` : ''}.${skip ? ` <span class="muted">${skip} without an email address ${skip === 1 ? 'is' : 'are'} skipped.</span>` : ''}</p>
+<label class="fl"><span>Subject</span><input name="subject" value="${esc(draft.subject)}" required maxlength="200"></label>
+<label class="fl"><span>Message</span><textarea name="message" rows="12" required>${esc(draft.message)}</textarea></label>
+<p class="muted em-note">Words in double braces, like {{client_name}}, are filled in for each client. A button to their ${kind} goes under the message.${mixed ? ' Some of these clients use another language: left as it is, each gets this email in their own language; changed, they all get your version.' : ''}</p></div>
+<div class="rm-side"><div class="rm-ph"><h3>Preview</h3>${ok.length > 1 ? `<select class="rm-who" aria-label="Preview the email for">${ok.map((d, i) => `<option value="${i}">${esc(clientName(d.clientId))} · ${esc(d.number)}</option>`).join('')}</select>` : ''}</div><div class="rm-subj muted"></div><iframe class="rm-frame" title="Email preview" sandbox="allow-popups allow-popups-to-escape-sandbox"></iframe></div></div>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Send ${ok.length} email${s(ok.length)}</button></div></form>`, true);
+  const f = $('#rmF', m); const frame = $('.rm-frame', m); const pick = $('.rm-who', m); let seq = 0; let timer = null;
+  const draw = async () => {
+    const n = ++seq; const d = ok[pick ? Number(pick.value) : 0]; const subject = f.subject.value.trim(); const message = f.message.value.trim();
+    const own = subject === draft.subject.trim() && message === draft.message.trim();
+    try { const r = await api('POST', `/api/${kind}s/${d.id}/email-preview`, own ? { own: true } : { subject, message }); if (n !== seq) return;
+      $('.rm-subj', m).textContent = r.subject ? `Subject: ${r.subject}` : ''; frame.srcdoc = r.html; } catch (x) { /* keep the last preview */ }
+  };
+  const later = () => { clearTimeout(timer); timer = setTimeout(draw, 350); };
+  f.subject.addEventListener('input', later); f.message.addEventListener('input', later); if (pick) pick.addEventListener('change', draw); draw();
   f.addEventListener('submit', async (e) => {
     e.preventDefault(); const go = $('button.btn:not(.alt)', f); go.disabled = true; const email = { subject: f.subject.value.trim(), message: f.message.value.trim() }; const own = email.subject === draft.subject.trim() && email.message === draft.message.trim(); // unchanged: each client's own template, in their language
     let sent = 0; let failed = 0;

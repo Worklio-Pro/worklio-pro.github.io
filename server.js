@@ -2877,6 +2877,17 @@ app.post('/api/invoices/:id/send', async (req, res) => {
     const doc = db[col].find((x) => x.id === req.params.id); if (!doc) return res.status(404).json({ error: 'Not found' });
     const u = currentUser(req); res.json({ ...emailDraft(kind, doc, kind === 'invoice' && req.query.receipt === '1', req.query.raw === '1'), me: (u && u.email) || '' }); // ?receipt=1: a paid invoice's receipt
   });
+  // the email as this client will get it (group follow-ups and reminders show it on the right): own: the template left unchanged, in the
+  // client's own language (what send gives without an email); else the subject and message typed, as emailDocIn sends them
+  app.post(`/api/${col}/:id/email-preview`, (req, res) => {
+    const doc = db[col].find((x) => x.id === req.params.id); if (!doc) return res.status(404).json({ error: 'Not found' }); const b = req.body || {};
+    const m = inClientLang(doc.clientId, () => {
+      if (b.own) return renderEmail(tplOf(kind, doc), docVars(kind, doc));
+      const draft = emailDraft(kind, doc); const message = String(b.message || '').trim().slice(0, 10000) || draft.message;
+      return renderEmail(tplOf(kind, doc), docVars(kind, doc), { subject: String(b.subject || draft.subject).slice(0, 200), body: `${message}\n\n[${draft.button}]({{link}})` });
+    });
+    res.json({ subject: m.subject, html: m.html });
+  });
   app.get(`/api/${col}/:id/pdf`, (req, res) => {
     const doc = db[col].find((x) => x.id === req.params.id); if (!doc) return res.status(404).json({ error: 'Not found' });
     res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Content-Disposition', `inline; filename="${pdfName(kind, doc)}"`); res.end(docPdf(kind, doc));
