@@ -140,6 +140,8 @@ button.cstat{cursor:pointer}button.cstat:hover{border-color:var(--brand)}
 button.pill{padding:0 14px;font:inherit;font-size:14px}.pill.on{background:var(--tint-strong);border-color:var(--tint-border)}
 .csearch{margin-left:auto;width:260px}
 .bulk{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--tint);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:15px}
+.cfilters .bulk{margin:0;padding:0 3px 0 12px;gap:6px;height:40px;box-sizing:border-box;flex-wrap:nowrap;white-space:nowrap} /* sits in the filter row, next to the first filter, no taller than the filters, so ticking a row doesn't push the list down */
+@media (min-width:761px){.cfilters .bulk .btn.sm{padding:6px 14px;line-height:20px}}
 @media (min-width:761px){.bulk .btn.sm{padding:9px 16px;font-size:15px;line-height:20px;border-radius:9px}} /* computers: the buttons that show once rows are ticked, big enough to hit easily (phones already have big buttons) */
 .ctable .sel-td{width:48px;cursor:default}.ctable .sel-td input{width:26px;height:26px;margin:0;cursor:pointer;accent-color:var(--brand)}
 /* computers: a row's tick box shows when the row is hovered (or ticked); once anything is ticked, every box shows so more can be picked */
