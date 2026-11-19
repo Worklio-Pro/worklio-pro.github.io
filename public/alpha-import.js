@@ -80,7 +80,7 @@ const IM_ORDER = ['clients', 'services', 'jobs', 'quotes', 'invoices', 'payments
 const IM_NEEDS = { clients: [['name', 'first', 'last', 'company'], 'the client name'], services: [['name'], 'the item name'], quotes: [['total', 'subtotal', 'itemTotal', 'itemPrice'], 'an amount'],
   jobs: [['date', 'closedDate'], 'the date'], invoices: [['total', 'subtotal', 'itemTotal', 'itemPrice'], 'an amount'], payments: [['amount'], 'the amount'], expenses: [['amount'], 'the amount'] };
 const IM_TIPS = {
-  jobber: 'In Jobber, each list (Clients, Jobs, Quotes, Invoices) and most reports (Payments, Products & services, Expenses) have an Export / Download CSV button.',
+  jobber: 'In Jobber, each list (Clients, Jobs, Quotes, Invoices) and most reports (Payments, Products & services, Expenses) have an Export / Download CSV button. Import Products & services before quotes, jobs and invoices: Jobber leaves line descriptions out of those exports, so each line takes its description from the product or service of the same name.',
   housecallpro: 'In Housecall Pro, export customers from the Customers list and jobs, estimates, invoices and payments from Reporting (download as CSV).',
   workiz: 'In Workiz, use the Export button on the Clients and Jobs lists, and Reports for payments and invoices.',
   servicetitan: 'In ServiceTitan, run the report you need (Customers, Jobs, Invoices, Payments) and export it to CSV. Excel files must be saved as CSV first.',
