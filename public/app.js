@@ -257,7 +257,7 @@ const navFor = () => navList().map(([g, items]) => [g, items.filter(([p]) => (p 
 // a page in beta testing (Alpha → Pricing → Plans & features) says so in a banner at the top, instead of a tag in the menu
 // pages that are desk work (set up once, wide tables, files, builders): phones leave them out of the menu, the search and the Marketing tabs.
 // A link or bookmark still opens them, with a note that they work best on a computer
-const DESK_PAGES = ['/service-plans', '/automations', '/notifications', '/settings/company', '/settings/business-page', '/settings/roles', '/settings/emails', '/settings/job-forms', '/settings/import-export', '/settings/booking', '/settings/accounting', '/marketplace', '/clients/import', '/services/import'];
+const DESK_PAGES = ['/service-plans', '/automations', '/notifications', '/settings/company', '/settings/business-page', '/settings/roles', '/settings/emails', '/settings/job-forms', '/settings/import-export', '/settings/booking', '/settings/connections', '/settings/accounting', '/marketplace', '/clients/import', '/services/import'];
 const deskMq = matchMedia('(max-width:760px)');
 const deskOnly = (p) => deskMq.matches && DESK_PAGES.includes(p);
 deskMq.addEventListener('change', () => { if (me && !$('#main.portal')) renderSide(curPath()); });
