@@ -143,7 +143,7 @@ button.pill{padding:0 14px;font:inherit;font-size:14px}.pill.on{background:var(-
 .cfilters .bulk{margin:0;padding:0 3px 0 12px;gap:6px;height:40px;box-sizing:border-box;flex-wrap:nowrap;white-space:nowrap} /* sits in the filter row, next to the first filter, no taller than the filters, so ticking a row doesn't push the list down */
 @media (min-width:761px){.cfilters .bulk .btn.sm{padding:6px 14px;line-height:20px}}
 @media (min-width:761px){.bulk .btn.sm{padding:9px 16px;font-size:15px;line-height:20px;border-radius:9px}} /* computers: the buttons that show once rows are ticked, big enough to hit easily (phones already have big buttons) */
-.ctable .sel-td{width:48px;cursor:default}.ctable .sel-td input{width:26px;height:26px;margin:0;cursor:pointer;accent-color:var(--brand)}
+.ctable .sel-td{width:56px;cursor:default}.ctable .sel-td input{width:32px;height:32px;margin:0;cursor:pointer;accent-color:var(--brand)}
 /* computers: a row's tick box shows when the row is hovered (or ticked); once anything is ticked, every box shows so more can be picked */
 @media (hover:hover) and (min-width:761px){.ctable .sel-td input:not(:checked){opacity:0;transition:opacity .12s}.ctable tr:hover>.sel-td input,.ctable .sel-td input:focus-visible,.ctable table:has(.sel-td input:checked) .sel-td input{opacity:1}}
 .svc-cats{display:flex;flex-direction:column;gap:8px;margin:12px 0}.svc-catrow{display:flex;align-items:center;gap:10px}.svc-catrow input{flex:1;min-width:0;margin:0}.svc-catrow .muted{flex:none;font-size:13px;min-width:62px;text-align:right}
@@ -2535,7 +2535,7 @@ input[type=date]:not([data-nativecal]){cursor:pointer}
 .bc-f{display:flex;justify-content:flex-end;margin-top:8px}
 .svc-ds span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:var(--muted);font-size:13px}
 /* Products: descriptions two lines at most (the whole text on hover). Resizable tables (desktop): drag the right edge of a column heading */
-.rz-table{table-layout:fixed;width:100%}.tablewrap:has(>.rz-table){overflow-x:hidden}.rz-table td{overflow-wrap:anywhere}.rz-table th.sel-td{width:48px}
+.rz-table{table-layout:fixed;width:100%}.tablewrap:has(>.rz-table){overflow-x:hidden}.rz-table td{overflow-wrap:anywhere}.rz-table th.sel-td{width:56px}
 .rz-table th[data-col]{position:relative}.col-rz{position:absolute;top:0;right:-4px;bottom:0;width:9px;cursor:col-resize;z-index:2;touch-action:none}
 .col-rz::after{content:"";position:absolute;top:25%;bottom:25%;left:4px;width:1px;background:var(--line)}.col-rz:hover::after,.col-rzing .col-rz::after{background:var(--brand);width:2px}
 body.col-rzing{cursor:col-resize;user-select:none}

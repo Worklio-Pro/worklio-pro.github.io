@@ -1000,7 +1000,7 @@ function colResize(table, key, defs) {
   const ths = $$('th[data-col]', table); const sized = ths.slice(0, -1); if (!sized.length) return;
   // everything fits the table's box (no sideways scrolling): the last column keeps at least LAST_MIN
   const LAST_MIN = 140; const MIN = 60;
-  const room = () => table.parentElement.clientWidth - ($('th.sel-td', table) ? 44 : 0) - LAST_MIN;
+  const room = () => table.parentElement.clientWidth - ($('th.sel-td', table) ? 56 : 0) - LAST_MIN;
   const px = (th) => parseInt(th.style.width, 10) || th.getBoundingClientRect().width;
   const fit = () => { if (!table.isConnected) return removeEventListener('resize', fit); const sum = sized.reduce((t, th) => t + px(th), 0); const r = room();
     if (sum > r && r > 0) sized.forEach((th) => { th.style.width = Math.max(MIN, Math.floor(px(th) * r / sum)) + 'px'; }); };
