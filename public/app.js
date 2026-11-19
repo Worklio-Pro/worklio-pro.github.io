@@ -3675,7 +3675,13 @@ const moneyShort = (n) => (n >= 1000 ? '$' + (n / 1000).toFixed(n >= 1e5 ? 0 : 1
 // The Quotes page opens on Needs action: the client asked for changes, a deposit the client says they sent, approved with no job yet,
 // and quotes sent 7 or more days ago with no answer. Same layout as Invoices: status tabs, a one-line stats strip, rows grouped by why.
 // Sent: when this quote, job or invoice went to the client by email or text (d.sends from the server, newest first). Up to 3 lines, then how many more
-const sentMeta = (d) => { const s = (d && d.sends) || []; if (!s.length) return ''; const line = (x) => { const t = new Date(x.at); return `${fmtDate(ymd(t))} at ${fmtTime(t.toTimeString().slice(0, 5))} by ${x.channel === 'sms' ? 'text' : 'email'}`; };
+// Nothing in the message log (imported from another app, or marked Sent by hand): the date it was sent, the same one the Quotes list shows
+const IMPORT_FROM = { jobber: 'Jobber', housecallpro: 'Housecall Pro', workiz: 'Workiz', servicetitan: 'ServiceTitan', quickbooks: 'QuickBooks', square: 'Square', fieldedge: 'FieldEdge' };
+const sentOnly = (d) => {
+  const on = D.quotes.includes(d) ? qSentOn(d) : D.invoices.includes(d) ? String(d.sentAt || (d.status !== 'draft' ? d.issueDate || '' : '')).slice(0, 10) : ''; if (!on) return '';
+  const from = d.imported ? (IMPORT_FROM[d.imported.source] ? `Sent from ${IMPORT_FROM[d.imported.source]}` : 'Imported') : 'Marked as sent';
+  return `<dt>Sent</dt><dd class="sent-dd">${fmtDate(on)}<div class="muted sm-l">${from}</div></dd>`; };
+const sentMeta = (d) => { const s = (d && d.sends) || []; if (!s.length) return d ? sentOnly(d) : ''; const line = (x) => { const t = new Date(x.at); return `${fmtDate(ymd(t))} at ${fmtTime(t.toTimeString().slice(0, 5))} by ${x.channel === 'sms' ? 'text' : 'email'}`; };
   return `<dt>Sent</dt><dd class="sent-dd" title="${esc(s.map(line).join('\n'))}">${s.slice(0, 3).map((x, i) => (i ? `<div class="muted sm-l">${line(x)}</div>` : line(x))).join('')}${s.length > 3 ? `<div class="muted sm-l">${s.length - 3} more before that</div>` : ''}</dd>`; };
 let quoteView = { status: 'action', date: 'all', q: '', sort: 'urgent', dir: 1 }; const quoteSel = new Set(); let quoteStaleIds = [];
 const qDay = (s) => (s || '').slice(0, 10);
