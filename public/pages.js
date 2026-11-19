@@ -3186,8 +3186,8 @@ ${(co.holidays || []).length ? `<h3 class="cp-sec">${pt('Holiday hours')}</h3><t
     + (p.referralLink ? `<hr><button type="button" class="cp-nav cp-refer ${cur === 'refer' ? 'on' : ''}" data-cp="refer">${cpIcon('refer')}<span>${pt('Refer a Friend')}</span></button>` : '')
     // the language switch at the bottom: only for a client whose Preferred language isn't English (p.langNames)
     + (p.langNames ? `<div class="cp-lang" role="group" aria-label="${pt('Language')}">${cpIcon('globe', 18)}${Object.entries(p.langNames).map(([k, n]) => `<button type="button" lang="${k}" class="${k === CP_LANG ? 'on' : ''}" aria-pressed="${k === CP_LANG}" data-cp-lang="${k}">${esc(n)}</button>`).join('')}</div>` : '')
-    // "Sent with Worklio Pro · Try it free" (lib/powered-by.js): a small card at the very bottom (not .cp-sent: that is the blue Sent badge)
-    + (p.sentWith ? `<a class="cp-sentwith" href="${esc(p.sentWith.url)}" target="_blank" rel="noopener"><span>${esc(pt('Sent with {product}', { product: p.sentWith.product }))}</span><strong>${esc(pt('Try it free'))} <i aria-hidden="true">→</i></strong></a>` : '');
+    // "Powered by Worklio Pro · Try it free" (lib/powered-by.js): a small card at the very bottom (not .cp-sent: that is the blue Sent badge)
+    + (p.sentWith ? `<a class="cp-sentwith" href="${esc(p.sentWith.url)}" target="_blank" rel="noopener"><span>${esc(pt('Powered by {product}', { product: p.sentWith.product }))}</span><strong>${esc(pt('Try it free'))} <i aria-hidden="true">→</i></strong></a>` : '');
   const show = (section) => {
     if (!views[section] || (section === 'new-request' && p.reviewsViewOnly) || (section === 'refer' && !p.referralLink) || (section === 'reviews' && !p.reviews)) section = 'requests';
     $('.cp-navs', main).innerHTML = nav(section); $('.cp-main', main).innerHTML = views[section]();

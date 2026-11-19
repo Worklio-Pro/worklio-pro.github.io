@@ -14,7 +14,7 @@ const BASE_URL = process.env.BASE_URL || `https://workliopro.com/public`;
 const tenancy = require('./lib/tenancy');
 const emails = require('./lib/emails');
 const i18n = require('./lib/i18n'); const { tx } = i18n; // what clients see, in each client's language
-const poweredBy = require('./lib/powered-by'); // "Sent with Worklio Pro · Try it free" on what businesses send their clients
+const poweredBy = require('./lib/powered-by'); // "Powered by Worklio Pro · Try it free" on what businesses send their clients
 const brandLib = require('./lib/brand');
 const notFound = require('./lib/not-found'); // the Page not found page (Yoya) for the website, help centre and Ideas
 const referrals = require('./lib/referrals');
@@ -2623,7 +2623,7 @@ const inClientLang = (clientId, fn) => i18n.run(langFor(clientId), fn);
 const fmtUsPhone = (s) => { const t = String(s || '').trim(); let d = t.replace(/\D/g, ''); if (d.length === 11 && d[0] === '1') d = d.slice(1); else if (/^\+/.test(t)) return t; return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : t; };
 const companyBrand = (origin = baseUrl()) => ({ name: db.company.name || 'Your business', logoUrl: db.company.logo ? origin.replace(/\/+$/, '') + db.company.logo : '', color: db.company.brandColor,
   contact: [fmtUsPhone(db.company.phone), db.company.email, db.company.website] });
-function renderEmail(key, vars, t = emailTemplate(key), origin) { const m = emails.renderBusiness(t, { company_email: db.company.email || '', ...vars }, { ...companyBrand(origin), sentBy: tx('Sent by'), tryFree: tx('Try it free'), sentUrl: poweredBy.url('email'), lang: i18n.current() }); return { ...m, body: m.text }; }
+function renderEmail(key, vars, t = emailTemplate(key), origin) { const m = emails.renderBusiness(t, { company_email: db.company.email || '', ...vars }, { ...companyBrand(origin), sentBy: tx('Powered by'), tryFree: tx('Try it free'), sentUrl: poweredBy.url('email'), lang: i18n.current() }); return { ...m, body: m.text }; }
 
 // Settings → Email Templates edits one language at a time: ?lang=es (English when it's left out)
 const tplLang = (req) => i18n.pick(req.query.lang);
@@ -3119,7 +3119,7 @@ app.post('/api/jobs/:id/on-my-way', async (req, res) => {
 
 // ---------- public payment + quote pages ----------
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-// where: which page, for the "Sent with …" link's counts (lib/powered-by.js)
+// where: which page, for the "Powered by …" link's counts (lib/powered-by.js)
 function shell(title, inner, where = 'page') {
   const co = db.company;
   return `<!doctype html><html lang="${i18n.current()}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><link rel="icon" href="/favicon.ico">
@@ -4378,7 +4378,7 @@ app.get('/api/portal/:token', (req, res) => {
     langNames: lang === 'en' ? null : { en: 'English', [lang]: i18n.LANGUAGES[lang].native }, // the language switch at the bottom of the portal's menu
     company: { name: db.company.name, logo: db.company.logo, email: db.company.email, phone: db.company.phone, accentColor: accentColor(), address: db.company.addressPrivate ? '' : db.company.address, website: db.company.website, hours: db.company.showHours ? db.company.hours || null : null,
       holidays: db.company.showHours ? (db.company.holidays || []).filter((h) => h.to >= iso(new Date()) && h.from <= iso(new Date(Date.now() + 60 * 864e5))) : [] }, // holiday hours in the next 60 days
-    sentWith: { url: poweredBy.url('portal'), product: poweredBy.product() }, // "Sent with …" at the bottom of the menu (lib/powered-by.js)
+    sentWith: { url: poweredBy.url('portal'), product: poweredBy.product() }, // "Powered by …" at the bottom of the menu (lib/powered-by.js)
     client: { id: c.id, name: c.name, email: c.email, phone: c.phone, address: c.address, smsConsent: !!c.smsConsent, smsBrand: smsBrand() },
     referralLink: tenancy.has('referrals') ? referralLink(c) : null, referralReward: tenancy.has('referrals') ? referralRewardFor(c) : null,
     reviews: !tenancy.has('reviews') ? null : (db.clientReviews || []).filter((r) => r.clientId === c.id && r.submittedAt).sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
@@ -4692,7 +4692,7 @@ app.use('/card', express.urlencoded({ extended: false }));
 // What's new: the bell lists the latest three; See all changes opens ideas.<domain>/changelog
 app.get('/api/changelog', (req, res) => res.json(changelog.latest(Math.min(20, Number(req.query.limit) || 3))));
 app.get('/changelog', (req, res) => res.redirect(301, tenancy.ideasUrl() + '/changelog')); // the page moved to ideas.<domain>, for old links
-const cardSent = () => poweredBy.html('card', undefined, { color: 'inherit', style: 'opacity:.65', lead: 'Created by {product}' }); // the business card is in its own colors
+const cardSent = () => poweredBy.html('card', undefined, { color: 'inherit', style: 'opacity:.65' }); // the business card is in its own colors
 app.get('/card', (req, res) => {
   const p = bizPage();
   if (req.query.qr) {
