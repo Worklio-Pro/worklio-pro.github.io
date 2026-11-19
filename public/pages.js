@@ -118,7 +118,7 @@ PAGES['/business-overview'] = {
     const last = o.revenue.length - 1;
     const hour = new Date().getHours(); const first = ((me && me.name) || '').split(' ')[0];
     main.innerHTML = `<div class="head"><div><h1>Good ${hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening'}${first ? ', ' + esc(first) : ''}</h1><p class="sub">Here’s what’s happening today and what needs your attention.</p></div>
-<div class="actions"><button class="btn alt" data-act="newQuote">+ Quote</button><button class="btn alt" data-act="newJob">+ Job</button><button class="btn" data-act="newInvoice">+ Invoice</button></div></div>
+<div class="actions home-acts"><button class="btn alt" data-act="newQuote">+ Quote</button><button class="btn alt" data-act="newJob">+ Job</button><button class="btn" data-act="newInvoice">+ Invoice</button></div></div>
 ${homeNoticeHtml(o.notice)}${homeSetupHtml(o.setup)}
 <div class="grid g2 hm-top">${homeTodayHtml()}${homeAttentionHtml()}</div>
 <h2 class="ftitle hm-sec">How the business is doing</h2>

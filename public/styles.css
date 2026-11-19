@@ -352,6 +352,8 @@ details.menu{position:relative}details.menu summary{list-style:none}details.menu
  .sched .chip{padding:1px 2px;border-left-width:2px;font-size:10px;text-overflow:clip}
  .sched .off-l{display:block;text-align:center;font-size:10px}
 }
+/* Home's + Quote, + Job, + Invoice on phones: across the screen in three equal buttons */
+@media (max-width:760px){.home-acts{flex:1 1 100%;flex-wrap:nowrap}.home-acts .btn{flex:1 1 0;min-width:0;justify-content:center;text-align:center}}
 /* Project Gallery's Upload photos: a big button with a camera, centered on its own row under the title; the full width on phones */
 .head:has(>.gal-up)>div{flex:1 1 100%}
 .btn.gal-up{display:flex;align-items:center;justify-content:center;gap:10px;margin:0 auto;width:min(100%,380px);min-height:56px;padding:13px 24px;font-size:17px;border-radius:12px}
