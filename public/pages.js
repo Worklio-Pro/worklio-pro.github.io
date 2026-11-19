@@ -2351,7 +2351,7 @@ const MK_MAIN = [['/marketing/dashboard', 'Dashboard'], ['/marketing/performance
 const MK_MORE = [['/social-posts', 'Social posting'], ['/marketing/referrals', 'Referrals'], ['/automations', 'Automations']];
 const mkTabOn = (p, path) => p === path || (p === '/automations' && path === '/automations/edit');
 function mkTabs(path) {
-  const ok = ([p]) => !deskOnly(p) && memberCan(p.startsWith('/marketing/') ? '/marketing/dashboard' : p); // phones leave out desk pages (Automations)
+  const ok = ([p]) => memberCan(p.startsWith('/marketing/') ? '/marketing/dashboard' : p);
   const a = ([p, l]) => `<a href="${p}" data-link class="${mkTabOn(p, path) ? 'on' : ''}"${mkTabOn(p, path) ? ' aria-current="page"' : ''}>${l}${MK_SOON[p] ? '<span class="mk-soon">Soon</span>' : ''}</a>`;
   const more = MK_MORE.filter(ok); const inMore = more.some(([p]) => mkTabOn(p, path));
   // phones: one button with the page you're on, opening a list of every tab (More's too) in the page instead of a strip to scroll
