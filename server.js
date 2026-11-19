@@ -2853,7 +2853,7 @@ app.post('/api/invoices/:id/send', async (req, res) => {
 [['quotes', 'quote'], ['invoices', 'invoice']].forEach(([col, kind]) => {
   app.get(`/api/${col}/:id/email-draft`, (req, res) => {
     const doc = db[col].find((x) => x.id === req.params.id); if (!doc) return res.status(404).json({ error: 'Not found' });
-    const u = currentUser(req); res.json({ ...emailDraft(kind, doc, kind === 'invoice' && req.query.receipt === '1'), me: (u && u.email) || '' }); // ?receipt=1: a paid invoice's receipt
+    const u = currentUser(req); res.json({ ...emailDraft(kind, doc, kind === 'invoice' && req.query.receipt === '1', req.query.raw === '1'), me: (u && u.email) || '' }); // ?receipt=1: a paid invoice's receipt
   });
   app.get(`/api/${col}/:id/pdf`, (req, res) => {
     const doc = db[col].find((x) => x.id === req.params.id); if (!doc) return res.status(404).json({ error: 'Not found' });
@@ -2871,10 +2871,11 @@ const BUTTON_LINE = /^\s*\[([^\]]+)\]\(\{\{\s*link\s*\}\}\)\s*$/m; // the templa
 const fillVars = (str, v) => String(str || '').replace(/\{\{\s*(\w+)\s*\}\}/g, (m, k) => (k in v ? v[k] : m));
 // the box's starting subject and message: the template's, without its heading and button (the email puts the button under the message)
 // receipt: a paid invoice's receipt (the Payment receipt template; its button opens the receipt page)
-function emailDraft(kind, d, receipt = false) { return inClientLang(d.clientId, () => { // in the client's language, so the business sees what they'll get
-  const t = emailTemplate(receipt ? 'receipt' : tplOf(kind, d)); const v = receipt ? receiptVars(d) : docVars(kind, d);
-  const message = fillVars(t.body.replace(BUTTON_LINE, '').split('\n').filter((l) => !/^#\s/.test(l)).join('\n'), v).replace(/\*\*(.+?)\*\*/g, '$1').replace(/\n{3,}/g, '\n\n').trim();
-  return { to: findClient(d.clientId)?.email || '', subject: fillVars(t.subject, v), message, button: (t.body.match(BUTTON_LINE) || [])[1] || (receipt ? tx('View receipt') : kind === 'quote' ? (estStage(d) ? tx('View estimate') : tx('View and approve quote')) : tx('View and pay invoice')), lang: i18n.current() };
+// raw: the {{placeholders}} left in, for one message sent to several clients (each send fills in its own)
+function emailDraft(kind, d, receipt = false, raw = false) { return inClientLang(d.clientId, () => { // in the client's language, so the business sees what they'll get
+  const t = emailTemplate(receipt ? 'receipt' : tplOf(kind, d)); const v = receipt ? receiptVars(d) : docVars(kind, d); const fill = raw ? (x) => x : fillVars;
+  const message = fill(t.body.replace(BUTTON_LINE, '').split('\n').filter((l) => !/^#\s/.test(l)).join('\n'), v).replace(/\*\*(.+?)\*\*/g, '$1').replace(/\n{3,}/g, '\n\n').trim();
+  return { to: findClient(d.clientId)?.email || '', subject: fill(t.subject, v), message, button: (t.body.match(BUTTON_LINE) || [])[1] || (receipt ? tx('View receipt') : kind === 'quote' ? (estStage(d) ? tx('View estimate') : tx('View and approve quote')) : tx('View and pay invoice')), lang: i18n.current() };
 }); }
 // the Payment receipt template's values for a whole paid invoice: everything it has paid (payments and a deposit credit), the paid date, the last payment's reference
 function receiptVars(inv) {

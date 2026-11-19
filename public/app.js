@@ -3981,10 +3981,23 @@ A.invClearSel = () => { invSel.clear(); refresh(); };
 async function resendMany(kind, list, what, done) {
   const ok = list.filter((d) => (byId(D.clients, d.clientId) || {}).email); const skip = list.length - ok.length; const s = (n) => (n === 1 ? '' : 's');
   if (!ok.length) return toast(list.length ? 'None of these clients has an email address' : `Choose ${kind}s that were already sent`, true);
-  if (!confirm(`Email a ${what} for ${ok.length} ${kind}${s(ok.length)}?${skip ? ` ${skip} client${skip === 1 ? ' has' : 's have'} no email address and will be skipped.` : ''}`)) return;
-  let sent = 0; let failed = 0;
-  for (const d of ok) { try { const r = await api('POST', `/api/${kind}s/${d.id}/send`, { channels: ['email'] }); (r.results || []).some((x) => x.status === 'failed') ? failed++ : sent++; } catch (x) { failed++; } }
-  toast(failed ? `${sent} ${what}${s(sent)} sent, ${failed} failed` : `${sent} ${what}${s(sent)} sent`, !!failed); done(); refresh();
+  // the message to check or change first: the email template with its {{placeholders}} left in, so each client gets their own name, number and link
+  // clients in different languages: the version in the business's main language is shown, and left unchanged each client gets their own
+  const lang = (d) => (byId(D.clients, d.clientId) || {}).lang || ''; const mixed = new Set(ok.map(lang)).size > 1;
+  let draft; try { draft = await api('GET', `/api/${kind}s/${((mixed && ok.find((d) => !lang(d))) || ok[0]).id}/email-draft?raw=1`); } catch (x) { return toast(x.message, true); }
+  const who = ok.map((d) => `${esc(clientName(d.clientId))} <span class="muted">· ${esc(d.number)}</span>`);
+  const m = modal(`Email a ${what}`, `<form id="rmF"><p style="margin-top:0">To ${ok.length} client${s(ok.length)}: ${who.slice(0, 6).join(', ')}${ok.length > 6 ? ` and ${ok.length - 6} more` : ''}.${skip ? ` <span class="muted">${skip} without an email address ${skip === 1 ? 'is' : 'are'} skipped.</span>` : ''}</p>
+<label>Subject<input name="subject" value="${esc(draft.subject)}" required maxlength="200"></label>
+<label>Message<textarea name="message" rows="9" required>${esc(draft.message)}</textarea></label>
+<p class="muted" style="font-size:13px">Words in double braces, like {{client_name}}, are filled in for each client. A button to their ${kind} goes under the message.${mixed ? ' Some of these clients use another language: left as it is, each gets this email in their own language; changed, they all get your version.' : ''}</p>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Send ${ok.length} email${s(ok.length)}</button></div></form>`);
+  const f = $('#rmF', m);
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault(); const go = $('button.btn:not(.alt)', f); go.disabled = true; const email = { subject: f.subject.value.trim(), message: f.message.value.trim() }; const own = email.subject === draft.subject.trim() && email.message === draft.message.trim(); // unchanged: each client's own template, in their language
+    let sent = 0; let failed = 0;
+    for (const d of ok) { go.textContent = `Sending ${sent + failed + 1} of ${ok.length}…`; try { const r = await api('POST', `/api/${kind}s/${d.id}/send`, own ? { channels: ['email'] } : { channels: ['email'], email }); (r.results || []).some((x) => x.status === 'failed') ? failed++ : sent++; } catch (x) { failed++; } }
+    closeModal(); toast(failed ? `${sent} ${what}${s(sent)} sent, ${failed} failed` : `${sent} ${what}${s(sent)} sent`, !!failed); done(); refresh();
+  });
 }
 const invRemind = (ids) => resendMany('invoice', ids.map((id) => byId(D.invoices, id)).filter((i) => i && i.status !== 'paid' && i.status !== 'draft'), 'payment reminder', () => invSel.clear());
 A.invRemindAll = () => invRemind(invLateIds);
