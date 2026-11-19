@@ -793,6 +793,16 @@ const itemOf = (r, k) => {
   const cost = Number($('.cost', r).value) || 0; const markup = Number($('.markup', r).value) || 0; const markupType = $('.mtype', r).value;
   return { desc: $('.desc', r).value.trim(), details: $('.details', r).value, qty: Number($('.qty', r).value) || 0, cost, markup, markupType, price: round2(markupType === 'flat' ? cost + markup : cost * (1 + markup / 100)), ...($('.iopt', r) ? { opt: $('.iopt', r).value } : {}), ...(r.dataset.np && !(Number($('.cost', r).value) > 0) ? { needsPrice: true } : {}), ...(r.dataset.fee ? { lateFee: true } : {}), ...(r.dataset.job ? { job: r.dataset.job } : {}), ...(k && r.classList.contains('sub') ? { sub: true } : {}) }; // Snap to quote: still to be priced; a late fee line; a combined invoice's job
 };
+// deposit types: $ (flat), % of the total, or products + % of labor: items saved as a Product in Products & services count in full, and the
+// rest (the labor) at the %. Tax and discount are shared out evenly. A matrix line's sizes go with their heading line. Same math as the server.
+const DEP_TYPES = [['flat', '$'], ['percent', '% of total'], ['products', 'Products + % of labor']];
+const isProductName = (name) => { const k = String(name || '').trim().toLowerCase(); return !!k && (D.services || []).some((x) => x.type === 'product' && String(x.name || '').trim().toLowerCase() === k); };
+const prodSum = (list) => { let on = false; let n = 0; for (const i of list) { if (i.lateFee) continue; if (!i.mx) on = isProductName(i.desc); if (on) n += i.qty * i.price; } return round2(n); };
+const depAmount = (type, value, t) => {
+  const v = Math.max(0, Number(value) || 0);
+  if (type === 'products') { const share = t.base > 0 ? Math.min(1, Math.max(0, t.prod / t.base)) : 0; return Math.min(t.total, round2(t.total * (share + (1 - share) * Math.min(100, v) / 100))); }
+  return Math.min(t.total, round2(type === 'percent' ? t.total * v / 100 : v));
+};
 const rowItems = (r, k) => (r.classList.contains('mx') ? mxItemsOf(r) : [itemOf(r, k)]); // a matrix row (matrix line items) is several
 const readItems = (root) => $$('.item-row', root).flatMap(rowItems);
 // ---- line items not in Products & services yet: offered for the catalog after a quote, job or invoice is saved (phones: a checkbox on the line page) ----
@@ -838,14 +848,13 @@ function recalc(root) {
   // discount comes off the subtotal before tax (the server computes it the same way)
   const dv = Math.max(0, Number($('[name=discountValue]', root).value) || 0); const dPct = $('[name=discountType]', root).value === 'percent';
   // late fee lines are in the subtotal but never discounted or taxed
-  const calc = (list) => { const sub = round2(list.reduce((s, i) => s + i.qty * i.price, 0)); const base = round2(sub - list.filter((i) => i.lateFee).reduce((s, i) => s + i.qty * i.price, 0)); const disc = Math.min(base, round2(dPct ? base * dv / 100 : dv)); const tax = round2((base - disc) * rate / 100); return { sub, disc, tax, total: round2(sub - disc + tax) }; };
-  const { sub, disc, tax, total } = calc(root._optFilter ? root._optFilter(items) : items); if (root._optSum) root._optSum(items, calc);
+  const calc = (list) => { const sub = round2(list.reduce((s, i) => s + i.qty * i.price, 0)); const base = round2(sub - list.filter((i) => i.lateFee).reduce((s, i) => s + i.qty * i.price, 0)); const disc = Math.min(base, round2(dPct ? base * dv / 100 : dv)); const tax = round2((base - disc) * rate / 100); return { sub, base, prod: prodSum(list), disc, tax, total: round2(sub - disc + tax) }; };
+  const shownT = calc(root._optFilter ? root._optFilter(items) : items); const { sub, disc, tax, total } = shownT; if (root._optSum) root._optSum(items, calc);
   $('.t-sub', root).textContent = money(sub); $('.t-discount', root).textContent = disc ? '−' + money(disc) : money(0);
   $('.t-tax', root).textContent = money(tax); $('.t-total', root).textContent = money(total);
   if ($('[name=depositValue]', root)) { // quotes: requested deposit
     const od = root._optDep && root._optDep(); // Good / Better / Best: the shown option's own deposit, if it has one
-    const dv = od ? od.value : Math.max(0, Number($('[name=depositValue]', root).value) || 0); const pct = od ? od.type === 'percent' : $('[name=depositType]', root).value === 'percent';
-    const dep = Math.min(total, round2(pct ? total * dv / 100 : dv));
+    const dep = od ? depAmount(od.type, od.value, shownT) : depAmount($('[name=depositType]', root).value, $('[name=depositValue]', root).value, shownT);
     $('.t-deposit', root).textContent = money(dep); $('.dep-out', root).textContent = dep ? `Balance after deposit ${money(total - dep)}` : '';
   }
   if (root._afterRecalc) root._afterRecalc(total);
@@ -1130,8 +1139,8 @@ ${optRow({ label: 'Discount', name: 'discount', value: d.discountValue, type: d.
 <div class="tl grand"><strong>Total</strong><span></span><strong class="t-total"></strong><span></span></div>`; };
 // an optional amount row (discount, deposit): "Add …" link until used, then amount + $/% picker + computed value + trash button.
 // Inputs are named ${name}Value / ${name}Type; recalc fills .t-${name}.
-const optRow = ({ label, name, value, type, pctLabel, dname }) => { const on = Number(value) > 0; const disc = name === 'discount'; return `<div class="tl opt-row"><span${disc ? ' class="disc-lbl"' : ''}>${disc ? `<span class="disc-name">${esc((on && dname) || label)}</span><input type="hidden" name="discountName" value="${esc((on && dname) || '')}">${discMenu(on)}` : label}</span><span class="opt-edit" ${on ? '' : 'hidden'}><span class="unit"><input name="${name}Value" type="number" step="any" min="0" value="${on ? esc(value) : ''}" placeholder="0" aria-label="${label} amount">
-<select name="${name}Type" aria-label="${label} type"><option value="flat" ${type !== 'percent' ? 'selected' : ''}>$</option><option value="percent" ${type === 'percent' ? 'selected' : ''}>${pctLabel}</option></select></span></span>
+const optRow = ({ label, name, value, type, pctLabel, dname, products }) => { const on = Number(value) > 0; const disc = name === 'discount'; return `<div class="tl opt-row"><span${disc ? ' class="disc-lbl"' : ''}>${disc ? `<span class="disc-name">${esc((on && dname) || label)}</span><input type="hidden" name="discountName" value="${esc((on && dname) || '')}">${discMenu(on)}` : label}</span><span class="opt-edit" ${on ? '' : 'hidden'}><span class="unit"><input name="${name}Value" type="number" step="any" min="0" value="${on ? esc(value) : ''}" placeholder="0" aria-label="${label} amount">
+<select name="${name}Type" aria-label="${label} type"><option value="flat" ${type !== 'percent' ? 'selected' : ''}>$</option><option value="percent" ${type === 'percent' ? 'selected' : ''}>${pctLabel}</option>${products ? `<option value="products" ${type === 'products' ? 'selected' : ''}>Products + % of labor</option>` : ''}</select></span></span>
 <span class="opt-amt" ${on ? '' : 'hidden'}><span class="t-${name}"></span></span><button type="button" class="link-btn opt-add" data-act="${disc && savedDiscs().length ? 'discOpen' : 'addOpt'}" ${on ? 'hidden' : ''}>Add ${label}</button>
 <span class="t-rm-c"><button type="button" class="t-rm" data-act="rmOpt" aria-label="Remove ${label.toLowerCase()}" title="Remove ${label.toLowerCase()}" ${on ? '' : 'hidden'}>${TRASH}</button></span></div>`; };
 const TRASH = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg>';
@@ -2508,9 +2517,9 @@ const qParts = (q) => (!qHasOpts(q) ? [{ doc: q }] : q.chosenOption ? [{ opt: qS
 const optId = () => Array.from(crypto.getRandomValues(new Uint8Array(5)), (b) => b.toString(16).padStart(2, '0')).join('');
 const OPT_NAMES = ['Good', 'Better', 'Best'];
 // an option's own deposit (blank: the quote's deposit; 0: none for that option), as the server's optDeposit
-const optDepOf = (o) => (o.depositValue === '' || o.depositValue == null || !(Number(o.depositValue) >= 0) ? null : { type: o.depositType === 'percent' ? 'percent' : 'flat', value: Number(o.depositValue) });
+const optDepOf = (o) => (o.depositValue === '' || o.depositValue == null || !(Number(o.depositValue) >= 0) ? null : { type: DEP_TYPES.some(([k]) => k === o.depositType) ? o.depositType : 'flat', value: Number(o.depositValue) });
 const optDepBody = (o) => { const d = optDepOf(o); return d ? { depositType: d.type, depositValue: d.value } : {}; };
-const optDepInput = (o, i) => `<span class="unit qo-dep"><input class="qo-dv" type="number" step="any" min="0" inputmode="decimal" value="${o.depositValue ?? ''}" placeholder="Deposit" aria-label="Option ${i + 1} deposit" title="This option’s deposit. Leave blank to use the quote’s deposit."><select class="qo-dt" aria-label="Option ${i + 1} deposit type"><option value="flat">$</option><option value="percent" ${o.depositType === 'percent' ? 'selected' : ''}>%</option></select></span>`;
+const optDepInput = (o, i) => `<span class="unit qo-dep"><input class="qo-dv" type="number" step="any" min="0" inputmode="decimal" value="${o.depositValue ?? ''}" placeholder="Deposit" aria-label="Option ${i + 1} deposit" title="This option’s deposit. Leave blank to use the quote’s deposit."><select class="qo-dt" aria-label="Option ${i + 1} deposit type">${[['flat', '$'], ['percent', '%'], ['products', 'Products + %']].map(([k, l]) => `<option value="${k}" ${(o.depositType || 'flat') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></span>`;
 const optDepRead = (o, el) => { if (el.classList.contains('qo-dv')) o.depositValue = el.value; if (el.classList.contains('qo-dt')) o.depositType = el.value; };
 const optHead = (p, many) => (p.opt ? `<div class="qo-h"><strong>${p.chosen ? 'Client chose: ' : ''}${esc(p.opt.name)}</strong>${p.recommended ? '<span class="qo-rec">Recommended</span>' : ''}${many ? `<span class="qo-tot">${money(p.doc.total || 0)}</span>` : ''}</div>${p.opt.desc ? `<p class="muted qo-d">${esc(p.opt.desc)}</p>` : ''}` : '');
 // the quote page's Product / Service card: one block per option (or the chosen one), each with its totals and deposit
@@ -2552,11 +2561,10 @@ function quoteOptionsEditor(form, d) {
   const shownId = () => (opts ? (status.value === 'approved' && opts.some((o) => o.id === ch.value) ? ch.value : opts.some((o) => o.id === rec) ? rec : opts[0].id) : '');
   form._optFilter = (items) => (opts ? items.filter((i) => !i.opt || i.opt === shownId()) : items);
   form._optDep = () => { const o = opts && opts.find((x) => x.id === shownId()); return o ? optDepOf(o) : null; };
-  const quoteDep = (total) => { const v = Math.max(0, Number(($('[name=depositValue]', form) || {}).value) || 0); return Math.min(total, round2(($('[name=depositType]', form) || {}).value === 'percent' ? total * v / 100 : v)); };
-  const depOf = (o, total) => { const d = optDepOf(o); return d ? Math.min(total, round2(d.type === 'percent' ? total * d.value / 100 : d.value)) : quoteDep(total); };
+  const depOf = (o, t) => { const d = optDepOf(o); return d ? depAmount(d.type, d.value, t) : depAmount(($('[name=depositType]', form) || {}).value, ($('[name=depositValue]', form) || {}).value, t); };
   form._optSum = (items, calc) => {
     const sum = $('.qo-sum', box); if (!sum || !opts) return; const shown = shownId();
-    sum.innerHTML = opts.map((o, i) => { const t = calc(items.filter((x) => !x.opt || x.opt === o.id)); const dep = depOf(o, t.total); return `<span class="${o.id === shown ? 'on' : ''}">${esc(nameOf(o, i))}<b>${money(t.total)}</b>${dep ? `<em class="qo-sd">· deposit ${money(dep)}</em>` : ''}</span>`; }).join('') + `<small class="muted">The totals below are for ${esc(nameOf(opts.find((o) => o.id === shown), opts.findIndex((o) => o.id === shown)))}.</small>`;
+    sum.innerHTML = opts.map((o, i) => { const t = calc(items.filter((x) => !x.opt || x.opt === o.id)); const dep = depOf(o, t); return `<span class="${o.id === shown ? 'on' : ''}">${esc(nameOf(o, i))}<b>${money(t.total)}</b>${dep ? `<em class="qo-sd">· deposit ${money(dep)}</em>` : ''}</span>`; }).join('') + `<small class="muted">The totals below are for ${esc(nameOf(opts.find((o) => o.id === shown), opts.findIndex((o) => o.id === shown)))}.</small>`;
   };
   const draw = () => {
     box.innerHTML = !opts ? '<button type="button" class="btn alt sm qo-on" data-q="on">Offer options (Good / Better / Best)</button>'
@@ -2641,7 +2649,7 @@ function quoteForm(main, doc, preset) {
 <dl class="qmeta"><dt>Quote #</dt><dd><input name="number" class="num-in" maxlength="30" value="${esc(d.number || '')}" placeholder="Automatic" aria-label="Quote number" title="Leave blank for the next automatic number"></dd>
 <dt>Created</dt><dd>${fmtDate((d.createdAt || ymd(new Date())).slice(0, 10))}</dd>
 <dt>Status</dt><dd><select name="status" aria-label="Status">${['draft', 'sent', 'approved', 'declined'].map((s) => `<option value="${s}" ${(d.status || 'draft') === s ? 'selected' : ''}>${Q_STATUS[s]}</option>`).join('')}</select></dd>${sentMeta(d)}</dl></div>
-${itemsCard(items, `${optRow({ label: 'Deposit', name: 'deposit', value: d.depositValue ?? d.depositFee, type: d.depositType, pctLabel: '% of total' })}<div class="dep-out muted"></div>${d.depositPaidAt ? `<div class="crow-line dep-credit"><span>Deposit collected <span class="muted">· ${fmtDate(d.depositPaidAt)}</span></span><span>−${money(depositPaid(d))}</span></div>` : ''}`, d)}
+${itemsCard(items, `${optRow({ label: 'Deposit', name: 'deposit', value: d.id || d.depositValue != null ? d.depositValue ?? d.depositFee : company.quoteDepositValue, type: d.id || d.depositType ? d.depositType : company.quoteDepositType, pctLabel: '% of total', products: true })}<div class="dep-out muted"></div>${d.depositPaidAt ? `<div class="crow-line dep-credit"><span>Deposit collected <span class="muted">· ${fmtDate(d.depositPaidAt)}</span></span><span>−${money(depositPaid(d))}</span></div>` : ''}`, d)}
 <div class="qcard"><h2>Client message</h2><div class="ai-box"><textarea name="notes" rows="3" placeholder="A message to your client, shown on the quote">${esc(d.notes || '')}</textarea>${aiTextBar('quote', 'notes')}</div></div>
 ${discCard('quote', d.id || 'disclaimer' in d ? d.disclaimer || '' : company.quoteDisclaimer ?? DEFAULT_DISCLAIMER)}
 </div>
@@ -3033,9 +3041,10 @@ A.mEdit = (x) => {
 };
 // $ / % amount pages: discount and required deposit
 function mAmount(kind, d, { title, label, type, value, name, pct }) {
-  const f = mSheet(title, `<div class="mseg" role="radiogroup">${[['percent', `${pct} (%)`], ['flat', 'Fixed ($)']].map(([k, l]) => `<label><input type="radio" name="${name}Type" value="${k}" ${(type === 'percent') === (k === 'percent') ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div>
+  const f = mSheet(title, `<div class="mseg" role="radiogroup">${[['percent', `${pct} (%)`], ['flat', 'Fixed ($)'], ...(name === 'deposit' ? [['products', 'Products + %']] : [])].map(([k, l]) => `<label><input type="radio" name="${name}Type" value="${k}" ${(type || 'flat') === k || (k === 'flat' && !['percent', 'products'].includes(type)) ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div>
 <label class="mf mf-amt"><span>${label}</span><span class="mf-in"><b class="pre">$</b><input name="${name}Value" type="number" inputmode="decimal" step="any" min="0" value="${Number(value) > 0 ? esc(value) : ''}" placeholder="0"><b class="suf">%</b><button type="button" class="mf-clear" aria-label="Clear">${X_ICO}</button></span></label>`, { full: true, foot: mSaveBtn() });
-  const sync = () => f.classList.toggle('pct', f[name + 'Type'].value === 'percent'); sync();
+  const sync = () => f.classList.toggle('pct', f[name + 'Type'].value !== 'flat'); sync();
+  if (name === 'deposit') f.insertAdjacentHTML('beforeend', '<p class="muted sm">Products + %: every item saved as a Product in Products &amp; services in full, plus this % of everything else (the labor).</p>');
   f.addEventListener('change', sync); $('.mf-clear', f).addEventListener('click', () => { f[name + 'Value'].value = ''; f[name + 'Value'].focus(); });
   setTimeout(() => f[name + 'Value'].focus(), 260);
   if (name === 'discount' && savedDiscs().length) { // quick pick: saves right away, with its name
@@ -4409,7 +4418,7 @@ ${jobBilling(j, invs)}</div>
   form._afterRecalc = () => {
     if (!q || !(q.depositFee > 0)) { $('.jdeposit', form).innerHTML = ''; return; }
     const paid = q.depositPaidAt ? Number(q.depositPaidAmount ?? q.depositFee) || 0 : 0;
-    $('.jdeposit', form).innerHTML = `<div class="crow-line"><span>Required deposit${q.depositPct ? ` (${q.depositPct}%)` : ''}</span><span>${money(q.depositFee)}</span></div>
+    $('.jdeposit', form).innerHTML = `<div class="crow-line"><span>Required deposit${q.depositBasis === 'products' ? ` (products + ${q.depositPct}% of labor)` : q.depositPct ? ` (${q.depositPct}%)` : ''}</span><span>${money(q.depositFee)}</span></div>
 ${paid ? `<div class="crow-line"><span>Deposit collected <span class="muted">· ${fmtDate(q.depositPaidAt)}</span></span><span>−${money(paid)}</span></div>` : ''}
 <div class="crow-line"><strong>Outstanding deposit</strong><strong>${money(Math.max(0, q.depositFee - paid))}</strong></div>`;
   };

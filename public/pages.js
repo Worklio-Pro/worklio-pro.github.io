@@ -3332,6 +3332,10 @@ ${switchRow('showHours', 'Show business hours', c.showHours, 'Display your busin
 </div><div class="cs-col"><div class="card cs"><h2>Social media</h2><p class="muted cs-note">Paste a link to your page, or just your handle (like @yourbusiness). Leave any you don’t use blank.</p>
 <div class="cs-soc">${SOCIAL.map(([k, l, ph]) => fl(l, `<input name="social_${k}" value="${esc((c.social || {})[k] || '')}" placeholder="${ph}" autocomplete="off" autocapitalize="off" spellcheck="false">`)).join('')}</div></div></div></div>`;
 }
+// App Settings → Payments → Deposits: the deposit each new quote starts with (company.quoteDepositType / quoteDepositValue); form="cf" like Tax settings
+const depositCard = (c) => `<div class="card cs" id="deposits"><h2>Deposits</h2><p class="muted" style="margin-top:0">The deposit new quotes ask for. You can change it on each quote, and on each Good / Better / Best option.</p>
+<div class="dep-def">${fl('Default deposit', `<span class="unit"><input form="cf" name="quoteDepositValue" type="number" step="any" min="0" inputmode="decimal" value="${Number(c.quoteDepositValue) > 0 ? esc(c.quoteDepositValue) : ''}" placeholder="0" aria-label="Default deposit amount"><select form="cf" name="quoteDepositType" aria-label="Default deposit type">${[['flat', '$'], ['percent', '% of total'], ['products', 'Products + % of labor']].map(([k, l]) => `<option value="${k}" ${(c.quoteDepositType || 'flat') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></span>`)}</div>
+<p class="muted cs-note">Products + % of labor: every item saved as a Product in Products &amp; services counts in full, plus the % of everything else. Leave it at 0 for no deposit.</p></div>`;
 // App Settings → Payments → Tax settings; its fields sit outside the form, so they say form="cf"
 const taxCard = (c) => { const v = (k) => esc(c[k] ?? ''); return `<div class="card cs" id="tax-settings"><h2>Tax settings</h2>
 <div class="row">${fl('Tax ID name (ex: GST)', `<input form="cf" name="taxIdName" value="${v('taxIdName')}">`)}${fl('Tax ID number', `<input form="cf" name="taxIdNumber" value="${v('taxIdNumber')}">`)}</div>
@@ -3476,10 +3480,10 @@ function wireTeamLoc() {
     try { const saved = await api('PUT', '/api/company', { teamLocation: on }); company = { ...company, ...saved }; toast(on ? 'Team location is on' : 'Team location is off'); } catch (err) { toast(err.message, true); }
   });
 }
-// App Settings tabs; the hash keeps the tab (links to #payments, #zelle, #pay-apps, #late-fees, #saved-discounts or #tax-settings open Payments; #logo-colors and the old #white-label open Branding). Every card stays in the page so form="cf" fields still save.
+// App Settings tabs; the hash keeps the tab (links to #payments, #deposits, #zelle, #pay-apps, #late-fees, #saved-discounts or #tax-settings open Payments; #logo-colors and the old #white-label open Branding). Every card stays in the page so form="cf" fields still save.
 const AS_TABS = [['general', 'General'], ['branding', 'Branding'], ['payments', 'Payments']];
 function wireAsTabs(main) {
-  const tabOf = (h) => (['team-location'].includes(h) ? 'general' : ['zelle', 'pay-apps', 'late-fees', 'saved-discounts', 'tax-settings'].includes(h) ? 'payments' : ['white-label', 'logo-colors'].includes(h) ? 'branding' : AS_TABS.some(([t]) => t === h) ? h : 'general');
+  const tabOf = (h) => (['team-location'].includes(h) ? 'general' : ['deposits', 'zelle', 'pay-apps', 'late-fees', 'saved-discounts', 'tax-settings'].includes(h) ? 'payments' : ['white-label', 'logo-colors'].includes(h) ? 'branding' : AS_TABS.some(([t]) => t === h) ? h : 'general');
   const show = (t, keep) => {
     $$('[data-as-tab]', main).forEach((b) => { const on = b.dataset.asTab === t; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); });
     $$('.as-panel', main).forEach((p) => { p.hidden = p.id !== 'as-' + t; });
@@ -3508,7 +3512,7 @@ async function companyPage(main, full) {
 ${full ? `<div class="as-tabs" role="tablist">${AS_TABS.map(([t, n]) => `<button type="button" role="tab" data-as-tab="${t}" aria-controls="as-${t}">${n}</button>`).join('')}</div>
 <div class="as-panel" id="as-general" role="tabpanel"><div class="as-cols"><div class="as-col">${regionalBox(c)}${languagesBox(c)}${referralCard(c)}${mxCard()}</div><div class="as-col">${defaultsBox}${surveyCard(c)}${prefixBox}${teamLocCard(c)}</div></div></div>
 <div class="as-panel" id="as-branding" role="tabpanel"><div class="as-cols"><div class="as-col">${brandBox || `<div class="card" id="logo-colors"><h2>Logo and colors</h2><p class="muted" style="margin:0">Your own logo and brand and accent colors on quotes, invoices, emails and the client portal come with a plan that includes Branding.</p></div>`}</div><div class="as-col">${webAddressCard(c.account)}</div></div></div>
-<div class="as-panel" id="as-payments" role="tabpanel"><div class="as-cols"><div class="as-col">${payCard(integ)}${taxCard(c)}${zelleBox}</div><div class="as-col">${savedDiscCard()}${appsBox}${lateFeeCard(c)}</div></div></div>
+<div class="as-panel" id="as-payments" role="tabpanel"><div class="as-cols"><div class="as-col">${payCard(integ)}${depositCard(c)}${taxCard(c)}${zelleBox}</div><div class="as-col">${savedDiscCard()}${appsBox}${lateFeeCard(c)}</div></div></div>
 <form id="cf"></form>` :`<form id="cf" class="cs-form">${companySettingsHtml(c)}</form>`}`;
   if (full) { wireLateFees(); wireMx(); wireTeamLoc(); wireReferrals(); wireAsTabs(main); }
   $$('.prefix-row input').forEach((i) => i.addEventListener('input', () => { i.nextElementSibling.textContent = 'e.g. ' + i.value.trim() + i.dataset.sample; }));

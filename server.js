@@ -177,6 +177,9 @@ const round2 = (n) => Math.round(n * 100) / 100;
 // totals and deposit are always the chosen option's, or the recommended (else first) one's until a choice is made, so payments, lists and reports
 // work as they do for any quote; optionTotals has every option's. An option can ask for its own deposit (depositType / depositValue on the
 // option); without one it takes the quote's. depositPct is the deposit's percent (0 for a flat one), for "Deposit (25%)" labels.
+// A deposit's type: flat ($), percent (% of the total), or products: every Product in full (items saved as a Product in Products & services,
+// matched by name) plus depositValue % of the rest (the labor). Tax and discount are shared out evenly, so it's still part of the total.
+// depositBasis is 'products' for that one, for "Deposit (products + 50% of labor)" labels.
 const hasOptions = (q) => Array.isArray(q.options) && q.options.length >= 2;
 const optionItems = (q, id) => (q.items || []).filter((i) => !i.opt || i.opt === id);
 const shownOption = (q) => (hasOptions(q) ? q.options.find((o) => o.id === q.chosenOption) || q.options.find((o) => o.id === q.recommended) || q.options[0] : null);
@@ -196,17 +199,26 @@ function sumItems(doc, items, opt) {
   const base = round2(subtotal - items.filter((i) => i.lateFee).reduce((s, i) => s + i.qty * i.price, 0));
   const discount = Math.min(base, round2(doc.discountType === 'percent' ? base * doc.discountValue / 100 : doc.discountValue));
   const tax = round2((base - discount) * doc.taxRate / 100); const total = round2(subtotal - discount + tax);
-  const dep = opt && opt.depositValue != null ? opt : doc; const pct = dep.depositType === 'percent';
-  const depositFee = Math.min(total, round2(pct ? total * dep.depositValue / 100 : dep.depositValue));
-  return { subtotal, discount, tax, total, depositFee, depositPct: pct ? dep.depositValue : 0 };
+  const dep = opt && opt.depositValue != null ? opt : doc; const pct = dep.depositType === 'percent'; const mix = dep.depositType === 'products';
+  const depositFee = Math.min(total, round2(mix ? total * mixShare(items, base, dep.depositValue) : pct ? total * dep.depositValue / 100 : dep.depositValue));
+  return { subtotal, discount, tax, total, depositFee, depositPct: pct || mix ? dep.depositValue : 0, depositBasis: mix ? 'products' : '' };
+}
+// the part of the total a "products + % of labor" deposit asks for: the products' share in full, and pct % of the rest.
+// A matrix line's sizes (mx) go with their heading line.
+function mixShare(items, base, pct) {
+  let prod = 0; let on = false;
+  for (const i of items) { if (i.lateFee) continue; if (!i.mx) on = catalogProduct(i.desc); if (on) prod += i.qty * i.price; }
+  const share = base > 0 ? Math.min(1, Math.max(0, prod / base)) : 0;
+  return share + (1 - share) * Math.min(100, pct) / 100;
 }
 // Products & services categories (e.g. "Low voltage", "Custom t-shirts"): each catalog item can have one. A quote, job or invoice line
 // keeps the category of the catalog item with its name when it's saved (cat), so reports can show each category on its own.
 const cleanCat = (v) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, 40);
 const catMaps = new WeakMap(); // each account's catalog: name -> category, rebuilt when it changes (reports look up every line)
+const catalogProduct = (name) => { catalogCat(''); const c = catMaps.get(db.services || []); return !!c && c.prod.has(String(name || '').trim().toLowerCase()); }; // saved as a Product
 const catalogCat = (name) => {
   const list = db.services || []; let c = catMaps.get(list);
-  if (!c || c.n !== list.length || Date.now() - c.at > 2000) { c = { at: Date.now(), n: list.length, map: new Map() }; for (const s of list) { const k = String(s.name || '').trim().toLowerCase(); if (k && s.category && !c.map.has(k)) c.map.set(k, cleanCat(s.category)); } catMaps.set(list, c); }
+  if (!c || c.n !== list.length || Date.now() - c.at > 2000) { c = { at: Date.now(), n: list.length, map: new Map(), prod: new Set() }; for (const s of list) { const k = String(s.name || '').trim().toLowerCase(); if (k && s.type === 'product') c.prod.add(k); if (k && s.category && !c.map.has(k)) c.map.set(k, cleanCat(s.category)); } catMaps.set(list, c); }
   return c.map.get(String(name || '').trim().toLowerCase()) || '';
 };
 // ---- matrix line items: a heading line (item.matrix: sizes, each with a price; colors; a quantity per size and color) and its sub items
@@ -238,7 +250,8 @@ function mxExpand(items) {
   return out;
 }
 // an option's own deposit, or nothing (blank: the quote's deposit); 0 means no deposit for that option
-const optDeposit = (o) => { const v = o && o.depositValue; if (v === '' || v == null || !(Number(v) >= 0)) return {}; return { depositType: o.depositType === 'percent' ? 'percent' : 'flat', depositValue: Number(v) }; };
+const optDeposit = (o) => { const v = o && o.depositValue; if (v === '' || v == null || !(Number(v) >= 0)) return {}; return { depositType: DEP_TYPES.includes(o.depositType) ? o.depositType : 'flat', depositValue: Number(v) }; };
+const DEP_TYPES = ['flat', 'percent', 'products'];
 function computeTotals(doc) {
   // the options (quotes only): 2 or 3, each named; anything else means no options
   const opts = Array.isArray(doc.options) ? doc.options.slice(0, 3).map((o) => ({ id: /^[a-z0-9]{4,16}$/.test(o && o.id) ? o.id : uid(), name: String((o && o.name) || '').trim().slice(0, 40), desc: String((o && o.desc) || '').trim().slice(0, 500), ...optDeposit(o) })) : [];
@@ -257,7 +270,7 @@ function computeTotals(doc) {
   doc.discountValue = Math.max(0, Number(doc.discountValue) || 0);
   doc.discountName = doc.discountValue > 0 ? String(doc.discountName || '').trim().slice(0, 60) : ''; // a saved discount's name (Settings → Saved discounts), shown in place of "Discount"
   // deposit: a flat fee or a percentage of the total. Older quotes only have depositFee, treated as flat.
-  doc.depositType = doc.depositType === 'percent' ? 'percent' : 'flat';
+  doc.depositType = DEP_TYPES.includes(doc.depositType) ? doc.depositType : 'flat';
   doc.depositValue = Math.max(0, Number(doc.depositValue ?? doc.depositFee) || 0);
   if (opts.length >= 2) {
     doc.options = opts; if (!ids.has(doc.recommended)) doc.recommended = ''; if (!ids.has(doc.chosenOption)) doc.chosenOption = null;
@@ -289,6 +302,8 @@ const quoteTerms = (q) => JSON.stringify(QUOTE_TERMS.map((k) => (typeof q[k] ===
 const PAYMENT_FIELDS = { quotes: ['depositPaidAt', 'depositPaidAmount', 'depositMethod', 'depositReference', 'depositStatus', 'depositRefunds', 'depositPayment'],
   invoices: ['payments', 'paidAt', 'paidAmount', 'paidByDeposit', 'paymentMethod', 'stripeSessionId', 'stripePaymentIntent'] };
 const money = (n) => '$' + Number(n).toFixed(2);
+// " (25%)" or " (products + 50% of labor)" after "Deposit", in the client's language
+const depLabel = (d) => (d.depositBasis === 'products' ? ` (${tx('products + {pct}% of labor', { pct: d.depositPct })})` : d.depositPct ? ` (${d.depositPct}%)` : '');
 const findClient = (id) => db.clients.find((c) => c.id === id);
 function invoiceStatus(inv) {
   if (inv.status === 'paid') return 'paid';
@@ -1901,6 +1916,9 @@ app.put('/api/company', (req, res) => {
   if ((b.teamLocation === true || b.teamLocation === 'on' || b.teamLocation === 'true') && !tenancy.has('teamLocation')) return res.status(403).json({ error: 'Team location isn’t included in your plan' });
   if (b.survey && typeof b.survey === 'object') db.company.survey = cleanSurvey(b.survey); // App Settings → Site surveys
   for (const k of ['addressPrivate', 'showHours', 'teamLocation', 'quoteEstimateFirst']) if (k in b) db.company[k] = b[k] === true || b[k] === 'on' || b[k] === 'true';
+  // App Settings → Defaults → Deposit on new quotes: $ / % / products + % of labor, and the amount (0: no deposit)
+  if ('quoteDepositType' in b) db.company.quoteDepositType = DEP_TYPES.includes(b.quoteDepositType) ? b.quoteDepositType : 'flat';
+  if ('quoteDepositValue' in b) db.company.quoteDepositValue = Math.max(0, Number(b.quoteDepositValue) || 0);
   if (ADDRESS_PARTS.some((k) => k in b)) db.company.address = composeAddress(db.company); // the one-line address used everywhere else
   if ('savedDiscounts' in b) { // Saved discounts for quick select on quotes, jobs and invoices: a name, $ or %, and the amount
     const list = (Array.isArray(b.savedDiscounts) ? b.savedDiscounts : []).slice(0, 30).map((x) => ({ id: x && typeof x.id === 'string' && /^[a-z0-9]{4,16}$/.test(x.id) ? x.id : uid(), name: String((x && x.name) || '').trim().slice(0, 60), type: x && x.type === 'percent' ? 'percent' : 'flat', value: Math.round(Math.max(0, Number(x && x.value) || 0) * 100) / 100 }));
@@ -2958,7 +2976,7 @@ function docPdfIn(kind, d) {
     if (dd.discount > 0) row(discLabel(dd), '-' + money(dd.discount));
     if (Number(dd.taxRate)) row(`${Number(dd.taxRate) === Number(co.taxRate) && co.taxName ? co.taxName : tx('Tax')} (${dd.taxRate}%)`, money(dd.tax || 0));
     row(part.opt && parts.length > 1 ? tx('{name} total', { name: part.opt.name }) : tx('Total'), money(dd.total || 0), true);
-    if (q && !est && dd.depositFee > 0) row(`${tx('Required deposit')}${dd.depositPct ? ` (${dd.depositPct}%)` : ''}`, money(dd.depositFee));
+    if (q && !est && dd.depositFee > 0) row(`${tx('Required deposit')}${depLabel(dd)}`, money(dd.depositFee));
   }
   if (!q) {
     const paid = (d.payments || []).reduce((n, pm) => n + (Number(pm.amount) || 0), 0);
@@ -3104,7 +3122,7 @@ function itemsTable(d, o = {}) {
   return `<table><tr><th>${tx('Description')}</th>${qty ? `<th class="r">${tx('Qty')}</th>` : ''}${unit ? `<th class="r">${tx('Price')}</th>` : ''}<th class="r">${line ? tx('Amount') : ''}</th></tr>${d.items.map((i) => { const inc = included(i); const hd = heading(i); return `<tr><td${i.sub ? ' style="padding-left:28px"' : ''}>${hd ? `<strong>${esc(i.desc)}</strong>` : esc(i.desc)}${i.details ? `<div class="muted" style="white-space:pre-line">${esc(i.details)}</div>` : ''}</td>${qty ? `<td class="r">${inc || hd ? '' : i.qty}</td>` : ''}${unit ? `<td class="r">${inc || hd ? '' : money(i.price)}</td>` : ''}<td class="r">${hd ? '' : inc ? (line || !unit ? tx('Included') : '') : line ? money(i.qty * i.price) : ''}</td></tr>`; }).join('')}
 ${row(tx('Subtotal'), money(d.subtotal))}${d.discount > 0 ? row(esc(discLabel(d)), '−' + money(d.discount)) : ''}${row(`${esc(Number(d.taxRate) === Number(db.company.taxRate) && db.company.taxName ? db.company.taxName : tx('Tax'))} (${d.taxRate}%)`, money(d.tax))}${row(`<strong>${tx('Total')}</strong>`, `<strong>${money(d.total)}</strong>`)}
 ${o.invoice ? (d.depositApplied > 0 ? row(tx('Deposit collected (quote {number}, {date})', { number: esc(d.depositQuote), date: esc(niceDate(d.depositAppliedAt)) }), '−' + money(d.depositApplied)) : '') + (d.referralApplied > 0 ? row(tx('Referral credit'), '−' + money(d.referralApplied)) : '') + (d.depositApplied > 0 || d.referralApplied > 0 ? row(`<strong>${tx('Balance due')}</strong>`, `<strong>${money(d.balanceDue)}</strong>`) : '')
-    : d.depositFee > 0 ? row(`${tx('Deposit')}${d.depositPct ? ` (${d.depositPct}%)` : ''}`, money(d.depositFee)) + row(tx('Balance after deposit'), money(d.total - d.depositFee)) : ''}</table>`;
+    : d.depositFee > 0 ? row(`${tx('Deposit')}${depLabel(d)}`, money(d.depositFee)) + row(tx('Balance after deposit'), money(d.total - d.depositFee)) : ''}</table>`;
 }
 
 // Paying outside the app: Zelle, Venmo, Cash App and PayPal. None of them tells us a payment arrived, so the client says they sent it
@@ -3703,7 +3721,7 @@ function quoteView(q, c, { signed, depositSection, sent, preview, business, book
   const row = (l, v) => `<div class="qv-row"><span>${l}</span><span>${v}</span></div>`;
   const totalsOf = (d) => row(tx('Subtotal'), money(d.subtotal)) + (d.discount > 0 ? row(esc(discLabel(d)), '−' + money(d.discount)) : '')
     + (Number(d.taxRate) ? row(`${esc(taxName)} (${d.taxRate}%)`, money(d.tax)) : '') + row(tx('Total'), money(d.total))
-    + (!word && d.depositFee > 0 ? row(`${tx('Deposit')}${d.depositPct ? ` (${d.depositPct}%)` : ''}`, money(d.depositFee)) : '');
+    + (!word && d.depositFee > 0 ? row(`${tx('Deposit')}${depLabel(d)}`, money(d.depositFee)) : '');
   const itemsOf = (d) => (d.items || []).map((i) => `<div class="qv-it${i.sub ? ' sub' : ''}"><div class="qv-it-d"><strong>${esc(i.desc)}</strong>${i.details ? `<p>${esc(i.details)}</p>` : ''}</div>
 ${heading(i) ? '<div class="qv-n"></div><div class="qv-n"></div><div class="qv-n"></div>' : included(i) ? `<div class="qv-n"></div><div class="qv-n"></div><div class="qv-n"><span class="qv-l">${tx('Total')}</span>${tx('Included')}</div>` : `<div class="qv-n"><span class="qv-l">${tx('Qty.')}</span>${esc(String(i.qty))}</div><div class="qv-n"><span class="qv-l">${tx('Unit price')}</span>${money(i.price)}</div><div class="qv-n"><span class="qv-l">${tx('Total')}</span>${money(i.qty * i.price)}</div>`}</div>`).join('');
   // Good / Better / Best: each option with its own items and totals until one is chosen; then only that one
@@ -3713,7 +3731,7 @@ ${heading(i) ? '<div class="qv-n"></div><div class="qv-n"></div><div class="qv-n
 <div class="qv-tot"><div></div><div>${totalsOf(p.doc)}</div></div></section>`).join('');
   // options with deposits of their own: the deposit depends on the one they pick (each option's is under its total)
   const ownDep = many && q.options.some((o) => o.depositValue != null); const anyDep = many ? parts.some((p) => p.doc.depositFee > 0) : q.depositFee > 0;
-  const depWhat = ownDep ? tx('the amount shown for the option you choose') : many && q.depositType === 'percent' ? tx('{pct}% of the option you choose', { pct: q.depositValue }) : `${money(q.depositFee)}${q.depositPct ? ` ${tx('({pct}% of the total)', { pct: q.depositPct })}` : ''}`;
+  const depWhat = ownDep ? tx('the amount shown for the option you choose') : many && q.depositType === 'percent' ? tx('{pct}% of the option you choose', { pct: q.depositValue }) : many && q.depositType === 'products' ? tx('products + {pct}% of labor for the option you choose', { pct: q.depositValue }) : `${money(q.depositFee)}${q.depositBasis === 'products' ? depLabel(q) : q.depositPct ? ` ${tx('({pct}% of the total)', { pct: q.depositPct })}` : ''}`;
   const depositNote = est ? `<div class="qv-note"><strong>${tx('Nothing to sign or pay yet.')}</strong> ${anyDep ? tx('When you approve this estimate, it becomes your quote to sign, with a deposit of {what}.', { what: depWhat }) : tx('When you approve this estimate, it becomes your quote to sign.')}</div>`
     : open && anyDep ? `<div class="qv-note">${q.depositPaidAt ? `<strong>${tx('Deposit paid: {amount}.', { amount: money(q.depositPaidAmount ?? q.depositFee) })}</strong> ${tx('This quote was updated. After you approve, you’ll sign it again.')}` : `<strong>${tx('Deposit: {what}.', { what: depWhat })}</strong> ${tx('After you approve, you’ll sign the quote and pay this deposit before work begins.')}`}</div>` : '';
   const payDep = (d) => !est && d.depositFee > 0 && !q.depositPaidAt; // a deposit still to pay: the Approve button says so
