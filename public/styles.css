@@ -144,6 +144,9 @@ button.pill{padding:0 14px;font:inherit;font-size:14px}.pill.on{background:var(-
 @media (min-width:761px){.cfilters .bulk .btn.sm{padding:6px 14px;line-height:20px}}
 @media (min-width:761px){.bulk .btn.sm{padding:9px 16px;font-size:15px;line-height:20px;border-radius:9px}} /* computers: the buttons that show once rows are ticked, big enough to hit easily (phones already have big buttons) */
 .ctable .sel-td{width:48px;cursor:default}.ctable .sel-td input{width:26px;height:26px;margin:0;cursor:pointer;accent-color:var(--brand)}
+/* every tick box in a list is the same size as on the Quotes list: rows to select, items to pick (popups, the column picker, the calendar team list, photo pickers), checklist items, yes/no grids and any table */
+:root{--tick:26px}
+html .ctable .sel-td input,html .bi-job input,html .bi-all input,html .cat-offer input,html .team-pick input,html .m-team .m-chk input,html .col-pick .col-opt input,html .rp-c input,html .sc-team input,html .jf-check input,html .sp-grid input,html .jp-photos input,html table input[type=checkbox]:not(.sw){width:var(--tick);height:var(--tick);flex:none;accent-color:var(--brand)}
 /* computers: a row's tick box shows when the row is hovered (or ticked); once anything is ticked, every box shows so more can be picked. Select all, at the top, always shows */
 @media (hover:hover) and (min-width:761px){.ctable td.sel-td input:not(:checked){opacity:0;transition:opacity .12s}.ctable tr:hover>.sel-td input,.ctable .sel-td input:focus-visible,.ctable table:has(.sel-td input:checked) .sel-td input{opacity:1}}
 .svc-cats{display:flex;flex-direction:column;gap:8px;margin:12px 0}.svc-catrow{display:flex;align-items:center;gap:10px}.svc-catrow input{flex:1;min-width:0;margin:0}.svc-catrow .muted{flex:none;font-size:13px;min-width:62px;text-align:right}
