@@ -226,6 +226,7 @@ table.mini th,table.mini td{padding:9px 8px;font-size:14px;vertical-align:middle
 .qclient-pick{display:flex;align-items:center;gap:6px;margin-bottom:12px}.qclient-pick select{flex:1;min-width:0;margin-bottom:0}
 .client-menu{flex:none;font-weight:400}.client-menu summary.icon-btn{width:32px;height:32px;margin:-4px -6px -4px 0}.client-menu .more-dots{margin:0}.client-menu .menu-list{min-width:220px}
 .qlabel{font-size:12px;margin-bottom:2px}.qaddr{font-size:14px;white-space:pre-line}
+.qprop-name{display:block;font-weight:600;font-size:14px;white-space:normal} /* the property's name above its address (clients with several properties) */
 .qmeta{display:grid;grid-template-columns:110px 1fr;margin:0;align-content:start}
 .qmeta dt,.qmeta dd{margin:0;padding:8px 0;border-bottom:1px solid var(--line);font-size:14px;display:flex;align-items:center;min-height:56px}
 .qmeta dt{color:var(--muted)}.qmeta dd{font-weight:500}

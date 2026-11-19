@@ -1615,6 +1615,10 @@ const clientProps = (c) => (!c ? [] : Array.isArray(c.properties) ? c.properties
 const sameAddr = (a, b) => !!String(a || '').trim() && String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
 // the property something is for: by its propertyId, else by its address (a blank address means the client's billing address)
 const docProp = (c, x) => { const ps = clientProps(c); return ps.find((p) => x.propertyId && p.id === x.propertyId) || ps.find((p) => sameAddr(propAddr(p), x.address || c.address)); };
+// the property's name above its address on a quote, job or invoice, when the client has more than one property (with one, the address says it all)
+const propNameHtml = (c, x) => { if (clientProps(c).length < 2) return ''; const p = docProp(c, x || {}); return p && p.name ? `<div class="qprop-name">${esc(p.name)}</div>` : ''; };
+// the form being edited: its property, by the hidden propertyId and the address
+const formProp = (form) => ({ propertyId: ($('[name=propertyId]', form) || {}).value || '', address: form.address.value });
 const rid = () => Math.random().toString(36).slice(2, 10);
 // a US ZIP code typed into any address (properties, clients, team, profile) fills in the city and state (zippopotam.us, free, no key).
 // Only a blank city or state, or one this filled in before, is filled; a country other than the United States is left alone.
@@ -2331,7 +2335,7 @@ ${switchRow('showAccountBalance', 'Account balance', on('showAccountBalance'))}$
   const clientBox = () => {
     const c = byId(D.clients, $('[name=clientId]', form).value); const job = byId(D.jobs, $('[name=jobId]', form).value);
     $('.iclient', form).innerHTML = !c ? '<div class="muted">Choose a client</div>' : `<div class="muted qlabel">Billing address</div><div class="qaddr">${esc(c.address) || '<span class="muted">No address on file</span>'}</div>
-<div class="muted qlabel" style="margin-top:10px">Property address</div><div class="qaddr">${invProperty(form.address.value, job, c) ? esc(invProperty(form.address.value, job, c)) : '(Same as billing address)'}</div>
+<div class="muted qlabel" style="margin-top:10px">Property address</div><div class="qaddr">${propNameHtml(c, { propertyId: formProp(form).propertyId || (job && job.propertyId), address: form.address.value || (job && job.address) })}${invProperty(form.address.value, job, c) ? esc(invProperty(form.address.value, job, c)) : '(Same as billing address)'}</div>
 ${c.phone ? `<a class="qphone" href="tel:${esc(c.phone)}">${esc(c.phone)}</a>` : ''}${c.email ? `<a class="qphone" href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ''}`;
   };
   // deposit credit, invoice balance and the client's account balance, refreshed with the totals
@@ -2624,7 +2628,7 @@ function quoteForm(main, doc, preset) {
 <div class="qtop"><div class="qtop-l"><a href="/quotes" data-link class="back">← Quotes</a>${qBadge(status)}</div></div>
 <input name="title" class="qtitle" value="${esc(d.title || '')}" placeholder="Quote title (e.g. Backyard cleanup)" aria-label="Quote title">
 <div class="qhead"><div class="qclient"><div class="qclient-pick"><select name="clientId" required aria-label="Client">${clientOptions(d.clientId || p.clientId)}</select>${clientMenu()}</div>
-<div class="muted qlabel">Property address</div><div class="qaddr">${esc(d.address || '') || addr(d.clientId || p.clientId) || '<span class="muted">Choose a client</span>'}</div><input type="hidden" name="address" value="${esc(d.address || '')}"></div>
+<div class="muted qlabel">Property address</div><div class="qaddr">${propNameHtml(byId(D.clients, d.clientId || p.clientId), d)}${esc(d.address || '') || addr(d.clientId || p.clientId) || '<span class="muted">Choose a client</span>'}</div><input type="hidden" name="address" value="${esc(d.address || '')}"></div>
 <dl class="qmeta"><dt>Quote #</dt><dd><input name="number" class="num-in" maxlength="30" value="${esc(d.number || '')}" placeholder="Automatic" aria-label="Quote number" title="Leave blank for the next automatic number"></dd>
 <dt>Created</dt><dd>${fmtDate((d.createdAt || ymd(new Date())).slice(0, 10))}</dd>
 <dt>Status</dt><dd><select name="status" aria-label="Status">${['draft', 'sent', 'approved', 'declined'].map((s) => `<option value="${s}" ${(d.status || 'draft') === s ? 'selected' : ''}>${Q_STATUS[s]}</option>`).join('')}</select></dd>${sentMeta(d)}</dl></div>
@@ -2643,7 +2647,7 @@ ${planHas('zelle') ? switchRow('allowZelle', 'Zelle', d.allowZelle !== 'off' && 
   if (d.id && d.signedAt && d.depositPaidAt) guardSignature(form);
   form.addEventListener('change', (e) => {
     if (e.target.name === 'clientId') form.address.value = ''; // a new client: their address
-    if (e.target.name === 'clientId' || e.target.name === 'address') $('.qaddr', form).innerHTML = esc(form.address.value) || addr(form.clientId.value) || '<span class="muted">No address on file</span>';
+    if (e.target.name === 'clientId' || e.target.name === 'address') $('.qaddr', form).innerHTML = propNameHtml(byId(D.clients, form.clientId.value), formProp(form)) + (esc(form.address.value) || addr(form.clientId.value) || '<span class="muted">No address on file</span>');
   });
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -2842,7 +2846,7 @@ function quotePage(d) {
 <div class="actions">${quoteMore(d, { job, canJob, c })}
 ${sendBtn('quote', d)}</div></div>
 <div class="vhead"><div class="vtitle-row"><h1 class="vtitle">${esc(d.title || 'Untitled quote')}</h1>${editBtn('quote', d, 'top')}</div>
-<div class="qhead"><div class="qclient"><div class="vclient"><span>${esc(c.name || 'No client')}</span>${c.id ? clientMenu(c) : ''}</div><div class="muted qlabel">Property address</div><div class="qaddr">${esc(d.address || c.address || '') || '<span class="muted">No address on file</span>'}</div></div>
+<div class="qhead"><div class="qclient"><div class="vclient"><span>${esc(c.name || 'No client')}</span>${c.id ? clientMenu(c) : ''}</div><div class="muted qlabel">Property address</div><div class="qaddr">${propNameHtml(c, d)}${esc(d.address || c.address || '') || '<span class="muted">No address on file</span>'}</div></div>
 <dl class="qmeta"><dt>Quote #</dt><dd>${esc(d.number)}</dd><dt>Created</dt><dd>${fmtDate((d.createdAt || '').slice(0, 10))}</dd>${d.estimate || d.estimateApprovedAt ? `<dt>Estimate</dt><dd>${d.estimateApprovedAt ? `Approved ${fmtDate(d.estimateApprovedAt)}` : 'Client approves it first'}</dd>` : ''}${d.survey && (d.estimate || d.surveyTaskId) ? `<dt>Site survey</dt><dd>${qSvyText(d)}</dd>` : ''}${d.depositFee > 0 && !(qHasOpts(d) && !d.chosenOption) ? `<dt>Required deposit</dt><dd>${money(d.depositFee)}</dd>` : ''}${qHasOpts(d) && d.chosenOption ? `<dt>Client chose</dt><dd>${esc(qShown(d).name)}</dd>` : ''}${sentMeta(d)}</dl></div></div>
 <div class="qcard"><div class="qcard-h"><h2>Product / Service</h2>${editBtn('quote', d, 'items')}</div>${qHasOpts(d) && !d.chosenOption ? `<p class="muted qo-intro">${d.options.length} options for the client to choose from.</p>` : ''}${quoteItemsView(d)}</div>
 ${d.signedAt ? `<div class="qcard sig-card"><div class="qcard-h"><h2>Client signature</h2><span class="cstatus q-approved">Signed</span></div>
@@ -2864,7 +2868,7 @@ function invoicePage(d) {
 ${d.status !== 'paid' ? sendBtn('invoice', d) : ''}</div></div>
 <div class="vhead">${paidStamp(d)}<div class="vtitle-row"><h1 class="vtitle">${esc(d.subject || `Invoice ${d.number}`)}</h1>${editBtn('invoice', d, 'top')}</div>
 <div class="qhead"><div class="qclient"><div class="vclient"><span>${esc(c.name || 'No client')}</span>${c.id ? clientMenu(c) : ''}</div><div class="muted qlabel">Billing address</div><div class="qaddr">${esc(c.address || '') || '<span class="muted">No address on file</span>'}</div>
-<div class="muted qlabel" style="margin-top:10px">Property address</div><div class="qaddr">${invProperty(d.address, job, c) ? esc(invProperty(d.address, job, c)) : '(Same as billing address)'}</div>
+<div class="muted qlabel" style="margin-top:10px">Property address</div><div class="qaddr">${propNameHtml(c, { propertyId: d.propertyId || (job && job.propertyId), address: d.address || (job && job.address) })}${invProperty(d.address, job, c) ? esc(invProperty(d.address, job, c)) : '(Same as billing address)'}</div>
 ${c.phone || c.email ? `<div class="vclient-c">${c.phone ? `<a href="tel:${esc(c.phone)}">${esc(c.phone)}</a>` : ''}${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ''}</div>` : ''}</div>
 <dl class="qmeta"><dt>Invoice #</dt><dd>${esc(d.number)}</dd>${job ? `<dt>Invoice for</dt><dd><a href="/jobs/edit?id=${job.id}" data-link>${esc(job.number + ' · ' + job.title)}</a></dd>` : ''}
 <dt>Issued</dt><dd>${fmtDate(d.issueDate)}</dd><dt>Payment terms</dt><dd>${esc(termsLabel)}</dd><dt>Due date</dt><dd>${fmtDate(d.dueDate)}</dd>${sentMeta(d)}</dl></div></div>
@@ -3454,7 +3458,7 @@ function mobileJobPage(j) {
   return `<div class="mdoc mjob"><a href="/jobs" data-link class="md-back" aria-label="Back to jobs">${CHEV('M15 18l-6-6 6-6')}</a>
 <div class="md-st"><span class="cstatus ${J_CLASS[st]}">${J_STATUS[st]}</span>${sig ? '<span class="vsign">✓ Signed</span>' : ''}${omwBadge(j)}${clockBadge(j)}</div>
 ${tap('jobDetails', `<span class="md-h">Job #${esc(j.number)} for ${esc(c.name || 'no client')}${prices && jobTotal(j) !== null ? ` for ${money(jobTotal(j))}` : ''}</span>${j.title ? `<span class="md-sub">${esc(j.title)}</span>` : ''}
-<span class="md-addr">${esc(j.address || c.address || '')}</span>`, 'md-head')}
+<span class="md-addr">${propNameHtml(c, j)}${esc(j.address || c.address || '')}</span>`, 'md-head')}
 ${c.phone || c.email ? `<div class="md-contact">${c.phone ? `<a href="tel:${esc(c.phone)}">${CHEV('M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z')}Call</a>` : ''}${c.phone ? `<a href="sms:${esc(c.phone)}">${CHEV('M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z')}Text</a>` : ''}${c.email ? `<a href="mailto:${esc(c.email)}">${CHEV('M4 4h16v16H4zM4 6l8 7 8-7')}Email</a>` : ''}${j.address || c.address ? `<a href="https://maps.google.com/?q=${encodeURIComponent(j.address || c.address)}" target="_blank" rel="noopener">${CHEV('M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12zM12 11.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z')}Map</a>` : ''}</div>` : ''}
 <div class="md-acts">${acts.filter(Boolean).join('')}<button type="button" class="btn alt md-more" data-act="mJobMore" data-id="${j.id}" aria-label="More actions">⋯</button></div>${jobLocked(j) ? LOCK_NOTE('md-lock') : ''}
 <div class="md-tabs" role="tablist"><button type="button" role="tab" class="on" aria-selected="true" data-act="mTab" data-k="doc">Job</button><button type="button" role="tab" aria-selected="false" data-act="mTab" data-k="notes">Notes</button></div>
@@ -4228,7 +4232,7 @@ function jobViewPage(j) {
   return `<div class="qview jview"><div class="qpage"><div class="qmain"><div class="qtop"><div class="qtop-l"><a href="/jobs" data-link class="back">← Jobs</a><span class="cstatus ${J_CLASS[st]}">${J_STATUS[st]}</span>${j.signature ? '<span class="vsign">✓ Signed</span>' : ''}${omwBadge(j)}${clockBadge(j)}</div>
 <div class="actions">${jobMore(j)}${clockBtn(j)}${omwBtn(j)}${j.status === 'scheduled' ? `<button type="button" class="btn need-jobs-edit" data-act="completeJob" data-id="${j.id}">Mark Complete</button>` : `<button type="button" class="btn alt need-jobs-edit" data-act="reopenJob" data-id="${j.id}">↺ Reopen Job</button>`}</div></div>
 ${jobLocked(j) ? LOCK_NOTE('v-lock') : ''}<div class="vhead"><div class="vtitle-row"><h1 class="vtitle">${esc(j.title || 'Untitled job')}</h1>${editBtn('job', j, 'top')}</div>
-<div class="qhead"><div class="qclient"><div class="vclient"><span>${esc(c.name || 'No client')}</span>${c.id ? clientMenu(c) : ''}</div><div class="muted qlabel">Property address</div><div class="qaddr">${esc(j.address || c.address || '') || none('No address on file')}</div>
+<div class="qhead"><div class="qclient"><div class="vclient"><span>${esc(c.name || 'No client')}</span>${c.id ? clientMenu(c) : ''}</div><div class="muted qlabel">Property address</div><div class="qaddr">${propNameHtml(c, j)}${esc(j.address || c.address || '') || none('No address on file')}</div>
 ${c.phone || c.email ? `<div class="vclient-c">${c.phone ? `<a href="tel:${esc(c.phone)}">${esc(fmtUsPhone(c.phone))}</a>` : ''}${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ''}</div>` : ''}</div>
 <dl class="qmeta"><dt>Job #</dt><dd>${esc(j.number)}</dd><dt>Created</dt><dd>${fmtDate((j.createdAt || '').slice(0, 10))}</dd><dt>From quote</dt><dd>${q ? `<a href="/quotes/view?id=${q.id}" data-link>${esc(q.number)}</a>` : none('—')}</dd>${sentMeta(j)}</dl></div></div>
 ${canDo('jobs.prices') ? `<div class="qcard"><div class="qcard-h"><h2>Product / Service</h2>${editBtn('job', j, 'items')}</div>${(d.items || []).length ? viewItems(d) + `<div class="vtotals">${viewTotals(d)}${q && q.depositFee > 0 ? vt('Required deposit', money(q.depositFee))
@@ -4371,7 +4375,7 @@ ${jobBilling(j, invs)}</div>
   const contact = () => {
     const c = byId(D.clients, $('[name=clientId]', form).value) || {};
     const addr = $('[name=address]', form); addr.placeholder = c.address || "Defaults to the client's address";
-    $('.jcontact', form).innerHTML = [c.phone ? `<a class="qphone" href="tel:${esc(c.phone)}">${esc(c.phone)}</a>` : '', c.email ? `<a class="qphone" href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ''].join('');
+    $('.jcontact', form).innerHTML = propNameHtml(c, formProp(form)) + [c.phone ? `<a class="qphone" href="tel:${esc(c.phone)}">${esc(c.phone)}</a>` : '', c.email ? `<a class="qphone" href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ''].join('');
   };
   // deposit from the quote this job came from: required, collected, outstanding
   form._afterRecalc = () => {
@@ -4383,7 +4387,7 @@ ${paid ? `<div class="crow-line"><span>Deposit collected <span class="muted">· 
   };
   wireItems(form); contact(); wireRepeat(form);
   if (!canDo('jobs.edit')) $$('input, select, textarea', form).forEach((el) => { el.disabled = true; }); // view only without “Create, edit and delete jobs”
-  form.addEventListener('change', (e) => { if (e.target.name === 'clientId') contact(); });
+  form.addEventListener('change', (e) => { if (e.target.name === 'clientId' || e.target.name === 'address') contact(); }); // a property picked: its name
   form.addEventListener('submit', async (e) => {
     e.preventDefault(); const fd = new FormData(form);
     const body = { title: fd.get('title'), clientId: fd.get('clientId'), status: fd.get('status'), address: fd.get('address') || (byId(D.clients, fd.get('clientId')) || {}).address || '', propertyId: fd.get('propertyId') || '', date: fd.get('date'), startTime: fd.get('startTime'), endTime: fd.get('endTime'), anytime: !!fd.get('anytime'), description: fd.get('description'), staffIds: fd.getAll('staff'), internalNotes: fd.get('internalNotes'), taxRate: fd.get('taxRate'), discountType: fd.get('discountType'), discountValue: fd.get('discountValue'), discountName: fd.get('discountName') || '', items: readItems(form).filter((i) => i.desc) };
