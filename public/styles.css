@@ -354,6 +354,8 @@ details.menu{position:relative}details.menu summary{list-style:none}details.menu
 }
 /* Home's + Quote, + Job, + Invoice on phones: across the screen in three equal buttons */
 @media (max-width:760px){.home-acts{flex:1 1 100%;flex-wrap:nowrap}.home-acts .btn{flex:1 1 0;min-width:0;justify-content:center;text-align:center}}
+/* Team Requests' Request time off on phones: the full width under the title */
+@media (max-width:760px){.head:has(>.to-req)>div{flex:1 1 100%}.btn.to-req{width:100%;min-height:52px;justify-content:center;font-size:16px}}
 /* Project Gallery's Upload photos: a big button with a camera, centered on its own row under the title; the full width on phones */
 .head:has(>.gal-up)>div{flex:1 1 100%}
 .btn.gal-up{display:flex;align-items:center;justify-content:center;gap:10px;margin:0 auto;width:min(100%,380px);min-height:56px;padding:13px 24px;font-size:17px;border-radius:12px}
