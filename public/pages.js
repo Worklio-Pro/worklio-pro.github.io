@@ -1614,6 +1614,8 @@ PAGES['/reports/view'] = {
     if (o.href) return navigate(o.href);
     if (o.feature && !planHas(o.feature)) { main.innerHTML = `<div class="head"><div>${rptBack}<h1>${esc(meta[1])}</h1></div></div><div class="card empty">This report isn’t in your plan.${memberCan('/settings/billing') ? ' <a href="/settings/billing" data-link>See plans</a>' : ''}</div>`; return; }
     if (RPT[k]) await RPT[k](main); else await rptList(main, k);
+    // phones show the totals only (styles.css hides the tables, charts and export under #main.rpt-view); the full report is on a computer
+    main.classList.add('rpt-view'); main.insertAdjacentHTML('beforeend', '<p class="muted rpt-full">Totals only on a phone. Open this report on a computer to see every row, the charts and Export CSV.</p>');
     $$('[data-rpt]', main).forEach((el) => el.addEventListener('change', (e) => { const f = e.target.dataset.rpt; if (f === 'range' && e.target.value === 'custom') { [rpt.from, rpt.to] = rptDates(); } rpt[f] = e.target.value; rptSave(); refresh(); }));
   },
 };
@@ -2349,7 +2351,7 @@ const MK_MAIN = [['/marketing/dashboard', 'Dashboard'], ['/marketing/performance
 const MK_MORE = [['/social-posts', 'Social posting'], ['/marketing/referrals', 'Referrals'], ['/automations', 'Automations']];
 const mkTabOn = (p, path) => p === path || (p === '/automations' && path === '/automations/edit');
 function mkTabs(path) {
-  const ok = ([p]) => memberCan(p.startsWith('/marketing/') ? '/marketing/dashboard' : p);
+  const ok = ([p]) => !deskOnly(p) && memberCan(p.startsWith('/marketing/') ? '/marketing/dashboard' : p); // phones leave out desk pages (Automations)
   const a = ([p, l]) => `<a href="${p}" data-link class="${mkTabOn(p, path) ? 'on' : ''}"${mkTabOn(p, path) ? ' aria-current="page"' : ''}>${l}${MK_SOON[p] ? '<span class="mk-soon">Soon</span>' : ''}</a>`;
   const more = MK_MORE.filter(ok); const inMore = more.some(([p]) => mkTabOn(p, path));
   // phones: one button with the page you're on, opening a list of every tab (More's too) in the page instead of a strip to scroll

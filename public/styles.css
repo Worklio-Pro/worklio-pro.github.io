@@ -1141,6 +1141,8 @@ a.conn-chip{text-decoration:none}a.conn-chip:hover{text-decoration:underline}
 #side a.nav-link .nav-n,#side a.nav-link .beta-tag{margin-left:0;flex:none}
 /* a page in beta testing: a banner at the top of the page */
 .beta-bar{display:flex;align-items:center;gap:12px;margin:0 0 16px;padding:10px 14px;border-radius:10px;background:var(--warn-bg);color:var(--warn-fg);border:1px solid var(--warn-border);font-size:14px;line-height:1.45}
+.desk-bar{display:flex;align-items:center;gap:10px;margin:0 0 16px;padding:10px 14px;border-radius:10px;background:var(--card);color:var(--muted);border:1px solid var(--line);font-size:14px;line-height:1.45}
+.desk-bar svg{flex:none}
 .beta-bar .link-btn{margin:0;color:inherit;font-size:inherit}
 .beta-pill{flex:none;padding:2px 9px;border-radius:99px;background:var(--warn);color:#fff;font-size:12px;font-weight:700;letter-spacing:.03em}
 .pay-wait{color:var(--muted)}.pay-note{margin:0 0 12px;font-size:13px}.pay-note .link-btn{margin:0 0 0 4px;font-size:13px}
@@ -1883,6 +1885,14 @@ tr.pl-net td{font-weight:700;font-size:16px;border-top:2px solid var(--text)}
 @media (max-width:900px){.rpt-top{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:640px){.rpt-findw{width:100%;margin:0}.rpt-chips{width:100%;justify-content:space-between}.rpt-chip{padding:7px 10px}.rpt-tools .rpt-q{flex:1 1 100%;width:auto}.rpt-sp{display:none}.rpt-tools .btn{flex:1}
   .rpt-stats{gap:12px 24px}.rpt-stats strong{font-size:20px}.rpt-pager{flex-wrap:wrap}.rpt-pager .muted{flex:1 1 100%}}
+/* Reports on phones: totals only. Each report keeps its title, dates and total tiles; tables, charts and export are for a computer */
+.rpt-full{display:none}
+@media (max-width:760px){
+  #main.rpt-view>:not(.head,.rpt-bar,.grid.g4,.rpt-top,.rpt-full,.desk-bar,.beta-bar){display:none}
+  #main.rpt-view .head .actions,#main.rpt-view .rpt-top>:not(.rpt-sum),#main.rpt-view .rpt-sum>:not(.rpt-stats){display:none}
+  #main.rpt-view .rpt-tools>:not(select[data-rpt],input[data-rpt],.muted){display:none}
+  #main.rpt-view .rpt-full{display:block;margin-top:16px}
+}
 @media print{.rpt-top{grid-template-columns:minmax(0,1fr) 260px}.rpt-t td{white-space:normal}}
 /* Settings → QuickBooks & Xero */
 .bk-h{font-size:15px;margin:18px 0 6px}

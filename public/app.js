@@ -252,9 +252,16 @@ const MK_PAGES = ['/marketing/dashboard', '/reviews', '/social-posts', '/automat
 const mkHub = () => !(company.account && company.account.marketingHub === false);
 const mkPage = (path) => mkHub() && (path.startsWith('/marketing/') || ['/reviews', '/social-posts', '/automations', '/automations/edit'].includes(path));
 const mkEntry = () => MK_PAGES.find((p) => memberCan(p) && (p === '/marketing/dashboard' || !planLocked(p)));
-const navFor = () => navList().map(([g, items]) => [g, items.filter(([p]) => (p === '/marketing/dashboard') === mkHub() || !MK_PAGES.includes(p)).map(([p, l]) => (p === '/marketing/dashboard' ? (mkEntry() ? [mkEntry(), l] : null) : [p, l])).filter((x) => x && memberCan(x[0]) && !planLocked(x[0]))]).filter(([, items]) => items.length);
+const navFor = () => navList().map(([g, items]) => [g, items.filter(([p]) => (p === '/marketing/dashboard') === mkHub() || !MK_PAGES.includes(p)).map(([p, l]) => (p === '/marketing/dashboard' ? (mkEntry() ? [mkEntry(), l] : null) : [p, l])).filter((x) => x && memberCan(x[0]) && !planLocked(x[0]) && !deskOnly(x[0]))]).filter(([, items]) => items.length);
 // Team Requests (in Settings) shows how many time-off requests are waiting for this approver, and so does the Settings button
 // a page in beta testing (Alpha → Pricing → Plans & features) says so in a banner at the top, instead of a tag in the menu
+// pages that are desk work (set up once, wide tables, files, builders): phones leave them out of the menu, the search and the Marketing tabs.
+// A link or bookmark still opens them, with a note that they work best on a computer
+const DESK_PAGES = ['/service-plans', '/automations', '/notifications', '/settings/company', '/settings/business-page', '/settings/roles', '/settings/emails', '/settings/job-forms', '/settings/import-export', '/settings/booking', '/settings/accounting', '/marketplace', '/clients/import', '/services/import'];
+const deskMq = matchMedia('(max-width:760px)');
+const deskOnly = (p) => deskMq.matches && DESK_PAGES.includes(p);
+deskMq.addEventListener('change', () => { if (me && !$('#main.portal')) renderSide(curPath()); });
+const DESK_BAR = '<div class="desk-bar" role="status"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg><span>This page works best on a computer.</span></div>';
 const BETA_BAR = '<div class="beta-bar" role="status"><span class="beta-pill">Beta</span><span>This page is in beta testing. It works, but it may change and you might run into rough edges. <button type="button" class="link-btn" data-act="feedbackForm">Tell us</button> if something doesn’t look right.</span></div>';
 function timeOffBadge() {
   $$('#side .nav-n.to-n').forEach((n) => n.remove()); const n = D && D.timeOffWaiting; if (!n) return;
@@ -362,7 +369,7 @@ const ICONS = {
 const referralsOn = () => !!(company.account && company.account.referrals);
 // App Marketplace shows unless Alpha turned it off
 const marketplaceOn = () => !(company.account && company.account.marketplace === false);
-const settingsFor = () => SETTINGS_NAV.filter(([p]) => memberCan(p) && !planLocked(p) && (p !== '/rewards' || referralsOn()) && (p !== '/marketplace' || marketplaceOn()));
+const settingsFor = () => SETTINGS_NAV.filter(([p]) => memberCan(p) && !planLocked(p) && !deskOnly(p) && (p !== '/rewards' || referralsOn()) && (p !== '/marketplace' || marketplaceOn()));
 // pages the search finds besides the menu items, and extra words each page answers to
 const FEATURE_EXTRAS = [['/quotes/new', 'New quote', 'Quotes', 'create estimate'], ['/jobs/new', 'New job', 'Jobs', 'create schedule visit'], ['/invoices/new', 'New invoice', 'Invoices', 'create bill'],
   ['/clients/import', 'Import clients', 'Settings', 'csv upload spreadsheet'], ['/services/import', 'Import products & services', 'Settings', 'csv upload spreadsheet price list catalog'],['/team/new', 'Add team member', 'Settings', 'invite staff employee user'],
@@ -375,7 +382,7 @@ const FEATURE_WORDS = {
   '/settings/booking': 'online booking book now button widget website embed form wix wordpress squarespace schedule appointment request leads', '/settings/job-forms': 'checklists checklist forms form inspection safety check templates job photos required', '/settings/import-export': 'import export csv download upload spreadsheet excel backup clients quotes jobs invoices products services expenses timesheets payroll', '/settings/preferences': 'appearance theme dark mode light system push notifications alerts phone calendar link google calendar outlook apple ical ics feed sync subscribe', '/settings': 'tax settings tax rate tax id sales tax saved discounts number prefixes branding logo dark logo brand color accent color web address domain zelle venmo cash app cashapp cashtag paypal defaults stripe card payments online payments regional time zone date format time format week', '/settings/connections': 'integrations google facebook instagram ai', '/settings/accounting': 'quickbooks xero accounting bookkeeping books sync accountant', '/settings/business-page': 'qr code business card digital card link in bio links save contact vcard scan limit expiry', '/marketplace': 'apps integrations connect quickbooks xero accounting home depot lowes supplies materials zapier chatgpt claude ai automation calendar slack gusto payroll', '/settings/billing': 'subscription plan upgrade payment method features included add-ons', '/settings/support-access': 'grant revoke help troubleshoot permission',
 };
 const featureList = () => {
-  const open = (p) => PAGES[p] && memberCan(p) && !planLocked(p) && !planLocked(p.split('/').slice(0, 2).join('/'));
+  const open = (p) => PAGES[p] && !deskOnly(p) && memberCan(p) && !planLocked(p) && !planLocked(p.split('/').slice(0, 2).join('/'));
   return [...navFor().flatMap(([g, items]) => items.map(([p, l]) => [p, l, g])), ...settingsFor().map(([p, l]) => [p, l, 'Settings']), ...FEATURE_EXTRAS.filter(([p]) => open(p))]
     .map(([p, l, g, k]) => ({ p, l, g, words: `${l} ${g} ${k || ''} ${FEATURE_WORDS[p] || ''}`.toLowerCase() }));
 };
@@ -622,7 +629,7 @@ async function render() {
   if (page && planLocked(path)) { document.title = page.title; main.innerHTML = (betaPage(path) ? BETA_BAR : '') + `<div class="card upgrade-card"><h1>${esc(page.title)} isn’t in your plan</h1><p class="muted">You’re on the ${esc(company.account.plan.name)} plan. Upgrade to get ${esc(page.title)} and more.</p>${memberCan('/settings/billing') ? '<p><a href="/settings/billing" data-link class="btn alt">See your plan</a></p>' : '<p class="muted" style="margin:0">Ask your account owner about upgrading.</p>'}</div>`; return; }
   if (!page) { document.title = 'Page not found'; document.body.classList.add('p404-only'); showTheme('light'); main.innerHTML = page404Html(); return; } // p404-only: no menus, bars or chat; always light (the next page puts the person's theme back)
   document.title = `${page.title} · ${company.name || (company.account && company.account.productName) || 'Worklio Pro'}`;
-  try { D = portal ? {} : await loadAll(); timeOffBadge(); await page.render(main); if (mkPage(path) && typeof mkTabs === 'function' && !$('.mk-tabs', main)) main.insertAdjacentHTML('afterbegin', mkTabs(path)); if (betaPage(path)) main.insertAdjacentHTML('afterbegin', BETA_BAR); }
+  try { D = portal ? {} : await loadAll(); timeOffBadge(); await page.render(main); if (mkPage(path) && typeof mkTabs === 'function' && !$('.mk-tabs', main)) main.insertAdjacentHTML('afterbegin', mkTabs(path)); if (betaPage(path)) main.insertAdjacentHTML('afterbegin', BETA_BAR); if (DESK_PAGES.includes(path) && deskMq.matches) main.insertAdjacentHTML('afterbegin', DESK_BAR); }
   catch (e) { main.innerHTML = `<div class="card"><h2>Something went wrong</h2><p>${esc(e.message)}</p></div>`; }
   if (!portal && me && me.supporterThanks && !pausedNow()) supporterThanks(); // just claimed a Founding Supporter code: the good news first, the tour after
   else if (!portal && me && me.tourNew && !pausedNow() && typeof startTour === 'function') startTour(); // a new login's first visit (public/tour.js)
