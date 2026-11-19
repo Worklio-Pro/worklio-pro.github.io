@@ -2996,7 +2996,7 @@ PAGES['/project-gallery'] = {
   async render(main) {
     const photos = await api('GET', '/api/photos'); D.photos = photos;
     const list = photos.filter((p) => !galJob || p.jobId === galJob).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    main.innerHTML = `<div class="head"><div><h1>Project Gallery</h1><p class="sub">Progress and completion photos for client jobs.</p></div><button class="btn" data-act="uploadPhotos">+ Upload photos</button></div>
+    main.innerHTML = `<div class="head"><div><h1>Project Gallery</h1><p class="sub">Progress and completion photos for client jobs.</p></div><button class="btn gal-up" data-act="uploadPhotos">${svgIcon('<path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/>', 22)}Upload photos</button></div>
 <div class="card"><label style="max-width:360px">Filter by job<select id="galJob"><option value="">All jobs</option>${D.jobs.map((j) => `<option value="${j.id}" ${galJob === j.id ? 'selected' : ''}>${esc(j.number + ' · ' + j.title)}</option>`).join('')}</select></label>
 ${list.length ? `<div class="gallery">${list.map((p) => { const j = byId(D.jobs, p.jobId); return `<figure><img src="${esc(p.file)}" alt="${esc(p.caption)}" loading="lazy" data-act="viewPhoto" data-id="${p.id}"><figcaption>${badge(p.type)} <strong>${esc(j ? j.number + ' · ' + j.title : 'Job removed')}</strong><div class="muted">${esc(p.caption)}</div></figcaption></figure>`; }).join('')}</div>` : '<div class="empty">No photos yet. Upload progress or completion photos for a job.</div>'}</div>`;
     $('#galJob').addEventListener('change', (e) => { galJob = e.target.value; refresh(); });
