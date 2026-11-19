@@ -51,7 +51,8 @@ const IM_CLIENT = [['clientName', 'Client name', /^(client|customer|contact)( ?(
   ['clientAddress', 'Client address', /billing address|client address|customer address/]];
 const IM_ITEMS = [['itemName', 'Line item name', /^(line ?item|item|product|service|product\/service)( ?name)?$/], ['itemDesc', 'Line item description', /^(line ?item|item) ?desc(ription)?$/],
   ['itemQty', 'Line item quantity', /^(qty|quantity)$|^(line ?item|item) ?(qty|quantity)$/], ['itemPrice', 'Line item unit price', /unit ?(price|cost)|^rate$|^(item |line ?item )?price$/],
-  ['itemTotal', 'Line item total', /^(line ?item|item|line) ?(total|amount)$|^extended/]];
+  ['itemTotal', 'Line item total', /^(line ?item|item|line) ?(total|amount)$|^extended/],
+  ['itemList', 'All line items in one cell', /^line ?items$|^items$/]]; // Jobber's quote export: "Cat6 Wiring (37, $5920.00), NVR Setup (1, $50.00)"
 const IM_DOC_MONEY = [['subtotal', 'Subtotal', /sub-?total|pre-?tax|before tax/], ['discount', 'Discount', /discount/], ['tax', 'Tax amount', /^(sales )?tax( amount| total)?$|^tax \(|^total tax/], ['total', 'Total', /^(grand |invoice |quote |estimate |job )?total|^total amount$|^amount$|^value$/]];
 const IM_FIELDS = {
   clients: [['name', 'Full name', /^(client|customer|contact)( ?(full )?name)?$|^(full |display )?name$/], ['first', 'First name', /^(client |customer )?first( ?name)?$|^given name$/], ['last', 'Last name', /^(client |customer )?last( ?name)?$|^(surname|family name)$/],
@@ -61,7 +62,7 @@ const IM_FIELDS = {
   services: [['name', 'Name', /^(name|item|product|service|title|product\/service)( ?name)?$/], ['type', 'Type (product or service)', /^(item )?type$|^kind$/], ['description', 'Description', /desc/],
     ['price', 'Price', /price|rate|cost|amount/], ['unit', 'Unit', /^unit$|unit of|uom/], ['category', 'Category', /category|group|class/]],
   quotes: [['number', 'Quote number', /^(quote|estimate)? ?(#|no\.?|num(ber)?|id)$|^(quote|estimate)$/], ...IM_DOC_MONEY, ['closedDate', 'Approved / declined date', /approved|accepted|converted|declined|won|closed/],
-    ['date', 'Date', /created|sent|issued|^date$|(quote|estimate) date/], ['status', 'Status', /status|stage/], ...IM_CLIENT, ['title', 'Title', /title|subject|(quote|estimate|job) name|description/], ['notes', 'Notes / message', /note|message|comment/], ...IM_ITEMS],
+    ['date', 'Date', /created|^sent( date| on)?$|date sent|issued|^date$|(quote|estimate) date/], ['draftDate', 'Drafted date (when there’s no sent date)', /drafted/], ['status', 'Status', /status|stage/], ...IM_CLIENT, ['title', 'Title', /title|subject|(quote|estimate|job) name|description/], ['notes', 'Notes / message', /note|message|comment/], ...IM_ITEMS],
   jobs: [['number', 'Job number', /^(job|work order|wo)? ?(#|no\.?|num(ber)?|id)$|^job$/], ...IM_DOC_MONEY, ['closedDate', 'Completed date', /complet|closed|finish|end date/], ['startTime', 'Start time', /start time|time$/],
     ['endTime', 'End time', /end time/], ['date', 'Date', /start|schedul|^date$|visit|appointment|job date/], ['status', 'Status', /status|stage/], ['jobAddress', 'Job address', /property|service address|job address|location|^address$/],
     ...IM_CLIENT, ['title', 'Title', /title|job name|subject|^job$|summary/], ['description', 'Description / instructions', /desc|instruction|detail|note/], ...IM_ITEMS],
@@ -99,13 +100,22 @@ function imGuess(kind, headers) {
   return map;
 }
 
+// "Remove TVs (60” max) (13, $975.00), Projector Removal (1, $60.00)" → lines; the amount is the line total (quantity × unit price)
+function imItemList(cell) {
+  const s = String(cell || '').trim(); if (!s) return [];
+  const re = /\s*(.+?)\s*\((\d+(?:\.\d+)?),\s*(-?\$?-?[\d,]*\.?\d+)\)\s*(?:,|$)/gy; const out = []; let m; let end = 0;
+  while ((m = re.exec(s))) { out.push({ desc: m[1].trim(), details: '', qty: Number(m[2]), price: '', lineTotal: imMoney(m[3]) }); end = re.lastIndex; }
+  return end === s.length ? out : null; // not all of it read: null, and the text goes on the one line as its details
+}
+
 // ---------- rows → records the server takes ----------
 function imRecords() {
-  const s = IM; const pick = (row) => { const v = {}; s.map.forEach((k, i) => { if (k && String(row[i] ?? '').trim()) v[k] = (v[k] ? v[k] + ' ' : '') + String(row[i]).trim(); }); return v; };
+  // a cell that's only a dash ("-", "–", "—") is empty: Jobber writes "-" for every blank
+  const s = IM; const pick = (row) => { const v = {}; s.map.forEach((k, i) => { const c = String(row[i] ?? '').trim(); if (k && c && !/^[-–—]+$/.test(c)) v[k] = (v[k] ? v[k] + ' ' : '') + c; }); return v; };
   const client = (v) => ({ name: v.clientName || [v.clientFirst, v.clientLast].filter(Boolean).join(' '), company: v.company || '', email: v.email || '', phone: v.phone || '', address: v.clientAddress || '' });
   const doc = (v) => ({ number: v.number || '', client: client(v), title: v.title || '', notes: v.notes || '', description: v.description || '', status: v.status || '',
-    date: imDate(v.date), dueDate: imDate(v.dueDate), closedDate: imDate(v.closedDate), paidDate: imDate(v.paidDate), startTime: imTime(v.startTime) || (v.date && /\d:\d\d/.test(v.date) ? imTime(v.date) : ''), endTime: imTime(v.endTime),
-    subtotal: imMoney(v.subtotal), discount: imMoney(v.discount), tax: imMoney(v.tax), total: imMoney(v.total), paid: imMoney(v.paid), balance: imMoney(v.balance), method: v.method || '', jobNumber: v.jobNumber || '', address: v.jobAddress || '', items: [] });
+    date: imDate(v.date) || imDate(v.draftDate), dueDate: imDate(v.dueDate), closedDate: imDate(v.closedDate), paidDate: imDate(v.paidDate), startTime: imTime(v.startTime) || (v.date && /\d:\d\d/.test(v.date) ? imTime(v.date) : ''), endTime: imTime(v.endTime),
+    subtotal: imMoney(v.subtotal), discount: imMoney(v.discount), tax: imMoney(v.tax), total: imMoney(v.total), paid: imMoney(v.paid), balance: imMoney(v.balance), method: v.method || '', jobNumber: v.jobNumber || '', address: v.jobAddress || '', items: imItemList(v.itemList) || [], lineDetails: v.itemList && !imItemList(v.itemList) ? v.itemList : '' });
   const line = (v) => (v.itemName || v.itemDesc || v.itemTotal || v.itemPrice ? { desc: v.itemName || v.itemDesc || 'Item', details: v.itemName && v.itemDesc ? v.itemDesc : '', qty: imMoney(v.itemQty) === '' ? 1 : imMoney(v.itemQty), price: imMoney(v.itemPrice), lineTotal: imMoney(v.itemTotal) } : null);
   // reports end with a totals row ("Report totals:", "Total", "Grand total"): never a record
   const isTotals = (row) => { const first = row.find((c) => String(c || '').trim()); return /^(report |grand |sub-?)?totals?:?$/i.test(String(first || '').trim()); };
