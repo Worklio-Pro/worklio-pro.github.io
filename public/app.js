@@ -3677,9 +3677,10 @@ const daysSince = (d) => (d ? Math.max(0, Math.round((parseD(ymd(new Date())) - 
 const agoTxt = (n) => (n === 0 ? 'today' : n === 1 ? 'yesterday' : `${n} days ago`);
 const qDepClaimed = (q) => !!q.zelleSentAt && !q.depositPaidAt && quoteStatus(q) !== 'converted';
 // why a quote needs action: chg = changes requested, dep = deposit to check, job = approved with no job, stale = no reply in 7+ days
-const quoteWhy = (q) => { const s = quoteStatus(q);
+const quoteWhy = (q) => { const s = quoteStatus(q); if (q.archived) return ''; // archived: out of the way, never needs action
   return quoteChg(q) ? 'chg' : qDepClaimed(q) ? 'dep' : (s === 'survey' || (s === 'draft' && q.surveyTaskId)) && qSvyDone(q) ? 'svy' : s === 'approved' ? 'job' : qOut(s) && daysSince(qSentOn(q)) >= 7 ? 'stale' : ''; };
-const quoteInTab = (q, s) => s === 'all' || (s === 'action' ? !!quoteWhy(q) : quoteStatus(q) === s);
+// archived quotes (ticked rows → Archive) show only on the Archived tab
+const quoteInTab = (q, s) => (s === 'archived' ? !!q.archived : !q.archived && (s === 'all' || (s === 'action' ? !!quoteWhy(q) : quoteStatus(q) === s)));
 const quoteUrgency = (a, b) => {
   const rank = (q) => ({ chg: 0, dep: 1, svy: 1.5, job: 2, stale: 3 }[quoteWhy(q)] ?? { sent: 4, estimate: 4, survey: 4, draft: 5, approved: 6, converted: 7, declined: 8 }[quoteStatus(q)] ?? 9);
   const done = (q) => ['converted', 'declined'].includes(quoteStatus(q)); const at = (q) => qSentOn(q) || qDay(q.createdAt);
@@ -3731,7 +3732,7 @@ PAGES['/quotes'] = {
       { k: 'total', label: 'Total', th: th('total', 'Total', 'r'), td: (q) => `<td class="r">${qHasOpts(q) && !q.chosenOption ? `<small class="muted qo-from">${q.options.length} options from</small><strong>${money(Math.min(...Object.values(q.optionTotals || {}).map((t) => t.total)))}</strong>` : `<strong>${money(q.total)}</strong>`}</td>` },
     ];
     cols = listCols('quotes', QCOLS);
-    if (phoneMq.matches) return mobileList(main, { path: '/quotes', title: 'Quotes', plural: 'quotes', one: 'quote', list, q: v.q, status: v.status, statuses: [['action', 'Needs action'], ...order.map((s) => [s, Q_STATUS[s]])], date: (x) => x.createdAt,
+    if (phoneMq.matches) return mobileList(main, { path: '/quotes', title: 'Quotes', plural: 'quotes', one: 'quote', list, q: v.q, status: v.status, statuses: [['action', 'Needs action'], ...order.map((s) => [s, Q_STATUS[s]]), ['archived', 'Archived']], date: (x) => x.createdAt,
       row: (x) => ({ name: cname(x), date: mDay(x.createdAt), amount: mAmt(x.total), title: x.title, label: quoteChg(x) ? 'Changes requested' : Q_STATUS[quoteStatus(x)], cls: 'q-' + quoteStatus(x), href: '/quotes/view?id=' + x.id }),
       onStatus: (k) => { quoteView = { ...quoteView, status: k, picked: true }; }, onQ: (t) => { quoteView.q = t; }, newAct: 'newQuote' });
     // the buttons on a row (shown on hover): what you'd do next with that quote
@@ -3761,7 +3762,7 @@ ${cols.map((c) => c.td(q)).join('')}<td class="racts"><div>${acts(q)}</div></td>
         + part(stale, grp('q-sent', 'No reply in 7+ days', `${stale.length} quote${s(stale.length)} · ${money(sum(stale))}`, stale.length > 1 ? `<button type="button" class="btn alt" data-act="quoteFollowAll">Follow up all ${stale.length}</button>` : ''));
     } else body = list.map(row).join('');
     const waiting = D.quotes.filter((q) => qOut(quoteStatus(q)) && !quoteWhy(q)).length;
-    const tabs = [['action', 'Needs action', D.quotes.filter((q) => quoteWhy(q))], ...order.map((s) => [s, Q_STATUS[s], ['converted', 'declined'].includes(s) ? null : D.quotes.filter((q) => quoteStatus(q) === s)]), ['all', 'All', null]];
+    const tabs = [['action', 'Needs action', D.quotes.filter((q) => quoteWhy(q))], ...order.map((s) => [s, Q_STATUS[s], ['converted', 'declined'].includes(s) ? null : D.quotes.filter((q) => !q.archived && quoteStatus(q) === s)]), ['archived', 'Archived', null], ['all', 'All', null]];
     const tabM = (s, l) => (l ? (l.length ? moneyShort(sum(l)) : '') : s === 'converted' && convNow.length ? `${moneyShort(sum(convNow))} past 30 days` : '');
     main.innerHTML = `<div class="head"><h1>Quotes</h1><div class="actions"><button class="btn" data-act="newQuote">New Quote</button></div></div>
 <div class="lstrip"><span class="ls-l">Past 30 days</span><span>Sent <strong>${sentNow.length} · ${moneyShort(sum(sentNow))}</strong> ${change(sentNow.length, sentPrev.length)}</span>
@@ -3769,7 +3770,7 @@ ${cols.map((c) => c.td(q)).join('')}<td class="racts"><div>${acts(q)}</div></td>
 <div class="ltabs" role="tablist" aria-label="Quote status">${tabs.map(([s, label, l]) => `<button type="button" role="tab" aria-selected="${v.status === s}" class="ltab${v.status === s ? ' on' : ''}" data-act="quoteTab" data-s="${s}"><span class="lt-t">${Q_STATUS[s] ? `<i class="dot q-${s}"></i>` : ''}${label}${l ? `<span class="lt-n">${l.length}</span>` : ''}</span><span class="lt-m">${tabM(s, l)}</span></button>`).join('')}</div>
 <div class="cfilters"><label class="pill">📅 Date<select data-qv="date">${[['all', 'All'], ['30', 'Past 30 days'], ['90', 'Past 90 days'], ['year', 'This year']].map(([k, l]) => `<option value="${k}" ${v.date === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
 <input id="qq" class="csearch" type="search" placeholder="Search quotes…" value="${esc(v.q)}">${colPicker('quotes', QCOLS, cols)}</div>
-${quoteSel.size ? `<div class="bulk"><strong>${quoteSel.size} selected</strong><button class="btn sm" data-act="quoteFollowSel">Send follow-ups</button><button class="btn danger sm" data-act="deleteSelQuotes">Delete</button><button class="btn alt sm" data-act="quoteClearSel">Clear selection</button></div>` : ''}
+${quoteSel.size ? `<div class="bulk"><strong>${quoteSel.size} selected</strong>${v.status === 'archived' ? '' : '<button class="btn sm" data-act="quoteFollowSel">Send follow-ups</button>'}<button class="btn alt sm" data-act="archiveSelQuotes">${v.status === 'archived' ? 'Unarchive' : 'Archive'}</button><button class="btn danger sm" data-act="deleteSelQuotes">Delete</button><button class="btn alt sm" data-act="quoteClearSel">Clear selection</button></div>` : ''}
 <div class="card ctable"><div class="tablewrap"><table><tr><th class="sel-td"><input type="checkbox" id="qSelAll" aria-label="Select all" ${list.length && list.every((q) => quoteSel.has(q.id)) ? 'checked' : ''}></th>${cols.map((c) => c.th).join('')}<th aria-label="Actions"></th></tr>
 ${body || `<tr><td colspan="${ncol}" class="empty">${v.status === 'action' && !v.q && v.date === 'all' && D.quotes.length ? 'Nothing needs action: no changes requested, nothing waiting on a reply for a week.' : D.quotes.length ? 'No quotes match these filters' : 'No quotes yet'}</td></tr>`}</table></div>
 ${v.status === 'action' && waiting ? `<div class="lmore"><span>${waiting} more quote${waiting === 1 ? ' is' : 's are'} awaiting a reply, sent less than 7 days ago.</span><button type="button" class="link-btn" data-act="quoteTab" data-s="sent">Awaiting response →</button></div>` : ''}</div>`;
@@ -3786,6 +3787,12 @@ const quoteFollowUp = (ids) => resendMany('quote', ids.map((id) => byId(D.quotes
 A.quoteFollowAll = () => quoteFollowUp(quoteStaleIds);
 A.quoteFollowSel = () => quoteFollowUp([...quoteSel]);
 A.quoteClearSel = () => { quoteSel.clear(); refresh(); };
+// ticked rows → Archive (off every tab but Archived, never in Needs action), or Unarchive on the Archived tab
+const archiveSel = async (sel, col, word, on) => {
+  const n = sel.size; for (const id of sel) await api('PUT', `/api/${col}/${id}`, { archived: on });
+  toast(`${on ? 'Archived' : 'Unarchived'} ${n} ${word}${n === 1 ? '' : 's'}`); sel.clear(); refresh();
+};
+A.archiveSelQuotes = () => archiveSel(quoteSel, 'quotes', 'quote', quoteView.status !== 'archived');
 A.deleteSelQuotes = async () => {
   if (!confirm(`Delete ${quoteSel.size} quote${quoteSel.size === 1 ? '' : 's'}? This can't be undone.`)) return;
   for (const id of quoteSel) await api('DELETE', '/api/quotes/' + id);
@@ -4535,13 +4542,14 @@ const LOCK_NOTE = (cls) => `<p class="${cls} job-lock need-jobs-edit">This job i
 function jobStatus(j) {
   const today = ymd(new Date());
   if (j.status === 'cancelled') return 'cancelled';
+  if (j.archived) return 'archived'; // archived from the Jobs list (ticked rows → Archive)
   if (j.status === 'completed') return jobInvoices(j).length || j.membershipId ? 'archived' : 'invoice'; // a service plan's visits are billed by the plan
   return j.date < today ? 'late' : j.date === today ? 'today' : 'upcoming';
 }
 // value of a job: its invoices, or the quote it came from when not invoiced yet
 const jobTotal = (j) => { const inv = jobInvoices(j); if (inv.length) return inv.reduce((s, i) => s + (i.total || 0), 0); if (j.items && j.items.length) return j.total || 0; const q = byId(D.quotes, j.quoteId); return q ? q.total || 0 : null; };
 // The Jobs page opens on Needs action: late visits and completed jobs that need an invoice. Same layout as Invoices and Quotes.
-let jobView = { status: 'action', staff: '', q: '', sort: 'urgent', dir: 1 };
+let jobView = { status: 'action', staff: '', q: '', sort: 'urgent', dir: 1 }; const jobSel = new Set();
 const jobNeedsAction = (j) => ['late', 'invoice'].includes(jobStatus(j));
 const jobInTab = (j, s) => s === 'all' || (s === 'action' ? jobNeedsAction(j) : jobStatus(j) === s);
 // most urgent first: late (oldest first), requires invoicing, today, upcoming (soonest first), then archived and cancelled (newest first)
@@ -4603,8 +4611,11 @@ PAGES['/jobs'] = {
       if (st === 'today') return b('onMyWay', 'On my way', true) + b('completeJob', 'Complete', false, ' need-jobs-edit');
       if (st === 'invoice') return b('jobInvoice', 'Create invoice', false, ' need-invoices');
       return ''; };
-    const ncol = cols.length + 1;
-    const row = (j) => `<tr class="crow" data-id="${j.id}">${cols.map((c) => c.td(j)).join('')}<td class="racts"><div>${acts(j)}</div></td></tr>`;
+    const ncol = cols.length + 2;
+    [...jobSel].forEach((id) => { if (!byId(D.jobs, id)) jobSel.delete(id); });
+    const row = (j) => `<tr class="crow" data-id="${j.id}"><td class="sel-td need-jobs-edit"><input type="checkbox" class="jsel" value="${j.id}" ${jobSel.has(j.id) ? 'checked' : ''} aria-label="Select job ${esc(j.number)}"></td>${cols.map((c) => c.td(j)).join('')}<td class="racts"><div>${acts(j)}</div></td></tr>`;
+    // Unarchive only for jobs archived from this list (a completed, invoiced job is archived by its status, not by a tick)
+    const selArchived = [...jobSel].some((id) => (byId(D.jobs, id) || {}).archived);
     const grp = (dot, title, note, btn = '') => `<tr class="lgrp"><td colspan="${ncol}"><div><i class="dot ${dot}"></i><strong>${title}</strong><span class="muted">${note}</span>${btn}</div></td></tr>`;
     let body;
     if (v.status === 'action' && v.sort === 'urgent') { // grouped by why it needs action
@@ -4621,15 +4632,25 @@ PAGES['/jobs'] = {
 <div class="ltabs" role="tablist" aria-label="Job status">${tabs.map(([s, label, l]) => `<button type="button" role="tab" aria-selected="${v.status === s}" class="ltab${v.status === s ? ' on' : ''}" data-act="jobTab" data-s="${s}"><span class="lt-t">${J_CLASS[s] ? `<i class="dot ${J_CLASS[s]}"></i>` : ''}${label}${l ? `<span class="lt-n">${l.length}</span>` : ''}</span><span class="lt-m money">${l && l.length ? moneyShort(sum(l)) : ''}</span></button>`).join('')}</div>
 <div class="cfilters"><label class="pill">Team member<select data-jv="staff"><option value="">All</option>${D.staff.map((s) => `<option value="${s.id}" ${v.staff === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>
 <input id="jq" class="csearch" type="search" placeholder="Search jobs…" value="${esc(v.q)}">${colPicker('jobs', jobCols, cols)}</div>
-<div class="card ctable"><div class="tablewrap"><table><tr>${cols.map((c) => c.th).join('')}<th aria-label="Actions"></th></tr>
+${jobSel.size ? `<div class="bulk need-jobs-edit"><strong>${jobSel.size} selected</strong><button class="btn alt sm" data-act="archiveSelJobs" data-on="${selArchived ? '0' : '1'}">${selArchived ? 'Unarchive' : 'Archive'}</button><button class="btn danger sm" data-act="deleteSelJobs">Delete</button><button class="btn alt sm" data-act="jobClearSel">Clear selection</button></div>` : ''}
+<div class="card ctable"><div class="tablewrap"><table><tr><th class="sel-td need-jobs-edit"><input type="checkbox" id="jSelAll" aria-label="Select all" ${list.length && list.every((j) => jobSel.has(j.id)) ? 'checked' : ''}></th>${cols.map((c) => c.th).join('')}<th aria-label="Actions"></th></tr>
 ${body || `<tr><td colspan="${ncol}" class="empty">${v.status === 'action' && !v.q && !v.staff && D.jobs.length ? 'Nothing needs action: no late visits, and every completed job is invoiced.' : D.jobs.length ? 'No jobs match these filters' : 'No jobs yet'}</td></tr>`}</table></div>
 ${v.status === 'action' && todayN ? `<div class="lmore"><span>${todayN} visit${todayN === 1 ? ' is' : 's are'} on today’s schedule.</span><button type="button" class="link-btn" data-act="jobTab" data-s="today">Today →</button></div>` : ''}</div>`;
     $$('[data-jv]').forEach((s) => s.addEventListener('change', (e) => { jobView[e.target.dataset.jv] = e.target.value; refresh(); }));
     let tm; $('#jq').addEventListener('input', (e) => { clearTimeout(tm); tm = setTimeout(async () => { jobView.q = e.target.value; await refresh(); const q = $('#jq'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 250); });
+    $('#jSelAll').addEventListener('change', (e) => { list.forEach((j) => (e.target.checked ? jobSel.add(j.id) : jobSel.delete(j.id))); refresh(); });
+    $$('.jsel').forEach((b) => b.addEventListener('change', (e) => { e.target.checked ? jobSel.add(e.target.value) : jobSel.delete(e.target.value); refresh(); }));
     $$('.crow').forEach((r) => r.addEventListener('click', (e) => { if (!e.target.closest('input, button, a')) navigate('/jobs/edit?id=' + r.dataset.id); }));
   },
 };
-A.jobTab = (d) => { jobView = { ...jobView, status: d.s, picked: true, sort: 'urgent', dir: 1 }; refresh(); };
+A.jobTab = (d) => { jobView = { ...jobView, status: d.s, picked: true, sort: 'urgent', dir: 1 }; jobSel.clear(); refresh(); };
+A.jobClearSel = () => { jobSel.clear(); refresh(); };
+A.archiveSelJobs = (d) => archiveSel(jobSel, 'jobs', 'job', d.on === '1');
+A.deleteSelJobs = async () => {
+  if (!confirm(`Delete ${jobSel.size} job${jobSel.size === 1 ? '' : 's'}? This can't be undone.`)) return;
+  for (const id of jobSel) await api('DELETE', '/api/jobs/' + id);
+  toast(`Deleted ${jobSel.size} job${jobSel.size === 1 ? '' : 's'}`); jobSel.clear(); refresh();
+};
 A.jobSort = (d) => { jobView.dir = jobView.sort === d.k ? -jobView.dir : (['client', 'status'].includes(d.k) ? 1 : -1); jobView.sort = d.k; refresh(); };
 A.exportJobs = () => downloadCsv('jobs.csv', [['Job', 'Title', 'Client', 'Company', 'Property', 'Date', 'Start', 'End', 'Team', 'Status', 'Total'],
   ...D.jobs.map((j) => { const c = byId(D.clients, j.clientId) || {}; return [j.number, j.title, c.name || '', c.company || '', j.address || '', j.date, j.startTime, j.endTime, (j.staffIds || []).map((id) => (byId(D.staff, id) || {}).name).filter(Boolean).join('; '), J_STATUS[jobStatus(j)], jobTotal(j) ?? '']; })]);

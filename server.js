@@ -2290,7 +2290,7 @@ app.put('/api/:col/:id', (req, res, next) => {
   // a completed job is read-only: Reopen it first (status back to scheduled, or cancelled). Values sent unchanged don't count
   if (col === 'jobs' && db.jobs[i].status === 'completed' && (!upd.status || upd.status === 'completed')) {
     delete upd.unbilled; delete upd.paidInFull;
-    if (Object.keys(upd).some((k) => JSON.stringify(upd[k]) !== JSON.stringify(db.jobs[i][k]))) return res.status(400).json({ error: 'This job is completed. Reopen it to make changes.' });
+    if (Object.keys(upd).some((k) => k !== 'archived' && JSON.stringify(upd[k]) !== JSON.stringify(db.jobs[i][k]))) return // archiving (Jobs list, ticked rows) works on a completed job too res.status(400).json({ error: 'This job is completed. Reopen it to make changes.' });
   }
   if (col === 'quotes' && !tenancy.has('quoteOptions') && Array.isArray(upd.options) && upd.options.length) delete upd.options; // Good / Better / Best is a plan feature (turning options off always works)
   if (col === 'tasks' || col === 'events') { const bad = calItemProblem({ ...db[col][i], ...upd }); if (bad) return res.status(400).json({ error: bad }); }
