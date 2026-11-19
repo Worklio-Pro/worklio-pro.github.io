@@ -3333,7 +3333,7 @@ ${switchRow('showHours', 'Show business hours', c.showHours, 'Display your busin
 <div class="cs-soc">${SOCIAL.map(([k, l, ph]) => fl(l, `<input name="social_${k}" value="${esc((c.social || {})[k] || '')}" placeholder="${ph}" autocomplete="off" autocapitalize="off" spellcheck="false">`)).join('')}</div></div></div></div>`;
 }
 // App Settings → Payments → Deposits: the deposit each new quote starts with (company.quoteDepositType / quoteDepositValue); form="cf" like Tax settings
-const depositCard = (c) => `<div class="card cs" id="deposits"><h2>Deposits</h2><p class="muted" style="margin-top:0">The deposit new quotes ask for. You can change it on each quote, and on each Good / Better / Best option.</p>
+const depositCard = (c) => `<div class="card cs" id="deposits"><h2>Deposits</h2><p class="muted" style="margin-top:0">Set your default deposit amount. You can change it on each quote, and on each Good / Better / Best option.</p>
 <div class="row">${fl('Default deposit', `<input form="cf" name="quoteDepositValue" type="number" step="any" min="0" inputmode="decimal" value="${Number(c.quoteDepositValue) > 0 ? esc(c.quoteDepositValue) : ''}" placeholder="0">`)}${fl('Type', `<select form="cf" name="quoteDepositType">${[['flat', 'Fixed amount ($)'], ['percent', '% of total'], ['products', 'Products + % of labor']].map(([k, l]) => `<option value="${k}" ${(c.quoteDepositType || 'flat') === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}</div>
 <p class="muted cs-note">Products + % of labor: every item saved as a Product in Products &amp; services counts in full, plus the % of everything else. Leave it at 0 for no deposit.</p></div>`;
 // App Settings → Payments → Tax settings; its fields sit outside the form, so they say form="cf"
