@@ -372,6 +372,8 @@ details.menu{position:relative}details.menu summary{list-style:none}details.menu
 }
 /* the Reports page's groups: chips on computers, a dropdown on phones. Tax Summary's ‹ Reports link: phones only */
 @media (min-width:761px){.tax-back{display:none}}
+/* Tax Summary on phones: no Export CSV or Print (an installed app on a phone can't print); the year picker stays */
+@media (max-width:760px){.tax-desk{display:none}}
 .rpt-gsel{display:none}
 @media (max-width:760px){.rpt-filter .rpt-chips{display:none}.rpt-filter .rpt-gsel{display:block;width:100%;font-weight:600}}
 /* Project Gallery's Upload photos: a big button with a camera, centered on its own row under the title; the full width on phones */
