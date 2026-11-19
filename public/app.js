@@ -261,6 +261,19 @@ const DESK_PAGES = ['/service-plans', '/marketing/dashboard', '/reviews', '/soci
 const deskMq = matchMedia('(max-width:760px)');
 const deskOnly = (p) => deskMq.matches && (DESK_PAGES.includes(p) || p.startsWith('/marketing/')); // all of Marketing
 deskMq.addEventListener('change', () => { if (me && !$('#main.portal')) renderSide(curPath()); });
+// links into those pages, anywhere (pages, popups, the help panel): marked once as they appear, and styles.css acts on phones only.
+// A button or a link on its own line goes (.desk-ln); a link inside a sentence stays as plain text (.desk-lt). On a desk page itself
+// (body.on-desk) its links stay, so the Marketing tabs and the links between desk pages keep working there
+const isDeskHref = (h) => { if (!h || h[0] !== '/' || h[1] === '/') return false; const p = h.split(/[?#]/)[0].replace(/\/+$/, ''); return DESK_PAGES.includes(p) || p.startsWith('/marketing/'); };
+function markDeskLinks(root) {
+  if (!root.querySelectorAll) return;
+  for (const a of [...(root.matches && root.matches('a[href]') ? [root] : []), ...root.querySelectorAll('a[href]')]) {
+    if (a.closest('#side, #bnav') || !isDeskHref(a.getAttribute('href'))) continue;
+    const alone = a.matches('.btn, .link-btn, .mi') || (a.parentElement && a.parentElement.textContent.trim() === a.textContent.trim());
+    a.classList.add(alone ? 'desk-ln' : 'desk-lt');
+  }
+}
+new MutationObserver((ms) => ms.forEach((m) => m.addedNodes.forEach((n) => n.nodeType === 1 && markDeskLinks(n)))).observe(document.body, { childList: true, subtree: true });
 const DESK_BAR = '<div class="desk-bar" role="status"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg><span>This page works best on a computer.</span></div>';
 const BETA_BAR = '<div class="beta-bar" role="status"><span class="beta-pill">Beta</span><span>This page is in beta testing. It works, but it may change and you might run into rough edges. <button type="button" class="link-btn" data-act="feedbackForm">Tell us</button> if something doesn’t look right.</span></div>';
 function timeOffBadge() {
@@ -590,7 +603,7 @@ const page404Html = () => `<div class="p404">${page404Logo()}${P404_YORKIE}<div 
 <p class="muted">Yoya sniffed under every couch cushion, but couldn’t find the page you’re looking for. It may have moved, or the link might be a little off.</p>
 <div class="p404-acts"><a class="btn" href="/business-overview" data-link>Take me home</a><button type="button" class="btn alt" data-act="p404Back">Go back</button></div></div>`;
 async function render() {
-  const path = curPath(); document.body.classList.remove('p404-only'); // the 404 page hides the menus; every other page shows them
+  const path = curPath(); document.body.classList.remove('p404-only'); document.body.classList.toggle('on-desk', isDeskHref(path)); // the 404 page hides the menus; every other page shows them
   if (path !== renderedPath) { $$('.qc').forEach((el) => el.remove()); renderedPath = path; } // the calendar's add/edit box floats on the page: it goes when the page changes (a refresh keeps it)
   const mpT = document.getElementById('mpTheme'); if (mpT) mpT.remove();
   mPagesClose();
@@ -765,7 +778,7 @@ A.businessQr = async () => {
 };
 A.qrDownload = async () => { const a = document.createElement('a'); a.href = qrLook ? await qrStyledPng(qrLink(), await qrInline(qrLook)).catch(() => qrPng(qrLink())) : qrPng(qrLink()); a.download = `${(company.name || 'qr-code').replace(/[^\w-]+/g, '-').toLowerCase()}-qr.png`; a.click(); };
 A.qrCopy = async () => { await navigator.clipboard.writeText(pageLink()); toast('Link copied'); };
-A.qrEditPage = () => { closeModal(); navigate('/settings/business-page'); };
+A.qrEditPage = () => { closeModal(); navigate('/settings/business-page'); }; // hidden on phones (styles.css), like the Business Page
 A.feedbackForm = () => feedbackForm();
 A.closeHelp = closeHelp;
 A.helpTopic = (d) => openHelp(d.id);
@@ -4096,7 +4109,7 @@ const jfSetForms = (jobId, forms) => { const j = byId(D.jobs, jobId); if (j) { i
 A.jfAdd = async (d) => {
   let T; try { T = await api('GET', '/api/form-templates'); } catch (x) { return toast(x.message, true); }
   const list = T.templates.filter((t) => !t.archived); const have = new Set(((byId(D.jobs, d.id) || {}).forms || []).map((f) => f.templateId));
-  if (!list.length) { if (confirm('You haven’t set up any checklists yet. Open Settings → Checklists & Forms to make one?')) { closeModal(); mClose(true); navigate('/settings/job-forms'); } return; }
+  if (!list.length) { if (deskMq.matches) return toast('You haven’t set up any checklists yet. Make them on a computer in Settings → Checklists & Forms.'); if (confirm('You haven’t set up any checklists yet. Open Settings → Checklists & Forms to make one?')) { closeModal(); mClose(true); navigate('/settings/job-forms'); } return; } // phones: Checklists & Forms is for a computer
   const html = `<div class="jf-pick">${list.map((t) => `<button type="button" class="jf-row" data-act="jfAddPick" data-id="${d.id}" data-t="${t.id}"><span class="jf-ic">${svgIcon(JF_ICO, 22)}</span><span class="jf-main"><strong>${esc(t.name)}</strong><small>${t.fields.filter((f) => f.type !== 'heading').length} items${t.requiredToComplete ? ' · required before completing' : ''}${have.has(t.id) ? ' · already on this job' : ''}</small></span></button>`).join('')}</div>
 <p class="muted sm jf-pick-foot">Make and change checklists in <a href="/settings/job-forms" data-link>Settings → Checklists &amp; Forms</a>.</p>`;
   if (phoneMq.matches) mSheet('Add a checklist', html); else modal('Add a checklist', html);

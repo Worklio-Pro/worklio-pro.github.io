@@ -365,6 +365,11 @@ details.menu{position:relative}details.menu summary{list-style:none}details.menu
 }
 /* the links into Marketing on Account and billing: Marketing is for a computer, so phones leave them out */
 @media (max-width:760px){a.mk-open{display:none}}
+/* phones: links into the pages kept for a computer (app.js markDeskLinks) go, or turn into plain text inside a sentence; not on those pages themselves */
+@media (max-width:760px){
+  body:not(.on-desk) .desk-ln,body:not(.on-desk) .qr-edit{display:none!important}
+  body:not(.on-desk) a.desk-lt{pointer-events:none;color:inherit;text-decoration:none;font-weight:inherit}
+}
 /* Project Gallery's Upload photos: a big button with a camera, centered on its own row under the title; the full width on phones */
 .head:has(>.gal-up)>div{flex:1 1 100%}
 .btn.gal-up{display:flex;align-items:center;justify-content:center;gap:10px;margin:0 auto;width:min(100%,380px);min-height:56px;padding:13px 24px;font-size:17px;border-radius:12px}
