@@ -1592,6 +1592,7 @@ ${locked ? '' : `<button type="button" class="rt-star ${on ? 'on' : ''}" data-ac
     const starred = stars.map((k) => all.find(([, x]) => x[0] === k)).filter(Boolean).sort((a, b) => az(a[1], b[1]));
     main.innerHTML = `<div class="head"><div><h1>Reports</h1><p class="sub">See how the business is doing, and export any report to a spreadsheet.</p></div></div>
 <div class="rpt-filter"><div class="rpt-chips" role="group" aria-label="Show">${[['all', 'All reports'], ...RPT_HUB.map(([g]) => [g, g])].map(([v, l]) => `<button type="button" class="rpt-chip ${rptGroupOn === v ? 'on' : ''}" data-act="rptGroup" data-g="${esc(v)}" aria-pressed="${rptGroupOn === v}">${esc(l)}</button>`).join('')}</div>
+<select class="rpt-gsel" aria-label="Show">${[['all', 'All reports'], ...RPT_HUB.map(([g]) => [g, g])].map(([v, l]) => `<option value="${esc(v)}" ${rptGroupOn === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>
 <label class="rpt-findw">${svgIcon('<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>', 16)}<input type="search" class="rpt-find" placeholder="Search reports" aria-label="Search reports"></label></div>
 ${starred.length ? `<section class="rpt-sec rpt-starred"><div class="rpt-sec-h"><h2>Starred</h2><span class="muted">Your go-to reports</span></div><div class="rpt-tiles">${starred.map(([g, x]) => tile(g, x)).join('')}</div></section>` : ''}
 ${RPT_HUB.map(([g, L]) => `<section class="rpt-sec" data-g="${esc(g)}"><div class="rpt-sec-h"><h2><i class="rt-dot rt-${RPT_GROUP[g][0]}"></i>${esc(g)}</h2><span class="muted">${esc(RPT_GROUP[g][1])}</span></div><div class="rpt-tiles">${[...L].sort(az).map((x) => tile(g, x)).join('')}</div></section>`).join('')}
@@ -1601,6 +1602,7 @@ ${starred.length ? '' : '<p class="muted rpt-tip">Tip: star the reports you use 
       $$('.rpt-sec', main).forEach((s) => { let n = 0; $$('.rpt-tile', s).forEach((t) => { const on = (rptGroupOn === 'all' || t.dataset.g === rptGroupOn) && (!q || t.dataset.find.includes(q)); t.hidden = !on; n += on; }); s.hidden = !n; });
       $('.rpt-none', main).hidden = $$('.rpt-sec:not([hidden])', main).length > 0; };
     $('.rpt-find', main).addEventListener('input', filter); filter();
+    $('.rpt-gsel', main).addEventListener('change', (e) => { rptGroupOn = e.target.value; refresh(); }); // phones: the groups as a dropdown instead of the chips
   },
 };
 A.rptGroup = (d) => { rptGroupOn = d.g; refresh(); };
@@ -1711,7 +1713,7 @@ PAGES['/tax-summary'] = {
   title: 'Tax Summary',
   async render(main) {
     const t = await api('GET', '/api/tax-summary?year=' + taxYear);
-    main.innerHTML = `<div class="head"><div><h1>Tax Summary</h1><p class="sub">Sales tax collected on paid invoices, for end-of-year accounting. Counted by payment date.</p></div>
+    main.innerHTML = `<div class="head"><div>${rptBack.replace('rpt-back', 'rpt-back tax-back')}<h1>Tax Summary</h1><p class="sub">Sales tax collected on paid invoices, for end-of-year accounting. Counted by payment date.</p></div>
 <div class="actions noprint"><select id="yr" style="width:auto">${t.years.map((y) => `<option ${y === t.year ? 'selected' : ''}>${y}</option>`).join('')}</select><button class="btn alt" data-act="taxCsv">Export CSV</button><button class="btn alt" onclick="window.print()">Print</button></div></div>
 <div class="grid g3">${stat('Total tax collected ' + t.year, money(t.totalTax), t.invoices.length + ' paid invoices')}${stat('Taxable sales', money(t.totalTaxable))}${stat('Gross receipts', money(t.totalTaxable + t.totalTax))}</div>
 <div class="card" style="margin-top:16px"><h2>By month</h2><div class="tablewrap"><table class="m-taxm"><tr><th>Month</th><th class="r">Invoices</th><th class="r">Taxable sales</th><th class="r">Tax collected</th><th class="r">Total received</th></tr>${t.byMonth.map((m) => `<tr><td>${monthLabel(m.month)}</td><td class="r">${m.invoices}</td><td class="r">${money(m.taxable)}</td><td class="r">${money(m.tax)}</td><td class="r">${money(m.total)}</td></tr>`).join('')}
