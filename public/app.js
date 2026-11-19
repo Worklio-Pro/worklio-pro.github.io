@@ -843,7 +843,8 @@ function recalc(root) {
   $('.t-sub', root).textContent = money(sub); $('.t-discount', root).textContent = disc ? '−' + money(disc) : money(0);
   $('.t-tax', root).textContent = money(tax); $('.t-total', root).textContent = money(total);
   if ($('[name=depositValue]', root)) { // quotes: requested deposit
-    const dv = Math.max(0, Number($('[name=depositValue]', root).value) || 0); const pct = $('[name=depositType]', root).value === 'percent';
+    const od = root._optDep && root._optDep(); // Good / Better / Best: the shown option's own deposit, if it has one
+    const dv = od ? od.value : Math.max(0, Number($('[name=depositValue]', root).value) || 0); const pct = od ? od.type === 'percent' : $('[name=depositType]', root).value === 'percent';
     const dep = Math.min(total, round2(pct ? total * dv / 100 : dv));
     $('.t-deposit', root).textContent = money(dep); $('.dep-out', root).textContent = dep ? `Balance after deposit ${money(total - dep)}` : '';
   }
@@ -2506,6 +2507,11 @@ const qParts = (q) => (!qHasOpts(q) ? [{ doc: q }] : q.chosenOption ? [{ opt: qS
   : q.options.map((o) => ({ opt: o, recommended: q.recommended === o.id, doc: { ...q, items: qOptItems(q, o.id), ...((q.optionTotals || {})[o.id] || {}) } })));
 const optId = () => Array.from(crypto.getRandomValues(new Uint8Array(5)), (b) => b.toString(16).padStart(2, '0')).join('');
 const OPT_NAMES = ['Good', 'Better', 'Best'];
+// an option's own deposit (blank: the quote's deposit; 0: none for that option), as the server's optDeposit
+const optDepOf = (o) => (o.depositValue === '' || o.depositValue == null || !(Number(o.depositValue) >= 0) ? null : { type: o.depositType === 'percent' ? 'percent' : 'flat', value: Number(o.depositValue) });
+const optDepBody = (o) => { const d = optDepOf(o); return d ? { depositType: d.type, depositValue: d.value } : {}; };
+const optDepInput = (o, i) => `<span class="unit qo-dep"><input class="qo-dv" type="number" step="any" min="0" inputmode="decimal" value="${o.depositValue ?? ''}" placeholder="Deposit" aria-label="Option ${i + 1} deposit" title="This option’s deposit. Leave blank to use the quote’s deposit."><select class="qo-dt" aria-label="Option ${i + 1} deposit type"><option value="flat">$</option><option value="percent" ${o.depositType === 'percent' ? 'selected' : ''}>%</option></select></span>`;
+const optDepRead = (o, el) => { if (el.classList.contains('qo-dv')) o.depositValue = el.value; if (el.classList.contains('qo-dt')) o.depositType = el.value; };
 const optHead = (p, many) => (p.opt ? `<div class="qo-h"><strong>${p.chosen ? 'Client chose: ' : ''}${esc(p.opt.name)}</strong>${p.recommended ? '<span class="qo-rec">Recommended</span>' : ''}${many ? `<span class="qo-tot">${money(p.doc.total || 0)}</span>` : ''}</div>${p.opt.desc ? `<p class="muted qo-d">${esc(p.opt.desc)}</p>` : ''}` : '');
 // the quote page's Product / Service card: one block per option (or the chosen one), each with its totals and deposit
 function quoteItemsView(d) {
@@ -2545,22 +2551,25 @@ function quoteOptionsEditor(form, d) {
   });
   const shownId = () => (opts ? (status.value === 'approved' && opts.some((o) => o.id === ch.value) ? ch.value : opts.some((o) => o.id === rec) ? rec : opts[0].id) : '');
   form._optFilter = (items) => (opts ? items.filter((i) => !i.opt || i.opt === shownId()) : items);
+  form._optDep = () => { const o = opts && opts.find((x) => x.id === shownId()); return o ? optDepOf(o) : null; };
+  const quoteDep = (total) => { const v = Math.max(0, Number(($('[name=depositValue]', form) || {}).value) || 0); return Math.min(total, round2(($('[name=depositType]', form) || {}).value === 'percent' ? total * v / 100 : v)); };
+  const depOf = (o, total) => { const d = optDepOf(o); return d ? Math.min(total, round2(d.type === 'percent' ? total * d.value / 100 : d.value)) : quoteDep(total); };
   form._optSum = (items, calc) => {
     const sum = $('.qo-sum', box); if (!sum || !opts) return; const shown = shownId();
-    sum.innerHTML = opts.map((o, i) => { const t = calc(items.filter((x) => !x.opt || x.opt === o.id)); return `<span class="${o.id === shown ? 'on' : ''}">${esc(nameOf(o, i))}<b>${money(t.total)}</b></span>`; }).join('') + `<small class="muted">The totals below are for ${esc(nameOf(opts.find((o) => o.id === shown), opts.findIndex((o) => o.id === shown)))}.</small>`;
+    sum.innerHTML = opts.map((o, i) => { const t = calc(items.filter((x) => !x.opt || x.opt === o.id)); const dep = depOf(o, t.total); return `<span class="${o.id === shown ? 'on' : ''}">${esc(nameOf(o, i))}<b>${money(t.total)}</b>${dep ? `<em class="qo-sd">· deposit ${money(dep)}</em>` : ''}</span>`; }).join('') + `<small class="muted">The totals below are for ${esc(nameOf(opts.find((o) => o.id === shown), opts.findIndex((o) => o.id === shown)))}.</small>`;
   };
   const draw = () => {
     box.innerHTML = !opts ? '<button type="button" class="btn alt sm qo-on" data-q="on">Offer options (Good / Better / Best)</button>'
       : `<div class="qo-list">${opts.map((o, i) => `<div class="qo-row" data-o="${o.id}"><span class="qo-n">${i + 1}</span><input class="qo-name" maxlength="40" value="${esc(o.name)}" placeholder="${OPT_NAMES[i]}" aria-label="Option ${i + 1} name">
-<input class="qo-desc" maxlength="500" value="${esc(o.desc || '')}" placeholder="What’s included (optional)" aria-label="Option ${i + 1}: what’s included"><label class="qo-r"><input type="radio" name="qoRec" value="${o.id}" ${rec === o.id ? 'checked' : ''}> Recommended</label>
+<input class="qo-desc" maxlength="500" value="${esc(o.desc || '')}" placeholder="What’s included (optional)" aria-label="Option ${i + 1}: what’s included">${optDepInput(o, i)}<label class="qo-r"><input type="radio" name="qoRec" value="${o.id}" ${rec === o.id ? 'checked' : ''}> Recommended</label>
 ${opts.length > 2 ? `<button type="button" class="icon-btn qo-rm" data-q="rm" aria-label="Remove option ${i + 1}" title="Remove this option">${TRASH}</button>` : '<span></span>'}</div>`).join('')}</div>
 <div class="qo-acts">${opts.length < 3 ? '<button type="button" class="link-btn" data-q="add">+ Add option</button>' : ''}<button type="button" class="link-btn" data-q="off">Turn off options</button></div>
-<p class="muted sm qo-hint">Pick each line item’s option below. Items set to “All options” are in every option, like a service call fee.</p><div class="qo-sum"></div>`;
+<p class="muted sm qo-hint">Pick each line item’s option below. Items set to “All options” are in every option, like a service call fee. Leave an option’s deposit blank to use the quote’s deposit.</p><div class="qo-sum"></div>`;
     syncSelects(); syncChosen(); recalc(form);
   };
   box.addEventListener('input', (e) => { const r = e.target.closest('.qo-row'); if (!r) return; const o = opts.find((x) => x.id === r.dataset.o);
-    if (e.target.classList.contains('qo-name')) o.name = e.target.value; if (e.target.classList.contains('qo-desc')) o.desc = e.target.value; syncSelects(); syncChosen(); recalc(form); });
-  box.addEventListener('change', (e) => { if (e.target.name === 'qoRec') { rec = e.target.value; recalc(form); } });
+    if (e.target.classList.contains('qo-name')) o.name = e.target.value; if (e.target.classList.contains('qo-desc')) o.desc = e.target.value; optDepRead(o, e.target); syncSelects(); syncChosen(); recalc(form); });
+  box.addEventListener('change', (e) => { if (e.target.name === 'qoRec') { rec = e.target.value; recalc(form); } const r = e.target.closest('.qo-row'); if (r && e.target.classList.contains('qo-dt')) { optDepRead(opts.find((x) => x.id === r.dataset.o), e.target); recalc(form); } });
   box.addEventListener('click', (e) => {
     const b = e.target.closest('[data-q]'); if (!b) return; const k = b.dataset.q;
     if (k === 'on') { opts = [{ id: optId(), name: OPT_NAMES[0], desc: '' }, { id: optId(), name: OPT_NAMES[1], desc: '' }]; rec = ''; }
@@ -2571,7 +2580,7 @@ ${opts.length > 2 ? `<button type="button" class="icon-btn qo-rm" data-q="rm" ar
   });
   form.addEventListener('change', (e) => { if (e.target === status) { syncChosen(); recalc(form); } if (e.target === ch || e.target.classList.contains('iopt')) recalc(form); });
   form._optRows = syncSelects; // new line items get their Option box
-  form._optBody = () => (opts ? { options: opts.map((o, i) => ({ id: o.id, name: nameOf(o, i), desc: (o.desc || '').trim() })), recommended: rec, chosenOption: status.value === 'approved' ? ch.value || null : null } : { options: [], chosenOption: null });
+  form._optBody = () => (opts ? { options: opts.map((o, i) => ({ id: o.id, name: nameOf(o, i), desc: (o.desc || '').trim(), ...optDepBody(o) })), recommended: rec, chosenOption: status.value === 'approved' ? ch.value || null : null } : { options: [], chosenOption: null });
   draw();
 }
 // phones: the quote's options, from the Options section of the quote page
@@ -2582,13 +2591,13 @@ function mQuoteOptions(kind, d) {
   const box = $('.mqo', f);
   const draw = () => { box.innerHTML = `<p class="muted mqo-p">Offer the client ${opts.length} options, like Good, Better and Best. They pick one when they approve. Then give each line item its option.</p>
 ${opts.map((o, i) => `<div class="mqo-o" data-o="${o.id}"><div class="mqo-oh"><strong>Option ${i + 1}</strong>${opts.length > 2 ? `<button type="button" class="link-btn" data-q="rm">Remove</button>` : ''}</div>
-${mField('Name', `<input class="qo-name" maxlength="40" value="${esc(o.name)}" placeholder="${OPT_NAMES[i]}">`)}${mField('What’s included', `<textarea class="qo-desc" rows="2" maxlength="500" placeholder="Optional">${esc(o.desc || '')}</textarea>`)}
+${mField('Name', `<input class="qo-name" maxlength="40" value="${esc(o.name)}" placeholder="${OPT_NAMES[i]}">`)}${mField('What’s included', `<textarea class="qo-desc" rows="2" maxlength="500" placeholder="Optional">${esc(o.desc || '')}</textarea>`)}${mField('Deposit', `${optDepInput(o, i)}<small class="muted">Leave blank to use the quote’s deposit.</small>`)}
 <label class="jf-share"><input type="radio" name="qoRec" value="${o.id}" ${rec === o.id ? 'checked' : ''}><span>Recommended</span></label></div>`).join('')}
 ${opts.length < 3 ? '<button type="button" class="btn alt" data-q="add">+ Add option</button>' : ''}
 ${(d.items || []).length ? `<h3 class="mqo-ih">Line items</h3><p class="muted mqo-p">Pick each item’s option. “All options” items are in every option.</p>${d.items.map((it, k) => mField(esc(it.desc), `<select class="mqo-io" data-k="${k}"><option value="">All options</option>${opts.map((o, i) => `<option value="${o.id}" ${itemOpt[k] === o.id ? 'selected' : ''}>${esc(o.name.trim() || OPT_NAMES[i])}</option>`).join('')}</select>`)).join('')}` : ''}`; };
   draw();
-  f.addEventListener('input', (e) => { const r = e.target.closest('.mqo-o'); if (!r) return; const o = opts.find((x) => x.id === r.dataset.o); if (e.target.classList.contains('qo-name')) o.name = e.target.value; if (e.target.classList.contains('qo-desc')) o.desc = e.target.value; });
-  f.addEventListener('change', (e) => { if (e.target.name === 'qoRec') rec = e.target.value; if (e.target.classList.contains('mqo-io')) itemOpt[Number(e.target.dataset.k)] = e.target.value; if (e.target.classList.contains('qo-name')) draw(); });
+  f.addEventListener('input', (e) => { const r = e.target.closest('.mqo-o'); if (!r) return; const o = opts.find((x) => x.id === r.dataset.o); if (e.target.classList.contains('qo-name')) o.name = e.target.value; if (e.target.classList.contains('qo-desc')) o.desc = e.target.value; optDepRead(o, e.target); });
+  f.addEventListener('change', (e) => { const r = e.target.closest('.mqo-o'); if (r && e.target.classList.contains('qo-dt')) optDepRead(opts.find((x) => x.id === r.dataset.o), e.target); if (e.target.name === 'qoRec') rec = e.target.value; if (e.target.classList.contains('mqo-io')) itemOpt[Number(e.target.dataset.k)] = e.target.value; if (e.target.classList.contains('qo-name')) draw(); });
   f.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-q]'); if (!b) return; const k = b.dataset.q;
     if (k === 'add') { opts.push({ id: optId(), name: OPT_NAMES[opts.length] || '', desc: '' }); draw(); }
@@ -2597,7 +2606,7 @@ ${(d.items || []).length ? `<h3 class="mqo-ih">Line items</h3><p class="muted mq
   });
   onSubmit(f, () => {
     const items = (d.items || []).map((i, k) => ({ ...i, opt: opts.some((o) => o.id === itemOpt[k]) ? itemOpt[k] : '' }));
-    return mSave(kind, d, { options: opts.map((o, i) => ({ id: o.id, name: o.name.trim() || OPT_NAMES[i], desc: (o.desc || '').trim() })), recommended: rec, items }, 'Options saved');
+    return mSave(kind, d, { options: opts.map((o, i) => ({ id: o.id, name: o.name.trim() || OPT_NAMES[i], desc: (o.desc || '').trim(), ...optDepBody(o) })), recommended: rec, items }, 'Options saved');
   });
 }
 // Estimate first: the client approves the price with no signature or deposit, then it becomes the quote to sign and pay (on the same page)
@@ -4400,7 +4409,7 @@ ${jobBilling(j, invs)}</div>
   form._afterRecalc = () => {
     if (!q || !(q.depositFee > 0)) { $('.jdeposit', form).innerHTML = ''; return; }
     const paid = q.depositPaidAt ? Number(q.depositPaidAmount ?? q.depositFee) || 0 : 0;
-    $('.jdeposit', form).innerHTML = `<div class="crow-line"><span>Required deposit${q.depositType === 'percent' ? ` (${q.depositValue}%)` : ''}</span><span>${money(q.depositFee)}</span></div>
+    $('.jdeposit', form).innerHTML = `<div class="crow-line"><span>Required deposit${q.depositPct ? ` (${q.depositPct}%)` : ''}</span><span>${money(q.depositFee)}</span></div>
 ${paid ? `<div class="crow-line"><span>Deposit collected <span class="muted">· ${fmtDate(q.depositPaidAt)}</span></span><span>−${money(paid)}</span></div>` : ''}
 <div class="crow-line"><strong>Outstanding deposit</strong><strong>${money(Math.max(0, q.depositFee - paid))}</strong></div>`;
   };

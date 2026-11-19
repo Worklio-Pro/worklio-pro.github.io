@@ -2165,7 +2165,7 @@ label.bk-auto input{width:auto;margin:0}
 @media (max-width:1000px){.item-row.qi .qi-opt{grid-column:2/4}}
 .qo-ed{margin:0 0 14px}
 .qo-list{display:flex;flex-direction:column;gap:8px}
-.qo-row{display:grid;grid-template-columns:26px minmax(120px,200px) minmax(0,1fr) auto 36px;gap:8px;align-items:center;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)}
+.qo-row{display:grid;grid-template-columns:26px minmax(120px,200px) minmax(0,1fr) 150px auto 36px;gap:8px;align-items:center;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)}
 .qo-row input{margin:0}.qo-n{display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--tint-strong);color:var(--tint-fg);font-weight:700;font-size:13px}
 .qo-r{display:flex;align-items:center;gap:6px;margin:0;font-weight:400;font-size:14px;white-space:nowrap}.qo-r input{width:auto;margin:0}
 .qo-acts{display:flex;gap:18px;margin:10px 0 0}.qo-hint{margin:8px 0 0}
@@ -2180,7 +2180,8 @@ label.bk-auto input{width:auto;margin:0}
 .mqo-h{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin:18px 0 6px;font-size:16px}.mqo-h:first-child{margin-top:4px}.mqo-t{margin-left:auto;font-weight:700}
 .mqo-add{padding:12px 0;color:var(--link);font-weight:600}
 .mqo{display:flex;flex-direction:column;gap:14px}.mqo-p{margin:0}.mqo-o{padding:12px 14px;border:1px solid var(--line);border-radius:12px}.mqo-oh{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
-@media (max-width:760px){.qo-row{grid-template-columns:26px minmax(0,1fr) 36px}.qo-row .qo-desc{grid-column:2/4}.qo-row .qo-r{grid-column:2/4}}
+.qo-dep input{width:auto;min-width:0;flex:1;margin:0}.qo-dep select{width:auto;margin:0}.qo-sum .qo-sd{font-style:normal;font-size:12px;color:var(--muted);font-weight:400;align-self:center}
+@media (max-width:760px){.qo-row{grid-template-columns:26px minmax(0,1fr) 36px}.qo-row .qo-desc,.qo-row .qo-dep{grid-column:2/4}.qo-row .qo-r{grid-column:2/4}}
 /* Marketing → Every job markets itself */
 .jp{margin:0 0 28px}
 .jp-head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px 24px;align-items:flex-start}.jp-head>div:first-child{flex:1 1 380px}.jp-head h2{margin:0 0 6px}.jp-head p{margin:0}
