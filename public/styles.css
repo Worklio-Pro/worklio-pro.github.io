@@ -2853,3 +2853,6 @@ body.p404-only #billingBar{display:none!important}
 }
 @keyframes rc-turn{to{transform:rotate(0)}}
 @media (prefers-reduced-motion:reduce){#rotateCover svg{animation:none;transform:none}}
+/* Home → Today: "Calendar ›" on computers; on phones a round calendar icon, so the link doesn't take a row of its own */
+.hm-cal svg{display:none}
+@media (max-width:600px){.hm-cal{align-self:center;display:grid;place-items:center;flex:none;width:40px;height:40px;border-radius:50%;background:color-mix(in srgb,var(--brand) 13%,transparent)}.hm-cal svg{display:block}.hm-cal span{display:none}}
