@@ -181,6 +181,12 @@ const round2 = (n) => Math.round(n * 100) / 100;
 // matched by name) plus depositValue % of the rest (the labor). Tax and discount are shared out evenly, so it's still part of the total.
 // depositBasis is 'products' for that one, for "Deposit (products + 50% of labor)" labels.
 const hasOptions = (q) => Array.isArray(q.options) && q.options.length >= 2;
+// the price to tell the client in emails and texts: each option's while none is chosen ("Repair $1,000.00, Replace $4,000.00 or
+// Premium $8,000.00"), else the quote's total (the chosen option's)
+const quotePrice = (q) => {
+  if (!hasOptions(q) || q.chosenOption || !q.optionTotals) return money(q.total);
+  const p = q.options.map((o) => `${o.name} ${money((q.optionTotals[o.id] || {}).total || 0)}`); return `${p.slice(0, -1).join(', ')} ${tx('or')} ${p[p.length - 1]}`;
+};
 const optionItems = (q, id) => (q.items || []).filter((i) => !i.opt || i.opt === id);
 const shownOption = (q) => (hasOptions(q) ? q.options.find((o) => o.id === q.chosenOption) || q.options.find((o) => o.id === q.recommended) || q.options[0] : null);
 // the line items that go on the job and invoice: the chosen option's (without their option marks)
@@ -2656,7 +2662,7 @@ app.post('/api/quotes/:id/send', async (req, res) => {
   for (const ch of channels) {
     if (ch === 'email' && req.body.email) continue;
     results.push(await notify({ clientId: q.clientId, channel: ch, kind: 'quote', refId: q.id, refNumber: q.number,
-      subject: email.subject, html: ch === 'email' ? email.html : '', body: ch === 'email' ? email.body : req.body.message ? smsWithLink(req.body.message, est ? 'View your estimate here' : 'View your quote here', link) : `${est ? 'Estimate' : 'Quote'} ${q.number} (${money(q.total)}) is ready: ${shortLink(link)} Reply STOP to opt out.` }));
+      subject: email.subject, html: ch === 'email' ? email.html : '', body: ch === 'email' ? email.body : req.body.message ? smsWithLink(req.body.message, est ? 'View your estimate here' : 'View your quote here', link) : `${est ? 'Estimate' : 'Quote'} ${q.number} (${quotePrice(q)}) is ready: ${shortLink(link)} Reply STOP to opt out.` }));
   }
   if (q.status === 'draft') q.status = 'sent'; if (!q.sentAt) q.sentAt = iso(new Date());
   q.lastSentAt = new Date().toISOString(); // sending again after the client asked for changes answers the request (the app's "Changes requested" clears)
@@ -2897,7 +2903,7 @@ app.post('/api/invoices/:id/send', async (req, res) => {
 // ---------- the Email box (quote and invoice pages) ----------
 const docVars = (kind, d) => {
   const base = { client_name: findClient(d.clientId)?.name || '', company_name: db.company.name, company_email: db.company.email || '', total: money(d.total), sent_date: niceDate(iso(new Date())) };
-  return kind === 'quote' ? { ...base, quote_number: d.number, quote_title: d.title || '', link: quoteLink(d) } : { ...base, invoice_number: d.number, due_date: niceDate(d.dueDate), link: invoiceLink(d) };
+  return kind === 'quote' ? { ...base, total: quotePrice(d), quote_number: d.number, quote_title: d.title || '', link: quoteLink(d) } : { ...base, invoice_number: d.number, due_date: niceDate(d.dueDate), link: invoiceLink(d) };
 };
 const tplOf = (kind, d) => (kind === 'quote' && estStage(d) ? 'estimate' : kind); // a quote still at the estimate stage uses the Estimate template
 const BUTTON_LINE = /^\s*\[([^\]]+)\]\(\{\{\s*link\s*\}\}\)\s*$/m; // the template's button: [View and approve quote]({{link}})
@@ -5712,7 +5718,7 @@ const POST_LIMITS = { facebook: { text: 63206, photos: 10 }, google: { text: soc
 const NET_NAMES = { facebook: 'Facebook', instagram: 'Instagram', google: 'Google', bluesky: 'Bluesky', x: 'X', ...Object.fromEntries(Object.entries(networks.NETWORKS).map(([k, n]) => [k, n.name])) };
 // ---------- the business's own automations (lib/business-automations.js) ----------
 const portalLink = (c) => { if (!c.portalToken) { c.portalToken = token(); save(); } return `${baseUrl()}/client-portal?c=${c.portalToken}`; };
-const bizAuto = require('./lib/business-automations')({ db, save, uid, token, iso, niceDate, money, findClient, tenancy, localNow, withStatus, quoteLink, invoiceLink, portalLink, baseUrl, renderEmail, notify, sendEmail, pushTo, jobCrew, pushTime, reviewRecord, reviewLink });
+const bizAuto = require('./lib/business-automations')({ db, save, uid, token, iso, niceDate, money, findClient, tenancy, localNow, withStatus, quoteLink, quotePrice, invoiceLink, portalLink, baseUrl, renderEmail, notify, sendEmail, pushTo, jobCrew, pushTime, reviewRecord, reviewLink });
 // Snap to quote (lib/snap-quote.js): a draft quote from job site photos and the tech's notes
 const snapQuote = require('./lib/snap-quote')({ db, save, uid, tenancy, aiClient, saveNoteFiles, computeTotals, nextNumber, token, iso, findClient });
 app.get('/api/snap-quote', (req, res) => res.json(snapQuote.status()));
