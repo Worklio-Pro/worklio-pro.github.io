@@ -484,7 +484,7 @@ async function optInText(c) {
 const smsBrand = () => tenancy.platform().settings.productName || 'Worklio Pro';
 const smsSender = () => (db.company.name && db.company.name !== smsBrand() ? `${smsBrand()} for ${db.company.name}` : smsBrand());
 const smsBranded = (body) => { const p = `${smsSender()}: `; return String(body).startsWith(p) ? body : p + body; };
-async function notify({ clientId, channel, kind, refId, refNumber, subject, body, html = '', to = '', attachments = [] }) { // to: an email address other than the client's (texts always go to the client's number)
+async function notify({ clientId, channel, kind, refId, refNumber, subject, body, html = '', to = '', attachments = [], tag = '' }) { // to: an email address other than the client's (texts always go to the client's number)
   const c = findClient(clientId);
   if (channel === 'sms' && !tenancy.has('sms')) return { id: uid(), at: new Date().toISOString(), clientId, channel, kind, status: 'failed', detail: 'Text messages aren’t included in your plan' };
   // texts only go to clients who agreed to them (A2P 10DLC): ticked on their client profile, or on the booking / referral form
@@ -492,7 +492,7 @@ async function notify({ clientId, channel, kind, refId, refNumber, subject, body
   const email = channel === 'email' ? to || (c && c.email) : '';
   if (channel === 'sms') body = smsBranded(body);
   const res = channel === 'email' ? await sendEmail(email, subject, body, { html, attachments }) : await sendSms(c && c.phone, body);
-  const entry = { id: uid(), at: new Date().toISOString(), clientId, clientName: c ? c.name : 'Unknown', channel, kind, refId, refNumber, to: channel === 'email' ? email : (c && c.phone), subject: subject || '', body, status: res.status, detail: res.detail };
+  const entry = { id: uid(), at: new Date().toISOString(), clientId, clientName: c ? c.name : 'Unknown', channel, kind, refId, refNumber, to: channel === 'email' ? email : (c && c.phone), subject: subject || '', body, status: res.status, detail: res.detail, ...(tag ? { tag } : {}) }; // tag: what kind of message within the kind (omw: On my way)
   db.notifications.unshift(entry);
   return entry;
 }
@@ -2179,12 +2179,26 @@ Plain text only: no markdown, no quotes around it, no heading and no comments ab
 });
 
 // generic list / get
+// when a quote, job or invoice went to the client by email or text (the message log), newest first, for "Sent" on its page.
+// Not On my way texts (tag 'omw'), receipts or failed sends
+const SENT_KIND = { quotes: 'quote', jobs: 'job', invoices: 'invoice' };
+function withSends(col) {
+  const kind = SENT_KIND[col]; const by = new Map();
+  for (const n of db.notifications || []) {
+    if (n.kind !== kind || !n.refId || n.status === 'failed' || n.tag === 'omw' || (kind === 'job' && !n.tag && /on the way/i.test(`${n.subject} ${n.body}`))) continue; // On my way sent before the tag
+    const l = by.get(n.refId) || []; const last = l[l.length - 1];
+    if (last && last.channel === n.channel && Math.abs(new Date(last.at) - new Date(n.at)) < 60e3) continue; // one send to several addresses is one send
+    if (l.length < 20) l.push({ at: n.at, channel: n.channel }); by.set(n.refId, l);
+  }
+  return (d) => (by.has(d.id) ? { ...d, sends: by.get(d.id) } : d);
+}
 app.get('/api/:col', (req, res, next) => {
   const col = req.params.col;
   if (!COLLECTIONS.includes(col)) return next();
-  if (col === 'jobs') return res.json(db.jobs.map((j) => withUnbilled(withRepeat(isMemberReq(req) ? jobForMember(j) : j))));
+  const sends = SENT_KIND[col] ? withSends(col) : (d) => d;
+  if (col === 'jobs') return res.json(db.jobs.map((j) => sends(withUnbilled(withRepeat(isMemberReq(req) ? jobForMember(j) : j)))));
   if (col === 'clients' && isMemberReq(req)) return res.json(db.clients.map(clientForMember));
-  res.json(col === 'invoices' ? db.invoices.map(withStatus) : db[col]);
+  res.json(col === 'invoices' ? db.invoices.map((i) => sends(withStatus(i))) : db[col].map(sends));
 });
 
 // quote / job / invoice numbers: automatic (Q-1001, J-2001, INV-3001…), or typed in by an admin for quotes and invoices; always unique.
@@ -3057,7 +3071,7 @@ app.post('/api/jobs/:id/on-my-way', async (req, res) => {
   const arrive = new Date(Date.now() + eta * 60e3).toLocaleTimeString(i18n.locale(langOf(c)), { hour: 'numeric', minute: '2-digit', hour12: db.company.timeFormat !== '24' });
   const ch = tenancy.has('sms') && c.smsConsent && c.phone ? 'sms' : 'email';
   const email = inClientLang(c.id, () => renderEmail('onMyWay', { client_name: c.name || '', company_name: db.company.name, staff_name: who, eta: tx('{n} minutes', { n: eta }), arrival_time: arrive, job_number: j.number, job_title: j.title || '', address: j.address || c.address || '' }));
-  const r = await notify({ clientId: c.id, channel: ch, kind: 'job', refId: j.id, refNumber: j.number, subject: email.subject, html: ch === 'email' ? email.html : '',
+  const r = await notify({ clientId: c.id, channel: ch, kind: 'job', tag: 'omw', refId: j.id, refNumber: j.number, subject: email.subject, html: ch === 'email' ? email.html : '',
     body: ch === 'email' ? email.body : `${first} is on the way and should arrive in about ${eta} minutes (around ${arrive}). Reply STOP to opt out.` });
   if (r.status !== 'failed') { j.onMyWay = { at: new Date().toISOString(), staffId: u.staffId || null, name: who, eta, channel: ch }; keepSpot(u.staffId, readSpot(req.body), 'omw', j.id); }
   save(); res.json({ result: r, job: j });

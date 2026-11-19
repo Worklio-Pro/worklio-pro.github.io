@@ -229,6 +229,7 @@ table.mini th,table.mini td{padding:9px 8px;font-size:14px;vertical-align:middle
 .qmeta{display:grid;grid-template-columns:110px 1fr;margin:0;align-content:start}
 .qmeta dt,.qmeta dd{margin:0;padding:8px 0;border-bottom:1px solid var(--line);font-size:14px;display:flex;align-items:center;min-height:56px}
 .qmeta dt{color:var(--muted)}.qmeta dd{font-weight:500}
+.qmeta dd.sent-dd{flex-direction:column;align-items:flex-start;justify-content:center} /* Sent: one line per send */
 .unit{display:flex;align-items:center;gap:6px}.unit input{width:110px}
 .qcard{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:16px}
 .qcard h2{font-size:17px;margin:0 0 14px}.qcard h3{font-size:15px;margin:0 0 4px}

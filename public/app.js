@@ -2314,7 +2314,7 @@ function invoiceForm(main, doc, preset) {
 <dt>Invoice for</dt><dd><select name="jobId" aria-label="Linked job"><option value="">No job</option>${D.jobs.map((j) => `<option value="${j.id}" ${(d.jobId || p.jobId) === j.id ? 'selected' : ''}>${esc(j.number + ' · ' + j.title)}</option>`).join('')}</select></dd>
 <dt>Issued</dt><dd><input type="date" name="issueDate" value="${esc(issue)}" aria-label="Issue date"></dd>
 <dt>Payment terms</dt><dd><select name="paymentTerms" aria-label="Payment terms">${TERMS.map(([k, l]) => `<option value="${k}" ${terms === k ? 'selected' : ''}>${l}</option>`).join('')}</select></dd>
-<dt>Due date</dt><dd><input type="date" name="dueDate" value="${esc(due)}" aria-label="Due date"></dd></dl></div>
+<dt>Due date</dt><dd><input type="date" name="dueDate" value="${esc(due)}" aria-label="Due date"></dd>${sentMeta(d)}</dl></div>
 ${itemsCard(items, `<input type="hidden" name="depositCreditRemoved" value="${d.depositCreditRemoved ? 'yes' : ''}"><input type="hidden" name="referralCreditRemoved" value=""><div class="icredit"></div>`, d)}
 <div class="qcard"><h2>Client message</h2><div class="ai-box"><textarea name="notes" rows="3" placeholder="A message to your client, shown on the invoice">${esc(d.notes || '')}</textarea>${aiTextBar('invoice', 'notes')}</div></div>
 ${discCard('invoice', d.id ? d.disclaimer || '' : company.invoiceDisclaimer ?? '')}
@@ -2627,7 +2627,7 @@ function quoteForm(main, doc, preset) {
 <div class="muted qlabel">Property address</div><div class="qaddr">${esc(d.address || '') || addr(d.clientId || p.clientId) || '<span class="muted">Choose a client</span>'}</div><input type="hidden" name="address" value="${esc(d.address || '')}"></div>
 <dl class="qmeta"><dt>Quote #</dt><dd><input name="number" class="num-in" maxlength="30" value="${esc(d.number || '')}" placeholder="Automatic" aria-label="Quote number" title="Leave blank for the next automatic number"></dd>
 <dt>Created</dt><dd>${fmtDate((d.createdAt || ymd(new Date())).slice(0, 10))}</dd>
-<dt>Status</dt><dd><select name="status" aria-label="Status">${['draft', 'sent', 'approved', 'declined'].map((s) => `<option value="${s}" ${(d.status || 'draft') === s ? 'selected' : ''}>${Q_STATUS[s]}</option>`).join('')}</select></dd></dl></div>
+<dt>Status</dt><dd><select name="status" aria-label="Status">${['draft', 'sent', 'approved', 'declined'].map((s) => `<option value="${s}" ${(d.status || 'draft') === s ? 'selected' : ''}>${Q_STATUS[s]}</option>`).join('')}</select></dd>${sentMeta(d)}</dl></div>
 ${itemsCard(items, `${optRow({ label: 'Deposit', name: 'deposit', value: d.depositValue ?? d.depositFee, type: d.depositType, pctLabel: '% of total' })}<div class="dep-out muted"></div>${d.depositPaidAt ? `<div class="crow-line dep-credit"><span>Deposit collected <span class="muted">· ${fmtDate(d.depositPaidAt)}</span></span><span>−${money(depositPaid(d))}</span></div>` : ''}`, d)}
 <div class="qcard"><h2>Client message</h2><div class="ai-box"><textarea name="notes" rows="3" placeholder="A message to your client, shown on the quote">${esc(d.notes || '')}</textarea>${aiTextBar('quote', 'notes')}</div></div>
 ${discCard('quote', d.id || 'disclaimer' in d ? d.disclaimer || '' : company.quoteDisclaimer ?? DEFAULT_DISCLAIMER)}
@@ -2843,7 +2843,7 @@ function quotePage(d) {
 ${sendBtn('quote', d)}</div></div>
 <div class="vhead"><div class="vtitle-row"><h1 class="vtitle">${esc(d.title || 'Untitled quote')}</h1>${editBtn('quote', d, 'top')}</div>
 <div class="qhead"><div class="qclient"><div class="vclient"><span>${esc(c.name || 'No client')}</span>${c.id ? clientMenu(c) : ''}</div><div class="muted qlabel">Property address</div><div class="qaddr">${esc(d.address || c.address || '') || '<span class="muted">No address on file</span>'}</div></div>
-<dl class="qmeta"><dt>Quote #</dt><dd>${esc(d.number)}</dd><dt>Created</dt><dd>${fmtDate((d.createdAt || '').slice(0, 10))}</dd>${d.estimate || d.estimateApprovedAt ? `<dt>Estimate</dt><dd>${d.estimateApprovedAt ? `Approved ${fmtDate(d.estimateApprovedAt)}` : 'Client approves it first'}</dd>` : ''}${d.survey && (d.estimate || d.surveyTaskId) ? `<dt>Site survey</dt><dd>${qSvyText(d)}</dd>` : ''}${d.depositFee > 0 && !(qHasOpts(d) && !d.chosenOption) ? `<dt>Required deposit</dt><dd>${money(d.depositFee)}</dd>` : ''}${qHasOpts(d) && d.chosenOption ? `<dt>Client chose</dt><dd>${esc(qShown(d).name)}</dd>` : ''}</dl></div></div>
+<dl class="qmeta"><dt>Quote #</dt><dd>${esc(d.number)}</dd><dt>Created</dt><dd>${fmtDate((d.createdAt || '').slice(0, 10))}</dd>${d.estimate || d.estimateApprovedAt ? `<dt>Estimate</dt><dd>${d.estimateApprovedAt ? `Approved ${fmtDate(d.estimateApprovedAt)}` : 'Client approves it first'}</dd>` : ''}${d.survey && (d.estimate || d.surveyTaskId) ? `<dt>Site survey</dt><dd>${qSvyText(d)}</dd>` : ''}${d.depositFee > 0 && !(qHasOpts(d) && !d.chosenOption) ? `<dt>Required deposit</dt><dd>${money(d.depositFee)}</dd>` : ''}${qHasOpts(d) && d.chosenOption ? `<dt>Client chose</dt><dd>${esc(qShown(d).name)}</dd>` : ''}${sentMeta(d)}</dl></div></div>
 <div class="qcard"><div class="qcard-h"><h2>Product / Service</h2>${editBtn('quote', d, 'items')}</div>${qHasOpts(d) && !d.chosenOption ? `<p class="muted qo-intro">${d.options.length} options for the client to choose from.</p>` : ''}${quoteItemsView(d)}</div>
 ${d.signedAt ? `<div class="qcard sig-card"><div class="qcard-h"><h2>Client signature</h2><span class="cstatus q-approved">Signed</span></div>
 ${d.signature ? `<div class="sig-show"><img class="sig-img" src="${esc(d.signature.file)}" alt="Signature of ${esc(d.signedName || 'the client')}"></div>` : ''}
@@ -2867,7 +2867,7 @@ ${d.status !== 'paid' ? sendBtn('invoice', d) : ''}</div></div>
 <div class="muted qlabel" style="margin-top:10px">Property address</div><div class="qaddr">${invProperty(d.address, job, c) ? esc(invProperty(d.address, job, c)) : '(Same as billing address)'}</div>
 ${c.phone || c.email ? `<div class="vclient-c">${c.phone ? `<a href="tel:${esc(c.phone)}">${esc(c.phone)}</a>` : ''}${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ''}</div>` : ''}</div>
 <dl class="qmeta"><dt>Invoice #</dt><dd>${esc(d.number)}</dd>${job ? `<dt>Invoice for</dt><dd><a href="/jobs/edit?id=${job.id}" data-link>${esc(job.number + ' · ' + job.title)}</a></dd>` : ''}
-<dt>Issued</dt><dd>${fmtDate(d.issueDate)}</dd><dt>Payment terms</dt><dd>${esc(termsLabel)}</dd><dt>Due date</dt><dd>${fmtDate(d.dueDate)}</dd></dl></div></div>
+<dt>Issued</dt><dd>${fmtDate(d.issueDate)}</dd><dt>Payment terms</dt><dd>${esc(termsLabel)}</dd><dt>Due date</dt><dd>${fmtDate(d.dueDate)}</dd>${sentMeta(d)}</dl></div></div>
 <div class="qcard"><div class="qcard-h"><h2>Product / Service</h2>${editBtn('invoice', d, 'items')}</div>${viewItems(d)}
 <div class="vtotals">${viewTotals(d)}${d.depositApplied ? vt(payLink('q-' + d.depositQuoteId, 'Deposit collected', d.depositAppliedAt, ` <span class="muted">· quote ${esc(d.depositQuote)}</span>`), '−' + money(d.depositApplied)) : ''}${(d.referralCredits || []).filter((r) => r.amount > 0).map((r) => vt(`Referral credit <span class="muted">· ${refWho(r)}</span>`, '−' + money(r.amount))).join('')}
 ${pays.map((p) => vt(payLink(p.id, 'Payment collected', p.date, ` <span class="muted">· ${esc(payLabel(p.method))}${p.tip ? ` · plus ${money(p.tip)} tip` : ''}</span>`), '−' + money(p.amount))).join('')}
@@ -3670,6 +3670,9 @@ const qBadge = (s) => `<span class="cstatus q-${s}">${Q_STATUS[s] || esc(s)}</sp
 const moneyShort = (n) => (n >= 1000 ? '$' + (n / 1000).toFixed(n >= 1e5 ? 0 : 1) + 'k' : money(n));
 // The Quotes page opens on Needs action: the client asked for changes, a deposit the client says they sent, approved with no job yet,
 // and quotes sent 7 or more days ago with no answer. Same layout as Invoices: status tabs, a one-line stats strip, rows grouped by why.
+// Sent: when this quote, job or invoice went to the client by email or text (d.sends from the server, newest first). Up to 3 lines, then how many more
+const sentMeta = (d) => { const s = (d && d.sends) || []; if (!s.length) return ''; const line = (x) => { const t = new Date(x.at); return `${fmtDate(ymd(t))} at ${fmtTime(t.toTimeString().slice(0, 5))} by ${x.channel === 'sms' ? 'text' : 'email'}`; };
+  return `<dt>Sent</dt><dd class="sent-dd" title="${esc(s.map(line).join('\n'))}">${s.slice(0, 3).map((x, i) => (i ? `<div class="muted sm-l">${line(x)}</div>` : line(x))).join('')}${s.length > 3 ? `<div class="muted sm-l">${s.length - 3} more before that</div>` : ''}</dd>`; };
 let quoteView = { status: 'action', date: 'all', q: '', sort: 'urgent', dir: 1 }; const quoteSel = new Set(); let quoteStaleIds = [];
 const qDay = (s) => (s || '').slice(0, 10);
 const qSentOn = (q) => qDay(q.sentAt || (q.status !== 'draft' ? q.createdAt : ''));
@@ -4227,7 +4230,7 @@ function jobViewPage(j) {
 ${jobLocked(j) ? LOCK_NOTE('v-lock') : ''}<div class="vhead"><div class="vtitle-row"><h1 class="vtitle">${esc(j.title || 'Untitled job')}</h1>${editBtn('job', j, 'top')}</div>
 <div class="qhead"><div class="qclient"><div class="vclient"><span>${esc(c.name || 'No client')}</span>${c.id ? clientMenu(c) : ''}</div><div class="muted qlabel">Property address</div><div class="qaddr">${esc(j.address || c.address || '') || none('No address on file')}</div>
 ${c.phone || c.email ? `<div class="vclient-c">${c.phone ? `<a href="tel:${esc(c.phone)}">${esc(fmtUsPhone(c.phone))}</a>` : ''}${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ''}</div>` : ''}</div>
-<dl class="qmeta"><dt>Job #</dt><dd>${esc(j.number)}</dd><dt>Created</dt><dd>${fmtDate((j.createdAt || '').slice(0, 10))}</dd><dt>From quote</dt><dd>${q ? `<a href="/quotes/view?id=${q.id}" data-link>${esc(q.number)}</a>` : none('—')}</dd></dl></div></div>
+<dl class="qmeta"><dt>Job #</dt><dd>${esc(j.number)}</dd><dt>Created</dt><dd>${fmtDate((j.createdAt || '').slice(0, 10))}</dd><dt>From quote</dt><dd>${q ? `<a href="/quotes/view?id=${q.id}" data-link>${esc(q.number)}</a>` : none('—')}</dd>${sentMeta(j)}</dl></div></div>
 ${canDo('jobs.prices') ? `<div class="qcard"><div class="qcard-h"><h2>Product / Service</h2>${editBtn('job', j, 'items')}</div>${(d.items || []).length ? viewItems(d) + `<div class="vtotals">${viewTotals(d)}${q && q.depositFee > 0 ? vt('Required deposit', money(q.depositFee))
     + (q.depositPaidAt ? vt(payLink('q-' + q.id, 'Deposit collected', q.depositPaidAt), '−' + money(paid)) : '') + vt('Outstanding deposit', money(Math.max(0, round2(q.depositFee - paid)))) : ''}</div>` : '<p class="muted" style="margin:0">No line items</p>'}</div>` : ''}
 <div class="qcard"><div class="qcard-h"><h2>Scheduled Visit</h2>${editBtn('job', j, 'visit')}</div><dl class="qmeta vvisit"><dt>When</dt><dd>${esc(visitText(j))}</dd>
@@ -4352,7 +4355,7 @@ ${j.status === 'scheduled' ? `<button type="button" class="btn alt need-jobs-edi
 <dl class="qmeta"><dt>Job #</dt><dd>${j.number ? esc(j.number) : '<span class="muted">Assigned when saved</span>'}</dd>
 <dt>Status</dt><dd><select name="status" aria-label="Status">${[['scheduled', 'Scheduled'], ['completed', 'Completed'], ['cancelled', 'Cancelled']].map(([k, l]) => `<option value="${k}" ${(j.status || 'scheduled') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></dd>
 <dt>Created</dt><dd>${fmtDate((j.createdAt || ymd(new Date())).slice(0, 10))}</dd>
-<dt>From quote</dt><dd>${q ? `<a href="/quotes/view?id=${q.id}" data-link>${esc(q.number)}</a>` : '<span class="muted">—</span>'}</dd></dl></div>
+<dt>From quote</dt><dd>${q ? `<a href="/quotes/view?id=${q.id}" data-link>${esc(q.number)}</a>` : '<span class="muted">—</span>'}</dd>${sentMeta(j)}</dl></div>
 ${!canDo('jobs.prices') ? '' : itemsCard(items, '<div class="jdeposit"></div>', j.taxRate !== undefined ? j : q || j)}
 <div class="qcard"><h2>Scheduled visit</h2><div class="row3"><label>Date<input type="date" name="date" required value="${esc(j.date || p.date || ymd(new Date()))}"></label>
 <label>Start<input type="time" name="startTime" value="${esc(j.startTime || '09:00')}"></label><label>End<input type="time" name="endTime" value="${esc(j.endTime || '11:00')}"></label></div>
