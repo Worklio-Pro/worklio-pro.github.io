@@ -3594,7 +3594,7 @@ function upAddons(a) {
   if (mkHas || (mk && mk.offered && mk.cents)) out.push({ has: mkHas, icon: '<path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>', name: 'Marketing suite',
     price: mkHas ? '' : price(mk), tag: mkHas ? status(mk) : mk.trialDays ? `${mk.trialDays} days free` : '',
     pitch: mkHas ? 'Reviews, email campaigns, your website, referrals and your marketing plan, all in Marketing.' : 'Turn happy clients into new ones: reviews, email campaigns, a website, referrals and a plan that shows where your best jobs come from.',
-    more: a.marketingHub && !mkHas ? '<a class="link-btn" href="/marketing/dashboard" data-link>Take a look</a>' : '', buy: !mkHas && owner ? `<button type="button" class="btn sm" data-act="mkAddon">${mk.trialDays ? 'Start free trial' : 'Add Marketing suite'}</button>` : '' });
+    more: a.marketingHub || mkHas ? `<a class="link-btn mk-open" href="/marketing/dashboard" data-link>${mkHas ? 'Open Marketing' : 'Take a look'}</a>` : '', buy: !mkHas && owner ? `<button type="button" class="btn sm" data-act="mkAddon">${mk.trialDays ? 'Start free trial' : 'Add Marketing suite'}</button>` : '' });
   return out;
 }
 A.upMx = () => A.mxSee(); // the plan box is on Account and Billing; the Matrix line items box is on App Settings
@@ -5050,7 +5050,7 @@ function mkRow(B) {
   const act = (a, l) => (B.isOwner ? ` · <button type="button" class="link-btn" data-act="${a}">${l}</button>` : '');
   const what = x.state === 'included' ? 'included in your plan' : x.state === 'trial' ? `free until ${fmtDate(x.trialEnds)}, then ${p}` : x.state === 'ending' ? `${p}, ends ${fmtDate(x.endsAt)}` : x.state === 'on' ? p : '';
   if (x.state === 'off') return B.isOwner && x.offered && x.cents && !B.paused ? `<div class="mk-billrow">Marketing suite <span class="muted">(${p}${x.trialDays ? `, first ${x.trialDays} days free` : ''})</span><div class="muted" style="font-size:13px">Performance, the AI marketing plan, and email campaigns and a website builder as they arrive · <button type="button" class="link-btn" data-act="mkAddon">${x.trialDays ? 'Start free trial' : 'Add it'}</button></div></div>` : '';
-  return `<div class="mk-billrow">Marketing suite <span class="muted">(${what})</span><div class="muted" style="font-size:13px"><a href="/marketing/dashboard" data-link>Open Marketing</a>${x.state === 'on' || x.state === 'trial' ? act('mkAddonOff', 'Remove') : x.state === 'ending' ? act('mkAddon', 'Keep it') : ''}</div></div>`;
+  return `<div class="mk-billrow">Marketing suite <span class="muted">(${what})</span><div class="muted" style="font-size:13px"><a class="mk-open" href="/marketing/dashboard" data-link>Open Marketing</a>${x.state === 'on' || x.state === 'trial' ? act('mkAddonOff', 'Remove') : x.state === 'ending' ? act('mkAddon', 'Keep it') : ''}</div></div>`;
 }
 PAGES['/settings/billing'] = {
   title: 'Account and billing',

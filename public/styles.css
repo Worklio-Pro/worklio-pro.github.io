@@ -363,6 +363,8 @@ details.menu{position:relative}details.menu summary{list-style:none}details.menu
   #main.bill-ro button[data-act]:not([data-act=supportForm],[data-act=billMore]),#main.bill-ro a.btn[href^="/settings/billing"],#main.bill-ro .bill-pay,
   #main.bill-ro .bill-change,#main.bill-ro .card:has(.bill-redeem),#main.bill-ro .xp-period{display:none!important}
 }
+/* the links into Marketing on Account and billing: Marketing is for a computer, so phones leave them out */
+@media (max-width:760px){a.mk-open{display:none}}
 /* Project Gallery's Upload photos: a big button with a camera, centered on its own row under the title; the full width on phones */
 .head:has(>.gal-up)>div{flex:1 1 100%}
 .btn.gal-up{display:flex;align-items:center;justify-content:center;gap:10px;margin:0 auto;width:min(100%,380px);min-height:56px;padding:13px 24px;font-size:17px;border-radius:12px}
