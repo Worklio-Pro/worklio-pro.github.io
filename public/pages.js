@@ -5080,8 +5080,10 @@ PAGES['/settings/billing'] = {
       : `<p class="muted">Your ${esc(B.plan.name)} plan isn’t billed automatically yet. Choose it under Modify subscription to set up automatic payments.</p>`;
     const inv = billingAll ? B.invoices : B.invoices.slice(0, 6);
     const paused = B.paused ? explorePlans(B) : '';
-    if (B.paused && !B.isOwner) { main.innerHTML = `<div class="head"><h1>Account and billing</h1></div>${paused}`; return; } // an admin choosing a plan for a paused account
-    main.innerHTML = `<div class="head"><h1>Account and billing</h1></div>${paused}
+    // phones see the account read-only (styles.css hides every change under #main.bill-ro): plan, card and billing changes are made on a computer
+    const roNote = '<div class="desk-bar bill-ro-note" role="status"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg><span>View only on a phone. To change your plan, card or billing details, use a computer.</span></div>'; main.classList.add('bill-ro');
+    if (B.paused && !B.isOwner) { main.innerHTML = `${roNote}<div class="head"><h1>Account and billing</h1></div>${paused}`; return; } // an admin choosing a plan for a paused account
+    main.innerHTML = `${roNote}<div class="head"><h1>Account and billing</h1></div>${paused}
 <div class="card bill-ov"><div class="bill-h"><h2>Account overview</h2><div class="actions">${B.live && B.managed ? `<button type="button" class="btn alt" data-act="billCard">${B.card ? 'Update card' : 'Add card'}</button>` : ''}</div></div>
 <dl class="bill-dl"><div><dt>Active since</dt><dd>${B.activeSince ? fmtDate(B.activeSince) : '—'}</dd></div><div><dt>Account status</dt><dd>${esc(statusText)}</dd></div>
 <div><dt>Current plan</dt><dd>${esc(B.plan.name)}${B.plan.charge ? ` <span class="muted">(${B.plan.charge.interval === 'year' ? 'yearly' : 'monthly'}, ${money(B.plan.charge.cents / 100).replace(/\.00$/, '')}/${B.plan.charge.interval})</span>` : B.plan.price ? ` <span class="muted">(${esc(B.plan.price)})</span>` : ''}${B.plan.locked ? `<div class="muted" style="font-size:13px">Your ${B.plan.locked.name ? `${esc(B.plan.locked.name)} ` : ''}price is locked since ${fmtDate(B.plan.locked.since)} for as long as you stay on ${esc(B.plan.name)}, monthly or yearly.</div>` : ''}</dd></div>
@@ -5098,7 +5100,7 @@ ${B.managed ? `<div class="bill-two"><div><strong>Name</strong><div>${esc(B.cust
 <div class="bill-sub"><strong>Plan subscription</strong>${subText}</div></div>
 <div class="card bill-histcard"><div class="bill-h"><h2>Payment history</h2></div><div class="bill-scroll">${inv.length ? `<table class="bill-hist">${inv.map((i) => `<tr><td>${fmtDate(i.date)}</td><td class="r">${money(i.amount)} ${esc(i.currency)}</td>
 <td><span class="badge ${i.status === 'paid' ? 'paid' : i.status === 'open' ? 'overdue' : 'draft'}">${esc({ paid: 'Paid', open: 'Unpaid', void: 'Void', uncollectible: 'Unpaid' }[i.status] || i.status)}</span></td>
-<td class="r">${i.receiptUrl ? `<a class="btn alt sm" href="${esc(i.receiptUrl)}" target="_blank" rel="noopener">${i.status === 'open' ? 'Pay' : 'Receipt'}</a>` : ''}</td></tr>`).join('')}</table>${!billingAll && B.invoices.length > inv.length ? '<button type="button" class="link-btn" data-act="billMore">View more payments</button>' : ''}`
+<td class="r">${i.receiptUrl ? `<a class="btn alt sm${i.status === 'open' ? ' bill-pay' : ''}" href="${esc(i.receiptUrl)}" target="_blank" rel="noopener">${i.status === 'open' ? 'Pay' : 'Receipt'}</a>` : ''}</td></tr>`).join('')}</table>${!billingAll && B.invoices.length > inv.length ? '<button type="button" class="link-btn" data-act="billMore">View more payments</button>' : ''}`
   : '<p class="muted">No payments yet.</p>'}</div></div>
 ${B.managed ? `<div class="card bill-change"><div class="bill-h"><h2>Change subscription</h2></div><p${B.prepaidUntil ? " hidden" : ""}>Switch plans any time. Moving to a bigger plan takes effect right away and you’re charged the difference for the rest of this billing period; moving to a smaller plan credits the difference to your next bill.</p>
 ${B.prepaidUntil ? `<p class="muted">Your ${esc(B.plan.name)} plan is prepaid until ${fmtDate(B.prepaidUntil)}, so it can’t be changed before then. Contact us if you need a different plan.</p>` : ''}
@@ -5108,7 +5110,8 @@ ${sub && !ending ? `<p class="muted">You can also cancel anytime. You keep using
 ${B.managed ? `<div class="card"><div class="bill-h"><h2>Have a supporter code?</h2></div><p class="muted">Founding Supporters get a code by email worth prepaid months of their reward’s plan.</p>
 <div class="bill-redeem"><input id="supCode" aria-label="Supporter code" placeholder="FS-XXXX-XXXX" maxlength="30" autocomplete="off" spellcheck="false"><button type="button" class="btn" data-act="billRedeem">Redeem</button></div></div>` : ''}
 </div>`;
-    if (qs.has('upgrade') && B.managed) A.billPlans(); // from an “Upgrade your plan” link
+    // phones see the account read-only (styles.css hides every change under #main.bill-ro): plan, card and billing changes are made on a computer
+    if (qs.has('upgrade') && B.managed && !deskMq.matches) A.billPlans(); // from an “Upgrade your plan” link
   },
 };
 // a paused account: the plans laid out like the pricing page; choosing one pays at Stripe's checkout (or reopens a free plan right away)

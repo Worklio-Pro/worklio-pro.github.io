@@ -356,6 +356,13 @@ details.menu{position:relative}details.menu summary{list-style:none}details.menu
 @media (max-width:760px){.home-acts{flex:1 1 100%;flex-wrap:nowrap}.home-acts .btn{flex:1 1 0;min-width:0;justify-content:center;text-align:center}}
 /* Team Requests' Request time off on phones: the full width under the title */
 @media (max-width:760px){.head:has(>.to-req)>div{flex:1 1 100%}.btn.to-req{width:100%;min-height:52px;justify-content:center;font-size:16px}}
+/* Account and billing on phones: view only. Every button that changes the plan, card, details or add-ons is hidden; receipts, View more payments and Contact us stay */
+.desk-bar.bill-ro-note{display:none}
+@media (max-width:760px){
+  #main.bill-ro .bill-ro-note{display:flex}
+  #main.bill-ro button[data-act]:not([data-act=supportForm],[data-act=billMore]),#main.bill-ro a.btn[href^="/settings/billing"],#main.bill-ro .bill-pay,
+  #main.bill-ro .bill-change,#main.bill-ro .card:has(.bill-redeem),#main.bill-ro .xp-period{display:none!important}
+}
 /* Project Gallery's Upload photos: a big button with a camera, centered on its own row under the title; the full width on phones */
 .head:has(>.gal-up)>div{flex:1 1 100%}
 .btn.gal-up{display:flex;align-items:center;justify-content:center;gap:10px;margin:0 auto;width:min(100%,380px);min-height:56px;padding:13px 24px;font-size:17px;border-radius:12px}
