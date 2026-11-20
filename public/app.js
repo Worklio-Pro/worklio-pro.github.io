@@ -4692,7 +4692,7 @@ ${svTeamPick(t)}
 A.svQuoteOpen = (d) => navigate('/quotes/view?id=' + d.id);
 A.svPage = (d) => navigate('/jobs/site-visit?id=' + d.id);
 // New Site Visit: the calendar's quick pop-up, on its Site visit tab
-A.newSiteVisit = (d, el) => { const r = el.getBoundingClientRect(); scQuick({ date: ymd(new Date()) }, r.left - 340, r.bottom + 40); const b = $('.qc-tabs [data-k=survey]'); if (b) b.click(); };
+A.newSiteVisit = (d, el) => { const r = el.getBoundingClientRect(); scQuick({ date: ymd(new Date()), startTime: '09:00', endTime: '10:00' }, phoneMq.matches ? 8 : r.left - 340, phoneMq.matches ? 60 : r.bottom + 40); const b = $('.qc-tabs [data-k=survey]'); if (b) b.click(); }; // phones: the pop-up near the top, full width
 // who can complete or reopen a visit: whoever can edit jobs, or the person it's with (the server checks too). Quotes only with the Quotes permission.
 const svCanDo = (t) => canDo('jobs.edit') || !!(me && me.staffId && (t.staffIds || []).includes(me.staffId));
 const svQuotes = () => canDo('quotes');
@@ -4743,7 +4743,7 @@ function renderSiteVisits(main) {
     list.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0) * v.dir); }
   if (phoneMq.matches) return mobileList(main, { path: '/jobs', title: 'Site visits', plural: 'site visits', one: 'site visit', list, q: v.q, status: v.status, statuses: [['action', 'Needs action'], ...order.map((s) => [s, SV_STATUS[s]])], date: (t) => t.date + (t.startTime || ''),
     banner: jvSwitch('visits'), row: (t) => { const q = svQuote(t); return { name: svName(t), date: mDay(t.date) + ' ' + fmtTime(t.startTime), amount: '', title: q ? 'Quote ' + q.number : '', label: SV_STATUS[svStatus(t)], cls: SV_CLASS[svStatus(t)], href: '/jobs/site-visit?id=' + t.id }; },
-    onStatus: (k) => { svView = { ...svView, status: k, picked: true }; }, onQ: (x) => { svView.q = x; } });
+    onStatus: (k) => { svView = { ...svView, status: k, picked: true }; }, onQ: (x) => { svView.q = x; }, ...(canCal() ? { newAct: 'newSiteVisit' } : {}) });
   const th = (k, label) => `<th><button class="th-btn" data-act="svSort" data-k="${k}">${label} <span class="sort ${v.sort === k ? 'on' : ''}">${v.sort === k ? (v.dir > 0 ? '▲' : '▼') : '⇅'}</span></button></th>`;
   const sub = (s) => (s ? `<div class="muted sm-l">${s}</div>` : ''); const dash = '<span class="muted">—</span>';
   // the buttons on a row (shown on hover): what you'd do next with that visit
