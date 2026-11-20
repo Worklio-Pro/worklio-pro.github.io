@@ -4690,18 +4690,16 @@ PAGES['/settings/workflow'] = {
     const draw = () => {
       const p = flowPresetOf(steps);
       main.innerHTML = `<div class="card flow-pg"><h1>How You Work</h1><p class="muted" style="margin-top:0">Pick the steps your business uses. Steps you turn off are hidden in the app, so it stays simple. You can still use one on a single job from its ⋯ More menu.</p>
-${w ? '' : '<p class="flow-unset">Everything is on until you choose.</p>'}
+${company.workflow ? '' : '<p class="flow-unset">Everything is on until you choose.</p>'}
 <div class="flow-presets" role="radiogroup" aria-label="Preset">${Object.entries(FLOW_PRESETS).map(([k, [name, desc]]) => `<button type="button" class="flow-pre${p === k ? ' on' : ''}" role="radio" aria-checked="${p === k}" data-pre="${k}"><strong>${name}</strong><span class="muted sm">${desc}</span></button>`).join('')}</div>
 <h2 class="flow-h">Steps${p === 'custom' ? ' <span class="cstatus q-draft">Your own mix</span>' : ''}</h2>
 <div class="flow-steps">${FLOW_STEPS.map(([k, name, desc]) => `<label class="sw-row flow-step${k === 'siteVisit' && !steps.estimate ? ' off' : ''}"><span>${name}<small class="muted">${desc}</small></span><input type="checkbox" class="sw" data-step="${k}" ${steps[k] ? 'checked' : ''} ${k === 'siteVisit' && !steps.estimate ? 'disabled' : ''}><i></i></label>`).join('')}</div>
-<p class="muted sm">Deposits and other defaults for new quotes are in <a href="/settings" data-link>App Settings</a>.</p>
-<div class="foot"><button type="button" class="btn" data-flow-save>Save</button></div></div>`;
+<p class="muted sm">Changes save automatically. Deposits and other defaults for new quotes are in <a href="/settings" data-link>App Settings</a>.</p></div>`;
     };
-    main.onclick = async (e) => {
-      const pre = e.target.closest('[data-pre]'); if (pre) { const on = FLOW_PRESETS[pre.dataset.pre][2]; steps = Object.fromEntries(FLOW_STEPS.map(([k]) => [k, on.includes(k)])); return draw(); }
-      if (e.target.closest('[data-flow-save]')) { const b = e.target.closest('[data-flow-save]'); b.disabled = true; try { await saveFlow({ preset: flowPresetOf(steps), steps, team: (company.workflow || {}).team || '' }); toast('Saved. The app now shows the steps you use.'); refresh(); } catch (x) { toast(x.message, true); b.disabled = false; } }
-    };
-    main.onchange = (e) => { const t = e.target.closest('[data-step]'); if (!t) return; steps[t.dataset.step] = t.checked; if (!steps.estimate) steps.siteVisit = false; draw(); };
+    // every change saves right away (no Save button); a failed save puts the page back to what's saved
+    const persist = async () => { try { await saveFlow({ preset: flowPresetOf(steps), steps, team: (company.workflow || {}).team || '' }); toast('Saved'); } catch (x) { toast(x.message, true); refresh(); } };
+    main.onclick = (e) => { const pre = e.target.closest('[data-pre]'); if (!pre) return; const on = FLOW_PRESETS[pre.dataset.pre][2]; steps = Object.fromEntries(FLOW_STEPS.map(([k]) => [k, on.includes(k)])); draw(); persist(); };
+    main.onchange = (e) => { const t = e.target.closest('[data-step]'); if (!t) return; steps[t.dataset.step] = t.checked; if (!steps.estimate) steps.siteVisit = false; draw(); persist(); };
     draw();
   },
 };
