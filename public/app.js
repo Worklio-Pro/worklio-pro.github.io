@@ -3516,7 +3516,8 @@ function mobileJobPage(j) {
   const tapRow = (sec, l, v) => tap(sec, `<span>${l}</span><span class="md-v">${v}</span>`, 'md-tr');
   const textSec = (sec, title, text, empty) => tap(sec, `<span class="md-sh">${title}${ARROW}</span>${text ? `<span class="md-text">${esc(text)}</span>` : `<span class="md-text muted">${edit ? empty : 'None'}</span>`}`, 'md-sec');
   const btn = (act, label, cls = '') => `<button type="button" class="btn ${cls}" data-act="${act}" data-id="${j.id}">${label}</button>`;
-  const acts = [clockBtn(j), ...(canDo('jobs.edit') ? [j.status === 'scheduled' ? btn('completeJob', 'Mark Complete') : btn('reopenJob', 'Reopen', 'alt'), st === 'invoice' && planHas('invoices') ? btn('jobInvoice', 'Create Invoice', 'need-invoices') : ''] : [])];
+  const big = bigClock(j); // the assigned crew: one big Clock In / Clock Out across the page
+  const acts = [big ? '' : clockBtn(j), ...(canDo('jobs.edit') ? [j.status === 'scheduled' ? btn('completeJob', 'Mark Complete') : btn('reopenJob', 'Reopen', 'alt'), st === 'invoice' && planHas('invoices') ? btn('jobInvoice', 'Create Invoice', 'need-invoices') : ''] : [])];
   const team = (j.staffIds || []).map((id) => byId(D.staff, id)).filter(Boolean);
   const items = (d.items || []).map((it, i) => (it.mx ? mxLineHtml(d.items, it, i) : tap('item', mItemInner(d.items, it, i), `md-item${it.sub ? ' sub' : ''}`, `data-i="${i}"`))).join('');
   const paid = q ? depositPaid(q) : 0;
@@ -3530,7 +3531,7 @@ function mobileJobPage(j) {
 ${tap('jobDetails', `<span class="md-h">Job #${esc(j.number)} for ${esc(c.name || 'no client')}${prices && jobTotal(j) !== null ? ` for ${money(jobTotal(j))}` : ''}</span>${j.title ? `<span class="md-sub">${esc(j.title)}</span>` : ''}
 <span class="md-addr">${propNameHtml(c, j)}${esc(j.address || c.address || '')}</span>`, 'md-head')}
 ${mContact(c, j.address || c.address)}
-<div class="md-acts">${acts.filter(Boolean).join('')}<button type="button" class="btn alt md-more" data-act="mJobMore" data-id="${j.id}" aria-label="More actions">⋯</button></div>${jobLocked(j) ? LOCK_NOTE('md-lock') : ''}
+${big}<div class="md-acts">${acts.filter(Boolean).join('')}<button type="button" class="btn alt md-more" data-act="mJobMore" data-id="${j.id}" aria-label="More actions">⋯</button></div>${jobLocked(j) ? LOCK_NOTE('md-lock') : ''}
 <div class="md-tabs" role="tablist"><button type="button" role="tab" class="on" aria-selected="true" data-act="mTab" data-k="doc">Job</button><button type="button" role="tab" aria-selected="false" data-act="mTab" data-k="notes">Notes</button></div>
 <div class="md-pane" data-pane="doc">${tap('visit', `<span class="md-sh">Scheduled visit${ARROW}</span><span class="md-text">${esc(visitText(j))}</span>${j.repeat ? `<span class="md-text muted">↻ ${repeatLine(j)}</span>` : ''}`, 'md-sec')}
 ${tap('team', `<span class="md-sh">Assigned team${ARROW}</span>${withClocked(team, 'job', j.id).length ? `<span class="md-team">${withClocked(team, 'job', j.id).map((s) => `<span>${avatarHtml(s, 28)}${esc(s.name)}${clockedFlag(s.id, 'job', j.id)}</span>`).join('')}</span>` : `<span class="md-text muted">${edit ? 'Assign team members' : 'No one assigned'}</span>`}`, 'md-sec')}
@@ -4176,6 +4177,12 @@ const clockedFlag = (staffId, kind, id) => { const e = ((D.clock && D.clock.onCl
   return e ? `<span class="clk-flag" title="Clocked in at ${esc(fmtTime(new Date(e.start).toTimeString().slice(0, 5)))}">⏱ Clocked in</span>` : ''; };
 // the team as shown on a job or site visit: whoever is assigned, plus anyone on the clock for it who isn't (a manager can clock in on any job)
 const withClocked = (team, kind, id) => [...team, ...((D.clock && D.clock.onClock) || []).filter((x) => (kind === 'job' ? x.jobId : x.visitId) === id && !team.some((p) => p.id === x.staffId)).map((x) => byId(D.staff, x.staffId)).filter(Boolean)];
+// phones: someone on the job's team gets a big full-width Clock In, or Clock Out with how long they've been on
+const bigClock = (j) => {
+  if (!me || !me.staffId || !(j.staffIds || []).includes(me.staffId)) return '';
+  if (onThisJob(j)) return `<div class="md-clock"><button type="button" class="btn md-clock-btn out" data-act="clockOut"><span>Clock Out</span><small>On the clock ${clockSince(D.clock.open.start)} · since ${fmtTime(new Date(D.clock.open.start).toTimeString().slice(0, 5))}</small></button></div>`;
+  return canClockJob(j) ? `<div class="md-clock"><button type="button" class="btn md-clock-btn" data-act="clockIn" data-id="${j.id}"><span>Clock In</span>${D.clock && D.clock.open ? '<small>Ends your time on your other job</small>' : ''}</button></div>` : '';
+};
 const clockSince = (start) => { const m = Math.max(0, Math.floor((Date.now() - new Date(start)) / 6e4)); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`; };
 const clockBadge = (j) => (onThisJob(j) ? `<span class="vsign clock-badge" title="You clocked in at ${esc(fmtTime(new Date(D.clock.open.start).toTimeString().slice(0, 5)))}">⏱ On the clock · ${clockSince(D.clock.open.start)}</span>` : '');
 // Team location (App Settings → General, off by default): the phone's location goes with Clock In, Clock Out and On My Way, never in between.
