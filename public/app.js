@@ -4717,7 +4717,7 @@ function askWorkflow() {
 /* ===== work order: the client signs the job (the work, its price and dates) before work starts, on this device or online from an emailed link.
    A PDF goes in the job's notes and the client is emailed a copy. Anything that changes after that is a change order. ===== */
 function woCard(j, phone) {
-  if (!j.id || !planHas('signatures') || (!flow('workOrder') && !j.wo)) return ''; const w = j.wo; // off in How You Work: still in the job's More menu const edit = canDo('jobs.edit');
+  if (!j.id || !planHas('signatures') || (!flow('workOrder') && !j.wo)) return ''; const w = j.wo; const edit = canDo('jobs.edit'); // off in How You Work: still in the job's More menu
   const b = (act, label, cls = 'alt') => `<button type="button" class="btn ${cls} sm" data-act="${act}" data-id="${j.id}">${label}</button>`;
   const inner = w ? `<div class="wo-done"><span class="cstatus q-approved">Signed</span> <span class="sm">Signed by <strong>${esc(w.name)}</strong> · ${esc(fmtStamp(w.signedAt))}${w.via === 'online' ? ' · online' : w.collectedBy ? ` · collected by ${esc(w.collectedBy)}` : ''}</span>${w.pdf ? ` <a class="sm" href="${esc(w.pdf)}" target="_blank" rel="noopener">Signed copy (PDF)</a>` : ''}</div>`
     : `<p class="muted sm" style="margin:0 0 10px">Have the client approve the work and price before you start${j.woSentAt ? `. Emailed ${esc(fmtStamp(j.woSentAt))}, not signed yet` : ''}.</p><div class="co-acts" style="margin:0">${b('woSign', 'Get signature now', '')}${edit ? b('woSend', j.woSentAt ? 'Email again' : 'Email to client') : ''}</div>`;
