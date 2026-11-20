@@ -564,13 +564,20 @@ function scOpen(kind, id, x, y) {
 const canSurvey = () => ['owner', 'admin', 'manager'].includes(role());
 // changing the calendar (drag, resize, add, edit or remove tasks and events): owners, admins and managers only (the server checks too); everyone else sees it
 const canCal = () => ['owner', 'admin', 'manager'].includes(role()) && canDo('jobs.edit');
+// a dropdown that picks several people: the button says who's picked, the list (photo, name, a check when picked) stays open while you pick.
+// The picks are ordinary checkboxes named `name` inside it, so forms read them as usual.
+const msLabel = (box) => { const on = $$('input:checked', box).map((x) => x.closest('.ms-o').dataset.n); return on.length ? (on.length > 2 ? `${on.slice(0, 2).join(', ')} +${on.length - 2}` : on.join(', ')) : 'Nobody yet'; };
+const msPick = (name, people, picked) => `<details class="ms"><summary class="ms-btn"><span class="ms-v">${esc(people.filter((s) => picked.includes(s.id)).map((s) => s.name).slice(0, 2).join(', ') + (picked.length > 2 ? ` +${picked.length - 2}` : '') || 'Nobody yet')}</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
+<div class="ms-list" role="listbox" aria-multiselectable="true">${people.map((s) => `<label class="ms-o" data-n="${esc(s.name)}"><input type="checkbox" name="${name}" value="${esc(s.id)}" ${picked.includes(s.id) ? 'checked' : ''}>${avatarHtml(s, 26)}<span>${esc(s.name)}</span><svg class="ms-ck" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></label>`).join('') || '<p class="muted" style="margin:8px 12px">Add team members first</p>'}</div></details>`;
+document.addEventListener('change', (e) => { const box = e.target.closest && e.target.closest('.ms'); if (box) $('.ms-v', box).textContent = msLabel(box); });
+document.addEventListener('click', (e) => { $$('details.ms[open]').forEach((d) => { if (!d.contains(e.target)) d.open = false; }); }); // a click outside closes it
 // its fields: Assign team (one or more of the active team, or nobody yet: it then waits under Jobs → Site visits → Assign a team member),
 // and the quote it's for
 function qcSurveyFields(p, team) {
   const picked = p.svyStaff || (p.staffIds || []).filter((id) => team.some((s) => s.id === id));
   const open = p.clientId ? D.quotes.filter((q) => q.clientId === p.clientId && !quoteJob(q) && ['draft', 'sent'].includes(q.status) && !q.quoteSentAt) : [];
   const qv = p.svyQuote === '' || open.some((q) => q.id === p.svyQuote) ? p.svyQuote : 'new'; // another client's quote falls back to a new one
-  return `<div class="fl"><span>Assign team</span><div class="qc-team">${team.map((s) => `<label><input type="checkbox" name="svyStaff" value="${esc(s.id)}" ${picked.includes(s.id) ? 'checked' : ''}>${avatarHtml(s, 20)} ${esc(s.name)}</label>`).join('') || '<span class="muted">Add team members first</span>'}</div></div>
+  return `<div class="fl ms-fl"><span>Assign team</span>${msPick('svyStaff', team, picked)}</div>
 <label class="fl"><span>For quote</span><select name="svyQuote"><option value="new" ${qv === 'new' ? 'selected' : ''}>New quote (draft)</option>${open.map((q) => `<option value="${esc(q.id)}" ${qv === q.id ? 'selected' : ''}>${esc(q.number)}${q.title ? ' · ' + esc(q.title) : ''}${q.surveyTaskId ? ' (moves its visit)' : ''}</option>`).join('')}<option value="" ${qv === '' ? 'selected' : ''}>No quote</option></select></label>`;
 }
 // the quick pop-up: Job / Task / Event with the date and time filled in; drag it by its top bar

@@ -2933,3 +2933,12 @@ body.p404-only #billingBar{display:none!important}
 /* Site visit page on phones */
 .msv #svNote{width:100%;font-size:16px;border-radius:12px;padding:12px}.msv .sv-notes li{padding:12px 14px}.msv .sv-n-h{font-size:14px}
 .msv .svq-n{font-size:18px}.msv .svq-t{font-size:16px}.msv .svq-st{font-size:15px}.msv .svq-tip{font-size:15px}.msv .svq-btn{height:50px;font-size:16px;border-radius:12px}
+/* a dropdown that picks several people (Calendar → Site visit → Assign team) */
+.ms{position:relative}.ms>summary{list-style:none}.ms>summary::-webkit-details-marker{display:none}
+.ms-btn{display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;font-size:14px;color:var(--text);padding:2px 0;user-select:none}
+.ms-v{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ms-btn svg{flex:none;color:var(--muted)}.ms[open] .ms-btn svg{transform:rotate(180deg)}
+.ms-list{position:absolute;z-index:30;left:-13px;right:-13px;top:calc(100% + 10px);max-height:260px;overflow:auto;background:var(--card);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.16);padding:4px}
+.ms-o{display:flex;align-items:center;gap:10px;margin:0;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:14px}.ms-o:hover{background:var(--surface-2)}
+.ms-o input{position:absolute;opacity:0;pointer-events:none}.ms-o span{flex:1}.ms-ck{color:var(--brand);visibility:hidden}.ms-o:has(input:checked) .ms-ck{visibility:visible}.ms-o:has(input:checked){font-weight:600}
+.ms-o:has(input:focus-visible){outline:2px solid var(--brand);outline-offset:-2px}
+.qc .ms-list{position:static;margin:10px -6px 2px;box-shadow:none;max-height:220px}
