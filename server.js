@@ -1002,11 +1002,15 @@ app.post('/api/jobs/:id/repeat', (req, res) => {
   seriesList().push(s); if (old) db.jobs.forEach((x) => { if (x.seriesId === old.id && x.date > j.date) x.seriesId = s.id; }); j.seriesId = s.id; if (old) forgetEmptySeries(old.id); // visits kept (they have work on them) go on with the new repeat
   const created = fillSeries(s); save(); res.json({ created, removed, kept, job: withRepeat(j) });
 });
-// stop repeating after this visit: following visits nobody has worked on are removed
+// stop repeating from this visit: it becomes a one-time job, following visits nobody has worked on are removed (visits with work on them stay,
+// as one-time jobs too), and the visits before it stay as the series' past
 app.delete('/api/jobs/:id/repeat', (req, res) => {
   const j = db.jobs.find((x) => x.id === req.params.id); if (!j) return res.status(404).json({ error: 'Job not found' }); const s = findSeries(j.seriesId);
-  if (!s) return res.status(400).json({ error: 'This job doesn’t repeat' });
-  const r = dropFollowing(j); delete s.rule.count; Object.assign(s.rule, { end: 'until', until: j.date }); s.ended = true; save(); res.json(r);
+  if (!s) { if (j.seriesId) { delete j.seriesId; save(); } return res.json({ removed: 0, kept: 0, job: j }); } // a series that's already gone: just let go of it
+  const r = dropFollowing(j);
+  for (const x of db.jobs) if (x.seriesId === s.id && x.date >= j.date) delete x.seriesId; // this visit, and later ones kept for their work
+  delete s.rule.count; Object.assign(s.rule, { end: 'until', until: addDaysYmd(j.date, -1) }); s.ended = true; forgetEmptySeries(s.id);
+  save(); res.json({ ...r, job: j });
 });
 // job edits saved for "this and following visits" (?following=title,staffIds…: the fields that changed): they change on later scheduled visits,
 // and on visits made from now on; other fields a later visit was given on its own stay

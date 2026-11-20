@@ -3502,7 +3502,7 @@ A.mJobMore = (x) => {
 ${edit && !jobPaidInFull(j) ? `<button type="button" data-act="jobRemind" data-id="${j.id}">${planHas('sms') && byId(D.clients, j.clientId)?.smsConsent ? 'Text' : 'Email'} reminder to client</button>` : ''}
 ${planHas('invoices') && canInvoiceJob(j) ? `<button type="button" class="need-invoices" data-act="jobInvoice" data-id="${j.id}">Create invoice</button>` : ''}
 ${planHas('timeOff') && me && me.staffId && (j.staffIds || []).includes(me.staffId) && j.date >= ymd(new Date()) ? `<button type="button" data-act="jobRequestOff" data-id="${j.id}">Request off for this job</button>` : ''}
-<a href="/calendar" data-link>Open calendar</a>${edit ? `${j.repeat && j.repeat.next && planHas('recurringJobs') ? `<button type="button" data-act="stopRepeat" data-id="${j.id}">Stop repeating after this visit</button>` : ''}${jobLocked(j) ? '' : `<a href="/jobs/edit?id=${j.id}&full=1" data-link>Edit everything at once</a>`}<button type="button" class="danger-text" data-act="delJob" data-id="${j.id}">Delete job</button>` : ''}</div>`);
+<a href="/calendar" data-link>Open calendar</a>${edit ? `${j.seriesId && planHas('recurringJobs') ? `<button type="button" data-act="stopRepeat" data-id="${j.id}">Stop repeating</button>` : ''}${jobLocked(j) ? '' : `<a href="/jobs/edit?id=${j.id}&full=1" data-link>Edit everything at once</a>`}<button type="button" class="danger-text" data-act="delJob" data-id="${j.id}">Delete job</button>` : ''}</div>`);
   f.addEventListener('click', (e) => { if (e.target.closest('a, button[data-act]')) mClose(true); });
 };
 // the phone pages' round Call / Text / Email / Directions buttons under the client
@@ -4333,7 +4333,7 @@ function jobMore(j) {
   return `<details class="menu more-menu">${MORE_SUM}<div class="menu-list">
 ${planHas('invoices') && canInvoiceJob(j) ? b('jobInvoice', 'invoice', 'Create Invoice', 'need-invoices') : ''}${!planHas('signatures') ? '' : b('collectSignature', 'sign', j.signature ? 'Collect Another Signature' : 'Collect Signature')}
 ${jobPaidInFull(j) ? '' : `<div class="need-jobs-edit"><hr class="mi-sep"><div class="mi-h">Send as…</div>${b('jobRemind', sms ? 'text' : 'email', `${sms ? 'Text' : 'Email'} Reminder`)}</div>`}
-<hr class="mi-sep">${j.repeat && j.repeat.next && planHas('recurringJobs') ? b('stopRepeat', 'calendar', 'Stop Repeating After This Visit', 'need-jobs-edit') : ''}${off ? b('jobRequestOff', 'calendar', 'Request Off for This Job') : ''}<a class="mi" href="/calendar" data-link>${QM.calendar}Open Calendar</a>
+<hr class="mi-sep">${j.seriesId && planHas('recurringJobs') ? b('stopRepeat', 'calendar', 'Stop Repeating', 'need-jobs-edit') : ''}${off ? b('jobRequestOff', 'calendar', 'Request Off for This Job') : ''}<a class="mi" href="/calendar" data-link>${QM.calendar}Open Calendar</a>
 ${b('delJob', 'trash', 'Delete', 'need-jobs-edit')}</div></details>`;
 }
 // Directions: Google Maps with driving directions to the property (opens the Maps app on phones)
@@ -4439,7 +4439,7 @@ async function saveJobWithRepeat(j, body, rule, form = document, msg = 'Job save
   const was = repeatFromHere(j); const ruleChanged = !!(planHas('recurringJobs') && form && $('[name=rpFreq]', form) && !sameRule(was, rule));
   const changed = j.seriesId ? seriesChanges(j, body) : []; let scope = 'one';
   if (j.seriesId && changed.length && !ruleChanged) { scope = await askVisitScope(); if (!scope) return null; }
-  if (ruleChanged && !rule && !confirm('Stop repeating after this visit? Later visits nobody has worked on yet are removed. Visits with invoices, hours, photos or notes stay.')) return null;
+  if (ruleChanged && !rule && !confirm('Stop repeating? This job becomes a one-time job. Later visits nobody has worked on yet are removed; visits with invoices, hours, photos or notes stay. Earlier visits aren’t changed.')) return null;
   const moved = j.seriesId && scope === 'following' && body.date && body.date !== j.date; // moving the series: the following visits follow the new date
   const saved = await api('PUT', `/api/jobs/${j.id}${scope === 'following' && changed.length ? '?following=' + changed.join(',') : ''}`, body); let note = scope === 'following' && saved.following ? ` · ${saved.following} later visit${saved.following === 1 ? '' : 's'} updated` : '';
   if (ruleChanged && !rule) { const r = await api('DELETE', `/api/jobs/${j.id}/repeat`); note = ` · stopped repeating${r.removed ? `, ${r.removed} later visit${r.removed === 1 ? '' : 's'} removed` : ''}`; }
@@ -4447,7 +4447,7 @@ async function saveJobWithRepeat(j, body, rule, form = document, msg = 'Job save
   toast(msg + note); return saved;
 }
 A.stopRepeat = async (d) => {
-  if (!confirm('Stop repeating after this visit? Later visits nobody has worked on yet are removed. Visits with invoices, hours, photos or notes stay.')) return;
+  if (!confirm('Stop repeating? This job becomes a one-time job. Later visits nobody has worked on yet are removed; visits with invoices, hours, photos or notes stay. Earlier visits aren’t changed.')) return;
   const r = await api('DELETE', `/api/jobs/${d.id}/repeat`); toast(`Stopped repeating${r.removed ? ` · ${r.removed} later visit${r.removed === 1 ? '' : 's'} removed` : ''}${r.kept ? ` · ${r.kept} kept` : ''}`); refresh();
 };
 // how a repeating visit reads on the job page
