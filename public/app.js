@@ -4622,21 +4622,22 @@ const jobUrgency = (a, b) => {
 // Site visits on the Jobs page (Jobs | Site visits switch): the same list as jobs, without money. A site visit is a calendar task with a
 // survey (booked by the client after approving an estimate, or added on the calendar). Like a job it's marked complete: a past visit that
 // isn't is Late; a completed one waits on its final quote ("Quote to send") until that's sent; then, or with no quote, it's Done.
-const SV_STATUS = { late: 'Late', quote: 'Quote to send', today: 'Today', upcoming: 'Upcoming', done: 'Done' };
-const SV_CLASS = { late: 'q-declined', quote: 'q-sent', today: 'q-converted', upcoming: 'q-approved', done: 'q-draft' };
+const SV_STATUS = { assign: 'Assign team', late: 'Late', quote: 'Quote to send', today: 'Today', upcoming: 'Upcoming', done: 'Done' };
+const SV_CLASS = { assign: 'q-estimate', late: 'q-declined', quote: 'q-sent', today: 'q-converted', upcoming: 'q-approved', done: 'q-draft' };
 const svList = () => (D.tasks || []).filter((t) => t.survey);
 const svQuote = (t) => (t && t.survey && t.survey.quoteId && byId(D.quotes, t.survey.quoteId)) || null;
 const svPast = (t) => `${t.date} ${t.startTime || '00:00'}` < `${ymd(new Date())} ${new Date().toTimeString().slice(0, 5)}`;
 const svQuoteUnsent = (q) => !!q && (q.status === 'draft' || qSvyStage(q)); // the final quote isn't out yet (a draft, or still the approved estimate)
 function svStatus(t) {
   if (t.done) return svQuoteUnsent(svQuote(t)) ? 'quote' : 'done';
+  if (!(t.staffIds || []).length) return 'assign'; // booked by the client: nobody on it until an owner, admin or manager assigns someone
   return t.date < ymd(new Date()) || (t.date === ymd(new Date()) && svPast(t) && t.endTime && `${t.date} ${t.endTime}` < `${ymd(new Date())} ${new Date().toTimeString().slice(0, 5)}`) ? 'late' : t.date === ymd(new Date()) ? 'today' : 'upcoming';
 }
-const svNeedsAction = (t) => ['late', 'quote'].includes(svStatus(t));
+const svNeedsAction = (t) => ['assign', 'late', 'quote'].includes(svStatus(t));
 let svView = { status: 'action', staff: '', q: '', sort: 'urgent', dir: 1 };
 const svInTab = (t, s) => s === 'all' || (s === 'action' ? svNeedsAction(t) : svStatus(t) === s);
-const svUrgency = (a, b) => { const rank = { late: 0, quote: 1, today: 2, upcoming: 3, done: 4 }; const ra = rank[svStatus(a)]; const rb = rank[svStatus(b)]; const w = (t) => t.date + (t.startTime || '');
-  return ra - rb || (ra === 4 ? w(b).localeCompare(w(a)) : w(a).localeCompare(w(b))); };
+const svUrgency = (a, b) => { const rank = { assign: 0, late: 1, quote: 2, today: 3, upcoming: 4, done: 5 }; const ra = rank[svStatus(a)]; const rb = rank[svStatus(b)]; const w = (t) => t.date + (t.startTime || '');
+  return ra - rb || (ra === 5 ? w(b).localeCompare(w(a)) : w(a).localeCompare(w(b))); };
 const svWho = (t) => (t.staffIds || []).map((id) => byId(D.staff, id)).filter(Boolean);
 const svClient = (t) => byId(D.clients, t.clientId) || {};
 const svName = (t) => svClient(t).name || svClient(t).company || t.address || '—';
@@ -4748,6 +4749,7 @@ function renderSiteVisits(main) {
   const sub = (s) => (s ? `<div class="muted sm-l">${s}</div>` : ''); const dash = '<span class="muted">—</span>';
   // the buttons on a row (shown on hover): what you'd do next with that visit
   const acts = (t) => { const q = svQuote(t); const st = svStatus(t); const b = (act, label, alt, id) => `<button type="button" class="btn${alt ? ' alt' : ''}" data-act="${act}" data-id="${id}">${label}</button>`;
+    if (st === 'assign') return canCal() ? b('svOpen', 'Assign team', false, t.id) : '';
     if (st === 'late') return (canCal() ? b('svOpen', 'Reschedule', true, t.id) : '') + (svCanDo(t) ? b('svComplete', 'Complete', false, t.id) : '');
     if (st === 'today') return svCanDo(t) ? b('svComplete', 'Complete', false, t.id) : '';
     if (!svQuotes()) return '';
@@ -4762,8 +4764,8 @@ function renderSiteVisits(main) {
   const tabs = [['action', 'Needs action', all.filter(svNeedsAction)], ...order.map((s) => [s, SV_STATUS[s], s === 'done' ? null : all.filter((t) => svStatus(t) === s)]), ['all', 'All', null]];
   const grp = (dot, title, note) => `<tr class="lgrp"><td colspan="${svQuotes() ? 5 : 4}"><div><i class="dot ${dot}"></i><strong>${title}</strong><span class="muted">${note}</span></div></td></tr>`;
   let body;
-  if (v.status === 'action' && v.sort === 'urgent') { const late = list.filter((t) => svStatus(t) === 'late'); const qs = list.filter((t) => svStatus(t) === 'quote');
-    body = (late.length ? grp('q-declined', 'Late', 'In the past, not marked complete') + late.map(row).join('') : '') + (qs.length ? grp('q-sent', 'Quote to send', 'The visit is done: update the final quote and send it') + qs.map(row).join('') : '');
+  if (v.status === 'action' && v.sort === 'urgent') { const late = list.filter((t) => svStatus(t) === 'late'); const qs = list.filter((t) => svStatus(t) === 'quote'); const asg = list.filter((t) => svStatus(t) === 'assign');
+    body = (asg.length ? grp('q-estimate', 'Assign a team member', 'Booked by the client: choose who goes') + asg.map(row).join('') : '') + (late.length ? grp('q-declined', 'Late', 'In the past, not marked complete') + late.map(row).join('') : '') + (qs.length ? grp('q-sent', 'Quote to send', 'The visit is done: update the final quote and send it') + qs.map(row).join('') : '');
   } else body = list.map(row).join('');
   main.innerHTML = `<div class="head"><h1>Site visits</h1><div class="actions">${canSurvey() ? '<button class="btn" data-act="newSiteVisit">New Site Visit</button>' : ''}
 <details class="menu">${MORE_SUM}<div class="menu-list"><a href="/calendar" data-link>Open calendar</a>${canSurvey() ? '<a href="/settings" data-link>Site visit settings (App Settings → General)</a>' : ''}</div></details></div></div>${jvSwitch('visits')}
@@ -4789,7 +4791,7 @@ function mobileSiteVisit(t, c, q, st, team, notes, qCard) {
 ${mContact(c, addr)}
 ${!svCanDo(t) && !svClockBtn(t) ? '' : `<div class="md-acts">${svClockBtn(t)}${!svCanDo(t) ? '' : t.done ? `<button type="button" class="btn alt" data-act="svReopen" data-id="${t.id}">Reopen</button>` : `<button type="button" class="btn" data-act="svComplete" data-id="${t.id}">Mark Complete</button>`}</div>`}
 ${canCal() ? `<button type="button" class="md-tap md-sec" data-act="svOpen" data-id="${t.id}">${visit}</button>` : `<div class="md-sec">${visit}</div>`}
-${sec('Who', team.length ? `<span class="md-team">${team.map((s) => `<span>${avatarHtml(s, 28)}${esc(s.name)}</span>`).join('')}</span>` : '<span class="md-text muted">Nobody assigned</span>')}
+${sec('Who', team.length ? `<span class="md-team">${team.map((s) => `<span>${avatarHtml(s, 28)}${esc(s.name)}</span>`).join('')}</span>` : `<span class="md-text muted">Nobody yet${canCal() ? ': tap Scheduled visit to assign who goes' : ''}</span>`)}
 ${sec('Instructions', t.description ? `<span class="md-text">${esc(t.description)}</span>` : '<span class="md-text muted">None</span>')}
 ${sec('Visit notes', `<p class="muted" style="margin:-4px 0 10px">What you saw on site. Clients never see these.</p><textarea id="svNote" rows="3" maxlength="5000" placeholder="Add a note from the visit"></textarea><div class="md-acts" style="padding:10px 0 0"><button type="button" class="btn" data-act="svAddNote" data-id="${t.id}">Add note</button></div>
 ${notes.length ? `<ul class="sv-notes">${notes.map((n) => `<li><div class="sv-n-h"><strong>${esc(n.by || 'Someone')}</strong><span class="muted">${esc(fmtDate(n.at.slice(0, 10)))} ${esc(fmtTime(new Date(n.at).toTimeString().slice(0, 5)))}</span>${canDo('jobs.edit') || (me && n.byId === me.id) ? `<button type="button" class="link-btn" data-act="svDelNote" data-id="${t.id}" data-n="${esc(n.id)}" aria-label="Delete note">Delete</button>` : ''}</div><p class="md-text">${esc(n.text)}</p></li>`).join('')}</ul>` : ''}`)}
@@ -4816,7 +4818,7 @@ ${svQuoteUnsent(q) ? `<p class="muted svq-tip">${t.done ? 'Update the prices fro
 ${c.phone || c.email ? `<div class="vclient-c">${c.phone ? `<a href="tel:${esc(c.phone)}">${esc(fmtUsPhone(c.phone))}</a>` : ''}${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ''}</div>` : ''}</div>
 <dl class="qmeta"><dt>Booked</dt><dd>${t.survey.bookedAt ? fmtDate(t.survey.bookedAt.slice(0, 10)) : t.createdAt ? fmtDate(t.createdAt.slice(0, 10)) : '—'}</dd><dt>For quote</dt><dd>${q ? `<a href="/quotes/view?id=${q.id}" data-link>${esc(q.number)}</a>` : none('—')}</dd>${t.done && t.completedAt ? `<dt>Completed</dt><dd>${fmtDate(t.completedAt.slice(0, 10))}</dd>` : ''}</dl></div></div>
 ${svEditId === t.id && canCal() ? svVisitForm(t) : `<div class="qcard"><div class="qcard-h"><h2>Scheduled Visit</h2>${canCal() ? `<button type="button" class="icon-btn sec-edit" data-act="svOpen" data-id="${t.id}" title="Edit scheduled visit" aria-label="Edit scheduled visit">${PENCIL}</button>` : ''}</div><dl class="qmeta vvisit"><dt>When</dt><dd>${esc(fmtDate(t.date))}, ${esc(fmtTime(t.startTime))} – ${esc(fmtTime(t.endTime))}</dd>
-<dt>Who</dt><dd>${team.length ? `<span class="vteam">${team.map((s) => `<span>${avatarHtml(s, 24)}${esc(s.name)}</span>`).join('')}</span>` : none('Nobody assigned')}</dd>
+<dt>Who</dt><dd>${team.length ? `<span class="vteam">${team.map((s) => `<span>${avatarHtml(s, 24)}${esc(s.name)}</span>`).join('')}</span>` : none(`Nobody yet${canCal() ? ': use the pencil to assign who goes' : ''}`)}</dd>
 <dt>Instructions</dt><dd>${t.description ? `<p class="vtext">${esc(t.description)}</p>` : none('None')}</dd></dl></div>`}
 <div class="qcard"><div class="qcard-h"><h2>Visit notes</h2></div><p class="muted" style="margin-top:0">What you saw on site: measurements, problems, what the quote needs. Clients never see these.</p>
 <textarea id="svNote" rows="3" maxlength="5000" placeholder="${t.done ? 'Add a note from the visit' : 'Add a note (you can add more after the visit)'}"></textarea><div style="display:flex;justify-content:flex-end;margin-top:8px"><button type="button" class="btn" data-act="svAddNote" data-id="${t.id}">Add note</button></div>

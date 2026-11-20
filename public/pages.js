@@ -16,12 +16,10 @@ const PREFIX_DEFAULTS = { quotePrefix: 'Q-', jobPrefix: 'J-', invoicePrefix: 'IN
 const SVY_OPTS = { minutes: [[30, '30 minutes'], [45, '45 minutes'], [60, '1 hour'], [90, '1½ hours'], [120, '2 hours'], [180, '3 hours']], buffer: [[0, 'None'], [15, '15 minutes'], [30, '30 minutes'], [45, '45 minutes'], [60, '1 hour']],
   notice: [[0, 'None'], [2, '2 hours'], [4, '4 hours'], [12, '12 hours'], [24, '1 day'], [48, '2 days'], [72, '3 days']], ahead: [[7, '1 week'], [14, '2 weeks'], [30, '30 days'], [60, '60 days'], [90, '90 days']], step: [[15, 'Every 15 minutes'], [30, 'Every 30 minutes'], [60, 'Every hour']] };
 function surveyCard(c) {
-  const S = { minutes: 60, buffer: 15, notice: 24, ahead: 30, step: 30, ...(c.survey || {}) }; const ppl = c.surveyPeople || [];
+  const S = { minutes: 60, buffer: 15, notice: 24, ahead: 30, step: 30, ...(c.survey || {}) };
   const sel = (k, label) => `<label>${label}<select data-svy="${k}">${SVY_OPTS[k].map(([v, l]) => `<option value="${v}" ${Number(S[k]) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`;
-  return `<div class="card" id="site-surveys"><h2>Site visits</h2><p class="muted" style="margin-top:0">When a quote has <strong>Site visit</strong> on, the client books a visit after approving the estimate: they pick who they’d like to meet, a day and a free time. Free times are inside that person’s working hours (on their Team profile), clear of their jobs, tasks and time off.</p>
-<div class="row">${sel('minutes', 'How long a visit takes')}${sel('buffer', 'Gap before and after')}</div><div class="row">${sel('notice', 'Minimum notice')}${sel('ahead', 'Clients can book up to')}</div><div class="row">${sel('step', 'Start times')}<span></span></div>
-<h3 style="margin:14px 0 4px;font-size:15px">Who clients can book</h3>${ppl.length ? ppl.map((p) => `<label class="sw-row"><span>${esc(p.name)}</span><input type="checkbox" class="sw" data-svy-p="${esc(p.id)}" ${p.on ? 'checked' : ''}><i></i></label>`).join('') : '<p class="muted" style="margin:0">No one yet: site visits are with owners, admins and managers who have a login. Invite one in Team.</p>'}
-<p class="muted" style="font-size:12px;margin:8px 0 0">Owners, admins and managers who have a login. Turn someone off and clients can’t book them.</p></div>`;
+  return `<div class="card" id="site-surveys"><h2>Site visits</h2><p class="muted" style="margin-top:0">When a quote has <strong>Site visit</strong> on, the client books a visit after approving the estimate: they pick a day and an open time inside your business hours (Company Profile), clear of other site visits. Owners, admins and managers are told, and assign who goes from the visit’s page (Jobs → Site visits).</p>
+<div class="row">${sel('minutes', 'How long a visit takes')}${sel('buffer', 'Gap before and after')}</div><div class="row">${sel('notice', 'Minimum notice')}${sel('ahead', 'Clients can book up to')}</div><div class="row">${sel('step', 'Start times')}<span></span></div></div>`;
 }
 const docPrefix = (k) => company[k] ?? PREFIX_DEFAULTS[k];
 const readFileAsDataUrl = (f) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(f); });
@@ -562,8 +560,8 @@ const canSurvey = () => ['owner', 'admin', 'manager'].includes(role());
 const canCal = () => ['owner', 'admin', 'manager'].includes(role()) && canDo('jobs.edit');
 // its fields: who takes it (the people clients can book first, then the rest who can), and the quote it's for
 function qcSurveyFields(p, team) {
-  const people = company.surveyPeople || []; const ids = people.map((x) => x.id); const list = people.length ? people : team.map((s) => ({ id: s.id, name: s.name }));
-  const pick = p.svyStaff || (p.staffIds || []).find((id) => ids.includes(id)) || (people.find((x) => x.on) || list[0] || {}).id;
+  const list = team.map((s) => ({ id: s.id, name: s.name })); const ids = list.map((x) => x.id);
+  const pick = p.svyStaff || (p.staffIds || []).find((id) => ids.includes(id)) || (list[0] || {}).id;
   const open = p.clientId ? D.quotes.filter((q) => q.clientId === p.clientId && !quoteJob(q) && ['draft', 'sent'].includes(q.status) && !q.quoteSentAt) : [];
   const qv = p.svyQuote === '' || open.some((q) => q.id === p.svyQuote) ? p.svyQuote : 'new'; // another client's quote falls back to a new one
   return `<label class="fl"><span>Who takes it</span><select name="svyStaff" required>${list.map((s) => `<option value="${esc(s.id)}" ${s.id === pick ? 'selected' : ''}>${esc(s.name)}</option>`).join('') || '<option value="">Add a team member first</option>'}</select></label>
@@ -3559,8 +3557,7 @@ ${full ? `<div class="as-tabs" role="tablist">${AS_TABS.map(([t, n]) => `<button
   }
   const svc = full && $('#site-surveys', main); // Site visits saves on its own (its fields aren't part of the form above)
   if (svc) svc.addEventListener('change', async () => {
-    const survey = Object.fromEntries($$('[data-svy]', svc).map((s) => [s.dataset.svy, Number(s.value)])); survey.staffIds = $$('[data-svy-p]', svc).filter((x) => x.checked).map((x) => x.dataset.svyP);
-    try { const saved = await api('PUT', '/api/company', { survey }); company = { ...company, ...saved, surveyPeople: (company.surveyPeople || []).map((p) => ({ ...p, on: survey.staffIds.includes(p.id) })) }; toast('Settings saved'); } catch (err) { toast(err.message, true); }
+    const survey = Object.fromEntries($$('[data-svy]', svc).map((s) => [s.dataset.svy, Number(s.value)]));     try { const saved = await api('PUT', '/api/company', { survey }); company = { ...company, ...saved }; toast('Settings saved'); } catch (err) { toast(err.message, true); }
   });
   A.resetAccent = async () => { try { await api('PUT', '/api/company', { accentColor: '' }); toast('Accent color reset'); refresh(); } catch (err) { toast(err.message, true); } };
   A.removeLogo = async (d) => {

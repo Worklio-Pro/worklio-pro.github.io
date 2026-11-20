@@ -4111,8 +4111,8 @@ app.post('/p/quote/:token/respond', (req, res) => {
   }
   res.redirect(`/p/quote/${q.token}`);
 });
-// ---------- Site visit booking (like Calendly): once the client approves an estimate that has a site visit, they pick who they'd like to meet
-// (an owner, admin or manager the business takes surveys with), a day and a free time. It goes on the calendar as a task for that person. ----------
+// ---------- Site visit booking (like Calendly): once the client approves an estimate that has a site visit, they pick a day and an open time
+// inside the business hours. It goes on the calendar with nobody on it yet: owners, admins and managers are told, and they assign who goes. ----------
 const SVY_DEFAULTS = { minutes: 60, buffer: 15, notice: 24, ahead: 30, step: 30, staffIds: null }; // staffIds null: everyone who can take them
 const SVY_PICK = { minutes: [30, 45, 60, 90, 120, 180], buffer: [0, 15, 30, 45, 60], notice: [0, 2, 4, 12, 24, 48, 72], ahead: [7, 14, 30, 60, 90], step: [15, 30, 60] };
 const SVY_ROLES = ['owner', 'admin', 'manager'];
@@ -4147,14 +4147,22 @@ function svyBusy(staffId, date, skipTaskId) {
   for (const r of db.timeOff || []) if (r.staffId === staffId && r.status === 'approved' && r.from <= date && r.to >= date) { if (r.start && r.end) add(r.start, r.end); else out.push([0, 1440]); }
   return out;
 }
-// the free start times, day by day: inside their hours, clear of what's booked (with the buffer either side), after the minimum notice
-function surveySlots(staffId, skipTaskId) {
-  const s = (db.staff || []).find((x) => x.id === staffId); if (!s) return [];
+// what already fills a time for the business: the other site visits (one at a time, so two clients can't book the same slot) and timed events
+function svyBusyBiz(date, skipTaskId) {
+  const out = []; const add = (a, b) => out.push([svyMin(a), Math.max(svyMin(b), svyMin(a) + 15)]);
+  for (const t of db.tasks || []) if (t.survey && t.id !== skipTaskId && t.date === date && !t.anytime && t.startTime) add(t.startTime, t.endTime || t.startTime);
+  for (const e of db.events || []) if (e.date === date && !e.anytime && e.startTime) add(e.startTime, e.endTime || e.startTime);
+  return out;
+}
+// the open start times, day by day: inside the business hours (Company Profile; weekdays 9 to 5 if never set) and holiday hours, after the
+// minimum notice, clear of other site visits and events (with the gap either side). Who goes is the business's call, after it's booked.
+function surveySlots(skipTaskId) {
+  const biz = { hours: db.company.hours };
   const S = svySettings(); const now = new Date(); const earliest = now.getTime() + S.notice * 3600e3; const days = [];
   for (let i = 0; i <= S.ahead; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i); const date = svyYmd(d); let h = svyHours(s, date); if (!h) continue;
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i); const date = svyYmd(d); let h = svyHours(biz, date); if (!h) continue;
     const hol = holidayOn(date); if (hol) { if (hol.closed) continue; h = { start: h.start > hol.start ? h.start : hol.start, end: h.end < hol.end ? h.end : hol.end }; if (h.end <= h.start) continue; } // holiday hours: closed, or only inside its hours
-    const busy = svyBusy(staffId, date, skipTaskId); const times = [];
+    const busy = svyBusyBiz(date, skipTaskId); const times = [];
     for (let m = Math.ceil(svyMin(h.start) / S.step) * S.step; m + S.minutes <= svyMin(h.end); m += S.step) {
       if (new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, m).getTime() < earliest) continue;
       if (busy.some(([a, b]) => m < b + S.buffer && m + S.minutes + S.buffer > a)) continue;
@@ -4164,10 +4172,11 @@ function surveySlots(staffId, skipTaskId) {
   }
   return days;
 }
-// the booking on the calendar: a task for that person with the client, the address and the quote; booking again moves it
+// the booking on the calendar: a task with the client, the address and the quote; booking again moves it. s: who goes when the business books it
+// on the calendar; a client's booking has nobody yet (moving it keeps whoever was assigned)
 function bookSurvey(q, s, date, time, end, by = 'the client') { // end: the calendar's own end time (the client's booking uses the settings' length)
   const c = findClient(q.clientId); const S = svySettings(); let t = svyTask(q);
-  const fields = { title: `Site visit: ${c ? c.name : 'client'}`, date, startTime: time, endTime: end || svyHm(svyMin(time) + S.minutes), anytime: false, staffIds: [s.id], clientId: q.clientId,
+  const fields = { title: `Site visit: ${c ? c.name : 'client'}`, date, startTime: time, endTime: end || svyHm(svyMin(time) + S.minutes), anytime: false, staffIds: s ? [s.id] : t ? t.staffIds || [] : [], clientId: q.clientId,
     address: q.address || (c && c.address) || '', propertyId: q.propertyId || '', description: `Site visit for quote ${q.number}${q.title ? ` (${q.title})` : ''}, booked by ${by}.`, survey: { quoteId: q.id, bookedAt: new Date().toISOString() }, remindedAt: null };
   if (t) Object.assign(t, fields); else { t = { id: uid(), createdAt: iso(new Date()), done: false, ...fields }; db.tasks = db.tasks || []; db.tasks.push(t); }
   q.surveyTaskId = t.id; return t;
@@ -4183,16 +4192,19 @@ function surveyEmail(t, what) {
     return notify({ clientId: c.id, channel: 'email', kind: 'survey', refId: q ? q.id : t.id, refNumber: q ? q.number : '', subject: m.subject, body: m.body, html: m.html });
   }).then(() => save()).catch(() => {});
 }
-// the business hears about it: a push, Slack, and an email to the business and to the person taking the survey
+// the business hears about it: owners, admins and managers get a push and an email (they assign who goes), Slack, the business email, and
+// whoever is already on it
+const svyBosses = () => (db.users || []).filter((u) => SVY_ROLES.includes(u.role) && u.passwordHash && !staffBlocked(u));
 function tellBusinessSurvey(q, t, what) { // q: null for a survey booked on the calendar without a quote
-  const c = findClient(t.clientId || (q && q.clientId)); const who = c ? c.name : 'A client'; const s = svyStaff(t); const when = `${niceDate(t.date)} at ${pushTime(t.startTime)}`;
+  const c = findClient(t.clientId || (q && q.clientId)); const who = c ? c.name : 'A client'; const when = `${niceDate(t.date)} at ${pushTime(t.startTime)}`;
+  const team = (t.staffIds || []).map((id) => (db.staff || []).find((x) => x.id === id)).filter(Boolean); const open = !team.length && what !== 'cancelled';
   const title = { booked: 'Site visit booked', moved: 'Site visit moved', cancelled: 'Site visit cancelled' }[what]; const ref = q ? ` (quote ${q.number})` : '';
-  const body = what === 'cancelled' ? `${who} cancelled the site visit on ${when}${ref}` : `${who} ${what === 'moved' ? 'moved the site visit to' : 'booked a site visit for'} ${when}${s ? ` with ${s.name}` : ''}${ref}`;
-  const url = q ? `/quotes/view?id=${q.id}` : '/calendar';
-  pushTo(usersWhoCan('quotes'), 'quoteApproved', { title, body, url });
-  slackSend('quoteApproved', `*${title}:* ${slack.esc(body)}`, { label: 'Open quote', url: baseUrl() + url });
-  const text = `${body}.\n\n${what === 'cancelled' ? 'They can book another time from the estimate page.' : 'It’s on the calendar. After the visit, update the quote and send it.'}\n\n${baseUrl()}${url}`;
-  for (const to of new Set([db.company.email, s && s.email].filter(Boolean))) {
+  const body = what === 'cancelled' ? `${who} cancelled the site visit on ${when}${ref}` : `${who} ${what === 'moved' ? 'moved the site visit to' : 'booked a site visit for'} ${when}${team.length ? ` with ${team.map((x) => x.name).join(', ')}` : ''}${ref}`;
+  const url = what === 'cancelled' ? (q ? `/quotes/view?id=${q.id}` : '/calendar') : `/jobs/site-visit?id=${t.id}`;
+  pushTo(svyBosses(), 'quoteApproved', { title: open ? `${title}: assign who goes` : title, body, url });
+  slackSend('quoteApproved', `*${title}:* ${slack.esc(body)}${open ? ' Assign who goes.' : ''}`, { label: what === 'cancelled' ? 'Open quote' : 'Open site visit', url: baseUrl() + url });
+  const text = `${body}.\n\n${what === 'cancelled' ? 'They can book another time from the estimate page.' : open ? 'Nobody is on it yet: open it and assign who goes (Scheduled Visit → the pencil). After the visit, update the quote and send it.' : 'It’s on the calendar. After the visit, update the quote and send it.'}\n\n${baseUrl()}${url}`;
+  for (const to of new Set([db.company.email, ...svyBosses().map((u) => u.email), ...team.map((x) => x.email)].filter(Boolean))) {
     sendEmail(to, `${title}: ${who}`, text).then((sent) => { db.notifications.unshift({ id: uid(), at: new Date().toISOString(), clientId: c ? c.id : '', clientName: c ? c.name : '', channel: 'email', kind: 'quote-status', refId: q ? q.id : t.id, refNumber: q ? q.number : '', to, subject: `${title}: ${who}`, body: text, status: sent.status, detail: sent.detail }); save(); }).catch(() => {});
   }
 }
@@ -4221,13 +4233,11 @@ const SV_CSS = `.sv-title,.sv-done h3{margin:0;font-size:17px}.sv{display:flex;f
 .sv [hidden]{display:none!important}.sv button:focus-visible{outline:2px solid var(--brand);outline-offset:2px}.sv-done p{margin:6px 0 0;font-size:14px;line-height:1.5}`;
 // the right-hand box on the estimate once it's approved: book the survey, or the booking with Change the time and Cancel
 function surveyBox(q, booked) {
-  const t = svyTask(q); const S = svySettings(); const c = findClient(q.clientId); const addr = q.address || (c && c.address) || ''; const people = surveyors();
+  const t = svyTask(q); const S = svySettings(); const c = findClient(q.clientId); const addr = q.address || (c && c.address) || '';
   const now = new Date(); const past = t && `${t.date} ${t.startTime}` <= `${svyYmd(now)} ${svyHm(now.getHours() * 60 + now.getMinutes())}`;
-  const av = (s) => (s.photo ? `<img class="sv-av" src="${esc(s.photo)}" alt="">` : `<span class="sv-av">${esc((s.name || '?').split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase())}</span>`);
   const T = { book: tx('Book {when}'), loading: tx('Finding open times…') };
-  const picker = people.length ? `<form method="post" action="/p/quote/${esc(q.token)}/survey" class="sv" data-slots="/p/quote/${esc(q.token)}/survey/slots" data-lang="${esc(i18n.locale())}"><input type="hidden" name="staff"><input type="hidden" name="date"><input type="hidden" name="time">
-<div class="sv-who"${people.length === 1 ? ' hidden' : ''}><p class="sv-h">${tx('Who would you like to meet?')}</p>${people.map((s) => `<button type="button" class="sv-p" data-id="${esc(s.id)}">${av(s)}<span>${esc(s.name)}</span></button>`).join('')}</div>
-<div class="sv-cal" hidden><p class="sv-h">${tx('Choose a day')}</p><div class="sv-mh"><button type="button" class="sv-nav" data-d="-1" aria-label="${tx('Previous month')}">‹</button><strong class="sv-m"></strong><button type="button" class="sv-nav" data-d="1" aria-label="${tx('Next month')}">›</button></div><div class="sv-grid"></div>
+  const picker = `<form method="post" action="/p/quote/${esc(q.token)}/survey" class="sv" data-slots="/p/quote/${esc(q.token)}/survey/slots" data-lang="${esc(i18n.locale())}"><input type="hidden" name="date"><input type="hidden" name="time">
+<div class="sv-cal"><p class="sv-h">${tx('Choose a day')}</p><div class="sv-mh"><button type="button" class="sv-nav" data-d="-1" aria-label="${tx('Previous month')}">‹</button><strong class="sv-m"></strong><button type="button" class="sv-nav" data-d="1" aria-label="${tx('Next month')}">›</button></div><div class="sv-grid"></div>
 <p class="qv-note sv-none" hidden>${tx('No open times in the next few weeks. Please contact {name} at {contact}.', { name: esc(db.company.name), contact: esc(db.company.phone || db.company.email || '') })}</p></div>
 <div class="sv-times" hidden><p class="sv-h sv-dl"></p><div class="sv-tl"></div></div><button class="qv-btn primary sv-go" hidden></button>
 <p class="qv-note">${tx('{n} minutes', { n: S.minutes })}${addr ? ` · ${esc(addr)}` : ''}</p></form>
@@ -4239,14 +4249,13 @@ var n=new Date(y,m+1,0).getDate();for(i=1;i<=n;i++){var ds=month+'-'+pad(i),ok=!
 var k=Object.keys(data).sort();$('[data-d="-1"]').disabled=!k.length||k[0].slice(0,7)>=month;$('[data-d="1"]').disabled=!k.length||k[k.length-1].slice(0,7)<=month}
 function selDay(ds){day=ds;f.date.value=ds;f.time.value='';draw();$('.sv-times').hidden=false;$('.sv-dl').textContent=new Date(ds+'T12:00:00').toLocaleDateString(L,{weekday:'long',month:'long',day:'numeric'});
 $('.sv-tl').innerHTML=data[ds].map(function(t){return '<button type="button" class="sv-t" data-t="'+t.t+'">'+t.l+'</button>'}).join('');$('.sv-go').hidden=true}
-function pick(id){f.staff.value=id;f.querySelectorAll('.sv-p').forEach(function(b){b.classList.toggle('on',b.dataset.id===id)});$('.sv-cal').hidden=false;$('.sv-times').hidden=true;$('.sv-go').hidden=true;$('.sv-none').hidden=true;month=null;day=null;data={};draw();$('.sv-grid').innerHTML='<p class="qv-note" style="grid-column:1/-1">'+T.loading+'</p>';
-fetch(f.dataset.slots+'?staff='+encodeURIComponent(id)).then(function(r){return r.json()}).then(function(d){(d.days||[]).forEach(function(x){data[x.date]=x.times});var first=(d.days||[])[0];month=first?first.date.slice(0,7):null;$('.sv-none').hidden=!!first;draw();if(first)selDay(first.date)})}
+function load(){$('.sv-times').hidden=true;$('.sv-go').hidden=true;$('.sv-none').hidden=true;month=null;day=null;data={};draw();$('.sv-grid').innerHTML='<p class="qv-note" style="grid-column:1/-1">'+T.loading+'</p>';
+fetch(f.dataset.slots).then(function(r){return r.json()}).then(function(d){(d.days||[]).forEach(function(x){data[x.date]=x.times});var first=(d.days||[])[0];month=first?first.date.slice(0,7):null;$('.sv-none').hidden=!!first;draw();if(first)selDay(first.date)})}
 f.addEventListener('click',function(e){var b=e.target.closest('button');if(!b||b.type==='submit')return;
-if(b.dataset.id)pick(b.dataset.id);else if(b.dataset.day)selDay(b.dataset.day);
+if(b.dataset.day)selDay(b.dataset.day);
 else if(b.dataset.t){f.time.value=b.dataset.t;f.querySelectorAll('.sv-t').forEach(function(x){x.classList.toggle('on',x===b)});var g=$('.sv-go');g.hidden=false;g.textContent=T.book.replace('{when}',$('.sv-dl').textContent+', '+b.textContent)}
 else if(b.dataset.d){var y=+month.slice(0,4),m=+month.slice(5,7)-1+(+b.dataset.d),dd=new Date(y,m,1);month=dd.getFullYear()+'-'+pad(dd.getMonth()+1);draw()}});
-var ps=f.querySelectorAll('.sv-p');if(ps.length===1)pick(ps[0].dataset.id)})();</script>`
-    : `<p class="qv-note">${tx('Please contact {name} at {contact} to set up the site visit.', { name: esc(db.company.name), contact: esc(db.company.phone || db.company.email || '') })}</p>`;
+load()})();</script>`;
   if (!t) return `<h3 class="sv-title">${tx('Book your site visit')}</h3><p class="qv-note" style="margin:0">${tx('You approved the estimate. Next, choose a time for us to visit and check the details. Your quote comes after the visit.')}</p>${picker}`;
   const s = svyStaff(t);
   return `${booked ? `<div class="qv-msg" role="status">${tx('Your site visit is booked. We sent the details to your email.')}</div>` : ''}<div class="sv-done"><h3>${tx('Your site visit')}</h3>
@@ -4313,15 +4322,14 @@ app.post('/p/survey/:token/cancel', (req, res) => {
 });
 app.get('/p/quote/:token/survey/slots', (req, res) => {
   const q = db.quotes.find((x) => x.token === req.params.token); if (!q || !svyStage(q)) return res.status(404).json({ error: 'Not found' });
-  const s = surveyors().find((x) => x.id === req.query.staff); if (!s) return res.json({ days: [] });
-  res.json({ days: surveySlots(s.id, q.surveyTaskId).map((d) => ({ date: d.date, times: d.times.map((t) => ({ t, l: pushTime(t) })) })) });
+  res.json({ days: surveySlots(q.surveyTaskId).map((d) => ({ date: d.date, times: d.times.map((t) => ({ t, l: pushTime(t) })) })) });
 });
 app.post('/p/quote/:token/survey', (req, res) => {
   const q = db.quotes.find((x) => x.token === req.params.token); if (!q) return res.status(404).send('Not found');
   if (!svyStage(q) || (currentUser(req) && req.query.collect !== '1')) return res.redirect(`/p/quote/${q.token}`); // the team's own preview can't book
-  const b = req.body || {}; const s = surveyors().find((x) => x.id === b.staff); const day = s && surveySlots(s.id, q.surveyTaskId).find((d) => d.date === b.date);
+  const b = req.body || {}; const day = surveySlots(q.surveyTaskId).find((d) => d.date === b.date);
   if (!day || !day.times.includes(b.time)) return res.status(409).send(shell(tx('That time isn’t open any more'), `<h1>${tx('That time isn’t open any more')}</h1><p>${tx('Please choose another time.')}</p><p><a href="/p/quote/${esc(q.token)}">${tx('Back to the estimate')}</a></p>`));
-  const moved = !!svyTask(q); const t = bookSurvey(q, s, b.date, b.time); save();
+  const moved = !!svyTask(q); const t = bookSurvey(q, null, b.date, b.time); save();
   surveyEmail(t, 'booked'); tellBusinessSurvey(q, t, moved ? 'moved' : 'booked');
   res.redirect(`/p/quote/${q.token}?survey=booked`);
 });
