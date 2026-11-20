@@ -1953,7 +1953,7 @@ tr.pl-net td{font-weight:700;font-size:16px;border-top:2px solid var(--text)}
 label.bk-auto{display:flex;flex-direction:row;align-items:center;gap:8px;margin:16px 0 12px}
 label.bk-auto input{width:auto;margin:0}
 /* Timesheets (pages.js): the clock card, the week bar, one card per person */
-.ts-acts{display:flex;gap:8px;flex-wrap:wrap}
+.ts-acts{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;margin-left:auto}
 .ts-clock{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:16px}.ts-clock.on{border-left:4px solid var(--ok,#15803d)}
 .ts-big{font-size:18px;font-weight:700;margin-bottom:4px}.ts-job{margin:6px 0 0;max-width:420px}.ts-btn{min-width:140px;min-height:48px;font-size:16px}
 .ts-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 16px}.ts-week{display:flex;align-items:center;gap:10px}.ts-who select{min-width:200px}
