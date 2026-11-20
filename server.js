@@ -780,8 +780,6 @@ const timeRow = (e, u) => { const j = e.jobId && db.jobs.find((x) => x.id === e.
   return { ...rest, ...locs, person: s ? s.name : 'Former team member', color: s ? s.color : '', job: j ? { id: j.id, number: j.number, title: j.title || '' } : v ? { id: v.id, number: 'Site visit', title: (findClient(v.clientId) || {}).name || '', visit: true } : null, hours: Math.round(entryHours(e) * 100) / 100,
     ...(isAdmin(u) ? { rate: Number(payRates()[e.staffId]) || 0 } : {}) }; };
 const timeWhen = (v, label) => { const d = new Date(v); if (!v || isNaN(d)) throw Object.assign(new Error(`Enter the ${label} time`), { status: 400 }); return d.toISOString(); };
-// labor cost per job from time logged to it, at each person's pay rate (Job profit report)
-const laborByJob = () => { const r = payRates(); const out = {}; for (const e of timeList()) if (e.jobId && e.end && r[e.staffId]) out[e.jobId] = (out[e.jobId] || 0) + entryHours(e) * Number(r[e.staffId]); return out; };
 // status: this login's clock, and everyone on the clock right now on a job or site visit (onClock), for the Clocked in flags on those pages
 app.get('/api/time/status', (req, res) => { const u = currentUser(req); const e = openEntry(u.staffId); res.json({ canClock: !!db.staff.find((s) => s.id === u.staffId), open: e ? timeRow(e, u) : null, teamLocation: teamLocOn(),
   onClock: timeList().filter((x) => !x.end && (x.jobId || x.visitId)).map((x) => ({ staffId: x.staffId, jobId: x.jobId || '', visitId: x.visitId || '', start: x.start })) }); });
@@ -3302,6 +3300,7 @@ function applyStripeSession(s) {
     const inv = db.invoices.find((x) => x.id === meta.invoiceId);
     if (!inv || inv.stripeSessionId === s.id) return inv;
     inv.payments = [...(inv.payments || []), { id: uid(), amount: round2(amount - tip), ...(tip > 0 ? { tip } : {}), method: 'stripe', date: iso(new Date()), reference: s.payment_intent || s.id, recordedBy: 'Stripe', createdAt: new Date().toISOString() }];
+    if (s.payment_intent) keepFee(inv.payments[inv.payments.length - 1], 'stripeFee', s.payment_intent); // the card fee, for the profit box (a bank payment's: once it clears)
     Object.assign(inv, { paidAmount: round2(amount - tip), stripeSessionId: s.id, stripePaymentIntent: s.payment_intent || null }); settleInvoice(inv);
     save(); tell(`invoice ${inv.number}`, inv.clientId, [/*tx*/'invoice {number}', { number: inv.number }]); return inv;
   }
@@ -3309,6 +3308,7 @@ function applyStripeSession(s) {
     const q = db.quotes.find((x) => x.id === meta.quoteId);
     if (!q || q.stripeSessionId === s.id) return q;
     Object.assign(q, { depositPaidAt: iso(new Date()), depositStatus: 'paid', depositPaidAmount: amount, depositMethod: 'stripe', depositReference: s.payment_intent || s.id, stripeSessionId: s.id, stripePaymentIntent: s.payment_intent || null });
+    if (s.payment_intent) keepFee(q, 'depositStripeFee', s.payment_intent);
     save(); tell(`the deposit on quote ${q.number}`, q.clientId, [/*tx*/'the deposit on quote {number}', { number: q.number }]); return q;
   }
   return null;
@@ -3439,6 +3439,7 @@ async function paymentDetail(f) {
         name: (ch.billing_details && ch.billing_details.name) || '', address: [ad.line1, ad.line2, ad.city, [ad.state, ad.postal_code].filter(Boolean).join(' '), ad.country].filter(Boolean).join(', '),
         refunded: round2((ch.amount_refunded || 0) / 100), fee: bt.fee != null ? round2(bt.fee / 100) : null, net: bt.net != null ? round2(bt.net / 100) : null, payout,
       };
+      if (bt.fee != null) { const o = f.kind === 'quote' ? f.doc : (f.doc.payments || []).find((x) => x.id === p.id); const k = f.kind === 'quote' ? 'depositStripeFee' : 'stripeFee'; if (o && o[k] == null) { o[k] = round2(bt.fee / 100); save(); } } // kept for the profit box
     } catch (e) { out.stripeError = e.message; }
   }
   return out;
@@ -4973,22 +4974,111 @@ function profitLoss(from, to, basis, want = null) {
     byMonth: Object.values(months).sort((a, b) => a.month.localeCompare(b.month)).map((m) => ({ month: m.month, income: round2(m.income), expenses: round2(m.expenses), net: round2(m.income - m.expenses) })) };
 }
 // each job's invoiced amount (before tax) against the expenses logged to it; want: only the jobs whose main category it is
+// an invoice's revenue before tax and after its discount; for a batch invoice (several jobs), just job j's own lines, less their share of the discount
+const invWhole = (i) => (Number(i.subtotal) || 0) - (Number(i.discount) || 0);
+function invPart(i, j) {
+  if (!(i.jobIds || []).length || !j) return invWhole(i);
+  const lines = (i.items || []).filter((x) => !x.lateFee); const mine = lines.filter((x) => x.job === j.id).reduce((s, x) => s + x.qty * x.price, 0); const all = lines.reduce((s, x) => s + x.qty * x.price, 0);
+  return mine - (all ? (Number(i.discount) || 0) * mine / all : 0);
+}
+// how much of invoice i is job j's (1 unless it's a batch invoice)
+const invShare = (i, j) => ((i.jobIds || []).length && invWhole(i) ? Math.max(0, Math.min(1, invPart(i, j) / invWhole(i))) : 1);
+// Card fees: Stripe's fee on each card or bank payment through Stripe, saved on the payment (payment.stripeFee; a quote deposit's in quote.depositStripeFee)
+// when it comes in, or the first time a profit box needs it. Only the dollar amount is kept, never card details. A tip's share of the fee isn't counted
+// (tips aren't revenue either). Refunds don't bring the fee back (Stripe keeps it), so a refunded payment's fee still counts.
+const isStripePay = (p) => !!p && p.method === 'stripe' && /^pi_/.test(p.reference || '');
+const creditedDeposit = (inv) => { const { depositApplied, depositQuoteId } = invoiceCredits(inv, true); const q = depositApplied && db.quotes.find((x) => x.id === depositQuoteId);
+  return q && q.depositMethod === 'stripe' && /^pi_/.test(q.depositReference || '') ? { q, applied: depositApplied } : null; };
+function invFees(inv) { // { amount, pending: Stripe payments whose fee isn't known yet }
+  let amount = 0; let pending = 0;
+  for (const p of inv.payments || []) { if (!isStripePay(p)) continue; if (p.stripeFee == null) { pending++; continue; }
+    const amt = Number(p.amount) || 0; const tip = Number(p.tip) || 0; amount += amt + tip > 0 ? p.stripeFee * amt / (amt + tip) : p.stripeFee; }
+  const d = creditedDeposit(inv);
+  if (d) { if (d.q.depositStripeFee == null) pending++; else { const paid = Number(d.q.depositPaidAmount ?? d.q.depositFee) || 0; amount += paid > 0 ? d.q.depositStripeFee * Math.min(1, d.applied / paid) : 0; } }
+  return { amount: round2(amount), pending };
+}
+async function stripeFeeOf(pi) { // dollars, or null while Stripe hasn't settled the charge (a bank payment still processing)
+  if (!/^pi_[A-Za-z0-9_]+$/.test(pi || '') || !stripeKey()) return null;
+  const x = await stripeApi('GET', `payment_intents/${pi}?expand[]=latest_charge.balance_transaction`);
+  const bt = x && x.latest_charge && x.latest_charge.balance_transaction; return bt && typeof bt === 'object' && bt.fee != null ? round2(bt.fee / 100) : null;
+}
+const keepFee = (o, key, pi) => stripeFeeOf(pi).then((f) => { if (f != null && o[key] == null) { o[key] = f; save(); } }).catch(() => {});
+// fill in the fees still missing on these invoices (and the deposits they credit), a few at a time, giving up after a few seconds
+async function fillFees(invs) {
+  if (!stripeKey()) return; const todo = [];
+  for (const inv of invs) {
+    for (const p of inv.payments || []) if (isStripePay(p) && p.stripeFee == null) todo.push([p, 'stripeFee', p.reference]);
+    const d = creditedDeposit(inv); if (d && d.q.depositStripeFee == null && !todo.some((t) => t[0] === d.q)) todo.push([d.q, 'depositStripeFee', d.q.depositReference]);
+  }
+  if (todo.length) await Promise.race([Promise.all(todo.slice(0, 8).map(([o, k, pi]) => keepFee(o, k, pi))), new Promise((r) => setTimeout(r, 6000))]);
+}
+// time logged to each job (finished entries): hours, cost at each person's pay rate, and hours by people with no rate set
+const timeByJob = () => { const r = payRates(); const out = {};
+  for (const e of timeList()) { if (!e.jobId || !e.end) continue; const o = out[e.jobId] || (out[e.jobId] = { hours: 0, cost: 0, unrated: 0 }); const h = entryHours(e); o.hours += h;
+    if (Number(r[e.staffId])) o.cost += h * Number(r[e.staffId]); else o.unrated += h; }
+  return out; };
+// what one job brought in and what it cost (Job profit report and the profit boxes): its invoices' revenue, the expenses linked to it, labor and card fees
+function jobMoney(j, time = timeByJob()) {
+  const invs = jobInvoices(j); const parts = invs.map((i) => [i, invPart(i, j)]);
+  const expenses = round2(db.expenses.filter((e) => e.jobId === j.id).reduce((s, e) => s + (Number(e.amount) || 0), 0));
+  const t = time[j.id] || { hours: 0, cost: 0, unrated: 0 };
+  let fees = 0; let pending = 0; for (const i of invs) { const f = invFees(i); fees += f.amount * invShare(i, j); pending += f.pending; }
+  return { invs, parts, revenue: round2(parts.reduce((s, [, v]) => s + v, 0)), expenses, labor: round2(t.cost), hours: t.hours, unrated: t.unrated, fees: round2(fees), feesPending: pending };
+}
 function jobProfit(from, to, want = null) {
-  const labor = laborByJob(); // hours logged to each job (Timesheets) at each person's pay rate
+  const time = timeByJob(); // hours logged to each job (Timesheets) at each person's pay rate
   return db.jobs.filter((j) => inRange(j.date || j.createdAt, from, to)).map((j) => {
-    const invs = jobInvoices(j); const category = mainCat([j]) || mainCat(invs);
+    const m = jobMoney(j, time); const category = mainCat([j]) || mainCat(m.invs);
     if (!catIs(category, want)) return null;
-    // an invoice for several jobs (batch invoicing) counts this job's own lines, less their share of any discount
-    const part = (i) => { if (!(i.jobIds || []).length) return (Number(i.subtotal) || 0) - (Number(i.discount) || 0);
-      const lines = (i.items || []).filter((x) => !x.lateFee); const mine = lines.filter((x) => x.job === j.id).reduce((s, x) => s + x.qty * x.price, 0); const all = lines.reduce((s, x) => s + x.qty * x.price, 0);
-      return mine - (all ? (Number(i.discount) || 0) * mine / all : 0); };
-    const revenue = round2(invs.reduce((s, i) => s + part(i), 0));
-    const expenses = round2(db.expenses.filter((e) => e.jobId === j.id).reduce((s, e) => s + (Number(e.amount) || 0), 0));
-    const laborCost = round2(labor[j.id] || 0); const costs = round2(expenses + laborCost);
-    const profit = round2(revenue - costs);
-    return { id: j.id, number: j.number, title: j.title, client: (findClient(j.clientId) || {}).name || '', date: String(j.date || j.createdAt || '').slice(0, 10), status: j.status, category, invoices: invs.length, revenue, expenses, labor: laborCost, costs, profit, margin: revenue ? Math.round(profit / revenue * 1000) / 10 : null };
+    const costs = round2(m.expenses + m.labor + m.fees); const profit = round2(m.revenue - costs);
+    return { id: j.id, number: j.number, title: j.title, client: (findClient(j.clientId) || {}).name || '', date: String(j.date || j.createdAt || '').slice(0, 10), status: j.status, category, invoices: m.invs.length, revenue: m.revenue, expenses: m.expenses, labor: m.labor, fees: m.fees, costs, profit, margin: m.revenue ? Math.round(profit / m.revenue * 1000) / 10 : null };
   }).filter((j) => j && (j.revenue || j.costs)).sort((a, b) => b.date.localeCompare(a.date));
 }
+// ---------- Profit box (invoice and job pages): gross, tax, materials, labor, card fees, net profit and margin ----------
+// For anyone whose role opens Reports (owner, admins, managers by default). Labor is a total only: each person's pay rate stays with the owner and admins.
+// Materials are the expenses linked to the job(s); with none logged yet, an estimate from the line items' unit costs (only lines priced as cost + markup
+// have a cost of their own), never both. An invoice for part of a job (one of several invoices) carries its share of the job's costs, by revenue.
+const linesCost = (items) => round2((items || []).filter((x) => !x.lateFee && !x.matrix && Number(x.cost) > 0 && Number(x.price) > Number(x.cost)).reduce((s, x) => s + (Number(x.qty) || 0) * Number(x.cost), 0));
+function profitBox(b) {
+  const materials = b.expenses > 0 ? { amount: round2(b.expenses), source: 'expenses' } : b.estimate > 0 ? { amount: round2(b.estimate), source: 'lines' } : { amount: 0, source: 'none' };
+  const costs = round2(materials.amount + b.labor + b.fees); const profit = round2(b.revenue - costs); const hrs = (h) => Math.round(h * 100) / 100;
+  return { revenue: round2(b.revenue), gross: round2(b.gross), discount: round2(b.discount), tax: round2(b.tax), tips: round2(b.tips), materials,
+    labor: { amount: round2(b.labor), hours: hrs(b.hours), unrated: hrs(b.unrated) }, fees: { amount: round2(b.fees), pending: b.feesPending }, costs, profit,
+    margin: b.revenue ? Math.round(profit / b.revenue * 1000) / 10 : null, paid: round2(b.paid), balance: round2(b.balance), jobs: b.jobs || [], estimatedRevenue: !!b.estimatedRevenue,
+    timesheets: tenancy.has('timesheets'), cards: !!stripeKey() };
+}
+app.get('/api/invoices/:id/profit', async (req, res) => {
+  const inv = db.invoices.find((x) => x.id === req.params.id); if (!inv) return res.status(404).json({ error: 'Invoice not found' });
+  const jobs = [...new Set([inv.jobId, ...(inv.jobIds || [])].filter(Boolean))].map((id) => db.jobs.find((j) => j.id === id)).filter(Boolean);
+  await fillFees([inv, ...jobs.flatMap((j) => jobInvoices(j))]);
+  const time = timeByJob(); const B = { expenses: 0, labor: 0, hours: 0, unrated: 0 }; const jobRows = [];
+  for (const j of jobs) {
+    const m = jobMoney(j, time); const mine = invPart(inv, j); const listed = m.invs.some((i) => i.id === inv.id);
+    // this invoice's share of the job, by revenue; a draft isn't among the job's invoices yet, so it's added; no revenue at all splits evenly
+    const total = m.revenue + (listed ? 0 : mine); const n = m.invs.length + (listed ? 0 : 1);
+    const share = total > 0 ? Math.max(0, Math.min(1, mine / total)) : 1 / n;
+    for (const k of Object.keys(B)) B[k] += m[k] * share;
+    jobRows.push({ id: j.id, number: j.number, title: j.title || '', share: Math.round(share * 1000) / 1000 });
+  }
+  const f = invFees(inv); const c = invoiceCredits(inv);
+  res.json(profitBox({ ...B, revenue: invWhole(inv), gross: Number(inv.subtotal) || 0, discount: Number(inv.discount) || 0, tax: Number(inv.tax) || 0,
+    tips: (inv.payments || []).reduce((s, p) => s + (Number(p.tip) || 0), 0), estimate: linesCost(inv.items), fees: f.amount, feesPending: f.pending,
+    paid: c.amountPaid + c.depositApplied, balance: c.balanceDue, jobs: jobRows }));
+});
+app.get('/api/jobs/:id/profit', async (req, res) => {
+  const j = db.jobs.find((x) => x.id === req.params.id); if (!j) return res.status(404).json({ error: 'Job not found' });
+  await fillFees(jobInvoices(j));
+  const m = jobMoney(j); const B = { gross: 0, tax: 0, paid: 0, balance: 0, tips: 0, estimate: 0 };
+  if (m.invs.length) for (const i of m.invs) { const sh = invShare(i, j); const c = invoiceCredits(i);
+    B.gross += (Number(i.subtotal) || 0) * sh; B.tax += (Number(i.tax) || 0) * sh; B.paid += (c.amountPaid + c.depositApplied) * sh; B.balance += c.balanceDue * sh;
+    B.tips += (i.payments || []).reduce((s, p) => s + (Number(p.tip) || 0), 0) * sh; B.estimate += linesCost((i.items || []).filter((x) => !(i.jobIds || []).length || x.job === j.id)); }
+  const L = !m.invs.length && jobLines(j); // not invoiced yet: the job's lines (or its quote's) show what it's expected to bring in
+  const lineGross = L ? L.items.filter((x) => !x.opt || !L.q || x.opt === L.q.chosenOption).reduce((s, x) => s + (Number(x.qty) || 0) * (Number(x.price) || 0), 0) : 0;
+  const lineDisc = L ? Math.min(lineGross, Number(L.discountType === 'percent' ? lineGross * (Number(L.discountValue) || 0) / 100 : L.discountValue) || 0) : 0;
+  const revenue = L ? lineGross - lineDisc : m.revenue;
+  res.json(profitBox({ ...B, ...(L ? { gross: lineGross, estimate: linesCost(L.items) } : {}), revenue, discount: L ? lineDisc : B.gross - m.revenue,
+    expenses: m.expenses, labor: m.labor, hours: m.hours, unrated: m.unrated, fees: m.fees, feesPending: m.feesPending, estimatedRevenue: !!L }));
+});
 // unpaid invoices by how long past due, as of today; want: only invoices whose main category it is
 function receivablesAging(want = null) {
   const today = iso(new Date()); const BUCKETS = ['current', 'd1_30', 'd31_60', 'd61_90', 'd90']; const zero = () => Object.fromEntries(BUCKETS.map((b) => [b, 0]));

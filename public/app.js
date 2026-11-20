@@ -2754,6 +2754,40 @@ const docSide = (kind, d) => {
 ${kind === 'invoice' ? `<div class="qcard"><div class="qcard-h"><h2>Client view</h2>${editBtn(kind, d, 'clientView')}</div>${vopts(view)}</div>` : ''}
 ${textCard(kind, d, 'notes', 'Internal Notes', d.internalNotes, 'No internal notes. Clients never see these.')}${noteFilesCard(kind, d)}</aside>`;
 };
+/* ===== the Profit box on the invoice and job pages (owner, admins, and anyone whose role opens Reports, managers by default):
+   gross before tax, materials, labor and card fees, net profit and margin. Labor is a total only; pay rates stay with the owner and admins. ===== */
+const canProfit = () => planHas('reports') && canDo('reports');
+const pfHours = (h) => `${Math.round(h * 10) / 10} h`;
+function profitCard(kind, r) {
+  const row = (label, value, sub = '', cls = '') => `<div class="vt pf-row ${cls}"><span>${label}${sub ? `<small class="pf-sub">${sub}</small>` : ''}</span><span>${value}</span></div>`;
+  const neg = (n) => (n ? '−' + money(n) : money(0));
+  const m = r.materials; const L = r.labor; const F = r.fees;
+  const matLabel = m.source === 'lines' ? 'Materials <span class="muted">(estimated)</span>' : 'Materials &amp; expenses';
+  const matSub = m.source === 'expenses' ? 'Expenses linked to the job' : m.source === 'lines' ? 'From line item costs. Log receipts in Expenses for actuals.' : (kind === 'job' || r.jobs.length ? 'No expenses linked to the job yet' : 'Not linked to a job, so no expenses');
+  const labSub = !r.timesheets ? '' : L.hours ? `${pfHours(L.hours)} clocked${L.unrated ? ` · ${pfHours(L.unrated)} with no pay rate` : ''}` : 'No time clocked on the job';
+  const feeSub = F.pending ? `${F.pending} payment${F.pending === 1 ? '' : 's'} still settling` : F.amount ? 'Stripe’s fee on card and bank payments' : r.balance > 0 ? 'Added when paid by card' : 'No card payments';
+  const split = r.jobs.filter((j) => j.share < 0.999);
+  const notes = [r.tax ? `Tax collected ${money(r.tax)} isn’t yours, so it isn’t counted.` : '', r.tips ? `Tips ${money(r.tips)} go to your team, so they aren’t counted.` : '',
+    ...split.map((j) => `Carries ${Math.round(j.share * 100)}% of job ${esc(j.number)}’s costs; its other invoices carry the rest.`)].filter(Boolean);
+  const pos = r.profit >= 0;
+  return `<div class="qcard pf-card" data-profit="${kind}"><div class="qcard-h"><h2>Profit</h2><span class="pf-margin ${pos ? 'ok' : 'bad'}">${r.margin == null ? '—' : r.margin + '%'}</span></div>
+${row(r.estimatedRevenue ? 'Job total' : 'Gross', money(r.gross), r.estimatedRevenue ? 'Not invoiced yet: from the job’s line items' : 'Before tax')}
+${r.discount ? row('Discount', neg(r.discount)) : ''}${r.discount ? row('Revenue', money(r.revenue), '', 'strong') : ''}
+${row(matLabel, neg(m.amount), matSub)}
+${r.timesheets ? row('Labor', neg(L.amount), labSub) : ''}
+${r.cards || F.amount ? row('Card fees', neg(F.amount), feeSub) : ''}
+${row('<strong>Net profit</strong>', `<strong class="${pos ? '' : 'pf-loss'}">${pos ? money(r.profit) : '−' + money(-r.profit)}</strong>`, '', 'grand')}
+${kind === 'invoice' || !r.estimatedRevenue ? `<p class="pf-paid">Paid ${money(r.paid)} · Due ${money(r.balance)}</p>` : ''}
+${notes.length ? `<p class="muted pf-note">${notes.join(' ')}</p>` : ''}
+<p class="muted pf-note">Only people who can open Reports see this (owner, admins and managers). <a href="/reports/view?r=jobs" data-link>Job profit report</a></p></div>`;
+}
+async function placeProfit(root, kind, id) {
+  if (!canProfit() || !root) return;
+  let r; try { r = await api('GET', `/api/${kind}s/${encodeURIComponent(id)}/profit`); } catch { return; }
+  if (!root.isConnected || qp('id') !== id || $('.pf-card', root)) return; // moved on, or already shown
+  const side = $('.qside', root); const totals = $('.md-totals', root);
+  if (side) side.insertAdjacentHTML('afterbegin', profitCard(kind, r)); else if (totals) totals.insertAdjacentHTML('afterend', `<section class="md-block">${profitCard(kind, r)}</section>`);
+}
 function viewPage(kind) {
   return {
     title: kind === 'quote' ? 'Quote' : 'Invoice',
@@ -2762,6 +2796,7 @@ function viewPage(kind) {
       if (!d) { main.innerHTML = `<div class="card"><h1>${kind === 'quote' ? 'Quote' : 'Invoice'} not found</h1><p><a href="/${kind}s" data-link>Back to the list</a></p></div>`; return; }
       if (kind === 'invoice' && phoneMq.matches && qp('preview')) { main.innerHTML = qp('receipt') ? mobileReceipt(d, qp('receipt')) : mobileInvoicePreview(d); mpStatusBar(); return; }
       main.innerHTML = phoneMq.matches ? mobileDocPage(kind, d) : (kind === 'quote' ? quotePage : invoicePage)(d);
+      if (kind === 'invoice') placeProfit(main, 'invoice', d.id);
       if (kind === 'quote') { placeChanges(main, d); placeSnap(main, d); } // the client's change request, then Snap to quote: the AI draft's banner, or Draft from photos
     },
   };
@@ -4541,11 +4576,11 @@ PAGES['/jobs/edit'] = {
   render(main) {
     const j = byId(D.jobs, qp('id'));
     if (!j) { main.innerHTML = '<div class="card"><h1>Job not found</h1><p><a href="/jobs" data-link>Back to Jobs</a></p></div>'; return; }
-    if (phoneMq.matches && qp('full') !== '1') { main.innerHTML = mobileJobPage(j); return; } // phones: tap-to-edit (⋯ → Edit everything at once opens this form)
+    if (phoneMq.matches && qp('full') !== '1') { main.innerHTML = mobileJobPage(j); placeProfit(main, 'job', j.id); return; } // phones: tap-to-edit (⋯ → Edit everything at once opens this form)
     if (jobLocked(j) && qp('full') === '1') { toast('This job is completed. Reopen it to make changes.'); history.replaceState(null, '', '/jobs/edit?id=' + j.id); }
     else if (qp('full') === '1') return jobPage(main, j);
-    if (phoneMq.matches) { main.innerHTML = mobileJobPage(j); return; }
-    main.innerHTML = jobViewPage(j);
+    if (phoneMq.matches) { main.innerHTML = mobileJobPage(j); placeProfit(main, 'job', j.id); return; }
+    main.innerHTML = jobViewPage(j); placeProfit(main, 'job', j.id);
   },
 };
 A.newJob = () => { closeModal(); navigate('/jobs/new'); };
