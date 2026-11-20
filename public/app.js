@@ -185,6 +185,7 @@ async function loadAll() {
   const res = await Promise.all(names.map((n) => (me && me.collections && !me.collections.includes(n) ? [] : api('GET', '/api/' + n))));
   const out = {}; names.forEach((n, i) => { out[n] = res[i]; });
   // time off (a plan feature): approved time off for the schedule and job warnings; requests waiting for whoever approves
+  out.changeOrders = canDo('changeOrders') ? await api('GET', '/api/change-orders').catch(() => []) : []; // change orders on jobs
   out.timeOff = []; out.timeOffWaiting = 0;
   // time tracking (a plan feature): whether this login is on the clock, for the job page's Clock in / Clock out
   out.clock = null; if (planHas('timesheets')) out.clock = await api('GET', '/api/time/status').catch(() => null);
@@ -3564,6 +3565,7 @@ ${textSec('instructions', 'Instructions', j.description, 'Add instructions for t
 ${mJobForms(j)}
 ${prices ? `<section class="md-block"><h2 class="md-sh">Product / Service</h2><div class="md-lh"><strong>Line items</strong>${edit ? `<button type="button" class="md-plus" data-act="mEdit" data-kind="job" data-id="${j.id}" data-sec="item" data-i="" aria-label="Add line item">${CHEV('M12 5v14M5 12h14')}</button>` : ''}</div>${items || '<p class="muted md-empty">No line items yet.</p>'}</section>
 ${totals ? `<section class="md-block md-totals">${totals}</section>` : ''}` : ''}
+${coCard(j, true)}
 ${sig ? `<section class="md-block"><div class="md-lh"><h2 class="md-sh" style="margin:0">Client signature</h2>${planHas('signatures') ? `<button type="button" class="md-plus" data-act="collectSignature" data-id="${j.id}" aria-label="Collect another signature">${CHEV('M12 5v14M5 12h14')}</button>` : ''}</div><img class="sig-img" src="${esc(sig.file)}" alt="Signature of ${esc(sig.name)}"><p class="md-text">Signed by <strong>${esc(sig.name)}</strong> · ${esc(fmtStamp(sig.signedAt))}</p></section>`
     : planHas('signatures') ? `<button type="button" class="md-tap md-sec" data-act="collectSignature" data-id="${j.id}"><span class="md-sh">Client signature${ARROW}</span><span class="md-text muted">Collect the client’s signature</span></button>` : ''}
 ${prices && planHas('invoices') ? `<section class="md-block need-invoices"><div class="md-lh"><h2 class="md-sh" style="margin:0">Billing</h2>${canDo('jobs.edit') && canInvoiceJob(j) ? `<button type="button" class="md-plus" data-act="jobInvoice" data-id="${j.id}" aria-label="Create invoice">${CHEV('M12 5v14M5 12h14')}</button>` : ''}</div>
@@ -4382,7 +4384,7 @@ ${canDo('jobs.prices') ? `<div class="qcard"><div class="qcard-h"><h2>Product / 
 ${j.repeat ? `<dt>Repeats</dt><dd><span>${repeatLine(j)}</span></dd>` : ''}
 <dt>Team</dt><dd>${withClocked(team, 'job', j.id).length ? `<span class="vteam">${withClocked(team, 'job', j.id).map((t) => `<span>${avatarHtml(t, 24)}${esc(t.name)}${clockedFlag(t.id, 'job', j.id)}</span>`).join('')}</span>` : none('Nobody assigned yet')}</dd>
 <dt>Instructions</dt><dd>${j.description ? `<p class="vtext">${esc(j.description)}</p>` : none('None')}</dd></dl></div>
-${jobFormsCard(j)}${j.signature ? sigCard(j) : ''}${jobBilling(j, jobInvoices(j))}</div>
+${coCard(j)}${jobFormsCard(j)}${j.signature ? sigCard(j) : ''}${jobBilling(j, jobInvoices(j))}</div>
 <aside class="qside">${textCard('job', j, 'notes', 'Internal Notes', j.internalNotes, 'No internal notes. Clients never see these.')}${noteFilesCard('job', j)}</aside></div></div>`;
 }
 // the Billing card (job form and job page): the job's invoices, and Create invoice
@@ -4601,11 +4603,16 @@ A.mSignInvoice = (d) => { const i = byId(D.invoices, d.id); const c = byId(D.cli
 A.collectSignature = (d) => {
   const j = byId(D.jobs, d.id); const c = byId(D.clients, j.clientId) || {};
   if (phoneMq.matches) return mSignPad({ icon: PI.job, label: `Job #${j.number}`, save: (dataUrl) => api('POST', `/api/jobs/${j.id}/signature`, { name: c.name || 'Client', statement: SIG_STATEMENT, dataUrl }) });
-  const mb = modal('Collect signature', `<form class="sig-form" data-sticky><div class="sig-job"><strong>${esc(j.title)}</strong> <span class="muted">#${esc(j.number)}</span><div class="muted">${esc(c.name || '')}${j.date ? ' · ' + fmtDate(j.date) : ''}</div></div>
-<label class="fl"><span>Statement</span><textarea name="statement" rows="2" maxlength="300">${esc(SIG_STATEMENT)}</textarea></label>
+  sigModal({ head: `<strong>${esc(j.title)}</strong> <span class="muted">#${esc(j.number)}</span><div class="muted">${esc(c.name || '')}${j.date ? ' · ' + fmtDate(j.date) : ''}</div>`, statement: SIG_STATEMENT, name: c.name || '', save: (b) => api('POST', `/api/jobs/${j.id}/signature`, b) });
+};
+// the signature pad in a popup (computers and tablets): head says what's being signed; statement (optional) is an editable line above the pad.
+// save gets { name, statement, dataUrl }
+function sigModal({ head, statement, name, save, title = 'Collect signature' }) {
+  const mb = modal(title, `<form class="sig-form" data-sticky><div class="sig-job">${head}</div>
+${statement != null ? `<label class="fl"><span>Statement</span><textarea name="statement" rows="2" maxlength="300">${esc(statement)}</textarea></label>` : ''}
 <div class="sig-pad"><canvas aria-label="Signature pad. Sign with your finger, stylus or mouse"></canvas><span class="sig-line"></span><span class="sig-hint">Sign here</span>
 <button type="button" class="link-btn sig-clear">Clear</button></div>
-<label class="fl"><span>Name of person signing*</span><input name="name" required maxlength="100" value="${esc(c.name || '')}" autocomplete="off"></label>
+<label class="fl"><span>Name of person signing*</span><input name="name" required maxlength="100" value="${esc(name || '')}" autocomplete="off"></label>
 <div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save signature</button></div></form>`, true);
   const form = $('form', mb); const cv = $('canvas', mb); const pad = $('.sig-pad', mb); const ctx = cv.getContext('2d');
   const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1)); let inked = false; let last = null;
@@ -4622,14 +4629,87 @@ A.collectSignature = (d) => {
   form.addEventListener('submit', async (e) => {
     e.preventDefault(); if (!inked) return toast('Please sign in the box first', true);
     const b = Object.fromEntries(new FormData(form)); const btn = $('.foot .btn:not(.alt)', form); btn.disabled = true; btn.textContent = 'Saving…';
-    try { await api('POST', `/api/jobs/${j.id}/signature`, { ...b, dataUrl: cv.toDataURL('image/png') }); closeModal(); toast('Signature saved'); refresh(); }
+    try { await save({ ...b, dataUrl: cv.toDataURL('image/png') }); closeModal(); toast('Signature saved'); refresh(); }
     catch (err) { toast(err.message, true); btn.disabled = false; btn.textContent = 'Save signature'; }
   });
-};
+}
 A.rmSignature = async (d) => {
   if (!confirm('Remove this signature? Unsaved changes on this page will be lost. You can collect a new one afterwards.')) return;
   await api('DELETE', `/api/jobs/${d.id}/signature`); toast('Signature removed'); refresh();
 };
+/* ===== change orders: work added to (or taken off) a job, approved by the client before it's done. Each is its own record (CO-1, CO-2… per job)
+   with its own line items at the job's tax rate. The client signs on the team's phone, or online from an emailed link; a manager can mark it
+   approved or declined when the client answers some other way. Approved ones are locked and billed with the job (Create invoice adds them). ===== */
+const jobCOs = (j) => (D.changeOrders || []).filter((c) => c.jobId === j.id).sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+const coAdded = (j) => round2(jobCOs(j).filter((c) => c.status === 'approved').reduce((s, c) => s + (Number(c.total) || 0), 0));
+const CO_ST = { draft: ['Draft', 'q-draft'], sent: ['Waiting for client', 'q-sent'], approved: ['Approved', 'q-approved'], declined: ['Declined', 'q-declined'] };
+const coMoney = (n) => (Number(n) < 0 ? '−' + money(-n) : money(n)); // a change that takes work off is negative
+const coBadge = (c) => `<span class="cstatus ${CO_ST[c.status][1]}">${CO_ST[c.status][0]}</span>`;
+const coSigned = (c) => (c.status !== 'approved' ? (c.status === 'sent' ? `Emailed ${fmtStamp(c.sentAt)}${c.viewedAt ? ' · viewed' : ''}` : c.status === 'declined' ? `Declined ${fmtStamp(c.declinedAt)}` : `Written by ${c.createdBy || 'the team'}`)
+  : c.signature ? `Signed by ${c.signature.name} · ${fmtStamp(c.signature.signedAt)}${c.signature.via === 'online' ? ' · online' : ''}` : `Marked approved by ${c.approvedBy || 'the business'} · ${fmtStamp(c.approvedAt)}`);
+// the Change orders card on the job page (phone: a section like Billing)
+function coCard(j, phone) {
+  if (!j.id || !canDo('changeOrders')) return '';
+  const L = jobCOs(j); const add = phone ? `<button type="button" class="md-plus" data-act="coNew" data-id="${j.id}" aria-label="Add change order">${CHEV('M12 5v14M5 12h14')}</button>` : `<button type="button" class="btn alt" data-act="coNew" data-id="${j.id}">+ Change order</button>`;
+  const rows = L.map((c) => `<button type="button" class="co-row" data-act="coOpen" data-id="${c.id}"><span class="co-l"><strong>${esc(c.number)}${c.title ? ` · ${esc(c.title)}` : ''}</strong><small class="muted">${esc(coSigned(c))}</small></span><span class="co-r">${coBadge(c)}<span>${coMoney(c.total)}</span></span></button>`).join('');
+  const added = coAdded(j); const base = (jobDoc(j).total || 0);
+  const sum = added ? `<div class="co-sum"><span>Approved changes</span><span>${added < 0 ? '−' : '+'}${money(Math.abs(added))}</span></div>${canDo('jobs.prices') ? `<div class="co-sum co-grand"><span>Job total with changes</span><span>${money(base + added)}</span></div>` : ''}` : '';
+  const empty = '<p class="muted co-empty">No change orders. Add one when the client asks for more (or less) work, and get it signed before you do it.</p>';
+  return phone ? `<section class="md-block co-card"><div class="md-lh"><h2 class="md-sh" style="margin:0">Change orders</h2>${add}</div>${rows || empty}${sum}</section>`
+    : `<div class="qcard co-card"><div class="qcard-h"><h2>Change orders</h2>${add}</div>${rows || empty}${sum}</div>`;
+}
+// write or edit one: what changed and why, and its line items (a negative price takes work off)
+function coEditor(j, c) {
+  const items = c && c.items.length ? c.items : [{ desc: '', qty: 1, price: '' }]; const rate = Number(jobDoc(j).taxRate) || 0;
+  const row = (i) => `<div class="co-it"><input name="desc" list="coSvc" placeholder="Item or service" value="${esc(i.desc || '')}" aria-label="Item"><input name="qty" type="number" step="any" min="0" value="${esc(i.qty ?? 1)}" aria-label="Quantity"><input name="price" type="number" step="0.01" placeholder="0.00" value="${esc(i.price ?? '')}" aria-label="Unit price"><button type="button" class="icon-btn co-x" aria-label="Remove line">✕</button></div>`;
+  const mb = modal(c ? `Edit change order ${c.number}` : `New change order · Job #${j.number}`, `<form class="co-form" data-sticky>
+<label class="fl"><span>Title*</span><input name="title" required maxlength="120" placeholder="e.g. Add 2 outlets in the garage" value="${esc((c && c.title) || '')}"></label>
+<label class="fl"><span>What changed and why</span><textarea name="reason" rows="3" maxlength="2000" placeholder="The client sees this. e.g. Found water damage under the old tile; the subfloor needs replacing before the new tile goes down.">${esc((c && c.reason) || '')}</textarea></label>
+<div class="co-its"><div class="co-ith"><span>Item</span><span>Qty</span><span>Unit price</span><span></span></div>${items.map(row).join('')}</div>
+<button type="button" class="link-btn co-addl">+ Add line</button><p class="muted sm">To take work off the job, use a negative price.</p>
+<datalist id="coSvc">${(D.services || []).map((s) => `<option value="${esc(s.name)}"></option>`).join('')}</datalist>
+<div class="co-tot"></div>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">${c ? 'Save' : 'Save change order'}</button></div></form>`, true);
+  const form = $('form', mb); const box = $('.co-its', form);
+  const read = () => $$('.co-it', box).map((r) => ({ desc: $('[name=desc]', r).value.trim(), qty: Number($('[name=qty]', r).value) || 0, price: Number($('[name=price]', r).value) || 0 })).filter((i) => i.desc);
+  const total = () => { const sub = read().reduce((s, i) => s + i.qty * i.price, 0); const tax = round2(sub * rate / 100); $('.co-tot', form).innerHTML = `${vt('Subtotal', coMoney(sub))}${vt(`Tax (${rate}%)`, coMoney(tax))}${vt('<strong>Change order total</strong>', `<strong>${coMoney(sub + tax)}</strong>`)}`; };
+  form.addEventListener('input', (e) => { if (e.target.name === 'desc') { const s = (D.services || []).find((x) => x.name === e.target.value); const p = $('[name=price]', e.target.closest('.co-it')); if (s && !p.value) p.value = s.price; } total(); });
+  form.addEventListener('click', (e) => { if (e.target.closest('.co-x')) { const r = e.target.closest('.co-it'); if ($$('.co-it', box).length > 1) r.remove(); else $$('input', r).forEach((x) => { x.value = x.name === 'qty' ? 1 : ''; }); total(); }
+    if (e.target.closest('.co-addl')) { box.insertAdjacentHTML('beforeend', row({ qty: 1 })); $('.co-it:last-child [name=desc]', box).focus(); } });
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault(); const body = { title: $('[name=title]', form).value, reason: $('[name=reason]', form).value, items: read() }; if (!body.items.length) return toast('Add at least one line item', true);
+    const btn = $('.foot .btn:not(.alt)', form); btn.disabled = true;
+    try { const saved = c ? await api('PUT', `/api/change-orders/${c.id}`, body) : await api('POST', `/api/jobs/${j.id}/change-orders`, body); closeModal(); toast(c ? 'Change order saved' : `Change order ${saved.number} saved. Next, get the client’s approval.`); await refresh(); A.coOpen({ id: saved.id }); }
+    catch (x) { toast(x.message, true); btn.disabled = false; }
+  });
+  total();
+}
+A.coNew = (d) => { mClose(true); coEditor(byId(D.jobs, d.id)); };
+A.coEdit = (d) => { const c = byId(D.changeOrders, d.id); coEditor(byId(D.jobs, c.jobId), c); };
+// one change order: what the client sees, and how to get it approved
+A.coOpen = (d) => {
+  const c = byId(D.changeOrders, d.id); if (!c) return; const j = byId(D.jobs, c.jobId) || {}; const open = c.status !== 'approved'; const boss = canDo('jobs.edit'); const s = c.signature;
+  const b = (act, label, cls = 'alt') => `<button type="button" class="btn ${cls}" data-act="${act}" data-id="${c.id}">${label}</button>`;
+  modal(`Change order ${c.number}`, `<div class="co-view"><div class="co-vh">${coBadge(c)}<span class="muted">Job #${esc(j.number || '')}${j.title ? ` · ${esc(j.title)}` : ''}</span></div>
+${c.title ? `<h3 class="co-vt">${esc(c.title)}</h3>` : ''}${c.reason ? `<p class="vtext">${esc(c.reason)}</p>` : ''}
+<table class="vitems"><thead><tr><th>Line Item</th><th class="r">Qty</th><th class="r">Unit Price</th><th class="r">Total</th></tr></thead><tbody>${c.items.map((i) => `<tr><td>${esc(i.desc)}</td><td class="r">${esc(i.qty)}</td><td class="r">${coMoney(i.price)}</td><td class="r">${coMoney(i.qty * i.price)}</td></tr>`).join('')}</tbody></table>
+<div class="vtotals">${vt('Subtotal', coMoney(c.subtotal))}${vt(`Tax (${c.taxRate}%)`, coMoney(c.tax))}${vt('<strong>Total</strong>', `<strong>${coMoney(c.total)}</strong>`)}</div>
+${s ? `<div class="sig-show"><img class="sig-img" src="${esc(s.file)}" alt="Signature of ${esc(s.name)}"></div>` : ''}<p class="muted sm">${esc(coSigned(c))}${s && s.collectedBy ? ` · collected by ${esc(s.collectedBy)}` : ''}</p>
+${open ? `<div class="co-acts">${b('coSign', 'Get signature now', '')}${b('coSend', c.status === 'sent' ? 'Email again' : 'Email to client')}${b('coLink', 'Copy client link')}${b('coEdit', 'Edit')}</div>
+${boss ? `<div class="co-acts co-more"><span class="muted sm">Client answered another way?</span>${b('coApprove', 'Mark approved', 'alt sm')}${c.status !== 'declined' ? b('coDecline', 'Mark declined', 'alt sm') : ''}${b('coDel', 'Delete', 'danger sm')}</div>` : `<div class="co-acts co-more">${b('coDel', 'Delete', 'danger sm')}</div>`}`
+    : '<p class="muted sm">Approved change orders are locked and billed with the job. To undo one, add another change order with a negative price.</p>'}</div>`, true);
+};
+const coGo = async (msg, call) => { try { await call(); closeModal(); toast(msg); refresh(); } catch (x) { toast(x.message, true); } };
+A.coSign = (d) => {
+  const c = byId(D.changeOrders, d.id); const cl = byId(D.clients, c.clientId) || {}; closeModal();
+  if (phoneMq.matches) return mSignPad({ icon: PI.job, label: `Change order ${c.number}`, amount: coMoney(c.total), save: (dataUrl) => api('POST', `/api/change-orders/${c.id}/signature`, { name: cl.name || 'Client', dataUrl }) });
+  sigModal({ title: 'Client approves the change', head: `<strong>Change order ${esc(c.number)}${c.title ? ` · ${esc(c.title)}` : ''}</strong><div class="muted">${esc(cl.name || '')} · ${coMoney(c.total)}. Signing approves this change and its price.</div>`, name: cl.name || '', save: (b) => api('POST', `/api/change-orders/${c.id}/signature`, { name: b.name, dataUrl: b.dataUrl }) });
+};
+A.coSend = (d) => { const c = byId(D.changeOrders, d.id); const cl = byId(D.clients, c.clientId) || {}; if (!cl.email) return toast('This client has no email address. Add one on their profile, or get the signature now.', true); coGo(`Emailed to ${cl.email}`, () => api('POST', `/api/change-orders/${c.id}/send`, {})); };
+A.coLink = async (d) => { const c = byId(D.changeOrders, d.id); const url = `${location.origin}/p/co/${c.token}`; try { await navigator.clipboard.writeText(url); toast('Link copied. The client can open it to sign.'); } catch (e) { prompt('Copy this link for the client:', url); } };
+A.coApprove = (d) => { if (confirm('Mark this change order approved without a signature? Do this only if the client agreed in writing or on a call. It’s billed with the job.')) coGo('Change order approved', () => api('POST', `/api/change-orders/${d.id}/approve`, {})); };
+A.coDecline = (d) => coGo('Change order marked declined', () => api('POST', `/api/change-orders/${d.id}/decline`, {}));
+A.coDel = (d) => { if (confirm('Delete this change order?')) coGo('Change order deleted', () => api('DELETE', `/api/change-orders/${d.id}`)); };
 PAGES['/jobs/new'] = { title: 'New job', render: (main) => { const draft = typeof jobDraft !== 'undefined' && jobDraft; if (draft) jobDraft = null; if (!draft && phoneMq.matches) return mobileNew('job', main, { clientId: qp('client'), date: qp('date') }); jobPage(main, draft || null, { clientId: qp('client'), date: qp('date') }); } }; // a draft: Schedules → More Options
 PAGES['/jobs/edit'] = {
   title: 'Job',
@@ -4707,7 +4787,7 @@ function jobStatus(j) {
   return jobEndDay(j) < today ? 'late' : j.date <= today ? 'today' : 'upcoming'; // a multi-day job is Today from its first day to its last
 }
 // value of a job: its invoices, or the quote it came from when not invoiced yet
-const jobTotal = (j) => { const inv = jobInvoices(j); if (inv.length) return inv.reduce((s, i) => s + (i.total || 0), 0); if (j.items && j.items.length) return j.total || 0; const q = byId(D.quotes, j.quoteId); return q ? q.total || 0 : null; };
+const jobTotal = (j) => { const inv = jobInvoices(j); if (inv.length) return inv.reduce((s, i) => s + (i.total || 0), 0); const add = coAdded(j); if (j.items && j.items.length) return (j.total || 0) + add; const q = byId(D.quotes, j.quoteId); return q ? (q.total || 0) + add : add || null; }; // approved change orders count
 // The Jobs page opens on Needs action: late visits and completed jobs that need an invoice. Same layout as Invoices and Quotes.
 let jobView = { status: 'action', staff: '', q: '', sort: 'urgent', dir: 1 }; const jobSel = new Set();
 const jobNeedsAction = (j) => ['late', 'invoice'].includes(jobStatus(j));

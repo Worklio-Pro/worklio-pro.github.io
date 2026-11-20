@@ -123,6 +123,7 @@ function migrate() {
   for (const t of db.tasks) if (t.survey) { t.title = String(t.title || '').replace(/^Site survey/, 'Site visit'); t.description = String(t.description || '').replace(/^Site survey/, 'Site visit'); } // booked before Site survey was renamed Site visit (Nov 19, 2026)
   for (const u of db.users) if (u.role === 'member') u.role = 'technician'; // the old "team member" role is now Technician
   if (!Array.isArray(db.roles)) db.roles = rolesLib.defaults(); // team roles (Settings → Roles & Permissions) start as Manager and Technician
+  if (!db.coPerm) { for (const r of db.roles) if (['manager', 'technician'].includes(r.id) && !(r.perms || []).includes('changeOrders')) r.perms = [...(r.perms || []), 'changeOrders']; db.coPerm = true; } // Change orders (Nov 20, 2026): the starting roles get it once; owners can take it off
   [...db.quotes, ...db.invoices].forEach(computeTotals); // cost/markup fields, deposit amount
   // the first client importer stored the company as a "Company: …" line in notes; move it to the company field
   db.clients.forEach((c) => {
@@ -310,7 +311,7 @@ const quoteTerms = (q) => JSON.stringify(QUOTE_TERMS.map((k) => (typeof q[k] ===
 // payments are recorded, paid online and refunded through their own endpoints; a quote or invoice edit can never change one
 const PAYMENT_FIELDS = { quotes: ['depositPaidAt', 'depositPaidAmount', 'depositMethod', 'depositReference', 'depositStatus', 'depositRefunds', 'depositPayment'],
   invoices: ['payments', 'paidAt', 'paidAmount', 'paidByDeposit', 'paymentMethod', 'stripeSessionId', 'stripePaymentIntent'] };
-const money = (n) => '$' + Number(n).toFixed(2);
+const money = (n) => (Number(n) < 0 ? '-$' : '$') + Math.abs(Number(n)).toFixed(2); // a credit reads -$150.00, not $-150.00
 // " (25%)" or " (products + 50% of labor)" after "Deposit", in the client's language
 const depLabel = (d) => (d.depositBasis === 'products' ? ` (${tx('products + {pct}% of labor', { pct: d.depositPct })})` : d.depositPct ? ` (${d.depositPct}%)` : '');
 const findClient = (id) => db.clients.find((c) => c.id === id);
@@ -2664,6 +2665,12 @@ const EMAIL_TEMPLATES = {
     body: '# Your estimate is ready\n\nHello {{client_name}},\n\nThank you for asking us for an estimate on your project {{quote_title}}.\n\nThe estimate total is {{total}} as of {{sent_date}}. Ask for any changes you\x27d like. When it looks right, approve it and it becomes your quote to sign.\n\nIf you have any questions, please get in touch with us at {{company_email}}.\n\n[View estimate]({{link}})\n\nThank you,\n{{company_name}}',
     vars: { client_name: 'Client name', company_name: 'Your business name', company_email: 'Your business email', quote_number: 'Quote number', sent_date: 'Date the estimate is sent', quote_title: 'Quote title', total: 'Estimate total', link: 'Link to view and approve' },
   },
+  changeOrder: { // a change order on a job, sent for the client to sign
+    label: 'Change order', description: 'Sent when you send a change order on a job for the client to approve.',
+    subject: 'Change order {{co_number}} for job {{job_number}} from {{company_name}}',
+    body: '# Please approve a change to your job\n\nHello {{client_name}},\n\nWe have a change to job {{job_number}} ({{job_title}}) for you to approve: **{{co_title}}**, {{total}}.\n\nPlease review it and sign to approve it before we do the work. It will be added to your job and billed with it.\n\n[Review and sign]({{link}})\n\nIf you have any questions, please get in touch with us at {{company_email}}.\n\n{{company_name}}',
+    vars: { client_name: 'Client name', company_name: 'Your business name', company_email: 'Your business email', co_number: 'Change order number', co_title: 'Change order title', job_number: 'Job number', job_title: 'Job title', total: 'Change order total', link: 'Link to review and sign' },
+  },
   invoice: {
     label: 'Invoice', description: 'Sent when you send an invoice to a client.',
     subject: 'Invoice {{invoice_number}} from {{company_name}}',
@@ -2841,8 +2848,120 @@ function jobLines(j) {
   const q = j.quoteId && db.quotes.find((x) => x.id === j.quoteId); const own = !!(j.items && j.items.length);
   const items = own ? j.items : q && quoteItems(q).length ? quoteItems(q) : [{ desc: j.title, qty: 1, price: 0 }];
   const src = own ? j : q || {};
-  return { q, items: items.map((i) => ({ ...i })), taxRate: own ? j.taxRate : q ? q.taxRate : db.company.taxRate, discountType: src.discountType, discountValue: src.discountValue, discountName: src.discountName || '' };
+  const extra = coApproved(j).flatMap((co) => co.items.map((i) => ({ ...i, sub: false, details: [`${tx('Change order {number}', { number: co.number })}${co.title ? `: ${co.title}` : ''}`, i.details].filter(Boolean).join('\n') }))); // approved change orders are billed with the job
+  return { q, items: [...items.map((i) => ({ ...i })), ...extra], taxRate: own ? j.taxRate : q ? q.taxRate : db.company.taxRate, discountType: src.discountType, discountValue: src.discountValue, discountName: src.discountName || '' };
 }
+
+// ---------- Change orders: work added to (or taken off) a job, agreed with the client before it's done ----------
+// Each is its own record (db.changeOrders), numbered per job (CO-1, CO-2…), with its own line items at the job's tax rate.
+// draft → sent (the client gets a link to sign) → approved (signed on the team's phone or online, or marked approved by a manager) or declined.
+// Approved ones are locked and billed with the job: Create invoice bills the job's lines plus every approved change order's (jobLines).
+// A change that's been approved by mistake is undone with another change order (a negative price takes work off).
+const coList = () => (db.changeOrders = db.changeOrders || []);
+const jobCOs = (j) => coList().filter((c) => c.jobId === j.id);
+const coApproved = (j) => jobCOs(j).filter((c) => c.status === 'approved').sort((a, b) => (Number(String(a.number).replace(/\D/g, '')) || 0) - (Number(String(b.number).replace(/\D/g, '')) || 0)); // CO-1, CO-2… in order
+const coJob = (co) => db.jobs.find((j) => j.id === co.jobId);
+const coLink = (co) => `${baseUrl()}/p/co/${co.token}`;
+function coPrice(co, j) { // line items and totals at the job's tax rate, no discount. Totaled here, not by sumItems: a change that takes work off is negative
+  const t = computeTotals({ items: Array.isArray(co.items) ? co.items : [], taxRate: jobLinesBase(j).taxRate, discountValue: 0 });
+  const subtotal = round2(t.items.reduce((a, i) => a + i.qty * i.price, 0)); const tax = round2(subtotal * t.taxRate / 100);
+  Object.assign(co, { items: t.items, taxRate: t.taxRate, subtotal, tax, total: round2(subtotal + tax) }); return co;
+}
+const jobLinesBase = (j) => { const q = j.quoteId && db.quotes.find((x) => x.id === j.quoteId); const own = !!(j.items && j.items.length); return { taxRate: own ? j.taxRate : q ? q.taxRate : db.company.taxRate }; };
+function coFields(co, b) {
+  if ('title' in b) co.title = String(b.title || '').trim().slice(0, 120);
+  if ('reason' in b) co.reason = String(b.reason || '').trim().slice(0, 2000);
+  if ('items' in b) co.items = (Array.isArray(b.items) ? b.items : []).slice(0, 100).map((i) => ({ desc: String((i && i.desc) || '').trim().slice(0, 300), details: String((i && i.details) || '').slice(0, 1000), qty: Number(i && i.qty) || 0, cost: Number(i && i.price) || 0, markup: 0 })); // the price as typed (computeTotals makes it the line price)
+}
+const coProblem = (co) => (!co.items.length ? 'Add at least one line item' : co.items.some((i) => !(i.qty > 0)) ? 'Give every line item a quantity' : '');
+const coFind = (req, res) => { const co = coList().find((x) => x.id === req.params.id); if (!co) res.status(404).json({ error: 'Change order not found' }); return co; };
+// the business hears when the client signs or declines online
+function tellBusinessCO(co, what) {
+  const j = coJob(co); const c = findClient(co.clientId); const who = c ? c.name : 'A client'; const url = `/jobs/edit?id=${co.jobId}`;
+  const body = `${who} ${what} change order ${co.number}${co.title ? ` (${co.title})` : ''} on job ${j ? j.number : ''} · ${money(co.total)}`;
+  pushTo(usersWhoCan('jobs.edit'), 'quoteApproved', { title: `Change order ${what}`, body, url });
+  if (what === 'approved') slackSend('quoteApproved', `*Change order approved:* ${slack.esc(body)}`, { label: 'Open job', url: baseUrl() + url });
+  if (db.company.email) sendEmail(db.company.email, `Change order ${co.number} ${what} by ${who}`, `${body}\n\n${baseUrl()}${url}`).catch(() => {});
+}
+function coSign(co, { name, dataUrl, mode, collectedBy, via }) { // a signature (drawn or typed) approves it
+  const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl || '');
+  if (!m || m[1].length < 200) return 'Please sign in the box first';
+  if (m[1].length > 2e6) return 'That signature image is too large';
+  const file = `sig-${token()}.png`; fs.writeFileSync(path.join(uploadDir(), file), Buffer.from(m[1], 'base64')); // unguessable name: uploads are served without login
+  removeSignatureFile(co);
+  co.signature = { file: `/uploads/${file}`, name, method: mode === 'typed' ? 'typed' : 'drawn', via, collectedBy: collectedBy || '', signedAt: new Date().toISOString() };
+  co.status = 'approved'; co.approvedAt = co.signature.signedAt; co.approvedBy = via === 'online' ? name : collectedBy || name; delete co.declinedAt; return '';
+}
+app.get('/api/change-orders', (req, res) => res.json(coList()));
+app.post('/api/jobs/:id/change-orders', (req, res) => {
+  const j = db.jobs.find((x) => x.id === req.params.id); if (!j) return res.status(404).json({ error: 'Job not found' });
+  const n = jobCOs(j).reduce((m, c) => Math.max(m, Number(String(c.number).replace(/\D/g, '')) || 0), 0) + 1; const u = currentUser(req);
+  const co = { id: uid(), number: `CO-${n}`, jobId: j.id, clientId: j.clientId, status: 'draft', token: token(), createdAt: new Date().toISOString(), createdBy: u ? u.name : '', title: '', reason: '', items: [] };
+  coFields(co, req.body || {}); const bad = coProblem(co); if (bad) return res.status(400).json({ error: bad });
+  coPrice(co, j); coList().push(co); save(); res.status(201).json(co);
+});
+app.put('/api/change-orders/:id', (req, res) => {
+  const co = coFind(req, res); if (!co) return; if (co.status === 'approved') return res.status(400).json({ error: 'This change order is approved, so it can’t be changed. Add another change order instead.' });
+  const was = JSON.stringify([co.title, co.reason, co.items]); coFields(co, req.body || {}); const bad = coProblem(co); if (bad) return res.status(400).json({ error: bad });
+  if (co.status === 'declined' && JSON.stringify([co.title, co.reason, co.items]) !== was) { co.status = 'draft'; delete co.declinedAt; } // changed after a no: ready to ask again
+  coPrice(co, coJob(co) || {}); save(); res.json(co);
+});
+app.delete('/api/change-orders/:id', (req, res) => {
+  const co = coFind(req, res); if (!co) return; if (co.status === 'approved') return res.status(400).json({ error: 'An approved change order can’t be deleted. Add another change order to take the work off.' });
+  db.changeOrders = coList().filter((x) => x.id !== co.id); removeSignatureFile(co); save(); res.json({ ok: true });
+});
+// signed on the team member's phone or computer, with the client there
+app.post('/api/change-orders/:id/signature', (req, res) => {
+  const co = coFind(req, res); if (!co) return; if (co.status === 'approved') return res.status(400).json({ error: 'This change order is already approved' });
+  const name = String((req.body || {}).name || '').trim().slice(0, 100); if (!name) return res.status(400).json({ error: 'Enter the name of the person signing' });
+  const u = currentUser(req); const bad = coSign(co, { name, dataUrl: (req.body || {}).dataUrl, mode: 'drawn', collectedBy: u ? u.name : '', via: 'device' }); if (bad) return res.status(400).json({ error: bad });
+  save(); res.status(201).json(co);
+});
+// the client said yes or no some other way (a call, a text): owners, admins and managers record it
+const coMark = (what) => (req, res) => {
+  const co = coFind(req, res); if (!co) return; const u = currentUser(req);
+  if (!u || !(rolesLib.isAdminRole(u.role) || can(u, 'jobs.edit'))) return res.status(403).json({ error: 'Only people who can edit jobs can mark a change order approved or declined' });
+  if (co.status === 'approved') return res.status(400).json({ error: 'This change order is already approved' });
+  if (what === 'approve') Object.assign(co, { status: 'approved', approvedAt: new Date().toISOString(), approvedBy: u.name || '', approvedWithoutSignature: true });
+  else Object.assign(co, { status: 'declined', declinedAt: new Date().toISOString() });
+  save(); res.json(co);
+};
+app.post('/api/change-orders/:id/approve', coMark('approve')); app.post('/api/change-orders/:id/decline', coMark('decline'));
+// email the client a link to review and sign it
+app.post('/api/change-orders/:id/send', async (req, res) => {
+  const co = coFind(req, res); if (!co) return; if (co.status === 'approved') return res.status(400).json({ error: 'This change order is already approved' });
+  const c = findClient(co.clientId); const to = String((req.body || {}).to || (c && c.email) || '').trim(); if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return res.status(400).json({ error: 'Add the client’s email address first' });
+  const j = coJob(co) || {};
+  const m = inClientLang(co.clientId, () => renderEmail('changeOrder', { client_name: (c && c.name) || '', company_name: db.company.name, co_number: co.number, co_title: co.title || '', job_number: j.number || '', job_title: j.title || '', total: money(co.total), link: coLink(co) }));
+  const r = await notify({ clientId: co.clientId, channel: 'email', kind: 'changeOrder', refId: co.id, refNumber: co.number, subject: m.subject, body: m.body, html: m.html, to });
+  if (r && r.status === 'failed') { save(); return res.status(502).json({ error: r.detail || 'The email didn’t go out. Try again.' }); }
+  co.status = 'sent'; co.sentAt = new Date().toISOString(); delete co.declinedAt; save(); res.json(co);
+});
+// the client's page: the change, its price, and Sign to approve or Decline
+function coPage(co, msg = '') {
+  const j = coJob(co) || {}; const s = co.signature;
+  const st = co.status === 'approved' ? `<p><span class="badge paid">${tx('Approved')}</span> ${s ? tx('Signed by {name} on {date}', { name: esc(s.name), date: esc(niceDate(s.signedAt.slice(0, 10))) }) : esc(niceDate(String(co.approvedAt).slice(0, 10)))}</p>${s ? `<img src="${esc(s.file)}" alt="" style="max-height:80px">` : ''}`
+    : co.status === 'declined' ? `<p><span class="badge">${tx('Declined')}</span> ${tx('You declined this change. Get in touch with us if you change your mind.')}</p>`
+      : quoteSignBox(co, { action: `/p/co/${esc(co.token)}/sign`, title: tx('Approve this change'), intro: tx('Sign below to approve this change and its price. It’s added to your job and billed with it.'), button: tx('Sign and approve') })
+        + `<form method="post" action="/p/co/${esc(co.token)}/decline" onsubmit="return confirm(this.dataset.ask)" data-ask="${esc(tx('Decline this change?'))}" style="text-align:center;margin-top:12px"><button class="btn alt">${tx('Decline')}</button></form>`;
+  return shell(tx('Change order {number}', { number: co.number }), `${msg ? `<p class="badge paid" role="status">${esc(msg)}</p>` : ''}<h1>${tx('Change order {number}', { number: esc(co.number) })}${co.title ? ` · ${esc(co.title)}` : ''}</h1>
+<p class="muted">${tx('Job {number}', { number: esc(j.number || '') })}${j.title ? ` · ${esc(j.title)}` : ''}${j.address ? `<br>${esc(j.address)}` : ''}</p>${co.reason ? `<p style="white-space:pre-line">${esc(co.reason)}</p>` : ''}${itemsTable(co)}${st}`);
+}
+app.use('/p/co', express.urlencoded({ extended: false })); // the client's Sign form (the other /p pages get theirs further down)
+app.get('/p/co/:token', (req, res) => { const co = coList().find((x) => x.token === req.params.token); if (!co) return res.status(404).send(shell(tx('Not found'), `<h1>${tx('Not found')}</h1><p>${tx('This change order was removed.')}</p>`)); if (co.status === 'sent' && !co.viewedAt) { co.viewedAt = new Date().toISOString(); save(); } res.send(coPage(co, req.query.done === 'signed' ? tx('Thank you. The change is approved.') : '')); });
+app.post('/p/co/:token/sign', (req, res) => {
+  const co = coList().find((x) => x.token === req.params.token); if (!co) return res.status(404).send('Not found');
+  if (co.status === 'approved') return res.redirect(`/p/co/${co.token}`); // a double submit
+  const name = String((req.body || {}).fullName || '').trim().slice(0, 100);
+  const bad = !name ? 'Please type your full name.' : coSign(co, { name, dataUrl: req.body.dataUrl, mode: req.body.sigMode, via: 'online' });
+  if (bad) return res.status(400).send(coPage(co, tx(bad)));
+  save(); tellBusinessCO(co, 'approved'); res.redirect(`/p/co/${co.token}?done=signed`);
+});
+app.post('/p/co/:token/decline', (req, res) => {
+  const co = coList().find((x) => x.token === req.params.token); if (!co) return res.status(404).send('Not found');
+  if (co.status !== 'approved' && co.status !== 'declined') { co.status = 'declined'; co.declinedAt = new Date().toISOString(); save(); tellBusinessCO(co, 'declined'); }
+  res.redirect(`/p/co/${co.token}`);
+});
 
 // how much of a job is invoiced: its value (what Create invoice bills for it), what its invoices already bill (late fees aside; a combined
 // batch invoice counts only this job's lines, with tax), and what's left to invoice; paid: invoiced in full and nothing left to pay
@@ -3884,20 +4003,20 @@ ${q.notes ? `<div class="qv-text">${esc(q.notes)}</div>` : ''}${q.disclaimer ? `
 ${act.trim() ? `<div class="qv-act">${act}</div>` : ''}</div></main></div></div>${poweredBy.html('quote', tx)}<script src="/phone.js?v=2" defer></script></body></html>`;
 }
 // the client signs by drawing (finger, stylus or mouse) or by typing their name, which is written out in a script font; posted as a PNG data URL
-function quoteSignBox(q) {
+function quoteSignBox(q, o = {}) { // o: another document signed the same way (a change order): its form action, heading, line and button
   const tab = 'flex:1;padding:8px;border:0;font-size:15px;cursor:pointer;background:transparent;color:#374151';
   return `<div style="background:#f0fdf4;padding:16px;border-radius:8px;margin-top:16px;border:1px solid #86efac">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600&display=swap">
-<h3 style="margin-top:0">${tx('Next step: Review and sign')}</h3>
-<p>${tx('To proceed with this quote, please review the terms and sign below.')}</p>
-<form method="post" action="/p/quote/${esc(q.token)}/sign" id="sigForm">
+<h3 style="margin-top:0">${o.title || tx('Next step: Review and sign')}</h3>
+<p>${o.intro || tx('To proceed with this quote, please review the terms and sign below.')}</p>
+<form method="post" action="${o.action || `/p/quote/${esc(q.token)}/sign`}" id="sigForm">
 <div role="tablist" style="display:flex;gap:4px;padding:4px;background:#e5e7eb;border-radius:8px;margin-bottom:8px"><button type="button" role="tab" data-mode="drawn" style="${tab}">${tx('Draw')}</button><button type="button" role="tab" data-mode="typed" style="${tab}">${tx('Type')}</button></div>
 <div style="position:relative;height:200px;background:#fff;border:1px solid #d1d5db;border-radius:8px;margin-bottom:6px;overflow:hidden"><canvas aria-label="${tx('Signature pad')}" style="position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair"></canvas>
 <span style="position:absolute;left:20px;right:20px;bottom:46px;border-bottom:1.5px solid #cbd5e1;pointer-events:none"></span><span id="sigHint" style="position:absolute;left:20px;bottom:52px;color:#94a3b8;font-size:14px;pointer-events:none">${tx('Sign here with your finger or mouse')}</span></div>
 <div style="text-align:right;margin-bottom:8px;min-height:20px"><button type="button" id="sigClear" style="background:none;border:0;color:#2563eb;cursor:pointer;font-size:14px">${tx('Clear')}</button></div>
 <input type="hidden" name="dataUrl"><input type="hidden" name="sigMode" value="drawn"><label class="muted" for="sigName">${tx('Full name')}</label><input type="text" id="sigName" name="fullName" placeholder="${tx('Full name')}" required maxlength="100" autocomplete="name" value="${esc(findClient(q.clientId)?.name || '')}">
 <p id="sigErr" style="color:#dc2626;margin:0 0 8px;display:none"></p>
-<button class="btn">${tx('Sign agreement')}</button>
+<button class="btn">${o.button || tx('Sign agreement')}</button>
 </form></div>
 <script>(function(){var T=${JSON.stringify({ draw: tx('Sign here with your finger or mouse'), type: tx('Type your name below'), noName: tx('Please type your full name.'), noSig: tx('Please sign in the box first, or choose Type.') }).replace(/</g, '\\u003c')},f=document.getElementById('sigForm'),cv=f.querySelector('canvas'),x=cv.getContext('2d'),hint=document.getElementById('sigHint'),err=document.getElementById('sigErr'),clr=document.getElementById('sigClear'),nm=f.fullName,tabs=f.querySelectorAll('[data-mode]'),mode='drawn',inked=false,last=null,dpr=Math.max(1,Math.min(3,window.devicePixelRatio||1)),W,H;
 var r0=cv.getBoundingClientRect();W=r0.width;H=r0.height;cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);x.setTransform(dpr,0,0,dpr,0,0);x.lineWidth=2.4;x.lineCap='round';x.lineJoin='round';x.strokeStyle=x.fillStyle='#111827';

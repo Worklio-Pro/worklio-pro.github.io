@@ -2959,3 +2959,12 @@ body.p404-only #billingBar{display:none!important}
 .qc .ms .ms-list{position:static;margin:10px -6px 2px;box-shadow:none;max-height:220px}
 /* Clocked in: next to someone on a job's or site visit's team who is on the clock for it right now */
 .clk-flag{display:inline-flex;align-items:center;margin-left:8px;padding:2px 8px;border-radius:99px;font-size:12px;font-weight:600;white-space:nowrap;background:var(--ok-bg,rgba(22,163,74,.14));color:var(--ok-fg,#15803d)}
+/* change orders on a job: the card's rows, the editor's line items and the popup's actions */
+.co-row{display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;padding:12px 0;border:0;border-bottom:1px solid var(--line);background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.co-row:hover .co-l strong{text-decoration:underline}.co-l{display:flex;flex-direction:column;gap:2px;min-width:0}.co-l strong{overflow-wrap:anywhere}
+.co-r{display:flex;align-items:center;gap:10px;white-space:nowrap;font-variant-numeric:tabular-nums}.co-empty{margin:0}
+.co-sum{display:flex;justify-content:space-between;padding:10px 0 0;font-size:14px;font-variant-numeric:tabular-nums}.co-grand{font-weight:700}
+.co-its{display:flex;flex-direction:column;gap:6px;margin:4px 0}.co-ith,.co-it{display:grid;grid-template-columns:minmax(0,1fr) 70px 110px 32px;gap:6px;align-items:center}
+.co-ith{font-size:13px;color:var(--muted);font-weight:600}.co-it input{width:100%;min-width:0;box-sizing:border-box}.co-tot{margin:8px 0 0 auto;max-width:360px}
+.co-vh{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.co-vt{margin:12px 0 4px}.co-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}.co-more{align-items:center;margin-top:10px}
+@media (max-width:600px){.co-ith,.co-it{grid-template-columns:minmax(0,1fr) 54px 84px 28px}.co-r{flex-direction:column;align-items:flex-end;gap:4px}}
