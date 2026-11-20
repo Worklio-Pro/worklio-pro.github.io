@@ -2573,13 +2573,21 @@ function quoteOptionsEditor(form, d) {
     const sum = $('.qo-sum', box); if (!sum || !opts) return; const shown = shownId();
     sum.innerHTML = opts.map((o, i) => { const t = calc(items.filter((x) => !x.opt || x.opt === o.id)); const dep = depOf(o, t); return `<span class="${o.id === shown ? 'on' : ''}">${esc(nameOf(o, i))}<b>${money(t.total)}</b>${dep ? `<em class="qo-sd">· deposit ${money(dep)}</em>` : ''}</span>`; }).join('') + `<small class="muted">The totals below are for ${esc(nameOf(opts.find((o) => o.id === shown), opts.findIndex((o) => o.id === shown)))}.</small>`;
   };
+  // with options on, each option has its own deposit and the quote's Deposit row is hidden: its amount moves into any option without one (kept to put back
+  // if options are turned off), so a blank option deposit means no deposit
+  const depIn = $('[name=depositValue]', form); const depTy = $('[name=depositType]', form); let qDep = null;
+  const takeQuoteDep = () => { if (!opts || !depIn || !(Number(depIn.value) > 0)) return; qDep = { v: depIn.value, t: depTy ? depTy.value : 'flat' };
+    opts.forEach((o) => { if (o.depositValue === '' || o.depositValue == null) { o.depositValue = qDep.v; o.depositType = qDep.t; } }); depIn.value = ''; };
+  const showDepRow = () => { const row = depIn && depIn.closest('.tl'); if (!row) return; row.hidden = !!opts;
+    if (!opts && qDep && !depIn.value) { depIn.value = qDep.v; if (depTy) depTy.value = qDep.t; discShow(row, true); qDep = null; } };
   const draw = () => {
+    takeQuoteDep(); showDepRow();
     box.innerHTML = !opts ? '<button type="button" class="btn alt sm qo-on" data-q="on">Offer options (Good / Better / Best)</button>'
       : `<div class="qo-list">${opts.map((o, i) => `<div class="qo-row" data-o="${o.id}"><span class="qo-n">${i + 1}</span><input class="qo-name" maxlength="40" value="${esc(o.name)}" placeholder="${OPT_NAMES[i]}" aria-label="Option ${i + 1} name">
 <input class="qo-desc" maxlength="500" value="${esc(o.desc || '')}" placeholder="What’s included (optional)" aria-label="Option ${i + 1}: what’s included">${optDepInput(o, i)}<label class="qo-r"><input type="radio" name="qoRec" value="${o.id}" ${rec === o.id ? 'checked' : ''}> Recommended</label>
 ${opts.length > 2 ? `<button type="button" class="icon-btn qo-rm" data-q="rm" aria-label="Remove option ${i + 1}" title="Remove this option">${TRASH}</button>` : '<span></span>'}</div>`).join('')}</div>
 <div class="qo-acts">${opts.length < 3 ? '<button type="button" class="link-btn" data-q="add">+ Add option</button>' : ''}<button type="button" class="link-btn" data-q="off">Turn off options</button></div>
-<p class="muted sm qo-hint">Pick each line item’s option below. Items set to “All options” are in every option, like a service call fee. Leave an option’s deposit blank to use the quote’s deposit.</p><div class="qo-sum"></div>`;
+<p class="muted sm qo-hint">Pick each line item’s option below. Items set to “All options” are in every option, like a service call fee. Leave an option’s deposit blank for no deposit on that option.</p><div class="qo-sum"></div>`;
     syncSelects(); syncChosen(); recalc(form);
   };
   box.addEventListener('input', (e) => { const r = e.target.closest('.qo-row'); if (!r) return; const o = opts.find((x) => x.id === r.dataset.o);
@@ -2601,12 +2609,13 @@ ${opts.length > 2 ? `<button type="button" class="icon-btn qo-rm" data-q="rm" ar
 // phones: the quote's options, from the Options section of the quote page
 function mQuoteOptions(kind, d) {
   let opts = qHasOpts(d) ? d.options.map((o) => ({ ...o })) : [{ id: optId(), name: OPT_NAMES[0], desc: '' }, { id: optId(), name: OPT_NAMES[1], desc: '' }]; let rec = d.recommended || '';
+  const qv = d.depositValue ?? (d.depositType === 'flat' || !d.depositType ? d.depositFee : null); if (Number(qv) > 0) opts.forEach((o) => { if (o.depositValue === '' || o.depositValue == null) { o.depositValue = qv; o.depositType = d.depositType || 'flat'; } }); // the quote's deposit moves into each option
   const itemOpt = (d.items || []).map((i) => i.opt || ''); // each line item's option, set here too, so a sent quote's options save with their items in one go
   const f = mSheet('Options', '<div class="mqo"></div>', { full: true, foot: `${mSaveBtn('Save options')}${qHasOpts(d) ? '<button type="button" class="btn alt" data-q="off">Turn off</button>' : ''}` });
   const box = $('.mqo', f);
   const draw = () => { box.innerHTML = `<p class="muted mqo-p">Offer the client ${opts.length} options, like Good, Better and Best. They pick one when they approve. Then give each line item its option.</p>
 ${opts.map((o, i) => `<div class="mqo-o" data-o="${o.id}"><div class="mqo-oh"><strong>Option ${i + 1}</strong>${opts.length > 2 ? `<button type="button" class="link-btn" data-q="rm">Remove</button>` : ''}</div>
-${mField('Name', `<input class="qo-name" maxlength="40" value="${esc(o.name)}" placeholder="${OPT_NAMES[i]}">`)}${mField('What’s included', `<textarea class="qo-desc" rows="2" maxlength="500" placeholder="Optional">${esc(o.desc || '')}</textarea>`)}${mField('Deposit', `${optDepInput(o, i)}<small class="muted">Leave blank to use the quote’s deposit.</small>`)}
+${mField('Name', `<input class="qo-name" maxlength="40" value="${esc(o.name)}" placeholder="${OPT_NAMES[i]}">`)}${mField('What’s included', `<textarea class="qo-desc" rows="2" maxlength="500" placeholder="Optional">${esc(o.desc || '')}</textarea>`)}${mField('Deposit', `${optDepInput(o, i)}<small class="muted">Leave blank for no deposit on this option.</small>`)}
 <label class="jf-share"><input type="radio" name="qoRec" value="${o.id}" ${rec === o.id ? 'checked' : ''}><span>Recommended</span></label></div>`).join('')}
 ${opts.length < 3 ? '<button type="button" class="btn alt" data-q="add">+ Add option</button>' : ''}
 ${(d.items || []).length ? `<h3 class="mqo-ih">Line items</h3><p class="muted mqo-p">Pick each item’s option. “All options” items are in every option.</p>${d.items.map((it, k) => mField(esc(it.desc), `<select class="mqo-io" data-k="${k}"><option value="">All options</option>${opts.map((o, i) => `<option value="${o.id}" ${itemOpt[k] === o.id ? 'selected' : ''}>${esc(o.name.trim() || OPT_NAMES[i])}</option>`).join('')}</select>`)).join('')}` : ''}`; };
@@ -2621,7 +2630,7 @@ ${(d.items || []).length ? `<h3 class="mqo-ih">Line items</h3><p class="muted mq
   });
   onSubmit(f, () => {
     const items = (d.items || []).map((i, k) => ({ ...i, opt: opts.some((o) => o.id === itemOpt[k]) ? itemOpt[k] : '' }));
-    return mSave(kind, d, { options: opts.map((o, i) => ({ id: o.id, name: o.name.trim() || OPT_NAMES[i], desc: (o.desc || '').trim(), ...optDepBody(o) })), recommended: rec, items }, 'Options saved');
+    return mSave(kind, d, { options: opts.map((o, i) => ({ id: o.id, name: o.name.trim() || OPT_NAMES[i], desc: (o.desc || '').trim(), ...optDepBody(o) })), recommended: rec, items, depositType: 'flat', depositValue: 0 }, 'Options saved');
   });
 }
 // Estimate first: the client approves the price with no signature or deposit, then it becomes the quote to sign and pay (on the same page)
@@ -3281,7 +3290,7 @@ function mobileDocPage(kind, d) {
     + mTapRow(kind, d, 'discount', d.discount ? esc(discLabel(d)) : 'Discount', d.discount ? '−' + money(d.discount) : money(0))
     + mTapRow(kind, d, 'tax', `Tax${Number(d.taxRate) ? ` (${d.taxRate}%)` : ''}`, money(d.tax || 0))
     + mRow('Total', money(d.total || 0), 'grand')
-    + (q ? mTapRow(kind, d, 'deposit', 'Required deposit', money(d.depositFee || 0))
+    + (q ? (qHasOpts(d) ? '' : mTapRow(kind, d, 'deposit', 'Required deposit', money(d.depositFee || 0))) // with options, each option has its own deposit
       + (d.depositPaidAt ? mRow(payLink('q-' + d.id, 'Deposit collected', d.depositPaidAt), '−' + money(paid)) + mRow('Outstanding deposit', money(Math.max(0, round2((d.depositFee || 0) - paid)))) : '')
       : (d.depositApplied ? mRow(payLink('q-' + d.depositQuoteId, 'Deposit collected', d.depositAppliedAt), '−' + money(d.depositApplied)) : '')
       + (d.referralCredits || []).filter((r) => r.amount > 0).map((r) => mRow('Referral credit', '−' + money(r.amount))).join('')
