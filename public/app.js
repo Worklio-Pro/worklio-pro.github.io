@@ -4645,28 +4645,51 @@ const jvSwitch = (on) => (canSurvey() || svList().length ? `<div class="jv-switc
 A.jobKind = (d) => { jobView = { ...jobView, kind: d.k }; jobSel.clear(); if (curPath() === '/jobs') refresh(); else navigate('/jobs'); };
 A.svTab = (d) => { svView = { ...svView, status: d.s, picked: true, sort: 'urgent', dir: 1 }; refresh(); };
 A.svSort = (d) => { svView.dir = svView.sort === d.k ? -svView.dir : (['client', 'status'].includes(d.k) ? 1 : -1); svView.sort = d.k; refresh(); };
-// Reschedule: the calendar's pop-up for the visit (date, time, who; Delete)
-// Edit the scheduled visit (the pencil on its page, Reschedule, or tapping Scheduled visit on a phone): the day, times, who goes and the
-// instructions. Owners, admins and managers only, like the rest of the calendar. A new day or time emails the client (the server does that).
+// Edit the scheduled visit (the pencil on its page, or Reschedule): the day, times, who goes and the instructions. Owners, admins and managers
+// only, like the rest of the calendar. On computers the Scheduled Visit box turns into the form right on the page, as on the job page; phones get
+// a sheet. A new day or time emails the client (the server does that).
+let svEditId = null; // the site visit whose Scheduled Visit box is open for editing
 A.svOpen = (d) => {
   const t = byId(D.tasks, d.id); if (!t) return; if (!canCal()) return toast('Only owners, admins and managers can change site visits', true);
+  if (phoneMq.matches) return svEditModal(t);
+  svEditId = t.id; if (curPath() === '/jobs/site-visit' && qp('id') === t.id) refresh(); else navigate('/jobs/site-visit?id=' + t.id);
+};
+A.svEditCancel = () => { svEditId = null; refresh(); };
+// who can be picked: the people clients can book (App Settings → Site visits), else the active team, plus anyone already on it
+const svPeople = (t) => { const base = company.surveyPeople && company.surveyPeople.length ? company.surveyPeople.map((p) => byId(D.staff, p.id)).filter(Boolean) : D.staff.filter(staffActive);
+  return [...base, ...(t.staffIds || []).map((id) => byId(D.staff, id)).filter((s) => s && !base.includes(s))]; };
+const svMovedNote = (t) => (svClient(t).email ? 'If you change the day or time, the client gets an email with the new time.' : 'This client has no email address, so they won’t be told about a new time.');
+// the Scheduled Visit box in edit mode, laid out like the job page's
+const svVisitForm = (t) => `<form class="qcard sv-vf" id="svVf" data-id="${t.id}"><h2>Scheduled visit</h2><div class="row3"><label>Date<input type="date" name="date" required value="${esc(t.date)}"></label>
+<label>Start<input type="time" name="startTime" required value="${esc(t.startTime || '09:00')}"></label><label>End<input type="time" name="endTime" required value="${esc(t.endTime || '10:00')}"></label></div>
+<div class="muted qlabel">Assigned team</div><div class="team-pick">${svPeople(t).map((s) => `<label><input type="checkbox" name="staff" value="${s.id}" ${(t.staffIds || []).includes(s.id) ? 'checked' : ''}>${avatarHtml(s, 24)}${esc(s.name)}</label>`).join('') || '<span class="muted">Add team members on Manage Team first</span>'}</div>
+<label>Instructions<textarea name="description" rows="3" maxlength="2000" placeholder="What the team needs to know for this visit">${esc(t.description || '')}</textarea></label>
+<p class="muted" style="font-size:13px;margin:6px 0 0">${svMovedNote(t)}</p>
+<div class="foot sec-foot"><button type="button" class="btn alt" data-act="svEditCancel">Cancel</button><button class="btn">Save</button></div></form>`;
+async function svSaveVisit(t, b, btn) {
+  if (!b.staffIds.length) return toast('Pick who goes', true);
+  if (b.endTime <= b.startTime) return toast('The end time must be after the start time', true);
+  btn.disabled = true;
+  try { await api('PUT', '/api/tasks/' + t.id, b); svEditId = null; closeModal(); toast(b.date !== t.date || b.startTime !== t.startTime ? 'Site visit moved' + (svClient(t).email ? ': the client was emailed the new time' : '') : 'Site visit saved'); refresh(); }
+  catch (x) { btn.disabled = false; toast(x.message, true); }
+}
+document.addEventListener('submit', (e) => {
+  if (e.target.id !== 'svVf') return; e.preventDefault(); const fm = e.target; const t = byId(D.tasks, fm.dataset.id); if (!t) return;
+  svSaveVisit(t, { date: fm.date.value, startTime: fm.startTime.value, endTime: fm.endTime.value, staffIds: $$('[name=staff]:checked', fm).map((x) => x.value), description: fm.description.value.trim() }, $('.foot .btn:not(.alt)', fm));
+});
+// phones: the same fields in a sheet
+function svEditModal(t) {
   const people = company.surveyPeople && company.surveyPeople.length ? company.surveyPeople : D.staff.filter(staffActive).map((x) => ({ id: x.id, name: x.name }));
   const cur = (t.staffIds || [])[0] || ''; const list = cur && !people.some((p) => p.id === cur) ? [...people, { id: cur, name: (byId(D.staff, cur) || {}).name || 'Former team member' }] : people;
   const m = modal('Scheduled visit', `<form id="svEd"><div class="row"><label>Date<input type="date" name="date" required value="${esc(t.date)}"></label></div>
 <div class="row"><label>Start<input type="time" name="startTime" required value="${esc(t.startTime || '09:00')}"></label><label>End<input type="time" name="endTime" required value="${esc(t.endTime || '10:00')}"></label></div>
 <label>Who goes<select name="staff" required>${list.map((p) => `<option value="${esc(p.id)}" ${p.id === cur ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
 <label>Instructions<textarea name="description" rows="3" maxlength="2000" placeholder="For whoever goes: gate code, what to look at…">${esc(t.description || '')}</textarea></label>
-<p class="muted" style="font-size:13px;margin:4px 0 0">${svClient(t).email ? 'If you change the day or time, the client gets an email with the new time.' : 'This client has no email address, so they won’t be told about a new time.'}</p>
+<p class="muted" style="font-size:13px;margin:4px 0 0">${svMovedNote(t)}</p>
 <div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save</button></div></form>`);
   const fm = $('#svEd', m);
-  fm.addEventListener('submit', async (e) => {
-    e.preventDefault(); const b = { date: fm.date.value, startTime: fm.startTime.value, endTime: fm.endTime.value, staffIds: [fm.staff.value], description: fm.description.value.trim() };
-    if (b.endTime <= b.startTime) return toast('The end time must be after the start time', true);
-    const btn = $('.foot .btn:not(.alt)', fm); btn.disabled = true;
-    try { await api('PUT', '/api/tasks/' + t.id, b); closeModal(); toast(b.date !== t.date || b.startTime !== t.startTime ? 'Site visit moved' + (svClient(t).email ? ': the client was emailed the new time' : '') : 'Site visit saved'); refresh(); }
-    catch (x) { btn.disabled = false; toast(x.message, true); }
-  });
-};
+  fm.addEventListener('submit', (e) => { e.preventDefault(); svSaveVisit(t, { date: fm.date.value, startTime: fm.startTime.value, endTime: fm.endTime.value, staffIds: [fm.staff.value], description: fm.description.value.trim() }, $('.foot .btn:not(.alt)', fm)); });
+}
 A.svQuoteOpen = (d) => navigate('/quotes/view?id=' + d.id);
 A.svPage = (d) => navigate('/jobs/site-visit?id=' + d.id);
 // New Site Visit: the calendar's quick pop-up, on its Site visit tab
@@ -4705,6 +4728,7 @@ A.svDelNote = async (d) => {
   await api('DELETE', `/api/site-visits/${t.id}/notes/${d.n}`); toast('Note deleted'); refresh();
 };
 function renderSiteVisits(main) {
+  svEditId = null; // back on the list: no visit stays open for editing
   const v = svView; const all = svList();
   if (!v.picked) v.status = all.some(svNeedsAction) ? 'action' : 'all';
   const ago = (n) => ymd(addDays(new Date(), -n)); const ahead = (n) => ymd(addDays(new Date(), n));
@@ -4792,9 +4816,9 @@ ${svQuoteUnsent(q) ? `<p class="muted svq-tip">${t.done ? 'Update the prices fro
 <div class="qhead"><div class="qclient"><div class="vclient"><span>${esc(c.name || c.company || 'No client')}</span>${c.id ? clientMenu(c) : ''}</div><div class="muted qlabel">Property address</div><div class="qaddr">${esc(t.address || c.address || '') || none('No address on file')}</div>${dirLink(t.address || c.address || '')}
 ${c.phone || c.email ? `<div class="vclient-c">${c.phone ? `<a href="tel:${esc(c.phone)}">${esc(fmtUsPhone(c.phone))}</a>` : ''}${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ''}</div>` : ''}</div>
 <dl class="qmeta"><dt>Booked</dt><dd>${t.survey.bookedAt ? fmtDate(t.survey.bookedAt.slice(0, 10)) : t.createdAt ? fmtDate(t.createdAt.slice(0, 10)) : '—'}</dd><dt>For quote</dt><dd>${q ? `<a href="/quotes/view?id=${q.id}" data-link>${esc(q.number)}</a>` : none('—')}</dd>${t.done && t.completedAt ? `<dt>Completed</dt><dd>${fmtDate(t.completedAt.slice(0, 10))}</dd>` : ''}</dl></div></div>
-<div class="qcard"><div class="qcard-h"><h2>Scheduled Visit</h2>${canCal() ? `<button type="button" class="icon-btn sec-edit" data-act="svOpen" data-id="${t.id}" title="Edit scheduled visit" aria-label="Edit scheduled visit">${PENCIL}</button>` : ''}</div><dl class="qmeta vvisit"><dt>When</dt><dd>${esc(fmtDate(t.date))}, ${esc(fmtTime(t.startTime))} – ${esc(fmtTime(t.endTime))}</dd>
+${svEditId === t.id && canCal() ? svVisitForm(t) : `<div class="qcard"><div class="qcard-h"><h2>Scheduled Visit</h2>${canCal() ? `<button type="button" class="icon-btn sec-edit" data-act="svOpen" data-id="${t.id}" title="Edit scheduled visit" aria-label="Edit scheduled visit">${PENCIL}</button>` : ''}</div><dl class="qmeta vvisit"><dt>When</dt><dd>${esc(fmtDate(t.date))}, ${esc(fmtTime(t.startTime))} – ${esc(fmtTime(t.endTime))}</dd>
 <dt>Who</dt><dd>${team.length ? `<span class="vteam">${team.map((s) => `<span>${avatarHtml(s, 24)}${esc(s.name)}</span>`).join('')}</span>` : none('Nobody assigned')}</dd>
-<dt>Instructions</dt><dd>${t.description ? `<p class="vtext">${esc(t.description)}</p>` : none('None')}</dd></dl></div>
+<dt>Instructions</dt><dd>${t.description ? `<p class="vtext">${esc(t.description)}</p>` : none('None')}</dd></dl></div>`}
 <div class="qcard"><div class="qcard-h"><h2>Visit notes</h2></div><p class="muted" style="margin-top:0">What you saw on site: measurements, problems, what the quote needs. Clients never see these.</p>
 <textarea id="svNote" rows="3" maxlength="5000" placeholder="${t.done ? 'Add a note from the visit' : 'Add a note (you can add more after the visit)'}"></textarea><div style="display:flex;justify-content:flex-end;margin-top:8px"><button type="button" class="btn" data-act="svAddNote" data-id="${t.id}">Add note</button></div>
 ${notes.length ? `<ul class="sv-notes">${notes.map((n) => `<li><div class="sv-n-h"><strong>${esc(n.by || 'Someone')}</strong><span class="muted">${esc(fmtDate(n.at.slice(0, 10)))} ${esc(fmtTime(new Date(n.at).toTimeString().slice(0, 5)))}</span>${canDo('jobs.edit') || (me && n.byId === me.id) ? `<button type="button" class="link-btn" data-act="svDelNote" data-id="${t.id}" data-n="${esc(n.id)}" aria-label="Delete note">Delete</button>` : ''}</div><p class="vtext">${esc(n.text)}</p></li>`).join('')}</ul>` : ''}</div></div>
