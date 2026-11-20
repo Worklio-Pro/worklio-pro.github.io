@@ -2001,6 +2001,16 @@ function socialUrl(k, v) {
   const u = /^https?:\/\//i.test(v) ? v : /^[\w.-]+\.[a-z]{2,}(\/\S*)?$/i.test(v) ? 'https://' + v : ''; // "facebook.com/page" without https://
   try { const p = new URL(u); return ['http:', 'https:'].includes(p.protocol) && p.hostname.includes('.') ? p.href : ''; } catch (e) { return ''; }
 }
+// Settings → How You Work: which steps the business uses. A preset (simple: quote → job → invoice; standard: + change orders and sign-off;
+// full: every step) or custom switches. Steps that are off are hidden in the app (a single job can still use them from its More menu).
+// No workflow saved (older accounts) means every step shows. Estimate first also sets the default for new quotes (quoteEstimateFirst).
+const FLOW_STEPS = ['estimate', 'siteVisit', 'workOrder', 'changeOrders', 'signoff'];
+const FLOW_PRESETS = { simple: [], standard: ['changeOrders', 'signoff'], full: FLOW_STEPS };
+function cleanWorkflow(w) {
+  const preset = [...Object.keys(FLOW_PRESETS), 'custom'].includes(w.preset) ? w.preset : 'custom'; const on = (k) => (preset === 'custom' ? !!(w.steps || {})[k] : FLOW_PRESETS[preset].includes(k));
+  const steps = Object.fromEntries(FLOW_STEPS.map((k) => [k, on(k)])); if (!steps.estimate) steps.siteVisit = false; // a site visit comes after an estimate
+  return { preset, steps, team: w.team === 'solo' || w.team === 'team' ? w.team : '', at: new Date().toISOString() };
+}
 app.put('/api/company', (req, res) => {
   if (!tenancy.has('branding')) { delete req.body.brandColor; delete req.body.accentColor; } // custom branding is a plan feature
   if (req.body.accentColor && !/^#[0-9a-f]{6}$/i.test(req.body.accentColor)) return res.status(400).json({ error: 'Choose a valid accent color' });
@@ -2037,6 +2047,7 @@ app.put('/api/company', (req, res) => {
   if (b.lateFee && typeof b.lateFee === 'object') { try { db.company.lateFee = cleanLateFee(b.lateFee, db.company.lateFee); } catch (e) { return res.status(400).json({ error: e.message }); } }
   if ((b.teamLocation === true || b.teamLocation === 'on' || b.teamLocation === 'true') && !tenancy.has('teamLocation')) return res.status(403).json({ error: 'Team location isn’t included in your plan' });
   if (b.survey && typeof b.survey === 'object') db.company.survey = cleanSurvey(b.survey); // App Settings → Site visits
+  if (b.workflow && typeof b.workflow === 'object') { db.company.workflow = cleanWorkflow(b.workflow); db.company.quoteEstimateFirst = db.company.workflow.steps.estimate; delete b.quoteEstimateFirst; } // Settings → How You Work
   for (const k of ['addressPrivate', 'showHours', 'teamLocation', 'quoteEstimateFirst']) if (k in b) db.company[k] = b[k] === true || b[k] === 'on' || b[k] === 'true';
   // App Settings → Defaults → Deposit on new quotes: $ / % / products + % of labor, and the amount (0: no deposit)
   if ('quoteDepositType' in b) db.company.quoteDepositType = DEP_TYPES.includes(b.quoteDepositType) ? b.quoteDepositType : 'flat';

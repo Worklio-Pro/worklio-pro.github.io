@@ -2975,3 +2975,9 @@ body.p404-only #billingBar{display:none!important}
 .ver-row{flex-direction:column;align-items:flex-start;gap:2px}.ver-row small{display:block}.ver-row:hover span:first-child{text-decoration:underline}
 .est-rng{margin-top:12px}.est-rl{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:14px}.est-rl input{width:70px}
 .wo-done{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+/* Settings → How You Work: presets and steps, and the first-run question */
+.flow-pg{max-width:760px}.flow-presets{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin:14px 0}
+.flow-pre{display:flex;flex-direction:column;gap:4px;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);color:inherit;font:inherit;text-align:left;cursor:pointer}
+.flow-pre:hover{border-color:var(--brand,#2563eb)}.flow-pre.on{border-color:var(--brand,#2563eb);box-shadow:0 0 0 1px var(--brand,#2563eb)}.flow-pre strong{font-size:15px}
+.flow-h{margin:18px 0 6px;font-size:17px;display:flex;align-items:center;gap:8px}.flow-steps{display:flex;flex-direction:column}.flow-step{padding:12px 0;border-bottom:1px solid var(--line)}
+.flow-step.off{opacity:.55}.flow-unset{margin:0 0 4px;font-size:14px;font-weight:600}

@@ -210,8 +210,8 @@ const NAV = [
   ['Records', [['/project-gallery', 'Project Gallery'], ['/notifications', 'Notifications Log']]],
 ];
 // the Settings pages open in their own sidebar column (Settings at the bottom of the sidebar), in these groups
-const SETTINGS_NAV = [['/settings/company', 'Company Profile'], ['/settings/business-page', 'Business Page'], ['/team', 'Manage Team'], ['/requests', 'Team Requests'], ['/settings/roles', 'Roles & Permissions'], ['/settings/emails', 'Email Templates'], ['/settings/job-forms', 'Checklists & Forms'], ['/settings', 'App Settings'], ['/settings/preferences', 'Preferences'], ['/settings/import-export', 'Import & Export'], ['/settings/connections', 'Account Connections'], ['/settings/booking', 'Online Booking'], ['/settings/accounting', 'QuickBooks & Xero'], ['/marketplace', 'App Marketplace'], ['/settings/billing', 'Account and Billing'], ['/rewards', 'Refer & Earn'], ['/settings/support-access', 'Support']];
-const SETTINGS_GROUPS = [['My Business', ['/settings/company', '/settings/business-page', '/profile', '/team', '/requests', '/settings/roles', '/settings/billing']], ['Business Services', ['/settings/emails', '/settings/job-forms', '/settings/connections', '/settings/booking', '/settings/accounting', '/marketplace']], ['Other Settings', ['/settings', '/settings/preferences', '/settings/import-export', '/rewards', '/settings/support-access']]];
+const SETTINGS_NAV = [['/settings/company', 'Company Profile'], ['/settings/business-page', 'Business Page'], ['/team', 'Manage Team'], ['/requests', 'Team Requests'], ['/settings/roles', 'Roles & Permissions'], ['/settings/workflow', 'How You Work'], ['/settings/emails', 'Email Templates'], ['/settings/job-forms', 'Checklists & Forms'], ['/settings', 'App Settings'], ['/settings/preferences', 'Preferences'], ['/settings/import-export', 'Import & Export'], ['/settings/connections', 'Account Connections'], ['/settings/booking', 'Online Booking'], ['/settings/accounting', 'QuickBooks & Xero'], ['/marketplace', 'App Marketplace'], ['/settings/billing', 'Account and Billing'], ['/rewards', 'Refer & Earn'], ['/settings/support-access', 'Support']];
+const SETTINGS_GROUPS = [['My Business', ['/settings/company', '/settings/business-page', '/profile', '/team', '/requests', '/settings/roles', '/settings/billing']], ['Business Services', ['/settings/workflow', '/settings/emails', '/settings/job-forms', '/settings/connections', '/settings/booking', '/settings/accounting', '/marketplace']], ['Other Settings', ['/settings', '/settings/preferences', '/settings/import-export', '/rewards', '/settings/support-access']]];
 const navPaths = [...NAV.flatMap(([, items]) => items.map(([p]) => p)), ...SETTINGS_NAV.map(([p]) => p)];
 const curPath = () => location.pathname.replace(/\/+$/, '') || '/';
 function navigate(url) { history.pushState({}, '', url); window.scrollTo(0, 0); return render(); }
@@ -239,6 +239,8 @@ const memberCan = (path) => (OWNER_PAGES.includes(path) ? role() === 'owner' || 
 // body classes that hide what a role can't do (styles.css): .limit for anyone but owner/admin, p-<permission> for each permission
 function permClasses() { const b = document.body; const lim = !isAdminMe(); b.classList.toggle('limit', lim); [...b.classList].filter((c) => c.startsWith('p-')).forEach((c) => b.classList.remove(c)); if (lim) (me && me.perms || []).forEach((k) => b.classList.add('p-' + k.replace('.', '-'))); }
 // the account's plan (from /api/company): features it includes and pages it doesn't. The server enforces the same.
+// Settings → How You Work: is this step part of how the business works? Nothing saved yet (older accounts) means every step shows
+const flow = (k) => { const w = company && company.workflow; return !w || !w.steps || w.steps[k] !== false; };
 const planHas = (f) => !(company.account && company.account.features) || company.account.features.includes(f);
 const planLocked = (path) => !!(company.account && (company.account.lockedPages || []).includes(path));
 // a feature marked Beta in Alpha (for a tag on a feature that has no page of its own, e.g. the Calendar's Map view)
@@ -653,6 +655,7 @@ async function render() {
   catch (e) { main.innerHTML = `<div class="card"><h2>Something went wrong</h2><p>${esc(e.message)}</p></div>`; }
   if (!portal && me && me.supporterThanks && !pausedNow()) supporterThanks(); // just claimed a Founding Supporter code: the good news first, the tour after
   else if (!portal && me && me.tourNew && !pausedNow() && typeof startTour === 'function') startTour(); // a new login's first visit (public/tour.js)
+  else if (!portal && me && me.role === 'owner' && company && !company.workflow && !pausedNow() && !$('#overlay')) askWorkflow(); // Settings → How You Work, asked once until they choose
 }
 window.addEventListener('popstate', render);
 // texts this month: owners and admins see a banner at 80% of the plan's texts and when they're used up. Closing it hides it
@@ -2675,11 +2678,11 @@ A.verOpen = (d) => {
 };
 // the title, an "i" that shows what the switch does, and the switch on the right of the same row (Estimate, and Site visit under it)
 const estInfoBtn = (id, what) => `<button type="button" class="est-i" aria-expanded="false" aria-controls="${id}" aria-label="What is ${what}?" title="What is this?" onclick="var p=document.getElementById(this.getAttribute('aria-controls'));p.hidden=!p.hidden;this.setAttribute('aria-expanded',!p.hidden)">i</button>`;
-const estCard = (d, live) => { const done = !!d.estimateApprovedAt;
+const estCard = (d, live) => { const done = !!d.estimateApprovedAt; if (!flow('estimate') && !d.estimate) return ''; const svyOk = flow('siteVisit') || !!d.survey; // How You Work: steps that are off don't show
   return `<div class="qcard est-c"${live ? ` data-est-live="${esc(d.id)}"` : ''}><div class="est-h"><h3>Estimate</h3>${estInfoBtn('estInfo', 'Estimate')}
-${done ? '' : `<label class="sw-row"><input type="hidden" name="estimate" value="off"><input type="checkbox" class="sw" name="estimate" value="on" aria-label="Send as an estimate first" ${estOn(d) ? 'checked' : ''} onchange="var on=this.checked;this.closest('.est-c').querySelectorAll('.est-svy,.est-rng').forEach(function(x){x.hidden=!on})"><i></i></label>`}</div>
+${done ? '' : `<label class="sw-row"><input type="hidden" name="estimate" value="off"><input type="checkbox" class="sw" name="estimate" value="on" aria-label="Send as an estimate first" ${estOn(d) ? 'checked' : ''} onchange="var on=this.checked;this.closest('.est-c').querySelectorAll('.est-svy:not([data-off]),.est-rng').forEach(function(x){x.hidden=!on})"><i></i></label>`}</div>
 <p class="muted est-info" id="estInfo" hidden>${done ? `The client approved the estimate on ${fmtDate(d.estimateApprovedAt)}. ${d.survey ? 'Next is the site visit.' : 'It’s now the quote.'}` : `Turn on to send this quote as an estimate first. ${ESTIMATE_NOTE}`}</p>
-<div class="est-svy"${estOn(d) && (!done || d.survey) ? '' : ' hidden'}><div class="est-h"><h3 class="est-sh">Site visit</h3>${estInfoBtn('svyInfo', 'Site visit')}
+<div class="est-svy"${estOn(d) && (!done || d.survey) && svyOk ? '' : ' hidden'}${svyOk ? '' : ' data-off'}><div class="est-h"><h3 class="est-sh">Site visit</h3>${estInfoBtn('svyInfo', 'Site visit')}
 ${done ? '' : `<label class="sw-row"><input type="hidden" name="survey" value="off"><input type="checkbox" class="sw" name="survey" value="on" aria-label="Book a site visit before the quote" ${d.survey ? 'checked' : ''}><i></i></label>`}</div>
 ${done && d.survey ? `<p class="est-svy-at">${qSvyText(d)}</p>` : ''}<p class="muted est-info" id="svyInfo" hidden>${SURVEY_NOTE}</p></div>
 ${done ? '' : `<div class="est-rng"${estOn(d) ? '' : ' hidden'}><label class="est-rl">Show as a price range: up to <input type="number" name="rangePct" min="0" max="100" step="5" value="${esc(d.rangePct || 0)}" aria-label="Percent more">% more</label><p class="muted sm">0 shows one price. With 20, a $4,000 estimate reads $4,000 – $4,800 until the quote sets the final price.</p></div>`}</div>`; };
@@ -3447,7 +3450,7 @@ ${newOk ? `<div class="mn-row">${ic.contact}<div class="mn-stack"><input name="f
       }
       const where = { address: prop ? propAddr(prop) : client.address || '', propertyId: prop ? prop.id : '', ...(prop && prop.taxRate != null && prop.taxRate !== '' ? { taxRate: Number(prop.taxRate) } : {}) };
       const b = { clientId: client.id, [kind === 'invoice' ? 'subject' : 'title']: v(kind === 'invoice' ? 'subject' : 'title') };
-      if (q) { b.estimate = $('input.sw[name=estimate]', f).checked; b.survey = b.estimate && $('input.sw[name=survey]', f).checked; b.rangePct = Number(($('[name=rangePct]', f) || {}).value) || 0; } // Estimate and Site visit: chosen before the first save
+      if (q) { b.estimate = !!($('input.sw[name=estimate]', f) || {}).checked; b.survey = b.estimate && !!($('input.sw[name=survey]', f) || {}).checked; b.rangePct = Number(($('[name=rangePct]', f) || {}).value) || 0; } // Estimate and Site visit: chosen before the first save
       if (q && e.submitter && e.submitter.dataset.snap) { btn.disabled = false; return A.snapQuote({ clientId: client.id, ...where }); } // Snap to quote: the draft is made from the photos
       if (job) {
         const saved = await saveJobWithRepeat({}, { ...b, ...(fromQ ? { quoteId: fromQ.id } : {}), date: v('date'), startTime: '09:00', endTime: '11:00', status: 'scheduled', staffIds: [], ...where }, readRepeat(f), f); // with its Repeats settings
@@ -3551,7 +3554,7 @@ ${mField('Ends on (if it runs several days)', `<input type="date" name="endDate"
 // ⋯ on the job page
 A.mJobMore = (x) => {
   const j = byId(D.jobs, x.id); const edit = canDo('jobs.edit');
-  const f = mSheet('More', `<div class="ms-list">${omwBtn(j, '')}${planHas('signatures') ? `<button type="button" data-act="collectSignature" data-id="${j.id}">${j.signature ? 'Collect another signature' : 'Collect signature'}</button>` : ''}
+  const f = mSheet('More', `<div class="ms-list">${omwBtn(j, '')}${planHas('signatures') ? `<button type="button" data-act="collectSignature" data-id="${j.id}">${j.signature ? 'Collect another sign-off' : 'Collect sign-off (work done)'}</button>` : ''}${!flow('workOrder') && !j.wo && planHas('signatures') ? `<button type="button" data-act="woSign" data-id="${j.id}">Get work order signed</button>` : ''}${!flow('changeOrders') && canDo('changeOrders') ? `<button type="button" data-act="coNew" data-id="${j.id}">Add change order</button>` : ''}
 ${edit && !jobPaidInFull(j) ? `<button type="button" data-act="jobRemind" data-id="${j.id}">${planHas('sms') && byId(D.clients, j.clientId)?.smsConsent ? 'Text' : 'Email'} reminder to client</button>` : ''}
 ${planHas('invoices') && canInvoiceJob(j) ? `<button type="button" class="need-invoices" data-act="jobInvoice" data-id="${j.id}">Create invoice</button>` : ''}
 ${planHas('timeOff') && me && me.staffId && (j.staffIds || []).includes(me.staffId) && j.date >= ymd(new Date()) ? `<button type="button" data-act="jobRequestOff" data-id="${j.id}">Request off for this job</button>` : ''}
@@ -3594,7 +3597,7 @@ ${prices ? `<section class="md-block"><h2 class="md-sh">Product / Service</h2><d
 ${totals ? `<section class="md-block md-totals">${totals}</section>` : ''}` : ''}
 ${woCard(j, true)}${coCard(j, true)}
 ${sig ? `<section class="md-block"><div class="md-lh"><h2 class="md-sh" style="margin:0">Client sign-off (work done)</h2>${planHas('signatures') ? `<button type="button" class="md-plus" data-act="collectSignature" data-id="${j.id}" aria-label="Collect another signature">${CHEV('M12 5v14M5 12h14')}</button>` : ''}</div><img class="sig-img" src="${esc(sig.file)}" alt="Signature of ${esc(sig.name)}"><p class="md-text">Signed by <strong>${esc(sig.name)}</strong> · ${esc(fmtStamp(sig.signedAt))}</p></section>`
-    : planHas('signatures') ? `<button type="button" class="md-tap md-sec" data-act="collectSignature" data-id="${j.id}"><span class="md-sh">Client sign-off (work done)${ARROW}</span><span class="md-text muted">The client signs that the work is finished</span></button>` : ''}
+    : planHas('signatures') && flow('signoff') ? `<button type="button" class="md-tap md-sec" data-act="collectSignature" data-id="${j.id}"><span class="md-sh">Client sign-off (work done)${ARROW}</span><span class="md-text muted">The client signs that the work is finished</span></button>` : ''}
 ${prices && planHas('invoices') ? `<section class="md-block need-invoices"><div class="md-lh"><h2 class="md-sh" style="margin:0">Billing</h2>${canDo('jobs.edit') && canInvoiceJob(j) ? `<button type="button" class="md-plus" data-act="jobInvoice" data-id="${j.id}" aria-label="Create invoice">${CHEV('M12 5v14M5 12h14')}</button>` : ''}</div>
 ${invs.map((i) => `<a class="md-inv" href="/invoices/view?id=${i.id}" data-link><span><strong>Invoice #${esc(i.number)}</strong><small>${esc(I_STATUS[i.displayStatus] || i.displayStatus)} · due ${fmtDate(i.dueDate)}</small></span><span>${money(i.total)}</span></a>`).join('') || '<p class="muted md-empty">No invoices yet. Create one when the work is done.</p>'}</section>` : ''}</div>
 <div class="md-pane" data-pane="notes" hidden>${mNotesPane('job', j, j.internalNotes ? textSec('notes', 'Internal notes', j.internalNotes, '') : '')}</div></div>`;
@@ -4387,7 +4390,7 @@ function jobMore(j) {
   const sms = planHas('sms') && byId(D.clients, j.clientId)?.smsConsent;
   const off = planHas('timeOff') && me && me.staffId && (j.staffIds || []).includes(me.staffId) && j.date >= ymd(new Date());
   return `<details class="menu more-menu">${MORE_SUM}<div class="menu-list">
-${planHas('invoices') && canInvoiceJob(j) ? b('jobInvoice', 'invoice', 'Create Invoice', 'need-invoices') : ''}${!planHas('signatures') ? '' : b('collectSignature', 'sign', j.signature ? 'Collect Another Signature' : 'Collect Signature')}
+${planHas('invoices') && canInvoiceJob(j) ? b('jobInvoice', 'invoice', 'Create Invoice', 'need-invoices') : ''}${!planHas('signatures') ? '' : b('collectSignature', 'sign', j.signature ? 'Collect Another Sign-off' : 'Collect Sign-off (Work Done)')}${!flow('workOrder') && !j.wo && planHas('signatures') ? b('woSign', 'sign', 'Get Work Order Signed') : ''}${!flow('changeOrders') && canDo('changeOrders') ? b('coNew', 'job', 'Add Change Order') : ''}
 ${jobPaidInFull(j) ? '' : `<div class="need-jobs-edit"><hr class="mi-sep"><div class="mi-h">Send as…</div>${b('jobRemind', sms ? 'text' : 'email', `${sms ? 'Text' : 'Email'} Reminder`)}</div>`}
 <hr class="mi-sep">${j.seriesId && planHas('recurringJobs') ? b('stopRepeat', 'calendar', 'Stop Repeating', 'need-jobs-edit') : ''}${off ? b('jobRequestOff', 'calendar', 'Request Off for This Job') : ''}<a class="mi" href="/calendar" data-link>${QM.calendar}Open Calendar</a>
 ${b('delJob', 'trash', 'Delete', 'need-jobs-edit')}</div></details>`;
@@ -4518,7 +4521,7 @@ function jobPage(main, job, preset) {
   main.innerHTML = `<form class="qform jform"><div class="qpage"><div class="qmain">
 <div class="qtop"><div class="qtop-l"><a href="/jobs" data-link class="back">← Jobs</a><span class="cstatus ${J_CLASS[st]}">${J_STATUS[st]}</span></div>
 <div class="actions">${j.id ? `<details class="menu">${MORE_SUM}<div class="menu-list">
-${!planHas('signatures') ? '' : `<button type="button" data-act="collectSignature" data-id="${j.id}">${j.signature ? 'Collect another signature' : 'Collect signature'}</button>`}${planHas('timeOff') && me && me.staffId && (j.staffIds || []).includes(me.staffId) && j.date >= ymd(new Date()) ? `<button type="button" data-act="jobRequestOff" data-id="${j.id}">Request off for this job</button>` : ''}
+${!planHas('signatures') ? '' : `<button type="button" data-act="collectSignature" data-id="${j.id}">${j.signature ? 'Collect another sign-off' : 'Collect sign-off (work done)'}</button>`}${planHas('timeOff') && me && me.staffId && (j.staffIds || []).includes(me.staffId) && j.date >= ymd(new Date()) ? `<button type="button" data-act="jobRequestOff" data-id="${j.id}">Request off for this job</button>` : ''}
 ${jobPaidInFull(j) ? '' : `<button type="button" class="need-jobs-edit" data-act="jobRemind" data-id="${j.id}">${planHas('sms') && byId(D.clients, j.clientId)?.smsConsent ? 'Text' : 'Email'} reminder to client</button>`}${planHas('invoices') && canInvoiceJob(j) ? `<button type="button" class="need-invoices" data-act="jobInvoice" data-id="${j.id}">Create invoice</button>` : ''}
 <a href="/calendar" data-link>Open calendar</a><button type="button" class="danger-text need-jobs-edit" data-act="delJob" data-id="${j.id}">Delete job</button></div></details>
 ${j.status === 'scheduled' ? `<button type="button" class="btn alt need-jobs-edit" data-act="completeJob" data-id="${j.id}">Mark complete</button>` : `<button type="button" class="btn alt need-jobs-edit" data-act="reopenJob" data-id="${j.id}">↺ Reopen job</button>`}
@@ -4664,10 +4667,59 @@ A.rmSignature = async (d) => {
   if (!confirm('Remove this signature? Unsaved changes on this page will be lost. You can collect a new one afterwards.')) return;
   await api('DELETE', `/api/jobs/${d.id}/signature`); toast('Signature removed'); refresh();
 };
+/* ===== Settings → How You Work: a preset (Simple, Standard, Full protection) or your own mix of steps. Steps that are off are hidden in the app;
+   a single job can still use them from its More menu. Saved in company.workflow (server: cleanWorkflow). ===== */
+const FLOW_STEPS = [
+  ['estimate', 'Estimate first', 'Send a ballpark estimate before the real quote. The client approves it and you keep a copy, so the price you started from is on record.'],
+  ['siteVisit', 'Site visit', 'After approving the estimate, the client books a visit so you can check the job before the final quote. Needs Estimate first.'],
+  ['workOrder', 'Work order before work starts', 'The client signs the job, its price and dates before you begin. They get a PDF copy.'],
+  ['changeOrders', 'Change orders', 'More (or less) work on a job, signed by the client before you do it, and added to the invoice.'],
+  ['signoff', 'Sign-off when done', 'The client signs that the work is finished, including any change orders. They get a PDF copy.'],
+];
+const FLOW_PRESETS = {
+  simple: ['Simple', 'Quote → job → invoice. Best when you work on your own and jobs are quick.', []],
+  standard: ['Standard', 'Adds change orders and a sign-off when the work is done.', ['changeOrders', 'signoff']],
+  full: ['Full protection', 'Every step: estimate, site visit, work order, change orders and sign-off. Best for bigger jobs and teams.', FLOW_STEPS.map((s) => s[0])],
+};
+const flowPresetOf = (steps) => Object.keys(FLOW_PRESETS).find((k) => FLOW_STEPS.every(([s]) => !!steps[s] === FLOW_PRESETS[k][2].includes(s))) || 'custom';
+const saveFlow = async (w) => { company = await api('PUT', '/api/company', { workflow: w }); return company; };
+PAGES['/settings/workflow'] = {
+  title: 'How You Work',
+  render(main) {
+    const w = company.workflow; let steps = w ? { ...w.steps } : Object.fromEntries(FLOW_STEPS.map(([k]) => [k, true]));
+    const draw = () => {
+      const p = flowPresetOf(steps);
+      main.innerHTML = `<div class="card flow-pg"><h1>How You Work</h1><p class="muted" style="margin-top:0">Pick the steps your business uses. Steps you turn off are hidden in the app, so it stays simple. You can still use one on a single job from its ⋯ More menu.</p>
+${w ? '' : '<p class="flow-unset">Everything is on until you choose.</p>'}
+<div class="flow-presets" role="radiogroup" aria-label="Preset">${Object.entries(FLOW_PRESETS).map(([k, [name, desc]]) => `<button type="button" class="flow-pre${p === k ? ' on' : ''}" role="radio" aria-checked="${p === k}" data-pre="${k}"><strong>${name}</strong><span class="muted sm">${desc}</span></button>`).join('')}</div>
+<h2 class="flow-h">Steps${p === 'custom' ? ' <span class="cstatus q-draft">Your own mix</span>' : ''}</h2>
+<div class="flow-steps">${FLOW_STEPS.map(([k, name, desc]) => `<label class="sw-row flow-step${k === 'siteVisit' && !steps.estimate ? ' off' : ''}"><span>${name}<small class="muted">${desc}</small></span><input type="checkbox" class="sw" data-step="${k}" ${steps[k] ? 'checked' : ''} ${k === 'siteVisit' && !steps.estimate ? 'disabled' : ''}><i></i></label>`).join('')}</div>
+<p class="muted sm">Deposits and other defaults for new quotes are in <a href="/settings" data-link>App Settings</a>.</p>
+<div class="foot"><button type="button" class="btn" data-flow-save>Save</button></div></div>`;
+    };
+    main.onclick = async (e) => {
+      const pre = e.target.closest('[data-pre]'); if (pre) { const on = FLOW_PRESETS[pre.dataset.pre][2]; steps = Object.fromEntries(FLOW_STEPS.map(([k]) => [k, on.includes(k)])); return draw(); }
+      if (e.target.closest('[data-flow-save]')) { const b = e.target.closest('[data-flow-save]'); b.disabled = true; try { await saveFlow({ preset: flowPresetOf(steps), steps, team: (company.workflow || {}).team || '' }); toast('Saved. The app now shows the steps you use.'); refresh(); } catch (x) { toast(x.message, true); b.disabled = false; } }
+    };
+    main.onchange = (e) => { const t = e.target.closest('[data-step]'); if (!t) return; steps[t.dataset.step] = t.checked; if (!steps.estimate) steps.siteVisit = false; draw(); };
+    draw();
+  },
+};
+// asked once, of the owner, until they pick: alone or with a team (Simple or Standard; Full protection from the settings page)
+function askWorkflow() {
+  try { if (sessionStorage.getItem('flowAsked')) return; sessionStorage.setItem('flowAsked', '1'); } catch (e) { /* asks again next time */ }
+  const mb = modal('How do you work?', `<p style="margin-top:0">We’ll show the steps that fit. You can change this any time in Settings → How You Work.</p>
+<div class="flow-presets"><button type="button" class="flow-pre" data-q="solo"><strong>On my own</strong><span class="muted sm">Simple: quote → job → invoice.</span></button>
+<button type="button" class="flow-pre" data-q="team"><strong>With a team</strong><span class="muted sm">Standard: adds change orders and a sign-off when the work is done.</span></button>
+<button type="button" class="flow-pre" data-q="full"><strong>Bigger jobs</strong><span class="muted sm">Full protection: estimate, site visit, work order, change orders and sign-off.</span></button></div>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Decide later</button></div>`);
+  mb.addEventListener('click', async (e) => { const b = e.target.closest('[data-q]'); if (!b) return; const preset = { solo: 'simple', team: 'standard', full: 'full' }[b.dataset.q];
+    try { await saveFlow({ preset, team: b.dataset.q === 'solo' ? 'solo' : 'team' }); closeModal(); toast(`Set to ${FLOW_PRESETS[preset][0]}. Change it any time in Settings → How You Work.`); refresh(); } catch (x) { toast(x.message, true); } });
+}
 /* ===== work order: the client signs the job (the work, its price and dates) before work starts, on this device or online from an emailed link.
    A PDF goes in the job's notes and the client is emailed a copy. Anything that changes after that is a change order. ===== */
 function woCard(j, phone) {
-  if (!j.id || !planHas('signatures')) return ''; const w = j.wo; const edit = canDo('jobs.edit');
+  if (!j.id || !planHas('signatures') || (!flow('workOrder') && !j.wo)) return ''; const w = j.wo; // off in How You Work: still in the job's More menu const edit = canDo('jobs.edit');
   const b = (act, label, cls = 'alt') => `<button type="button" class="btn ${cls} sm" data-act="${act}" data-id="${j.id}">${label}</button>`;
   const inner = w ? `<div class="wo-done"><span class="cstatus q-approved">Signed</span> <span class="sm">Signed by <strong>${esc(w.name)}</strong> · ${esc(fmtStamp(w.signedAt))}${w.via === 'online' ? ' · online' : w.collectedBy ? ` · collected by ${esc(w.collectedBy)}` : ''}</span>${w.pdf ? ` <a class="sm" href="${esc(w.pdf)}" target="_blank" rel="noopener">Signed copy (PDF)</a>` : ''}</div>`
     : `<p class="muted sm" style="margin:0 0 10px">Have the client approve the work and price before you start${j.woSentAt ? `. Emailed ${esc(fmtStamp(j.woSentAt))}, not signed yet` : ''}.</p><div class="co-acts" style="margin:0">${b('woSign', 'Get signature now', '')}${edit ? b('woSend', j.woSentAt ? 'Email again' : 'Email to client') : ''}</div>`;
@@ -4692,7 +4744,7 @@ const coSigned = (c) => (c.status !== 'approved' ? (c.status === 'sent' ? `Email
   : c.signature ? `Signed by ${c.signature.name} · ${fmtStamp(c.signature.signedAt)}${c.signature.via === 'online' ? ' · online' : ''}` : `Marked approved by ${c.approvedBy || 'the business'} · ${fmtStamp(c.approvedAt)}`);
 // the Change orders card on the job page (phone: a section like Billing)
 function coCard(j, phone) {
-  if (!j.id || !canDo('changeOrders')) return '';
+  if (!j.id || !canDo('changeOrders') || (!flow('changeOrders') && !jobCOs(j).length)) return ''; // off in How You Work: still in the job's More menu
   const L = jobCOs(j); const add = phone ? `<button type="button" class="md-plus" data-act="coNew" data-id="${j.id}" aria-label="Add change order">${CHEV('M12 5v14M5 12h14')}</button>` : `<button type="button" class="btn alt" data-act="coNew" data-id="${j.id}">+ Change order</button>`;
   const rows = L.map((c) => `<button type="button" class="co-row" data-act="coOpen" data-id="${c.id}"><span class="co-l"><strong>${esc(c.number)}${c.title ? ` · ${esc(c.title)}` : ''}</strong><small class="muted">${esc(coSigned(c))}</small></span><span class="co-r">${coBadge(c)}<span>${coMoney(c.total)}</span></span></button>`).join('');
   const added = coAdded(j); const base = (jobDoc(j).total || 0);
