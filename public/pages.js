@@ -549,10 +549,11 @@ ${r.unplaced.length ? `<p class="muted">Not on the map, left as they are: ${r.un
   };
   show();
 };
-// open what was clicked: a job opens its page; a task or event opens in the quick pop-up to edit
+// open what was clicked: a job or site visit opens its page; a task or event opens in the quick pop-up to edit
 function scOpen(kind, id, x, y) {
   if (kind === 'job') return navigate('/jobs/edit?id=' + id);
   const it = byId(kind === 'task' ? D.tasks : D.events, id); if (!it) return;
+  if (kind === 'task' && it.survey) return navigate('/jobs/site-visit?id=' + id); // a site visit opens its page, like a job
   scQuick({ ...it }, x, y, kind);
 }
 // Site visit on the calendar: owners, admins and managers only (the server checks too)

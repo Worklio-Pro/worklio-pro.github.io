@@ -2919,3 +2919,8 @@ body.p404-only #billingBar{display:none!important}
 .jv-switch button.on{background:var(--card);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.12)}
 .jv-switch button:hover:not(.on){color:var(--text)}
 .mlist .jv-switch{margin:0 14px 10px}
+/* Site visit page: visit notes */
+.svview #svNote{width:100%}
+.sv-notes{list-style:none;margin:14px 0 0;padding:0;display:flex;flex-direction:column;gap:10px}
+.sv-notes li{border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.sv-n-h{display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:13px}.sv-n-h .link-btn{margin-left:auto;font-size:13px}

@@ -4612,77 +4612,141 @@ const jobUrgency = (a, b) => {
   const when = (j) => (j.date || '') + (j.startTime || '');
   return ra - rb || (ra >= 4 ? when(b).localeCompare(when(a)) : when(a).localeCompare(when(b)));
 };
-// Site visits on the Jobs page (Jobs | Site visits switch): the same list layout as jobs, without money. A site visit is a calendar task
-// with a survey (booked by the client after approving an estimate, or added on the calendar). Once its time has passed it needs action
-// until its quote is sent ("Quote to send"); then, or when it has no quote, it's done.
-const SV_STATUS = { quote: 'Quote to send', today: 'Today', upcoming: 'Upcoming', done: 'Done' };
-const SV_CLASS = { quote: 'q-sent', today: 'q-converted', upcoming: 'q-approved', done: 'q-draft' };
+// Site visits on the Jobs page (Jobs | Site visits switch): the same list as jobs, without money. A site visit is a calendar task with a
+// survey (booked by the client after approving an estimate, or added on the calendar). Like a job it's marked complete: a past visit that
+// isn't is Late; a completed one waits on its final quote ("Quote to send") until that's sent; then, or with no quote, it's Done.
+const SV_STATUS = { late: 'Late', quote: 'Quote to send', today: 'Today', upcoming: 'Upcoming', done: 'Done' };
+const SV_CLASS = { late: 'q-declined', quote: 'q-sent', today: 'q-converted', upcoming: 'q-approved', done: 'q-draft' };
 const svList = () => (D.tasks || []).filter((t) => t.survey);
 const svQuote = (t) => (t && t.survey && t.survey.quoteId && byId(D.quotes, t.survey.quoteId)) || null;
 const svPast = (t) => `${t.date} ${t.startTime || '00:00'}` < `${ymd(new Date())} ${new Date().toTimeString().slice(0, 5)}`;
+const svQuoteUnsent = (q) => !!q && (q.status === 'draft' || qSvyStage(q)); // the final quote isn't out yet (a draft, or still the approved estimate)
 function svStatus(t) {
-  if (!svPast(t)) return t.date === ymd(new Date()) ? 'today' : 'upcoming';
-  const q = svQuote(t); return q && qSvyStage(q) && q.surveyTaskId === t.id ? 'quote' : 'done';
+  if (t.done) return svQuoteUnsent(svQuote(t)) ? 'quote' : 'done';
+  return t.date < ymd(new Date()) || (t.date === ymd(new Date()) && svPast(t) && t.endTime && `${t.date} ${t.endTime}` < `${ymd(new Date())} ${new Date().toTimeString().slice(0, 5)}`) ? 'late' : t.date === ymd(new Date()) ? 'today' : 'upcoming';
 }
+const svNeedsAction = (t) => ['late', 'quote'].includes(svStatus(t));
 let svView = { status: 'action', staff: '', q: '', sort: 'urgent', dir: 1 };
-const svInTab = (t, s) => s === 'all' || (s === 'action' ? svStatus(t) === 'quote' : svStatus(t) === s);
-const svUrgency = (a, b) => { const rank = { quote: 0, today: 1, upcoming: 2, done: 3 }; const ra = rank[svStatus(a)]; const rb = rank[svStatus(b)]; const w = (t) => t.date + (t.startTime || '');
-  return ra - rb || (ra === 3 ? w(b).localeCompare(w(a)) : w(a).localeCompare(w(b))); };
+const svInTab = (t, s) => s === 'all' || (s === 'action' ? svNeedsAction(t) : svStatus(t) === s);
+const svUrgency = (a, b) => { const rank = { late: 0, quote: 1, today: 2, upcoming: 3, done: 4 }; const ra = rank[svStatus(a)]; const rb = rank[svStatus(b)]; const w = (t) => t.date + (t.startTime || '');
+  return ra - rb || (ra === 4 ? w(b).localeCompare(w(a)) : w(a).localeCompare(w(b))); };
+const svWho = (t) => (t.staffIds || []).map((id) => byId(D.staff, id)).filter(Boolean);
+const svClient = (t) => byId(D.clients, t.clientId) || {};
+const svName = (t) => svClient(t).name || svClient(t).company || t.address || '—';
 // the Jobs | Site visits switch under the page title (shown once there's a site visit, or to those who can add one); Site visits counts the open ones
 const jvSwitch = (on) => (canSurvey() || svList().length ? `<div class="jv-switch" role="tablist" aria-label="Show">${[['jobs', 'Jobs', 0], ['visits', 'Site visits', svList().filter((t) => svStatus(t) !== 'done').length]].map(([k, l, n]) => `<button type="button" role="tab" aria-selected="${on === k}" class="${on === k ? 'on' : ''}" data-act="jobKind" data-k="${k}">${l}${n ? `<span class="lt-n">${n}</span>` : ''}</button>`).join('')}</div>` : '');
-A.jobKind = (d) => { jobView = { ...jobView, kind: d.k }; jobSel.clear(); refresh(); };
+A.jobKind = (d) => { jobView = { ...jobView, kind: d.k }; jobSel.clear(); if (curPath() === '/jobs') refresh(); else navigate('/jobs'); };
 A.svTab = (d) => { svView = { ...svView, status: d.s, picked: true, sort: 'urgent', dir: 1 }; refresh(); };
 A.svSort = (d) => { svView.dir = svView.sort === d.k ? -svView.dir : (['client', 'status'].includes(d.k) ? 1 : -1); svView.sort = d.k; refresh(); };
-A.svOpen = (d, el) => { const r = el.getBoundingClientRect(); scOpen('task', d.id, r.left - 320, r.top); };
+// Reschedule: the calendar's pop-up for the visit (date, time, who; Delete)
+A.svOpen = (d, el) => { const t = byId(D.tasks, d.id); if (!t) return; const r = el.getBoundingClientRect(); scQuick({ ...t }, r.left - 320, r.top, 'task'); };
 A.svQuoteOpen = (d) => navigate('/quotes/view?id=' + d.id);
+A.svPage = (d) => navigate('/jobs/site-visit?id=' + d.id);
 // New Site Visit: the calendar's quick pop-up, on its Site visit tab
 A.newSiteVisit = (d, el) => { const r = el.getBoundingClientRect(); scQuick({ date: ymd(new Date()) }, r.left - 340, r.bottom + 40); const b = $('.qc-tabs [data-k=survey]'); if (b) b.click(); };
+A.svComplete = async (d) => { await api('PUT', '/api/tasks/' + d.id, { done: true, completedAt: new Date().toISOString() }); toast(svQuote(byId(D.tasks, d.id)) ? 'Site visit completed. Add your notes, then update the final quote.' : 'Site visit completed. Add your notes, then create the final quote.'); refresh(); };
+A.svReopen = async (d) => { await api('PUT', '/api/tasks/' + d.id, { done: false, completedAt: null }); toast('Site visit reopened'); refresh(); };
+// Create final quote: the visit's own quote opens to edit and send; with none, a new draft for the client (visit notes in its internal
+// notes) is made and linked to the visit
+A.svFinalQuote = async (d, el) => {
+  const t = byId(D.tasks, d.id); if (!t) return; const q = svQuote(t);
+  if (q) return navigate((svQuoteUnsent(q) ? '/quotes/edit?id=' : '/quotes/view?id=') + q.id);
+  el.disabled = true; const c = svClient(t);
+  try {
+    const notes = (t.visitNotes || []).map((n) => `${fmtDate(n.at.slice(0, 10))}, ${n.by || ''}: ${n.text}`).join('\n\n');
+    const nq = await api('POST', '/api/quotes', { clientId: t.clientId, address: t.address || c.address || '', items: [], disclaimer: company.quoteDisclaimer ?? DEFAULT_DISCLAIMER, estimate: false, ...(notes ? { internalNotes: 'From the site visit:\n\n' + notes } : {}) });
+    await api('PUT', '/api/tasks/' + t.id, { survey: { ...t.survey, quoteId: nq.id } });
+    toast('Final quote created: add the prices, then send it'); navigate('/quotes/edit?id=' + nq.id);
+  } catch (x) { el.disabled = false; toast(x.message, true); }
+};
+// Visit notes: what was seen on site, added after (or during) the visit. Clients never see them.
+A.svAddNote = async (d, el) => {
+  const t = byId(D.tasks, d.id); const box = $('#svNote'); const text = (box.value || '').trim(); if (!t || !text) return toast('Write a note first', true);
+  el.disabled = true;
+  try { await api('PUT', '/api/tasks/' + t.id, { visitNotes: [...(t.visitNotes || []), { id: 'n' + Date.now().toString(36), text: text.slice(0, 5000), at: new Date().toISOString(), by: (me && me.name) || '' }] }); toast('Note added'); refresh(); }
+  catch (x) { el.disabled = false; toast(x.message, true); }
+};
+A.svDelNote = async (d) => {
+  const t = byId(D.tasks, d.id); if (!t || !confirm('Delete this note?')) return;
+  await api('PUT', '/api/tasks/' + t.id, { visitNotes: (t.visitNotes || []).filter((n) => n.id !== d.n) }); toast('Note deleted'); refresh();
+};
 function renderSiteVisits(main) {
   const v = svView; const all = svList();
-  if (!v.picked) v.status = all.some((t) => svStatus(t) === 'quote') ? 'action' : 'all';
+  if (!v.picked) v.status = all.some(svNeedsAction) ? 'action' : 'all';
   const ago = (n) => ymd(addDays(new Date(), -n)); const ahead = (n) => ymd(addDays(new Date(), n));
   const pastN = all.filter((t) => t.date >= ago(30) && svPast(t)).length; const prevN = all.filter((t) => t.date >= ago(60) && t.date < ago(30)).length;
   const nextN = all.filter((t) => !svPast(t) && t.date <= ahead(30)).length;
   const change = (now, prev) => (prev ? `<span class="chg ${now >= prev ? 'up' : 'down'}">${now >= prev ? '↑' : '↓'} ${Math.abs(Math.round(((now - prev) / prev) * 100))}%</span>` : '');
-  const client = (t) => byId(D.clients, t.clientId) || {}; const cname = (t) => client(t).name || client(t).company || t.address || '—';
-  const who = (t) => (t.staffIds || []).map((id) => byId(D.staff, id)).filter(Boolean).map((s) => s.name).join(', ');
+  const who = (t) => svWho(t).map((s) => s.name).join(', ');
   const list = all.filter((t) => { if (!svInTab(t, v.status)) return false; if (v.staff && !(t.staffIds || []).includes(v.staff)) return false;
-    const q = svQuote(t) || {}; return !v.q || [cname(t), client(t).company, t.address, client(t).address, q.number, q.title, who(t)].join(' ').toLowerCase().includes(v.q.toLowerCase()); });
+    const q = svQuote(t) || {}; return !v.q || [svName(t), svClient(t).company, t.address, svClient(t).address, q.number, q.title, who(t)].join(' ').toLowerCase().includes(v.q.toLowerCase()); });
   const order = Object.keys(SV_STATUS);
   if (v.sort === 'urgent') list.sort(svUrgency);
-  else { const key = { client: (t) => cname(t).toLowerCase(), schedule: (t) => t.date + (t.startTime || ''), status: (t) => order.indexOf(svStatus(t)) }[v.sort];
+  else { const key = { client: (t) => svName(t).toLowerCase(), schedule: (t) => t.date + (t.startTime || ''), status: (t) => order.indexOf(svStatus(t)) }[v.sort];
     list.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0) * v.dir); }
   if (phoneMq.matches) return mobileList(main, { path: '/jobs', title: 'Site visits', plural: 'site visits', one: 'site visit', list, q: v.q, status: v.status, statuses: [['action', 'Needs action'], ...order.map((s) => [s, SV_STATUS[s]])], date: (t) => t.date + (t.startTime || ''),
-    banner: jvSwitch('visits'), row: (t) => { const q = svQuote(t); return { name: cname(t), date: mDay(t.date) + ' ' + fmtTime(t.startTime), amount: '', title: q ? 'Quote ' + q.number : '', label: SV_STATUS[svStatus(t)], cls: SV_CLASS[svStatus(t)], href: q ? '/quotes/view?id=' + q.id : '/calendar' }; },
+    banner: jvSwitch('visits'), row: (t) => { const q = svQuote(t); return { name: svName(t), date: mDay(t.date) + ' ' + fmtTime(t.startTime), amount: '', title: q ? 'Quote ' + q.number : '', label: SV_STATUS[svStatus(t)], cls: SV_CLASS[svStatus(t)], href: '/jobs/site-visit?id=' + t.id }; },
     onStatus: (k) => { svView = { ...svView, status: k, picked: true }; }, onQ: (x) => { svView.q = x; } });
   const th = (k, label) => `<th><button class="th-btn" data-act="svSort" data-k="${k}">${label} <span class="sort ${v.sort === k ? 'on' : ''}">${v.sort === k ? (v.dir > 0 ? '▲' : '▼') : '⇅'}</span></button></th>`;
   const sub = (s) => (s ? `<div class="muted sm-l">${s}</div>` : ''); const dash = '<span class="muted">—</span>';
   // the buttons on a row (shown on hover): what you'd do next with that visit
   const acts = (t) => { const q = svQuote(t); const st = svStatus(t); const b = (act, label, alt, id) => `<button type="button" class="btn${alt ? ' alt' : ''}" data-act="${act}" data-id="${id}">${label}</button>`;
-    if (st === 'quote') return b('svQuoteOpen', 'Update quote', false, q.id);
-    return (st !== 'done' && canSurvey() ? b('svOpen', 'Reschedule', true, t.id) : '') + (q ? b('svQuoteOpen', 'Open quote', true, q.id) : ''); };
-  const row = (t) => { const st = svStatus(t); const q = svQuote(t);
-    return `<tr class="crow" data-id="${t.id}"><td><strong>${esc(cname(t))}</strong>${sub(esc(t.address || client(t).address || ''))}</td>`
+    if (st === 'late') return (canSurvey() ? b('svOpen', 'Reschedule', true, t.id) : '') + b('svComplete', 'Complete', false, t.id);
+    if (st === 'today') return b('svComplete', 'Complete', false, t.id);
+    if (st === 'upcoming') return canSurvey() ? b('svOpen', 'Reschedule', true, t.id) : '';
+    if (st === 'quote') return b('svFinalQuote', 'Update final quote', false, t.id);
+    return q ? b('svQuoteOpen', 'Open quote', true, q.id) : b('svFinalQuote', 'Create final quote', true, t.id); };
+  const row = (t) => { const st = svStatus(t); const q = svQuote(t); const n = st === 'late' ? daysSince(t.date) : 0;
+    return `<tr class="crow" data-id="${t.id}"><td><strong>${esc(svName(t))}</strong>${sub(esc(t.address || svClient(t).address || ''))}</td>`
       + `<td style="white-space:nowrap">${esc(fmtDate(t.date))}<div class="muted">${esc(fmtTime(t.startTime))} – ${esc(fmtTime(t.endTime))}</div>${sub(esc(who(t)))}</td>`
-      + `<td>${q ? `${esc(q.number)}${sub(esc(q.title || ''))}` : dash}</td><td><span class="cstatus ${SV_CLASS[st]}">${SV_STATUS[st]}</span></td><td class="racts"><div>${acts(t)}</div></td></tr>`; };
-  const quoteN = all.filter((t) => svStatus(t) === 'quote').length; const todayN = all.filter((t) => svStatus(t) === 'today').length;
-  const tabs = [['action', 'Needs action', all.filter((t) => svStatus(t) === 'quote')], ...order.map((s) => [s, SV_STATUS[s], s === 'done' ? null : all.filter((t) => svStatus(t) === s)]), ['all', 'All', null]];
-  const body = (v.status === 'action' && v.sort === 'urgent' && list.length ? `<tr class="lgrp"><td colspan="5"><div><i class="dot q-sent"></i><strong>Quote to send</strong><span class="muted">The visit is done: update the quote and send it</span></div></td></tr>` : '') + list.map(row).join('');
+      + `<td>${q ? `${esc(q.number)}${sub(esc(q.title || ''))}` : dash}</td><td><span class="cstatus ${SV_CLASS[st]}">${st === 'late' && n ? (n === 1 ? '1 day late' : `${n} days late`) : SV_STATUS[st]}</span></td><td class="racts"><div>${acts(t)}</div></td></tr>`; };
+  const todayN = all.filter((t) => svStatus(t) === 'today').length;
+  const tabs = [['action', 'Needs action', all.filter(svNeedsAction)], ...order.map((s) => [s, SV_STATUS[s], s === 'done' ? null : all.filter((t) => svStatus(t) === s)]), ['all', 'All', null]];
+  const grp = (dot, title, note) => `<tr class="lgrp"><td colspan="5"><div><i class="dot ${dot}"></i><strong>${title}</strong><span class="muted">${note}</span></div></td></tr>`;
+  let body;
+  if (v.status === 'action' && v.sort === 'urgent') { const late = list.filter((t) => svStatus(t) === 'late'); const qs = list.filter((t) => svStatus(t) === 'quote');
+    body = (late.length ? grp('q-declined', 'Late', 'In the past, not marked complete') + late.map(row).join('') : '') + (qs.length ? grp('q-sent', 'Quote to send', 'The visit is done: update the final quote and send it') + qs.map(row).join('') : '');
+  } else body = list.map(row).join('');
   main.innerHTML = `<div class="head"><h1>Site visits</h1><div class="actions">${canSurvey() ? '<button class="btn" data-act="newSiteVisit">New Site Visit</button>' : ''}
 <details class="menu">${MORE_SUM}<div class="menu-list"><a href="/calendar" data-link>Open calendar</a>${canSurvey() ? '<a href="/settings" data-link>Site visit settings (App Settings → General)</a>' : ''}</div></details></div></div>${jvSwitch('visits')}
-<div class="lstrip ls-all"><span class="ls-l">Site visits</span><span>Past 30 days <strong>${pastN}</strong> ${change(pastN, prevN)}</span><span>Next 30 days <strong>${nextN} scheduled</strong></span>${quoteN ? `<span>Quotes to send <strong>${quoteN}</strong></span>` : ''}</div>
+<div class="lstrip ls-all"><span class="ls-l">Site visits</span><span>Past 30 days <strong>${pastN}</strong> ${change(pastN, prevN)}</span><span>Next 30 days <strong>${nextN} scheduled</strong></span></div>
 <div class="ltabs" role="tablist" aria-label="Site visit status">${tabs.map(([s, label, l]) => `<button type="button" role="tab" aria-selected="${v.status === s}" class="ltab${v.status === s ? ' on' : ''}" data-act="svTab" data-s="${s}"><span class="lt-t">${SV_CLASS[s] ? `<i class="dot ${SV_CLASS[s]}"></i>` : ''}${label}${l ? `<span class="lt-n">${l.length}</span>` : ''}</span></button>`).join('')}</div>
 <div class="cfilters"><label class="pill">Team member<select data-sv="staff"><option value="">All</option>${D.staff.map((s) => `<option value="${s.id}" ${v.staff === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>
 <input id="svq" class="csearch" type="search" placeholder="Search site visits…" value="${esc(v.q)}"></div>
 <div class="card ctable"><div class="tablewrap"><table><tr>${th('client', 'Client')}${th('schedule', 'Visit')}<th>Quote</th>${th('status', 'Status')}<th aria-label="Actions"></th></tr>
-${body || `<tr><td colspan="5" class="empty">${v.status === 'action' && !v.q && !v.staff && all.length ? 'Nothing needs action: every visit that’s done has its quote sent.' : all.length ? 'No site visits match these filters' : `No site visits yet.${canSurvey() ? ' Add one with New Site Visit, or turn on Estimate and Site visit on a quote so the client books one.' : ''}`}</td></tr>`}</table></div>
+${body || `<tr><td colspan="5" class="empty">${v.status === 'action' && !v.q && !v.staff && all.length ? 'Nothing needs action: no late visits, and every completed visit has its quote sent.' : all.length ? 'No site visits match these filters' : `No site visits yet.${canSurvey() ? ' Add one with New Site Visit, or turn on Estimate and Site visit on a quote so the client books one.' : ''}`}</td></tr>`}</table></div>
 ${v.status === 'action' && todayN ? `<div class="lmore"><span>${todayN} site visit${todayN === 1 ? ' is' : 's are'} on today’s schedule.</span><button type="button" class="link-btn" data-act="svTab" data-s="today">Today →</button></div>` : ''}</div>`;
   $$('[data-sv]').forEach((s) => s.addEventListener('change', (e) => { svView[e.target.dataset.sv] = e.target.value; refresh(); }));
   let tm; $('#svq').addEventListener('input', (e) => { clearTimeout(tm); tm = setTimeout(async () => { svView.q = e.target.value; await refresh(); const q = $('#svq'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 250); });
-  // a row opens the visit to edit (who can add site visits), or its quote
-  $$('.crow').forEach((r) => r.addEventListener('click', (e) => { if (e.target.closest('input, button, a')) return; const q = svQuote(byId(D.tasks, r.dataset.id));
-    if (canSurvey() || !q) scOpen('task', r.dataset.id, e.clientX, e.clientY); else navigate('/quotes/view?id=' + q.id); }));
+  $$('.crow').forEach((r) => r.addEventListener('click', (e) => { if (!e.target.closest('input, button, a')) navigate('/jobs/site-visit?id=' + r.dataset.id); }));
 }
+// A site visit's own page, laid out like a job's: the client, when and who, instructions, visit notes, and the final quote
+PAGES['/jobs/site-visit'] = {
+  title: 'Site visit',
+  render(main) {
+    const t = byId(D.tasks || [], qp('id'));
+    if (!t || !t.survey) { main.innerHTML = '<div class="card"><h1>Site visit not found</h1><p>It may have been cancelled. <a href="/jobs" data-act="jobKind" data-k="visits">Back to Site visits</a></p></div>'; return; }
+    jobView = { ...jobView, kind: 'visits' }; // ← Site visits goes back to the list
+    const c = svClient(t); const q = svQuote(t); const st = svStatus(t); const team = svWho(t); const none = (x) => `<span class="muted">${x}</span>`;
+    const notes = [...(t.visitNotes || [])].reverse();
+    const qCard = !q ? `<p class="muted" style="margin-top:0">No quote yet. ${t.done ? 'Create the final quote from what you saw on site: your visit notes go into its internal notes.' : 'Once the visit is done, create the final quote from here.'}</p><button type="button" class="btn${t.done ? '' : ' alt'}" data-act="svFinalQuote" data-id="${t.id}">Create final quote</button>`
+      : `<dl class="qmeta"><dt>Quote</dt><dd><a href="/quotes/view?id=${q.id}" data-link>${esc(q.number)}</a>${q.title ? ' · ' + esc(q.title) : ''}</dd><dt>Status</dt><dd>${svQuoteUnsent(q) ? (qSvyStage(q) ? 'Estimate approved, final quote not sent yet' : 'Draft, not sent yet') : q.status === 'sent' ? 'Sent, awaiting response' : esc(q.status[0].toUpperCase() + q.status.slice(1))}</dd></dl>
+${svQuoteUnsent(q) ? `<p class="muted">${t.done ? 'Update the prices from what you saw on site, then send it.' : 'After the visit, update it and send it.'}</p><button type="button" class="btn${t.done ? '' : ' alt'}" data-act="svFinalQuote" data-id="${t.id}">Update final quote</button>` : `<button type="button" class="btn alt" data-act="svQuoteOpen" data-id="${q.id}">Open quote</button>`}`;
+    main.innerHTML = `<div class="qview jview svview"><div class="qpage"><div class="qmain"><div class="qtop"><div class="qtop-l"><a href="/jobs" data-link class="back">← Site visits</a><span class="cstatus ${SV_CLASS[st]}">${SV_STATUS[st]}</span></div>
+<div class="actions">${canSurvey() ? `<button type="button" class="btn alt" data-act="svOpen" data-id="${t.id}">${t.done ? 'Edit' : 'Reschedule'}</button>` : ''}${t.done ? `<button type="button" class="btn alt" data-act="svReopen" data-id="${t.id}">↺ Reopen</button>` : `<button type="button" class="btn" data-act="svComplete" data-id="${t.id}">Mark Complete</button>`}</div></div>
+<div class="vhead"><div class="vtitle-row"><h1 class="vtitle">Site visit</h1></div>
+<div class="qhead"><div class="qclient"><div class="vclient"><span>${esc(c.name || c.company || 'No client')}</span>${c.id ? clientMenu(c) : ''}</div><div class="muted qlabel">Property address</div><div class="qaddr">${esc(t.address || c.address || '') || none('No address on file')}</div>
+${c.phone || c.email ? `<div class="vclient-c">${c.phone ? `<a href="tel:${esc(c.phone)}">${esc(fmtUsPhone(c.phone))}</a>` : ''}${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ''}</div>` : ''}</div>
+<dl class="qmeta"><dt>Booked</dt><dd>${t.survey.bookedAt ? fmtDate(t.survey.bookedAt.slice(0, 10)) : t.createdAt ? fmtDate(t.createdAt.slice(0, 10)) : '—'}</dd><dt>For quote</dt><dd>${q ? `<a href="/quotes/view?id=${q.id}" data-link>${esc(q.number)}</a>` : none('—')}</dd>${t.done && t.completedAt ? `<dt>Completed</dt><dd>${fmtDate(t.completedAt.slice(0, 10))}</dd>` : ''}</dl></div></div>
+<div class="qcard"><div class="qcard-h"><h2>Scheduled Visit</h2></div><dl class="qmeta vvisit"><dt>When</dt><dd>${esc(fmtDate(t.date))}, ${esc(fmtTime(t.startTime))} – ${esc(fmtTime(t.endTime))}</dd>
+<dt>Who</dt><dd>${team.length ? `<span class="vteam">${team.map((s) => `<span>${avatarHtml(s, 24)}${esc(s.name)}</span>`).join('')}</span>` : none('Nobody assigned')}</dd>
+<dt>Instructions</dt><dd>${t.description ? `<p class="vtext">${esc(t.description)}</p>` : none('None')}</dd></dl></div>
+<div class="qcard"><div class="qcard-h"><h2>Visit notes</h2></div><p class="muted" style="margin-top:0">What you saw on site: measurements, problems, what the quote needs. Clients never see these.</p>
+<textarea id="svNote" rows="3" maxlength="5000" placeholder="${t.done ? 'Add a note from the visit' : 'Add a note (you can add more after the visit)'}"></textarea><div style="display:flex;justify-content:flex-end;margin-top:8px"><button type="button" class="btn" data-act="svAddNote" data-id="${t.id}">Add note</button></div>
+${notes.length ? `<ul class="sv-notes">${notes.map((n) => `<li><div class="sv-n-h"><strong>${esc(n.by || 'Someone')}</strong><span class="muted">${esc(fmtDate(n.at.slice(0, 10)))} ${esc(fmtTime(new Date(n.at).toTimeString().slice(0, 5)))}</span><button type="button" class="link-btn" data-act="svDelNote" data-id="${t.id}" data-n="${esc(n.id)}" aria-label="Delete note">Delete</button></div><p class="vtext">${esc(n.text)}</p></li>`).join('')}</ul>` : ''}</div></div>
+<aside class="qside"><div class="qcard"><div class="qcard-h"><h2>Final quote</h2></div>${qCard}</div></aside></div></div>`;
+  },
+};
 PAGES['/jobs'] = {
   title: 'Jobs',
   async render(main) {
