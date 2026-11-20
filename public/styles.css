@@ -2930,3 +2930,6 @@ body.p404-only #billingBar{display:none!important}
 .svq-tip{margin:12px 0 10px;font-size:13px}.svq-btn{width:100%;justify-content:center}
 /* Job and site visit pages: Directions under the property address */
 .vdir{display:inline-flex;align-items:center;gap:5px;margin-top:6px;font-size:13px;font-weight:600;color:var(--link);text-decoration:none}.vdir:hover{text-decoration:underline}
+/* Site visit page on phones */
+.msv #svNote{width:100%;font-size:16px;border-radius:12px;padding:12px}.msv .sv-notes li{padding:12px 14px}.msv .sv-n-h{font-size:14px}
+.msv .svq-n{font-size:18px}.msv .svq-t{font-size:16px}.msv .svq-st{font-size:15px}.msv .svq-tip{font-size:15px}.msv .svq-btn{height:50px;font-size:16px;border-radius:12px}

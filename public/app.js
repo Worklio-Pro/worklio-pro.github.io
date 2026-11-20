@@ -3455,6 +3455,8 @@ ${planHas('timeOff') && me && me.staffId && (j.staffIds || []).includes(me.staff
 <a href="/calendar" data-link>Open calendar</a>${edit ? `${j.repeat && j.repeat.next && planHas('recurringJobs') ? `<button type="button" data-act="stopRepeat" data-id="${j.id}">Stop repeating after this visit</button>` : ''}${jobLocked(j) ? '' : `<a href="/jobs/edit?id=${j.id}&full=1" data-link>Edit everything at once</a>`}<button type="button" class="danger-text" data-act="delJob" data-id="${j.id}">Delete job</button>` : ''}</div>`);
   f.addEventListener('click', (e) => { if (e.target.closest('a, button[data-act]')) mClose(true); });
 };
+// the phone pages' round Call / Text / Email / Directions buttons under the client
+const mContact = (c, addr) => (c.phone || c.email || addr) ? `<div class="md-contact">${c.phone ? `<a href="tel:${esc(c.phone)}">${CHEV('M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z')}Call</a>` : ''}${c.phone ? `<a href="sms:${esc(c.phone)}">${CHEV('M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z')}Text</a>` : ''}${c.email ? `<a href="mailto:${esc(c.email)}">${CHEV('M4 4h16v16H4zM4 6l8 7 8-7')}Email</a>` : ''}${addr ? `<a href="${esc(dirUrl(addr))}" target="_blank" rel="noopener">${CHEV('M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12zM12 11.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z')}Directions</a>` : ''}</div>` : '';
 function mobileJobPage(j) {
   if (mUnsign) mUnsign = '';
   const d = jobDoc(j); const edit = canDo('jobs.edit') && !jobLocked(j); const prices = canDo('jobs.prices');
@@ -3477,7 +3479,7 @@ function mobileJobPage(j) {
 <div class="md-st"><span class="cstatus ${J_CLASS[st]}">${J_STATUS[st]}</span>${sig ? '<span class="vsign">✓ Signed</span>' : ''}${omwBadge(j)}${clockBadge(j)}</div>
 ${tap('jobDetails', `<span class="md-h">Job #${esc(j.number)} for ${esc(c.name || 'no client')}${prices && jobTotal(j) !== null ? ` for ${money(jobTotal(j))}` : ''}</span>${j.title ? `<span class="md-sub">${esc(j.title)}</span>` : ''}
 <span class="md-addr">${propNameHtml(c, j)}${esc(j.address || c.address || '')}</span>`, 'md-head')}
-${c.phone || c.email || j.address || c.address ? `<div class="md-contact">${c.phone ? `<a href="tel:${esc(c.phone)}">${CHEV('M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z')}Call</a>` : ''}${c.phone ? `<a href="sms:${esc(c.phone)}">${CHEV('M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z')}Text</a>` : ''}${c.email ? `<a href="mailto:${esc(c.email)}">${CHEV('M4 4h16v16H4zM4 6l8 7 8-7')}Email</a>` : ''}${j.address || c.address ? `<a href="${esc(dirUrl(j.address || c.address))}" target="_blank" rel="noopener">${CHEV('M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12zM12 11.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z')}Directions</a>` : ''}</div>` : ''}
+${mContact(c, j.address || c.address)}
 <div class="md-acts">${acts.filter(Boolean).join('')}<button type="button" class="btn alt md-more" data-act="mJobMore" data-id="${j.id}" aria-label="More actions">⋯</button></div>${jobLocked(j) ? LOCK_NOTE('md-lock') : ''}
 <div class="md-tabs" role="tablist"><button type="button" role="tab" class="on" aria-selected="true" data-act="mTab" data-k="doc">Job</button><button type="button" role="tab" aria-selected="false" data-act="mTab" data-k="notes">Notes</button></div>
 <div class="md-pane" data-pane="doc">${tap('visit', `<span class="md-sh">Scheduled visit${ARROW}</span><span class="md-text">${esc(visitText(j))}</span>${j.repeat ? `<span class="md-text muted">↻ ${repeatLine(j)}</span>` : ''}`, 'md-sec')}
@@ -4723,6 +4725,23 @@ ${v.status === 'action' && todayN ? `<div class="lmore"><span>${todayN} site vis
   let tm; $('#svq').addEventListener('input', (e) => { clearTimeout(tm); tm = setTimeout(async () => { svView.q = e.target.value; await refresh(); const q = $('#svq'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 250); });
   $$('.crow').forEach((r) => r.addEventListener('click', (e) => { if (!e.target.closest('input, button, a')) navigate('/jobs/site-visit?id=' + r.dataset.id); }));
 }
+// a site visit on phones, laid out like the phone job page: back arrow, status, client, Call / Text / Email / Directions, big buttons,
+// then the visit, who, instructions, visit notes and the final quote as full-width sections
+function mobileSiteVisit(t, c, q, st, team, notes, qCard) {
+  const addr = t.address || c.address || ''; const sec = (title, inner) => `<section class="md-block"><h2 class="md-sh">${title}</h2>${inner}</section>`;
+  const visit = `<span class="md-sh">Scheduled visit${canSurvey() ? ARROW : ''}</span><span class="md-text">${esc(fmtDate(t.date))}, ${esc(fmtTime(t.startTime))} – ${esc(fmtTime(t.endTime))}</span>`;
+  return `<div class="mdoc mjob msv"><a href="/jobs" data-link class="md-back" aria-label="Back to site visits">${CHEV('M15 18l-6-6 6-6')}</a>
+<div class="md-st"><span class="cstatus ${SV_CLASS[st]}">${SV_STATUS[st]}</span></div>
+<div class="md-head"><span class="md-h">Site visit for ${esc(c.name || c.company || 'no client')}</span>${q ? `<span class="md-sub">For quote ${esc(q.number)}${q.title ? ' · ' + esc(q.title) : ''}</span>` : ''}<span class="md-addr">${esc(addr)}</span></div>
+${mContact(c, addr)}
+<div class="md-acts">${t.done ? `<button type="button" class="btn alt" data-act="svReopen" data-id="${t.id}">Reopen</button>` : `<button type="button" class="btn" data-act="svComplete" data-id="${t.id}">Mark Complete</button>`}</div>
+${canSurvey() ? `<button type="button" class="md-tap md-sec" data-act="svOpen" data-id="${t.id}">${visit}</button>` : `<div class="md-sec">${visit}</div>`}
+${sec('Who', team.length ? `<span class="md-team">${team.map((s) => `<span>${avatarHtml(s, 28)}${esc(s.name)}</span>`).join('')}</span>` : '<span class="md-text muted">Nobody assigned</span>')}
+${sec('Instructions', t.description ? `<span class="md-text">${esc(t.description)}</span>` : '<span class="md-text muted">None</span>')}
+${sec('Visit notes', `<p class="muted" style="margin:-4px 0 10px">What you saw on site. Clients never see these.</p><textarea id="svNote" rows="3" maxlength="5000" placeholder="Add a note from the visit"></textarea><div class="md-acts" style="padding:10px 0 0"><button type="button" class="btn" data-act="svAddNote" data-id="${t.id}">Add note</button></div>
+${notes.length ? `<ul class="sv-notes">${notes.map((n) => `<li><div class="sv-n-h"><strong>${esc(n.by || 'Someone')}</strong><span class="muted">${esc(fmtDate(n.at.slice(0, 10)))} ${esc(fmtTime(new Date(n.at).toTimeString().slice(0, 5)))}</span><button type="button" class="link-btn" data-act="svDelNote" data-id="${t.id}" data-n="${esc(n.id)}" aria-label="Delete note">Delete</button></div><p class="md-text">${esc(n.text)}</p></li>`).join('')}</ul>` : ''}`)}
+${sec('Final quote', qCard)}</div>`;
+}
 // A site visit's own page, laid out like a job's: the client, when and who, instructions, visit notes, and the final quote
 PAGES['/jobs/site-visit'] = {
   title: 'Site visit',
@@ -4736,6 +4755,7 @@ PAGES['/jobs/site-visit'] = {
       : `<div class="svq"><a href="/quotes/view?id=${q.id}" data-link class="svq-n">${esc(q.number)}</a>${q.title ? `<span class="svq-t">${esc(q.title)}</span>` : ''}</div>
 <div class="svq-st"><span class="cstatus ${svQuoteUnsent(q) ? 'q-sent' : q.status === 'sent' ? 'q-approved' : 'q-converted'}">${svQuoteUnsent(q) ? 'Not sent yet' : q.status === 'sent' ? 'Sent, awaiting response' : esc(q.status[0].toUpperCase() + q.status.slice(1))}</span>${svQuoteUnsent(q) && qSvyStage(q) ? '<span class="muted">The client approved the estimate</span>' : ''}</div>
 ${svQuoteUnsent(q) ? `<p class="muted svq-tip">${t.done ? 'Update the prices from what you saw on site, then send it.' : 'After the visit, update it and send it.'}</p><button type="button" class="btn${t.done ? '' : ' alt'} svq-btn" data-act="svFinalQuote" data-id="${t.id}">Update final quote</button>` : `<button type="button" class="btn alt svq-btn" data-act="svQuoteOpen" data-id="${q.id}">Open quote</button>`}`;
+    if (phoneMq.matches) { main.innerHTML = mobileSiteVisit(t, c, q, st, team, notes, qCard); return; } // phones: laid out like the phone job page
     main.innerHTML = `<div class="qview jview svview"><div class="qpage"><div class="qmain"><div class="qtop"><div class="qtop-l"><a href="/jobs" data-link class="back">← Site visits</a><span class="cstatus ${SV_CLASS[st]}">${SV_STATUS[st]}</span></div>
 <div class="actions">${canSurvey() ? `<button type="button" class="btn alt" data-act="svOpen" data-id="${t.id}">${t.done ? 'Edit' : 'Reschedule'}</button>` : ''}${t.done ? `<button type="button" class="btn alt" data-act="svReopen" data-id="${t.id}">↺ Reopen</button>` : `<button type="button" class="btn" data-act="svComplete" data-id="${t.id}">Mark Complete</button>`}</div></div>
 <div class="vhead"><div class="vtitle-row"><h1 class="vtitle">Site visit</h1></div>
