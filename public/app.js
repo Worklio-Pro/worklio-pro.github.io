@@ -3526,12 +3526,12 @@ function mobileJobPage(j) {
     + tapRow('tax', `Tax${Number(d.taxRate) ? ` (${d.taxRate}%)` : ''}`, money(d.tax || 0)) + mRow('Total', money(d.total || 0), 'grand')
     + (q && q.depositFee > 0 ? mRow('Required deposit', money(q.depositFee)) + (q.depositPaidAt ? mRow(payLink('q-' + q.id, 'Deposit collected', q.depositPaidAt), '−' + money(paid)) : '') + mRow('Outstanding deposit', money(Math.max(0, round2(q.depositFee - paid)))) : '') : '';
   const sig = j.signature;
-  return `<div class="mdoc mjob"><a href="/jobs" data-link class="md-back" aria-label="Back to jobs">${CHEV('M15 18l-6-6 6-6')}</a>
+  return `<div class="mdoc mjob"><div class="mcv-top"><a href="/jobs" data-link class="md-back" aria-label="Back to jobs">${CHEV('M15 18l-6-6 6-6')}</a><button type="button" class="md-back md-top-more" data-act="mJobMore" data-id="${j.id}" aria-label="More actions">⋯</button></div>
 <div class="md-st"><span class="cstatus ${J_CLASS[st]}">${J_STATUS[st]}</span>${sig ? '<span class="vsign">✓ Signed</span>' : ''}${omwBadge(j)}${clockBadge(j)}</div>
 ${tap('jobDetails', `<span class="md-h">Job #${esc(j.number)} for ${esc(c.name || 'no client')}${prices && jobTotal(j) !== null ? ` for ${money(jobTotal(j))}` : ''}</span>${j.title ? `<span class="md-sub">${esc(j.title)}</span>` : ''}
 <span class="md-addr">${propNameHtml(c, j)}${esc(j.address || c.address || '')}</span>`, 'md-head')}
 ${mContact(c, j.address || c.address)}
-${big}<div class="md-acts">${acts.filter(Boolean).join('')}<button type="button" class="btn alt md-more" data-act="mJobMore" data-id="${j.id}" aria-label="More actions">⋯</button></div>${jobLocked(j) ? LOCK_NOTE('md-lock') : ''}
+${big}${acts.filter(Boolean).length ? `<div class="md-acts">${acts.filter(Boolean).join('')}</div>` : ''}${jobLocked(j) ? LOCK_NOTE('md-lock') : ''}
 <div class="md-tabs" role="tablist"><button type="button" role="tab" class="on" aria-selected="true" data-act="mTab" data-k="doc">Job</button><button type="button" role="tab" aria-selected="false" data-act="mTab" data-k="notes">Notes</button></div>
 <div class="md-pane" data-pane="doc">${tap('visit', `<span class="md-sh">Scheduled visit${ARROW}</span><span class="md-text">${esc(visitText(j))}</span>${j.repeat ? `<span class="md-text muted">↻ ${repeatLine(j)}</span>` : ''}`, 'md-sec')}
 ${tap('team', `<span class="md-sh">Assigned team${ARROW}</span>${withClocked(team, 'job', j.id).length ? `<span class="md-team">${withClocked(team, 'job', j.id).map((s) => `<span>${avatarHtml(s, 28)}${esc(s.name)}${clockedFlag(s.id, 'job', j.id)}</span>`).join('')}</span>` : `<span class="md-text muted">${edit ? 'Assign team members' : 'No one assigned'}</span>`}`, 'md-sec')}

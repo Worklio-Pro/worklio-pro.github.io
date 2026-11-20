@@ -1434,6 +1434,7 @@ body.ms-open{overflow:hidden}
 .mp-page{flex:1;overflow-y:auto;padding:6px 14px calc(24px + env(safe-area-inset-bottom))}.mpage .foot [data-act=closeModal]{display:none}.mpage .foot .btn{flex:1;justify-content:center;text-align:center;min-height:50px}.mpage .foot .btn.danger{flex:none}
 /* phones: a client's profile */
 .mcv-top{display:flex;align-items:center;justify-content:space-between;padding-right:14px}.mcv-top .md-back{margin-bottom:0}
+.mdoc .md-top-more{border:0;font:inherit;font-size:22px;font-weight:700;line-height:1;cursor:pointer;margin:0;padding:0 0 6px} /* the job page’s ⋯, top right */
 .mcv-acts{display:flex;align-items:center;height:44px;padding:0 6px;border-radius:99px;background:var(--surface-2)}.mcv-acts a,.mcv-acts button{display:grid;place-items:center;width:44px;height:44px;border:0;background:none;color:var(--text);cursor:pointer}.mcv-acts .more-dots{margin:0;color:currentColor;font-size:11px;letter-spacing:1px}
 .mcv-name{margin:16px 14px 10px;font-size:28px;overflow-wrap:anywhere}.mcv-name .cstatus{vertical-align:middle}
 .mcv-bal{display:flex;justify-content:space-between;gap:12px;margin:0 14px 14px;font-size:18px}
