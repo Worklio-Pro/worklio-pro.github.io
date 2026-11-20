@@ -193,7 +193,13 @@ const scWaiting = () => [
 const SC_WAIT_MAX = 8; // shown beside the calendar before "+N more on Quotes"
 const scWaitItem = (w) => `<div class="sc-w" data-wk="${w.kind}" data-id="${esc(w.id)}" role="button" tabindex="0" title="Drag onto the calendar, or click to choose a time"><strong>${esc(w.title)}</strong><span>${esc(w.sub)}</span></div>`;
 // the page title, as on every other page; the date range is a smaller heading in the calendar’s own bar
-const calHead = () => '<div class="head"><h1>Calendar</h1></div>';
+// the page title, with New (Job / Task / Event / Site visit) for those who can change the calendar: the same pop-up as clicking an empty time
+const calHead = () => `<div class="head"><h1>Calendar</h1>${canCal() ? `<div class="actions"><details class="menu"><summary class="btn">New</summary><div class="menu-list">${[['job', 'Job'], ['task', 'Task'], ['event', 'Event'], ...(canSurvey() ? [['survey', 'Site visit']] : [])].map(([k, l]) => `<button type="button" data-act="calNew" data-k="${k}">${l}</button>`).join('')}</div></details></div>` : ''}</div>`;
+A.calNew = (d) => {
+  const sum = $('.head .menu summary'); const r = sum ? sum.getBoundingClientRect() : { left: innerWidth / 2, bottom: 120 };
+  scQuick({ date: ymd(new Date()), startTime: '09:00', endTime: '10:00' }, r.left - 340, r.bottom + 40);
+  const tab = $(`.qc-tabs [data-k="${d.k}"]`); if (tab && d.k !== 'job') tab.click();
+};
 PAGES['/calendar'] = {
   title: 'Calendar',
   async render(main) {
