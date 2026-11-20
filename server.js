@@ -5047,6 +5047,8 @@ function profitBox(b) {
     margin: b.revenue ? Math.round(profit / b.revenue * 1000) / 10 : null, paid: round2(b.paid), balance: round2(b.balance), jobs: b.jobs || [], estimatedRevenue: !!b.estimatedRevenue,
     timesheets: tenancy.has('timesheets'), cards: !!stripeKey() };
 }
+// what the client has paid on an invoice (deposit credited included); one marked paid without itemized payments counts as paid in full
+const paidOn = (inv, c) => (inv.status === 'paid' && !(inv.payments || []).length ? Math.max(0, (Number(inv.total) || 0) - c.referralApplied) : c.amountPaid + c.depositApplied);
 app.get('/api/invoices/:id/profit', async (req, res) => {
   const inv = db.invoices.find((x) => x.id === req.params.id); if (!inv) return res.status(404).json({ error: 'Invoice not found' });
   const jobs = [...new Set([inv.jobId, ...(inv.jobIds || [])].filter(Boolean))].map((id) => db.jobs.find((j) => j.id === id)).filter(Boolean);
@@ -5063,14 +5065,14 @@ app.get('/api/invoices/:id/profit', async (req, res) => {
   const f = invFees(inv); const c = invoiceCredits(inv);
   res.json(profitBox({ ...B, revenue: invWhole(inv), gross: Number(inv.subtotal) || 0, discount: Number(inv.discount) || 0, tax: Number(inv.tax) || 0,
     tips: (inv.payments || []).reduce((s, p) => s + (Number(p.tip) || 0), 0), estimate: linesCost(inv.items), fees: f.amount, feesPending: f.pending,
-    paid: c.amountPaid + c.depositApplied, balance: c.balanceDue, jobs: jobRows }));
+    paid: paidOn(inv, c), balance: c.balanceDue, jobs: jobRows }));
 });
 app.get('/api/jobs/:id/profit', async (req, res) => {
   const j = db.jobs.find((x) => x.id === req.params.id); if (!j) return res.status(404).json({ error: 'Job not found' });
   await fillFees(jobInvoices(j));
   const m = jobMoney(j); const B = { gross: 0, tax: 0, paid: 0, balance: 0, tips: 0, estimate: 0 };
   if (m.invs.length) for (const i of m.invs) { const sh = invShare(i, j); const c = invoiceCredits(i);
-    B.gross += (Number(i.subtotal) || 0) * sh; B.tax += (Number(i.tax) || 0) * sh; B.paid += (c.amountPaid + c.depositApplied) * sh; B.balance += c.balanceDue * sh;
+    B.gross += (Number(i.subtotal) || 0) * sh; B.tax += (Number(i.tax) || 0) * sh; B.paid += paidOn(i, c) * sh; B.balance += c.balanceDue * sh;
     B.tips += (i.payments || []).reduce((s, p) => s + (Number(p.tip) || 0), 0) * sh; B.estimate += linesCost((i.items || []).filter((x) => !(i.jobIds || []).length || x.job === j.id)); }
   const L = !m.invs.length && jobLines(j); // not invoiced yet: the job's lines (or its quote's) show what it's expected to bring in
   const lineGross = L ? L.items.filter((x) => !x.opt || !L.q || x.opt === L.q.chosenOption).reduce((s, x) => s + (Number(x.qty) || 0) * (Number(x.price) || 0), 0) : 0;

@@ -2770,7 +2770,8 @@ function profitCard(kind, r) {
   const notes = [r.tax ? `Tax collected ${money(r.tax)} isn’t yours, so it isn’t counted.` : '', r.tips ? `Tips ${money(r.tips)} go to your team, so they aren’t counted.` : '',
     ...split.map((j) => `Carries ${Math.round(j.share * 100)}% of job ${esc(j.number)}’s costs; its other invoices carry the rest.`)].filter(Boolean);
   const pos = r.profit >= 0;
-  return `<div class="qcard pf-card" data-profit="${kind}"><div class="qcard-h"><h2>Profit</h2><span class="pf-margin ${pos ? 'ok' : 'bad'}">${r.margin == null ? '—' : r.margin + '%'}</span></div>
+  return `<div class="qcard pf-card" data-profit="${kind}"><div class="qcard-h"><h2>Profit<details class="pf-info"><summary aria-label="About these numbers" title="About these numbers"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></summary>
+<div class="pf-pop">${notes.map((n) => `<p>${n}</p>`).join('')}<p>Only people who can open Reports see this (owner, admins and managers).</p><p><a href="/reports/view?r=jobs" data-link>Job profit report</a></p></div></details></h2><span class="pf-margin ${pos ? 'ok' : 'bad'}">${r.margin == null ? '—' : r.margin + '%'}</span></div>
 ${row(r.estimatedRevenue ? 'Job total' : 'Gross', money(r.gross), r.estimatedRevenue ? 'Not invoiced yet: from the job’s line items' : 'Before tax')}
 ${r.discount ? row('Discount', neg(r.discount)) : ''}${r.discount ? row('Revenue', money(r.revenue), '', 'strong') : ''}
 ${row(matLabel, neg(m.amount), matSub)}
@@ -2778,16 +2779,18 @@ ${r.timesheets ? row('Labor', neg(L.amount), labSub) : ''}
 ${r.cards || F.amount ? row('Card fees', neg(F.amount), feeSub) : ''}
 ${row('<strong>Net profit</strong>', `<strong class="${pos ? '' : 'pf-loss'}">${pos ? money(r.profit) : '−' + money(-r.profit)}</strong>`, '', 'grand')}
 ${kind === 'invoice' || !r.estimatedRevenue ? `<p class="pf-paid">Paid ${money(r.paid)} · Due ${money(r.balance)}</p>` : ''}
-${notes.length ? `<p class="muted pf-note">${notes.join(' ')}</p>` : ''}
-<p class="muted pf-note">Only people who can open Reports see this (owner, admins and managers). <a href="/reports/view?r=jobs" data-link>Job profit report</a></p></div>`;
+</div>`;
 }
+// the ⓘ pop-up closes on a click anywhere else
+document.addEventListener('click', (e) => { document.querySelectorAll('.pf-info[open]').forEach((d) => { if (!d.contains(e.target)) d.open = false; }); });
 async function placeProfit(root, kind, id) {
   if (!canProfit() || !root) return;
   let r; try { r = await api('GET', `/api/${kind}s/${encodeURIComponent(id)}/profit`); } catch { return; }
   if (!root.isConnected || qp('id') !== id || $('.pf-card', root)) return; // moved on, or already shown
   const side = $('.qside', root); const totals = $('.md-totals', root);
   const notes = side && $('.sec-edit[data-sec="notes"]', side); const notesCard = notes && notes.closest('.qcard'); // computers: right under Internal Notes
-  if (notesCard) notesCard.insertAdjacentHTML('afterend', profitCard(kind, r)); else if (side) side.insertAdjacentHTML('beforeend', profitCard(kind, r)); else if (totals) totals.insertAdjacentHTML('afterend', `<section class="md-block">${profitCard(kind, r)}</section>`);
+  if (notesCard) notesCard.insertAdjacentHTML('afterend', profitCard(kind, r)); else if (side) side.insertAdjacentHTML('beforeend', profitCard(kind, r)); else { const pane = totals || $('.md-pane[data-pane="doc"]', root); const html = `<section class="md-block">${profitCard(kind, r)}</section>`; // phones: under the totals, else at the end of the Job tab
+    if (totals) totals.insertAdjacentHTML('afterend', html); else if (pane) pane.insertAdjacentHTML('beforeend', html); }
 }
 function viewPage(kind) {
   return {
