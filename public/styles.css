@@ -439,7 +439,7 @@ details.menu{position:relative}details.menu summary{list-style:none}details.menu
 .qtotals .tl{display:grid;grid-template-columns:110px minmax(0,1fr) 112px 28px;align-items:center;gap:12px;min-height:56px;padding:6px 0;border-bottom:1px solid var(--line);font-size:14px}
 .qtotals .tl>:nth-child(2){justify-self:end}.qtotals .tl>:nth-child(3){justify-self:end;text-align:right}
 .qtotals .opt-edit{grid-column:2;justify-self:end}.qtotals .opt-amt{grid-column:3;justify-self:end}.qtotals .opt-add{grid-column:3;justify-self:end;margin:0}.qtotals .t-rm-c{grid-column:4}
-.qtotals .unit input{width:96px}.qtotals .unit select{width:auto;min-width:64px;max-width:100%}.qtotals .opt-edit,.qtotals .unit{min-width:0;max-width:100%}
+.qtotals .unit input{width:130px;flex:none}.qtotals .unit select{width:auto;min-width:64px;max-width:100%;flex:0 1 auto}.qtotals .opt-edit,.qtotals .unit{min-width:0;max-width:100%}
 .qtotals .tax-in input{width:96px}.qtotals .tax-in>span{width:64px;text-align:center;color:var(--muted)}
 .qtotals .grand{font-size:17px;border-bottom:3px solid var(--line)}
 .t-rm{display:inline-flex;background:none;border:0;padding:4px;border-radius:6px;color:var(--danger);cursor:pointer}.t-rm:hover{background:var(--tint)}
