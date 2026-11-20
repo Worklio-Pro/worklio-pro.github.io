@@ -67,11 +67,11 @@ A.homeSetupHide = () => { homeSet('homeSetupHidden', '1'); const n = $('#hmSetup
 // today's jobs and tasks, and who's off
 function homeTodayHtml() {
   const today = ymd(new Date()); const tomorrow = ymd(addDays(new Date(), 1));
-  const items = [...D.jobs.filter((j) => j.date === today && j.status !== 'cancelled').map((j) => ({ kind: 'job', href: '/jobs/edit?id=' + j.id, title: j.title || 'Job ' + j.number, sub: clientName(j.clientId), start: j.anytime ? '' : j.startTime, staffIds: j.staffIds, done: j.status === 'completed' })),
+  const items = [...D.jobs.filter((j) => jobOn(j, today) && j.status !== 'cancelled').map((j) => ({ kind: 'job', href: '/jobs/edit?id=' + j.id, title: j.title || 'Job ' + j.number, sub: clientName(j.clientId), start: j.anytime ? '' : j.startTime, staffIds: j.staffIds, done: j.status === 'completed' })),
     ...(D.tasks || []).filter((t) => t.date === today).map((t) => ({ kind: 'task', href: '/calendar', title: t.title, sub: t.clientId ? clientName(t.clientId) : t.address || '', start: t.anytime ? '' : t.startTime, staffIds: t.staffIds, done: !!t.done }))]
     .sort((a, b) => (a.start || '99').localeCompare(b.start || '99'));
   const off = D.staff.filter((s) => offOn(s.id, today)).map((s) => s.name.split(' ')[0]);
-  const next = D.jobs.filter((j) => j.date === tomorrow && j.status !== 'cancelled').length;
+  const next = D.jobs.filter((j) => jobOn(j, tomorrow) && j.status !== 'cancelled').length;
   const who = (ids) => (ids || []).map((id) => byId(D.staff, id)).filter(Boolean).map((s) => `<i class="hm-dot" style="background:${esc(s.color)}" title="${esc(s.name)}"></i>`).join('');
   const day = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
   return `<div class="card hm-today"><div class="hm-h"><h2>Today</h2><span class="muted">${esc(day)}</span><a class="hm-more hm-cal" href="/calendar" data-link title="Calendar" aria-label="Calendar"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg><span aria-hidden="true">Calendar ›</span></a></div>
@@ -142,10 +142,15 @@ const scMin = (t) => { const [h, m] = String(t || '0:0').split(':').map(Number);
 const scTime = (min) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
 const scDays = () => (scState.view !== 'week' ? [new Date(scState.anchor.getFullYear(), scState.anchor.getMonth(), scState.anchor.getDate())] : Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(scState.anchor), i)));
 // everything on one day: jobs, tasks and events, filtered by the team calendars shown
+// dragging day N of a multi-day job moves the whole job by the same number of days (the server moves its end date with it)
+function scShiftJob(el, upd, toDay) {
+  const j = el.dataset.kind === 'job' && byId(D.jobs, el.dataset.id); const from = (el.closest('[data-d]') || {}).dataset; if (!j || jobEndDay(j) <= j.date || !from || !from.d) return;
+  upd.date = ymd(addDays(parseD(j.date), Math.round((parseD(toDay) - parseD(from.d)) / 864e5)));
+}
 function scItems(day) {
   const shownStaff = (ids) => { const list = ids || []; return list.length ? list.some((id) => !scState.hidden.includes(id)) : !scState.hidden.includes('none'); };
   const out = [];
-  for (const j of D.jobs) if (j.date === day && j.status !== 'cancelled' && shownStaff(j.staffIds)) out.push({ kind: 'job', id: j.id, title: j.title, sub: clientName(j.clientId), start: j.startTime, end: j.endTime, anytime: !!j.anytime, staffIds: j.staffIds || [], done: j.status === 'completed' });
+  for (const j of D.jobs) if (jobOn(j, day) && j.status !== 'cancelled' && shownStaff(j.staffIds)) out.push({ kind: 'job', id: j.id, title: j.title, sub: [clientName(j.clientId), jobDayOf(j, day)].filter(Boolean).join(' · '), start: j.startTime, end: j.endTime, anytime: !!j.anytime, staffIds: j.staffIds || [], done: j.status === 'completed' });
   for (const t of D.tasks || []) if (t.date === day && shownStaff(t.staffIds)) out.push({ kind: 'task', id: t.id, title: t.title, sub: t.clientId ? clientName(t.clientId) : t.address || '', start: t.startTime, end: t.endTime, anytime: !!t.anytime, staffIds: t.staffIds || [], done: !!t.done });
   for (const e of D.events || []) if (e.date === day) out.push({ kind: 'event', id: e.id, title: e.title, sub: '', start: e.startTime, end: e.endTime, anytime: !!e.anytime, staffIds: [] });
   return out;
@@ -318,6 +323,7 @@ function scWire(main, edit) {
           who = target.s ? `, now with ${(byId(D.staff, target.s) || {}).name || 'them'}` : upd.staffIds.length ? '' : ', now unassigned';
         }
         const col = { job: 'jobs', task: 'tasks', event: 'events' }[el.dataset.kind];
+        scShiftJob(el, upd, target.day); // a multi-day job moves as a whole
         try { await api('PUT', `/api/${col}/${el.dataset.id}`, upd); toast(`Moved to ${fmtDate(target.day)}${target.anytime ? ' (anytime)' : `, ${fmtTime(upd.startTime)}`}${who}`); refresh(); } catch (x) { toast(x.message, true); refresh(); }
       };
       addEventListener('pointermove', move); addEventListener('pointerup', up);
@@ -431,7 +437,8 @@ function scMonthWire(main, edit) {
         ghost.remove(); el.classList.remove('sc-dragging'); cells.forEach((x) => x.classList.remove('drop')); scDragged = true; setTimeout(() => { scDragged = false; }, 0);
         if (!target || target === el.closest('.sc-mc').dataset.d) return;
         const col = { job: 'jobs', task: 'tasks', event: 'events' }[el.dataset.kind];
-        try { await api('PUT', `/api/${col}/${el.dataset.id}`, { date: target }); toast(`Moved to ${fmtDate(target)}`); refresh(); } catch (x) { toast(x.message, true); refresh(); }
+        const mv = { date: target }; scShiftJob(el, mv, target);
+        try { await api('PUT', `/api/${col}/${el.dataset.id}`, mv); toast(`Moved to ${fmtDate(target)}`); refresh(); } catch (x) { toast(x.message, true); refresh(); }
       };
       addEventListener('pointermove', move); addEventListener('pointerup', up);
     });
@@ -734,7 +741,7 @@ A.requestOff = (d, el, pre = {}) => {
   const f = $('#tof', m.closest('.modal') || document);
   const read = () => { const all = f.allDay.checked; return { allDay: all, from: f.from.value, to: all ? f.to.value || f.from.value : f.from.value, start: all ? '' : f.start.value, end: all ? '' : f.end.value }; };
   // the jobs you're assigned to then, so whoever approves knows what needs covering
-  const conf = () => { const r = read(); const jobs = (D.jobs || []).filter((j) => (j.staffIds || []).includes(me && me.staffId) && !['cancelled', 'completed'].includes(j.status) && j.date >= r.from && j.date <= r.to && (r.allDay || (j.startTime < r.end && (j.endTime || j.startTime) > r.start)));
+  const conf = () => { const r = read(); const jobs = (D.jobs || []).filter((j) => (j.staffIds || []).includes(me && me.staffId) && !['cancelled', 'completed'].includes(j.status) && jobEndDay(j) >= r.from && j.date <= r.to && (r.allDay || (j.startTime < r.end && (j.endTime || j.startTime) > r.start)));
     $('#toConf').innerHTML = jobs.length ? `<p class="notice">You’re assigned to ${jobs.length} job${jobs.length === 1 ? '' : 's'} then: ${jobs.map((j) => `${esc(j.number)} ${esc(j.title)} (${fmtDate(j.date)})`).join(', ')}. Your manager will see this.</p>` : ''; };
   f.allDay.addEventListener('change', () => { $('.to-to', f).hidden = !f.allDay.checked; $('.to-hours', f).hidden = f.allDay.checked; conf(); });
   f.from.addEventListener('change', () => { if (f.to.value < f.from.value) f.to.value = f.from.value; f.to.min = f.from.value; conf(); });
@@ -1310,6 +1317,14 @@ const locTag = (l) => { if (!l) return '';
   const far = l.away !== undefined && l.away > LOC_FAR; const rough = l.acc > 1000 ? ' (rough)' : '';
   return `<a class="ts-loc${far ? ' far' : ''}" href="https://www.google.com/maps?q=${l.lat},${l.lng}" target="_blank" rel="noopener" title="See on a map${l.acc ? ` (accurate to about ${distTxt(l.acc / 1609.34)})` : ''}">📍 ${l.away !== undefined ? `${distTxt(l.away)} from job` : 'Map'}${rough}</a>`; };
 const locCsv = (l) => (!l ? '' : l.none ? (l.none === 'denied' ? 'Not shared' : 'No location') : l.away !== undefined ? `${distTxt(l.away)} from job` : `${l.lat},${l.lng}`);
+// who changed an entry and how: the latest edit on the row, the whole history on hover and in Edit
+const TS_FIELD = { staffId: 'Team member', jobId: 'Job', start: 'Clock in', end: 'Clock out', note: 'Note' };
+const tsVal = (k, v) => (v == null || v === '' ? '—' : k === 'start' || k === 'end' ? `${fmtDate(ymd(new Date(v)))} ${tsClock(v)}` : k === 'jobId' ? ((byId(D.jobs, v) || {}).number || 'a job') : k === 'staffId' ? ((byId(D.staff, v) || {}).name || 'someone') : String(v));
+const tsEditLine = (x) => `${fmtDate(ymd(new Date(x.at)))} ${tsClock(x.at)}, ${x.by}: ${Object.entries(x.changes || {}).map(([k, [a, b]]) => `${TS_FIELD[k] || k} ${tsVal(k, a)} → ${tsVal(k, b)}`).join('; ')}`;
+const TS_AUTO = { 'end-of-day': 'Clocked out automatically at the job’s scheduled end (they were still clocked in after it). Check the time.', 'max-hours': 'Clocked out automatically after too many hours on the clock (no scheduled end to go by). Check the time.', 'job-complete': 'Clocked out when the job was marked complete.', 'visit-complete': 'Clocked out when the site visit was marked complete.' };
+const tsTags = (e) => [e.needsReview || e.autoOut ? `<span class="ts-tag${e.needsReview ? ' warn' : ''}" title="${esc(TS_AUTO[e.autoOut] || 'Check this entry')}">${e.needsReview ? '⚠ ' : ''}${e.autoOut === 'job-complete' ? 'Clocked out at job complete' : e.autoOut === 'visit-complete' ? 'Clocked out at visit complete' : 'Auto clocked out'}</span>` : '',
+  e.addedBy ? `<span class="ts-tag" title="Added on the timesheet by ${esc(e.addedBy)}">Added by ${esc(e.addedBy)}</span>` : '',
+  (e.edits || []).length ? `<span class="ts-tag" title="${esc(e.edits.map(tsEditLine).join('\n'))}">✎ Edited by ${esc(e.edits[e.edits.length - 1].by)}${e.edits.length > 1 ? ` (${e.edits.length}×)` : ''}</span>` : e.editedBy ? `<span class="ts-tag">✎ Edited by ${esc(e.editedBy)}</span>` : ''].join('');
 PAGES['/timesheets'] = {
   title: 'Timesheets',
   async render(main) {
@@ -1329,27 +1344,28 @@ PAGES['/timesheets'] = {
     const clockCard = !TS.canClock ? '' : `<div class="card ts-clock ${o ? 'on' : ''}">${o ? `<div><div class="ts-big">⏱ On the clock · ${clockSince(o.start)}</div><div class="muted">Since ${tsClock(o.start)}${o.job ? ` on <a href="${o.job.visit ? '/jobs/site-visit' : '/jobs/edit'}?id=${esc(o.job.id)}" data-link>${esc(o.job.number)} ${esc(o.job.title)}</a>` : ', no job'}</div></div>
 <button type="button" class="btn ts-btn" data-act="clockOut">Clock Out</button>` : `<div><div class="ts-big">You’re off the clock</div><label class="ts-job">Job<select id="tsJob"><option value="">No job (shop time, travel…)</option>${mine.map((j) => `<option value="${j.id}">${esc(j.number)} · ${esc(j.title || '')}${j.date ? ' · ' + esc(fmtDate(j.date)) : ''}</option>`).join('')}${svList().filter((t) => !t.done && (t.staffIds || []).includes(me && me.staffId)).sort((a, b) => a.date.localeCompare(b.date)).map((t) => `<option value="v:${t.id}">Site visit · ${esc(svName(t))} · ${esc(fmtDate(t.date))}</option>`).join('')}</select></label></div>
 <button type="button" class="btn ts-btn" data-act="tsClockIn">Clock In</button>`}${TS.teamLocation ? '<p class="muted sm ts-locnote">📍 Your location is saved when you clock in and out (never in between), so your manager can see you were at the job.</p>' : ''}</div>`;
-    const row = (e) => `<tr class="${e.end ? '' : 'ts-live'}"><td>${esc(fmtDate(ymd(new Date(e.start))))}</td><td>${e.job ? `<a href="${e.job.visit ? '/jobs/site-visit' : '/jobs/edit'}?id=${esc(e.job.id)}" data-link>${esc(e.job.number)}</a> ${esc(e.job.title)}` : e.jobId ? '<span class="muted">Deleted job</span>' : '<span class="muted">No job</span>'}${e.note ? `<div class="muted sm">${esc(e.note)}</div>` : ''}</td>
+    const row = (e) => `<tr class="${e.end ? '' : 'ts-live'}"><td>${esc(fmtDate(ymd(new Date(e.start))))}</td><td>${e.job ? `<a href="${e.job.visit ? '/jobs/site-visit' : '/jobs/edit'}?id=${esc(e.job.id)}" data-link>${esc(e.job.number)}</a> ${esc(e.job.title)}` : e.jobId ? '<span class="muted">Deleted job</span>' : '<span class="muted">No job</span>'}${e.note ? `<div class="muted sm">${esc(e.note)}</div>` : ''}${tsTags(e) ? `<div class="ts-tags">${tsTags(e)}</div>` : ''}</td>
 <td>${tsClock(e.start)}${locTag(e.inLoc)}</td><td>${e.end ? tsClock(e.end) + locTag(e.outLoc) : '<span class="cstatus q-converted">On the clock</span>'}</td><td class="r">${tsH(e.hours)}${e.hours > 12 ? ' <span title="Over 12 hours: check it wasn’t left running">⚠️</span>' : ''}</td>
 ${TS.admin ? `<td class="r m-hide">${e.rate ? money(e.hours * e.rate) : '<span class="muted">—</span>'}</td>` : ''}<td>${e.approvedAt ? `<span class="cstatus active" title="Approved by ${esc(e.approvedBy)}">Approved</span>` : e.end ? '<span class="cstatus q-sent">Waiting</span>' : ''}</td>
 ${M ? `<td class="racts"><div>${e.end && !e.approvedAt ? `<button type="button" class="btn" data-act="tsApprove" data-ids="${e.id}">Approve</button>` : ''}<button type="button" class="btn alt row-edit" data-act="tsEdit" data-id="${e.id}">Edit</button></div></td>` : ''}</tr>`;
     // managers open on Waiting for approval; everyone sees the week's entries in one table, a group per person
-    const tab = M ? tsTab : 'all'; const inTab = (e) => tab === 'all' || (tab === 'waiting' ? e.end && !e.approvedAt : !!e.approvedAt);
+    const review = list.filter((e) => e.needsReview);
+    const tab = M ? (tsTab === 'review' && !review.length ? 'waiting' : tsTab) : 'all'; const inTab = (e) => tab === 'all' || (tab === 'review' ? !!e.needsReview : tab === 'waiting' ? e.end && !e.approvedAt : !!e.approvedAt);
     const ncol = 6 + (TS.admin ? 1 : 0) + (M ? 1 : 0);
     const person = ([id, p]) => { const h = p.entries.reduce((s, e) => s + e.hours, 0); const w = p.entries.filter((e) => e.end && !e.approvedAt); const rows = p.entries.filter(inTab); if (!rows.length) return '';
       return `<tr class="lgrp"><td colspan="${ncol}"><div><span class="to-dot" style="background:${esc(p.color || '#64748b')}"></span><strong>${esc(p.name)}</strong><span class="muted">${tsH(h)} h this week</span>${h > OVERTIME_H ? `<span class="cstatus q-declined" title="Over ${OVERTIME_H} hours this week">${tsH(h - OVERTIME_H)} h overtime</span>` : ''}
 ${M && w.length ? `<button type="button" class="btn alt" data-act="tsApprove" data-ids="${w.map((e) => e.id).join(',')}">Approve ${w.length}</button>` : ''}</div></td></tr>${rows.map(row).join('')}`; };
     main.innerHTML = `<div class="head"><div><h1>Timesheets</h1><p class="sub">${M ? 'Your team’s hours, clocked in and out on jobs. Check them, fix what’s wrong and approve them for payroll.' : 'Clock in and out, and see your hours.'}${TS.admin ? ' Hours on a job count as labor cost in Financial Reports → Job profit.' : ''}</p></div>
-<div class="ts-acts">${TS.admin ? '<button type="button" class="btn alt" data-act="tsRates">Pay rates</button>' : ''}${M ? '<button type="button" class="btn" data-act="tsEdit">Add time</button>' : ''}</div></div>
+<div class="ts-acts">${TS.admin ? '<button type="button" class="btn alt" data-act="tsRules">Clock-out rules</button><button type="button" class="btn alt" data-act="tsRates">Pay rates</button>' : ''}${M ? '<button type="button" class="btn" data-act="tsEdit">Add time</button>' : ''}</div></div>
 ${clockCard}
 <div class="ts-bar"><div class="ts-week"><button type="button" class="btn alt sm arw" data-act="tsWeekGo" data-n="-7" aria-label="Previous week">‹</button><strong>${range}</strong><button type="button" class="btn alt sm arw" data-act="tsWeekGo" data-n="7" aria-label="Next week">›</button>${thisWeek ? '' : '<button type="button" class="link-btn" data-act="tsWeekGo" data-n="0">This week</button>'}</div>
 ${M && people.length > 1 ? `<label class="ts-who"><span class="sr">Team member</span><select id="tsWho"><option value="">Everyone</option>${people.map(([id, n]) => `<option value="${esc(id)}" ${tsWho === id ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label>` : ''}</div>
 <div class="lstrip ls-all"><span>Hours <strong>${tsH(total)} h</strong>${M ? ` · ${Object.keys(byPerson).length} ${Object.keys(byPerson).length === 1 ? 'person' : 'people'}` : ''}</span><span>Overtime <strong>${tsH(over)} h</strong> <span class="muted">(over ${OVERTIME_H} h a week)</span></span>
 <span>Waiting for approval <strong>${waiting.length}</strong></span>${TS.admin ? `<span>Labor cost <strong>${money(cost)}</strong>${Object.keys(TS.rates || {}).length ? '' : ' · <button type="button" class="link-btn" data-act="tsRates">Set pay rates</button>'}</span>` : ''}
 ${M && waiting.length ? `<button type="button" class="btn ls-act" data-act="tsApprove" data-ids="${waiting.map((e) => e.id).join(',')}">Approve all ${waiting.length}</button>` : ''}</div>
-${M ? `<div class="ltabs" role="tablist" aria-label="Time entries">${[['waiting', 'Waiting for approval', waiting.length], ['approved', 'Approved', list.filter((e) => e.approvedAt).length], ['all', 'All', list.length]].map(([k, l, n]) => `<button type="button" role="tab" aria-selected="${tab === k}" class="ltab${tab === k ? ' on' : ''}" data-act="tsTab" data-t="${k}"><span class="lt-t">${l}<span class="lt-n">${n}</span></span></button>`).join('')}</div>` : ''}
+${M ? `<div class="ltabs" role="tablist" aria-label="Time entries">${[...(review.length ? [['review', '⚠ Needs review', review.length]] : []), ['waiting', 'Waiting for approval', waiting.length], ['approved', 'Approved', list.filter((e) => e.approvedAt).length], ['all', 'All', list.length]].map(([k, l, n]) => `<button type="button" role="tab" aria-selected="${tab === k}" class="ltab${tab === k ? ' on' : ''}" data-act="tsTab" data-t="${k}"><span class="lt-t">${l}<span class="lt-n">${n}</span></span></button>`).join('')}</div>` : ''}
 <div class="card ctable"><div class="tablewrap"><table class="m-ts"><tr><th>Day</th><th>Job</th><th>In</th><th>Out</th><th class="r">Hours</th>${TS.admin ? '<th class="r m-hide">Cost</th>' : ''}<th>Status</th>${M ? '<th aria-label="Actions"></th>' : ''}</tr>
-${Object.entries(byPerson).map(person).join('') || `<tr><td colspan="${ncol}" class="empty">${tab === 'waiting' && list.length ? 'Nothing waiting for approval this week. <button type="button" class="link-btn" data-act="tsTab" data-t="all">See all hours</button>' : tab === 'approved' && list.length ? 'Nothing approved yet this week.' : `No time ${tsWho ? 'for this person ' : ''}this week.${TS.canClock ? ' Clock in above, or from a job’s page.' : ''}`}</td></tr>`}</table></div></div>`;
+${Object.entries(byPerson).map(person).join('') || `<tr><td colspan="${ncol}" class="empty">${tab === 'review' ? 'Nothing to review.' : tab === 'waiting' && list.length ? 'Nothing waiting for approval this week. <button type="button" class="link-btn" data-act="tsTab" data-t="all">See all hours</button>' : tab === 'approved' && list.length ? 'Nothing approved yet this week.' : `No time ${tsWho ? 'for this person ' : ''}this week.${TS.canClock ? ' Clock in above, or from a job’s page.' : ''}`}</td></tr>`}</table></div></div>`;
     const who = $('#tsWho'); if (who) who.addEventListener('change', (e) => { tsWho = e.target.value; refresh(); });
   },
 };
@@ -1369,7 +1385,8 @@ A.tsEdit = (d) => {
 ${(() => { const a = (e ? tsLocal(e.start) : `${ymd(now)}T08:00`).split('T'); const b = (e ? (e.end ? tsLocal(e.end) : '') : `${ymd(now)}T16:00`).split('T'); const rq = e && !e.end ? '' : 'required'; return `<div class="row"><label>Clock in date<input type="date" name="startD" required value="${esc(a[0] || '')}"></label><label>Clock in time<input type="time" name="startT" required value="${esc(a[1] || '')}"></label></div>
 <div class="row"><label>Clock out date<input type="date" name="endD" ${rq} value="${esc(b[0] || '')}"></label><label>Clock out time<input type="time" name="endT" ${rq} value="${esc(b[1] || '')}"></label></div>`; })()}
 <label>Note<input name="note" maxlength="500" value="${esc(e ? e.note || '' : '')}" placeholder="e.g. Forgot to clock out"></label>
-${e && e.approvedAt ? '<p class="notice">This entry is approved. Saving a change sends it back for approval.</p>' : ''}
+${e && e.approvedAt ? '<p class="notice">This entry is approved. Saving a change sends it back for approval.</p>' : ''}${e && e.autoOut && TS_AUTO[e.autoOut] ? `<p class="notice">${esc(TS_AUTO[e.autoOut])}</p>` : ''}
+${e && ((e.edits || []).length || e.addedBy) ? `<details class="ts-hist"><summary>Change history</summary><ul>${e.addedBy ? `<li>Added by ${esc(e.addedBy)}</li>` : ''}${(e.edits || []).map((x) => `<li>${esc(tsEditLine(x))}</li>`).join('')}</ul></details>` : ''}<p class="muted sm">Your name is saved with this change.</p>
 <div class="foot">${e ? '<button type="button" class="btn alt danger-text" data-act="tsDel" style="margin-right:auto">Delete</button>' : ''}<button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save</button></div></form>`);
   const f = $('#tsf', m.closest('.modal') || document);
   A.tsDel = async () => { if (!confirm('Delete this time entry?')) return; try { await api('DELETE', '/api/time/' + e.id); closeModal(); toast('Entry deleted'); refresh(); } catch (x) { toast(x.message, true); } };
@@ -1380,6 +1397,19 @@ ${e && e.approvedAt ? '<p class="notice">This entry is approved. Saving a change
     try { if (e) await api('PUT', '/api/time/' + e.id, body); else await api('POST', '/api/time', { ...body, staffId: f.staffId.value }); closeModal(); toast('Saved'); refresh(); }
     catch (x) { b.disabled = false; toast(x.message, true); }
   });
+};
+// clock-out rules (owner and admins): a reminder, then an automatic clock-out for anyone still on the clock after the job's end time
+A.tsRules = () => {
+  const r = TS.clockRules || { autoOut: true, graceHours: 2, maxHours: 12 };
+  const m = modal('Clock-out rules', `<form id="tsru"><p class="muted" style="margin-top:0">So a forgotten clock-out doesn’t put days of labor on a job. Each person gets a “Still clocked in?” notification 30 minutes after their job’s scheduled end time.</p>
+<label class="switchline"><input type="checkbox" name="autoOut" ${r.autoOut ? 'checked' : ''}> Clock people out automatically</label>
+<label>Clock them out this long after the job’s end time<select name="graceHours">${[0.5, 1, 2, 3, 4, 6].map((h) => `<option value="${h}" ${r.graceHours === h ? 'selected' : ''}>${h === 0.5 ? '30 minutes' : h + (h === 1 ? ' hour' : ' hours')}</option>`).join('')}</select></label>
+<p class="muted sm">They’re clocked out <strong>at the job’s end time</strong>, not when it happens, and the entry is flagged under Needs review for you to check.</p>
+<label>With no end time to go by (no job, or an Anytime job), clock them out after<select name="maxHours">${[8, 10, 12, 14, 16].map((h) => `<option value="${h}" ${r.maxHours === h ? 'selected' : ''}>${h} hours on the clock</option>`).join('')}</select></label>
+<p class="muted sm">Marking a job complete also clocks out everyone still on it.</p>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save</button></div></form>`);
+  const f = $('#tsru', m.closest('.modal') || document);
+  f.addEventListener('submit', async (ev) => { ev.preventDefault(); try { await api('PUT', '/api/time/rules', { autoOut: f.autoOut.checked, graceHours: Number(f.graceHours.value), maxHours: Number(f.maxHours.value) }); closeModal(); toast('Clock-out rules saved'); refresh(); } catch (x) { toast(x.message, true); } });
 };
 // pay rates (owner and admins): dollars an hour, for labor cost
 A.tsRates = () => {
@@ -4533,7 +4563,7 @@ PAGES['/settings/preferences'] = {
     const [P, F] = await Promise.all([api('GET', '/api/auth/push'), api('GET', '/api/auth/calendar-feed').catch(() => ({ allowed: false }))]); const capable = pushCapable(); let here = !!(await pushSubHere().catch(() => null));
     const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     const quotes = canDo('quotes') && planHas('quotes');
-    const kinds = [['overview', 'Today’s work overview', 'Each morning, if there are jobs today', true], ['schedule', 'Today’s schedule changed', 'A job today is added, moved, reassigned or cancelled', true],
+    const kinds = [['overview', 'Today’s work overview', 'Each morning, if there are jobs today', true], ['schedule', 'Today’s schedule changed', 'A job today is added, moved, reassigned or cancelled', true], ['clock', 'Still clocked in', 'You’re still on the clock after the job’s end time, or were clocked out automatically', true],
       ['request', 'New request', 'A client asks for work from their portal or a referral', canDo('clients.view')], ['booking', 'New online booking', 'Someone books on your booking page', canDo('clients.view') && planHas('onlineBooking')],
       ['quoteViewed', 'Client viewed quote', 'The first time a client opens a sent quote', quotes], ['quoteChanges', 'Client asked for changes', 'A client clicks Request Changes on a quote', quotes], ['quoteApproved', 'Client approved quote', 'A client approves a quote', quotes], ['review', 'New client review', 'A client leaves a review', canDo('reviews') && planHas('reviews')], ['automation', 'Your automations', 'An automation you set up to notify the team', planHas('automations')], ['jobPost', 'A post is ready to approve', 'A finished job’s photos became a social post', canDo('social') && planHas('jobPosts')]].filter((k) => k[3]);
     const why = !capable ? (ios ? 'On iPhone and iPad, add this app to your Home Screen first (Share → Add to Home Screen), then open it from there and come back to this page. Needs iOS 16.4 or later.' : 'This browser can’t receive push notifications. Try Chrome, Edge, Firefox or Safari.')

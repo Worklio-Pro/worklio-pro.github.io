@@ -10,6 +10,12 @@ const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate(
 const MORE_SUM = `<summary class="btn alt icon-more" aria-label="More actions" title="More actions"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></summary>`;
 const parseD = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
 const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+// multi-day jobs: date is the first day, endDate the last; skipWeekends leaves out Saturdays and Sundays in between (same rules as the server)
+const jobEndDay = (j) => (j && j.date && j.endDate && j.endDate > j.date ? j.endDate : (j && j.date) || '');
+const jobOn = (j, day) => !!(j && j.date) && day >= j.date && day <= jobEndDay(j) && (day === j.date || !j.skipWeekends || ![0, 6].includes(parseD(day).getDay()));
+const jobDayList = (j) => { const out = []; if (!j || !j.date) return out; for (let d = parseD(j.date); out.length < 62; d = addDays(d, 1)) { const k = ymd(d); if (k > jobEndDay(j)) break; if (jobOn(j, k)) out.push(k); } return out; };
+const jobDayOf = (j, day) => { const L = jobDayList(j); return L.length > 1 && L.includes(day) ? `Day ${L.indexOf(day) + 1} of ${L.length}` : ''; };
+const jobDates = (j) => (!j.date ? 'No date' : jobEndDay(j) > j.date ? `${fmtDate(j.date)} – ${fmtDate(jobEndDay(j))}` : fmtDate(j.date));
 // regional settings (App Settings): first day of the week, date format, 12/24-hour time
 const weekStartDay = () => (company.weekStart === 'sun' ? 0 : 1);
 const dayInWeek = (d) => (d.getDay() - weekStartDay() + 7) % 7; // 0 = first column of the calendar
@@ -2765,6 +2771,7 @@ function profitCard(kind, r) {
   const matLabel = m.source === 'lines' ? 'Materials <span class="muted">(estimated)</span>' : 'Materials &amp; expenses';
   const matSub = m.source === 'actual' ? [m.products ? `Products ${money(m.products)}` : '', m.expenses ? `Expenses on the job ${money(m.expenses)}` : ''].filter(Boolean).join(' · ') : m.source === 'lines' ? 'From line item costs. Log receipts in Expenses for actuals.' : (kind === 'job' || r.jobs.length ? 'No expenses linked to the job yet' : 'Not linked to a job, so no expenses');
   const labSub = !r.timesheets ? '' : L.hours ? `${pfHours(L.hours)} clocked${L.unrated ? ` · ${pfHours(L.unrated)} with no pay rate` : ''}` : 'No time clocked on the job';
+  const labNote = L.onClock ? `${L.onClock === 1 ? '1 person is' : L.onClock + ' people are'} still on the clock, not counted yet` : '';
   const feeSub = F.pending ? `${F.pending} payment${F.pending === 1 ? '' : 's'} still settling` : F.amount ? 'Stripe’s fee on card and bank payments' : r.balance > 0 ? 'Added when paid by card' : 'No card payments';
   const split = r.jobs.filter((j) => j.share < 0.999);
   const notes = [r.tax ? `Tax collected ${money(r.tax)} isn’t yours, so it isn’t counted.` : '', r.tips ? `Tips ${money(r.tips)} go to your team, so they aren’t counted.` : '',
@@ -2775,7 +2782,7 @@ function profitCard(kind, r) {
 ${row(r.estimatedRevenue ? 'Job total' : 'Gross', money(r.gross), r.estimatedRevenue ? 'Not invoiced yet: from the job’s line items' : 'Before tax')}
 ${r.discount ? row('Discount', neg(r.discount)) : ''}${r.discount ? row('Revenue', money(r.revenue), '', 'strong') : ''}
 ${row(matLabel, neg(m.amount), matSub)}
-${r.timesheets ? row('Labor', neg(L.amount), labSub) : ''}
+${r.timesheets ? row('Labor', neg(L.amount), [labSub, labNote].filter(Boolean).join(' · ')) : ''}
 ${r.cards || F.amount ? row('Card fees', neg(F.amount), feeSub) : ''}
 ${row('<strong>Net profit</strong>', `<strong class="${pos ? '' : 'pf-loss'}">${pos ? money(r.profit) : '−' + money(-r.profit)}</strong>`, '', 'grand')}
 ${kind === 'invoice' || !r.estimatedRevenue ? `<p class="pf-paid">Paid ${money(r.paid)} · Due ${money(r.balance)}</p>` : ''}
@@ -3446,7 +3453,8 @@ function jobScheduleOk(id, body) {
   return true;
 }
 const jobTeam = (j) => D.staff.filter((s) => s.status !== 'deactivated' || (j.staffIds || []).includes(s.id));
-const visitText = (j) => `${j.date ? parseD(j.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : 'No date'}${j.anytime ? ' · Anytime' : j.startTime ? ` · ${fmtTime(j.startTime)} – ${fmtTime(j.endTime)}` : ''}`;
+const visitDay = (d) => parseD(d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+const visitText = (j) => `${!j.date ? 'No date' : jobEndDay(j) > j.date ? `${visitDay(j.date)} – ${visitDay(jobEndDay(j))} (${jobDayList(j).length} days${j.skipWeekends ? ', weekdays' : ''})` : visitDay(j.date)}${j.anytime ? ' · Anytime' : j.startTime ? ` · ${fmtTime(j.startTime)} – ${fmtTime(j.endTime)}` : ''}`;
 Object.assign(M_EDIT, {
   jobDetails(kind, j) {
     const c = byId(D.clients, j.clientId) || {};
@@ -3463,10 +3471,12 @@ ${mField('Status', `<select name="status">${[['scheduled', 'Scheduled'], ['compl
   visit(kind, j) {
     const f = mSheet('Scheduled visit', `${mField('Date', `<input type="date" name="date" value="${esc(j.date || ymd(new Date()))}">`)}
 <div class="m-two">${mField('Start', `<input type="time" name="startTime" value="${esc(j.startTime || '09:00')}">`)}${mField('End', `<input type="time" name="endTime" value="${esc(j.endTime || '11:00')}">`)}</div>
+${mField('Ends on (if it runs several days)', `<input type="date" name="endDate" value="${esc(j.endDate || '')}">`)}<label class="m-chk"><input type="checkbox" name="skipWeekends" ${j.skipWeekends ? 'checked' : ''}> Skip weekends</label>
 <label class="m-chk"><input type="checkbox" name="anytime" ${j.anytime ? 'checked' : ''}> Anytime that day (no set time)</label>${repeatCard(j, j.date || ymd(new Date()))}`, { full: true, foot: mSaveBtn() });
     wireRepeat(f);
     onSubmit(f, async (fd) => {
-      const b = { date: fd.get('date'), startTime: fd.get('startTime'), endTime: fd.get('endTime'), anytime: !!fd.get('anytime') };
+      const b = { date: fd.get('date'), endDate: fd.get('endDate') || '', skipWeekends: !!fd.get('skipWeekends'), startTime: fd.get('startTime'), endTime: fd.get('endTime'), anytime: !!fd.get('anytime') };
+      if (b.endDate && b.endDate <= b.date) throw new Error('The end date has to be after the start date');
       if (!b.date) throw new Error('Choose a date');
       const s = $('.ms-save', f);
       if (!jobScheduleOk(j.id, { ...j, ...b })) { if (s) s.disabled = false; return; }
@@ -4151,7 +4161,7 @@ A.payQr = async (d) => {
 };
 
 /* ===== jobs ===== */
-function jobConflicts(job) { return D.jobs.filter((j) => j.id !== job.id && j.status !== 'completed' && j.date === job.date && j.staffIds.some((s) => (job.staffIds || []).includes(s)) && j.startTime < job.endTime && job.startTime < j.endTime); }
+function jobConflicts(job) { return D.jobs.filter((j) => j.id !== job.id && j.status !== 'completed' && !!job.date && j.date <= jobEndDay(job) && job.date <= jobEndDay(j) && j.staffIds.some((s) => (job.staffIds || []).includes(s)) && j.startTime < job.endTime && job.startTime < j.endTime); }
 /* ===== job page (layout modeled on Jobber's job page) at /jobs/new and /jobs/edit?id=… ===== */
 /* ===== the job page at /jobs/edit (computers): read-only like the quote and invoice pages; a section's pencil edits just that
    section (editSection builds the job form behind it). New jobs, and /jobs/edit?full=1, use the whole form. ===== */
@@ -4460,6 +4470,7 @@ ${j.status === 'scheduled' ? `<button type="button" class="btn alt need-jobs-edi
 ${!canDo('jobs.prices') ? '' : itemsCard(items, '<div class="jdeposit"></div>', j.taxRate !== undefined ? j : q || j)}
 <div class="qcard"><h2>Scheduled visit</h2><div class="row3"><label>Date<input type="date" name="date" required value="${esc(j.date || p.date || ymd(new Date()))}"></label>
 <label>Start<input type="time" name="startTime" value="${esc(j.startTime || '09:00')}"></label><label>End<input type="time" name="endTime" value="${esc(j.endTime || '11:00')}"></label></div>
+<div class="row3 jdays"><label>Ends on <span class="muted">(if it runs several days)</span><input type="date" name="endDate" value="${esc(j.endDate || '')}"></label><label class="switchline jskip"><input type="checkbox" name="skipWeekends" ${j.skipWeekends ? 'checked' : ''}> Skip weekends</label></div>
 <label class="switchline"><input type="checkbox" name="anytime" ${j.anytime ? 'checked' : ''}> Anytime that day (no set time)</label>
 ${repeatCard(j, j.date || p.date || ymd(new Date()))}
 <div class="muted qlabel">Assigned team</div><div class="team-pick">${team.map((s) => `<label><input type="checkbox" name="staff" value="${s.id}" ${(j.staffIds || []).includes(s.id) ? 'checked' : ''}>${avatarHtml(s, 24)}${esc(s.name)}</label>`).join('') || '<span class="muted">Add team members on Manage Team first</span>'}</div>
@@ -4487,7 +4498,8 @@ ${paid ? `<div class="crow-line"><span>Deposit collected <span class="muted">· 
   form.addEventListener('change', (e) => { if (e.target.name === 'clientId' || e.target.name === 'address') contact(); }); // a property picked: its name
   form.addEventListener('submit', async (e) => {
     e.preventDefault(); const fd = new FormData(form);
-    const body = { title: fd.get('title'), clientId: fd.get('clientId'), status: fd.get('status'), address: fd.get('address') || (byId(D.clients, fd.get('clientId')) || {}).address || '', propertyId: fd.get('propertyId') || '', date: fd.get('date'), startTime: fd.get('startTime'), endTime: fd.get('endTime'), anytime: !!fd.get('anytime'), description: fd.get('description'), staffIds: fd.getAll('staff'), internalNotes: fd.get('internalNotes'), taxRate: fd.get('taxRate'), discountType: fd.get('discountType'), discountValue: fd.get('discountValue'), discountName: fd.get('discountName') || '', items: readItems(form).filter((i) => i.desc) };
+    const body = { title: fd.get('title'), clientId: fd.get('clientId'), status: fd.get('status'), address: fd.get('address') || (byId(D.clients, fd.get('clientId')) || {}).address || '', propertyId: fd.get('propertyId') || '', date: fd.get('date'), endDate: fd.get('endDate') || '', skipWeekends: !!fd.get('skipWeekends'), startTime: fd.get('startTime'), endTime: fd.get('endTime'), anytime: !!fd.get('anytime'), description: fd.get('description'), staffIds: fd.getAll('staff'), internalNotes: fd.get('internalNotes'), taxRate: fd.get('taxRate'), discountType: fd.get('discountType'), discountValue: fd.get('discountValue'), discountName: fd.get('discountName') || '', items: readItems(form).filter((i) => i.desc) };
+    if (body.endDate && body.endDate <= body.date) return toast('The end date has to be after the start date', true);
     if (!jobScheduleOk(j.id, body)) return;
     const btn = e.submitter; if (btn) btn.disabled = true;
     try { const saved = await saveJobWithRepeat(j, body, readRepeat(form)); if (!saved) return; if (j.id) await refresh(); else await navigate('/jobs/edit?id=' + saved.id); offerCatalog(body.items); } catch (x) { toast(x.message, true); } finally { if (btn) btn.disabled = false; }
@@ -4648,7 +4660,7 @@ function jobStatus(j) {
   if (j.status === 'cancelled') return 'cancelled';
   if (j.archived) return 'archived'; // archived from the Jobs list (ticked rows → Archive)
   if (j.status === 'completed') return jobInvoices(j).length || j.membershipId ? 'archived' : 'invoice'; // a service plan's visits are billed by the plan
-  return j.date < today ? 'late' : j.date === today ? 'today' : 'upcoming';
+  return jobEndDay(j) < today ? 'late' : j.date <= today ? 'today' : 'upcoming'; // a multi-day job is Today from its first day to its last
 }
 // value of a job: its invoices, or the quote it came from when not invoiced yet
 const jobTotal = (j) => { const inv = jobInvoices(j); if (inv.length) return inv.reduce((s, i) => s + (i.total || 0), 0); if (j.items && j.items.length) return j.total || 0; const q = byId(D.quotes, j.quoteId); return q ? q.total || 0 : null; };
@@ -4899,8 +4911,8 @@ PAGES['/jobs'] = {
     const th = (k, label, cls = '') => `<th class="${cls}"><button class="th-btn" data-act="jobSort" data-k="${k}">${label} <span class="sort ${v.sort === k ? 'on' : ''}">${v.sort === k ? (v.dir > 0 ? '▲' : '▼') : '⇅'}</span></button></th>`;
     const team = (j) => (j.staffIds || []).map((id) => byId(D.staff, id)).filter(Boolean).map((s) => s.name).join(', ');
     const dash = '<span class="muted">—</span>'; const sub = (s) => (s ? `<div class="muted sm-l">${s}</div>` : '');
-    const when = (j) => (j.status === 'completed' ? 'Completed ' + fmtDate(j.date) : fmtDate(j.date) + (j.anytime || !j.startTime ? ' · Anytime' : ` · ${fmtTime(j.startTime)} – ${fmtTime(j.endTime)}`));
-    const stCell = (j) => { const st = jobStatus(j); const n = st === 'late' ? daysSince(j.date) : 0;
+    const when = (j) => (j.status === 'completed' ? 'Completed ' + fmtDate(jobEndDay(j)) : jobDates(j) + (j.anytime || !j.startTime ? ' · Anytime' : ` · ${fmtTime(j.startTime)} – ${fmtTime(j.endTime)}`));
+    const stCell = (j) => { const st = jobStatus(j); const n = st === 'late' ? daysSince(jobEndDay(j)) : 0;
       return `<span class="cstatus ${J_CLASS[st]}">${st === 'late' ? (n === 1 ? '1 day late' : `${n} days late`) : J_STATUS[st]}</span>`; };
     let cols = []; const has = (k) => cols.some((c) => c.k === k);
     const JCOLS = [
@@ -4908,7 +4920,7 @@ PAGES['/jobs'] = {
       { k: 'number', label: 'Job number', th: th('number', 'Job'), td: (j) => `<td style="white-space:nowrap">${esc(j.number)}${j.seriesId ? ' ' + RP_ICON : ''}${has('schedule') ? '' : sub(esc(when(j))) + (team(j) && !has('team') ? sub(esc(team(j))) : '')}</td>` },
       { k: 'title', label: 'Title', off: true, th: '<th>Title</th>', td: (j) => `<td>${esc(j.title || '')}</td>` },
       { k: 'property', label: 'Property', off: true, th: '<th>Property</th>', td: (j) => `<td>${esc(j.address || (byId(D.clients, j.clientId) || {}).address || '')}</td>` },
-      { k: 'schedule', label: 'Schedule', off: true, th: th('schedule', 'Schedule'), td: (j) => `<td>${j.status === 'completed' ? '<div class="sched-done">Completed</div>' : ''}${fmtDate(j.date)}${j.status !== 'completed' ? `<div class="muted">${esc(fmtTime(j.startTime))} – ${esc(fmtTime(j.endTime))}</div>` : ''}${team(j) && !has('team') ? `<div class="muted">${esc(team(j))}</div>` : ''}</td>` },
+      { k: 'schedule', label: 'Schedule', off: true, th: th('schedule', 'Schedule'), td: (j) => `<td>${j.status === 'completed' ? '<div class="sched-done">Completed</div>' : ''}${jobDates(j)}${j.status !== 'completed' ? `<div class="muted">${esc(fmtTime(j.startTime))} – ${esc(fmtTime(j.endTime))}</div>` : ''}${team(j) && !has('team') ? `<div class="muted">${esc(team(j))}</div>` : ''}</td>` },
       { k: 'team', label: 'Team', off: true, th: '<th>Team</th>', td: (j) => `<td>${team(j) ? esc(team(j)) : dash}</td>` },
       { k: 'status', label: 'Status', th: th('status', 'Status'), td: (j) => `<td>${stCell(j)}</td>` },
       { k: 'invoiced', label: 'Invoiced', off: true, th: '<th>Invoiced</th>', td: (j) => { const inv = jobInvoices(j); return `<td>${inv.length ? inv.map((i) => esc(i.number)).join(', ') : dash}</td>`; } },
@@ -4967,10 +4979,10 @@ A.jobSort = (d) => { jobView.dir = jobView.sort === d.k ? -jobView.dir : (['clie
 A.exportJobs = () => downloadCsv('jobs.csv', [['Job', 'Title', 'Client', 'Company', 'Property', 'Date', 'Start', 'End', 'Team', 'Status', 'Total'],
   ...D.jobs.map((j) => { const c = byId(D.clients, j.clientId) || {}; return [j.number, j.title, c.name || '', c.company || '', j.address || '', j.date, j.startTime, j.endTime, (j.staffIds || []).map((id) => (byId(D.staff, id) || {}).name).filter(Boolean).join('; '), J_STATUS[jobStatus(j)], jobTotal(j) ?? '']; })]);
 A.completeJob = async (d) => {
-  try { await api('PUT', '/api/jobs/' + d.id, { status: 'completed' }); } catch (x) { // e.g. a checklist that has to be finished first: open it
+  let r; try { r = await api('PUT', '/api/jobs/' + d.id, { status: 'completed' }); } catch (x) { // e.g. a checklist that has to be finished first: open it
     toast(x.message, true); const j = byId(D.jobs, d.id); const f = j && (j.forms || []).find((y) => y.requiredToComplete && !y.completedAt); if (f) { closeModal(); jfOpenForm(j.id, f.id); } return;
   }
-  closeModal(); toast('Job completed. Create an invoice from the job when ready.'); refresh(); };
+  closeModal(); toast(`Job completed.${r && r.clockedOut ? ` ${r.clockedOut === 1 ? '1 person was' : r.clockedOut + ' people were'} clocked out.` : ''} Create an invoice from the job when ready.`); refresh(); };
 // On my way: pick about how long until you arrive; the server texts the client (if they agreed to texts) or emails them
 A.onMyWay = (d) => {
   $$('details.menu[open]').forEach((x) => { x.open = false; });

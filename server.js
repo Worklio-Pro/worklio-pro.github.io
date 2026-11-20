@@ -693,7 +693,7 @@ const t12 = (t) => { const [h, m] = String(t || '0:0').split(':').map(Number); r
 const timeOffWhen = (r) => (r.from === r.to ? niceDate(r.from) : `${niceDate(r.from)} to ${niceDate(r.to)}`) + (r.start ? `, ${t12(r.start)}–${t12(r.end)}` : '');
 const canApproveTimeOff = (u) => isAdmin(u) || can(u, 'jobs.edit');
 // jobs this person is on during the request (not cancelled or done)
-const timeOffJobs = (staffId, r) => db.jobs.filter((j) => (j.staffIds || []).includes(staffId) && !['cancelled', 'completed'].includes(j.status) && j.date >= r.from && j.date <= r.to
+const timeOffJobs = (staffId, r) => db.jobs.filter((j) => (j.staffIds || []).includes(staffId) && !['cancelled', 'completed'].includes(j.status) && j.date <= r.to && jobEndDay(j) >= r.from
   && (!r.start || (j.startTime < r.end && (j.endTime || j.startTime) > r.start)));
 const timeOffRow = (r, u) => { const s = db.staff.find((x) => x.id === r.staffId); const mine = u && u.staffId === r.staffId; const full = mine || canApproveTimeOff(u);
   return { id: r.id, staffId: r.staffId, person: s ? s.name : 'Former team member', color: s ? s.color : '', from: r.from, to: r.to, start: r.start || '', end: r.end || '', status: r.status, when: timeOffWhen(r), mine,
@@ -789,7 +789,7 @@ app.get('/api/time', (req, res) => {
   // entries that overlap the range; team members get only their own
   const list = timeList().filter((e) => (manager || e.staffId === u.staffId) && new Date(e.start) < to && (!e.end || new Date(e.end) > from)).sort((a, b) => a.start.localeCompare(b.start));
   res.json({ manager, admin: isAdmin(u), staffId: u.staffId || null, teamLocation: teamLocOn(), canClock: !!db.staff.find((s) => s.id === u.staffId), open: openEntry(u.staffId) ? timeRow(openEntry(u.staffId), u) : null,
-    entries: list.slice(0, 3000).map((e) => timeRow(e, u)), ...(isAdmin(u) ? { rates: payRates() } : {}) });
+    entries: list.slice(0, 3000).map((e) => timeRow(e, u)), clockRules: clockRules(), ...(isAdmin(u) ? { rates: payRates() } : {}) });
 });
 // clock in, on a job, on a site visit (visitId) or neither; clocking in again while on the clock switches: the open entry ends now and a new one starts
 app.post('/api/time/clock-in', (req, res) => {
@@ -812,9 +812,84 @@ app.post('/api/time/clock-out', (req, res) => {
   e.end = new Date().toISOString(); const note = String((req.body || {}).note || '').trim().slice(0, 500); if (note) e.note = note;
   const spot = readSpot(req.body); if (spot) e.outLoc = spot; keepSpot(u.staffId, spot, 'out', e.jobId); save(); res.json({ entry: timeRow(e, u) });
 });
-// managers: add, fix and remove anyone's entries; a change to an approved entry needs approving again
+// ---------- Multi-day jobs ----------
+// A job can run several days: date is the first day, endDate the last (optional), with the same hours each day; skipWeekends leaves out
+// Saturdays and Sundays in between. It's one job (one price, one invoice, one profit), shown on the calendar each day it runs.
+// A repeating job can't also run several days (each repeat is its own job). The client's reminder goes before the first day only.
+const JOB_MAX_DAYS = 60;
+const dayMs = (d) => Date.parse(d + 'T12:00:00Z');
+const addDay = (d, n) => new Date(dayMs(d) + n * 864e5).toISOString().slice(0, 10);
+const jobEndDay = (j) => (j && j.date && j.endDate && j.endDate > j.date ? j.endDate : (j && j.date) || '');
+const isWeekend = (d) => [0, 6].includes(new Date(dayMs(d)).getUTCDay());
+const jobOn = (j, day) => !!(j && j.date) && day >= j.date && day <= jobEndDay(j) && (day === j.date || !j.skipWeekends || !isWeekend(day));
+// keeps endDate and skipWeekends tidy on a job about to be saved; was: the job before (a moved start date moves the end date with it)
+function cleanJobDays(doc, was, upd) {
+  if (was && was.endDate && upd && upd.date && was.date && upd.date !== was.date && !('endDate' in upd)) doc.endDate = addDay(was.endDate, Math.round((dayMs(upd.date) - dayMs(was.date)) / 864e5));
+  if (!doc.date || doc.seriesId || !/^\d{4}-\d{2}-\d{2}$/.test(doc.endDate || '') || doc.endDate <= doc.date) { delete doc.endDate; delete doc.skipWeekends; return ''; }
+  if ((dayMs(doc.endDate) - dayMs(doc.date)) / 864e5 >= JOB_MAX_DAYS) return `A job can run up to ${JOB_MAX_DAYS} days. For longer work, make one job per phase.`;
+  doc.skipWeekends = !!doc.skipWeekends; return '';
+}
+// the business's local date and time at a moment (ms), and a local date + time back to a moment
+function localAt(ms) {
+  const at = (tz) => Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(ms)).map((x) => [x.type, x.value]));
+  let p; try { p = at(db.company.timezone || SERVER_TZ || undefined); } catch (e) { p = at(undefined); }
+  return { date: `${p.year}-${p.month}-${p.day}`, hour: Number(p.hour), time: `${p.hour}:${p.minute}` };
+}
+function localToMs(day, time) {
+  const want = Date.parse(`${day}T${time}:00Z`); let t = want;
+  for (let k = 0; k < 3; k++) { const p = localAt(t); const off = Date.parse(`${p.date}T${p.time}:00Z`) - want; if (!off) break; t -= off; }
+  return t;
+}
+// ---------- Clock-out safety (Timesheets → Clock-out rules, owner and admins) ----------
+// Someone who forgets to clock out shouldn't put days of labor on a job. Every few minutes:
+//  - 30 minutes after their job's (or site visit's) scheduled end that day, they get a "Still clocked in?" push (once per entry);
+//  - graceHours after the scheduled end, they're clocked out AT the scheduled end, and the entry is flagged for a manager to check;
+//  - with no scheduled end (no job, an Anytime job, a job not on that day, or clocked in after it was due to end), after maxHours on the clock
+//    they're clocked out at that point, flagged the same way (with a reminder 2 hours before).
+// Mark Complete on a job clocks out everyone still on it: at the day's scheduled end if that's passed, else now.
+// e.autoOut: 'end-of-day' | 'max-hours' | 'job-complete' | 'visit-complete'; e.needsReview: flagged until a manager edits or approves it.
+const clockRules = () => { const r = db.company.clockRules || {}; return { autoOut: r.autoOut !== false, graceHours: Math.min(12, Math.max(0.5, Number(r.graceHours) || 2)), maxHours: Math.min(24, Math.max(4, Number(r.maxHours) || 12)) }; };
+const entryWork = (e) => (e.jobId ? db.jobs.find((x) => x.id === e.jobId) : e.visitId ? (db.tasks || []).find((x) => x.id === e.visitId) : null);
+function entrySchedEnd(e) { // when the work was scheduled to end on the day this entry started (ms), or null
+  const w = entryWork(e); if (!w || w.anytime || !w.endTime || !w.date) return null;
+  const day = localAt(Date.parse(e.start)).date; if (e.jobId ? !jobOn(w, day) : w.date !== day) return null;
+  const end = localToMs(day, w.endTime); return end > Date.parse(e.start) ? end : null;
+}
+const workName = (e) => { const w = entryWork(e); return !w ? 'your shift' : e.jobId ? `job ${w.number}${w.title ? ` (${w.title})` : ''}` : 'the site visit'; };
+const staffLogins = (staffId) => db.users.filter((u) => u.staffId && u.staffId === staffId);
+function clockOutAt(e, ms, why) { e.end = new Date(Math.max(Date.parse(e.start) + 60e3, ms)).toISOString(); e.autoOut = why; if (why !== 'visit-complete') e.needsReview = true; }
+function clockWatch() {
+  const R = clockRules(); const now = Date.now(); let changed = false;
+  for (const e of timeList()) {
+    if (e.end) continue; const start = Date.parse(e.start); const se = entrySchedEnd(e);
+    const remindAt = se ? se + 30 * 60e3 : start + (R.maxHours - 2) * 36e5; const outAt = se ? se + R.graceHours * 36e5 : start + R.maxHours * 36e5;
+    if (R.autoOut && now >= outAt) {
+      clockOutAt(e, se || outAt, se ? 'end-of-day' : 'max-hours'); changed = true;
+      pushTo(staffLogins(e.staffId), 'clock', { title: 'You were clocked out', body: `You were still clocked in on ${workName(e)}, so you were clocked out at ${pushTime(localAt(Date.parse(e.end)).time)}. Your manager will check the time.`, url: '/timesheets' });
+    } else if (!e.remindedAt && now >= remindAt) {
+      e.remindedAt = new Date(now).toISOString(); changed = true;
+      pushTo(staffLogins(e.staffId), 'clock', { title: 'Still clocked in?', body: `You’re still clocked in on ${workName(e)}. Clock out if you’re done${R.autoOut ? `, or you’ll be clocked out at ${pushTime(localAt(se || outAt).time)}` : ''}.`, url: '/timesheets' });
+    }
+  }
+  if (changed) save();
+}
+function clockWatchAll() { for (const t of tenancy.platform().tenants) { if (t.status !== 'active') continue; try { tenancy.run(t, () => { if (timeList().some((e) => !e.end)) clockWatch(); }); } catch (x) { console.error('clock watch:', x.message); } } }
+// Mark Complete: everyone still on the clock on the job is clocked out (at the day's scheduled end if that's passed)
+function clockOutJob(j) {
+  const now = Date.now(); let n = 0;
+  for (const e of timeList()) if (e.jobId === j.id && !e.end) { const se = entrySchedEnd(e); if (se && se < now) clockOutAt(e, se, 'job-complete'); else { e.end = new Date(now).toISOString(); e.autoOut = 'job-complete'; } n++; }
+  return n;
+}
+app.put('/api/time/rules', (req, res) => {
+  const u = currentUser(req); if (!isAdmin(u)) return res.status(403).json({ error: 'Only the owner and admins can change the clock-out rules' });
+  const b = req.body || {}; db.company.clockRules = { autoOut: b.autoOut !== false, graceHours: Number(b.graceHours) || 2, maxHours: Number(b.maxHours) || 12 }; db.company.clockRules = clockRules(); save(); res.json(clockRules());
+});
+// managers: add, fix and remove anyone's entries; a change to an approved entry needs approving again. Every change is kept on the entry
+// (e.edits: who, when, and each field's old and new value), so the timesheet shows who adjusted someone's time.
 const manageTime = (fn) => (req, res) => { const u = currentUser(req); if (!canManageTime(u)) return res.status(403).json({ error: 'Only managers can change timesheets' }); try { fn(req, res, u, req.body || {}); } catch (e) { res.status(e.status || 500).json({ error: e.message }); } };
+const AUDIT = ['staffId', 'jobId', 'start', 'end', 'note'];
 const fillEntry = (e, b, u) => {
+  const before = Object.fromEntries(AUDIT.map((k) => [k, e[k] ?? null]));
   if (b.staffId !== undefined) { if (!db.staff.find((s) => s.id === b.staffId)) throw Object.assign(new Error('Choose a team member'), { status: 400 }); e.staffId = b.staffId; }
   if (b.jobId !== undefined) { if (b.jobId && !db.jobs.find((x) => x.id === b.jobId)) throw Object.assign(new Error('Job not found'), { status: 404 }); e.jobId = b.jobId || ''; }
   if (b.start !== undefined) e.start = timeWhen(b.start, 'start');
@@ -823,7 +898,12 @@ const fillEntry = (e, b, u) => {
   if (e.end && e.end <= e.start) throw Object.assign(new Error('The end time has to be after the start time'), { status: 400 });
   if (entryHours(e) > 24) throw Object.assign(new Error('An entry can’t be longer than 24 hours. Split it into one entry per day.'), { status: 400 });
   if (!e.end && timeList().some((x) => x !== e && x.staffId === e.staffId && !x.end)) throw Object.assign(new Error('This person is already on the clock. Give this entry an end time.'), { status: 400 });
-  e.approvedAt = null; e.approvedBy = ''; e.editedBy = u.name;
+  const changes = Object.fromEntries(AUDIT.filter((k) => (before[k] ?? null) !== (e[k] ?? null)).map((k) => [k, [before[k] ?? null, e[k] ?? null]]));
+  if (!Object.keys(changes).length && e.createdAt) return; // nothing changed
+  const at = new Date().toISOString();
+  if (!before.start) { e.addedBy = u.name; e.addedById = u.id; } // a manager added this entry
+  else { e.edits = [...(e.edits || []), { at, by: u.name, byId: u.id, changes }].slice(-50); e.editedBy = u.name; e.editedAt = at; }
+  e.approvedAt = null; e.approvedBy = ''; delete e.needsReview;
 };
 app.post('/api/time', manageTime((req, res, u, b) => { const e = { id: uid(), staffId: '', jobId: '', start: '', end: null, note: '', createdAt: new Date().toISOString() }; if (!b.staffId) b.staffId = ''; fillEntry(e, { jobId: '', ...b }, u); timeList().push(e); save(); res.status(201).json(timeRow(e, u)); }));
 // pay rates (owner and admins): dollars an hour per team member
@@ -838,7 +918,7 @@ app.delete('/api/time/:id', manageTime((req, res) => { const i = timeList().find
 // approve finished entries for payroll (ids from the page: the week, one person's week, or one entry)
 app.post('/api/time/approve', manageTime((req, res, u, b) => {
   const ids = new Set(Array.isArray(b.ids) ? b.ids : []); const now = new Date().toISOString(); let n = 0;
-  for (const e of timeList()) if (ids.has(e.id) && e.end && !e.approvedAt) { e.approvedAt = now; e.approvedBy = u.name; n++; }
+  for (const e of timeList()) if (ids.has(e.id) && e.end && !e.approvedAt) { e.approvedAt = now; e.approvedBy = u.name; delete e.needsReview; n++; }
   save(); res.json({ approved: n });
 }));
 
@@ -1132,7 +1212,7 @@ function shortestOrder(base, pts) {
   }
   return order;
 }
-const dayJobs = (date) => db.jobs.filter((j) => j.date === date && j.status !== 'cancelled');
+const dayJobs = (date) => db.jobs.filter((j) => jobOn(j, date) && j.status !== 'cancelled');
 app.get('/api/dispatch', async (req, res) => {
   const date = String(req.query.date || ''); if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'Choose a day' });
   const jobs = dayJobs(date); const base = String(db.company.address || '').trim();
@@ -1640,7 +1720,7 @@ app.post('/api/auth/hours', (req, res) => {
   st.hours = hours; save(); res.json(profileOf(u));
 });
 // ---- push notifications (Gear → Preferences): each login picks what it gets; each browser or phone it turns them on for is saved on the login ----
-const PUSH_KINDS = ['overview', 'schedule', 'request', 'booking', 'quoteViewed', 'quoteChanges', 'quoteApproved', 'review', 'automation', 'jobPost'];
+const PUSH_KINDS = ['overview', 'schedule', 'clock', 'request', 'booking', 'quoteViewed', 'quoteChanges', 'quoteApproved', 'review', 'automation', 'jobPost'];
 const pushPrefs = (u) => Object.fromEntries(PUSH_KINDS.map((k) => [k, !u.pushPrefs || u.pushPrefs[k] !== false]));
 const isOwnerOrAdmin = (u) => u.role === 'owner' || u.role === 'admin';
 // never throws: a notification must not get in the way of the work that caused it. A subscription the browser has dropped is forgotten.
@@ -1653,24 +1733,20 @@ function pushTo(users, kind, message) {
   }
 }
 // the date and hour now where the business is (the server's clock can be on another time zone's day)
-function localNow() {
-  const at = (tz) => Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date()).map((x) => [x.type, x.value]));
-  let p; try { p = at(db.company.timezone || SERVER_TZ || undefined); } catch (e) { p = at(undefined); }
-  return { date: `${p.year}-${p.month}-${p.day}`, hour: Number(p.hour), time: `${p.hour}:${p.minute}` }; // time: 'HH:MM'
-}
+function localNow() { return localAt(Date.now()); } // { date, hour, time: 'HH:MM' }
 const pushTime = (t) => { if (db.company.timeFormat === '24') return t; const [h, m] = String(t).split(':').map(Number); return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`; };
 const usersWhoCan = (perm) => db.users.filter((u) => can(u, perm));
 const jobCrew = (j) => db.users.filter((u) => u.staffId && (j.staffIds || []).includes(u.staffId));
 // a change to today's jobs goes to the people on the job and the owner and admins, not to whoever made it
 function pushScheduleChange(was, job, actor) {
-  const today = localNow().date; const onToday = (j) => !!j && j.date === today && !['cancelled', 'completed'].includes(j.status);
+  const today = localNow().date; const onToday = (j) => !!j && jobOn(j, today) && !['cancelled', 'completed'].includes(j.status);
   if (!onToday(was) && !onToday(job)) return;
   if (job && job.status === 'completed') return; // finishing a job isn't a schedule change
-  const sameTime = was && job && ['date', 'startTime', 'endTime', 'anytime'].every((k) => (was[k] || '') === (job[k] || ''));
+  const sameTime = was && job && ['date', 'endDate', 'skipWeekends', 'startTime', 'endTime', 'anytime'].every((k) => (was[k] || '') === (job[k] || ''));
   const sameCrew = was && job && [...(was.staffIds || [])].sort().join() === [...(job.staffIds || [])].sort().join();
   if (onToday(was) && onToday(job) && sameTime && sameCrew) return;
   const at = job && !job.anytime && job.startTime ? pushTime(job.startTime) : '';
-  const what = !onToday(was) ? `added to today${at ? ` at ${at}` : ''}` : !job || job.status === 'cancelled' ? 'cancelled' : job.date !== today ? 'moved off today' : sameTime ? 'has a change to its team' : `moved to ${at || 'anytime today'}`;
+  const what = !onToday(was) ? `added to today${at ? ` at ${at}` : ''}` : !job || job.status === 'cancelled' ? 'cancelled' : !jobOn(job, today) ? 'moved off today' : sameTime ? 'has a change to its team' : `moved to ${at || 'anytime today'}`;
   const j = job || was;
   pushTo([...db.users.filter(isOwnerOrAdmin), ...jobCrew(was || {}), ...jobCrew(job || {})].filter((u) => !actor || u.id !== actor.id), 'schedule',
     { title: 'Today’s schedule changed', body: `${j.title || j.number} ${what}`, url: '/calendar' });
@@ -1687,7 +1763,7 @@ function pushOverviews() {
       if (!db.users.some((u) => (u.pushSubs || []).length)) return;
       const { date, hour } = localNow(); if (hour < 7 || hour > 9 || db.pushOverviewOn === date) return;
       db.pushOverviewOn = date; save();
-      const today = db.jobs.filter((j) => j.date === date && !['cancelled', 'completed'].includes(j.status)).sort((a, b) => String(a.startTime).localeCompare(String(b.startTime)));
+      const today = db.jobs.filter((j) => jobOn(j, date) && !['cancelled', 'completed'].includes(j.status)).sort((a, b) => String(a.startTime).localeCompare(String(b.startTime)));
       for (const u of db.users) {
         const list = isOwnerOrAdmin(u) ? today : today.filter((j) => (j.staffIds || []).includes(u.staffId)); if (!list.length) continue;
         const first = list.find((j) => !j.anytime && j.startTime);
@@ -2296,6 +2372,7 @@ app.post('/api/:col', (req, res, next) => {
   if (col === 'jobs') {
     delete doc.signature;
     doc.number = nextNumber('jobs'); doc.status = b.status || 'scheduled'; doc.staffIds = b.staffIds || [];
+    { const bad = cleanJobDays(doc); if (bad) return res.status(400).json({ error: bad }); }
     if (!doc.address && b.clientId) { const c = findClient(b.clientId); if (c) doc.address = c.address; }
     if (Array.isArray(b.items)) { if (b.taxRate === undefined) doc.taxRate = db.company.taxRate; computeTotals(doc); }
     autoForms(doc, (currentUser(req) || {}).name);
@@ -2365,6 +2442,7 @@ app.put('/api/:col/:id', (req, res, next) => {
     doc.signedAt = null; doc.signedName = null; delete doc.signature;
   }
   if (col === 'jobs') { if (db.jobs[i].signature) doc.signature = db.jobs[i].signature; else delete doc.signature; } // signatures only via /signature
+  if (col === 'jobs') { const bad = cleanJobDays(doc, db.jobs[i], upd); if (bad) return res.status(400).json({ error: bad }); }
   if (col === 'invoices' && upd.referralCreditRemoved === 'yes') detachReferralCredits(db.invoices[i]); if (col === 'invoices') delete doc.referralCreditRemoved;
   if (col === 'invoices') { // payments change only through their own endpoints, never through an invoice edit
     if (db.invoices[i].payments) doc.payments = db.invoices[i].payments; else delete doc.payments;
@@ -2377,13 +2455,14 @@ app.put('/api/:col/:id', (req, res, next) => {
   if (col === 'jobs' && doc.status === 'completed' && was.status !== 'completed' && tenancy.has('jobForms')) { // a checklist that has to be finished first
     const open = (doc.forms || []).filter((f) => f.requiredToComplete && !f.completedAt); if (open.length) return res.status(400).json({ error: `Finish ${open.length === 1 ? `the “${open[0].name}” checklist` : `the ${open.length} required checklists`} before marking this job complete`, formId: open[0].id });
   }
-  if (col === 'jobs' && doc.status === 'completed' && was.status !== 'completed') doc.completedAt = iso(new Date()); // the "job completed" automations count from this
+  let clockedOut = 0;
+  if (col === 'jobs' && doc.status === 'completed' && was.status !== 'completed') { doc.completedAt = iso(new Date()); clockedOut = clockOutJob(doc); } // the "job completed" automations count from this; the crew still on the clock is clocked out
   const following = col === 'jobs' && req.query.following && doc.seriesId && tenancy.has('recurringJobs') ? applyToFollowing(doc, upd, req.query.following) : 0; // Save → "This and following visits"
   if (col === 'jobs') matchFormsOnEdit(was, doc, (currentUser(req) || {}).name); // new line items can bring their checklists
   if (col === 'clients' && Array.isArray(upd.properties)) followPropertyAddresses(was, doc);
   if (col === 'tasks' && doc.survey && (doc.date !== was.date || doc.startTime !== was.startTime)) { doc.remindedAt = null; doc.survey = { ...doc.survey, bookedAt: new Date().toISOString() }; surveyEmail(doc, 'moved'); } // a site visit moved on the calendar: the client is told
   db[col][i] = doc; save(); if (col === 'clients' && doc.smsConsent && !was.smsConsent) optInText(doc).catch(() => {}); if (col === 'jobs') { pushScheduleChange(was, doc, currentUser(req)); if (doc.status === 'completed' && was.status !== 'completed') { askForReview('job', doc); jobPosts.maybeDraft(doc); } }
-  res.json(col === 'invoices' ? withStatus(doc) : col === 'jobs' ? { ...withUnbilled(withRepeat(isMemberReq(req) ? jobForMember(doc) : doc)), ...(following ? { following } : {}) } : col === 'clients' && isMemberReq(req) ? clientForMember(doc) : doc);
+  res.json(col === 'invoices' ? withStatus(doc) : col === 'jobs' ? { ...withUnbilled(withRepeat(isMemberReq(req) ? jobForMember(doc) : doc)), ...(following ? { following } : {}), ...(clockedOut ? { clockedOut } : {}) } : col === 'clients' && isMemberReq(req) ? clientForMember(doc) : doc);
 });
 
 app.delete('/api/:col/:id', (req, res, next) => {
@@ -4144,7 +4223,7 @@ function svyHours(s, date) {
 // what already fills their day: their jobs and tasks, the business's timed events, and approved time off (minutes from midnight)
 function svyBusy(staffId, date, skipTaskId) {
   const out = []; const add = (a, b) => out.push([svyMin(a), Math.max(svyMin(b), svyMin(a) + 15)]);
-  for (const j of db.jobs) if (j.date === date && j.status !== 'cancelled' && (j.staffIds || []).includes(staffId) && !j.anytime && j.startTime) add(j.startTime, j.endTime || j.startTime);
+  for (const j of db.jobs) if (jobOn(j, date) && j.status !== 'cancelled' && (j.staffIds || []).includes(staffId) && !j.anytime && j.startTime) add(j.startTime, j.endTime || j.startTime);
   for (const t of db.tasks || []) if (t.id !== skipTaskId && t.date === date && (t.staffIds || []).includes(staffId) && !t.anytime && t.startTime) add(t.startTime, t.endTime || t.startTime);
   for (const e of db.events || []) if (e.date === date && !e.anytime && e.startTime) add(e.startTime, e.endTime || e.startTime);
   for (const r of db.timeOff || []) if (r.staffId === staffId && r.status === 'approved' && r.from <= date && r.to >= date) { if (r.start && r.end) add(r.start, r.end); else out.push([0, 1440]); }
@@ -5014,7 +5093,7 @@ async function fillFees(invs) {
 }
 // time logged to each job (finished entries): hours, cost at each person's pay rate, and hours by people with no rate set
 const timeByJob = () => { const r = payRates(); const out = {};
-  for (const e of timeList()) { if (!e.jobId || !e.end) continue; const o = out[e.jobId] || (out[e.jobId] = { hours: 0, cost: 0, unrated: 0 }); const h = entryHours(e); o.hours += h;
+  for (const e of timeList()) { if (e.jobId && !e.end) { const o = out[e.jobId] || (out[e.jobId] = { hours: 0, cost: 0, unrated: 0 }); o.open = (o.open || 0) + 1; } if (!e.jobId || !e.end) continue; const o = out[e.jobId] || (out[e.jobId] = { hours: 0, cost: 0, unrated: 0 }); const h = entryHours(e); o.hours += h;
     if (Number(r[e.staffId])) o.cost += h * Number(r[e.staffId]); else o.unrated += h; }
   return out; };
 // Product lines (a line whose name is saved as a Product in Products & services; a matrix line's sizes go with their heading line) count as materials,
@@ -5033,7 +5112,7 @@ function jobMoney(j, time = timeByJob()) {
   const t = time[j.id] || { hours: 0, cost: 0, unrated: 0 };
   let fees = 0; let pending = 0; for (const i of invs) { const f = invFees(i); fees += f.amount * invShare(i, j); pending += f.pending; }
   const products = round2(invs.reduce((s, i) => s + productsCost(jobsLines(i, j)), 0));
-  return { invs, parts, revenue: round2(parts.reduce((s, [, v]) => s + v, 0)), expenses, products, labor: round2(t.cost), hours: t.hours, unrated: t.unrated, fees: round2(fees), feesPending: pending };
+  return { invs, parts, revenue: round2(parts.reduce((s, [, v]) => s + v, 0)), expenses, products, labor: round2(t.cost), hours: t.hours, unrated: t.unrated, onClock: t.open || 0, fees: round2(fees), feesPending: pending };
 }
 function jobProfit(from, to, want = null) {
   const time = timeByJob(); // hours logged to each job (Timesheets) at each person's pay rate
@@ -5054,7 +5133,7 @@ function profitBox(b) {
   const materials = actual > 0 ? { amount: actual, expenses: round2(b.expenses || 0), products: round2(b.products || 0), source: 'actual' } : b.estimate > 0 ? { amount: round2(b.estimate), source: 'lines' } : { amount: 0, source: 'none' };
   const costs = round2(materials.amount + b.labor + b.fees); const profit = round2(b.revenue - costs); const hrs = (h) => Math.round(h * 100) / 100;
   return { revenue: round2(b.revenue), gross: round2(b.gross), discount: round2(b.discount), tax: round2(b.tax), tips: round2(b.tips), materials,
-    labor: { amount: round2(b.labor), hours: hrs(b.hours), unrated: hrs(b.unrated) }, fees: { amount: round2(b.fees), pending: b.feesPending }, costs, profit,
+    labor: { amount: round2(b.labor), hours: hrs(b.hours), unrated: hrs(b.unrated), onClock: b.onClock || 0 }, fees: { amount: round2(b.fees), pending: b.feesPending }, costs, profit,
     margin: b.revenue ? Math.round(profit / b.revenue * 1000) / 10 : null, paid: round2(b.paid), balance: round2(b.balance), jobs: b.jobs || [], estimatedRevenue: !!b.estimatedRevenue,
     timesheets: tenancy.has('timesheets'), cards: !!stripeKey() };
 }
@@ -5064,17 +5143,17 @@ app.get('/api/invoices/:id/profit', async (req, res) => {
   const inv = db.invoices.find((x) => x.id === req.params.id); if (!inv) return res.status(404).json({ error: 'Invoice not found' });
   const jobs = [...new Set([inv.jobId, ...(inv.jobIds || [])].filter(Boolean))].map((id) => db.jobs.find((j) => j.id === id)).filter(Boolean);
   await fillFees([inv, ...jobs.flatMap((j) => jobInvoices(j))]);
-  const time = timeByJob(); const B = { expenses: 0, labor: 0, hours: 0, unrated: 0 }; const jobRows = [];
+  const time = timeByJob(); const B = { expenses: 0, labor: 0, hours: 0, unrated: 0 }; const jobRows = []; let onClock = 0;
   for (const j of jobs) {
     const m = jobMoney(j, time); const mine = invPart(inv, j); const listed = m.invs.some((i) => i.id === inv.id);
     // this invoice's share of the job, by revenue; a draft isn't among the job's invoices yet, so it's added; no revenue at all splits evenly
     const total = m.revenue + (listed ? 0 : mine); const n = m.invs.length + (listed ? 0 : 1);
     const share = total > 0 ? Math.max(0, Math.min(1, mine / total)) : 1 / n;
-    for (const k of Object.keys(B)) B[k] += m[k] * share;
+    for (const k of Object.keys(B)) B[k] += m[k] * share; onClock += m.onClock;
     jobRows.push({ id: j.id, number: j.number, title: j.title || '', share: Math.round(share * 1000) / 1000 });
   }
   const f = invFees(inv); const c = invoiceCredits(inv);
-  res.json(profitBox({ ...B, revenue: invWhole(inv), gross: Number(inv.subtotal) || 0, discount: Number(inv.discount) || 0, tax: Number(inv.tax) || 0,
+  res.json(profitBox({ ...B, onClock, revenue: invWhole(inv), gross: Number(inv.subtotal) || 0, discount: Number(inv.discount) || 0, tax: Number(inv.tax) || 0,
     tips: (inv.payments || []).reduce((s, p) => s + (Number(p.tip) || 0), 0), products: productsCost(inv.items), estimate: linesCost(inv.items), fees: f.amount, feesPending: f.pending,
     paid: paidOn(inv, c), balance: c.balanceDue, jobs: jobRows }));
 });
@@ -5091,7 +5170,7 @@ app.get('/api/jobs/:id/profit', async (req, res) => {
   const lineDisc = L ? Math.min(lineGross, Number(L.discountType === 'percent' ? lineGross * (Number(L.discountValue) || 0) / 100 : L.discountValue) || 0) : 0;
   const revenue = L ? lineGross - lineDisc : m.revenue;
   res.json(profitBox({ ...B, ...(L ? { gross: lineGross, estimate: linesCost(Litems) } : {}), products: L ? productsCost(Litems) : m.products, revenue, discount: L ? lineDisc : B.gross - m.revenue,
-    expenses: m.expenses, labor: m.labor, hours: m.hours, unrated: m.unrated, fees: m.fees, feesPending: m.feesPending, estimatedRevenue: !!L }));
+    expenses: m.expenses, labor: m.labor, hours: m.hours, unrated: m.unrated, onClock: m.onClock, fees: m.fees, feesPending: m.feesPending, estimatedRevenue: !!L }));
 });
 // unpaid invoices by how long past due, as of today; want: only invoices whose main category it is
 function receivablesAging(want = null) {
@@ -6865,6 +6944,7 @@ setTimeout(() => tenancy.checkHttpsAll(domainLive).catch(() => {}), 5e3); setInt
 setTimeout(jobPostsMonthly, 40e3); setInterval(jobPostsMonthly, 3600e3); // Every job markets itself: last month's results on the 1st
 setTimeout(marketingTrials, 45e3); setInterval(marketingTrials, 3600e3); // Marketing suite add-on: billing starts when its free trial ends
 setTimeout(billMemberships, 35e3); setInterval(billMemberships, 3600e3); // service plans: each billing period's invoice
+setTimeout(clockWatchAll, 50e3); setInterval(clockWatchAll, 5 * 60e3); // forgotten clock-outs: a reminder, then an automatic clock-out (Clock-out rules)
 setTimeout(surveyRemindersAll, 55e3); setInterval(surveyRemindersAll, 15 * 60e3); // site visit reminders, a day ahead
 setTimeout(lateFeesAll, 50e3); setInterval(lateFeesAll, 3600e3); // late fees on past-due invoices (App Settings → Payments → Late fees)
 setTimeout(extendSeries, 25e3); setInterval(extendSeries, 3600e3); // recurring jobs: make visits as the months go by
