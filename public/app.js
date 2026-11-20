@@ -4893,8 +4893,7 @@ PAGES['/jobs'] = {
     } else body = list.map(row).join('');
     const todayN = D.jobs.filter((j) => jobStatus(j) === 'today').length;
     const tabs = [['action', 'Needs action', D.jobs.filter(jobNeedsAction)], ...order.map((s) => [s, J_STATUS[s], ['archived', 'cancelled'].includes(s) ? null : D.jobs.filter((j) => jobStatus(j) === s)]), ['all', 'All', null]];
-    main.innerHTML = `<div class="head"><h1>Jobs</h1><div class="actions"><button class="btn need-jobs-edit" data-act="newJob">New Job</button>
-<details class="menu">${MORE_SUM}<div class="menu-list"><a href="/calendar" data-link>Open calendar</a></div></details></div></div>${jvSwitch('jobs')}
+    main.innerHTML = `<div class="head"><h1>Jobs</h1><div class="actions"><button class="btn need-jobs-edit" data-act="newJob">New Job</button></div></div>${jvSwitch('jobs')}
 <div class="lstrip"><span class="ls-l">Visits</span><span>Past 30 days <strong>${recNow.length}<span class="money"> · ${moneyShort(sum(recNow))}</span></strong> ${change(recNow.length, recPrev.length)}</span>
 <span>Next 30 days <strong>${upcoming.length} scheduled<span class="money"> · ${moneyShort(sum(upcoming))}</span></strong></span><a href="/reports" data-link>Full report →</a></div>
 <div class="ltabs" role="tablist" aria-label="Job status">${tabs.map(([s, label, l]) => `<button type="button" role="tab" aria-selected="${v.status === s}" class="ltab${v.status === s ? ' on' : ''}" data-act="jobTab" data-s="${s}"><span class="lt-t">${J_CLASS[s] ? `<i class="dot ${J_CLASS[s]}"></i>` : ''}${label}${l ? `<span class="lt-n">${l.length}</span>` : ''}</span><span class="lt-m money">${l && l.length ? moneyShort(sum(l)) : ''}</span></button>`).join('')}</div>
