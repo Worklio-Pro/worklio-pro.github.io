@@ -2786,7 +2786,8 @@ async function placeProfit(root, kind, id) {
   let r; try { r = await api('GET', `/api/${kind}s/${encodeURIComponent(id)}/profit`); } catch { return; }
   if (!root.isConnected || qp('id') !== id || $('.pf-card', root)) return; // moved on, or already shown
   const side = $('.qside', root); const totals = $('.md-totals', root);
-  if (side) side.insertAdjacentHTML('afterbegin', profitCard(kind, r)); else if (totals) totals.insertAdjacentHTML('afterend', `<section class="md-block">${profitCard(kind, r)}</section>`);
+  const notes = side && $('.sec-edit[data-sec="notes"]', side); const notesCard = notes && notes.closest('.qcard'); // computers: right under Internal Notes
+  if (notesCard) notesCard.insertAdjacentHTML('afterend', profitCard(kind, r)); else if (side) side.insertAdjacentHTML('beforeend', profitCard(kind, r)); else if (totals) totals.insertAdjacentHTML('afterend', `<section class="md-block">${profitCard(kind, r)}</section>`);
 }
 function viewPage(kind) {
   return {
