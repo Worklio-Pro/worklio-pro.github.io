@@ -3500,6 +3500,9 @@ function jobScheduleOk(id, body) {
   if (!body.anytime && body.endTime <= body.startTime) { toast('End time must be after start time', true); return false; }
   const clash = jobConflicts({ id, ...body });
   if (clash.length && !confirm(`Schedule conflict: ${clash.map((c) => c.number + ' ' + c.title).join(', ')} overlaps for an assigned staff member. Save anyway?`)) return false;
+  const was = id && byId(D.jobs, id); // taking someone off the team while they're clocked in here clocks them out (their time stays on the job)
+  const clocked = was ? ((D.clock && D.clock.onClock) || []).filter((x) => x.jobId === id && (was.staffIds || []).includes(x.staffId) && !(body.staffIds || []).includes(x.staffId)).map((x) => byId(D.staff, x.staffId)).filter(Boolean) : [];
+  if (clocked.length && !confirm(`${clocked.map((s) => s.name).join(', ')} ${clocked.length === 1 ? 'is' : 'are'} clocked in on this job. Taking them off the team clocks them out now. Their time so far stays on the job. Save anyway?`)) return false;
   const offHours = (body.staffIds || []).map((s) => byId(D.staff, s)).filter((s) => s && !withinHours(s, body.date, body.startTime, body.endTime));
   const away = (body.staffIds || []).map((s) => [byId(D.staff, s), offOn(s, body.date, body.startTime, body.endTime)]).filter(([s, r]) => s && r);
   const hol = holidayOn(body.date); // a closed holiday, or outside its shorter hours

@@ -879,7 +879,7 @@ function localToMs(day, time) {
 //  - with no scheduled end (no job, an Anytime job, a job not on that day, or clocked in after it was due to end), after maxHours on the clock
 //    they're clocked out at that point, flagged the same way (with a reminder 2 hours before).
 // Mark Complete on a job clocks out everyone still on it: at the day's scheduled end if that's passed, else now.
-// e.autoOut: 'end-of-day' | 'max-hours' | 'job-complete' | 'visit-complete'; e.needsReview: flagged until a manager edits or approves it.
+// e.autoOut: 'end-of-day' | 'max-hours' | 'job-complete' | 'visit-complete' | 'removed' (taken off the job's team); e.needsReview: flagged until a manager edits or approves it.
 const clockRules = () => { const r = db.company.clockRules || {}; return { autoOut: r.autoOut !== false, graceHours: Math.min(12, Math.max(0.5, Number(r.graceHours) || 2)), maxHours: Math.min(24, Math.max(4, Number(r.maxHours) || 12)) }; };
 const entryWork = (e) => (e.jobId ? db.jobs.find((x) => x.id === e.jobId) : e.visitId ? (db.tasks || []).find((x) => x.id === e.visitId) : null);
 function entrySchedEnd(e) { // when the work was scheduled to end on the day this entry started (ms), or null
@@ -2470,7 +2470,7 @@ app.put('/api/:col/:id', (req, res, next) => {
   const i = db[col].findIndex((x) => x.id === req.params.id);
   if (i < 0) return res.status(404).json({ error: 'Not found' });
   const protectedKeys = ['id', 'number', 'token', 'portalToken', 'createdAt', 'seriesId', 'repeat', 'membershipId', 'forms']; // checklists change only through /forms
-  let upd = { ...req.body }; protectedKeys.forEach((k) => delete upd[k]); delete upd.noteEntries; // notes change only through /notes
+  let upd = { ...req.body }; protectedKeys.forEach((k) => delete upd[k]); delete upd.noteEntries; delete upd.timeStaffIds; // timeStaffIds: kept by the timesheet routes // notes change only through /notes
   if (col === 'invoices') { delete upd.signedAt; delete upd.signedName; delete upd.signature; delete upd.lateFees; delete upd.jobIds; } // signatures only through /signature; the late fees charged and a combined invoice's jobs stay
   (PAYMENT_FIELDS[col] || []).forEach((k) => delete upd[k]);
   if (col === 'invoices' && (upd.status === 'paid' || db.invoices[i].status === 'paid')) delete upd.status; // paid only by its payments
@@ -2522,6 +2522,11 @@ app.put('/api/:col/:id', (req, res, next) => {
   let clockedOut = 0;
   if (col === 'jobs' && doc.status === 'completed' && was.status !== 'completed') { doc.completedAt = iso(new Date()); clockedOut = clockOutJob(doc); } // the "job completed" automations count from this; the crew still on the clock is clocked out
   const following = col === 'jobs' && req.query.following && doc.seriesId && tenancy.has('recurringJobs') ? applyToFollowing(doc, upd, req.query.following) : 0; // Save → "This and following visits"
+  if (col === 'jobs') { // someone taken off the team: forget they came on from the timesheet, and clock them out if they're on the clock here (their time stays)
+    const gone = (was.staffIds || []).filter((s) => !(doc.staffIds || []).includes(s));
+    if (doc.timeStaffIds) { doc.timeStaffIds = doc.timeStaffIds.filter((s) => (doc.staffIds || []).includes(s)); if (!doc.timeStaffIds.length) delete doc.timeStaffIds; }
+    for (const e of timeList()) if (e.jobId === doc.id && !e.end && gone.includes(e.staffId)) { e.end = new Date().toISOString(); e.autoOut = 'removed'; }
+  }
   if (col === 'jobs') matchFormsOnEdit(was, doc, (currentUser(req) || {}).name); // new line items can bring their checklists
   if (col === 'clients' && Array.isArray(upd.properties)) followPropertyAddresses(was, doc);
   if (col === 'tasks' && doc.survey && (doc.date !== was.date || doc.startTime !== was.startTime)) { doc.remindedAt = null; doc.survey = { ...doc.survey, bookedAt: new Date().toISOString() }; surveyEmail(doc, 'moved'); } // a site visit moved on the calendar: the client is told
