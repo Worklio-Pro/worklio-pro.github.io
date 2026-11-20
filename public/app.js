@@ -2795,6 +2795,7 @@ ${row(Q ? 'Materials <span class="muted">(estimated)</span>' : matLabel, neg(m.a
 ${r.timesheets ? row('Labor', neg(L.amount), [labSub, labNote].filter(Boolean).join(' · ')) : ''}
 ${r.cards || F.amount ? row('Card fees', neg(F.amount), feeSub) : ''}
 ${row(Q ? '<strong>Estimated profit</strong>' : '<strong>Net profit</strong>', `<strong class="${pos ? '' : 'pf-loss'}">${pos ? money(r.profit) : '−' + money(-r.profit)}</strong>`, '', 'grand')}
+${Q && (r.options || []).length ? `<div class="pf-opts"><div class="pf-oh"><span>Each option</span><span>Total</span><span>Profit</span></div>${r.options.map((x) => `<div class="pf-o${x.shown ? ' on' : ''}"><span>${esc(x.name)}${x.chosen ? ' <small>chosen</small>' : x.recommended ? ' <small>recommended</small>' : ''}</span><span>${money(x.total)}</span><span class="${x.profit < 0 ? 'pf-loss' : ''}">${x.profit < 0 ? '−' + money(-x.profit) : money(x.profit)}<small>${x.margin == null ? '—' : x.margin + '%'}</small></span></div>`).join('')}</div>` : ''}
 ${Q ? (r.paid ? `<p class="pf-paid">Deposit paid ${money(r.paid)}</p>` : '') : kind === 'invoice' || !r.estimatedRevenue ? `<p class="pf-paid">Paid ${money(r.paid)} · Due ${money(r.balance)}</p>` : ''}
 </div>`;
 }

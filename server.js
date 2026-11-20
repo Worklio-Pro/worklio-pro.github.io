@@ -5181,7 +5181,11 @@ app.get('/api/quotes/:id/profit', async (req, res) => {
   const box = profitBox({ revenue: (Number(q.subtotal) || 0) - (Number(q.discount) || 0), gross: Number(q.subtotal) || 0, discount: Number(q.discount) || 0, tax: Number(q.tax) || 0, tips: 0,
     expenses: 0, products: 0, estimate: quoteLinesCost(items), labor: 0, hours: 0, unrated: 0, fees: Number(q.depositStripeFee) || 0, feesPending: card && q.depositStripeFee == null ? 1 : 0,
     paid, balance: 0, jobs: [] });
-  res.json({ ...box, timesheets: false, quote: true, option: o ? o.name : '' });
+  // Good / Better / Best: every option side by side (the deposit's card fee goes with the option it was paid on, the shown one)
+  const options = !o ? [] : q.options.map((x) => { const t = (q.optionTotals || {})[x.id] || {}; const rev = (Number(t.subtotal) || 0) - (Number(t.discount) || 0);
+    const mat = quoteLinesCost(optionItems(q, x.id)); const fee = x.id === o.id ? Number(q.depositStripeFee) || 0 : 0; const profit = round2(rev - mat - fee);
+    return { id: x.id, name: x.name, total: round2(rev), materials: mat, profit, margin: rev ? Math.round(profit / rev * 1000) / 10 : null, shown: x.id === o.id, recommended: x.id === q.recommended, chosen: x.id === q.chosenOption }; });
+  res.json({ ...box, timesheets: false, quote: true, option: o ? o.name : '', options });
 });
 app.get('/api/jobs/:id/profit', async (req, res) => {
   const j = db.jobs.find((x) => x.id === req.params.id); if (!j) return res.status(404).json({ error: 'Job not found' });
