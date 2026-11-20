@@ -905,7 +905,10 @@ const fillEntry = (e, b, u) => {
   else { e.edits = [...(e.edits || []), { at, by: u.name, byId: u.id, changes }].slice(-50); e.editedBy = u.name; e.editedAt = at; }
   e.approvedAt = null; e.approvedBy = ''; delete e.needsReview;
 };
-app.post('/api/time', manageTime((req, res, u, b) => { const e = { id: uid(), staffId: '', jobId: '', start: '', end: null, note: '', createdAt: new Date().toISOString() }; if (!b.staffId) b.staffId = ''; fillEntry(e, { jobId: '', ...b }, u); timeList().push(e); save(); res.status(201).json(timeRow(e, u)); }));
+// time is added and fixed on its own day only: a new entry is today's (business time zone), an edit can't move an entry to another day
+const entryDay = (iso) => { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const sameDays = (e, days, msg) => { if (!days.includes(entryDay(e.start)) || (e.end && !days.includes(entryDay(e.end)))) throw Object.assign(new Error(msg), { status: 400 }); };
+app.post('/api/time', manageTime((req, res, u, b) => { const e = { id: uid(), staffId: '', jobId: '', start: '', end: null, note: '', createdAt: new Date().toISOString() }; if (!b.staffId) b.staffId = ''; fillEntry(e, { jobId: '', ...b }, u); sameDays(e, [entryDay(new Date())], 'Time can only be added for today'); timeList().push(e); save(); res.status(201).json(timeRow(e, u)); }));
 // pay rates (owner and admins): dollars an hour per team member
 app.put('/api/time/rates', (req, res) => {
   const u = currentUser(req); if (!isAdmin(u)) return res.status(403).json({ error: 'Only the owner and admins can set pay rates' });
@@ -913,7 +916,7 @@ app.put('/api/time/rates', (req, res) => {
   for (const s of db.staff) { const v = Number(r[s.id]); if (r[s.id] !== undefined && r[s.id] !== '' && (!isFinite(v) || v < 0 || v > 10000)) return res.status(400).json({ error: `Enter ${s.name}’s pay rate in dollars an hour` }); if (v > 0) out[s.id] = Math.round(v * 100) / 100; }
   db.payRates = out; save(); res.json({ rates: out });
 });
-app.put('/api/time/:id', manageTime((req, res, u, b) => { const e = timeList().find((x) => x.id === req.params.id); if (!e) return res.status(404).json({ error: 'Entry not found' }); const was = { ...e }; try { fillEntry(e, b, u); } catch (x) { Object.assign(e, was); throw x; } save(); res.json(timeRow(e, u)); }));
+app.put('/api/time/:id', manageTime((req, res, u, b) => { const e = timeList().find((x) => x.id === req.params.id); if (!e) return res.status(404).json({ error: 'Entry not found' }); const was = { ...e }; try { fillEntry(e, b, u); sameDays(e, [entryDay(was.start), ...(was.end ? [entryDay(was.end)] : [])], 'An entry stays on its own day. Change the times, not the date.'); } catch (x) { Object.assign(e, was); throw x; } save(); res.json(timeRow(e, u)); }));
 app.delete('/api/time/:id', manageTime((req, res) => { const i = timeList().findIndex((x) => x.id === req.params.id); if (i < 0) return res.status(404).json({ error: 'Entry not found' }); timeList().splice(i, 1); save(); res.json({ ok: true }); }));
 // approve finished entries for payroll (ids from the page: the week, one person's week, or one entry)
 app.post('/api/time/approve', manageTime((req, res, u, b) => {

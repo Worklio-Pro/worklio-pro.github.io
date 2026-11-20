@@ -1382,8 +1382,9 @@ A.tsEdit = (d) => {
   const jobs = D.jobs.filter((j) => j.status !== 'cancelled').sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   const m = modal(e ? `Edit ${e.person}’s time` : 'Add time', `<form id="tsf"><label>Team member<select name="staffId" required ${e ? 'disabled' : ''}><option value="">Choose…</option>${D.staff.filter((s) => s.status !== 'deactivated' || (e && e.staffId === s.id)).map((s) => `<option value="${s.id}" ${(e ? e.staffId : tsWho) === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>
 <label>Job<select name="jobId"><option value="">No job</option>${jobs.map((j) => `<option value="${j.id}" ${e && e.jobId === j.id ? 'selected' : ''}>${esc(j.number)} · ${esc(j.title || '')}</option>`).join('')}</select></label>
-${(() => { const a = (e ? tsLocal(e.start) : `${ymd(now)}T08:00`).split('T'); const b = (e ? (e.end ? tsLocal(e.end) : '') : `${ymd(now)}T16:00`).split('T'); const rq = e && !e.end ? '' : 'required'; return `<div class="row"><label>Clock in date<input type="date" name="startD" required value="${esc(a[0] || '')}"></label><label>Clock in time<input type="time" name="startT" required value="${esc(a[1] || '')}"></label></div>
-<div class="row"><label>Clock out date<input type="date" name="endD" ${rq} value="${esc(b[0] || '')}"></label><label>Clock out time<input type="time" name="endT" ${rq} value="${esc(b[1] || '')}"></label></div>`; })()}
+${(() => { const a = (e ? tsLocal(e.start) : `${ymd(now)}T08:00`).split('T'); const b = (e && e.end ? tsLocal(e.end) : e ? '' : `${ymd(now)}T16:00`).split('T'); const rq = e && !e.end ? '' : 'required'; const dIn = a[0]; const dOut = b[0] || dIn; const day = (v) => (v === ymd(now) ? `Today, ${fmtDate(v)}` : fmtDate(v));
+  return `<p class="muted" style="margin:0 0 8px">${e ? (dOut !== dIn ? `${esc(day(dIn))} to ${esc(day(dOut))}` : esc(day(dIn))) : `${esc(day(dIn))}. Time can only be added for today.`}</p><input type="hidden" name="startD" value="${esc(dIn)}"><input type="hidden" name="endD" value="${esc(dOut)}">
+<div class="row"><label>Clock in<input type="time" name="startT" required value="${esc(a[1] || '')}"></label><label>Clock out<input type="time" name="endT" ${rq} value="${esc(b[1] || '')}"></label></div>`; })()}
 <label>Note<input name="note" maxlength="500" value="${esc(e ? e.note || '' : '')}" placeholder="e.g. Forgot to clock out"></label>
 ${e && e.approvedAt ? '<p class="notice">This entry is approved. Saving a change sends it back for approval.</p>' : ''}${e && e.autoOut && TS_AUTO[e.autoOut] ? `<p class="notice">${esc(TS_AUTO[e.autoOut])}</p>` : ''}
 ${e && ((e.edits || []).length || e.addedBy) ? `<details class="ts-hist"><summary>Change history</summary><ul>${e.addedBy ? `<li>Added by ${esc(e.addedBy)}</li>` : ''}${(e.edits || []).map((x) => `<li>${esc(tsEditLine(x))}</li>`).join('')}</ul></details>` : ''}<p class="muted sm">Your name is saved with this change.</p>
@@ -1392,8 +1393,7 @@ ${e && ((e.edits || []).length || e.addedBy) ? `<details class="ts-hist"><summar
   A.tsDel = async () => { if (!confirm('Delete this time entry?')) return; try { await api('DELETE', '/api/time/' + e.id); closeModal(); toast('Entry deleted'); refresh(); } catch (x) { toast(x.message, true); } };
   f.addEventListener('submit', async (ev) => {
     ev.preventDefault(); const b = $('button.btn:not(.alt)', f); b.disabled = true;
-    if (!!f.endD.value !== !!f.endT.value) { b.disabled = false; toast('Fill in both the clock out date and time, or leave both empty', true); return; }
-    const body = { jobId: f.jobId.value, start: new Date(`${f.startD.value}T${f.startT.value}`).toISOString(), end: f.endD.value ? new Date(`${f.endD.value}T${f.endT.value}`).toISOString() : null, note: f.note.value };
+    const body = { jobId: f.jobId.value, start: new Date(`${f.startD.value}T${f.startT.value}`).toISOString(), end: f.endT.value ? new Date(`${f.endD.value}T${f.endT.value}`).toISOString() : null, note: f.note.value };
     try { if (e) await api('PUT', '/api/time/' + e.id, body); else await api('POST', '/api/time', { ...body, staffId: f.staffId.value }); closeModal(); toast('Saved'); refresh(); }
     catch (x) { b.disabled = false; toast(x.message, true); }
   });
