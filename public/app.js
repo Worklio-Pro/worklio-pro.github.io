@@ -3976,8 +3976,7 @@ ${cols.map((c) => c.td(i)).join('')}<td class="racts"><div>${acts(i)}</div></td>
     const tabs = [['action', 'Needs action', D.invoices.filter(invNeedsAction)], ...['overdue', 'sent', 'partial', 'draft'].map((s) => [s, I_STATUS[s], group(s)]), ['paid', 'Paid', null], ['all', 'All', null]]
       .filter(([s, , l]) => s !== 'partial' || l.length || v.status === 'partial');
     const tabM = (s, l) => (l ? (l.length ? moneyShort(bal(l)) : '') : s === 'paid' && paid30.length ? `${moneyShort(sum(paid30))} past 30 days` : '');
-    main.innerHTML = `<div class="head"><h1>Invoices</h1><div class="actions"><button class="btn" data-act="newInvoice">New Invoice</button>
-<details class="menu">${MORE_SUM}<div class="menu-list"><button data-act="batchInvoice">Invoice completed jobs</button></div></details></div></div>
+    main.innerHTML = `<div class="head"><h1>Invoices</h1><div class="actions"><button class="btn" data-act="newInvoice">New Invoice</button></div></div>
 ${batchBanner()}<div class="lstrip"><span class="ls-l">Past 30 days</span><span>Issued <strong>${issNow.length} · ${moneyShort(sum(issNow))}</strong> ${change(issNow.length, issPrev.length)}</span>
 <span>Average invoice <strong>${avg(issNow) >= 1000 ? moneyShort(avg(issNow)) : '$' + Math.round(avg(issNow))}</strong> ${change(avg(issNow), avg(issPrev))}</span>${paidIn ? `<span>Paid in ${paidIn}</span>` : ''}<a href="/reports" data-link>Full report →</a></div>
 <div class="ltabs" role="tablist" aria-label="Invoice status">${tabs.map(([s, label, l]) => `<button type="button" role="tab" aria-selected="${v.status === s}" class="ltab${v.status === s ? ' on' : ''}" data-act="invTab" data-s="${s}"><span class="lt-t">${I_CLASS[s] ? `<i class="dot ${I_CLASS[s]}"></i>` : ''}${label}${l ? `<span class="lt-n">${l.length}</span>` : ''}</span><span class="lt-m">${tabM(s, l)}</span></button>`).join('')}</div>
