@@ -4655,14 +4655,15 @@ A.svOpen = (d) => {
   svEditId = t.id; if (curPath() === '/jobs/site-visit' && qp('id') === t.id) refresh(); else navigate('/jobs/site-visit?id=' + t.id);
 };
 A.svEditCancel = () => { svEditId = null; refresh(); };
-// who can be picked: the people clients can book (App Settings → Site visits), else the active team, plus anyone already on it
-const svPeople = (t) => { const base = company.surveyPeople && company.surveyPeople.length ? company.surveyPeople.map((p) => byId(D.staff, p.id)).filter(Boolean) : D.staff.filter(staffActive);
+// who can be assigned: the whole active team, like a job (who clients can book is separate: App Settings → Site visits), plus anyone already on it
+const svPeople = (t) => { const base = D.staff.filter(staffActive);
   return [...base, ...(t.staffIds || []).map((id) => byId(D.staff, id)).filter((s) => s && !base.includes(s))]; };
+const svTeamPick = (t) => `<div class="muted qlabel">Assigned team</div><div class="team-pick">${svPeople(t).map((s) => `<label><input type="checkbox" name="staff" value="${s.id}" ${(t.staffIds || []).includes(s.id) ? 'checked' : ''}>${avatarHtml(s, 24)}${esc(s.name)}</label>`).join('') || '<span class="muted">Add team members on Manage Team first</span>'}</div>`;
 const svMovedNote = (t) => (svClient(t).email ? 'If you change the day or time, the client gets an email with the new time.' : 'This client has no email address, so they won’t be told about a new time.');
 // the Scheduled Visit box in edit mode, laid out like the job page's
 const svVisitForm = (t) => `<form class="qcard sv-vf" id="svVf" data-id="${t.id}"><h2>Scheduled visit</h2><div class="row3"><label>Date<input type="date" name="date" required value="${esc(t.date)}"></label>
 <label>Start<input type="time" name="startTime" required value="${esc(t.startTime || '09:00')}"></label><label>End<input type="time" name="endTime" required value="${esc(t.endTime || '10:00')}"></label></div>
-<div class="muted qlabel">Assigned team</div><div class="team-pick">${svPeople(t).map((s) => `<label><input type="checkbox" name="staff" value="${s.id}" ${(t.staffIds || []).includes(s.id) ? 'checked' : ''}>${avatarHtml(s, 24)}${esc(s.name)}</label>`).join('') || '<span class="muted">Add team members on Manage Team first</span>'}</div>
+${svTeamPick(t)}
 <label>Instructions<textarea name="description" rows="3" maxlength="2000" placeholder="What the team needs to know for this visit">${esc(t.description || '')}</textarea></label>
 <p class="muted" style="font-size:13px;margin:6px 0 0">${svMovedNote(t)}</p>
 <div class="foot sec-foot"><button type="button" class="btn alt" data-act="svEditCancel">Cancel</button><button class="btn">Save</button></div></form>`;
@@ -4679,16 +4680,14 @@ document.addEventListener('submit', (e) => {
 });
 // phones: the same fields in a sheet
 function svEditModal(t) {
-  const people = company.surveyPeople && company.surveyPeople.length ? company.surveyPeople : D.staff.filter(staffActive).map((x) => ({ id: x.id, name: x.name }));
-  const cur = (t.staffIds || [])[0] || ''; const list = cur && !people.some((p) => p.id === cur) ? [...people, { id: cur, name: (byId(D.staff, cur) || {}).name || 'Former team member' }] : people;
   const m = modal('Scheduled visit', `<form id="svEd"><div class="row"><label>Date<input type="date" name="date" required value="${esc(t.date)}"></label></div>
 <div class="row"><label>Start<input type="time" name="startTime" required value="${esc(t.startTime || '09:00')}"></label><label>End<input type="time" name="endTime" required value="${esc(t.endTime || '10:00')}"></label></div>
-<label>Who goes<select name="staff" required>${list.map((p) => `<option value="${esc(p.id)}" ${p.id === cur ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
+${svTeamPick(t)}
 <label>Instructions<textarea name="description" rows="3" maxlength="2000" placeholder="For whoever goes: gate code, what to look at…">${esc(t.description || '')}</textarea></label>
 <p class="muted" style="font-size:13px;margin:4px 0 0">${svMovedNote(t)}</p>
 <div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save</button></div></form>`);
   const fm = $('#svEd', m);
-  fm.addEventListener('submit', (e) => { e.preventDefault(); svSaveVisit(t, { date: fm.date.value, startTime: fm.startTime.value, endTime: fm.endTime.value, staffIds: [fm.staff.value], description: fm.description.value.trim() }, $('.foot .btn:not(.alt)', fm)); });
+  fm.addEventListener('submit', (e) => { e.preventDefault(); svSaveVisit(t, { date: fm.date.value, startTime: fm.startTime.value, endTime: fm.endTime.value, staffIds: $$('[name=staff]:checked', fm).map((x) => x.value), description: fm.description.value.trim() }, $('.foot .btn:not(.alt)', fm)); });
 }
 A.svQuoteOpen = (d) => navigate('/quotes/view?id=' + d.id);
 A.svPage = (d) => navigate('/jobs/site-visit?id=' + d.id);
