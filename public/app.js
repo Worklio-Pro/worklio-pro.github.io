@@ -2656,6 +2656,10 @@ ${done ? '' : `<label class="sw-row"><input type="hidden" name="estimate" value=
 <div class="est-svy"${estOn(d) && (!done || d.survey) ? '' : ' hidden'}><div class="est-h"><h3 class="est-sh">Site visit</h3>${estInfoBtn('svyInfo', 'Site visit')}
 ${done ? '' : `<label class="sw-row"><input type="hidden" name="survey" value="off"><input type="checkbox" class="sw" name="survey" value="on" aria-label="Book a site visit before the quote" ${d.survey ? 'checked' : ''}><i></i></label>`}</div>
 ${done && d.survey ? `<p class="est-svy-at">${qSvyText(d)}</p>` : ''}<p class="muted est-info" id="svyInfo" hidden>${SURVEY_NOTE}</p></div></div>`; };
+// New job → From quote: the quotes a job can still come from (not archived or declined, no job yet, and with options the client's pick made),
+// the client's only when one is chosen; sel stays listed so a picked quote shows
+const jobFromQuotes = (cid, sel) => (D.quotes || []).filter((q) => q.id === sel || (!q.archived && q.status !== 'declined' && !quoteJob(q) && !(qHasOpts(q) && !q.chosenOption) && (!cid || q.clientId === cid)));
+const jobQuoteOpts = (cid, sel) => `<option value="">None</option>${jobFromQuotes(cid, sel).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))).map((q) => `<option value="${q.id}" ${q.id === sel ? 'selected' : ''}>${esc([q.number, cid ? '' : (byId(D.clients, q.clientId) || {}).name, q.title, money(q.total || 0)].filter(Boolean).join(' · '))}</option>`).join('')}`;
 const quoteJobItems = (q) => (qHasOpts(q) ? (q.chosenOption ? qOptItems(q, q.chosenOption) : []) : q.items || []).map(({ opt, ...i }) => i);
 function quoteForm(main, doc, preset) {
   const d = doc || {}; const p = preset || {}; const items = d.items && d.items.length ? d.items : [{}];
@@ -3361,10 +3365,16 @@ function mobileNew(kind, main, preset) {
   main.innerHTML = `<div class="mdoc mnew"><div class="mn-top"><a href="/${kind}s" data-link class="mn-x" aria-label="Close">${X_ICO}</a><h1>New ${kind}</h1><span></span></div>
 <form class="mnew-f" novalidate><h2 class="mn-sh">Service for</h2><div class="mn-who"></div><h2 class="mn-sh">Overview</h2>
 ${mField(kind === 'invoice' ? 'Subject' : 'Title', `<input name="${kind === 'invoice' ? 'subject' : 'title'}" maxlength="120" placeholder="${q ? 'e.g. Backyard cleanup' : job ? 'e.g. Streamer Install' : 'e.g. Camera System Install'}" value="${esc((preset.copy || {}).title || '')}">`)}
-${job ? mField('Date', `<input type="date" name="date" value="${esc(preset.date || ymd(new Date()))}">`) + repeatCard({}, preset.date || ymd(new Date())) : ''}${q ? estCard(preset.copy || {}) : ''}
+${job && canDo('jobs.edit') ? '<div class="mn-fq"></div>' : ''}${job ? mField('Date', `<input type="date" name="date" value="${esc(preset.date || ymd(new Date()))}">`) + repeatCard({}, preset.date || ymd(new Date())) : ''}${q ? estCard(preset.copy || {}) : ''}
 <button class="btn ms-save">Save</button>${q && (planHas('snapQuote') || canDo('quotes')) ? `<button class="btn alt ms-snap" data-snap="1">${svgIcon(SNAP_CAM, 20)}<span>Snap to quote: draft from photos</span></button>` : ''}<p class="muted mn-next">${job ? 'You’ll set the time and team next.' : 'You’ll add line items next.'}</p></form></div>`;
   const f = $('form', main); const who = $('.mn-who', f); if (job) wireRepeat(f);
+  let fromQ = null; const fq = $('.mn-fq', f); // New job → From quote: the job gets the quote's line items, tax and discount when saved
+  const drawQ = () => { if (!fq) return; if (fromQ && client && fromQ.clientId !== client.id) fromQ = null; const l = jobFromQuotes(client && client.id, fromQ && fromQ.id);
+    fq.innerHTML = l.length ? mField('From quote', `<select name="quoteId">${jobQuoteOpts(client && client.id, fromQ && fromQ.id)}</select>`) : ''; };
+  if (fq) fq.addEventListener('change', (e) => { if (e.target.name !== 'quoteId') return; fromQ = byId(D.quotes, e.target.value);
+    if (fromQ) { client = byId(D.clients, fromQ.clientId) || client; onlyProp(); const qp2 = clientProps(client).find((x) => x.id === fromQ.propertyId); if (qp2) prop = qp2; if (!f.title.value.trim()) f.title.value = fromQ.title || ''; } draw(); });
   const draw = () => {
+    drawQ();
     if (client) {
       const ps = clientProps(client);
       who.innerHTML = `<div class="mn-card"><div class="mn-row">${ic.contact}<div class="mn-c"><strong>${esc(client.name)}</strong>${client.company && client.company !== client.name ? `<span>${esc(client.company)}</span>` : ''}</div><button type="button" class="mf-clear" data-mn="clear" aria-label="Choose a different client">${X_ICO}</button></div>
@@ -3412,7 +3422,7 @@ ${newOk ? `<div class="mn-row">${ic.contact}<div class="mn-stack"><input name="f
       if (q) { b.estimate = $('input.sw[name=estimate]', f).checked; b.survey = b.estimate && $('input.sw[name=survey]', f).checked; } // Estimate and Site visit: chosen before the first save
       if (q && e.submitter && e.submitter.dataset.snap) { btn.disabled = false; return A.snapQuote({ clientId: client.id, ...where }); } // Snap to quote: the draft is made from the photos
       if (job) {
-        const saved = await saveJobWithRepeat({}, { ...b, date: v('date'), startTime: '09:00', endTime: '11:00', status: 'scheduled', staffIds: [], ...where }, readRepeat(f), f); // with its Repeats settings
+        const saved = await saveJobWithRepeat({}, { ...b, ...(fromQ ? { quoteId: fromQ.id } : {}), date: v('date'), startTime: '09:00', endTime: '11:00', status: 'scheduled', staffIds: [], ...where }, readRepeat(f), f); // with its Repeats settings
         return navigate('/jobs/edit?id=' + saved.id);
       }
       const cp = q && preset.copy; // Create Similar Quote: the original's line items, prices and messages (the address and tax from this client's property)
@@ -4489,7 +4499,7 @@ ${j.status === 'scheduled' ? `<button type="button" class="btn alt need-jobs-edi
 <dl class="qmeta"><dt>Job #</dt><dd>${j.number ? esc(j.number) : '<span class="muted">Assigned when saved</span>'}</dd>
 <dt>Status</dt><dd><select name="status" aria-label="Status">${[['scheduled', 'Scheduled'], ['completed', 'Completed'], ['cancelled', 'Cancelled']].map(([k, l]) => `<option value="${k}" ${(j.status || 'scheduled') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></dd>
 <dt>Created</dt><dd>${fmtDate((j.createdAt || ymd(new Date())).slice(0, 10))}</dd>
-<dt>From quote</dt><dd>${q ? `<a href="/quotes/view?id=${q.id}" data-link>${esc(q.number)}</a>` : '<span class="muted">—</span>'}</dd>${sentMeta(j)}</dl></div>
+<dt>From quote</dt><dd>${!j.id && canDo('jobs.edit') ? `<select name="quoteId" class="jquote" aria-label="From quote">${jobQuoteOpts(j.clientId || p.clientId, j.quoteId)}</select>` : q ? `<a href="/quotes/view?id=${q.id}" data-link>${esc(q.number)}</a>` : '<span class="muted">—</span>'}</dd>${sentMeta(j)}</dl></div>
 ${!canDo('jobs.prices') ? '' : itemsCard(items, '<div class="jdeposit"></div>', j.taxRate !== undefined ? j : q || j)}
 <div class="qcard"><h2>Scheduled visit</h2><div class="row3"><label>Date<input type="date" name="date" required value="${esc(j.date || p.date || ymd(new Date()))}"></label>
 <label>Start<input type="time" name="startTime" value="${esc(j.startTime || '09:00')}"></label><label>End<input type="time" name="endTime" value="${esc(j.endTime || '11:00')}"></label></div>
@@ -4519,9 +4529,19 @@ ${paid ? `<div class="crow-line"><span>Deposit collected <span class="muted">· 
   wireItems(form); contact(); wireRepeat(form);
   if (!canDo('jobs.edit')) $$('input, select, textarea', form).forEach((el) => { el.disabled = true; }); // view only without “Create, edit and delete jobs”
   form.addEventListener('change', (e) => { if (e.target.name === 'clientId' || e.target.name === 'address') contact(); }); // a property picked: its name
+  // New job → From quote: picking a quote fills in its client, title, address, line items, tax and discount (the date, time, team and notes stay);
+  // None, or another client, unlinks it and keeps what's on the page
+  const redraw = (qt, cid) => { const fd = new FormData(form); const v = (k) => fd.get(k) || '';
+    const d = { ...j, clientId: cid, title: v('title') || (qt && qt.title) || '', address: qt ? qt.address || '' : v('address'), propertyId: qt ? qt.propertyId || '' : v('propertyId'), status: v('status') || 'scheduled', date: v('date'), endDate: v('endDate'), skipWeekends: !!fd.get('skipWeekends'), startTime: v('startTime'), endTime: v('endTime'), anytime: !!fd.get('anytime'), staffIds: fd.getAll('staff'), description: v('description'), internalNotes: v('internalNotes'), quoteId: qt ? qt.id : '',
+      ...(qt ? { items: quoteJobItems(qt), taxRate: qt.taxRate, discountType: qt.discountType, discountValue: qt.discountValue, discountName: qt.discountName || '' } : $('[name=taxRate]', form) ? { items: readItems(form), taxRate: v('taxRate'), discountType: v('discountType'), discountValue: v('discountValue'), discountName: v('discountName') } : {}) };
+    jobPage(main, d, p); };
+  if (form.quoteId) {
+    form.quoteId.addEventListener('change', () => { const qt = byId(D.quotes, form.quoteId.value); redraw(qt, qt ? qt.clientId : form.clientId.value); if (qt) toast(`Filled in from quote ${qt.number}`); });
+    form.clientId.addEventListener('change', () => { const cur = byId(D.quotes, form.quoteId.value); if (cur && cur.clientId !== form.clientId.value) return redraw(null, form.clientId.value); form.quoteId.innerHTML = jobQuoteOpts(form.clientId.value, form.quoteId.value); });
+  }
   form.addEventListener('submit', async (e) => {
     e.preventDefault(); const fd = new FormData(form);
-    const body = { title: fd.get('title'), clientId: fd.get('clientId'), status: fd.get('status'), address: fd.get('address') || (byId(D.clients, fd.get('clientId')) || {}).address || '', propertyId: fd.get('propertyId') || '', date: fd.get('date'), endDate: fd.get('endDate') || '', skipWeekends: !!fd.get('skipWeekends'), startTime: fd.get('startTime'), endTime: fd.get('endTime'), anytime: !!fd.get('anytime'), description: fd.get('description'), staffIds: fd.getAll('staff'), internalNotes: fd.get('internalNotes'), taxRate: fd.get('taxRate'), discountType: fd.get('discountType'), discountValue: fd.get('discountValue'), discountName: fd.get('discountName') || '', items: readItems(form).filter((i) => i.desc) };
+    const body = { ...(!j.id && fd.get('quoteId') ? { quoteId: fd.get('quoteId') } : {}), title: fd.get('title'), clientId: fd.get('clientId'), status: fd.get('status'), address: fd.get('address') || (byId(D.clients, fd.get('clientId')) || {}).address || '', propertyId: fd.get('propertyId') || '', date: fd.get('date'), endDate: fd.get('endDate') || '', skipWeekends: !!fd.get('skipWeekends'), startTime: fd.get('startTime'), endTime: fd.get('endTime'), anytime: !!fd.get('anytime'), description: fd.get('description'), staffIds: fd.getAll('staff'), internalNotes: fd.get('internalNotes'), taxRate: fd.get('taxRate'), discountType: fd.get('discountType'), discountValue: fd.get('discountValue'), discountName: fd.get('discountName') || '', items: readItems(form).filter((i) => i.desc) };
     if (body.endDate && body.endDate <= body.date) return toast('The end date has to be after the start date', true);
     if (!jobScheduleOk(j.id, body)) return;
     const btn = e.submitter; if (btn) btn.disabled = true;

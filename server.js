@@ -2384,7 +2384,15 @@ app.post('/api/:col', (req, res, next) => {
     doc.number = nextNumber('jobs'); doc.status = b.status || 'scheduled'; doc.staffIds = b.staffIds || [];
     { const bad = cleanJobDays(doc); if (bad) return res.status(400).json({ error: bad }); }
     if (!doc.address && b.clientId) { const c = findClient(b.clientId); if (c) doc.address = c.address; }
-    if (Array.isArray(b.items)) { if (b.taxRate === undefined) doc.taxRate = db.company.taxRate; computeTotals(doc); }
+    if (b.quoteId) { // New job → From quote: linked like Convert to Job; without line items of its own it gets the quote's, with its tax and discount
+      const q = db.quotes.find((x) => x.id === b.quoteId);
+      if (!q || q.clientId !== doc.clientId) return res.status(400).json({ error: 'That quote isn’t this client’s' });
+      if (hasOptions(q) && !q.chosenOption) return res.status(400).json({ error: 'Mark the quote approved with the option the client picked first' });
+      if (!Array.isArray(b.items) || !b.items.length) Object.assign(doc, { items: quoteItems(q), taxRate: q.taxRate, discountType: q.discountType, discountValue: q.discountValue, discountName: q.discountName || '' });
+      if (!doc.address) doc.address = q.address || '';
+      if (q.status !== 'approved') q.status = 'approved';
+    } else delete doc.quoteId;
+    if (Array.isArray(doc.items)) { if (doc.taxRate === undefined) doc.taxRate = db.company.taxRate; computeTotals(doc); }
     autoForms(doc, (currentUser(req) || {}).name);
   }
   if (col === 'expenses') { doc.amount = Number(b.amount) || 0; doc.bizCat = cleanCat(b.bizCat); }
