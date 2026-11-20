@@ -817,6 +817,10 @@ const CAT_SKIP = 'catalogSkip';
 const catSkip = () => { try { return JSON.parse(localStorage.getItem(CAT_SKIP) || '{}') || {}; } catch (x) { return {}; } };
 const catSkipSave = (v) => { try { localStorage.setItem(CAT_SKIP, JSON.stringify(v)); } catch (x) { /* private window: it just asks again */ } };
 const catKey = (n) => String(n || '').trim().toLowerCase();
+// a catalog item on a line: with a Unit cost (or a Home Depot store price) below its price, the line's cost is that and its markup the difference
+// in $ per unit, so the line still comes to the item's price; without one, the price is the line's cost, as before
+const svcCost = (sv) => (Number(sv.cost) > 0 ? Number(sv.cost) : Number(sv.hdCost) > 0 ? Number(sv.hdCost) : 0);
+const svcLine = (sv) => { const c = svcCost(sv); const pr = Number(sv.price) || 0; return c > 0 && c < pr ? { cost: c, markup: round2(pr - c), markupType: 'flat' } : { cost: pr, markup: 0, markupType: 'percent' }; };
 const canAddCatalog = () => planHas('services') && canDo('services') && !catSkip().off;
 function newCatalogItems(items) {
   if (!canAddCatalog()) return [];
@@ -826,7 +830,7 @@ function newCatalogItems(items) {
 }
 // a catalog item's price is what the line's Unit cost fills in from, so the line's unit cost is saved (its markup stays on the line).
 // The line's description isn't saved: what's typed on one quote, job or invoice stays on it; a catalog item's description is set on Products & services.
-const addToCatalog = async (items) => { const r = await api('POST', '/api/services/import', { services: items.map((i) => ({ name: i.desc.trim(), price: Number(i.cost ?? i.price) || 0, type: 'service' })) }); await refresh(); return r.added; };
+const addToCatalog = async (items) => { const r = await api('POST', '/api/services/import', { services: items.map((i) => { const c = Number(i.cost ?? i.price) || 0; const pr = Number(i.price) || c; return { name: i.desc.trim(), price: pr, ...(c > 0 && c < pr ? { cost: c } : {}), type: 'service' }; }) }); await refresh(); return r.added; };
 const catSkipNames = (items) => { const s = catSkip(); s.names = [...new Set([...(s.names || []), ...items.map((i) => catKey(i.desc))])].slice(-300); catSkipSave(s); };
 function offerCatalog(items) {
   const list = newCatalogItems(items); if (!list.length) return;
@@ -872,7 +876,7 @@ function wireItems(root) {
     if (e.target.classList.contains('mtype')) e.target.closest('.mk').classList.toggle('flat', e.target.value === 'flat');
     if (e.target.classList.contains('desc')) {
       const s = D.services.find((x) => x.name === e.target.value); const row = e.target.closest('.item-row');
-      if (s) { $('.cost', row).value = s.price; if (!$('.details', row).value) $('.details', row).value = s.description || ''; }
+      if (s) { const L = svcLine(s); $('.cost', row).value = L.cost; $('.markup', row).value = L.markup; $('.mtype', row).value = L.markupType; $('.mk', row).classList.toggle('flat', L.markupType === 'flat'); if (!$('.details', row).value) $('.details', row).value = s.description || ''; }
     }
     recalc(root);
   });
@@ -3142,7 +3146,7 @@ ${mField('Due date', `<input type="date" name="dueDate" value="${esc(d.dueDate |
     if ((i >= 0 && d.items[i] && d.items[i].matrix) || (i < 0 && x.mx)) return mMatrix(kind, d, i, x); // matrix line items
     if (i < 0 && !x.chosen) return mItemPicker(kind, d, x); // a new line starts from the list of services
     const svc = x.svc && D.services.find((s) => s.id === x.svc);
-    const it = i >= 0 ? d.items[i] : svc ? { qty: 1, desc: svc.name, details: svc.description || '', cost: svc.price } : { qty: 1 };
+    const it = i >= 0 ? d.items[i] : svc ? { qty: 1, desc: svc.name, details: svc.description || '', ...svcLine(svc) } : { qty: 1 };
     const f = mSheet(i >= 0 ? 'Edit line item' : 'Add line item', `<div class="item-row m-item">${mField('Name', `<input class="desc" name="desc" list="mSvc" value="${esc(it.desc || '')}" maxlength="200" autocomplete="off">`)}
 <datalist id="mSvc">${svcGrouped(D.services).map((s) => `<option value="${esc(s.name)}">`).join('')}</datalist>
 <label class="mf"><span>Description</span><textarea class="details" name="details" rows="4">${esc(it.details || '')}</textarea>${aiOn() ? AI_BTN : ''}</label></div>
@@ -3162,7 +3166,7 @@ ${canAddCatalog() ? '<label class="mnt-link m-tocat" hidden>Also save to Product
     $('.mk-seg', f).addEventListener('change', () => { $('.mf-mk', f).classList.toggle('flat', f.markupType.value === 'flat'); tot(); });
     const toCat = $('.m-tocat', f); const syncCat = () => { if (toCat) toCat.hidden = !newCatalogItems([{ desc: f.desc.value }]).length; }; // only for a name not in the catalog
     syncCat(); f.desc.addEventListener('input', syncCat);
-    f.desc.addEventListener('change', () => { syncCat(); const s = D.services.find((v) => v.name === f.desc.value.trim()); if (!s) return; if (!f.cost.value) f.cost.value = s.price; if (!f.details.value) f.details.value = s.description || ''; tot(); });
+    f.desc.addEventListener('change', () => { syncCat(); const s = D.services.find((v) => v.name === f.desc.value.trim()); if (!s) return; if (!f.cost.value) { const L = svcLine(s); f.cost.value = L.cost; f.markup.value = L.markup; f.querySelectorAll('[name=markupType]').forEach((r) => { r.checked = r.value === L.markupType; }); $('.mf-mk', f).classList.toggle('flat', L.markupType === 'flat'); } if (!f.details.value) f.details.value = s.description || ''; tot(); });
     onSubmit(f, async (fd) => {
       const desc = String(fd.get('desc')).trim(); if (!desc) throw new Error('Enter the item’s name');
       const cost = Math.max(0, Number(fd.get('cost')) || 0); const markup = Number(fd.get('markup')) || 0; const markupType = fd.get('markupType') === 'flat' ? 'flat' : 'percent';

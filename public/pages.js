@@ -1156,7 +1156,8 @@ function serviceForm(s) {
 <div id="hdSlot">${['hdId', 'hdModel', 'hdCost', 'hdLink', 'hdAt'].map((k) => `<input type="hidden" name="${k}" value="${esc(s[k] ?? '')}">`).join('')}<p class="hd-note" id="hdNote"${s.hdCost ? '' : ' hidden'}>${s.hdCost ? hdNote(s) : ''}</p></div>
 <label>Description<textarea name="description" placeholder="Shown on quote and invoice lines">${esc(s.description)}</textarea></label>
 ${aiOn() ? '<div class="ai-row"><button type="button" class="btn alt sm" id="aiDesc">✨ Write with AI</button></div>' : ''}
-<div class="row"><label>Standard price ($)<input name="price" type="number" step="0.01" min="0" required value="${s.price ?? ''}"></label><label>Unit<input name="unit" value="${esc(s.unit || '')}" placeholder="job, hour, visit, each"></label></div>
+<div class="row"><label>Standard price ($)<input name="price" type="number" step="0.01" min="0" required value="${s.price ?? ''}"></label><label>Your cost ($) <span class="muted">(optional)</span><input name="cost" type="number" step="0.01" min="0" value="${s.cost || s.hdCost || ''}" placeholder="What it costs you"></label><label>Unit<input name="unit" value="${esc(s.unit || '')}" placeholder="job, hour, visit, each"></label></div>
+<p class="muted sm svc-margin" id="svcMargin"></p>
 ${catField('category', s.id ? s.category : (svcView.cat && svcView.cat !== '__none' ? svcView.cat : ''))}
 <div class="foot">${s.id ? `<button type="button" class="btn danger" data-act="delService" data-id="${s.id}">Delete</button>` : ''}<button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save</button></div></form>`);
   if ($('#aiDesc', mb)) $('#aiDesc', mb).addEventListener('click', async (e) => {
@@ -1169,6 +1170,8 @@ ${catField('category', s.id ? s.category : (svcView.cat && svcView.cat !== '__no
     finally { btn.disabled = false; btn.textContent = '✨ Write with AI'; }
   });
   hdPicker(mb);
+  // the margin as you type: price against your cost (lines on quotes, jobs and invoices then start from this cost plus the difference)
+  { const fm = $('form', mb); const show = () => { const pr = Number(fm.price.value) || 0; const c = Number(fm.cost.value) || 0; $('#svcMargin', mb).textContent = c > 0 && pr > 0 ? (c < pr ? `You make ${money(pr - c)} each (${Math.round((pr - c) / pr * 1000) / 10}% margin). Lines start at this cost plus ${money(pr - c)}, and the Profit boxes use it.` : 'Your cost is at or above the price, so there’s no margin.') : 'Add your cost to see the margin and get accurate profit on quotes, jobs and invoices.'; }; fm.addEventListener('input', show); show(); }
   $('form', mb).addEventListener('submit', async (e) => { e.preventDefault(); const b = Object.fromEntries(new FormData(e.target)); s.id ? await api('PUT', '/api/services/' + s.id, b) : await api('POST', '/api/services', b); closeModal(); toast(`${b.type === 'product' ? 'Product' : 'Service'} saved`); refresh(); });
 }
 /* Products & services → Search Home Depot (lib/homedepot.js), when it's on in App Marketplace */

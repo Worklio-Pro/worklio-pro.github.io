@@ -222,10 +222,12 @@ function mixShare(items, base, pct) {
 // keeps the category of the catalog item with its name when it's saved (cat), so reports can show each category on its own.
 const cleanCat = (v) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, 40);
 const catMaps = new WeakMap(); // each account's catalog: name -> category, rebuilt when it changes (reports look up every line)
+// what a catalog item costs the business (its Unit cost, else a Home Depot item's store price), 0 when not set
+const catalogCost = (name) => { catalogCat(''); const c = catMaps.get(db.services || []); return (c && c.cost.get(String(name || '').trim().toLowerCase())) || 0; };
 const catalogProduct = (name) => { catalogCat(''); const c = catMaps.get(db.services || []); return !!c && c.prod.has(String(name || '').trim().toLowerCase()); }; // saved as a Product
 const catalogCat = (name) => {
   const list = db.services || []; let c = catMaps.get(list);
-  if (!c || c.n !== list.length || Date.now() - c.at > 2000) { c = { at: Date.now(), n: list.length, map: new Map(), prod: new Set() }; for (const s of list) { const k = String(s.name || '').trim().toLowerCase(); if (k && s.type === 'product') c.prod.add(k); if (k && s.category && !c.map.has(k)) c.map.set(k, cleanCat(s.category)); } catMaps.set(list, c); }
+  if (!c || c.n !== list.length || Date.now() - c.at > 2000) { c = { at: Date.now(), n: list.length, map: new Map(), prod: new Set(), cost: new Map() }; for (const s of list) { const k = String(s.name || '').trim().toLowerCase(); if (k && s.type === 'product') c.prod.add(k); const sc = Number(s.cost) > 0 ? Number(s.cost) : Number(s.hdCost) > 0 ? Number(s.hdCost) : 0; if (k && sc && !c.cost.has(k)) c.cost.set(k, sc); if (k && s.category && !c.map.has(k)) c.map.set(k, cleanCat(s.category)); } catMaps.set(list, c); }
   return c.map.get(String(name || '').trim().toLowerCase()) || '';
 };
 // ---- matrix line items: a heading line (item.matrix: sizes, each with a price; colors; a quantity per size and color) and its sub items
@@ -2221,7 +2223,8 @@ app.post('/api/services/import', (req, res) => {
   for (const r of rows) {
     const name = str(r.name, 200); if (!name) continue;
     const price = Math.max(0, Math.round((Number(String(r.price ?? '').replace(/[^0-9.-]/g, '')) || 0) * 100) / 100);
-    db.services.push({ id: uid(), name, type: r.type === 'product' ? 'product' : 'service', description: str(r.description, 5000), price, unit: str(r.unit, 40), category: cleanCat(r.category) });
+    const cost = Math.max(0, Math.round((Number(String(r.cost ?? '').replace(/[^0-9.-]/g, '')) || 0) * 100) / 100); // what it costs you (optional)
+    db.services.push({ id: uid(), name, type: r.type === 'product' ? 'product' : 'service', description: str(r.description, 5000), price, ...(cost ? { cost } : {}), unit: str(r.unit, 40), category: cleanCat(r.category) });
     added++;
   }
   save(); res.json({ added });
@@ -2385,7 +2388,7 @@ app.post('/api/:col', (req, res, next) => {
     autoForms(doc, (currentUser(req) || {}).name);
   }
   if (col === 'expenses') { doc.amount = Number(b.amount) || 0; doc.bizCat = cleanCat(b.bizCat); }
-  if (col === 'services') { doc.price = Number(b.price) || 0; doc.category = cleanCat(b.category); homeDepot.clean(doc); catMaps.delete(db.services); }
+  if (col === 'services') { doc.price = Number(b.price) || 0; doc.cost = Math.max(0, Number(b.cost) || 0); doc.category = cleanCat(b.category); homeDepot.clean(doc); catMaps.delete(db.services); }
   db[col].push(doc); if (col === 'invoices') attachReferralCredits(doc); save(); if (col === 'clients') optInText(doc).catch(() => {}); if (col === 'jobs') pushScheduleChange(null, doc, currentUser(req));
   res.status(201).json(col === 'invoices' ? withStatus(doc) : col === 'jobs' && isMemberReq(req) ? jobForMember(doc) : col === 'clients' && isMemberReq(req) ? clientForMember(doc) : doc);
 });
@@ -2457,7 +2460,7 @@ app.put('/api/:col/:id', (req, res, next) => {
   }
   if (col === 'staff' && isOwnerStaff(doc) && doc.status === 'deactivated') return res.status(400).json({ error: 'The account owner can’t be deactivated' });
   if (col === 'expenses') { doc.amount = Number(doc.amount) || 0; doc.bizCat = cleanCat(doc.bizCat); }
-  if (col === 'services') { doc.price = Number(doc.price) || 0; doc.category = cleanCat(doc.category); homeDepot.clean(doc); catMaps.delete(db.services); }
+  if (col === 'services') { doc.price = Number(doc.price) || 0; doc.cost = Math.max(0, Number(doc.cost) || 0); doc.category = cleanCat(doc.category); homeDepot.clean(doc); catMaps.delete(db.services); }
   if (col === 'quotes' && was.signature && !doc.signature) removeSignatureFile(was);
   if (col === 'jobs' && doc.status === 'completed' && was.status !== 'completed' && tenancy.has('jobForms')) { // a checklist that has to be finished first
     const open = (doc.forms || []).filter((f) => f.requiredToComplete && !f.completedAt); if (open.length) return res.status(400).json({ error: `Finish ${open.length === 1 ? `the “${open[0].name}” checklist` : `the ${open.length} required checklists`} before marking this job complete`, formId: open[0].id });
@@ -5103,11 +5106,18 @@ const timeByJob = () => { const r = payRates(); const out = {};
   for (const e of timeList()) { if (e.jobId && !e.end) { const o = out[e.jobId] || (out[e.jobId] = { hours: 0, cost: 0, unrated: 0 }); o.open = (o.open || 0) + 1; } if (!e.jobId || !e.end) continue; const o = out[e.jobId] || (out[e.jobId] = { hours: 0, cost: 0, unrated: 0 }); const h = entryHours(e); o.hours += h;
     if (Number(r[e.staffId])) o.cost += h * Number(r[e.staffId]); else o.unrated += h; }
   return out; };
+// a line's unit cost for the profit boxes: its own Unit cost; a line with no cost of its own (cost = price, no markup) whose catalog item has a
+// Unit cost uses that, so lines added before the catalog had costs still count right
+function lineCost(i) {
+  const own = Number(i.cost ?? i.price) || 0; const price = Number(i.price) || 0;
+  if (!(Number(i.markup) > 0) && own >= price) { const c = catalogCost(i.desc); if (c > 0 && c < price) return c; }
+  return own;
+}
 // Product lines (a line whose name is saved as a Product in Products & services; a matrix line's sizes go with their heading line) count as materials,
 // at their unit cost (what a line priced as cost + markup was bought for; otherwise its price)
 function productsCost(items) {
   let on = false; let sum = 0;
-  for (const i of items || []) { if (i.lateFee) continue; if (!i.mx) on = catalogProduct(i.desc); if (on && !i.matrix) sum += (Number(i.qty) || 0) * (Number(i.cost ?? i.price) || 0); }
+  for (const i of items || []) { if (i.lateFee) continue; if (!i.mx) on = catalogProduct(i.desc); if (on && !i.matrix) sum += (Number(i.qty) || 0) * (i.mx ? Number(i.cost ?? i.price) || 0 : lineCost(i)); }
   return round2(sum);
 }
 const jobsLines = (i, j) => (i.items || []).filter((x) => !(i.jobIds || []).length || x.job === j.id); // a batch invoice: just job j's lines
@@ -5134,7 +5144,7 @@ function jobProfit(from, to, want = null) {
 // For anyone whose role opens Reports (owner, admins, managers by default). Labor is a total only: each person's pay rate stays with the owner and admins.
 // Materials & expenses are the expenses linked to the job(s) plus the Product lines (at their unit cost); with neither, an estimate from the line items'
 // unit costs (only lines priced as cost + markup have a cost of their own). An invoice for part of a job (one of several invoices) carries its share of the job's costs, by revenue.
-const linesCost = (items) => round2((items || []).filter((x) => !x.lateFee && !x.matrix && Number(x.cost) > 0 && Number(x.price) > Number(x.cost)).reduce((s, x) => s + (Number(x.qty) || 0) * Number(x.cost), 0));
+const linesCost = (items) => round2((items || []).filter((x) => !x.lateFee && !x.matrix && lineCost(x) > 0 && Number(x.price) > lineCost(x)).reduce((s, x) => s + (Number(x.qty) || 0) * lineCost(x), 0));
 function profitBox(b) {
   const actual = round2((b.expenses || 0) + (b.products || 0));
   const materials = actual > 0 ? { amount: actual, expenses: round2(b.expenses || 0), products: round2(b.products || 0), source: 'actual' } : b.estimate > 0 ? { amount: round2(b.estimate), source: 'lines' } : { amount: 0, source: 'none' };
@@ -5169,7 +5179,7 @@ app.get('/api/invoices/:id/profit', async (req, res) => {
 function quoteLinesCost(items) {
   let on = false; let sum = 0;
   for (const i of items || []) { if (i.lateFee) continue; if (!i.mx) on = catalogProduct(i.desc); if (i.matrix) continue;
-    const cost = Number(i.cost ?? i.price) || 0; const qty = Number(i.qty) || 0; if (on || (cost > 0 && Number(i.price) > cost)) sum += qty * cost; }
+    const cost = i.mx ? Number(i.cost ?? i.price) || 0 : lineCost(i); const qty = Number(i.qty) || 0; if (on || (cost > 0 && Number(i.price) > cost)) sum += qty * cost; }
   return round2(sum);
 }
 app.get('/api/quotes/:id/profit', async (req, res) => {
