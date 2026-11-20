@@ -120,6 +120,7 @@ const save = () => tenancy.saveStore();
 function migrate() {
   ensureAuthStore(); ensureOwnerStaff();
   db.tasks = db.tasks || []; db.events = db.events || []; // the Schedules page's tasks and events (besides jobs)
+  for (const t of db.tasks) if (t.survey) { t.title = String(t.title || '').replace(/^Site survey/, 'Site visit'); t.description = String(t.description || '').replace(/^Site survey/, 'Site visit'); } // booked before Site survey was renamed Site visit (Nov 19, 2026)
   for (const u of db.users) if (u.role === 'member') u.role = 'technician'; // the old "team member" role is now Technician
   if (!Array.isArray(db.roles)) db.roles = rolesLib.defaults(); // team roles (Settings → Roles & Permissions) start as Manager and Technician
   [...db.quotes, ...db.invoices].forEach(computeTotals); // cost/markup fields, deposit amount
@@ -4244,6 +4245,29 @@ var ps=f.querySelectorAll('.sv-p');if(ps.length===1)pick(ps[0].dataset.id)})();<
 ${past ? '' : `<details class="qv-chg"><summary class="qv-btn">${tx('Change the time')}</summary>${picker}</details>
 <form method="post" action="/p/quote/${esc(q.token)}/survey/cancel" onsubmit="return confirm(this.dataset.ask)" data-ask="${esc(tx('Cancel the site visit?'))}" style="display:flex;justify-content:center"><button class="qv-link">${tx('Cancel the site visit')}</button></form>`}`;
 }
+// A site visit's page (Jobs → Site visits): Mark complete / Reopen and Visit notes. Anyone who can see jobs can add notes (like job notes)
+// and delete their own; completing or reopening takes "Create, edit and delete jobs", or being the one the visit is with.
+const svyFind = (req, res) => { const t = (db.tasks || []).find((x) => x.id === req.params.id && x.survey); if (!t) res.status(404).json({ error: 'Site visit not found' }); return t; };
+const svyMine = (u, t) => !!u.staffId && (t.staffIds || []).includes(u.staffId);
+const svyDone = (what) => (req, res) => {
+  const u = currentUser(req); const t = svyFind(req, res); if (!t) return;
+  if (!can(u, 'jobs.edit') && !svyMine(u, t)) return res.status(403).json({ error: 'Only the person this visit is with, or someone who can edit jobs, can do that' });
+  if (what === 'complete') { t.done = true; t.completedAt = new Date().toISOString(); } else { t.done = false; t.completedAt = null; }
+  save(); res.json(t);
+};
+app.post('/api/site-visits/:id/complete', svyDone('complete'));
+app.post('/api/site-visits/:id/reopen', svyDone('reopen'));
+app.post('/api/site-visits/:id/notes', (req, res) => {
+  const u = currentUser(req); const t = svyFind(req, res); if (!t) return;
+  const text = String((req.body && req.body.text) || '').trim().slice(0, 5000); if (!text) return res.status(400).json({ error: 'Write a note first' });
+  t.visitNotes = [...(t.visitNotes || []), { id: uid(), text, at: new Date().toISOString(), by: u.name || '', byId: u.id }]; save(); res.json(t);
+});
+app.delete('/api/site-visits/:id/notes/:nid', (req, res) => {
+  const u = currentUser(req); const t = svyFind(req, res); if (!t) return; const n = (t.visitNotes || []).find((x) => x.id === req.params.nid);
+  if (!n) return res.status(404).json({ error: 'Note not found' });
+  if (n.byId !== u.id && !can(u, 'jobs.edit')) return res.status(403).json({ error: 'You can delete your own notes' });
+  t.visitNotes = t.visitNotes.filter((x) => x !== n); save(); res.json(t);
+});
 // Calendar → Site visit: the business books one with a client (owners, admins and managers only). With a quote it's that quote's survey
 // (a new draft quote is made in the app first); without one it's a survey on its own. The client can be emailed the details.
 app.post('/api/surveys', (req, res) => {
