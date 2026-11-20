@@ -14,7 +14,7 @@
   <script>/* apply the saved theme before first paint; a client's portal link (/client-portal?c=…) is always light */
   if(/^\/client-portal\/?$/.test(location.pathname)&&/[?&]c=/.test(location.search)){document.documentElement.dataset.theme="light";document.querySelector('meta[name="color-scheme"]').content="light"}
   else try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
-  <link rel="stylesheet" href="/styles.css?v=257">
+  <link rel="stylesheet" href="/styles.css?v=258">
   <link rel="stylesheet" href="/theme.css">
 </head>
 <body>
@@ -43,7 +43,7 @@
   <script src="/qr.js?v=2"></script>
   <script src="/phone.js?v=2"></script>
   <script src="/color-picker.js?v=1"></script>
-  <script src="/app.js?v=197"></script>
+  <script src="/app.js?v=198"></script>
   <script src="/tour.js?v=2"></script>
   <script src="/cancelflow.js?v=1"></script>
   <script src="/pages.js?v=223"></script>
