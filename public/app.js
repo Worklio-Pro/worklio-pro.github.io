@@ -1879,6 +1879,7 @@ ${!p && props.length > 1 ? `<label>Property<select name="propertyId">${props.map
 };
 // a task for a client or one of their properties (on the calendar like other tasks)
 A.propTask = (d) => {
+  if (!canCal()) return toast('Only owners, admins and managers can add to the calendar', true);
   const c = byId(D.clients, d.client); const p = clientProps(c).find((x) => x.id === d.id); const team = D.staff.filter((s) => s.status !== 'deactivated');
   const mb = modal('New task', `<form><p class="muted" style="margin-top:0">For ${esc(c.name)}${p ? ` at ${esc(propAddr(p))}` : ''}</p><label>Title<input name="title" required></label>
 <div class="row3"><label>Date<input type="date" name="date" required value="${ymd(new Date())}"></label><label>Start<input type="time" name="startTime" value="09:00"></label><label>End<input type="time" name="endTime" value="10:00"></label></div>
@@ -1915,7 +1916,7 @@ PAGES['/clients/property'] = {
     const at = `data-client="${c.id}" data-id="${esc(p.id)}"`;
     main.innerHTML = `<div class="pp"><a class="back pp-back" href="/clients/view?id=${c.id}" data-link>← Back to ${esc(c.name)}</a>
 <div class="pp-head"><div class="pp-title">${PI.home}<h1>${esc(propAddr(p))}</h1>${p.name ? `<div class="muted">${esc(p.name)}</div>` : ''}</div>
-<div class="pp-acts"><details class="menu cv-more">${MORE_SUM}<div class="menu-list"><div class="mi-h">Create new</div>${workMenuItems(c, p)}<button type="button" class="mi need-jobs-edit" data-act="propTask" ${at}>${PI.task}Task</button>
+<div class="pp-acts"><details class="menu cv-more">${MORE_SUM}<div class="menu-list"><div class="mi-h">Create new</div>${workMenuItems(c, p)}<button type="button" class="mi need-jobs-edit" data-act="propTask" ${at}${canCal() ? '' : ' hidden'}>${PI.task}Task</button>
 ${edit ? `<hr class="mi-sep"><button type="button" class="mi admin-only" data-act="propDelete" ${at}>${PI.trash}Delete property</button>` : ''}</div></details>
 <a class="btn" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(propAddr(p))}" target="_blank" rel="noopener">${PI.pin}Show on Map</a></div>
 ${edit ? `<button type="button" class="icon-btn cv-ib pp-edit" data-act="propEdit" ${at} title="Edit Property" aria-label="Edit Property">${CI.edit}</button>` : ''}</div>
@@ -1924,7 +1925,7 @@ ${edit ? `<button type="button" class="icon-btn cv-ib pp-edit" data-act="propEdi
 <section class="cv-card"><div class="cv-ch"><h2>Work overview</h2><details class="menu cv-create"><summary class="cv-plus" aria-label="Create" title="Create">${CI.plus}</summary><div class="menu-list">${workMenuItems(c, p)}</div></details></div>
 <div class="cv-filters">${workChips(v, sel, 'ppType')}</div>${workTable(work, false)}</section>
 <section class="cv-card cv-contacts"><div class="cv-cbar">${PI.cal}<span><strong>Property schedule</strong> – ${sched.length ? 'Visits and tasks at this property' : 'Scheduled items will appear here'}</span>
-<details class="menu cv-create"><summary class="link-btn">Add</summary><div class="menu-list"><button type="button" class="mi need-jobs-edit" data-act="propTask" ${at}>${PI.task}Task</button><button type="button" class="mi need-clients-edit" data-act="propRequest" ${at}>${PI.request}Request</button></div></details></div>
+<details class="menu cv-create"><summary class="link-btn">Add</summary><div class="menu-list"><button type="button" class="mi need-jobs-edit" data-act="propTask" ${at}${canCal() ? '' : ' hidden'}>${PI.task}Task</button><button type="button" class="mi need-clients-edit" data-act="propRequest" ${at}>${PI.request}Request</button></div></details></div>
 ${sched.length ? `<div class="pp-sched">${schedTable(sched)}</div>` : ''}</section>
 ${contactsCard(c, p, edit)}</div>`;
     $$('[data-ppf]', main).forEach((s) => s.addEventListener('change', (e) => { ppState[e.target.dataset.ppf] = e.target.value; PAGES['/clients/property'].render(main); }));
@@ -2009,7 +2010,7 @@ ${card('Work overview', `<div class="cv-filters">${props.length > 1 ? `<label cl
 ${planHas('invoices') ? card('Billing', `<div class="tablewrap"><table class="cv-t"><tr><th>Item</th><th>Applied to</th><th>Date</th><th class="r">Amount</th></tr>${bill.map((b) => `<tr>${b.html}</tr>`).join('') || '<tr><td colspan="4" class="empty">No invoices or payments yet</td></tr>'}
 <tr class="cv-bal"><td colspan="3"><strong>Current balance</strong></td><td class="r"><strong>${money(balance)}</strong></td></tr></table></div>`, plus('cvNewInvoice', 'New invoice', ` data-id="${c.id}"`), 'need-invoices cvs-billing') : ''}
 ${card('Client schedule', `<div class="cv-filters"><label class="pill">Type${sel('sType', [['all', 'All'], ['job', 'Visits'], ['task', 'Tasks']])}</label><label class="pill">Status${sel('sStatus', [['all', 'All'], ['open', 'Not done'], ['done', 'Completed']])}</label></div>${schedTable(sched)}`,
-  `<details class="menu cv-create need-jobs-edit"><summary class="cv-plus" aria-label="Schedule" title="Schedule">${CI.plus}</summary><div class="menu-list"><button type="button" class="mi" data-act="newJobFor" data-id="${c.id}">${QM.job}Job</button><button type="button" class="mi" data-act="propTask" data-client="${c.id}">${PI.task}Task</button></div></details>`, 'cvs-schedule')}`;
+  `<details class="menu cv-create need-jobs-edit"><summary class="cv-plus" aria-label="Schedule" title="Schedule">${CI.plus}</summary><div class="menu-list"><button type="button" class="mi" data-act="newJobFor" data-id="${c.id}">${QM.job}Job</button><button type="button" class="mi" data-act="propTask" data-client="${c.id}"${canCal() ? '' : ' hidden'}>${PI.task}Task</button></div></details>`, 'cvs-schedule')}`;
     const comms = card('Communication', msgs ? `<div class="tablewrap"><table class="cv-t"><tr><th>Sent</th><th>Message</th><th>Channel</th><th>Status</th></tr>${msgs.map((n) => `<tr class="crow" data-act="viewNotif" data-id="${n.id}"><td>${esc(fmtStamp(n.at))}</td><td><strong>${esc(n.subject || n.kind)}</strong><div class="muted">${esc(n.to || '')}</div></td><td>${n.channel === 'sms' ? 'Text' : 'Email'}</td><td>${badge(n.status)}</td></tr>`).join('') || '<tr><td colspan="4" class="empty">No emails or texts yet</td></tr>'}</table></div>`
       : '<p class="muted" style="margin:0">Your access level doesn’t include the notifications log.</p>');
     main.innerHTML = `<div class="cv" data-hide="${cvHidden().join(' ')}"><div class="cv-main">

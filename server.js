@@ -2255,9 +2255,14 @@ function customNumber(col, raw, id) {
 }
 
 // create
+// the calendar's tasks and events: only owners, admins and managers add, change or remove them, whatever else a role can do (technicians see them).
+// A site visit's Complete and notes have their own routes (/api/site-visits).
+const CAL_ROLES = ['owner', 'admin', 'manager'];
+const calLocked = (req, res, col) => { if ((col === 'tasks' || col === 'events') && !CAL_ROLES.includes((currentUser(req) || {}).role)) { res.status(403).json({ error: 'Only owners, admins and managers can change the calendar' }); return true; } return false; };
 app.post('/api/:col', (req, res, next) => {
   const col = req.params.col;
   if (!COLLECTIONS.includes(col) || col === 'photos') return next();
+  if (calLocked(req, res, col)) return;
   let b = req.body || {}; delete b.noteEntries; delete b.seriesId; delete b.repeat; delete b.unbilled; delete b.paidInFull; delete b.membershipId; delete b.memberDiscount; delete b.forms; // checklists only through /forms; notes only through /notes; repeats only through /repeat; service plans make their own
   if (col === 'jobs' && isMemberReq(req)) b = Object.fromEntries(Object.entries(b).filter(([k]) => MEMBER_JOB_FIELDS.includes(k)));
   if (col === 'staff') { // a new team member needs a name, an email and a mobile number
@@ -2317,6 +2322,7 @@ function followPropertyAddresses(was, c) {
 app.put('/api/:col/:id', (req, res, next) => {
   const col = req.params.col;
   if (!COLLECTIONS.includes(col)) return next();
+  if (calLocked(req, res, col)) return;
   const i = db[col].findIndex((x) => x.id === req.params.id);
   if (i < 0) return res.status(404).json({ error: 'Not found' });
   const protectedKeys = ['id', 'number', 'token', 'portalToken', 'createdAt', 'seriesId', 'repeat', 'membershipId', 'forms']; // checklists change only through /forms
@@ -2380,6 +2386,7 @@ app.put('/api/:col/:id', (req, res, next) => {
 app.delete('/api/:col/:id', (req, res, next) => {
   const col = req.params.col;
   if (!COLLECTIONS.includes(col)) return next();
+  if (calLocked(req, res, col)) return;
   const i = db[col].findIndex((x) => x.id === req.params.id);
   if (i < 0) return res.status(404).json({ error: 'Not found' });
   if (col === 'staff' && isOwnerStaff(db.staff[i])) return res.status(400).json({ error: 'The account owner can’t be removed from the team' });

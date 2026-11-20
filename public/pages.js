@@ -202,7 +202,7 @@ PAGES['/calendar'] = {
     const hasTeam = D.staff.some(staffActive);
     if (scState.view === 'map' && !planHas('dispatchMap')) scState.view = 'day';
     if (scState.view === 'team' && !hasTeam) scState.view = 'day';
-    const days = scDays(); const today = ymd(new Date()); const edit = canDo('jobs.edit'); const team = scState.view === 'team';
+    const days = scDays(); const today = ymd(new Date()); const edit = canCal(); const team = scState.view === 'team';
     const views = `<div class="sc-views">${[['day', 'Day'], ['week', 'Week'], ['month', 'Month'], ...(hasTeam ? [['team', 'Team']] : []), ...(planHas('dispatchMap') ? [['map', 'Map']] : [])].map(([k, l]) => `<button type="button" class="${scState.view === k ? 'on' : ''}" data-act="scView" data-v="${k}">${l}${k === 'map' ? betaTagHtml('dispatchMap') : ''}</button>`).join('')}</div>`;
     if (scState.view === 'map') return scMapRender(main, edit, `<div class="sc-bar"><button type="button" class="btn alt sm" data-act="scToday">Today</button><button type="button" class="btn alt sm sc-arrow arw" data-act="scStep" data-n="-1" aria-label="Previous day">‹</button><button type="button" class="btn alt sm sc-arrow arw" data-act="scStep" data-n="1" aria-label="Next day">›</button>
 <h2 class="sc-range">${esc(scState.anchor.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }))}</h2><span style="flex:1"></span>${views}</div>`);
@@ -558,6 +558,8 @@ function scOpen(kind, id, x, y) {
 }
 // Site visit on the calendar: owners, admins and managers only (the server checks too)
 const canSurvey = () => ['owner', 'admin', 'manager'].includes(role());
+// changing the calendar (drag, resize, add, edit or remove tasks and events): owners, admins and managers only (the server checks too); everyone else sees it
+const canCal = () => ['owner', 'admin', 'manager'].includes(role()) && canDo('jobs.edit');
 // its fields: who takes it (the people clients can book first, then the rest who can), and the quote it's for
 function qcSurveyFields(p, team) {
   const people = company.surveyPeople || []; const ids = people.map((x) => x.id); const list = people.length ? people : team.map((s) => ({ id: s.id, name: s.name }));
@@ -575,7 +577,7 @@ function scQuick(p, x, y, editKind) {
   const draw = () => {
     const team = D.staff.filter(staffActive);
     const opened = box._open || {};
-    box.innerHTML = `<div class="qc-bar" title="Drag to move"><span class="qc-grip" aria-hidden="true">⠿</span><span class="qc-h">${edit ? `Edit ${kind}` : ''}</span><button type="button" class="qc-x" aria-label="Close">×</button></div>
+    box.innerHTML = `<div class="qc-bar" title="Drag to move"><span class="qc-grip" aria-hidden="true">⠿</span><span class="qc-h">${edit ? (canCal() ? `Edit ${kind}` : kind[0].toUpperCase() + kind.slice(1)) : ''}</span><button type="button" class="qc-x" aria-label="Close">×</button></div>
 ${edit ? '' : `<div class="qc-tabs" role="tablist">${[['job', 'Job'], ['task', 'Task'], ['event', 'Event'], ...(canSurvey() ? [['survey', 'Site visit']] : [])].map(([k, l]) => `<button type="button" role="tab" aria-selected="${kind === k}" class="${kind === k ? 'on' : ''}" data-k="${k}">${l}</button>`).join('')}</div>`}
 <form class="qc-f">${kind !== 'event' ? `<div class="qc-cl"><input name="client" role="combobox" aria-expanded="false" aria-autocomplete="list" placeholder="Search client or address" autocomplete="off" value="${esc(p.clientId ? (byId(D.clients, p.clientId) || {}).name || '' : p.address || '')}" ${kind === 'job' ? 'required' : ''}><input type="hidden" name="clientId" value="${esc(p.clientId || '')}"><div class="qc-cl-pop" role="listbox" hidden></div></div>` : ''}
 ${kind === 'survey' ? qcSurveyFields(p, team) : `<input name="title" placeholder="Title" required maxlength="120" value="${esc(p.title || '')}">`}
@@ -588,6 +590,7 @@ ${kind !== 'event' && kind !== 'survey' ? (opened.assign || (p.staffIds || []).l
 ${kind === 'survey' ? `<label class="qc-any"><input type="checkbox" name="svyEmail" ${p.svyEmail === false ? '' : 'checked'}> Email the client the details</label>` : ''}
 <div class="qc-foot${!edit && kind !== 'job' ? ' one' : ''}">${edit ? '<button type="button" class="btn danger" data-qc="delete">Delete</button>' : kind === 'job' ? `<button type="button" class="btn alt" data-qc="more">More Options</button>` : ''}<button class="btn">Save</button></div></form>`;
     const f = $('.qc-f', box);
+    if (edit && !canCal()) { $$('input, textarea, select', f).forEach((x) => { x.disabled = true; }); $$('.qc-add, .qc-foot', f).forEach((x) => { x.hidden = true; }); } // read-only: who can't change the calendar only looks
     if (f.client) qcClientPick(box, f, () => { keep(); return p; }, draw);
     $$('.qc-tabs button', box).forEach((b) => b.addEventListener('click', () => { keep(); kind = b.dataset.k;
       if (kind === 'survey') { p.anytime = false; p.startTime = p.startTime || '09:00'; p.endTime = scTime(scMin(p.startTime) + ((company.survey || {}).minutes || 60)); } // a survey's usual length
