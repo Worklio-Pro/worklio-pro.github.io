@@ -782,7 +782,9 @@ const timeRow = (e, u) => { const j = e.jobId && db.jobs.find((x) => x.id === e.
 const timeWhen = (v, label) => { const d = new Date(v); if (!v || isNaN(d)) throw Object.assign(new Error(`Enter the ${label} time`), { status: 400 }); return d.toISOString(); };
 // labor cost per job from time logged to it, at each person's pay rate (Job profit report)
 const laborByJob = () => { const r = payRates(); const out = {}; for (const e of timeList()) if (e.jobId && e.end && r[e.staffId]) out[e.jobId] = (out[e.jobId] || 0) + entryHours(e) * Number(r[e.staffId]); return out; };
-app.get('/api/time/status', (req, res) => { const u = currentUser(req); const e = openEntry(u.staffId); res.json({ canClock: !!db.staff.find((s) => s.id === u.staffId), open: e ? timeRow(e, u) : null, teamLocation: teamLocOn() }); });
+// status: this login's clock, and everyone on the clock right now on a job or site visit (onClock), for the Clocked in flags on those pages
+app.get('/api/time/status', (req, res) => { const u = currentUser(req); const e = openEntry(u.staffId); res.json({ canClock: !!db.staff.find((s) => s.id === u.staffId), open: e ? timeRow(e, u) : null, teamLocation: teamLocOn(),
+  onClock: timeList().filter((x) => !x.end && (x.jobId || x.visitId)).map((x) => ({ staffId: x.staffId, jobId: x.jobId || '', visitId: x.visitId || '', start: x.start })) }); });
 app.get('/api/time', (req, res) => {
   const u = currentUser(req); const manager = canManageTime(u);
   const from = req.query.from ? new Date(req.query.from) : new Date(Date.now() - 7 * 864e5); const to = req.query.to ? new Date(req.query.to) : new Date();

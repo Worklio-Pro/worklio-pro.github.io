@@ -2942,3 +2942,5 @@ body.p404-only #billingBar{display:none!important}
 .ms-o input{position:absolute;opacity:0;pointer-events:none}.ms-o>span:not(.avatar){flex:1}.ms-o .avatar{flex:none;border-radius:50%}.ms-ck{color:var(--brand);visibility:hidden}.ms-o:has(input:checked) .ms-ck{visibility:visible}.ms-o:has(input:checked){font-weight:600}
 .ms-o:has(input:focus-visible){outline:2px solid var(--brand);outline-offset:-2px}
 .qc .ms-list{position:static;margin:10px -6px 2px;box-shadow:none;max-height:220px}
+/* Clocked in: next to someone on a job's or site visit's team who is on the clock for it right now */
+.clk-flag{display:inline-flex;align-items:center;margin-left:8px;padding:2px 8px;border-radius:99px;font-size:12px;font-weight:600;white-space:nowrap;background:var(--ok-bg,rgba(22,163,74,.14));color:var(--ok-fg,#15803d)}
