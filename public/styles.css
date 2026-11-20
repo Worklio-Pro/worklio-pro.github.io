@@ -2913,3 +2913,9 @@ body.p404-only #billingBar{display:none!important}
 /* Home → Today: "Calendar ›" on computers; on phones a round calendar icon, so the link doesn't take a row of its own */
 .hm-cal svg{display:none}
 @media (max-width:600px){.hm-cal{align-self:center;display:grid;place-items:center;flex:none;width:40px;height:40px;border-radius:50%;background:color-mix(in srgb,var(--brand) 13%,transparent)}.hm-cal svg{display:block}.hm-cal span{display:none}}
+/* Jobs page: the Jobs | Site visits switch under the title */
+.jv-switch{display:inline-flex;gap:2px;padding:3px;margin:0 0 14px;background:var(--bg2,rgba(127,127,127,.1));border:1px solid var(--line);border-radius:10px}
+.jv-switch button{border:0;background:none;padding:6px 14px;border-radius:7px;font:inherit;font-size:14px;font-weight:600;color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.jv-switch button.on{background:var(--card);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.jv-switch button:hover:not(.on){color:var(--text)}
+.mlist .jv-switch{margin:0 14px 10px}
