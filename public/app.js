@@ -2769,23 +2769,24 @@ function profitCard(kind, r) {
   const neg = (n) => (n ? '−' + money(n) : money(0));
   const m = r.materials; const L = r.labor; const F = r.fees;
   const matLabel = m.source === 'lines' ? 'Materials <span class="muted">(estimated)</span>' : 'Materials &amp; expenses';
-  const matSub = m.source === 'actual' ? [m.products ? `Products ${money(m.products)}` : '', m.expenses ? `Expenses on the job ${money(m.expenses)}` : ''].filter(Boolean).join(' · ') : m.source === 'lines' ? 'From line item costs. Log receipts in Expenses for actuals.' : (kind === 'job' || r.jobs.length ? 'No expenses linked to the job yet' : 'Not linked to a job, so no expenses');
+  const Q = kind === 'quote';
+  const matSub = Q ? (m.amount ? 'From line item costs: Products at cost, and lines priced as cost + markup' : 'No line costs yet. Price lines as cost + markup, or save items as Products, to estimate this.') : m.source === 'actual' ? [m.products ? `Products ${money(m.products)}` : '', m.expenses ? `Expenses on the job ${money(m.expenses)}` : ''].filter(Boolean).join(' · ') : m.source === 'lines' ? 'From line item costs. Log receipts in Expenses for actuals.' : (kind === 'job' || r.jobs.length ? 'No expenses linked to the job yet' : 'Not linked to a job, so no expenses');
   const labSub = !r.timesheets ? '' : L.hours ? `${pfHours(L.hours)} clocked${L.unrated ? ` · ${pfHours(L.unrated)} with no pay rate` : ''}` : 'No time clocked on the job';
   const labNote = L.onClock ? `${L.onClock === 1 ? '1 person is' : L.onClock + ' people are'} still on the clock, not counted yet` : '';
-  const feeSub = F.pending ? `${F.pending} payment${F.pending === 1 ? '' : 's'} still settling` : F.amount ? 'Stripe’s fee on card and bank payments' : r.balance > 0 ? 'Added when paid by card' : 'No card payments';
+  const feeSub = Q ? (F.pending ? 'The deposit payment is still settling' : F.amount ? 'Stripe’s fee on the deposit paid by card' : 'More when the deposit or invoice is paid by card') : F.pending ? `${F.pending} payment${F.pending === 1 ? '' : 's'} still settling` : F.amount ? 'Stripe’s fee on card and bank payments' : r.balance > 0 ? 'Added when paid by card' : 'No card payments';
   const split = r.jobs.filter((j) => j.share < 0.999);
-  const notes = [r.tax ? `Tax collected ${money(r.tax)} isn’t yours, so it isn’t counted.` : '', r.tips ? `Tips ${money(r.tips)} go to your team, so they aren’t counted.` : '',
+  const notes = [Q ? 'An estimate from the quote’s line items. Labor isn’t included: time is clocked on the job, so the job’s Profit box shows it once work starts.' : '', Q && r.option ? `Figured for the ${esc(r.option)} option.` : '', r.tax ? `Tax collected ${money(r.tax)} isn’t yours, so it isn’t counted.` : '', r.tips ? `Tips ${money(r.tips)} go to your team, so they aren’t counted.` : '',
     ...split.map((j) => `Carries ${Math.round(j.share * 100)}% of job ${esc(j.number)}’s costs; its other invoices carry the rest.`)].filter(Boolean);
   const pos = r.profit >= 0;
   return `<div class="qcard pf-card" data-profit="${kind}"><div class="qcard-h"><h2>Profit<details class="pf-info"><summary aria-label="About these numbers" title="About these numbers"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></summary>
 <div class="pf-pop">${notes.map((n) => `<p>${n}</p>`).join('')}<p>Only people who can open Reports see this (owner, admins and managers).</p><p><a href="/reports/view?r=jobs" data-link>Job profit report</a></p></div></details></h2><span class="pf-margin ${pos ? 'ok' : 'bad'}">${r.margin == null ? '—' : r.margin + '%'}</span></div>
-${row(r.estimatedRevenue ? 'Job total' : 'Gross', money(r.gross), r.estimatedRevenue ? 'Not invoiced yet: from the job’s line items' : 'Before tax')}
+${row(Q ? 'Quote total' : r.estimatedRevenue ? 'Job total' : 'Gross', money(r.gross), Q ? `Before tax${r.option ? ` · ${esc(r.option)}` : ''}` : r.estimatedRevenue ? 'Not invoiced yet: from the job’s line items' : 'Before tax')}
 ${r.discount ? row('Discount', neg(r.discount)) : ''}${r.discount ? row('Revenue', money(r.revenue), '', 'strong') : ''}
-${row(matLabel, neg(m.amount), matSub)}
+${row(Q ? 'Materials <span class="muted">(estimated)</span>' : matLabel, neg(m.amount), matSub)}
 ${r.timesheets ? row('Labor', neg(L.amount), [labSub, labNote].filter(Boolean).join(' · ')) : ''}
 ${r.cards || F.amount ? row('Card fees', neg(F.amount), feeSub) : ''}
-${row('<strong>Net profit</strong>', `<strong class="${pos ? '' : 'pf-loss'}">${pos ? money(r.profit) : '−' + money(-r.profit)}</strong>`, '', 'grand')}
-${kind === 'invoice' || !r.estimatedRevenue ? `<p class="pf-paid">Paid ${money(r.paid)} · Due ${money(r.balance)}</p>` : ''}
+${row(Q ? '<strong>Estimated profit</strong>' : '<strong>Net profit</strong>', `<strong class="${pos ? '' : 'pf-loss'}">${pos ? money(r.profit) : '−' + money(-r.profit)}</strong>`, '', 'grand')}
+${Q ? (r.paid ? `<p class="pf-paid">Deposit paid ${money(r.paid)}</p>` : '') : kind === 'invoice' || !r.estimatedRevenue ? `<p class="pf-paid">Paid ${money(r.paid)} · Due ${money(r.balance)}</p>` : ''}
 </div>`;
 }
 // the ⓘ pop-up closes on a click anywhere else
@@ -2807,7 +2808,7 @@ function viewPage(kind) {
       if (!d) { main.innerHTML = `<div class="card"><h1>${kind === 'quote' ? 'Quote' : 'Invoice'} not found</h1><p><a href="/${kind}s" data-link>Back to the list</a></p></div>`; return; }
       if (kind === 'invoice' && phoneMq.matches && qp('preview')) { main.innerHTML = qp('receipt') ? mobileReceipt(d, qp('receipt')) : mobileInvoicePreview(d); mpStatusBar(); return; }
       main.innerHTML = phoneMq.matches ? mobileDocPage(kind, d) : (kind === 'quote' ? quotePage : invoicePage)(d);
-      if (kind === 'invoice') placeProfit(main, 'invoice', d.id);
+      placeProfit(main, kind, d.id); // quotes and invoices
       if (kind === 'quote') { placeChanges(main, d); placeSnap(main, d); } // the client's change request, then Snap to quote: the AI draft's banner, or Draft from photos
     },
   };

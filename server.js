@@ -5164,6 +5164,25 @@ app.get('/api/invoices/:id/profit', async (req, res) => {
     tips: (inv.payments || []).reduce((s, p) => s + (Number(p.tip) || 0), 0), products: productsCost(inv.items), estimate: linesCost(inv.items), fees: f.amount, feesPending: f.pending,
     paid: paidOn(inv, c), balance: c.balanceDue, jobs: jobRows }));
 });
+// a quote's estimated profit: its lines' costs (Products at cost, lines priced as cost + markup at their cost), no labor (time is clocked on
+// jobs), and Stripe's fee on a deposit paid by card. With Good / Better / Best, the option the client chose (else the recommended one).
+function quoteLinesCost(items) {
+  let on = false; let sum = 0;
+  for (const i of items || []) { if (i.lateFee) continue; if (!i.mx) on = catalogProduct(i.desc); if (i.matrix) continue;
+    const cost = Number(i.cost ?? i.price) || 0; const qty = Number(i.qty) || 0; if (on || (cost > 0 && Number(i.price) > cost)) sum += qty * cost; }
+  return round2(sum);
+}
+app.get('/api/quotes/:id/profit', async (req, res) => {
+  const q = db.quotes.find((x) => x.id === req.params.id); if (!q) return res.status(404).json({ error: 'Quote not found' });
+  const card = q.depositMethod === 'stripe' && /^pi_/.test(q.depositReference || '');
+  if (card && q.depositStripeFee == null && stripeKey()) await Promise.race([keepFee(q, 'depositStripeFee', q.depositReference), new Promise((r) => setTimeout(r, 6000))]);
+  const o = shownOption(q); const items = o ? optionItems(q, o.id) : q.items;
+  const paid = q.depositPaidAt ? Math.max(0, (Number(q.depositPaidAmount ?? q.depositFee) || 0) - refundedOf(q.depositRefunds)) : 0;
+  const box = profitBox({ revenue: (Number(q.subtotal) || 0) - (Number(q.discount) || 0), gross: Number(q.subtotal) || 0, discount: Number(q.discount) || 0, tax: Number(q.tax) || 0, tips: 0,
+    expenses: 0, products: 0, estimate: quoteLinesCost(items), labor: 0, hours: 0, unrated: 0, fees: Number(q.depositStripeFee) || 0, feesPending: card && q.depositStripeFee == null ? 1 : 0,
+    paid, balance: 0, jobs: [] });
+  res.json({ ...box, timesheets: false, quote: true, option: o ? o.name : '' });
+});
 app.get('/api/jobs/:id/profit', async (req, res) => {
   const j = db.jobs.find((x) => x.id === req.params.id); if (!j) return res.status(404).json({ error: 'Job not found' });
   await fillFees(jobInvoices(j));
