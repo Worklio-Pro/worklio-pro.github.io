@@ -3449,7 +3449,7 @@ ${mField('Status', `<select name="status">${[['scheduled', 'Scheduled'], ['compl
 // ⋯ on the job page
 A.mJobMore = (x) => {
   const j = byId(D.jobs, x.id); const edit = canDo('jobs.edit');
-  const f = mSheet('More', `<div class="ms-list">${onThisJob(j) ? '' : clockBtn(j, '')}${omwBtn(j, '')}${planHas('signatures') ? `<button type="button" data-act="collectSignature" data-id="${j.id}">${j.signature ? 'Collect another signature' : 'Collect signature'}</button>` : ''}
+  const f = mSheet('More', `<div class="ms-list">${omwBtn(j, '')}${planHas('signatures') ? `<button type="button" data-act="collectSignature" data-id="${j.id}">${j.signature ? 'Collect another signature' : 'Collect signature'}</button>` : ''}
 ${edit && !jobPaidInFull(j) ? `<button type="button" data-act="jobRemind" data-id="${j.id}">${planHas('sms') && byId(D.clients, j.clientId)?.smsConsent ? 'Text' : 'Email'} reminder to client</button>` : ''}
 ${planHas('invoices') && canInvoiceJob(j) ? `<button type="button" class="need-invoices" data-act="jobInvoice" data-id="${j.id}">Create invoice</button>` : ''}
 ${planHas('timeOff') && me && me.staffId && (j.staffIds || []).includes(me.staffId) && j.date >= ymd(new Date()) ? `<button type="button" data-act="jobRequestOff" data-id="${j.id}">Request off for this job</button>` : ''}
@@ -3467,7 +3467,7 @@ function mobileJobPage(j) {
   const tapRow = (sec, l, v) => tap(sec, `<span>${l}</span><span class="md-v">${v}</span>`, 'md-tr');
   const textSec = (sec, title, text, empty) => tap(sec, `<span class="md-sh">${title}${ARROW}</span>${text ? `<span class="md-text">${esc(text)}</span>` : `<span class="md-text muted">${edit ? empty : 'None'}</span>`}`, 'md-sec');
   const btn = (act, label, cls = '') => `<button type="button" class="btn ${cls}" data-act="${act}" data-id="${j.id}">${label}</button>`;
-  const acts = [onThisJob(j) ? clockBtn(j) : '', ...(canDo('jobs.edit') ? [j.status === 'scheduled' ? btn('completeJob', 'Mark Complete') : btn('reopenJob', 'Reopen', 'alt'), st === 'invoice' && planHas('invoices') ? btn('jobInvoice', 'Create Invoice', 'need-invoices') : ''] : [])];
+  const acts = [clockBtn(j), ...(canDo('jobs.edit') ? [j.status === 'scheduled' ? btn('completeJob', 'Mark Complete') : btn('reopenJob', 'Reopen', 'alt'), st === 'invoice' && planHas('invoices') ? btn('jobInvoice', 'Create Invoice', 'need-invoices') : ''] : [])];
   const team = (j.staffIds || []).map((id) => byId(D.staff, id)).filter(Boolean);
   const items = (d.items || []).map((it, i) => (it.mx ? mxLineHtml(d.items, it, i) : tap('item', mItemInner(d.items, it, i), `md-item${it.sub ? ' sub' : ''}`, `data-i="${i}"`))).join('');
   const paid = q ? depositPaid(q) : 0;
@@ -4137,11 +4137,12 @@ const getSpot = () => (!teamLocOn() ? Promise.resolve({}) : !navigator.geolocati
 const spotNote = (g) => (g.loc ? ' · location saved' : g.locErr === 'denied' ? ' · location not shared' : g.locErr ? ' · location not found' : '');
 A.clockIn = async (d) => {
   $$('details.menu[open]').forEach((x) => { x.open = false; });
-  const was = D.clock && D.clock.open; const j = d.id ? byId(D.jobs, d.id) : null;
-  if (was && !confirm(`You’re on the clock ${was.job ? `on ${was.job.number} ${was.job.title}` : 'without a job'}. Clock out of that and in on ${j ? `${j.number} ${j.title || ''}` : 'no job'}?`)) return;
+  const was = D.clock && D.clock.open; const j = d.id ? byId(D.jobs, d.id) : null; const v = d.visit ? byId(D.tasks || [], d.visit) : null;
+  const what = j ? `${j.number} ${j.title || ''}` : v ? `the site visit for ${svName(v)}` : 'no job';
+  if (was && !confirm(`You’re on the clock ${was.job ? `on ${was.job.number} ${was.job.title}` : 'without a job'}. Clock out of that and in on ${what}?`)) return;
   if (teamLocOn()) toast('Getting your location…');
   const g = await getSpot();
-  try { const r = await api('POST', '/api/time/clock-in', { jobId: d.id || '', ...g }); D.clock = { ...D.clock, open: r.open }; toast((j ? `Clocked in on ${j.number}` : 'Clocked in') + spotNote(g)); refresh(); } catch (x) { toast(x.message, true); }
+  try { const r = await api('POST', '/api/time/clock-in', { jobId: d.id || '', visitId: d.visit || '', ...g }); D.clock = { ...D.clock, open: r.open }; toast((j ? `Clocked in on ${j.number}` : v ? 'Clocked in on the site visit' : 'Clocked in') + spotNote(g)); refresh(); } catch (x) { toast(x.message, true); }
 };
 A.clockOut = async () => {
   if (teamLocOn()) toast('Getting your location…');
@@ -4653,6 +4654,10 @@ A.newSiteVisit = (d, el) => { const r = el.getBoundingClientRect(); scQuick({ da
 // who can complete or reopen a visit: whoever can edit jobs, or the person it's with (the server checks too). Quotes only with the Quotes permission.
 const svCanDo = (t) => canDo('jobs.edit') || !!(me && me.staffId && (t.staffIds || []).includes(me.staffId));
 const svQuotes = () => canDo('quotes');
+const onThisVisit = (t) => !!(D.clock && D.clock.open && D.clock.open.visitId === t.id);
+const canClockVisit = (t) => planHas('timesheets') && D.clock && D.clock.canClock && !t.done && ((me && me.staffId && (t.staffIds || []).includes(me.staffId)) || canDo('jobs.edit'));
+const svClockBtn = (t, cls = 'btn alt') => (onThisVisit(t) ? `<button type="button" class="${cls} clock-on" data-act="clockOut">Clock Out</button>` : canClockVisit(t) ? `<button type="button" class="${cls}" data-act="clockIn" data-visit="${t.id}">Clock In</button>` : '');
+const svClockBadge = (t) => (onThisVisit(t) ? `<span class="vsign clock-badge">⏱ On the clock · ${clockSince(D.clock.open.start)}</span>` : '');
 A.svComplete = async (d) => { await api('POST', `/api/site-visits/${d.id}/complete`, {}); toast(!svQuotes() ? 'Site visit completed. Add your notes from the visit.' : svQuote(byId(D.tasks, d.id)) ? 'Site visit completed. Add your notes, then update the final quote.' : 'Site visit completed. Add your notes, then create the final quote.'); refresh(); };
 A.svReopen = async (d) => { await api('POST', `/api/site-visits/${d.id}/reopen`, {}); toast('Site visit reopened'); refresh(); };
 // Create final quote: the visit's own quote opens to edit and send; with none, a new draft for the client (visit notes in its internal
@@ -4736,10 +4741,10 @@ function mobileSiteVisit(t, c, q, st, team, notes, qCard) {
   const addr = t.address || c.address || ''; const sec = (title, inner) => `<section class="md-block"><h2 class="md-sh">${title}</h2>${inner}</section>`;
   const visit = `<span class="md-sh">Scheduled visit${canSurvey() ? ARROW : ''}</span><span class="md-text">${esc(fmtDate(t.date))}, ${esc(fmtTime(t.startTime))} – ${esc(fmtTime(t.endTime))}</span>`;
   return `<div class="mdoc mjob msv"><a href="/jobs" data-link class="md-back" aria-label="Back to site visits">${CHEV('M15 18l-6-6 6-6')}</a>
-<div class="md-st"><span class="cstatus ${SV_CLASS[st]}">${SV_STATUS[st]}</span></div>
+<div class="md-st"><span class="cstatus ${SV_CLASS[st]}">${SV_STATUS[st]}</span>${svClockBadge(t)}</div>
 <div class="md-head"><span class="md-h">Site visit for ${esc(c.name || c.company || 'no client')}</span>${q ? `<span class="md-sub">For quote ${esc(q.number)}${q.title ? ' · ' + esc(q.title) : ''}</span>` : ''}<span class="md-addr">${esc(addr)}</span></div>
 ${mContact(c, addr)}
-${!svCanDo(t) ? '' : `<div class="md-acts">${t.done ? `<button type="button" class="btn alt" data-act="svReopen" data-id="${t.id}">Reopen</button>` : `<button type="button" class="btn" data-act="svComplete" data-id="${t.id}">Mark Complete</button>`}</div>`}
+${!svCanDo(t) && !svClockBtn(t) ? '' : `<div class="md-acts">${svClockBtn(t)}${!svCanDo(t) ? '' : t.done ? `<button type="button" class="btn alt" data-act="svReopen" data-id="${t.id}">Reopen</button>` : `<button type="button" class="btn" data-act="svComplete" data-id="${t.id}">Mark Complete</button>`}</div>`}
 ${canSurvey() ? `<button type="button" class="md-tap md-sec" data-act="svOpen" data-id="${t.id}">${visit}</button>` : `<div class="md-sec">${visit}</div>`}
 ${sec('Who', team.length ? `<span class="md-team">${team.map((s) => `<span>${avatarHtml(s, 28)}${esc(s.name)}</span>`).join('')}</span>` : '<span class="md-text muted">Nobody assigned</span>')}
 ${sec('Instructions', t.description ? `<span class="md-text">${esc(t.description)}</span>` : '<span class="md-text muted">None</span>')}
@@ -4761,8 +4766,8 @@ PAGES['/jobs/site-visit'] = {
 <div class="svq-st"><span class="cstatus ${svQuoteUnsent(q) ? 'q-sent' : q.status === 'sent' ? 'q-approved' : 'q-converted'}">${svQuoteUnsent(q) ? 'Not sent yet' : q.status === 'sent' ? 'Sent, awaiting response' : esc(q.status[0].toUpperCase() + q.status.slice(1))}</span>${svQuoteUnsent(q) && qSvyStage(q) ? '<span class="muted">The client approved the estimate</span>' : ''}</div>
 ${svQuoteUnsent(q) ? `<p class="muted svq-tip">${t.done ? 'Update the prices from what you saw on site, then send it.' : 'After the visit, update it and send it.'}</p><button type="button" class="btn${t.done ? '' : ' alt'} svq-btn" data-act="svFinalQuote" data-id="${t.id}">Update final quote</button>` : `<button type="button" class="btn alt svq-btn" data-act="svQuoteOpen" data-id="${q.id}">Open quote</button>`}`;
     if (phoneMq.matches) { main.innerHTML = mobileSiteVisit(t, c, q, st, team, notes, qCard); return; } // phones: laid out like the phone job page
-    main.innerHTML = `<div class="qview jview svview"><div class="qpage"><div class="qmain"><div class="qtop"><div class="qtop-l"><a href="/jobs" data-link class="back">← Site visits</a><span class="cstatus ${SV_CLASS[st]}">${SV_STATUS[st]}</span></div>
-<div class="actions">${canSurvey() ? `<button type="button" class="btn alt" data-act="svOpen" data-id="${t.id}">${t.done ? 'Edit' : 'Reschedule'}</button>` : ''}${!svCanDo(t) ? '' : t.done ? `<button type="button" class="btn alt" data-act="svReopen" data-id="${t.id}">↺ Reopen</button>` : `<button type="button" class="btn" data-act="svComplete" data-id="${t.id}">Mark Complete</button>`}</div></div>
+    main.innerHTML = `<div class="qview jview svview"><div class="qpage"><div class="qmain"><div class="qtop"><div class="qtop-l"><a href="/jobs" data-link class="back">← Site visits</a><span class="cstatus ${SV_CLASS[st]}">${SV_STATUS[st]}</span>${svClockBadge(t)}</div>
+<div class="actions">${svClockBtn(t)}${canSurvey() ? `<button type="button" class="btn alt" data-act="svOpen" data-id="${t.id}">${t.done ? 'Edit' : 'Reschedule'}</button>` : ''}${!svCanDo(t) ? '' : t.done ? `<button type="button" class="btn alt" data-act="svReopen" data-id="${t.id}">↺ Reopen</button>` : `<button type="button" class="btn" data-act="svComplete" data-id="${t.id}">Mark Complete</button>`}</div></div>
 <div class="vhead"><div class="vtitle-row"><h1 class="vtitle">Site visit</h1></div>
 <div class="qhead"><div class="qclient"><div class="vclient"><span>${esc(c.name || c.company || 'No client')}</span>${c.id ? clientMenu(c) : ''}</div><div class="muted qlabel">Property address</div><div class="qaddr">${esc(t.address || c.address || '') || none('No address on file')}</div>${dirLink(t.address || c.address || '')}
 ${c.phone || c.email ? `<div class="vclient-c">${c.phone ? `<a href="tel:${esc(c.phone)}">${esc(fmtUsPhone(c.phone))}</a>` : ''}${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ''}</div>` : ''}</div>

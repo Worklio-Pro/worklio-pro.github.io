@@ -775,8 +775,9 @@ const crowMiles = (a, b) => roadMiles(a, b) / 1.3;
 const spotOut = (spot, j) => { if (!spot) return null; if (spot.none) return { none: spot.none };
   const place = j && placeOf(jobAddress(j)); return { lat: spot.lat, lng: spot.lng, acc: spot.acc, ...(place ? { away: Math.round(crowMiles(spot, place) * 1000) / 1000 } : {}) }; };
 const timeRow = (e, u) => { const j = e.jobId && db.jobs.find((x) => x.id === e.jobId); const s = db.staff.find((x) => x.id === e.staffId);
-  const { inLoc, outLoc, ...rest } = e; const locs = teamLocOn() ? { inLoc: spotOut(inLoc, j), outLoc: spotOut(outLoc, j) } : {};
-  return { ...rest, ...locs, person: s ? s.name : 'Former team member', color: s ? s.color : '', job: j ? { id: j.id, number: j.number, title: j.title || '' } : null, hours: Math.round(entryHours(e) * 100) / 100,
+  const v = !j && e.visitId && (db.tasks || []).find((x) => x.id === e.visitId); // a site visit (a calendar task with a survey)
+  const { inLoc, outLoc, ...rest } = e; const locs = teamLocOn() ? { inLoc: spotOut(inLoc, j || v), outLoc: spotOut(outLoc, j || v) } : {};
+  return { ...rest, ...locs, person: s ? s.name : 'Former team member', color: s ? s.color : '', job: j ? { id: j.id, number: j.number, title: j.title || '' } : v ? { id: v.id, number: 'Site visit', title: (findClient(v.clientId) || {}).name || '', visit: true } : null, hours: Math.round(entryHours(e) * 100) / 100,
     ...(isAdmin(u) ? { rate: Number(payRates()[e.staffId]) || 0 } : {}) }; };
 const timeWhen = (v, label) => { const d = new Date(v); if (!v || isNaN(d)) throw Object.assign(new Error(`Enter the ${label} time`), { status: 400 }); return d.toISOString(); };
 // labor cost per job from time logged to it, at each person's pay rate (Job profit report)
@@ -790,18 +791,20 @@ app.get('/api/time', (req, res) => {
   res.json({ manager, admin: isAdmin(u), staffId: u.staffId || null, teamLocation: teamLocOn(), canClock: !!db.staff.find((s) => s.id === u.staffId), open: openEntry(u.staffId) ? timeRow(openEntry(u.staffId), u) : null,
     entries: list.slice(0, 3000).map((e) => timeRow(e, u)), ...(isAdmin(u) ? { rates: payRates() } : {}) });
 });
-// clock in, on a job or not; clocking in again while on the clock switches: the open entry ends now and a new one starts
+// clock in, on a job, on a site visit (visitId) or neither; clocking in again while on the clock switches: the open entry ends now and a new one starts
 app.post('/api/time/clock-in', (req, res) => {
   const u = currentUser(req); if (!db.staff.find((s) => s.id === u.staffId)) return res.status(400).json({ error: 'Your login isn’t linked to a team member, so there’s no timesheet to clock in on' });
   const jobId = String((req.body || {}).jobId || ''); const j = jobId && db.jobs.find((x) => x.id === jobId); if (jobId && !j) return res.status(404).json({ error: 'Job not found' });
   if (j && !canManageTime(u) && !(j.staffIds || []).includes(u.staffId)) return res.status(403).json({ error: 'You can only clock in on jobs you’re assigned to' });
+  const visitId = j ? '' : String((req.body || {}).visitId || ''); const v = visitId && (db.tasks || []).find((x) => x.id === visitId && x.survey); if (visitId && !v) return res.status(404).json({ error: 'Site visit not found' });
+  if (v && !canManageTime(u) && !(v.staffIds || []).includes(u.staffId)) return res.status(403).json({ error: 'You can only clock in on site visits you’re going on' });
   const now = new Date().toISOString(); const was = openEntry(u.staffId);
-  if (was && (was.jobId || '') === jobId) return res.json({ open: timeRow(was, u) });
+  if (was && (was.jobId || '') === jobId && (was.visitId || '') === visitId) return res.json({ open: timeRow(was, u) });
   const spot = readSpot(req.body);
   if (was) { was.end = now; if (spot) was.outLoc = spot; }
-  const e = { id: uid(), staffId: u.staffId, jobId, start: now, end: null, note: '', approvedAt: null, approvedBy: '', createdAt: now, ...(spot ? { inLoc: spot } : {}) }; timeList().push(e);
+  const e = { id: uid(), staffId: u.staffId, jobId, ...(visitId ? { visitId } : {}), start: now, end: null, note: '', approvedAt: null, approvedBy: '', createdAt: now, ...(spot ? { inLoc: spot } : {}) }; timeList().push(e);
   keepSpot(u.staffId, spot, 'in', jobId); save();
-  if (spot && !spot.none && j) placeAddresses([jobAddress(j)]).catch(() => {}); // so the timesheet can say how far from the job
+  if (spot && !spot.none && (j || v)) placeAddresses([jobAddress(j || v)]).catch(() => {}); // so the timesheet can say how far from the job
   res.status(201).json({ open: timeRow(e, u), switched: was ? timeRow(was, u) : null });
 });
 app.post('/api/time/clock-out', (req, res) => {
