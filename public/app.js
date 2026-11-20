@@ -4700,7 +4700,9 @@ const onThisVisit = (t) => !!(D.clock && D.clock.open && D.clock.open.visitId ==
 const canClockVisit = (t) => planHas('timesheets') && D.clock && D.clock.canClock && !t.done && ((me && me.staffId && (t.staffIds || []).includes(me.staffId)) || canDo('jobs.edit'));
 const svClockBtn = (t, cls = 'btn alt') => (onThisVisit(t) ? `<button type="button" class="${cls} clock-on" data-act="clockOut">Clock Out</button>` : canClockVisit(t) ? `<button type="button" class="${cls}" data-act="clockIn" data-visit="${t.id}">Clock In</button>` : '');
 const svClockBadge = (t) => (onThisVisit(t) ? `<span class="vsign clock-badge">⏱ On the clock · ${clockSince(D.clock.open.start)}</span>` : '');
-A.svComplete = async (d) => { await api('POST', `/api/site-visits/${d.id}/complete`, {}); toast(!svQuotes() ? 'Site visit completed. Add your notes from the visit.' : svQuote(byId(D.tasks, d.id)) ? 'Site visit completed. Add your notes, then update the final quote.' : 'Site visit completed. Add your notes, then create the final quote.'); refresh(); };
+// completing it also clocks out everyone still on the clock for it (the server does that and says how many)
+A.svComplete = async (d) => { const r = await api('POST', `/api/site-visits/${d.id}/complete`, {}); const n = r.clockedOut || 0; const out = n ? ` ${n === 1 ? (onThisVisit(byId(D.tasks, d.id)) ? 'You were' : '1 person was') : `${n} people were`} clocked out.` : '';
+  toast((!svQuotes() ? 'Site visit completed. Add your notes from the visit.' : svQuote(byId(D.tasks, d.id)) ? 'Site visit completed. Add your notes, then update the final quote.' : 'Site visit completed. Add your notes, then create the final quote.') + out); refresh(); };
 A.svReopen = async (d) => { await api('POST', `/api/site-visits/${d.id}/reopen`, {}); toast('Site visit reopened'); refresh(); };
 // Create final quote: the visit's own quote opens to edit and send; with none, a new draft for the client (visit notes in its internal
 // notes) is made and linked to the visit

@@ -4271,8 +4271,13 @@ const svyMine = (u, t) => !!u.staffId && (t.staffIds || []).includes(u.staffId);
 const svyDone = (what) => (req, res) => {
   const u = currentUser(req); const t = svyFind(req, res); if (!t) return;
   if (!can(u, 'jobs.edit') && !svyMine(u, t)) return res.status(403).json({ error: 'Only the person this visit is with, or someone who can edit jobs, can do that' });
-  if (what === 'complete') { t.done = true; t.completedAt = new Date().toISOString(); } else { t.done = false; t.completedAt = null; }
-  save(); res.json(t);
+  let clockedOut = 0;
+  if (what === 'complete') {
+    t.done = true; t.completedAt = new Date().toISOString();
+    // the visit is over: everyone still on the clock for it is clocked out now (marked on the entry, so the timesheet shows why)
+    for (const e of timeList()) if (e.visitId === t.id && !e.end) { e.end = t.completedAt; e.autoOut = 'visit-complete'; clockedOut++; }
+  } else { t.done = false; t.completedAt = null; }
+  save(); res.json({ ...t, clockedOut });
 };
 app.post('/api/site-visits/:id/complete', svyDone('complete'));
 app.post('/api/site-visits/:id/reopen', svyDone('reopen'));
