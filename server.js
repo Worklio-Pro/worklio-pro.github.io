@@ -5017,30 +5017,41 @@ const timeByJob = () => { const r = payRates(); const out = {};
   for (const e of timeList()) { if (!e.jobId || !e.end) continue; const o = out[e.jobId] || (out[e.jobId] = { hours: 0, cost: 0, unrated: 0 }); const h = entryHours(e); o.hours += h;
     if (Number(r[e.staffId])) o.cost += h * Number(r[e.staffId]); else o.unrated += h; }
   return out; };
-// what one job brought in and what it cost (Job profit report and the profit boxes): its invoices' revenue, the expenses linked to it, labor and card fees
+// Product lines (a line whose name is saved as a Product in Products & services; a matrix line's sizes go with their heading line) count as materials,
+// at their unit cost (what a line priced as cost + markup was bought for; otherwise its price)
+function productsCost(items) {
+  let on = false; let sum = 0;
+  for (const i of items || []) { if (i.lateFee) continue; if (!i.mx) on = catalogProduct(i.desc); if (on && !i.matrix) sum += (Number(i.qty) || 0) * (Number(i.cost ?? i.price) || 0); }
+  return round2(sum);
+}
+const jobsLines = (i, j) => (i.items || []).filter((x) => !(i.jobIds || []).length || x.job === j.id); // a batch invoice: just job j's lines
+// what one job brought in and what it cost (Job profit report and the profit boxes): its invoices' revenue, the expenses linked to it, the Product lines
+// on its invoices, labor and card fees
 function jobMoney(j, time = timeByJob()) {
   const invs = jobInvoices(j); const parts = invs.map((i) => [i, invPart(i, j)]);
   const expenses = round2(db.expenses.filter((e) => e.jobId === j.id).reduce((s, e) => s + (Number(e.amount) || 0), 0));
   const t = time[j.id] || { hours: 0, cost: 0, unrated: 0 };
   let fees = 0; let pending = 0; for (const i of invs) { const f = invFees(i); fees += f.amount * invShare(i, j); pending += f.pending; }
-  return { invs, parts, revenue: round2(parts.reduce((s, [, v]) => s + v, 0)), expenses, labor: round2(t.cost), hours: t.hours, unrated: t.unrated, fees: round2(fees), feesPending: pending };
+  const products = round2(invs.reduce((s, i) => s + productsCost(jobsLines(i, j)), 0));
+  return { invs, parts, revenue: round2(parts.reduce((s, [, v]) => s + v, 0)), expenses, products, labor: round2(t.cost), hours: t.hours, unrated: t.unrated, fees: round2(fees), feesPending: pending };
 }
 function jobProfit(from, to, want = null) {
   const time = timeByJob(); // hours logged to each job (Timesheets) at each person's pay rate
   return db.jobs.filter((j) => inRange(j.date || j.createdAt, from, to)).map((j) => {
     const m = jobMoney(j, time); const category = mainCat([j]) || mainCat(m.invs);
     if (!catIs(category, want)) return null;
-    const costs = round2(m.expenses + m.labor + m.fees); const profit = round2(m.revenue - costs);
-    return { id: j.id, number: j.number, title: j.title, client: (findClient(j.clientId) || {}).name || '', date: String(j.date || j.createdAt || '').slice(0, 10), status: j.status, category, invoices: m.invs.length, revenue: m.revenue, expenses: m.expenses, labor: m.labor, fees: m.fees, costs, profit, margin: m.revenue ? Math.round(profit / m.revenue * 1000) / 10 : null };
+    const costs = round2(m.expenses + m.products + m.labor + m.fees); const profit = round2(m.revenue - costs);
+    return { id: j.id, number: j.number, title: j.title, client: (findClient(j.clientId) || {}).name || '', date: String(j.date || j.createdAt || '').slice(0, 10), status: j.status, category, invoices: m.invs.length, revenue: m.revenue, expenses: m.expenses, products: m.products, materials: round2(m.expenses + m.products), labor: m.labor, fees: m.fees, costs, profit, margin: m.revenue ? Math.round(profit / m.revenue * 1000) / 10 : null };
   }).filter((j) => j && (j.revenue || j.costs)).sort((a, b) => b.date.localeCompare(a.date));
 }
 // ---------- Profit box (invoice and job pages): gross, tax, materials, labor, card fees, net profit and margin ----------
 // For anyone whose role opens Reports (owner, admins, managers by default). Labor is a total only: each person's pay rate stays with the owner and admins.
-// Materials are the expenses linked to the job(s); with none logged yet, an estimate from the line items' unit costs (only lines priced as cost + markup
-// have a cost of their own), never both. An invoice for part of a job (one of several invoices) carries its share of the job's costs, by revenue.
+// Materials & expenses are the expenses linked to the job(s) plus the Product lines (at their unit cost); with neither, an estimate from the line items'
+// unit costs (only lines priced as cost + markup have a cost of their own). An invoice for part of a job (one of several invoices) carries its share of the job's costs, by revenue.
 const linesCost = (items) => round2((items || []).filter((x) => !x.lateFee && !x.matrix && Number(x.cost) > 0 && Number(x.price) > Number(x.cost)).reduce((s, x) => s + (Number(x.qty) || 0) * Number(x.cost), 0));
 function profitBox(b) {
-  const materials = b.expenses > 0 ? { amount: round2(b.expenses), source: 'expenses' } : b.estimate > 0 ? { amount: round2(b.estimate), source: 'lines' } : { amount: 0, source: 'none' };
+  const actual = round2((b.expenses || 0) + (b.products || 0));
+  const materials = actual > 0 ? { amount: actual, expenses: round2(b.expenses || 0), products: round2(b.products || 0), source: 'actual' } : b.estimate > 0 ? { amount: round2(b.estimate), source: 'lines' } : { amount: 0, source: 'none' };
   const costs = round2(materials.amount + b.labor + b.fees); const profit = round2(b.revenue - costs); const hrs = (h) => Math.round(h * 100) / 100;
   return { revenue: round2(b.revenue), gross: round2(b.gross), discount: round2(b.discount), tax: round2(b.tax), tips: round2(b.tips), materials,
     labor: { amount: round2(b.labor), hours: hrs(b.hours), unrated: hrs(b.unrated) }, fees: { amount: round2(b.fees), pending: b.feesPending }, costs, profit,
@@ -5064,7 +5075,7 @@ app.get('/api/invoices/:id/profit', async (req, res) => {
   }
   const f = invFees(inv); const c = invoiceCredits(inv);
   res.json(profitBox({ ...B, revenue: invWhole(inv), gross: Number(inv.subtotal) || 0, discount: Number(inv.discount) || 0, tax: Number(inv.tax) || 0,
-    tips: (inv.payments || []).reduce((s, p) => s + (Number(p.tip) || 0), 0), estimate: linesCost(inv.items), fees: f.amount, feesPending: f.pending,
+    tips: (inv.payments || []).reduce((s, p) => s + (Number(p.tip) || 0), 0), products: productsCost(inv.items), estimate: linesCost(inv.items), fees: f.amount, feesPending: f.pending,
     paid: paidOn(inv, c), balance: c.balanceDue, jobs: jobRows }));
 });
 app.get('/api/jobs/:id/profit', async (req, res) => {
@@ -5073,12 +5084,13 @@ app.get('/api/jobs/:id/profit', async (req, res) => {
   const m = jobMoney(j); const B = { gross: 0, tax: 0, paid: 0, balance: 0, tips: 0, estimate: 0 };
   if (m.invs.length) for (const i of m.invs) { const sh = invShare(i, j); const c = invoiceCredits(i);
     B.gross += (Number(i.subtotal) || 0) * sh; B.tax += (Number(i.tax) || 0) * sh; B.paid += paidOn(i, c) * sh; B.balance += c.balanceDue * sh;
-    B.tips += (i.payments || []).reduce((s, p) => s + (Number(p.tip) || 0), 0) * sh; B.estimate += linesCost((i.items || []).filter((x) => !(i.jobIds || []).length || x.job === j.id)); }
+    B.tips += (i.payments || []).reduce((s, p) => s + (Number(p.tip) || 0), 0) * sh; B.estimate += linesCost(jobsLines(i, j)); }
   const L = !m.invs.length && jobLines(j); // not invoiced yet: the job's lines (or its quote's) show what it's expected to bring in
-  const lineGross = L ? L.items.filter((x) => !x.opt || !L.q || x.opt === L.q.chosenOption).reduce((s, x) => s + (Number(x.qty) || 0) * (Number(x.price) || 0), 0) : 0;
+  const Litems = L ? L.items.filter((x) => !x.opt || !L.q || x.opt === L.q.chosenOption) : [];
+  const lineGross = L ? Litems.filter((x) => !x.opt || !L.q || x.opt === L.q.chosenOption).reduce((s, x) => s + (Number(x.qty) || 0) * (Number(x.price) || 0), 0) : 0;
   const lineDisc = L ? Math.min(lineGross, Number(L.discountType === 'percent' ? lineGross * (Number(L.discountValue) || 0) / 100 : L.discountValue) || 0) : 0;
   const revenue = L ? lineGross - lineDisc : m.revenue;
-  res.json(profitBox({ ...B, ...(L ? { gross: lineGross, estimate: linesCost(L.items) } : {}), revenue, discount: L ? lineDisc : B.gross - m.revenue,
+  res.json(profitBox({ ...B, ...(L ? { gross: lineGross, estimate: linesCost(Litems) } : {}), products: L ? productsCost(Litems) : m.products, revenue, discount: L ? lineDisc : B.gross - m.revenue,
     expenses: m.expenses, labor: m.labor, hours: m.hours, unrated: m.unrated, fees: m.fees, feesPending: m.feesPending, estimatedRevenue: !!L }));
 });
 // unpaid invoices by how long past due, as of today; want: only invoices whose main category it is

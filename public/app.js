@@ -2763,7 +2763,7 @@ function profitCard(kind, r) {
   const neg = (n) => (n ? '−' + money(n) : money(0));
   const m = r.materials; const L = r.labor; const F = r.fees;
   const matLabel = m.source === 'lines' ? 'Materials <span class="muted">(estimated)</span>' : 'Materials &amp; expenses';
-  const matSub = m.source === 'expenses' ? 'Expenses linked to the job' : m.source === 'lines' ? 'From line item costs. Log receipts in Expenses for actuals.' : (kind === 'job' || r.jobs.length ? 'No expenses linked to the job yet' : 'Not linked to a job, so no expenses');
+  const matSub = m.source === 'actual' ? [m.products ? `Products ${money(m.products)}` : '', m.expenses ? `Expenses on the job ${money(m.expenses)}` : ''].filter(Boolean).join(' · ') : m.source === 'lines' ? 'From line item costs. Log receipts in Expenses for actuals.' : (kind === 'job' || r.jobs.length ? 'No expenses linked to the job yet' : 'Not linked to a job, so no expenses');
   const labSub = !r.timesheets ? '' : L.hours ? `${pfHours(L.hours)} clocked${L.unrated ? ` · ${pfHours(L.unrated)} with no pay rate` : ''}` : 'No time clocked on the job';
   const feeSub = F.pending ? `${F.pending} payment${F.pending === 1 ? '' : 's'} still settling` : F.amount ? 'Stripe’s fee on card and bank payments' : r.balance > 0 ? 'Added when paid by card' : 'No card payments';
   const split = r.jobs.filter((j) => j.share < 0.999);
