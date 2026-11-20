@@ -4359,10 +4359,9 @@ ${past ? '' : `<details class="qv-chg"><summary class="qv-btn">${tx('Change the 
 // A site visit's page (Jobs → Site visits): Mark complete / Reopen and Visit notes. Anyone who can see jobs can add notes (like job notes)
 // and delete their own; completing or reopening takes "Create, edit and delete jobs", or being the one the visit is with.
 const svyFind = (req, res) => { const t = (db.tasks || []).find((x) => x.id === req.params.id && x.survey); if (!t) res.status(404).json({ error: 'Site visit not found' }); return t; };
-const svyMine = (u, t) => !!u.staffId && (t.staffIds || []).includes(u.staffId);
 const svyDone = (what) => (req, res) => {
   const u = currentUser(req); const t = svyFind(req, res); if (!t) return;
-  if (!can(u, 'jobs.edit') && !svyMine(u, t)) return res.status(403).json({ error: 'Only the person this visit is with, or someone who can edit jobs, can do that' });
+  if (!u || !SVY_ROLES.includes(u.role)) return res.status(403).json({ error: 'Only owners, admins and managers can complete or reopen a site visit' });
   let clockedOut = 0;
   if (what === 'complete') {
     t.done = true; t.completedAt = new Date().toISOString();

@@ -4773,7 +4773,13 @@ A.svPage = (d) => navigate('/jobs/site-visit?id=' + d.id);
 // New Site Visit: the calendar's quick pop-up, on its Site visit tab
 A.newSiteVisit = (d, el) => { const r = el.getBoundingClientRect(); scQuick({ date: ymd(new Date()), startTime: '09:00', endTime: '10:00' }, phoneMq.matches ? 8 : r.left - 340, phoneMq.matches ? 60 : r.bottom + 40); const b = $('.qc-tabs [data-k=survey]'); if (b) b.click(); }; // phones: the pop-up near the top, full width
 // who can complete or reopen a visit: whoever can edit jobs, or the person it's with (the server checks too). Quotes only with the Quotes permission.
-const svCanDo = (t) => canDo('jobs.edit') || !!(me && me.staffId && (t.staffIds || []).includes(me.staffId));
+// completing or reopening a site visit: owners, admins and managers only (the crew clocks in and out, but doesn't close the visit)
+const svCanDo = () => ['owner', 'admin', 'manager'].includes(role());
+// phones: one big full-width Clock In / Clock Out across the site visit page, like the phone job page
+const bigSvClock = (t) => {
+  if (onThisVisit(t)) return `<div class="md-clock"><button type="button" class="btn md-clock-btn out" data-act="clockOut"><span>Clock Out</span><small>On the clock ${clockSince(D.clock.open.start)} · since ${fmtTime(new Date(D.clock.open.start).toTimeString().slice(0, 5))}</small></button></div>`;
+  return canClockVisit(t) ? `<div class="md-clock"><button type="button" class="btn md-clock-btn" data-act="clockIn" data-visit="${t.id}"><span>Clock In</span>${D.clock && D.clock.open ? '<small>Ends your time on your other job</small>' : ''}</button></div>` : '';
+};
 const svQuotes = () => canDo('quotes');
 const onThisVisit = (t) => !!(D.clock && D.clock.open && D.clock.open.visitId === t.id);
 const canClockVisit = (t) => planHas('timesheets') && D.clock && D.clock.canClock && !t.done && t.date === ymd(new Date()) && ((me && me.staffId && (t.staffIds || []).includes(me.staffId)) || canDo('jobs.edit'));
@@ -4868,7 +4874,7 @@ function mobileSiteVisit(t, c, q, st, team, notes, qCard) {
 <div class="md-st"><span class="cstatus ${SV_CLASS[st]}">${SV_STATUS[st]}</span>${svClockBadge(t)}</div>
 <div class="md-head"><span class="md-h">Site visit for ${esc(c.name || c.company || 'no client')}</span>${q ? `<span class="md-sub">For quote ${esc(q.number)}${q.title ? ' · ' + esc(q.title) : ''}</span>` : ''}<span class="md-addr">${esc(addr)}</span></div>
 ${mContact(c, addr)}
-${!svCanDo(t) && !svClockBtn(t) ? '' : `<div class="md-acts">${svClockBtn(t)}${!svCanDo(t) ? '' : t.done ? `<button type="button" class="btn alt" data-act="svReopen" data-id="${t.id}">Reopen</button>` : `<button type="button" class="btn" data-act="svComplete" data-id="${t.id}">Mark Complete</button>`}</div>`}
+${bigSvClock(t)}${!svCanDo(t) ? '' : `<div class="md-acts">${ t.done ? `<button type="button" class="btn alt" data-act="svReopen" data-id="${t.id}">Reopen</button>` : `<button type="button" class="btn" data-act="svComplete" data-id="${t.id}">Mark Complete</button>`}</div>`}
 ${canCal() ? `<button type="button" class="md-tap md-sec" data-act="svOpen" data-id="${t.id}">${visit}</button>` : `<div class="md-sec">${visit}</div>`}
 ${sec('Who', withClocked(team, 'visit', t.id).length ? `<span class="md-team">${withClocked(team, 'visit', t.id).map((s) => `<span>${avatarHtml(s, 28)}${esc(s.name)}${clockedFlag(s.id, 'visit', t.id)}</span>`).join('')}</span>` : `<span class="md-text muted">Nobody yet${canCal() ? ': tap Scheduled visit to assign who goes' : ''}</span>`)}
 ${sec('Instructions', t.description ? `<span class="md-text">${esc(t.description)}</span>` : '<span class="md-text muted">None</span>')}
