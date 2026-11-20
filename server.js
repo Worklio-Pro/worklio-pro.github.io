@@ -937,7 +937,14 @@ const fillEntry = (e, b, u) => {
   else { e.edits = [...(e.edits || []), { at, by: u.name, byId: u.id, changes }].slice(-50); e.editedBy = u.name; e.editedAt = at; }
   e.approvedAt = null; e.approvedBy = ''; delete e.needsReview;
 };
-app.post('/api/time', manageTime((req, res, u, b) => { const e = { id: uid(), staffId: '', jobId: '', start: '', end: null, note: '', createdAt: new Date().toISOString() }; if (!b.staffId) b.staffId = ''; fillEntry(e, { jobId: '', ...b }, u); timeList().push(e); save(); res.status(201).json(timeRow(e, u)); }));
+// time a manager adds for someone who isn't on the job puts them on it (job.timeStaffIds remembers who came on that way);
+// once their last entry on that job is deleted or moved, they come off it again. People assigned on the job itself stay put.
+const timeJoinJob = (e) => { const j = e.jobId && e.staffId && db.jobs.find((x) => x.id === e.jobId); if (!j || (j.staffIds || []).includes(e.staffId)) return;
+  j.staffIds = [...(j.staffIds || []), e.staffId]; j.timeStaffIds = [...new Set([...(j.timeStaffIds || []), e.staffId])]; };
+const timeLeaveJob = (jobId, staffId) => { const j = jobId && staffId && db.jobs.find((x) => x.id === jobId); if (!j || !(j.timeStaffIds || []).includes(staffId)) return;
+  if (timeList().some((x) => x.jobId === jobId && x.staffId === staffId)) return;
+  j.staffIds = (j.staffIds || []).filter((x) => x !== staffId); j.timeStaffIds = j.timeStaffIds.filter((x) => x !== staffId); if (!j.timeStaffIds.length) delete j.timeStaffIds; };
+app.post('/api/time', manageTime((req, res, u, b) => { const e = { id: uid(), staffId: '', jobId: '', start: '', end: null, note: '', createdAt: new Date().toISOString() }; if (!b.staffId) b.staffId = ''; fillEntry(e, { jobId: '', ...b }, u); timeList().push(e); timeJoinJob(e); save(); res.status(201).json(timeRow(e, u)); }));
 // pay rates (owner and admins): dollars an hour per team member
 app.put('/api/time/rates', (req, res) => {
   const u = currentUser(req); if (!isAdmin(u)) return res.status(403).json({ error: 'Only the owner and admins can set pay rates' });
@@ -945,8 +952,8 @@ app.put('/api/time/rates', (req, res) => {
   for (const s of db.staff) { const v = Number(r[s.id]); if (r[s.id] !== undefined && r[s.id] !== '' && (!isFinite(v) || v < 0 || v > 10000)) return res.status(400).json({ error: `Enter ${s.name}’s pay rate in dollars an hour` }); if (v > 0) out[s.id] = Math.round(v * 100) / 100; }
   db.payRates = out; save(); res.json({ rates: out });
 });
-app.put('/api/time/:id', manageTime((req, res, u, b) => { const e = timeList().find((x) => x.id === req.params.id); if (!e) return res.status(404).json({ error: 'Entry not found' }); const was = { ...e }; try { fillEntry(e, b, u); } catch (x) { Object.assign(e, was); throw x; } save(); res.json(timeRow(e, u)); }));
-app.delete('/api/time/:id', manageTime((req, res) => { const i = timeList().findIndex((x) => x.id === req.params.id); if (i < 0) return res.status(404).json({ error: 'Entry not found' }); timeList().splice(i, 1); save(); res.json({ ok: true }); }));
+app.put('/api/time/:id', manageTime((req, res, u, b) => { const e = timeList().find((x) => x.id === req.params.id); if (!e) return res.status(404).json({ error: 'Entry not found' }); const was = { ...e }; try { fillEntry(e, b, u); } catch (x) { Object.assign(e, was); throw x; } timeJoinJob(e); if (was.jobId !== e.jobId || was.staffId !== e.staffId) timeLeaveJob(was.jobId, was.staffId); save(); res.json(timeRow(e, u)); }));
+app.delete('/api/time/:id', manageTime((req, res) => { const i = timeList().findIndex((x) => x.id === req.params.id); if (i < 0) return res.status(404).json({ error: 'Entry not found' }); const [e] = timeList().splice(i, 1); timeLeaveJob(e.jobId, e.staffId); save(); res.json({ ok: true }); }));
 // approve finished entries for payroll (ids from the page: the week, one person's week, or one entry)
 app.post('/api/time/approve', manageTime((req, res, u, b) => {
   const ids = new Set(Array.isArray(b.ids) ? b.ids : []); const now = new Date().toISOString(); let n = 0;
