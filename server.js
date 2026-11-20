@@ -186,8 +186,8 @@ const hasOptions = (q) => Array.isArray(q.options) && q.options.length >= 2;
 // the price to tell the client in emails and texts: each option's while none is chosen ("Repair $1,000.00, Replace $4,000.00 or
 // Premium $8,000.00"), else the quote's total (the chosen option's)
 const quotePrice = (q) => {
-  if (!hasOptions(q) || q.chosenOption || !q.optionTotals) return money(q.total);
-  const p = q.options.map((o) => `${o.name} ${money((q.optionTotals[o.id] || {}).total || 0)}`); return `${p.slice(0, -1).join(', ')} ${tx('or')} ${p[p.length - 1]}`;
+  if (!hasOptions(q) || q.chosenOption || !q.optionTotals) return rangeText(q, q.total);
+  const p = q.options.map((o) => `${o.name} ${rangeText(q, (q.optionTotals[o.id] || {}).total || 0)}`); return `${p.slice(0, -1).join(', ')} ${tx('or')} ${p[p.length - 1]}`;
 };
 const optionItems = (q, id) => (q.items || []).filter((i) => !i.opt || i.opt === id);
 const shownOption = (q) => (hasOptions(q) ? q.options.find((o) => o.id === q.chosenOption) || q.options.find((o) => o.id === q.recommended) || q.options[0] : null);
@@ -200,6 +200,32 @@ const onOff = (v) => v === true || v === 'on' || v === 'true';
 // After the visit the business updates the quote and sends it (quoteSentAt); from then on it's an ordinary quote to approve, sign and pay.
 const svyStage = (q) => !!q.estimate && !!q.survey && !!q.estimateApprovedAt && !q.quoteSentAt && ['draft', 'sent'].includes(q.status);
 const estDoc = (q) => estStage(q) || svyStage(q); // still called an estimate to the client
+// Estimate as a range (q.rangePct, e.g. 20): while it's still an estimate, prices read "$4,000.00 – $4,800.00", the total up to that much more.
+// The final price comes with the quote after the site visit.
+const rangeOn = (q) => estDoc(q) && Number(q.rangePct) > 0;
+const rangeOf = (pct, amt, sep = ' – ') => (Number(pct) > 0 ? `${money(amt)}${sep}${money(round2(amt * (1 + Number(pct) / 100)))}` : money(amt));
+const rangeText = (q, amt, sep) => rangeOf(rangeOn(q) ? q.rangePct : 0, amt, sep);
+// saved copies of a quote as the client saw it, kept for disputes: the estimate when they approved it (q.estimateCopy) and each send (q.versions, v1, v2…)
+function quoteSnap(q, stage) {
+  const keep = ['title', 'notes', 'options', 'chosenOption', 'recommended', 'optionTotals', 'taxRate', 'discountType', 'discountValue', 'discountName', 'subtotal', 'discount', 'tax', 'total', 'depositFee'];
+  const snap = JSON.parse(JSON.stringify(Object.fromEntries(keep.filter((k) => q[k] !== undefined).map((k) => [k, q[k]]))));
+  return { id: uid(), stage, at: new Date().toISOString(), number: q.number, clientId: q.clientId, address: q.address || '', ...snap, items: (q.items || []).map((i) => ({ ...i })), rangePct: stage === 'estimate' ? Number(q.rangePct) || 0 : 0 };
+}
+const snapKey = (v) => JSON.stringify([v.stage, v.title, (v.items || []).map((i) => [i.desc, i.details, i.qty, i.price, i.opt || '']), v.total, v.rangePct, v.chosenOption]);
+function addVersion(q, stage, extra = {}) { // a new version only when something the client sees changed
+  q.versions = q.versions || []; const v = { ...quoteSnap(q, stage), ...extra }; const last = q.versions[q.versions.length - 1];
+  if (last && snapKey(last) === snapKey(v)) { Object.assign(last, extra); return last; }
+  v.n = (last ? last.n : 0) + 1; q.versions.push(v); if (q.versions.length > 30) q.versions.splice(0, q.versions.length - 30); return v;
+}
+// the estimate is approved (by the client, or marked approved by the business): its saved copy, and a PDF of it in the quote's notes
+function estimateApproved(q, by) {
+  const c = findClient(q.clientId); const at = new Date().toISOString(); // the moment (estimateApprovedAt is only the day)
+  const v = addVersion(q, 'estimate', { approvedAt: at, approvedBy: by || (c && c.name) || '' }); q.estimateCopy = { ...v };
+  try {
+    const file = `signed-${token()}.pdf`; fs.writeFileSync(path.join(uploadDir(), file), signedPdf('estimate', q.estimateCopy)); q.estimateCopy.pdf = `/uploads/${file}`;
+    q.noteEntries = [{ id: uid(), text: `Approved estimate #${q.number} (as the client approved it)`, at: new Date().toISOString(), by: brandLib.brand().name || 'Worklio Pro', estCopy: true, links: [], files: [{ name: `approved-estimate-${String(q.number).replace(/[^\w-]+/g, '')}.pdf`, url: q.estimateCopy.pdf, type: 'pdf' }] }, ...(q.noteEntries || [])];
+  } catch (e) { console.error('Estimate copy failed:', e.message); }
+}
 const quoteItems = (q) => (hasOptions(q) ? (q.chosenOption ? optionItems(q, q.chosenOption) : []) : q.items || []).map(({ opt, ...i }) => ({ ...i }));
 function sumItems(doc, items, opt) {
   const subtotal = round2(items.reduce((s, i) => s + i.qty * i.price, 0));
@@ -2370,6 +2396,7 @@ app.post('/api/:col', (req, res, next) => {
     doc.number = doc.number || nextNumber('quotes'); doc.status = b.status || 'draft'; doc.token = token();
     doc.estimate = 'estimate' in b ? onOff(b.estimate) : !!db.company.quoteEstimateFirst; delete doc.estimateApprovedAt; // the default: App Settings → Send new quotes as estimates first
     doc.survey = doc.estimate && onOff(b.survey); delete doc.quoteSentAt; delete doc.surveyTaskId; // Site visit: only with Estimate
+    delete doc.estimateCopy; delete doc.versions; delete doc.changeNote; doc.rangePct = doc.estimate ? Math.min(100, Math.max(0, Math.round(Number(b.rangePct) || 0))) : 0; // a new quote (or a similar one) starts without saved copies
     if (!tenancy.has('quoteOptions')) { delete doc.options; delete doc.chosenOption; } // Good / Better / Best is a plan feature
     if (b.taxRate === undefined) doc.taxRate = db.company.taxRate; applyMemberDiscount(doc); computeTotals(doc); // a service plan member's discount
     const bad = optionsProblem(doc); if (bad) return res.status(400).json({ error: bad });
@@ -2381,7 +2408,7 @@ app.post('/api/:col', (req, res, next) => {
     if (b.taxRate === undefined) doc.taxRate = db.company.taxRate; applyMemberDiscount(doc); computeTotals(doc); // a service plan member's discount
   }
   if (col === 'jobs') {
-    delete doc.signature;
+    delete doc.signature; delete doc.wo; delete doc.woToken; delete doc.woSentAt;
     doc.number = nextNumber('jobs'); doc.status = b.status || 'scheduled'; doc.staffIds = b.staffIds || [];
     { const bad = cleanJobDays(doc); if (bad) return res.status(400).json({ error: bad }); }
     if (!doc.address && b.clientId) { const c = findClient(b.clientId); if (c) doc.address = c.address; }
@@ -2430,7 +2457,7 @@ app.put('/api/:col/:id', (req, res, next) => {
   (PAYMENT_FIELDS[col] || []).forEach((k) => delete upd[k]);
   if (col === 'invoices' && (upd.status === 'paid' || db.invoices[i].status === 'paid')) delete upd.status; // paid only by its payments
   if (col === 'invoices' && upd.depositCreditRemoved && !db.invoices[i].depositCreditRemoved) delete upd.depositCreditRemoved; // a collected deposit stays credited
-  const removeSignature = col === 'quotes' && upd.removeSignature === true; if (col === 'quotes') { delete upd.removeSignature; delete upd.signedAt; delete upd.signedName; delete upd.signature; delete upd.estimateApprovedAt; delete upd.quoteSentAt; delete upd.surveyTaskId; if ('estimate' in upd) upd.estimate = onOff(upd.estimate); if ('survey' in upd) upd.survey = onOff(upd.survey); } // signatures and estimate approvals only from the client's quote page
+  const removeSignature = col === 'quotes' && upd.removeSignature === true; if (col === 'quotes') { delete upd.removeSignature; delete upd.signedAt; delete upd.signedName; delete upd.signature; delete upd.estimateApprovedAt; delete upd.quoteSentAt; delete upd.surveyTaskId; delete upd.estimateCopy; delete upd.versions; if ('rangePct' in upd) upd.rangePct = Math.min(100, Math.max(0, Math.round(Number(upd.rangePct) || 0))); if ('changeNote' in upd) upd.changeNote = String(upd.changeNote || '').trim().slice(0, 2000); if ('estimate' in upd) upd.estimate = onOff(upd.estimate); if ('survey' in upd) upd.survey = onOff(upd.survey); } // signatures and estimate approvals only from the client's quote page
   if (DOC_NUM[col] && String((req.body || {}).number || '').trim() && req.body.number !== db[col][i].number) { // renumber a quote / invoice
     const r = customNumber(col, req.body.number, req.params.id); if (r.error) return res.status(400).json({ error: r.error }); upd.number = r.number;
   }
@@ -2460,7 +2487,7 @@ app.put('/api/:col/:id', (req, res, next) => {
     if (!removeSignature) return res.status(409).json({ error: 'Saving these changes removes the client’s signature. Reload the quote and confirm first.' });
     doc.signedAt = null; doc.signedName = null; delete doc.signature;
   }
-  if (col === 'jobs') { if (db.jobs[i].signature) doc.signature = db.jobs[i].signature; else delete doc.signature; } // signatures only via /signature
+  if (col === 'jobs') { if (db.jobs[i].signature) doc.signature = db.jobs[i].signature; else delete doc.signature; for (const k of ['wo', 'woToken', 'woSentAt']) { if (db.jobs[i][k]) doc[k] = db.jobs[i][k]; else delete doc[k]; } } // signatures only via /signature and /work-order
   if (col === 'jobs') { const bad = cleanJobDays(doc, db.jobs[i], upd); if (bad) return res.status(400).json({ error: bad }); }
   if (col === 'invoices' && upd.referralCreditRemoved === 'yes') detachReferralCredits(db.invoices[i]); if (col === 'invoices') delete doc.referralCreditRemoved;
   if (col === 'invoices') { // payments change only through their own endpoints, never through an invoice edit
@@ -2554,8 +2581,9 @@ function addSignedNote(kind, d) {
   } catch (e) { console.error('Signed copy failed:', e.message); }
 }
 // the signed copy: the business and its logo, who it's for, a box of the key facts, the line items (a job's show no prices), terms and the signature
-function signedPdf(kind, d) { // kind 'change order': d is the change order with its job (d.job)
-  const job = kind === 'job'; const q = kind === 'quote'; const chg = kind === 'change order'; const co = db.company; const c = findClient(d.clientId) || {}; const pdf = createPdf(); const L = 58; const R = 554; const BLUE = '#5b94c5'; const GRAY = '#f1f1f1'; const INK = '#111827';
+// kinds: quote, job, invoice; estimate (the saved copy as the client approved it); change order (d.job is its job); work order (the job with prices, signed before work starts)
+function signedPdf(kind, d) {
+  const job = kind === 'job'; const estK = kind === 'estimate'; const q = kind === 'quote' || estK; const chg = kind === 'change order'; const wo = kind === 'work order'; const co = db.company; const c = findClient(d.clientId) || {}; const pdf = createPdf(); const L = 58; const R = 554; const BLUE = '#5b94c5'; const GRAY = '#f1f1f1'; const INK = '#111827';
   const read = (u) => { const m = /^\/uploads\/([\w.-]+)$/.exec(u || ''); if (!m) return null; try { return fs.readFileSync(path.join(uploadDir(), m[1])); } catch (e) { return null; } };
   const on = (k) => kind !== 'invoice' || d[k] !== 'off'; let y = 72;
   pdf.text(L, y, co.name || '', { size: 15, bold: true, color: INK }); y += 18;
@@ -2566,7 +2594,7 @@ function signedPdf(kind, d) { // kind 'change order': d is the change order with
   const top = 150; let ly = top + 8; pdf.text(L, ly, 'RECIPIENT:', { size: 8.5, bold: true, color: INK }); ly += 22; pdf.text(L, ly, c.name || '', { size: 12, bold: true, color: INK }); ly += 16;
   const where = String(d.address || c.address || '').split(',').map((s) => s.trim()).filter(Boolean); const lines = where.length > 2 ? [where.slice(0, -2).join(', '), where.slice(-2).join(', ')] : where.length ? [where.join(', ')] : [];
   for (const t of lines) ly = pdf.para(L, ly, t, 240, { size: 10, color: INK, lineHeight: 14 });
-  const word = job ? 'Job' : q ? 'Quote' : chg ? 'Change Order' : 'Invoice'; const bx = 322; const facts = (chg ? [['Job', `#${d.job.number}`], ['Description', d.title || ''], ['Approved', niceDate(String(d.approvedAt || '').slice(0, 10))], ['Total', money(d.total || 0)]] : job ? [['Scheduled', d.date ? niceDate(d.date) : 'Not Scheduled'], ['Description', d.title || '']] : q ? [['Created', niceDate(String(d.createdAt || '').slice(0, 10))], ['Description', d.title || ''], ...(hasOptions(d) && d.chosenOption ? [['Option', shownOption(d).name]] : []), ['Total', money(d.total || 0)]] : [['Issued', niceDate(d.issueDate)], ['Due', niceDate(d.dueDate)], ['Description', d.subject || ''], ['Total', money(d.total || 0)]]).filter(([, v]) => v);
+  const word = job ? 'Job' : wo ? 'Work Order' : estK ? 'Estimate' : q ? 'Quote' : chg ? 'Change Order' : 'Invoice'; const bx = 322; const facts = (wo ? [['Job', `#${d.number}`], ['Scheduled', d.date ? niceDate(d.date) + (d.endDate && d.endDate > d.date ? ` to ${niceDate(d.endDate)}` : '') : 'Not Scheduled'], ['Description', d.title || ''], ['Total', money(d.total || 0)]] : estK ? [['Created', niceDate(String(d.at || '').slice(0, 10))], ['Description', d.title || ''], ...(hasOptions(d) && d.chosenOption ? [['Option', shownOption(d).name]] : []), ['Approved', niceDate(String(d.approvedAt || '').slice(0, 10))], ['Total', rangeOf(d.rangePct, d.total || 0, ' to ')]] : chg ? [['Job', `#${d.job.number}`], ['Description', d.title || ''], ['Approved', niceDate(String(d.approvedAt || '').slice(0, 10))], ['Total', money(d.total || 0)]] : job ? [['Scheduled', d.date ? niceDate(d.date) : 'Not Scheduled'], ['Description', d.title || '']] : q ? [['Created', niceDate(String(d.createdAt || '').slice(0, 10))], ['Description', d.title || ''], ...(hasOptions(d) && d.chosenOption ? [['Option', shownOption(d).name]] : []), ['Total', money(d.total || 0)]] : [['Issued', niceDate(d.issueDate)], ['Due', niceDate(d.dueDate)], ['Description', d.subject || ''], ['Total', money(d.total || 0)]]).filter(([, v]) => v);
   pdf.rect(bx, top, R - bx, 34, { fill: BLUE }); pdf.text(bx + 11, top + 22, `${word} #${d.number}`, { size: 14, bold: true, color: '#ffffff' }); pdf.rect(bx, top + 34, R - bx, facts.length * 21, { fill: GRAY });
   facts.forEach(([k, v], i) => { const ry = top + 34 + i * 21 + 15; pdf.text(bx + 11, ry, k, { size: 10, color: INK }); pdf.text(R - 11, ry, v.length > 28 ? v.slice(0, 27) + '…' : v, { size: 10, color: INK, align: 'right' }); });
   y = Math.max(ly, top + 34 + facts.length * 21) + 16;
@@ -2574,25 +2602,84 @@ function signedPdf(kind, d) { // kind 'change order': d is the change order with
   const qtyOn = on('showQty'); const unitOn = !job && on('showUnit'); const lineOn = !job && on('showLineTotals'); const cDesc = L + 140; const cQty = job ? R - 6 : unitOn || lineOn ? 400 : R - 6; const cUnit = 474; const descW = (cQty - 36) - cDesc;
   const head = () => { pdf.rect(L, y, R - L, 22, { fill: BLUE }); const o = { size: 10, bold: true, color: '#ffffff' }; pdf.text(L + 6, y + 15, 'Product/Service', o); pdf.text(cDesc + 6, y + 15, 'Description', o); if (qtyOn) pdf.text(cQty, y + 15, 'Qty.', { ...o, align: 'right' }); if (unitOn) pdf.text(cUnit, y + 15, 'Unit price', { ...o, align: 'right' }); if (lineOn) pdf.text(R - 6, y + 15, 'Total', { ...o, align: 'right' }); y += 22; };
   head();
-  for (const it of q && hasOptions(d) ? optionItems(d, shownOption(d).id) : d.items || []) { // a quote with options: the option signed for
+  for (const it of job ? jobLines(d).items : q && hasOptions(d) ? optionItems(d, shownOption(d).id) : d.items || []) { // a job: its lines and every approved change order's // a quote with options: the option signed for
     const need = Math.ceil(pdf.width(it.details || '', 10) / Math.max(40, descW)) + String(it.details || '').split('\n').length; if (y + 26 + need * 13 > 720) { pdf.addPage(); y = 64; head(); }
     const tp = y + 16; const ind = it.sub ? 12 : 0; const inc = included(it); const hd = heading(it); const a = pdf.para(L + 6 + ind, tp, it.desc, 128 - ind, { size: 10, color: INK, lineHeight: 13 }); let b = tp; for (const t of String(it.details || '').split('\n').filter((s) => s.trim())) b = pdf.para(cDesc + 6, b, t, descW, { size: 10, color: INK, lineHeight: 13 });
     if (qtyOn && !inc && !hd) pdf.text(cQty, tp, String(it.qty), { size: 10, color: INK, align: 'right' }); if (unitOn && !inc && !hd) pdf.text(cUnit, tp, money(it.price), { size: 10, color: INK, align: 'right' }); if (lineOn && !hd) pdf.text(R - 6, tp, inc ? 'Included' : money(round2(it.qty * it.price)), { size: 10, color: INK, align: 'right' }); y = Math.max(a, b) + 4;
   }
   pdf.line(L, y, R, y, { color: '#a3a3a3', w: 1.5 }); y += 8;
   if (!job) { // totals
-    const row = (k, v, bold) => { if (y + 20 > 720) { pdf.addPage(); y = 64; } pdf.text(R - 130, y + 12, k, { size: 10, bold, color: INK }); pdf.text(R - 6, y + 12, v, { size: 10, bold, color: INK, align: 'right' }); y += 18; };
-    row('Subtotal', money(d.subtotal || 0)); if (d.discount > 0) row(discLabel(d), '-' + money(d.discount)); if (Number(d.taxRate)) row(`Tax (${d.taxRate}%)`, money(d.tax || 0)); row('Total', money(d.total || 0), true);
-    if (q && d.depositFee > 0) row('Required deposit', money(d.depositFee)); if (!q && !chg) row('Balance due', money(withStatus(d).balanceDue ?? d.total), true);
+    const row = (k, v, bold) => { if (y + 20 > 720) { pdf.addPage(); y = 64; } pdf.text(String(v).length > 14 ? R - 230 : R - 130, y + 12, k, { size: 10, bold, color: INK }); pdf.text(R - 6, y + 12, v, { size: 10, bold, color: INK, align: 'right' }); y += 18; };
+    row('Subtotal', money(d.subtotal || 0)); if (d.discount > 0) row(discLabel(d), '-' + money(d.discount)); if (Number(d.taxRate)) row(`Tax (${d.taxRate}%)`, money(d.tax || 0)); row('Total', estK ? rangeOf(d.rangePct, d.total || 0, ' to ') : money(d.total || 0), true);
+    if (q && !estK && d.depositFee > 0) row('Required deposit', money(d.depositFee)); if (!q && !chg && !wo) row('Balance due', money(withStatus(d).balanceDue ?? d.total), true);
   }
   // terms on the left, the date and the signature on the right
-  const when = chg ? (d.signature ? d.signature.signedAt : d.approvedAt) : job ? d.signature && d.signature.signedAt : d.signedAt; const who = chg ? (d.signature ? d.signature.name : `Approved by ${d.approvedBy || co.name}, no signature`) : job ? d.signature && d.signature.name : d.signedName; y = Math.max(y + 34, job ? 560 : y + 34); if (y + 70 > 730) { pdf.addPage(); y = 90; }
-  const sigY = y; const terms = chg ? [d.reason ? `What changed and why: ${d.reason}` : '', `${d.signature ? 'By signing, the client approves' : 'The client approved'} this change to job #${d.job.number} and its price. It is added to the job and billed with it.`].filter(Boolean).join('\n\n') : job ? (d.signature && d.signature.statement) || '' : d.disclaimer || ''; const sx = 372; const line = sigY + 34;
+  const when = estK ? d.approvedAt : chg ? (d.signature ? d.signature.signedAt : d.approvedAt) : job || wo ? d.signature && d.signature.signedAt : d.signedAt; const who = estK ? `Approved by ${d.approvedBy || c.name || 'the client'}` : chg ? (d.signature ? d.signature.name : `Approved by ${d.approvedBy || co.name}, no signature`) : job || wo ? d.signature && d.signature.name : d.signedName; y = Math.max(y + 34, job ? 560 : y + 34); if (y + 70 > 730) { pdf.addPage(); y = 90; }
+  const sigY = y; const terms = estK ? `This is the estimate as it was approved${String(d.approvedBy || '').includes('(marked approved)') ? '' : ' online by the client'}. ${d.rangePct > 0 ? `Prices were shown as a range (up to ${d.rangePct}% more). ` : ''}An estimate isn't the final price: the quote sent after it sets the price the client signs for.` : chg ? [d.reason ? `What changed and why: ${d.reason}` : '', `${d.signature ? 'By signing, the client approves' : 'The client approved'} this change to job #${d.job.number} and its price. It is added to the job and billed with it.`].filter(Boolean).join('\n\n') : job || wo ? (d.signature && d.signature.statement) || '' : d.disclaimer || ''; const sx = 372; const line = sigY + 34;
   pdf.text(sx, line - 4, when ? niceDate(String(when).slice(0, 10)) : '', { size: 10, color: INK }); const pic = read(d.signature && d.signature.file); if (pic) pdf.image(pic, sx + 66, line - 46, R - sx - 66, 54, { alignBottom: true });
-  pdf.line(sx, line, R, line, { color: '#6b7280', w: 0.75 }); pdf.text(sx, line + 13, 'Date', { size: 8, color: INK }); pdf.text(sx + 84, line + 13, chg && !d.signature ? 'Approval' : 'Client Signature', { size: 8, color: INK }); if (who) pdf.text(chg && !d.signature ? sx : sx + 84, line + 24, who, { size: 8, color: INK }); // 'Approved by …, no signature' needs the whole width
+  pdf.line(sx, line, R, line, { color: '#6b7280', w: 0.75 }); pdf.text(sx, line + 13, 'Date', { size: 8, color: INK }); pdf.text(sx + 84, line + 13, (chg && !d.signature) || estK ? 'Approval' : 'Client Signature', { size: 8, color: INK }); if (who) pdf.text((chg && !d.signature) || estK ? sx : sx + 84, line + 24, who, { size: 8, color: INK }); // 'Approved by …, no signature' needs the whole width
   let ty = sigY; for (const para of String(terms).split('\n')) { if (ty > 730) { pdf.addPage(); ty = 64; } ty = para.trim() ? pdf.para(L, ty, para, 290, { size: 9, color: INK, lineHeight: 11.5 }) : ty + 6; }
   return pdf.toBuffer(`Signed ${word.toLowerCase()} ${d.number}`);
 }
+// ---- Work order: the client signs the job (the work, its price and dates) before work starts, on the team's device or online (/p/wo/<token>).
+// j.wo holds the signature; a PDF goes in the job's notes and the client is emailed a copy. Changes after that are change orders.
+const WO_STATEMENT = () => `I authorize ${db.company.name || 'the business'} to do the work described above at the price shown. Any change to this work needs a signed change order.`;
+const woLink = (j) => { if (!j.woToken) j.woToken = token(); return `${baseUrl()}/p/wo/${j.woToken}`; };
+const woPriced = (j) => { const l = jobLines(j); const t = computeTotals({ clientId: j.clientId, items: l.items.map((i) => ({ ...i })), taxRate: l.taxRate, discountType: l.discountType, discountValue: l.discountValue, discountName: l.discountName }); return { ...j, ...t }; };
+// the client's emailed copy of a signed job paper (the note's PDF attached)
+function jobCopyEmail(j, tpl, note) {
+  const c = findClient(j.clientId); const f = note && note.files && note.files[0]; if (!c || !c.email || !f) return;
+  try {
+    const content = fs.readFileSync(path.join(uploadDir(), path.basename(f.url)));
+    const m = inClientLang(c.id, () => renderEmail(tpl, { client_name: c.name || '', company_name: db.company.name, job_number: j.number || '', job_title: j.title || '', total: money(woPriced(j).total || 0), link: woLink(j) }));
+    notify({ clientId: c.id, channel: 'email', kind: 'job', refId: j.id, refNumber: j.number, subject: m.subject, body: m.body, html: m.html, attachments: [{ name: f.name, type: 'application/pdf', content }] }).then(() => save()).catch((e) => console.error('job copy email:', e.message));
+  } catch (e) { console.error('job copy email:', e.message); }
+}
+function woSign(j, { name, dataUrl, mode, collectedBy, via }) {
+  const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl || '');
+  if (!m || m[1].length < 200) return 'Please sign in the box first'; if (m[1].length > 2e6) return 'That signature image is too large';
+  const file = `sig-${token()}.png`; fs.writeFileSync(path.join(uploadDir(), file), Buffer.from(m[1], 'base64'));
+  j.wo = { file: `/uploads/${file}`, name, method: mode === 'typed' ? 'typed' : 'drawn', via, collectedBy: collectedBy || '', signedAt: new Date().toISOString(), statement: WO_STATEMENT() };
+  try {
+    const d = woPriced(j); const pdfFile = `signed-${token()}.pdf`; fs.writeFileSync(path.join(uploadDir(), pdfFile), signedPdf('work order', { ...d, signature: j.wo })); j.wo.pdf = `/uploads/${pdfFile}`; j.wo.total = d.total;
+    j.noteEntries = [{ id: uid(), text: `Signed work order for job #${j.number}`, at: new Date().toISOString(), by: brandLib.brand().name || 'Worklio Pro', woSigned: true, links: [], files: [{ name: `signed-work-order-${String(j.number).replace(/[^\w-]+/g, '')}.pdf`, url: j.wo.pdf, type: 'pdf' }] }, ...(j.noteEntries || [])];
+    jobCopyEmail(j, 'workOrderSigned', j.noteEntries[0]);
+  } catch (e) { console.error('Work order copy failed:', e.message); }
+  return '';
+}
+app.post('/api/jobs/:id/work-order/signature', (req, res) => {
+  const j = db.jobs.find((x) => x.id === req.params.id); if (!j) return res.status(404).json({ error: 'Job not found' });
+  if (j.wo) return res.status(400).json({ error: 'The work order is already signed' });
+  const name = String((req.body || {}).name || '').trim().slice(0, 100); if (!name) return res.status(400).json({ error: 'Enter the name of the person signing' });
+  const u = currentUser(req); const bad = woSign(j, { name, dataUrl: (req.body || {}).dataUrl, mode: 'drawn', collectedBy: u ? u.name : '', via: 'device' }); if (bad) return res.status(400).json({ error: bad });
+  save(); res.status(201).json(isMemberReq(req) ? jobForMember(j) : j);
+});
+app.post('/api/jobs/:id/work-order/send', async (req, res) => {
+  const j = db.jobs.find((x) => x.id === req.params.id); if (!j) return res.status(404).json({ error: 'Job not found' }); if (j.wo) return res.status(400).json({ error: 'The work order is already signed' });
+  const c = findClient(j.clientId); if (!c || !c.email) return res.status(400).json({ error: 'Add the client’s email address first' });
+  const m = inClientLang(c.id, () => renderEmail('workOrder', { client_name: c.name || '', company_name: db.company.name, job_number: j.number || '', job_title: j.title || '', total: money(woPriced(j).total || 0), link: woLink(j) }));
+  const r = await notify({ clientId: c.id, channel: 'email', kind: 'job', refId: j.id, refNumber: j.number, subject: m.subject, body: m.body, html: m.html });
+  if (r && r.status === 'failed') { save(); return res.status(502).json({ error: r.detail || 'The email didn’t go out. Try again.' }); }
+  j.woSentAt = new Date().toISOString(); save(); res.json(isMemberReq(req) ? jobForMember(j) : j);
+});
+app.use('/p/wo', express.urlencoded({ extended: false })); // the client's Sign form
+function woPage(j, msg = '') {
+  const d = woPriced(j); const s = j.wo;
+  const st = s ? `<p><span class="badge paid">${tx('Signed')}</span> ${tx('Signed by {name} on {date}', { name: esc(s.name), date: esc(niceDate(s.signedAt.slice(0, 10))) })}</p><img src="${esc(s.file)}" alt="" style="max-height:80px">${s.pdf ? `<p><a href="${esc(s.pdf)}" target="_blank" rel="noopener">${tx('Download the signed copy (PDF)')}</a></p>` : ''}`
+    : `<p class="muted">${esc(WO_STATEMENT())}</p>` + quoteSignBox(j, { action: `/p/wo/${esc(j.woToken)}/sign`, title: tx('Approve the work'), intro: tx('Sign below to approve this work and its price before we start.'), button: tx('Sign and approve') });
+  return shell(tx('Work order {number}', { number: j.number }), `${msg ? `<p class="badge paid" role="status">${esc(msg)}</p>` : ''}<h1>${tx('Work order {number}', { number: esc(j.number) })}${j.title ? ` · ${esc(j.title)}` : ''}</h1>
+<p class="muted">${j.date ? esc(niceDate(j.date)) + (j.endDate && j.endDate > j.date ? ` – ${esc(niceDate(j.endDate))}` : '') : ''}${j.address ? `<br>${esc(j.address)}` : ''}</p>${j.description ? `<p style="white-space:pre-line">${esc(j.description)}</p>` : ''}${itemsTable(d)}${st}`);
+}
+const woByToken = (t) => db.jobs.find((x) => x.woToken && x.woToken === t);
+app.get('/p/wo/:token', (req, res) => { const j = woByToken(req.params.token); if (!j) return res.status(404).send(shell(tx('Not found'), `<h1>${tx('Not found')}</h1>`)); res.send(woPage(j, req.query.done === 'signed' ? tx('Thank you. The work is approved.') : '')); });
+app.post('/p/wo/:token/sign', (req, res) => {
+  const j = woByToken(req.params.token); if (!j) return res.status(404).send('Not found'); if (j.wo) return res.redirect(`/p/wo/${j.woToken}`);
+  const name = String((req.body || {}).fullName || '').trim().slice(0, 100);
+  const bad = !name ? 'Please type your full name.' : woSign(j, { name, dataUrl: req.body.dataUrl, mode: req.body.sigMode, via: 'online' }); if (bad) return res.status(400).send(woPage(j, tx(bad)));
+  save(); const c = findClient(j.clientId); const body = `${c ? c.name : 'A client'} signed the work order for job ${j.number}${j.title ? ` (${j.title})` : ''}`;
+  pushTo(usersWhoCan('jobs.edit'), 'quoteApproved', { title: 'Work order signed', body, url: `/jobs/edit?id=${j.id}` }); slackSend('quoteApproved', `*Work order signed:* ${slack.esc(body)}`, { label: 'Open job', url: `${baseUrl()}/jobs/edit?id=${j.id}` });
+  res.redirect(`/p/wo/${j.woToken}?done=signed`);
+});
 // ---- client signature on a job: collected on the team member's device (finger or mouse), saved as a PNG ----
 // Anyone who can open the job may collect it; only managers / admins can remove one (so a technician can't overwrite it).
 app.post('/api/jobs/:id/signature', (req, res) => {
@@ -2607,7 +2694,7 @@ app.post('/api/jobs/:id/signature', (req, res) => {
   fs.writeFileSync(path.join(uploadDir(), file), Buffer.from(m[1], 'base64'));
   removeSignatureFile(j);
   j.signature = { file: `/uploads/${file}`, name, statement: String(b.statement || '').trim().slice(0, 300), signedAt: new Date().toISOString(), collectedBy: u ? u.name : '' };
-  addSignedNote('job', j); save(); res.status(201).json(isMemberReq(req) ? jobForMember(j) : j);
+  addSignedNote('job', j); jobCopyEmail(j, 'jobSignedOff', j.noteEntries[0]); save(); res.status(201).json(isMemberReq(req) ? jobForMember(j) : j);
 });
 app.delete('/api/jobs/:id/signature', (req, res) => {
   const j = db.jobs.find((x) => x.id === req.params.id); if (!j) return res.status(404).json({ error: 'Job not found' });
@@ -2670,6 +2757,24 @@ const EMAIL_TEMPLATES = {
     subject: 'Change order {{co_number}} for job {{job_number}} from {{company_name}}',
     body: '# Please approve a change to your job\n\nHello {{client_name}},\n\nWe have a change to job {{job_number}} ({{job_title}}) for you to approve: **{{co_title}}**, {{total}}.\n\nPlease review it and sign to approve it before we do the work. It will be added to your job and billed with it.\n\n[Review and sign]({{link}})\n\nIf you have any questions, please get in touch with us at {{company_email}}.\n\n{{company_name}}',
     vars: { client_name: 'Client name', company_name: 'Your business name', company_email: 'Your business email', co_number: 'Change order number', co_title: 'Change order title', job_number: 'Job number', job_title: 'Job title', total: 'Change order total', link: 'Link to review and sign' },
+  },
+  workOrder: { // the job, sent for the client to sign before work starts
+    label: 'Work order', description: 'Sent when you email a job’s work order for the client to sign before work starts.',
+    subject: 'Please approve the work for job {{job_number}} with {{company_name}}',
+    body: '# Please approve the work\n\nHello {{client_name}},\n\nBefore we start job {{job_number}} ({{job_title}}), please review the work and its price, {{total}}, and sign to approve it.\n\n[Review and sign]({{link}})\n\nIf you have any questions, please get in touch with us at {{company_email}}.\n\n{{company_name}}',
+    vars: { client_name: 'Client name', company_name: 'Your business name', company_email: 'Your business email', job_number: 'Job number', job_title: 'Job title', total: 'Job total', link: 'Link to review and sign' },
+  },
+  workOrderSigned: { // the client's copy of the signed work order (PDF attached)
+    label: 'Signed work order', description: 'Sent to the client with a PDF copy when they sign a work order.',
+    subject: 'Your signed work order for job {{job_number}}',
+    body: '# Thank you for approving the work\n\nHello {{client_name}},\n\nThank you for approving job {{job_number}} ({{job_title}}) for {{total}}. A signed copy is attached for your records. If anything changes once we start, we’ll ask you to approve a change order first.\n\nIf you have any questions, please get in touch with us at {{company_email}}.\n\n{{company_name}}',
+    vars: { client_name: 'Client name', company_name: 'Your business name', company_email: 'Your business email', job_number: 'Job number', job_title: 'Job title', total: 'Job total', link: 'Link to the work order' },
+  },
+  jobSignedOff: { // the client's copy when they sign off finished work (PDF attached)
+    label: 'Job signed off', description: 'Sent to the client with a PDF copy when they sign that the work is done.',
+    subject: 'Your signed copy: job {{job_number}} is complete',
+    body: '# Thank you\n\nHello {{client_name}},\n\nThank you for signing off job {{job_number}} ({{job_title}}). A signed copy is attached for your records.\n\nIf you have any questions, please get in touch with us at {{company_email}}.\n\n{{company_name}}',
+    vars: { client_name: 'Client name', company_name: 'Your business name', company_email: 'Your business email', job_number: 'Job number', job_title: 'Job title', total: 'Job total', link: 'Link' },
   },
   changeOrderSigned: { // the client's copy once they sign a change order (the signed PDF is attached)
     label: 'Signed change order', description: 'Sent to the client with a PDF copy when they sign a change order.',
@@ -2787,6 +2892,7 @@ app.post('/api/quotes/:id/send', async (req, res) => {
   }
   if (q.status === 'draft') q.status = 'sent'; if (!q.sentAt) q.sentAt = iso(new Date());
   q.lastSentAt = new Date().toISOString(); // sending again after the client asked for changes answers the request (the app's "Changes requested" clears)
+  if (results.some((r) => r && r.status !== 'failed')) addVersion(q, est ? 'estimate' : 'quote', { sentAt: q.lastSentAt }); // what the client was sent
   save(); res.json({ quote: q, results });
 });
 
@@ -2796,7 +2902,8 @@ app.post('/api/quotes/:id/approve', (req, res) => {
   const q = db.quotes.find((x) => x.id === req.params.id);
   if (!q) return res.status(404).json({ error: 'Not found' });
   const approve = req.body.status !== 'declined'; const pick = pickOption(q, req.body.option); if (approve && pick === false) return res.status(400).json({ error: 'Choose the option the client picked' });
-  q.status = approve ? 'approved' : 'declined'; q.respondedAt = iso(new Date()); if (approve && pick) { q.chosenOption = pick; computeTotals(q); } save(); res.json(q);
+  const est = approve && estStage(q); // an estimate marked approved by the business: its copy is kept like a client's approval
+  q.status = approve ? 'approved' : 'declined'; q.respondedAt = iso(new Date()); if (approve && pick) { q.chosenOption = pick; computeTotals(q); } if (est) { q.estimateApprovedAt = q.respondedAt; const u = currentUser(req); estimateApproved(q, `${u ? u.name : 'The business'} (marked approved)`); } save(); res.json(q);
 });
 
 // a signature collected on the team member's phone: signing accepts the quote, so a draft or sent one is approved too (the same record as the client's own page).
@@ -3219,7 +3326,7 @@ function docPdfIn(kind, d) {
   for (const part of parts) {
     const dd = part.doc;
     if (part.opt) {
-      room(80); y += 30; pdf.text(L, y, `${part.chosen ? tx('Chosen option: ') : ''}${part.opt.name}${part.recommended ? `  (${tx('Recommended')})` : ''}`, { size: 13, bold: true }); if (parts.length > 1) pdf.text(R, y, money(dd.total || 0), { size: 13, bold: true, align: 'right' }); y += 4;
+      room(80); y += 30; pdf.text(L, y, `${part.chosen ? tx('Chosen option: ') : ''}${part.opt.name}${part.recommended ? `  (${tx('Recommended')})` : ''}`, { size: 13, bold: true }); if (parts.length > 1) pdf.text(R, y, rangeText(d, dd.total || 0, ' to '), { size: 13, bold: true, align: 'right' }); y += 4;
       if (part.opt.desc) for (const t of part.opt.desc.split('\n').filter((t) => t.trim())) y = pdf.para(L, y + 12, t, R - L, { size: 10, color: gray, lineHeight: 13 }) - 12;
     }
     y += 14; head();
@@ -3238,7 +3345,7 @@ function docPdfIn(kind, d) {
     row(tx('Subtotal'), money(dd.subtotal || 0));
     if (dd.discount > 0) row(discLabel(dd), '-' + money(dd.discount));
     if (Number(dd.taxRate)) row(`${Number(dd.taxRate) === Number(co.taxRate) && co.taxName ? co.taxName : tx('Tax')} (${dd.taxRate}%)`, money(dd.tax || 0));
-    row(part.opt && parts.length > 1 ? tx('{name} total', { name: part.opt.name }) : tx('Total'), money(dd.total || 0), true);
+    row(part.opt && parts.length > 1 ? tx('{name} total', { name: part.opt.name }) : tx('Total'), q ? rangeText(d, dd.total || 0, ' to ') : money(dd.total || 0), true);
     if (q && !est && dd.depositFee > 0) row(`${tx('Required deposit')}${depLabel(dd)}`, money(dd.depositFee));
   }
   if (!q) {
@@ -3969,6 +4076,13 @@ const QV_CSS = `.qv-biz{position:sticky;top:0;z-index:40;display:flex;align-item
  .qv-n{padding:12px 12px 12px 0;border-bottom:1px solid #d5dbdf;font-size:15px}.qv-n+.qv-n{border-left:1px solid #d5dbdf}.qv-l{display:block;font-weight:700;text-transform:uppercase;font-size:14px;margin-bottom:6px}
  .qv-tot{display:block;margin-top:36px}.qv-tot>div:first-child{display:none}.qv-tot>div:last-child{border:0}.qv-row{padding:14px 0;font-size:15px}
  .qv-pdf-m{display:flex;margin-top:24px}}`;
+// on the quote (after an approved estimate): what the estimate said, what the quote says, and the business's note on why it changed
+function estCompare(q, word) {
+  const e = q.estimateCopy; if (word || !e) return ''; const diff = round2((q.total || 0) - (e.total || 0));
+  if (Math.abs(diff) < 0.005 && !q.changeNote) return '';
+  return `<div class="qv-note qv-cmp"><strong>${tx('Approved estimate ({date}): {amount}', { date: esc(niceDate(String(e.approvedAt || e.at).slice(0, 10))), amount: rangeOf(e.rangePct, e.total || 0) })}</strong><br>${tx('This quote: {amount}', { amount: money(q.total || 0) })}${Math.abs(diff) >= 0.005 && !(e.rangePct > 0) ? ` (${diff > 0 ? '+' : ''}${money(diff)})` : ''}
+${q.changeNote ? `<p style="margin:8px 0 0;white-space:pre-line"><strong>${q.survey ? tx('What changed after the site visit:') : tx('What changed since the estimate:')}</strong> ${esc(q.changeNote)}</p>` : ''}</div>`;
+}
 function quoteView(q, c, { signed, depositSection, sent, preview, business, booked }) {
   const co = db.company; const brand = accentColor() || brandLib.siteColor('--brand') || DEFAULT_BUTTON; // the same color as the client hub
   const hub = tenancy.has('clientPortal') && c && c.portalToken ? `/client-portal?c=${encodeURIComponent(c.portalToken)}` : '';
@@ -3986,13 +4100,13 @@ function quoteView(q, c, { signed, depositSection, sent, preview, business, book
   const taxName = Number(q.taxRate) === Number(co.taxRate) && co.taxName ? co.taxName : tx('Tax');
   const row = (l, v) => `<div class="qv-row"><span>${l}</span><span>${v}</span></div>`;
   const totalsOf = (d) => row(tx('Subtotal'), money(d.subtotal)) + (d.discount > 0 ? row(esc(discLabel(d)), '−' + money(d.discount)) : '')
-    + (Number(d.taxRate) ? row(`${esc(taxName)} (${d.taxRate}%)`, money(d.tax)) : '') + row(tx('Total'), money(d.total))
+    + (Number(d.taxRate) ? row(`${esc(taxName)} (${d.taxRate}%)`, money(d.tax)) : '') + row(tx('Total'), rangeText(q, d.total))
     + (!word && d.depositFee > 0 ? row(`${tx('Deposit')}${depLabel(d)}`, money(d.depositFee)) : '');
   const itemsOf = (d) => (d.items || []).map((i) => `<div class="qv-it${i.sub ? ' sub' : ''}"><div class="qv-it-d"><strong>${esc(i.desc)}</strong>${i.details ? `<p>${esc(i.details)}</p>` : ''}</div>
 ${heading(i) ? '<div class="qv-n"></div><div class="qv-n"></div><div class="qv-n"></div>' : included(i) ? `<div class="qv-n"></div><div class="qv-n"></div><div class="qv-n"><span class="qv-l">${tx('Total')}</span>${tx('Included')}</div>` : `<div class="qv-n"><span class="qv-l">${tx('Qty.')}</span>${esc(String(i.qty))}</div><div class="qv-n"><span class="qv-l">${tx('Unit price')}</span>${money(i.price)}</div><div class="qv-n"><span class="qv-l">${tx('Total')}</span>${money(i.qty * i.price)}</div>`}</div>`).join('');
   // Good / Better / Best: each option with its own items and totals until one is chosen; then only that one
   const parts = quoteParts(q); const many = parts.length > 1;
-  const optHead = (p) => (p.opt ? `<div class="qv-oh" id="opt-${esc(p.opt.id)}"><div class="qv-on"><h2>${p.chosen ? tx('Your choice: ') : ''}${esc(p.opt.name)}</h2>${p.recommended ? `<span class="qv-rec">${tx('Recommended')}</span>` : ''}${many ? `<span class="qv-ot">${money(p.doc.total)}</span>` : ''}</div>${p.opt.desc ? `<p>${esc(p.opt.desc)}</p>` : ''}</div>` : '');
+  const optHead = (p) => (p.opt ? `<div class="qv-oh" id="opt-${esc(p.opt.id)}"><div class="qv-on"><h2>${p.chosen ? tx('Your choice: ') : ''}${esc(p.opt.name)}</h2>${p.recommended ? `<span class="qv-rec">${tx('Recommended')}</span>` : ''}${many ? `<span class="qv-ot">${rangeText(q, p.doc.total)}</span>` : ''}</div>${p.opt.desc ? `<p>${esc(p.opt.desc)}</p>` : ''}</div>` : '');
   const body = parts.map((p) => `<section class="${p.opt ? 'qv-opt' : ''}${p.recommended ? ' rec' : ''}">${optHead(p)}<div class="qv-items"><div class="qv-ih"><span>${tx('Product / Service')}</span><span>${tx('Qty.')}</span><span>${tx('Unit Price')}</span><span>${tx('Total')}</span></div>${itemsOf(p.doc)}</div>
 <div class="qv-tot"><div></div><div>${totalsOf(p.doc)}</div></div></section>`).join('');
   // options with deposits of their own: the deposit depends on the one they pick (each option's is under its total)
@@ -4002,8 +4116,8 @@ ${heading(i) ? '<div class="qv-n"></div><div class="qv-n"></div><div class="qv-n
     : open && anyDep ? `<div class="qv-note">${q.depositPaidAt ? `<strong>${tx('Deposit paid: {amount}.', { amount: money(q.depositPaidAmount ?? q.depositFee) })}</strong> ${tx('This quote was updated. After you approve, you’ll sign it again.')}` : `<strong>${tx('Deposit: {what}.', { what: depWhat })}</strong> ${tx('After you approve, you’ll sign the quote and pay this deposit before work begins.')}`}</div>` : '';
   const payDep = (d) => !est && d.depositFee > 0 && !q.depositPaidAt; // a deposit still to pay: the Approve button says so
   const actions = svy ? surveyBox(q, booked) : open ? `${sent ? `<div class="qv-msg" role="status">${(est ? tx('Thanks! We got your changes and will send you an updated estimate.') : tx('Thanks! We got your changes and will send you an updated quote.'))}</div>` : ''}
-${many ? `<div class="qv-note"><strong>${tx('Choose an option to approve.')}</strong></div>${parts.map((p) => `<form method="post" action="/p/quote/${esc(q.token)}/respond"><input type="hidden" name="opt" value="${esc(p.opt.id)}"><button class="qv-btn${p.recommended ? ' primary' : ''} qv-obtn" name="r" value="approved">${payDep(p.doc) ? tx('Approve {name} and pay deposit', { name: esc(p.opt.name) }) : tx('Approve {name}', { name: esc(p.opt.name) })} · ${money(p.doc.total)}</button></form>`).join('')}`
-  : `<form method="post" action="/p/quote/${esc(q.token)}/respond"><button class="qv-btn primary" name="r" value="approved">${est ? tx('Approve estimate') : payDep(q) ? tx('Approve and pay deposit') : tx('Approve')}</button></form>`}
+${many ? `<div class="qv-note"><strong>${tx('Choose an option to approve.')}</strong></div>${parts.map((p) => `<form method="post" action="/p/quote/${esc(q.token)}/respond"><input type="hidden" name="opt" value="${esc(p.opt.id)}"><button class="qv-btn${p.recommended ? ' primary' : ''} qv-obtn" name="r" value="approved">${payDep(p.doc) ? tx('Approve {name} and pay deposit', { name: esc(p.opt.name) }) : (est && q.survey ? tx('Choose {name} and book a site visit', { name: esc(p.opt.name) }) : tx('Approve {name}', { name: esc(p.opt.name) }))} · ${rangeText(q, p.doc.total)}</button></form>`).join('')}`
+  : `<form method="post" action="/p/quote/${esc(q.token)}/respond"><button class="qv-btn primary" name="r" value="approved">${est ? (q.survey ? tx('Book a site visit') : tx('Approve estimate')) : payDep(q) ? tx('Approve and pay deposit') : tx('Approve')}</button></form>`}
 <details class="qv-chg"><summary class="qv-btn">${tx('Request Changes')}</summary><form method="post" action="/p/quote/${esc(q.token)}/changes">
 <label for="qvChg">${tx('What would you like changed?')}</label><textarea id="qvChg" name="message" required maxlength="2000"></textarea><button class="qv-btn primary">${tx('Send to {name}', { name: esc(co.name) })}</button></form></details>
 ${chg ? `<div class="qv-note">${tx('You asked for changes on {date}:', { date: esc(niceDate(q.changesRequestedAt.slice(0, 10))) })} “${esc(q.changeRequests[q.changeRequests.length - 1].text)}”</div>` : ''}${depositNote}
@@ -4016,7 +4130,7 @@ ${chg ? `<div class="qv-note">${tx('You asked for changes on {date}:', { date: e
 <div class="qv-hd"><div class="qv-hd-l"><div class="qv-no"><span>${word ? tx('Estimate #{number}', { number: esc(q.number) }) : tx('Quote #{number}', { number: esc(q.number) })}</span><span class="qv-pill ${tone}">${esc(label)}</span></div>
 <div class="qv-who">${esc((c && c.name) || '')}</div>${addr ? `<div>${esc(addr)}</div>` : ''}${c && c.phone ? `<a class="qv-ph" href="tel:${esc(c.phone)}">${esc(c.phone)}</a>` : ''}</div>
 <div class="qv-hd-r"><span>${tx('Sent on')}</span><span>${esc(niceDate(q.sentAt || String(q.createdAt || '').slice(0, 10)))}</span></div></div>
-${many ? `<p class="qv-pick">${tx('{n} options: choose the one that suits you.', { n: parts.length })}</p>` : ''}${body}
+${rangeOn(q) ? `<div class="qv-note"><strong>${tx('This estimate is a price range.')}</strong> ${q.survey ? tx('The final price is set after the site visit, on your quote.') : tx('The final price is set on your quote.')}</div>` : ''}${estCompare(q, word)}${many ? `<p class="qv-pick">${tx('{n} options: choose the one that suits you.', { n: parts.length })}</p>` : ''}${body}
 ${q.notes ? `<div class="qv-text">${esc(q.notes)}</div>` : ''}${q.disclaimer ? `<div class="qv-text">${esc(q.disclaimer)}</div>` : ''}
 <a class="qv-btn qv-pdf-m" href="${pdf}">${tx('Download PDF')}</a></div></details></div>
 ${act.trim() ? `<div class="qv-act">${act}</div>` : ''}</div></main></div></div>${poweredBy.html('quote', tx)}<script src="/phone.js?v=2" defer></script></body></html>`;
@@ -4342,10 +4456,10 @@ app.post('/p/quote/:token/respond', (req, res) => {
     const approve = req.body.r !== 'declined'; const pick = pickOption(q, req.body.opt); if (approve && pick === false) return res.redirect(`/p/quote/${q.token}`); // each option has its own Approve button
     const est = estStage(q); // approving the estimate makes it the quote, approved, to sign next
     if (approve && est && q.survey) { // Site visit: they book the visit next; the quote comes after it
-      q.estimateApprovedAt = iso(new Date()); q.respondedAt = q.estimateApprovedAt; if (pick) { q.chosenOption = pick; computeTotals(q); } save(); tellBusinessQuote(q, 'approved', true);
+      q.estimateApprovedAt = iso(new Date()); q.respondedAt = q.estimateApprovedAt; if (pick) { q.chosenOption = pick; computeTotals(q); } estimateApproved(q); save(); tellBusinessQuote(q, 'approved', true);
       return res.redirect(`/p/quote/${q.token}`);
     }
-    q.status = approve ? 'approved' : 'declined'; q.respondedAt = iso(new Date()); if (approve && est) q.estimateApprovedAt = q.respondedAt; if (approve && pick) { q.chosenOption = pick; computeTotals(q); } save(); tellBusinessQuote(q, q.status, est);
+    q.status = approve ? 'approved' : 'declined'; q.respondedAt = iso(new Date()); if (approve && est) q.estimateApprovedAt = q.respondedAt; if (approve && pick) { q.chosenOption = pick; computeTotals(q); } if (approve && est) estimateApproved(q); save(); tellBusinessQuote(q, q.status, est);
   }
   res.redirect(`/p/quote/${q.token}`);
 });

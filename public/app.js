@@ -2648,15 +2648,41 @@ const qSvyTask = (q) => (q.surveyTaskId && byId(D.tasks || [], q.surveyTaskId)) 
 const qSvyDone = (q) => { const t = qSvyTask(q); return !!t && `${t.date} ${t.startTime}` < `${ymd(new Date())} ${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`; };
 const qSvyText = (q) => { const t = qSvyTask(q); const s = t && byId(D.staff, (t.staffIds || [])[0]);
   return q.quoteSentAt ? 'Done, quote sent' : t ? `${fmtDate(t.date)}, ${fmtTime(t.startTime)}${s ? ` with ${esc(s.name)}` : ''}` : !q.estimate ? 'Not booked' : q.estimateApprovedAt ? 'Waiting for the client to book' : 'Booked after the estimate is approved'; };
+/* ===== saved copies of a quote, kept for disputes: the estimate as the client approved it (estimateCopy, with its PDF in the notes) and every
+   version sent (v1, v2…). "Why it changed" is shown to the client next to the approved estimate on the quote page. ===== */
+const rangeTxt = (pct, amt) => (Number(pct) > 0 ? `${money(amt)} – ${money(round2(amt * (1 + Number(pct) / 100)))}` : money(amt));
+function verCard(q) {
+  const e = q.estimateCopy; const V = (q.versions || []).slice().reverse(); if (!q.id || (!e && !V.length)) return '';
+  const diff = e ? round2((q.total || 0) - (e.total || 0)) : 0;
+  return `<div class="qcard ver-c"><div class="qcard-h"><h2>Estimate &amp; versions</h2></div>
+${e ? `<div class="ver-est"><div class="ver-top"><strong>Approved estimate</strong><strong>${rangeTxt(e.rangePct, e.total || 0)}</strong></div><div class="muted sm">${fmtStamp(e.approvedAt)}${e.approvedBy ? ` · ${esc(e.approvedBy)}` : ''}</div>
+<div class="sm ver-now">Quote now: <strong>${money(q.total || 0)}</strong> ${Math.abs(diff) >= 0.005 ? `<span class="ver-diff">(${diff > 0 ? '+' : '−'}${money(Math.abs(diff))})</span>` : '<span class="muted">(same)</span>'}</div>
+<div class="ver-links"><button type="button" class="link-btn" data-act="verOpen" data-id="${q.id}" data-v="est">View estimate</button>${e.pdf ? `<a href="${esc(e.pdf)}" target="_blank" rel="noopener">PDF</a>` : ''}</div>
+<label class="ver-note"><span class="sm"><strong>Why it changed</strong> <span class="muted">· the client sees this on the quote</span></span><textarea name="changeNote" rows="3" maxlength="2000" data-q="${q.id}" placeholder="e.g. The subfloor needs replacing; we found water damage at the site visit.">${esc(q.changeNote || '')}</textarea></label></div>` : ''}
+${V.length ? `<div class="ver-list"><div class="muted sm">Every version the client was sent</div>${V.map((v) => `<button type="button" class="ver-row" data-act="verOpen" data-id="${q.id}" data-v="${v.id}"><span>v${v.n} · ${v.stage === 'estimate' ? 'Estimate' : 'Quote'} ${v.approvedAt && !v.sentAt ? 'approved' : 'sent'}<small class="muted">${fmtStamp(v.sentAt || v.approvedAt || v.at)}</small></span><span>${rangeTxt(v.rangePct, v.total || 0)}</span></button>`).join('')}</div>` : ''}</div>`;
+}
+// "Why it changed": saved when the box loses focus
+document.addEventListener('change', async (e) => { const t = e.target; if (!t.matches('textarea[name=changeNote][data-q]')) return; try { await api('PUT', '/api/quotes/' + t.dataset.q, { changeNote: t.value }); const q = byId(D.quotes, t.dataset.q); if (q) q.changeNote = t.value; toast('Saved. The client sees it on the quote.'); } catch (x) { toast(x.message, true); } });
+A.verOpen = (d) => {
+  const q = byId(D.quotes, d.id); const v = d.v === 'est' ? q.estimateCopy : (q.versions || []).find((x) => x.id === d.v); if (!v) return;
+  const opts = v.options && v.options.length >= 2 ? v.options : null; const chosen = opts && v.chosenOption;
+  const items = (v.items || []).filter((i) => !chosen || !i.opt || i.opt === v.chosenOption);
+  const optName = (id) => ((opts || []).find((o) => o.id === id) || {}).name || '';
+  const title = v === q.estimateCopy ? `Approved estimate · ${q.number}` : `${q.number} · v${v.n} (${v.stage === 'estimate' ? 'estimate' : 'quote'})`;
+  modal(title, `<p class="muted" style="margin-top:0">${v.approvedAt ? `Approved ${fmtStamp(v.approvedAt)}${v.approvedBy ? ` by ${esc(v.approvedBy)}` : ''}` : `Sent ${fmtStamp(v.sentAt || v.at)}`}. This copy can’t be changed.</p>${v.title ? `<h3 style="margin:0 0 8px">${esc(v.title)}</h3>` : ''}
+<table class="vitems"><thead><tr><th>Line Item</th><th class="r">Qty</th><th class="r">Unit Price</th><th class="r">Total</th></tr></thead><tbody>${items.map((i) => `<tr><td>${opts && i.opt && !chosen ? `<span class="muted sm">${esc(optName(i.opt))} · </span>` : ''}${esc(i.desc)}${i.details ? `<div class="muted sm" style="white-space:pre-line">${esc(i.details)}</div>` : ''}</td><td class="r">${esc(i.qty)}</td><td class="r">${money(i.price)}</td><td class="r">${money(i.qty * i.price)}</td></tr>`).join('')}</tbody></table>
+<div class="vtotals">${vt('Subtotal', money(v.subtotal || 0))}${v.discount ? vt('Discount', '−' + money(v.discount)) : ''}${vt(`Tax (${v.taxRate || 0}%)`, money(v.tax || 0))}${vt('<strong>Total</strong>', `<strong>${rangeTxt(v.rangePct, v.total || 0)}</strong>`)}</div>${opts && !chosen ? '<p class="muted sm">No option was chosen yet; totals are for the recommended one.</p>' : ''}${v.pdf ? `<p><a href="${esc(v.pdf)}" target="_blank" rel="noopener">Download PDF</a></p>` : ''}`, true);
+};
 // the title, an "i" that shows what the switch does, and the switch on the right of the same row (Estimate, and Site visit under it)
 const estInfoBtn = (id, what) => `<button type="button" class="est-i" aria-expanded="false" aria-controls="${id}" aria-label="What is ${what}?" title="What is this?" onclick="var p=document.getElementById(this.getAttribute('aria-controls'));p.hidden=!p.hidden;this.setAttribute('aria-expanded',!p.hidden)">i</button>`;
 const estCard = (d, live) => { const done = !!d.estimateApprovedAt;
   return `<div class="qcard est-c"${live ? ` data-est-live="${esc(d.id)}"` : ''}><div class="est-h"><h3>Estimate</h3>${estInfoBtn('estInfo', 'Estimate')}
-${done ? '' : `<label class="sw-row"><input type="hidden" name="estimate" value="off"><input type="checkbox" class="sw" name="estimate" value="on" aria-label="Send as an estimate first" ${estOn(d) ? 'checked' : ''} onchange="this.closest('.est-c').querySelector('.est-svy').hidden=!this.checked"><i></i></label>`}</div>
+${done ? '' : `<label class="sw-row"><input type="hidden" name="estimate" value="off"><input type="checkbox" class="sw" name="estimate" value="on" aria-label="Send as an estimate first" ${estOn(d) ? 'checked' : ''} onchange="var on=this.checked;this.closest('.est-c').querySelectorAll('.est-svy,.est-rng').forEach(function(x){x.hidden=!on})"><i></i></label>`}</div>
 <p class="muted est-info" id="estInfo" hidden>${done ? `The client approved the estimate on ${fmtDate(d.estimateApprovedAt)}. ${d.survey ? 'Next is the site visit.' : 'It’s now the quote.'}` : `Turn on to send this quote as an estimate first. ${ESTIMATE_NOTE}`}</p>
 <div class="est-svy"${estOn(d) && (!done || d.survey) ? '' : ' hidden'}><div class="est-h"><h3 class="est-sh">Site visit</h3>${estInfoBtn('svyInfo', 'Site visit')}
 ${done ? '' : `<label class="sw-row"><input type="hidden" name="survey" value="off"><input type="checkbox" class="sw" name="survey" value="on" aria-label="Book a site visit before the quote" ${d.survey ? 'checked' : ''}><i></i></label>`}</div>
-${done && d.survey ? `<p class="est-svy-at">${qSvyText(d)}</p>` : ''}<p class="muted est-info" id="svyInfo" hidden>${SURVEY_NOTE}</p></div></div>`; };
+${done && d.survey ? `<p class="est-svy-at">${qSvyText(d)}</p>` : ''}<p class="muted est-info" id="svyInfo" hidden>${SURVEY_NOTE}</p></div>
+${done ? '' : `<div class="est-rng"${estOn(d) ? '' : ' hidden'}><label class="est-rl">Show as a price range: up to <input type="number" name="rangePct" min="0" max="100" step="5" value="${esc(d.rangePct || 0)}" aria-label="Percent more">% more</label><p class="muted sm">0 shows one price. With 20, a $4,000 estimate reads $4,000 – $4,800 until the quote sets the final price.</p></div>`}</div>`; };
 // New job → From quote: the quotes a job can still come from (not archived or declined, no job yet, and with options the client's pick made),
 // the client's only when one is chosen; sel stays listed so a picked quote shows
 const jobFromQuotes = (cid, sel) => (D.quotes || []).filter((q) => q.id === sel || (!q.archived && q.status !== 'declined' && !quoteJob(q) && !(qHasOpts(q) && !q.chosenOption) && (!cid || q.clientId === cid)));
@@ -2774,7 +2800,7 @@ const docSide = (kind, d) => {
   const on = (k) => d[k] !== 'off';
   const pays = [planHas('onlinePayments') ? ['Card payments', on('allowCard') && cardReady()] : null, achOn(kind) ? ['Bank payments (ACH)', on('allowAch')] : null, planHas('zelle') ? ['Zelle', on('allowZelle') && !!company.zelleRecipient] : null, ...payAppsOn().map(([k, l]) => [l, on(k)]), kind === 'invoice' && partOn() ? ['Partial payments', d.allowPartial === 'on'] : null, kind === 'invoice' && lateFeesOn() ? ['Late fees', on('lateFee')] : null].filter(Boolean);
   const view = [['showQty', 'Quantities'], ['showUnit', 'Unit prices'], ['showLineTotals', 'Line item totals'], ['showAccountBalance', 'Account balance'], ['showLateStamp', 'Late stamp (if overdue)']].map(([k, l]) => [l, on(k)]);
-  return `<aside class="qside">${kind === 'quote' ? estCard(d, true) : ''}<div class="qcard"><div class="qcard-h"><h2>Client payments</h2>${editBtn(kind, d, 'payments')}</div>${vopts(pays, 'No online payment options on your plan')}</div>
+  return `<aside class="qside">${kind === 'quote' ? estCard(d, true) + verCard(d) : ''}<div class="qcard"><div class="qcard-h"><h2>Client payments</h2>${editBtn(kind, d, 'payments')}</div>${vopts(pays, 'No online payment options on your plan')}</div>
 ${kind === 'invoice' ? `<div class="qcard"><div class="qcard-h"><h2>Client view</h2>${editBtn(kind, d, 'clientView')}</div>${vopts(view)}</div>` : ''}
 ${textCard(kind, d, 'notes', 'Internal Notes', d.internalNotes, 'No internal notes. Clients never see these.')}${noteFilesCard(kind, d)}</aside>`;
 };
@@ -2904,7 +2930,8 @@ const quoteCopy = (q) => {
 A.copyQuote = (x) => navigate('/quotes/new?copy=' + encodeURIComponent(x.id));
 // the quote page's Estimate box: turning Estimate or Site visit on or off saves it (Site visit only with Estimate)
 document.addEventListener('change', async (e) => {
-  const box = e.target.closest('[data-est-live]'); if (!box || !e.target.matches('input.sw')) return;
+  const box = e.target.closest('[data-est-live]'); if (box && e.target.name === 'rangePct') { try { await api('PUT', '/api/quotes/' + box.dataset.estLive, { rangePct: Number(e.target.value) || 0 }); toast(Number(e.target.value) > 0 ? `The estimate shows a range, up to ${Number(e.target.value)}% more` : 'The estimate shows one price'); } catch (x) { toast(x.message, true); } return refresh(); }
+  if (!box || !e.target.matches('input.sw')) return;
   const est = $('input.sw[name=estimate]', box); const svy = $('input.sw[name=survey]', box); if (!est) return;
   const body = { estimate: est.checked, survey: est.checked && !!(svy && svy.checked) };
   const q = byId(D.quotes, box.dataset.estLive) || {};
@@ -3319,7 +3346,7 @@ ${mTap(kind, d, 'details', `<span class="md-h">${q ? 'Quote' : 'Invoice'} #${esc
 <div class="md-acts">${acts.filter(Boolean).join('')}<button type="button" class="btn alt md-more" data-act="mMore" data-kind="${kind}" data-id="${d.id}" aria-label="More actions">⋯</button></div>
 <div class="md-tabs" role="tablist"><button type="button" role="tab" class="on" aria-selected="true" data-act="mTab" data-k="doc">${q ? 'Quote' : 'Invoice'}</button><button type="button" role="tab" aria-selected="false" data-act="mTab" data-k="notes">Notes</button></div>
 <div class="md-pane" data-pane="doc"><section class="md-block"><h2 class="md-sh">Product / Service</h2><div class="md-lh"><strong>Line items</strong><button type="button" class="md-plus" data-act="mEdit" data-kind="${kind}" data-id="${d.id}" data-sec="item" data-i="" aria-label="Add line item">${CHEV('M12 5v14M5 12h14')}</button></div>${items || '<p class="muted md-empty">No line items yet. Tap + to add one.</p>'}</section>
-${optSec}<section class="md-block md-totals">${totals}</section>${q ? `<section class="md-block md-est">${estCard(d, true)}</section>` : ''}${paySec}${viewSec}
+${optSec}<section class="md-block md-totals">${totals}</section>${q ? `<section class="md-block md-est">${estCard(d, true)}</section>${verCard(d)}` : ''}${paySec}${viewSec}
 ${mTextSec(kind, d, 'message', 'Client message', d.notes, 'Add a message for the client')}
 ${mTextSec(kind, d, 'terms', 'Contract / disclaimer', d.disclaimer, 'Add a contract or disclaimer')}</div>
 <div class="md-pane" data-pane="notes" hidden>${mNotesPane(kind, d, d.internalNotes ? mTextSec(kind, d, 'notes', 'Internal notes', d.internalNotes, '') : '')}</div></div>`;
@@ -3420,7 +3447,7 @@ ${newOk ? `<div class="mn-row">${ic.contact}<div class="mn-stack"><input name="f
       }
       const where = { address: prop ? propAddr(prop) : client.address || '', propertyId: prop ? prop.id : '', ...(prop && prop.taxRate != null && prop.taxRate !== '' ? { taxRate: Number(prop.taxRate) } : {}) };
       const b = { clientId: client.id, [kind === 'invoice' ? 'subject' : 'title']: v(kind === 'invoice' ? 'subject' : 'title') };
-      if (q) { b.estimate = $('input.sw[name=estimate]', f).checked; b.survey = b.estimate && $('input.sw[name=survey]', f).checked; } // Estimate and Site visit: chosen before the first save
+      if (q) { b.estimate = $('input.sw[name=estimate]', f).checked; b.survey = b.estimate && $('input.sw[name=survey]', f).checked; b.rangePct = Number(($('[name=rangePct]', f) || {}).value) || 0; } // Estimate and Site visit: chosen before the first save
       if (q && e.submitter && e.submitter.dataset.snap) { btn.disabled = false; return A.snapQuote({ clientId: client.id, ...where }); } // Snap to quote: the draft is made from the photos
       if (job) {
         const saved = await saveJobWithRepeat({}, { ...b, ...(fromQ ? { quoteId: fromQ.id } : {}), date: v('date'), startTime: '09:00', endTime: '11:00', status: 'scheduled', staffIds: [], ...where }, readRepeat(f), f); // with its Repeats settings
@@ -3565,9 +3592,9 @@ ${textSec('instructions', 'Instructions', j.description, 'Add instructions for t
 ${mJobForms(j)}
 ${prices ? `<section class="md-block"><h2 class="md-sh">Product / Service</h2><div class="md-lh"><strong>Line items</strong>${edit ? `<button type="button" class="md-plus" data-act="mEdit" data-kind="job" data-id="${j.id}" data-sec="item" data-i="" aria-label="Add line item">${CHEV('M12 5v14M5 12h14')}</button>` : ''}</div>${items || '<p class="muted md-empty">No line items yet.</p>'}</section>
 ${totals ? `<section class="md-block md-totals">${totals}</section>` : ''}` : ''}
-${coCard(j, true)}
-${sig ? `<section class="md-block"><div class="md-lh"><h2 class="md-sh" style="margin:0">Client signature</h2>${planHas('signatures') ? `<button type="button" class="md-plus" data-act="collectSignature" data-id="${j.id}" aria-label="Collect another signature">${CHEV('M12 5v14M5 12h14')}</button>` : ''}</div><img class="sig-img" src="${esc(sig.file)}" alt="Signature of ${esc(sig.name)}"><p class="md-text">Signed by <strong>${esc(sig.name)}</strong> · ${esc(fmtStamp(sig.signedAt))}</p></section>`
-    : planHas('signatures') ? `<button type="button" class="md-tap md-sec" data-act="collectSignature" data-id="${j.id}"><span class="md-sh">Client signature${ARROW}</span><span class="md-text muted">Collect the client’s signature</span></button>` : ''}
+${woCard(j, true)}${coCard(j, true)}
+${sig ? `<section class="md-block"><div class="md-lh"><h2 class="md-sh" style="margin:0">Client sign-off (work done)</h2>${planHas('signatures') ? `<button type="button" class="md-plus" data-act="collectSignature" data-id="${j.id}" aria-label="Collect another signature">${CHEV('M12 5v14M5 12h14')}</button>` : ''}</div><img class="sig-img" src="${esc(sig.file)}" alt="Signature of ${esc(sig.name)}"><p class="md-text">Signed by <strong>${esc(sig.name)}</strong> · ${esc(fmtStamp(sig.signedAt))}</p></section>`
+    : planHas('signatures') ? `<button type="button" class="md-tap md-sec" data-act="collectSignature" data-id="${j.id}"><span class="md-sh">Client sign-off (work done)${ARROW}</span><span class="md-text muted">The client signs that the work is finished</span></button>` : ''}
 ${prices && planHas('invoices') ? `<section class="md-block need-invoices"><div class="md-lh"><h2 class="md-sh" style="margin:0">Billing</h2>${canDo('jobs.edit') && canInvoiceJob(j) ? `<button type="button" class="md-plus" data-act="jobInvoice" data-id="${j.id}" aria-label="Create invoice">${CHEV('M12 5v14M5 12h14')}</button>` : ''}</div>
 ${invs.map((i) => `<a class="md-inv" href="/invoices/view?id=${i.id}" data-link><span><strong>Invoice #${esc(i.number)}</strong><small>${esc(I_STATUS[i.displayStatus] || i.displayStatus)} · due ${fmtDate(i.dueDate)}</small></span><span>${money(i.total)}</span></a>`).join('') || '<p class="muted md-empty">No invoices yet. Create one when the work is done.</p>'}</section>` : ''}</div>
 <div class="md-pane" data-pane="notes" hidden>${mNotesPane('job', j, j.internalNotes ? textSec('notes', 'Internal notes', j.internalNotes, '') : '')}</div></div>`;
@@ -4384,7 +4411,7 @@ ${canDo('jobs.prices') ? `<div class="qcard"><div class="qcard-h"><h2>Product / 
 ${j.repeat ? `<dt>Repeats</dt><dd><span>${repeatLine(j)}</span></dd>` : ''}
 <dt>Team</dt><dd>${withClocked(team, 'job', j.id).length ? `<span class="vteam">${withClocked(team, 'job', j.id).map((t) => `<span>${avatarHtml(t, 24)}${esc(t.name)}${clockedFlag(t.id, 'job', j.id)}</span>`).join('')}</span>` : none('Nobody assigned yet')}</dd>
 <dt>Instructions</dt><dd>${j.description ? `<p class="vtext">${esc(j.description)}</p>` : none('None')}</dd></dl></div>
-${coCard(j)}${jobFormsCard(j)}${j.signature ? sigCard(j) : ''}${jobBilling(j, jobInvoices(j))}</div>
+${woCard(j)}${coCard(j)}${jobFormsCard(j)}${j.signature ? sigCard(j) : ''}${jobBilling(j, jobInvoices(j))}</div>
 <aside class="qside">${textCard('job', j, 'notes', 'Internal Notes', j.internalNotes, 'No internal notes. Clients never see these.')}${noteFilesCard('job', j)}</aside></div></div>`;
 }
 // the Billing card (job form and job page): the job's invoices, and Create invoice
@@ -4552,9 +4579,9 @@ ${paid ? `<div class="crow-line"><span>Deposit collected <span class="muted">· 
   });
 }
 /* ===== client signature on a job: any team member can collect it (job page ⋯ More → Collect signature); managers / admins can remove it ===== */
-const SIG_STATEMENT = 'I confirm the work described above was completed to my satisfaction.';
+const SIG_STATEMENT = 'I confirm the work described above, including any approved change orders, was completed to my satisfaction.';
 const fmtStamp = (isoStr) => { const d = new Date(isoStr); return isNaN(d) ? '' : d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }); };
-const sigCard = (j) => { const s = j.signature; return `<div class="qcard sig-card"><div class="qcard-h"><h2>Client signature</h2>${s ? '<span class="cstatus q-approved">Signed</span>' : ''}</div>
+const sigCard = (j) => { const s = j.signature; return `<div class="qcard sig-card"><div class="qcard-h"><h2>Client sign-off (work done)</h2>${s ? '<span class="cstatus q-approved">Signed</span>' : ''}</div>
 ${s ? `<div class="sig-show"><img class="sig-img" src="${esc(s.file)}" alt="Signature of ${esc(s.name)}"></div>
 <p class="sig-meta">Signed by <strong>${esc(s.name)}</strong> on ${esc(fmtStamp(s.signedAt))}${s.collectedBy ? ` <span class="muted">· collected by ${esc(s.collectedBy)}</span>` : ''}</p>
 ${s.statement ? `<p class="muted sig-stmt">“${esc(s.statement)}”</p>` : ''}<button type="button" class="btn danger sm need-jobs-edit" data-act="rmSignature" data-id="${j.id}">Remove signature</button>`
@@ -4637,6 +4664,22 @@ A.rmSignature = async (d) => {
   if (!confirm('Remove this signature? Unsaved changes on this page will be lost. You can collect a new one afterwards.')) return;
   await api('DELETE', `/api/jobs/${d.id}/signature`); toast('Signature removed'); refresh();
 };
+/* ===== work order: the client signs the job (the work, its price and dates) before work starts, on this device or online from an emailed link.
+   A PDF goes in the job's notes and the client is emailed a copy. Anything that changes after that is a change order. ===== */
+function woCard(j, phone) {
+  if (!j.id || !planHas('signatures')) return ''; const w = j.wo; const edit = canDo('jobs.edit');
+  const b = (act, label, cls = 'alt') => `<button type="button" class="btn ${cls} sm" data-act="${act}" data-id="${j.id}">${label}</button>`;
+  const inner = w ? `<div class="wo-done"><span class="cstatus q-approved">Signed</span> <span class="sm">Signed by <strong>${esc(w.name)}</strong> · ${esc(fmtStamp(w.signedAt))}${w.via === 'online' ? ' · online' : w.collectedBy ? ` · collected by ${esc(w.collectedBy)}` : ''}</span>${w.pdf ? ` <a class="sm" href="${esc(w.pdf)}" target="_blank" rel="noopener">Signed copy (PDF)</a>` : ''}</div>`
+    : `<p class="muted sm" style="margin:0 0 10px">Have the client approve the work and price before you start${j.woSentAt ? `. Emailed ${esc(fmtStamp(j.woSentAt))}, not signed yet` : ''}.</p><div class="co-acts" style="margin:0">${b('woSign', 'Get signature now', '')}${edit ? b('woSend', j.woSentAt ? 'Email again' : 'Email to client') : ''}</div>`;
+  return phone ? `<section class="md-block wo-card"><h2 class="md-sh">Work order (before work starts)</h2>${inner}</section>` : `<div class="qcard wo-card"><div class="qcard-h"><h2>Work order (before work starts)</h2></div>${inner}</div>`;
+}
+A.woSign = (d) => {
+  const j = byId(D.jobs, d.id); const c = byId(D.clients, j.clientId) || {}; const amt = canDo('jobs.prices') && jobTotal(j) !== null ? money(jobTotal(j)) : ''; mClose(true);
+  const save = (b) => api('POST', `/api/jobs/${j.id}/work-order/signature`, { name: b.name || c.name || 'Client', dataUrl: b.dataUrl });
+  if (phoneMq.matches) return mSignPad({ icon: PI.job, label: `Work order · Job #${j.number}`, amount: amt, save: (dataUrl) => save({ dataUrl }) });
+  sigModal({ title: 'Client approves the work', head: `<strong>${esc(j.title || 'Job')}</strong> <span class="muted">#${esc(j.number)}</span><div class="muted">${esc(c.name || '')}${j.date ? ' · ' + jobDates(j) : ''}${amt ? ` · ${amt}` : ''}</div><p class="muted sm" style="margin:8px 0 0">I authorize ${esc(company.name || 'the business')} to do this work at the price shown. Any change to this work needs a signed change order.</p>`, name: c.name || '', save });
+};
+A.woSend = async (d) => { const j = byId(D.jobs, d.id); const c = byId(D.clients, j.clientId) || {}; if (!c.email) return toast('This client has no email address. Add one on their profile, or get the signature now.', true); try { await api('POST', `/api/jobs/${j.id}/work-order/send`, {}); toast(`Work order emailed to ${c.email}`); refresh(); } catch (x) { toast(x.message, true); } };
 /* ===== change orders: work added to (or taken off) a job, approved by the client before it's done. Each is its own record (CO-1, CO-2… per job)
    with its own line items at the job's tax rate. The client signs on the team's phone, or online from an emailed link; a manager can mark it
    approved or declined when the client answers some other way. Approved ones are locked and billed with the job (Create invoice adds them). ===== */

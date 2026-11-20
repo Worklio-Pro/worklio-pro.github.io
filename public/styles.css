@@ -2968,3 +2968,10 @@ body.p404-only #billingBar{display:none!important}
 .co-ith{font-size:13px;color:var(--muted);font-weight:600}.co-it input{width:100%;min-width:0;box-sizing:border-box}.co-tot{margin:8px 0 0 auto;max-width:360px}
 .co-vh{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.co-vt{margin:12px 0 4px}.co-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}.co-more{align-items:center;margin-top:10px}
 @media (max-width:600px){.co-ith,.co-it{grid-template-columns:minmax(0,1fr) 54px 84px 28px}.co-r{flex-direction:column;align-items:flex-end;gap:4px}}
+/* a quote's saved copies (Estimate & versions) and the job's work order card */
+.ver-est{display:flex;flex-direction:column;gap:6px}.ver-top{display:flex;flex-direction:column;gap:2px;font-variant-numeric:tabular-nums}.ver-diff{font-weight:600}
+.ver-links{display:flex;gap:14px;align-items:center;font-size:14px}.ver-note{display:flex;flex-direction:column;gap:6px;margin-top:6px}.ver-note textarea{width:100%;box-sizing:border-box}
+.ver-list{display:flex;flex-direction:column;margin-top:12px;gap:2px}.ver-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border:0;border-bottom:1px solid var(--line);background:none;color:inherit;font:inherit;font-size:14px;text-align:left;cursor:pointer;font-variant-numeric:tabular-nums}
+.ver-row{flex-direction:column;align-items:flex-start;gap:2px}.ver-row small{display:block}.ver-row:hover span:first-child{text-decoration:underline}
+.est-rng{margin-top:12px}.est-rl{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:14px}.est-rl input{width:70px}
+.wo-done{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
