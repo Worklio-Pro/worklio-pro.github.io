@@ -564,13 +564,13 @@ function scOpen(kind, id, x, y) {
 const canSurvey = () => ['owner', 'admin', 'manager'].includes(role());
 // changing the calendar (drag, resize, add, edit or remove tasks and events): owners, admins and managers only (the server checks too); everyone else sees it
 const canCal = () => ['owner', 'admin', 'manager'].includes(role()) && canDo('jobs.edit');
-// its fields: who takes it (the people clients can book first, then the rest who can), and the quote it's for
+// its fields: Assign team (one or more of the active team, or nobody yet: it then waits under Jobs → Site visits → Assign a team member),
+// and the quote it's for
 function qcSurveyFields(p, team) {
-  const list = team.map((s) => ({ id: s.id, name: s.name })); const ids = list.map((x) => x.id);
-  const pick = p.svyStaff || (p.staffIds || []).find((id) => ids.includes(id)) || (list[0] || {}).id;
+  const picked = p.svyStaff || (p.staffIds || []).filter((id) => team.some((s) => s.id === id));
   const open = p.clientId ? D.quotes.filter((q) => q.clientId === p.clientId && !quoteJob(q) && ['draft', 'sent'].includes(q.status) && !q.quoteSentAt) : [];
   const qv = p.svyQuote === '' || open.some((q) => q.id === p.svyQuote) ? p.svyQuote : 'new'; // another client's quote falls back to a new one
-  return `<label class="fl"><span>Who takes it</span><select name="svyStaff" required>${list.map((s) => `<option value="${esc(s.id)}" ${s.id === pick ? 'selected' : ''}>${esc(s.name)}</option>`).join('') || '<option value="">Add a team member first</option>'}</select></label>
+  return `<div class="fl"><span>Assign team</span><div class="qc-team">${team.map((s) => `<label><input type="checkbox" name="svyStaff" value="${esc(s.id)}" ${picked.includes(s.id) ? 'checked' : ''}>${avatarHtml(s, 20)} ${esc(s.name)}</label>`).join('') || '<span class="muted">Add team members first</span>'}</div></div>
 <label class="fl"><span>For quote</span><select name="svyQuote"><option value="new" ${qv === 'new' ? 'selected' : ''}>New quote (draft)</option>${open.map((q) => `<option value="${esc(q.id)}" ${qv === q.id ? 'selected' : ''}>${esc(q.number)}${q.title ? ' · ' + esc(q.title) : ''}${q.surveyTaskId ? ' (moves its visit)' : ''}</option>`).join('')}<option value="" ${qv === '' ? 'selected' : ''}>No quote</option></select></label>`;
 }
 // the quick pop-up: Job / Task / Event with the date and time filled in; drag it by its top bar
@@ -600,7 +600,7 @@ ${kind === 'survey' ? `<label class="qc-any"><input type="checkbox" name="svyEma
       if (kind === 'survey') { p.anytime = false; p.startTime = p.startTime || '09:00'; p.endTime = scTime(scMin(p.startTime) + ((company.survey || {}).minutes || 60)); } // a survey's usual length
       draw(); }));
     if (f.svyQuote) f.svyQuote.addEventListener('change', () => { p.svyQuote = f.svyQuote.value; });
-    if (f.svyStaff) f.svyStaff.addEventListener('change', () => { p.svyStaff = f.svyStaff.value; });
+    $$('[name=svyStaff]', f).forEach((x) => x.addEventListener('change', () => { p.svyStaff = $$('[name=svyStaff]:checked', f).map((y) => y.value); }));
     if (f.svyEmail) f.svyEmail.addEventListener('change', () => { p.svyEmail = f.svyEmail.checked; });
     $$('.qc-add', box).forEach((b) => b.addEventListener('click', () => { keep(); box._open = { ...(box._open || {}), [b.dataset.open]: true }; draw(); const t = $(`[name=${b.dataset.open === 'notes' ? 'notes' : b.dataset.open === 'item' ? 'itemDesc' : 'staff'}]`, box); if (t) t.focus(); }));
     $('.qc-x', box).addEventListener('click', () => box.remove());
@@ -616,7 +616,7 @@ ${kind === 'survey' ? `<label class="qc-any"><input type="checkbox" name="svyEma
         if (kind === 'survey') { // a new draft quote first, when that's picked, so the survey belongs to it
           let quoteId = f.svyQuote.value; const c = byId(D.clients, v.clientId) || {};
           if (quoteId === 'new') quoteId = (await api('POST', '/api/quotes', { clientId: v.clientId, address: c.address || '', items: [], disclaimer: company.quoteDisclaimer ?? DEFAULT_DISCLAIMER, estimate: false })).id;
-          await api('POST', '/api/surveys', { clientId: v.clientId, staffId: f.svyStaff.value, date: v.date, startTime: v.startTime, endTime: v.endTime, quoteId, notes: v.notes, email: f.svyEmail.checked });
+          await api('POST', '/api/surveys', { clientId: v.clientId, staffIds: $$('[name=svyStaff]:checked', f).map((y) => y.value), date: v.date, startTime: v.startTime, endTime: v.endTime, quoteId, notes: v.notes, email: f.svyEmail.checked });
           box.remove(); toast('Site visit added'); return refresh();
         }
         if (kind === 'job') await api('POST', '/api/jobs', { title: v.title, clientId: v.clientId, address: (byId(D.clients, v.clientId) || {}).address || '', date: v.date, startTime: v.startTime || '09:00', endTime: v.endTime || '10:00', anytime: v.anytime, staffIds: v.staffIds, description: v.notes, ...(v.items ? { items: v.items } : {}) });

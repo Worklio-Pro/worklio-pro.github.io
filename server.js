@@ -4173,10 +4173,10 @@ function surveySlots(skipTaskId) {
   return days;
 }
 // the booking on the calendar: a task with the client, the address and the quote; booking again moves it. s: who goes when the business books it
-// on the calendar; a client's booking has nobody yet (moving it keeps whoever was assigned)
-function bookSurvey(q, s, date, time, end, by = 'the client') { // end: the calendar's own end time (the client's booking uses the settings' length)
+// on the calendar (one or more); a client's booking has nobody yet (moving it keeps whoever was assigned)
+function bookSurvey(q, ids, date, time, end, by = 'the client') { // ids: who goes (the calendar), or null from a client's booking // end: the calendar's own end time (the client's booking uses the settings' length)
   const c = findClient(q.clientId); const S = svySettings(); let t = svyTask(q);
-  const fields = { title: `Site visit: ${c ? c.name : 'client'}`, date, startTime: time, endTime: end || svyHm(svyMin(time) + S.minutes), anytime: false, staffIds: s ? [s.id] : t ? t.staffIds || [] : [], clientId: q.clientId,
+  const fields = { title: `Site visit: ${c ? c.name : 'client'}`, date, startTime: time, endTime: end || svyHm(svyMin(time) + S.minutes), anytime: false, staffIds: ids || (t ? t.staffIds || [] : []), clientId: q.clientId,
     address: q.address || (c && c.address) || '', propertyId: q.propertyId || '', description: `Site visit for quote ${q.number}${q.title ? ` (${q.title})` : ''}, booked by ${by}.`, survey: { quoteId: q.id, bookedAt: new Date().toISOString() }, remindedAt: null };
   if (t) Object.assign(t, fields); else { t = { id: uid(), createdAt: iso(new Date()), done: false, ...fields }; db.tasks = db.tasks || []; db.tasks.push(t); }
   q.surveyTaskId = t.id; return t;
@@ -4292,13 +4292,13 @@ app.delete('/api/site-visits/:id/notes/:nid', (req, res) => {
 app.post('/api/surveys', (req, res) => {
   const u = currentUser(req); if (!u || !SVY_ROLES.includes(u.role)) return res.status(403).json({ error: 'Only owners, admins and managers can book site visits' });
   const b = req.body || {}; const c = findClient(b.clientId); if (!c) return res.status(400).json({ error: 'Choose a client from the list' });
-  const s = (db.staff || []).find((x) => x.id === b.staffId && x.status !== 'deactivated'); if (!s) return res.status(400).json({ error: 'Choose who takes the site visit' });
+  const ids = [...new Set(Array.isArray(b.staffIds) ? b.staffIds : b.staffId ? [b.staffId] : [])].filter((id) => (db.staff || []).some((x) => x.id === id && x.status !== 'deactivated')); // Assign team: one or more, or nobody yet
   const tm = (v) => /^\d{2}:\d{2}$/.test(v || '');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(b.date || '') || !tm(b.startTime) || !tm(b.endTime) || b.endTime <= b.startTime) return res.status(400).json({ error: 'Choose a date, and an end time after the start time' });
   let q = null; if (b.quoteId) { q = db.quotes.find((x) => x.id === b.quoteId && x.clientId === c.id); if (!q) return res.status(400).json({ error: 'That quote isn’t this client’s' }); }
   const notes = String(b.notes || '').trim().slice(0, 2000); let t;
-  if (q) { const moved = !!svyTask(q); t = bookSurvey(q, s, b.date, b.startTime, b.endTime, u.name || 'the business'); q.survey = true; if (moved) t.remindedAt = null; }
-  else { t = { id: uid(), createdAt: iso(new Date()), done: false, title: `Site visit: ${c.name}`, date: b.date, startTime: b.startTime, endTime: b.endTime, anytime: false, staffIds: [s.id], clientId: c.id, address: c.address || '', propertyId: '', description: `Site visit, booked by ${u.name || 'the business'}.`, survey: { quoteId: null, bookedAt: new Date().toISOString() }, remindedAt: null }; db.tasks = db.tasks || []; db.tasks.push(t); }
+  if (q) { const moved = !!svyTask(q); t = bookSurvey(q, ids, b.date, b.startTime, b.endTime, u.name || 'the business'); q.survey = true; if (moved) t.remindedAt = null; }
+  else { t = { id: uid(), createdAt: iso(new Date()), done: false, title: `Site visit: ${c.name}`, date: b.date, startTime: b.startTime, endTime: b.endTime, anytime: false, staffIds: ids, clientId: c.id, address: c.address || '', propertyId: '', description: `Site visit, booked by ${u.name || 'the business'}.`, survey: { quoteId: null, bookedAt: new Date().toISOString() }, remindedAt: null }; db.tasks = db.tasks || []; db.tasks.push(t); }
   if (notes) t.description = `${notes}\n\n${t.description}`;
   t.token = t.token || token(); save();
   if (b.email) surveyEmail(t, 'booked');
