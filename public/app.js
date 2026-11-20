@@ -4646,7 +4646,27 @@ A.jobKind = (d) => { jobView = { ...jobView, kind: d.k }; jobSel.clear(); if (cu
 A.svTab = (d) => { svView = { ...svView, status: d.s, picked: true, sort: 'urgent', dir: 1 }; refresh(); };
 A.svSort = (d) => { svView.dir = svView.sort === d.k ? -svView.dir : (['client', 'status'].includes(d.k) ? 1 : -1); svView.sort = d.k; refresh(); };
 // Reschedule: the calendar's pop-up for the visit (date, time, who; Delete)
-A.svOpen = (d, el) => { const t = byId(D.tasks, d.id); if (!t) return; const r = el.getBoundingClientRect(); scQuick({ ...t }, r.left - 320, r.top, 'task'); };
+// Edit the scheduled visit (the pencil on its page, Reschedule, or tapping Scheduled visit on a phone): the day, times, who goes and the
+// instructions. Owners, admins and managers only, like the rest of the calendar. A new day or time emails the client (the server does that).
+A.svOpen = (d) => {
+  const t = byId(D.tasks, d.id); if (!t) return; if (!canCal()) return toast('Only owners, admins and managers can change site visits', true);
+  const people = company.surveyPeople && company.surveyPeople.length ? company.surveyPeople : D.staff.filter(staffActive).map((x) => ({ id: x.id, name: x.name }));
+  const cur = (t.staffIds || [])[0] || ''; const list = cur && !people.some((p) => p.id === cur) ? [...people, { id: cur, name: (byId(D.staff, cur) || {}).name || 'Former team member' }] : people;
+  const m = modal('Scheduled visit', `<form id="svEd"><div class="row"><label>Date<input type="date" name="date" required value="${esc(t.date)}"></label></div>
+<div class="row"><label>Start<input type="time" name="startTime" required value="${esc(t.startTime || '09:00')}"></label><label>End<input type="time" name="endTime" required value="${esc(t.endTime || '10:00')}"></label></div>
+<label>Who goes<select name="staff" required>${list.map((p) => `<option value="${esc(p.id)}" ${p.id === cur ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
+<label>Instructions<textarea name="description" rows="3" maxlength="2000" placeholder="For whoever goes: gate code, what to look at…">${esc(t.description || '')}</textarea></label>
+<p class="muted" style="font-size:13px;margin:4px 0 0">${svClient(t).email ? 'If you change the day or time, the client gets an email with the new time.' : 'This client has no email address, so they won’t be told about a new time.'}</p>
+<div class="foot"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save</button></div></form>`);
+  const fm = $('#svEd', m);
+  fm.addEventListener('submit', async (e) => {
+    e.preventDefault(); const b = { date: fm.date.value, startTime: fm.startTime.value, endTime: fm.endTime.value, staffIds: [fm.staff.value], description: fm.description.value.trim() };
+    if (b.endTime <= b.startTime) return toast('The end time must be after the start time', true);
+    const btn = $('.foot .btn:not(.alt)', fm); btn.disabled = true;
+    try { await api('PUT', '/api/tasks/' + t.id, b); closeModal(); toast(b.date !== t.date || b.startTime !== t.startTime ? 'Site visit moved' + (svClient(t).email ? ': the client was emailed the new time' : '') : 'Site visit saved'); refresh(); }
+    catch (x) { btn.disabled = false; toast(x.message, true); }
+  });
+};
 A.svQuoteOpen = (d) => navigate('/quotes/view?id=' + d.id);
 A.svPage = (d) => navigate('/jobs/site-visit?id=' + d.id);
 // New Site Visit: the calendar's quick pop-up, on its Site visit tab
@@ -4705,10 +4725,10 @@ function renderSiteVisits(main) {
   const sub = (s) => (s ? `<div class="muted sm-l">${s}</div>` : ''); const dash = '<span class="muted">—</span>';
   // the buttons on a row (shown on hover): what you'd do next with that visit
   const acts = (t) => { const q = svQuote(t); const st = svStatus(t); const b = (act, label, alt, id) => `<button type="button" class="btn${alt ? ' alt' : ''}" data-act="${act}" data-id="${id}">${label}</button>`;
-    if (st === 'late') return (canSurvey() ? b('svOpen', 'Reschedule', true, t.id) : '') + (svCanDo(t) ? b('svComplete', 'Complete', false, t.id) : '');
+    if (st === 'late') return (canCal() ? b('svOpen', 'Reschedule', true, t.id) : '') + (svCanDo(t) ? b('svComplete', 'Complete', false, t.id) : '');
     if (st === 'today') return svCanDo(t) ? b('svComplete', 'Complete', false, t.id) : '';
     if (!svQuotes()) return '';
-    if (st === 'upcoming') return canSurvey() ? b('svOpen', 'Reschedule', true, t.id) : '';
+    if (st === 'upcoming') return canCal() ? b('svOpen', 'Reschedule', true, t.id) : '';
     if (st === 'quote') return b('svFinalQuote', 'Update final quote', false, t.id);
     return q ? b('svQuoteOpen', 'Open quote', true, q.id) : b('svFinalQuote', 'Create final quote', true, t.id); };
   const row = (t) => { const st = svStatus(t); const q = svQuote(t); const n = st === 'late' ? daysSince(t.date) : 0;
@@ -4739,13 +4759,13 @@ ${v.status === 'action' && todayN ? `<div class="lmore"><span>${todayN} site vis
 // then the visit, who, instructions, visit notes and the final quote as full-width sections
 function mobileSiteVisit(t, c, q, st, team, notes, qCard) {
   const addr = t.address || c.address || ''; const sec = (title, inner) => `<section class="md-block"><h2 class="md-sh">${title}</h2>${inner}</section>`;
-  const visit = `<span class="md-sh">Scheduled visit${canSurvey() ? ARROW : ''}</span><span class="md-text">${esc(fmtDate(t.date))}, ${esc(fmtTime(t.startTime))} – ${esc(fmtTime(t.endTime))}</span>`;
+  const visit = `<span class="md-sh">Scheduled visit${canCal() ? ARROW : ''}</span><span class="md-text">${esc(fmtDate(t.date))}, ${esc(fmtTime(t.startTime))} – ${esc(fmtTime(t.endTime))}</span>`;
   return `<div class="mdoc mjob msv"><a href="/jobs" data-link class="md-back" aria-label="Back to site visits">${CHEV('M15 18l-6-6 6-6')}</a>
 <div class="md-st"><span class="cstatus ${SV_CLASS[st]}">${SV_STATUS[st]}</span>${svClockBadge(t)}</div>
 <div class="md-head"><span class="md-h">Site visit for ${esc(c.name || c.company || 'no client')}</span>${q ? `<span class="md-sub">For quote ${esc(q.number)}${q.title ? ' · ' + esc(q.title) : ''}</span>` : ''}<span class="md-addr">${esc(addr)}</span></div>
 ${mContact(c, addr)}
 ${!svCanDo(t) && !svClockBtn(t) ? '' : `<div class="md-acts">${svClockBtn(t)}${!svCanDo(t) ? '' : t.done ? `<button type="button" class="btn alt" data-act="svReopen" data-id="${t.id}">Reopen</button>` : `<button type="button" class="btn" data-act="svComplete" data-id="${t.id}">Mark Complete</button>`}</div>`}
-${canSurvey() ? `<button type="button" class="md-tap md-sec" data-act="svOpen" data-id="${t.id}">${visit}</button>` : `<div class="md-sec">${visit}</div>`}
+${canCal() ? `<button type="button" class="md-tap md-sec" data-act="svOpen" data-id="${t.id}">${visit}</button>` : `<div class="md-sec">${visit}</div>`}
 ${sec('Who', team.length ? `<span class="md-team">${team.map((s) => `<span>${avatarHtml(s, 28)}${esc(s.name)}</span>`).join('')}</span>` : '<span class="md-text muted">Nobody assigned</span>')}
 ${sec('Instructions', t.description ? `<span class="md-text">${esc(t.description)}</span>` : '<span class="md-text muted">None</span>')}
 ${sec('Visit notes', `<p class="muted" style="margin:-4px 0 10px">What you saw on site. Clients never see these.</p><textarea id="svNote" rows="3" maxlength="5000" placeholder="Add a note from the visit"></textarea><div class="md-acts" style="padding:10px 0 0"><button type="button" class="btn" data-act="svAddNote" data-id="${t.id}">Add note</button></div>
@@ -4767,12 +4787,12 @@ PAGES['/jobs/site-visit'] = {
 ${svQuoteUnsent(q) ? `<p class="muted svq-tip">${t.done ? 'Update the prices from what you saw on site, then send it.' : 'After the visit, update it and send it.'}</p><button type="button" class="btn${t.done ? '' : ' alt'} svq-btn" data-act="svFinalQuote" data-id="${t.id}">Update final quote</button>` : `<button type="button" class="btn alt svq-btn" data-act="svQuoteOpen" data-id="${q.id}">Open quote</button>`}`;
     if (phoneMq.matches) { main.innerHTML = mobileSiteVisit(t, c, q, st, team, notes, qCard); return; } // phones: laid out like the phone job page
     main.innerHTML = `<div class="qview jview svview"><div class="qpage"><div class="qmain"><div class="qtop"><div class="qtop-l"><a href="/jobs" data-link class="back">← Site visits</a><span class="cstatus ${SV_CLASS[st]}">${SV_STATUS[st]}</span>${svClockBadge(t)}</div>
-<div class="actions">${svClockBtn(t)}${canSurvey() ? `<button type="button" class="btn alt" data-act="svOpen" data-id="${t.id}">${t.done ? 'Edit' : 'Reschedule'}</button>` : ''}${!svCanDo(t) ? '' : t.done ? `<button type="button" class="btn alt" data-act="svReopen" data-id="${t.id}">↺ Reopen</button>` : `<button type="button" class="btn" data-act="svComplete" data-id="${t.id}">Mark Complete</button>`}</div></div>
+<div class="actions">${svClockBtn(t)}${canCal() ? `<button type="button" class="btn alt" data-act="svOpen" data-id="${t.id}">${t.done ? 'Edit' : 'Reschedule'}</button>` : ''}${!svCanDo(t) ? '' : t.done ? `<button type="button" class="btn alt" data-act="svReopen" data-id="${t.id}">↺ Reopen</button>` : `<button type="button" class="btn" data-act="svComplete" data-id="${t.id}">Mark Complete</button>`}</div></div>
 <div class="vhead"><div class="vtitle-row"><h1 class="vtitle">Site visit</h1></div>
 <div class="qhead"><div class="qclient"><div class="vclient"><span>${esc(c.name || c.company || 'No client')}</span>${c.id ? clientMenu(c) : ''}</div><div class="muted qlabel">Property address</div><div class="qaddr">${esc(t.address || c.address || '') || none('No address on file')}</div>${dirLink(t.address || c.address || '')}
 ${c.phone || c.email ? `<div class="vclient-c">${c.phone ? `<a href="tel:${esc(c.phone)}">${esc(fmtUsPhone(c.phone))}</a>` : ''}${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ''}</div>` : ''}</div>
 <dl class="qmeta"><dt>Booked</dt><dd>${t.survey.bookedAt ? fmtDate(t.survey.bookedAt.slice(0, 10)) : t.createdAt ? fmtDate(t.createdAt.slice(0, 10)) : '—'}</dd><dt>For quote</dt><dd>${q ? `<a href="/quotes/view?id=${q.id}" data-link>${esc(q.number)}</a>` : none('—')}</dd>${t.done && t.completedAt ? `<dt>Completed</dt><dd>${fmtDate(t.completedAt.slice(0, 10))}</dd>` : ''}</dl></div></div>
-<div class="qcard"><div class="qcard-h"><h2>Scheduled Visit</h2></div><dl class="qmeta vvisit"><dt>When</dt><dd>${esc(fmtDate(t.date))}, ${esc(fmtTime(t.startTime))} – ${esc(fmtTime(t.endTime))}</dd>
+<div class="qcard"><div class="qcard-h"><h2>Scheduled Visit</h2>${canCal() ? `<button type="button" class="icon-btn sec-edit" data-act="svOpen" data-id="${t.id}" title="Edit scheduled visit" aria-label="Edit scheduled visit">${PENCIL}</button>` : ''}</div><dl class="qmeta vvisit"><dt>When</dt><dd>${esc(fmtDate(t.date))}, ${esc(fmtTime(t.startTime))} – ${esc(fmtTime(t.endTime))}</dd>
 <dt>Who</dt><dd>${team.length ? `<span class="vteam">${team.map((s) => `<span>${avatarHtml(s, 24)}${esc(s.name)}</span>`).join('')}</span>` : none('Nobody assigned')}</dd>
 <dt>Instructions</dt><dd>${t.description ? `<p class="vtext">${esc(t.description)}</p>` : none('None')}</dd></dl></div>
 <div class="qcard"><div class="qcard-h"><h2>Visit notes</h2></div><p class="muted" style="margin-top:0">What you saw on site: measurements, problems, what the quote needs. Clients never see these.</p>
