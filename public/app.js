@@ -4169,7 +4169,8 @@ function jobConflicts(job) { return D.jobs.filter((j) => j.id !== job.id && j.st
 // On my way: for the team on the job (and anyone who edits jobs), while it's still to do and has a client
 const canOnMyWay = (j) => j.status === 'scheduled' && !!j.clientId && ((me && me.staffId && (j.staffIds || []).includes(me.staffId)) || canDo('jobs.edit'));
 // Clock in / Clock out on a job: for the team on it while it's to do (or anyone who edits jobs), when this login has a timesheet
-const canClockJob = (j) => planHas('timesheets') && D.clock && D.clock.canClock && j.status === 'scheduled' && ((me && me.staffId && (j.staffIds || []).includes(me.staffId)) || canDo('jobs.edit'));
+// Clock In only on the day it's scheduled (a multi-day job: any of its days), never ahead of time or after
+const canClockJob = (j) => planHas('timesheets') && D.clock && D.clock.canClock && j.status === 'scheduled' && jobOn(j, ymd(new Date())) && ((me && me.staffId && (j.staffIds || []).includes(me.staffId)) || canDo('jobs.edit'));
 const onThisJob = (j) => !!(D.clock && D.clock.open && D.clock.open.jobId === j.id);
 const clockBtn = (j, cls = 'btn alt') => (onThisJob(j) ? `<button type="button" class="${cls} clock-on" data-act="clockOut">Clock Out</button>` : canClockJob(j) ? `<button type="button" class="${cls}" data-act="clockIn" data-id="${j.id}">Clock In</button>` : '');
 // Clocked in: the flag next to someone in a job's or site visit's team who is on the clock for it right now (Timesheets)
@@ -4760,7 +4761,7 @@ A.newSiteVisit = (d, el) => { const r = el.getBoundingClientRect(); scQuick({ da
 const svCanDo = (t) => canDo('jobs.edit') || !!(me && me.staffId && (t.staffIds || []).includes(me.staffId));
 const svQuotes = () => canDo('quotes');
 const onThisVisit = (t) => !!(D.clock && D.clock.open && D.clock.open.visitId === t.id);
-const canClockVisit = (t) => planHas('timesheets') && D.clock && D.clock.canClock && !t.done && ((me && me.staffId && (t.staffIds || []).includes(me.staffId)) || canDo('jobs.edit'));
+const canClockVisit = (t) => planHas('timesheets') && D.clock && D.clock.canClock && !t.done && t.date === ymd(new Date()) && ((me && me.staffId && (t.staffIds || []).includes(me.staffId)) || canDo('jobs.edit'));
 const svClockBtn = (t, cls = 'btn alt') => (onThisVisit(t) ? `<button type="button" class="${cls} clock-on" data-act="clockOut">Clock Out</button>` : canClockVisit(t) ? `<button type="button" class="${cls}" data-act="clockIn" data-visit="${t.id}">Clock In</button>` : '');
 const svClockBadge = (t) => (onThisVisit(t) ? `<span class="vsign clock-badge">⏱ On the clock · ${clockSince(D.clock.open.start)}</span>` : '');
 // completing it also clocks out everyone still on the clock for it (the server does that and says how many)
