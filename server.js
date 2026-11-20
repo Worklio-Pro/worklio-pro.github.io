@@ -2554,8 +2554,8 @@ function addSignedNote(kind, d) {
   } catch (e) { console.error('Signed copy failed:', e.message); }
 }
 // the signed copy: the business and its logo, who it's for, a box of the key facts, the line items (a job's show no prices), terms and the signature
-function signedPdf(kind, d) {
-  const job = kind === 'job'; const q = kind === 'quote'; const co = db.company; const c = findClient(d.clientId) || {}; const pdf = createPdf(); const L = 58; const R = 554; const BLUE = '#5b94c5'; const GRAY = '#f1f1f1'; const INK = '#111827';
+function signedPdf(kind, d) { // kind 'change order': d is the change order with its job (d.job)
+  const job = kind === 'job'; const q = kind === 'quote'; const chg = kind === 'change order'; const co = db.company; const c = findClient(d.clientId) || {}; const pdf = createPdf(); const L = 58; const R = 554; const BLUE = '#5b94c5'; const GRAY = '#f1f1f1'; const INK = '#111827';
   const read = (u) => { const m = /^\/uploads\/([\w.-]+)$/.exec(u || ''); if (!m) return null; try { return fs.readFileSync(path.join(uploadDir(), m[1])); } catch (e) { return null; } };
   const on = (k) => kind !== 'invoice' || d[k] !== 'off'; let y = 72;
   pdf.text(L, y, co.name || '', { size: 15, bold: true, color: INK }); y += 18;
@@ -2566,7 +2566,7 @@ function signedPdf(kind, d) {
   const top = 150; let ly = top + 8; pdf.text(L, ly, 'RECIPIENT:', { size: 8.5, bold: true, color: INK }); ly += 22; pdf.text(L, ly, c.name || '', { size: 12, bold: true, color: INK }); ly += 16;
   const where = String(d.address || c.address || '').split(',').map((s) => s.trim()).filter(Boolean); const lines = where.length > 2 ? [where.slice(0, -2).join(', '), where.slice(-2).join(', ')] : where.length ? [where.join(', ')] : [];
   for (const t of lines) ly = pdf.para(L, ly, t, 240, { size: 10, color: INK, lineHeight: 14 });
-  const word = job ? 'Job' : q ? 'Quote' : 'Invoice'; const bx = 322; const facts = (job ? [['Scheduled', d.date ? niceDate(d.date) : 'Not Scheduled'], ['Description', d.title || '']] : q ? [['Created', niceDate(String(d.createdAt || '').slice(0, 10))], ['Description', d.title || ''], ...(hasOptions(d) && d.chosenOption ? [['Option', shownOption(d).name]] : []), ['Total', money(d.total || 0)]] : [['Issued', niceDate(d.issueDate)], ['Due', niceDate(d.dueDate)], ['Description', d.subject || ''], ['Total', money(d.total || 0)]]).filter(([, v]) => v);
+  const word = job ? 'Job' : q ? 'Quote' : chg ? 'Change Order' : 'Invoice'; const bx = 322; const facts = (chg ? [['Job', `#${d.job.number}`], ['Description', d.title || ''], ['Approved', niceDate(String(d.approvedAt || '').slice(0, 10))], ['Total', money(d.total || 0)]] : job ? [['Scheduled', d.date ? niceDate(d.date) : 'Not Scheduled'], ['Description', d.title || '']] : q ? [['Created', niceDate(String(d.createdAt || '').slice(0, 10))], ['Description', d.title || ''], ...(hasOptions(d) && d.chosenOption ? [['Option', shownOption(d).name]] : []), ['Total', money(d.total || 0)]] : [['Issued', niceDate(d.issueDate)], ['Due', niceDate(d.dueDate)], ['Description', d.subject || ''], ['Total', money(d.total || 0)]]).filter(([, v]) => v);
   pdf.rect(bx, top, R - bx, 34, { fill: BLUE }); pdf.text(bx + 11, top + 22, `${word} #${d.number}`, { size: 14, bold: true, color: '#ffffff' }); pdf.rect(bx, top + 34, R - bx, facts.length * 21, { fill: GRAY });
   facts.forEach(([k, v], i) => { const ry = top + 34 + i * 21 + 15; pdf.text(bx + 11, ry, k, { size: 10, color: INK }); pdf.text(R - 11, ry, v.length > 28 ? v.slice(0, 27) + '…' : v, { size: 10, color: INK, align: 'right' }); });
   y = Math.max(ly, top + 34 + facts.length * 21) + 16;
@@ -2583,13 +2583,13 @@ function signedPdf(kind, d) {
   if (!job) { // totals
     const row = (k, v, bold) => { if (y + 20 > 720) { pdf.addPage(); y = 64; } pdf.text(R - 130, y + 12, k, { size: 10, bold, color: INK }); pdf.text(R - 6, y + 12, v, { size: 10, bold, color: INK, align: 'right' }); y += 18; };
     row('Subtotal', money(d.subtotal || 0)); if (d.discount > 0) row(discLabel(d), '-' + money(d.discount)); if (Number(d.taxRate)) row(`Tax (${d.taxRate}%)`, money(d.tax || 0)); row('Total', money(d.total || 0), true);
-    if (q && d.depositFee > 0) row('Required deposit', money(d.depositFee)); if (!q) row('Balance due', money(withStatus(d).balanceDue ?? d.total), true);
+    if (q && d.depositFee > 0) row('Required deposit', money(d.depositFee)); if (!q && !chg) row('Balance due', money(withStatus(d).balanceDue ?? d.total), true);
   }
   // terms on the left, the date and the signature on the right
-  const when = job ? d.signature && d.signature.signedAt : d.signedAt; const who = job ? d.signature && d.signature.name : d.signedName; y = Math.max(y + 34, job ? 560 : y + 34); if (y + 70 > 730) { pdf.addPage(); y = 90; }
-  const sigY = y; const terms = job ? (d.signature && d.signature.statement) || '' : d.disclaimer || ''; const sx = 372; const line = sigY + 34;
+  const when = chg ? (d.signature ? d.signature.signedAt : d.approvedAt) : job ? d.signature && d.signature.signedAt : d.signedAt; const who = chg ? (d.signature ? d.signature.name : `Approved by ${d.approvedBy || co.name}, no signature`) : job ? d.signature && d.signature.name : d.signedName; y = Math.max(y + 34, job ? 560 : y + 34); if (y + 70 > 730) { pdf.addPage(); y = 90; }
+  const sigY = y; const terms = chg ? [d.reason ? `What changed and why: ${d.reason}` : '', `${d.signature ? 'By signing, the client approves' : 'The client approved'} this change to job #${d.job.number} and its price. It is added to the job and billed with it.`].filter(Boolean).join('\n\n') : job ? (d.signature && d.signature.statement) || '' : d.disclaimer || ''; const sx = 372; const line = sigY + 34;
   pdf.text(sx, line - 4, when ? niceDate(String(when).slice(0, 10)) : '', { size: 10, color: INK }); const pic = read(d.signature && d.signature.file); if (pic) pdf.image(pic, sx + 66, line - 46, R - sx - 66, 54, { alignBottom: true });
-  pdf.line(sx, line, R, line, { color: '#6b7280', w: 0.75 }); pdf.text(sx, line + 13, 'Date', { size: 8, color: INK }); pdf.text(sx + 84, line + 13, 'Client Signature', { size: 8, color: INK }); if (who) pdf.text(sx + 84, line + 24, who, { size: 8, color: INK });
+  pdf.line(sx, line, R, line, { color: '#6b7280', w: 0.75 }); pdf.text(sx, line + 13, 'Date', { size: 8, color: INK }); pdf.text(sx + 84, line + 13, chg && !d.signature ? 'Approval' : 'Client Signature', { size: 8, color: INK }); if (who) pdf.text(chg && !d.signature ? sx : sx + 84, line + 24, who, { size: 8, color: INK }); // 'Approved by …, no signature' needs the whole width
   let ty = sigY; for (const para of String(terms).split('\n')) { if (ty > 730) { pdf.addPage(); ty = 64; } ty = para.trim() ? pdf.para(L, ty, para, 290, { size: 9, color: INK, lineHeight: 11.5 }) : ty + 6; }
   return pdf.toBuffer(`Signed ${word.toLowerCase()} ${d.number}`);
 }
@@ -2670,6 +2670,12 @@ const EMAIL_TEMPLATES = {
     subject: 'Change order {{co_number}} for job {{job_number}} from {{company_name}}',
     body: '# Please approve a change to your job\n\nHello {{client_name}},\n\nWe have a change to job {{job_number}} ({{job_title}}) for you to approve: **{{co_title}}**, {{total}}.\n\nPlease review it and sign to approve it before we do the work. It will be added to your job and billed with it.\n\n[Review and sign]({{link}})\n\nIf you have any questions, please get in touch with us at {{company_email}}.\n\n{{company_name}}',
     vars: { client_name: 'Client name', company_name: 'Your business name', company_email: 'Your business email', co_number: 'Change order number', co_title: 'Change order title', job_number: 'Job number', job_title: 'Job title', total: 'Change order total', link: 'Link to review and sign' },
+  },
+  changeOrderSigned: { // the client's copy once they sign a change order (the signed PDF is attached)
+    label: 'Signed change order', description: 'Sent to the client with a PDF copy when they sign a change order.',
+    subject: 'Your signed change order {{co_number}} for job {{job_number}}',
+    body: '# Thank you for approving the change\n\nHello {{client_name}},\n\nThank you for approving change order {{co_number}} ({{co_title}}) on job {{job_number}}, for {{total}}. A signed copy is attached for your records. It will be added to your job and billed with it.\n\n[View the change order]({{link}})\n\nIf you have any questions, please get in touch with us at {{company_email}}.\n\n{{company_name}}',
+    vars: { client_name: 'Client name', company_name: 'Your business name', company_email: 'Your business email', co_number: 'Change order number', co_title: 'Change order title', job_number: 'Job number', job_title: 'Job title', total: 'Change order total', link: 'Link to the change order' },
   },
   invoice: {
     label: 'Invoice', description: 'Sent when you send an invoice to a client.',
@@ -2892,6 +2898,19 @@ function coSign(co, { name, dataUrl, mode, collectedBy, via }) { // a signature 
   co.signature = { file: `/uploads/${file}`, name, method: mode === 'typed' ? 'typed' : 'drawn', via, collectedBy: collectedBy || '', signedAt: new Date().toISOString() };
   co.status = 'approved'; co.approvedAt = co.signature.signedAt; co.approvedBy = via === 'online' ? name : collectedBy || name; delete co.declinedAt; return '';
 }
+// once approved: a PDF copy in the job's notes (like a signed quote's), and, when the client signed, the copy emailed to them.
+// The approval itself is already saved, so a problem here never undoes it.
+function coSignedCopy(co) {
+  const j = coJob(co); if (!j) return;
+  try {
+    const pdfBuf = signedPdf('change order', { ...co, job: j, address: j.address }); const file = `signed-${token()}.pdf`; fs.writeFileSync(path.join(uploadDir(), file), pdfBuf);
+    const name = `${co.signature ? 'signed' : 'approved'}-change-order-${j.number}-${co.number}.pdf`.replace(/[^\w.-]+/g, ''); co.signedCopy = `/uploads/${file}`;
+    j.noteEntries = [{ id: uid(), text: `${co.signature ? 'Signed' : 'Approved'} copy of change order ${co.number}${co.title ? ` (${co.title})` : ''}`, at: new Date().toISOString(), by: brandLib.brand().name || 'Worklio Pro', coSigned: co.id, links: [], files: [{ name, url: co.signedCopy, type: 'pdf' }] }, ...(j.noteEntries || [])];
+    const c = findClient(co.clientId); if (!co.signature || !c || !c.email) return;
+    const m = inClientLang(co.clientId, () => renderEmail('changeOrderSigned', { client_name: c.name || '', company_name: db.company.name, co_number: co.number, co_title: co.title || '', job_number: j.number || '', job_title: j.title || '', total: money(co.total), link: coLink(co) }));
+    notify({ clientId: c.id, channel: 'email', kind: 'changeOrder', refId: co.id, refNumber: co.number, subject: m.subject, body: m.body, html: m.html, attachments: [{ name, type: 'application/pdf', content: pdfBuf }] }).then(() => save()).catch((e) => console.error('change order copy email:', e.message));
+  } catch (e) { console.error('Change order copy failed:', e.message); }
+}
 app.get('/api/change-orders', (req, res) => res.json(coList()));
 app.post('/api/jobs/:id/change-orders', (req, res) => {
   const j = db.jobs.find((x) => x.id === req.params.id); if (!j) return res.status(404).json({ error: 'Job not found' });
@@ -2915,14 +2934,14 @@ app.post('/api/change-orders/:id/signature', (req, res) => {
   const co = coFind(req, res); if (!co) return; if (co.status === 'approved') return res.status(400).json({ error: 'This change order is already approved' });
   const name = String((req.body || {}).name || '').trim().slice(0, 100); if (!name) return res.status(400).json({ error: 'Enter the name of the person signing' });
   const u = currentUser(req); const bad = coSign(co, { name, dataUrl: (req.body || {}).dataUrl, mode: 'drawn', collectedBy: u ? u.name : '', via: 'device' }); if (bad) return res.status(400).json({ error: bad });
-  save(); res.status(201).json(co);
+  coSignedCopy(co); save(); res.status(201).json(co);
 });
 // the client said yes or no some other way (a call, a text): owners, admins and managers record it
 const coMark = (what) => (req, res) => {
   const co = coFind(req, res); if (!co) return; const u = currentUser(req);
   if (!u || !(rolesLib.isAdminRole(u.role) || can(u, 'jobs.edit'))) return res.status(403).json({ error: 'Only people who can edit jobs can mark a change order approved or declined' });
   if (co.status === 'approved') return res.status(400).json({ error: 'This change order is already approved' });
-  if (what === 'approve') Object.assign(co, { status: 'approved', approvedAt: new Date().toISOString(), approvedBy: u.name || '', approvedWithoutSignature: true });
+  if (what === 'approve') Object.assign(co, { status: 'approved', approvedAt: new Date().toISOString(), approvedBy: u.name || '', approvedWithoutSignature: true }), coSignedCopy(co);
   else Object.assign(co, { status: 'declined', declinedAt: new Date().toISOString() });
   save(); res.json(co);
 };
@@ -2940,7 +2959,7 @@ app.post('/api/change-orders/:id/send', async (req, res) => {
 // the client's page: the change, its price, and Sign to approve or Decline
 function coPage(co, msg = '') {
   const j = coJob(co) || {}; const s = co.signature;
-  const st = co.status === 'approved' ? `<p><span class="badge paid">${tx('Approved')}</span> ${s ? tx('Signed by {name} on {date}', { name: esc(s.name), date: esc(niceDate(s.signedAt.slice(0, 10))) }) : esc(niceDate(String(co.approvedAt).slice(0, 10)))}</p>${s ? `<img src="${esc(s.file)}" alt="" style="max-height:80px">` : ''}`
+  const st = co.status === 'approved' ? `<p><span class="badge paid">${tx('Approved')}</span> ${s ? tx('Signed by {name} on {date}', { name: esc(s.name), date: esc(niceDate(s.signedAt.slice(0, 10))) }) : esc(niceDate(String(co.approvedAt).slice(0, 10)))}</p>${s ? `<img src="${esc(s.file)}" alt="" style="max-height:80px">` : ''}${co.signedCopy ? `<p><a href="${esc(co.signedCopy)}" target="_blank" rel="noopener">${tx('Download the signed copy (PDF)')}</a></p>` : ''}`
     : co.status === 'declined' ? `<p><span class="badge">${tx('Declined')}</span> ${tx('You declined this change. Get in touch with us if you change your mind.')}</p>`
       : quoteSignBox(co, { action: `/p/co/${esc(co.token)}/sign`, title: tx('Approve this change'), intro: tx('Sign below to approve this change and its price. It’s added to your job and billed with it.'), button: tx('Sign and approve') })
         + `<form method="post" action="/p/co/${esc(co.token)}/decline" onsubmit="return confirm(this.dataset.ask)" data-ask="${esc(tx('Decline this change?'))}" style="text-align:center;margin-top:12px"><button class="btn alt">${tx('Decline')}</button></form>`;
@@ -2955,7 +2974,7 @@ app.post('/p/co/:token/sign', (req, res) => {
   const name = String((req.body || {}).fullName || '').trim().slice(0, 100);
   const bad = !name ? 'Please type your full name.' : coSign(co, { name, dataUrl: req.body.dataUrl, mode: req.body.sigMode, via: 'online' });
   if (bad) return res.status(400).send(coPage(co, tx(bad)));
-  save(); tellBusinessCO(co, 'approved'); res.redirect(`/p/co/${co.token}?done=signed`);
+  coSignedCopy(co); save(); tellBusinessCO(co, 'approved'); res.redirect(`/p/co/${co.token}?done=signed`);
 });
 app.post('/p/co/:token/decline', (req, res) => {
   const co = coList().find((x) => x.token === req.params.token); if (!co) return res.status(404).send('Not found');
