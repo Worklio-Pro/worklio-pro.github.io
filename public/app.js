@@ -243,6 +243,11 @@ function permClasses() { const b = document.body; const lim = !isAdminMe(); b.cl
 const flow = (k) => { const w = company && company.workflow; return !w || !w.steps || w.steps[k] !== false; };
 const planHas = (f) => !(company.account && company.account.features) || company.account.features.includes(f);
 const planLocked = (path) => !!(company.account && (company.account.lockedPages || []).includes(path));
+// owners and admins see the pages their plan leaves out in the menus, with a lock; opening one shows what it does and how to get it
+const showLocked = () => isAdminMe();
+const navOk = (p) => !planLocked(p) || showLocked();
+const LOCK_IC = '<path d="M7 11V8a5 5 0 0 1 10 0v3"/><rect x="5" y="11" width="14" height="10" rx="2"/>';
+const lockTag = (p) => (planLocked(p) ? `<span class="nav-lock" title="Not in your plan" aria-label="Not in your plan">${svgIcon(LOCK_IC, 14)}</span>` : '');
 // a feature marked Beta in Alpha (for a tag on a feature that has no page of its own, e.g. the Calendar's Map view)
 const featBeta = (k) => !!(company.account && (company.account.featureList || []).some((f) => f.key === k && f.beta));
 const betaTagHtml = (k) => (featBeta(k) ? '<span class="beta-tag" title="This feature is in beta testing">Beta</span>' : '');
@@ -261,7 +266,7 @@ const MK_PAGES = ['/marketing/dashboard', '/reviews', '/social-posts', '/automat
 const mkHub = () => !(company.account && company.account.marketingHub === false);
 const mkPage = (path) => mkHub() && (path.startsWith('/marketing/') || ['/reviews', '/social-posts', '/automations', '/automations/edit'].includes(path));
 const mkEntry = () => MK_PAGES.find((p) => memberCan(p) && (p === '/marketing/dashboard' || !planLocked(p)));
-const navFor = () => navList().map(([g, items]) => [g, items.filter(([p]) => (p === '/marketing/dashboard') === mkHub() || !MK_PAGES.includes(p)).map(([p, l]) => (p === '/marketing/dashboard' ? (mkEntry() ? [mkEntry(), l] : null) : [p, l])).filter((x) => x && memberCan(x[0]) && !planLocked(x[0]) && !deskOnly(x[0]))]).filter(([, items]) => items.length);
+const navFor = () => navList().map(([g, items]) => [g, items.filter(([p]) => (p === '/marketing/dashboard') === mkHub() || !MK_PAGES.includes(p)).map(([p, l]) => (p === '/marketing/dashboard' ? (mkEntry() ? [mkEntry(), l] : null) : [p, l])).filter((x) => x && memberCan(x[0]) && navOk(x[0]) && !deskOnly(x[0]))]).filter(([, items]) => items.length);
 // Team Requests (in Settings) shows how many time-off requests are waiting for this approver, and so does the Settings button
 // a page in beta testing (Alpha → Pricing → Plans & features) says so in a banner at the top, instead of a tag in the menu
 // pages that are desk work (set up once, wide tables, files, builders): phones leave them out of the menu and the search (all of Marketing too).
@@ -322,11 +327,11 @@ function sideHtml(path) {
     const label = Object.fromEntries(items);
     return `<div class="side-nav side-settings">${brand}<button type="button" class="side-back" data-act="sideBack">${svgIcon(ICONS.back, 18)}<span>Go Back</span></button><h2 class="side-title">Settings</h2>` +
       SETTINGS_GROUPS.map(([g, paths]) => [g, paths.filter((p) => label[p])]).filter(([, ps]) => ps.length)
-        .map(([g, ps]) => `<div class="grp">${g}</div>` + ps.map((p) => `<a href="${p}" data-link class="${isOnPage(p, path) ? 'on' : ''}">${label[p]}</a>`).join('')).join('') +
+        .map(([g, ps]) => `<div class="grp">${g}</div>` + ps.map((p) => `<a href="${p}" data-link class="${isOnPage(p, path) ? 'on' : ''}">${label[p]}${lockTag(p)}</a>`).join('')).join('') +
       `<a href="${esc(path)}?desktop=1" class="side-desk" data-act="desktopView">Desktop View${svgIcon('<path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>', 16)}</a></div>`; // phones only (CSS): the app in its computer layout, in a new window
   }
   return `<div class="side-nav">${brand}` +
-    navFor().map(([g, items]) => (SIDE_BREAKS.includes(g) ? '<hr class="side-div">' : '') + items.map(([p, l]) => `<a href="${p}" data-link class="nav-link ${p === path || (!navPaths.includes(path) && path.startsWith(p + '/')) || (MK_PAGES.includes(p) && mkHub() && mkPage(path)) ? 'on' : ''}">${navIcon(p)}<span class="nav-l">${l}</span></a>`).join('')).join('') + `</div>${items.length ? `<div class="side-set"><button type="button" class="side-set-btn" data-act="openSettings"><span class="nav-ic">${svgIcon(ICONS.gear, 19)}</span><span class="nav-l">Settings</span></button></div>` : ''}`;
+    navFor().map(([g, items]) => (SIDE_BREAKS.includes(g) ? '<hr class="side-div">' : '') + items.map(([p, l]) => `<a href="${p}" data-link class="nav-link ${p === path || (!navPaths.includes(path) && path.startsWith(p + '/')) || (MK_PAGES.includes(p) && mkHub() && mkPage(path)) ? 'on' : ''}">${navIcon(p)}<span class="nav-l">${l}</span>${lockTag(p)}</a>`).join('')).join('') + `</div>${items.length ? `<div class="side-set"><button type="button" class="side-set-btn" data-act="openSettings"><span class="nav-ic">${svgIcon(ICONS.gear, 19)}</span><span class="nav-l">Settings</span></button></div>` : ''}`;
 }
 // bottom tab bar (phones): the first four main pages this member can open, then More for the full menu
 // its real height (it grows with the iPhone's home bar) as --bnav-h, so save bars sit right on top of it, with no gap
@@ -366,6 +371,30 @@ function renderBottomNav(path) {
   $('#bnav').innerHTML = items.map(([p, l, d]) => { const on = p === path || (!navPaths.includes(path) && path.startsWith(p + '/')); return `<a href="${p}" data-link class="${on ? 'on' : ''}"${on ? ' aria-current="page"' : ''}>${bico(iconOf(p) || d)}<span>${l}</span></a>`; }).join('')
     + `<button type="button" data-act="toggleSide" aria-label="More menu" aria-expanded="false">${bico('<path d="M4 6h16M4 12h16M4 18h16"/>')}<span>More</span></button>`;
 }
+/* ===== a page the plan leaves out: what the feature does and which plan has it (the menus show these pages with a lock) ===== */
+const LOCKED_POINTS = {
+  timesheets: ['The team clocks in and out on each job from their phone', 'Fix, approve and export timesheets for payroll', 'Hours on a job count as labor cost in Job profit'],
+  timeOff: ['Team members ask for time off in the app', 'Approve or decline it in one place', 'See who’s off, and take them off the jobs they’d miss'],
+  expenses: ['Every expense with date, vendor, category and amount', 'Link an expense to a job to see what it really made', 'Export them for your accountant'],
+  reports: ['Profit & loss, transactions, invoices and aged receivables', 'Visits, quotes, team productivity and where your clients come from', 'Charts and CSV export on every report'],
+  taxSummary: ['Sales tax collected, month by month', 'Ready when it’s time to file'],
+  servicePlans: ['Plans billed monthly, quarterly or yearly', 'Visits included, scheduled for you', 'A member discount, and invoices made automatically'],
+  gallery: ['Before, progress and after photos on every job', 'Every project’s photos in one place'],
+  jobForms: ['Checklists and forms: inspections, safety checks, required photos', 'Filled in on site from a phone', 'Require one before a job is marked complete, or share it in the client portal'],
+  onlineBooking: ['A booking page for new clients', 'Link it from Google and your website', 'A widget to put on your website'],
+  accounting: ['Clients, invoices, payments and expenses sent automatically', 'Works with QuickBooks Online and Xero', 'No typing it all in twice'],
+  emailTemplates: ['Change the wording of quote, invoice and reminder emails', 'Sound like your business, not a template'],
+  customRoles: ['Create your own roles, plus Admin', 'Choose what each role can see and do', 'Without it: Owner, Manager and Team Member'],
+  clientImport: ['Bring your clients over from a CSV file', 'Merge duplicate clients'],
+  connections: ['Connect your Google Business Profile, Facebook Page and Instagram', 'Google reviews, booking on Google and social posts need it'],
+};
+function lockedPageHtml(path, title) {
+  const info = ((company.account && company.account.lockedInfo) || {})[path] || {}; const cur = (company.account && company.account.plan && company.account.plan.name) || '';
+  const pts = LOCKED_POINTS[info.key] || []; const name = info.label || title;
+  const where = info.plan ? `<strong>Included in the ${esc(info.plan)} plan${info.plan === 'Unlimited' ? '' : ' and up'}.</strong> ` : '';
+  const cta = memberCan('/settings/billing') ? `<a class="btn" href="/settings/billing" data-link>${info.plan ? 'Upgrade to ' + esc(info.plan) : 'See plans'}</a>` : '<p class="muted" style="margin:0">Ask your account owner about upgrading.</p>';
+  return `<section class="card mk-pitch locked-pitch"><span class="mk-badge">${svgIcon(LOCK_IC, 13)} Not in your plan</span><h1>${esc(name)}</h1><p class="mk-lead">${esc(info.desc || `${title} isn’t part of your plan.`)}</p>${pts.length ? `<ul class="mk-points">${pts.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}<p class="mk-note">${where}You’re on the ${esc(cur)} plan.</p>${cta}</section>`;
+}
 /* ===== top bar: feature search, help panel, your account (initials) menu ===== */
 const svgIcon = (d, size = 20) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const ICONS = {
@@ -392,7 +421,7 @@ const ICONS = {
 const referralsOn = () => !!(company.account && company.account.referrals);
 // App Marketplace shows unless Alpha turned it off
 const marketplaceOn = () => !(company.account && company.account.marketplace === false);
-const settingsFor = () => SETTINGS_NAV.filter(([p]) => memberCan(p) && !planLocked(p) && !deskOnly(p) && (p !== '/rewards' || referralsOn()) && (p !== '/marketplace' || marketplaceOn()));
+const settingsFor = () => SETTINGS_NAV.filter(([p]) => memberCan(p) && navOk(p) && !deskOnly(p) && (p !== '/rewards' || referralsOn()) && (p !== '/marketplace' || marketplaceOn()));
 // pages the search finds besides the menu items, and extra words each page answers to
 const FEATURE_EXTRAS = [['/quotes/new', 'New quote', 'Quotes', 'create estimate'], ['/jobs/new', 'New job', 'Jobs', 'create schedule visit'], ['/invoices/new', 'New invoice', 'Invoices', 'create bill'],
   ['/clients/import', 'Import clients', 'Settings', 'csv upload spreadsheet'], ['/services/import', 'Import products & services', 'Settings', 'csv upload spreadsheet price list catalog'],['/team/new', 'Add team member', 'Settings', 'invite staff employee user'],
@@ -405,7 +434,7 @@ const FEATURE_WORDS = {
   '/settings/booking': 'online booking book now button widget website embed form wix wordpress squarespace schedule appointment request leads', '/settings/job-forms': 'checklists checklist forms form inspection safety check templates job photos required', '/settings/import-export': 'import export csv download upload spreadsheet excel backup clients quotes jobs invoices products services expenses timesheets payroll', '/settings/preferences': 'appearance theme dark mode light system push notifications alerts phone calendar link google calendar outlook apple ical ics feed sync subscribe', '/settings': 'tax settings tax rate tax id sales tax saved discounts number prefixes branding logo dark logo brand color accent color web address domain zelle venmo cash app cashapp cashtag paypal defaults stripe card payments online payments regional time zone date format time format week', '/settings/connections': 'integrations google facebook instagram ai', '/settings/accounting': 'quickbooks xero accounting bookkeeping books sync accountant', '/settings/business-page': 'qr code business card digital card link in bio links save contact vcard scan limit expiry', '/marketplace': 'apps integrations connect quickbooks xero accounting home depot lowes supplies materials zapier chatgpt claude ai automation calendar slack gusto payroll', '/settings/billing': 'subscription plan upgrade payment method features included add-ons', '/settings/support-access': 'grant revoke help troubleshoot permission',
 };
 const featureList = () => {
-  const open = (p) => PAGES[p] && !deskOnly(p) && memberCan(p) && !planLocked(p) && !planLocked(p.split('/').slice(0, 2).join('/'));
+  const open = (p) => PAGES[p] && !deskOnly(p) && memberCan(p) && navOk(p) && navOk(p.split('/').slice(0, 2).join('/'));
   return [...navFor().flatMap(([g, items]) => items.map(([p, l]) => [p, l, g])), ...settingsFor().map(([p, l]) => [p, l, 'Settings']), ...FEATURE_EXTRAS.filter(([p]) => open(p))]
     .map(([p, l, g, k]) => ({ p, l, g, words: `${l} ${g} ${k || ''} ${FEATURE_WORDS[p] || ''}`.toLowerCase() }));
 };
@@ -649,7 +678,7 @@ async function render() {
   if (!portal && path.startsWith('/marketing/') && !mkHub()) { history.replaceState({}, '', '/social-posts'); return render(); } // the hub is off: its own pages go to Marketing (social posts) as before
   if (page && !memberCan(path)) { document.title = 'No access'; main.innerHTML = `<div class="card"><h1>You don't have access to this page</h1><p class="muted">Your access level doesn't include this page. Ask the account owner if you need more access.</p><p><a href="/calendar" data-link>Go to the job calendar</a></p></div>`; return; }
   if (page && planLocked(path) && mkPage(path) && typeof mkLockedPage === 'function') { document.title = page.title; await mkLockedPage(main, path); if (betaPage(path)) main.insertAdjacentHTML('afterbegin', BETA_BAR); return; } // a feature in Beta says so on its upgrade page too
-  if (page && planLocked(path)) { document.title = page.title; main.innerHTML = (betaPage(path) ? BETA_BAR : '') + `<div class="card upgrade-card"><h1>${esc(page.title)} isn’t in your plan</h1><p class="muted">You’re on the ${esc(company.account.plan.name)} plan. Upgrade to get ${esc(page.title)} and more.</p>${memberCan('/settings/billing') ? '<p><a href="/settings/billing" data-link class="btn alt">See your plan</a></p>' : '<p class="muted" style="margin:0">Ask your account owner about upgrading.</p>'}</div>`; return; }
+  if (page && planLocked(path)) { document.title = page.title; main.innerHTML = (betaPage(path) ? BETA_BAR : '') + lockedPageHtml(path, page.title); return; }
   if (!page) { document.title = 'Page not found'; document.body.classList.add('p404-only'); showTheme('light'); main.innerHTML = page404Html(); return; } // p404-only: no menus, bars or chat; always light (the next page puts the person's theme back)
   document.title = `${page.title} · ${company.name || (company.account && company.account.productName) || 'Worklio Pro'}`;
   try { D = portal ? {} : await loadAll(); timeOffBadge(); await page.render(main); if (mkPage(path) && typeof mkTabs === 'function' && !$('.mk-tabs', main)) main.insertAdjacentHTML('afterbegin', mkTabs(path)); if (betaPage(path)) main.insertAdjacentHTML('afterbegin', BETA_BAR); if (deskOnly(path)) main.insertAdjacentHTML('afterbegin', DESK_BAR); }

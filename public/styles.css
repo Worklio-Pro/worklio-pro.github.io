@@ -2984,3 +2984,7 @@ body.p404-only #billingBar{display:none!important}
 .flow-pre:hover{border-color:var(--brand,#2563eb)}.flow-pre.on{border-color:var(--brand,#2563eb);box-shadow:0 0 0 1px var(--brand,#2563eb)}.flow-pre strong{font-size:15px}
 .flow-h{margin:18px 0 6px;font-size:17px;display:flex;align-items:center;gap:8px}.flow-steps{display:flex;flex-direction:column}.flow-step{padding:12px 0;border-bottom:1px solid var(--line)}
 .flow-step.off{opacity:.55}.flow-unset{margin:0 0 4px;font-size:14px;font-weight:600}
+/* a page the plan leaves out: a lock after its name in the menus (owners and admins), and its upgrade card */
+.nav-lock{display:inline-flex;align-items:center;flex:0 0 auto;margin-left:6px;opacity:.55;vertical-align:-2px}
+#side.mini .nav-lock{display:none}
+.locked-pitch .mk-badge{display:inline-flex;align-items:center;gap:5px}
