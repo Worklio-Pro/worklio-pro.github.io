@@ -322,7 +322,8 @@ function sideHtml(path) {
     const label = Object.fromEntries(items);
     return `<div class="side-nav side-settings">${brand}<button type="button" class="side-back" data-act="sideBack">${svgIcon(ICONS.back, 18)}<span>Go Back</span></button><h2 class="side-title">Settings</h2>` +
       SETTINGS_GROUPS.map(([g, paths]) => [g, paths.filter((p) => label[p])]).filter(([, ps]) => ps.length)
-        .map(([g, ps]) => `<div class="grp">${g}</div>` + ps.map((p) => `<a href="${p}" data-link class="${isOnPage(p, path) ? 'on' : ''}">${label[p]}</a>`).join('')).join('') + '</div>';
+        .map(([g, ps]) => `<div class="grp">${g}</div>` + ps.map((p) => `<a href="${p}" data-link class="${isOnPage(p, path) ? 'on' : ''}">${label[p]}</a>`).join('')).join('') +
+      `<a href="${esc(path)}?desktop=1" class="side-desk" data-act="desktopView">Desktop View</a></div>`; // phones only (CSS): the app in its computer layout, in a new window
   }
   return `<div class="side-nav">${brand}` +
     navFor().map(([g, items]) => (SIDE_BREAKS.includes(g) ? '<hr class="side-div">' : '') + items.map(([p, l]) => `<a href="${p}" data-link class="nav-link ${p === path || (!navPaths.includes(path) && path.startsWith(p + '/')) || (MK_PAGES.includes(p) && mkHub() && mkPage(path)) ? 'on' : ''}">${navIcon(p)}<span class="nav-l">${l}</span></a>`).join('')).join('') + `</div>${items.length ? `<div class="side-set"><button type="button" class="side-set-btn" data-act="openSettings"><span class="nav-ic">${svgIcon(ICONS.gear, 19)}</span><span class="nav-l">Settings</span></button></div>` : ''}`;
@@ -776,6 +777,9 @@ A.openHelp = () => openHelp();
 const sideSwitch = (mode, focus) => { sideMode = mode; fillSide(curPath()); const f = $(focus, $('#side')); if (f) f.focus(); };
 A.openSettings = () => sideSwitch('settings', '.side-back');
 A.sideBack = () => sideSwitch('main', '.side-set-btn');
+// Settings menu → Desktop View (phones): this page again in a new window, laid out as on a computer (index.html widens that window's viewport).
+// The size asks for a window; phone browsers that only have tabs open it as a tab.
+A.desktopView = () => { const u = new URL(location.href); u.searchParams.set('desktop', '1'); window.open(u.href, 'desktopView', 'popup,width=1280,height=800'); };
 A.sideMini = () => { sideMini = !sideMini; try { localStorage.setItem('sideMini', sideMini ? '1' : '0'); } catch (e) { /* this visit only */ } fillSide(curPath()); };
 // the QR code drawn the way Settings → Business Page → QR code appearance sets it (plain until it loads, or if it can't)
 let qrLook = null;
