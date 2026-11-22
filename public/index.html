@@ -17,7 +17,7 @@
   <script>/* Desktop View (Settings menu on phones): ?desktop=1 opens the app with a computer-width viewport; it stays that way in this window only */
   try{if(/[?&]desktop=1/.test(location.search)){sessionStorage.setItem("desktopView","1");history.replaceState(null,"",location.pathname+location.search.replace(/([?&])desktop=1&?/,"$1").replace(/[?&]$/,"")+location.hash)}
   if(sessionStorage.getItem("desktopView")==="1")document.querySelector('meta[name="viewport"]').content="width=1280"}catch(e){}</script>
-  <link rel="stylesheet" href="/styles.css?v=278">
+  <link rel="stylesheet" href="/styles.css?v=279">
   <link rel="stylesheet" href="/theme.css">
 </head>
 <body>
@@ -46,7 +46,7 @@
   <script src="/qr.js?v=2"></script>
   <script src="/phone.js?v=2"></script>
   <script src="/color-picker.js?v=1"></script>
-  <script src="/app.js?v=238"></script>
+  <script src="/app.js?v=239"></script>
   <script src="/tour.js?v=2"></script>
   <script src="/cancelflow.js?v=1"></script>
   <script src="/pages.js?v=239"></script>

@@ -33,7 +33,7 @@
 .side-title{margin:0 10px 4px;font-size:20px;color:var(--nav-text,#fff)}
 /* Settings menu → Desktop View: phones only, on its own line after Support, at the right */
 .side-settings a.side-desk{display:none}
-@media (max-width:760px){#side .side-settings a.side-desk{display:flex;justify-content:flex-end;margin-top:8px;font-size:15px;opacity:.85}}
+@media (max-width:760px){#side .side-settings a.side-desk{display:flex;justify-content:flex-end;gap:6px;margin-top:8px;font-size:15px;opacity:.85}}
 .side-settings .grp{display:flex;align-items:center;gap:10px}.side-settings .grp::after{content:'';flex:1;border-top:1px solid color-mix(in srgb,var(--nav-text,#cbd5e1) 35%,transparent)}
 
 *{box-sizing:border-box}
