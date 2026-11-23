@@ -414,10 +414,18 @@ const LOCKED_FEATURES = {
 // layouts, so the locked pages don't all look alike: split (words left, sample right), photo (a photo of someone at work with the
 // sample over its corner), banner (the photo across the top with the headline on it), center (headline centered, the sample wide below).
 // photo and banner need LOCKED_PHOTOS[key]; without one they fall back to split
-const LOCKED_LAYOUT = { timesheets: 'split', timeOff: 'center', expenses: 'split', reports: 'photo', taxSummary: 'center', servicePlans: 'center', gallery: 'center', jobForms: 'split', onlineBooking: 'split', accounting: 'split', emailTemplates: 'center', customRoles: 'banner', clientImport: 'split', connections: 'center' };
+const LOCKED_LAYOUT = { timesheets: 'banner', timeOff: 'banner', expenses: 'photo', reports: 'photo', taxSummary: 'center', servicePlans: 'photo', gallery: 'photoR', jobForms: 'banner', onlineBooking: 'photoR', accounting: 'photoR', emailTemplates: 'center', customRoles: 'banner', clientImport: 'split', connections: 'center' };
 const LOCKED_PHOTOS = { // key: [file in /img/upgrade, alt text, photographer] (Unsplash License)
   reports: ['reports.jpg', 'Hands on a laptop on a workbench, with tools hanging on the wall behind it', 'Anton Savinov'],
   customRoles: ['roles.jpg', 'A crew of seven in hard hats and safety vests talking on a job site', 'Scott Blake'],
+  timesheets: ['timesheets.jpg', 'A landscaper in a wide-brimmed hat trimming the grass along a sidewalk', 'Kenny Perez'],
+  timeOff: ['time-off.jpg', 'A roofer pulling old shingles off a house roof', 'Zohair Mirza'],
+  jobForms: ['job-forms.jpg', 'A man holding a tablet in front of a house', 'Will Haddock'],
+  expenses: ['expenses.jpg', 'An electrician working on a home’s electric meter', 'Raze Solar'],
+  onlineBooking: ['online-booking.jpg', 'A plumber with a toolbox working on the pipes in a bathroom', 'bhagya laxmi'],
+  servicePlans: ['service-plans.jpg', 'Gloved hands trimming a juniper bush with pruning shears', 'Crystal Jo'],
+  accounting: ['accounting.jpg', 'A woman working on a laptop at her desk', 'Daniel Thomas'],
+  gallery: ['gallery.jpg', 'A painter rolling paint onto a wall', 'Callum Hill'],
 };
 function lockedPageHtml(path, title) {
   const info = ((company.account && company.account.lockedInfo) || {})[path] || {}; const cur = (company.account && company.account.plan && company.account.plan.name) || '';
@@ -427,7 +435,7 @@ function lockedPageHtml(path, title) {
   const cta = owner ? `<a class="btn lk-go" href="/settings/billing" data-link>${plan ? 'Upgrade to ' + esc(plan) : 'See plans'}</a>` : '<p class="muted" style="margin:0">Ask your account owner about upgrading.</p>';
   const badge = `<span class="lk-badge">${svgIcon(LOCK_IC, 13)}${plan ? `${esc(plan)} feature` : 'Not in your plan'}</span>`;
   if (!F) return `<section class="card mk-pitch locked-pitch">${badge}<h1>${esc(name)}</h1><p class="mk-lead">${esc(info.desc || `${title} isn’t part of your plan.`)}</p><p class="mk-note">You’re on the ${esc(cur)} plan.</p>${cta}</section>`;
-  const ph = LOCKED_PHOTOS[info.key]; let L = LOCKED_LAYOUT[info.key] || 'split'; if (!ph && (L === 'photo' || L === 'banner')) L = 'split';
+  const ph = LOCKED_PHOTOS[info.key]; let L = LOCKED_LAYOUT[info.key] || 'split'; if (!ph && L !== 'center') L = 'split';
   const img = ph ? `<img src="/img/upgrade/${ph[0]}" alt="${esc(ph[1])}" loading="lazy">` : '';
   const credit = ph ? `<span class="lk-credit">Photo: ${esc(ph[2])} / Unsplash</span>` : '';
   const copy = `${badge}<p class="lk-kicker">${esc(name)}</p><h1>${esc(F.h)}</h1><p class="lk-story">${esc(F.story)}</p>${owner ? `<div class="lk-hero-cta">${cta}</div>` : ''}`;
@@ -437,7 +445,7 @@ function lockedPageHtml(path, title) {
   if (L === 'banner') return `<div class="lk lk-l-banner">
 <section class="card lk-banner">${img}<div class="lk-banner-in">${copy}</div>${credit}</section>
 <div class="lk-duo"><div class="lk-art">${F.mock()}</div>${pts('lk-stack')}</div>${worth}${planBox}</div>`;
-  if (L === 'photo') return `<div class="lk lk-l-photo">
+  if (L === 'photo' || L === 'photoR') return `<div class="lk lk-l-photo${L === 'photoR' ? ' lk-flip' : ''}">
 <section class="card lk-hero lk-photo-hero"><div class="lk-pic">${img}${credit}<div class="lk-art">${F.mock()}</div></div><div class="lk-copy">${copy}</div></section>
 ${pts()}${worth}${planBox}</div>`;
   if (L === 'center') return `<div class="lk lk-l-center">

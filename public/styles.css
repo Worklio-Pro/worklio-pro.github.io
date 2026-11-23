@@ -3097,3 +3097,9 @@ body.p404-only #billingBar{display:none!important}
   .lk-banner{min-height:0}.lk-banner::before{background:linear-gradient(0deg,rgba(9,14,28,.92) 30%,rgba(9,14,28,.35))}.lk-banner-in{padding:120px 20px 22px}.lk-banner-in h1{font-size:28px}
   .lk-duo{grid-template-columns:1fr}.lk-center{padding:28px 18px}
 }
+/* photoR: the photo on the right, its sample over the right corner */
+.lk-flip .lk-photo-hero{grid-template-columns:1.05fr 1fr}
+.lk-flip .lk-pic{order:2}
+.lk-flip .lk-pic .lk-art{left:auto;right:-16px}
+.lk-flip .lk-pic .lk-credit{right:auto;left:12px}
+@media (max-width:860px){.lk-flip .lk-pic{order:0}.lk-flip .lk-pic .lk-art{right:8px}}
