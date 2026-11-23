@@ -260,9 +260,9 @@ const catalogCat = (name) => {
 // ---- matrix line items: a heading line (item.matrix: sizes, each with a price; colors; a quantity per size and color) and its sub items
 // ("M · Navy", item.mx), rebuilt here from the grid every time so they always match it. App Settings → General turns the editor's button on.
 const mxList = (a) => [...new Set((Array.isArray(a) ? a : []).map((x) => String(x == null ? '' : x).replace(/\|/g, '/').trim().slice(0, 30)).filter((x) => x && x !== '__proto__'))].slice(0, 20);
-// who may use them: the default account always; others when Alpha includes Matrix pricing for free (t.matrixPricing, the business's page in
+// who may use them: accounts Alpha includes Matrix pricing for free (t.matrixPricing, the business's page in
 // the Alpha console), or while the owner pays for the add-on (t.addons.matrix, App Settings → General; see "paid add-ons" below)
-const matrixFree = (t) => tenancy.isDefault(t) || !!t.matrixPricing;
+const matrixFree = (t) => !!t.matrixPricing; // the platform's own account too: no exception (Nov 22 2026)
 // the matrix add-on while it's on: { since, by, endsAt? }. endsAt: removed, kept until the end of the period already paid for (its last day)
 const matrixPaid = (t) => { const a = t.addons && t.addons.matrix; return a && (!a.endsAt || a.endsAt >= iso(new Date())) ? a : null; };
 const matrixAllowed = (t = tenancy.current()) => matrixFree(t) || !!matrixPaid(t);
@@ -6534,7 +6534,7 @@ const seatsChanged = () => { const t = tenancy.current(); if (!tenancy.isDefault
 // The owner adds it in the app; it's a line of its own on the subscription ("Matrix pricing"), in the subscription's billing period
 // (yearly: the plan's yearly discount). Removing it takes the line off with no refund and keeps the add-on until the period ends.
 // On a free trial it's free until the trial ends: the line goes on the subscription made when a card is added.
-// Accounts Alpha includes it for (t.matrixPricing) and the default account never pay for it.
+// Accounts Alpha includes it for (t.matrixPricing) never pay for it.
 const MATRIX_ADDON = 10; // dollars a month
 const matrixCharge = (p, interval) => stripeLib.addonCharge(MATRIX_ADDON, p, interval);
 const matrixBilled = (t) => !matrixFree(t) && !!(t.addons && t.addons.matrix && !t.addons.matrix.endsAt); // should have a line on the subscription
@@ -6574,7 +6574,7 @@ async function extraLines(sub, p, interval, count, t, n = 1) {
 }
 // what the app and the billing page show about the add-on
 function matrixInfo(t) {
-  if (tenancy.isDefault(t)) return null; const a = matrixPaid(t); const plan = tenancy.planOf(t);
+  const a = matrixPaid(t); const plan = tenancy.planOf(t);
   const c = matrixCharge(plan, (t.billing && t.billing.interval) || 'month');
   return { state: t.matrixPricing ? 'included' : a ? (a.endsAt ? 'ending' : 'on') : 'off', since: a ? a.since : null, endsAt: a && a.endsAt ? a.endsAt : null, cents: c ? c.cents : 0, interval: c ? c.interval : 'month', monthly: MATRIX_ADDON };
 }
