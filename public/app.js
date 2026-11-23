@@ -318,6 +318,8 @@ function fillSide(path) {
   }
   timeOffBadge();
 }
+// this window was opened from Desktop View (index.html keeps the flag for the window): no Desktop View link in it
+const inDeskView = () => { try { return sessionStorage.getItem('desktopView') === '1'; } catch (e) { return false; } };
 const isOnPage = (p, path) => p === path || (!navPaths.includes(path) && path.startsWith(p + '/'));
 const SIDE_BREAKS = ['Money', 'Marketing', 'Records']; // a line above these sections; the main menu shows no section names
 function sideHtml(path) {
@@ -328,7 +330,7 @@ function sideHtml(path) {
     return `<div class="side-nav side-settings">${brand}<button type="button" class="side-back" data-act="sideBack">${svgIcon(ICONS.back, 18)}<span>Go Back</span></button><h2 class="side-title">Settings</h2>` +
       SETTINGS_GROUPS.map(([g, paths]) => [g, paths.filter((p) => label[p])]).filter(([, ps]) => ps.length)
         .map(([g, ps]) => `<div class="grp">${g}</div>` + ps.map((p) => `<a href="${p}" data-link class="${isOnPage(p, path) ? 'on' : ''}">${label[p]}${lockTag(p)}</a>`).join('')).join('') +
-      `<a href="${esc(path)}?desktop=1" class="side-desk" data-act="desktopView">Desktop View${svgIcon('<path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>', 16)}</a></div>`; // phones only (CSS): the app in its computer layout, in a new window
+      (inDeskView() ? '</div>' : `<a href="${esc(path)}?desktop=1" class="side-desk" data-act="desktopView">Desktop View${svgIcon('<path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>', 16)}</a></div>`); // phones only (CSS): the app in its computer layout, in a new window
   }
   return `<div class="side-nav">${brand}` +
     navFor().map(([g, items]) => (SIDE_BREAKS.includes(g) ? '<hr class="side-div">' : '') + items.map(([p, l]) => `<a href="${p}" data-link class="nav-link ${p === path || (!navPaths.includes(path) && path.startsWith(p + '/')) || (MK_PAGES.includes(p) && mkHub() && mkPage(path)) ? 'on' : ''}">${navIcon(p)}<span class="nav-l">${l}</span>${lockTag(p)}</a>`).join('')).join('') + `</div>${items.length ? `<div class="side-set"><button type="button" class="side-set-btn" data-act="openSettings"><span class="nav-ic">${svgIcon(ICONS.gear, 19)}</span><span class="nav-l">Settings</span></button></div>` : ''}`;
