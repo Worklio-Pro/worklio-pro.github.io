@@ -409,21 +409,41 @@ const LOCKED_FEATURES = {
   connections: { h: 'Put your business where clients look', story: 'Connect your Google Business Profile, Facebook Page and Instagram. That’s what Google reviews, booking from Google and posting your work need.', worth: 'Most people look a business up on Google before they call. This puts your reviews and a booking button right there.', pts: [['Google Business Profile', 'Reviews and booking from Google'], ['Facebook and Instagram', 'Post your work in one step'], ['Connect once', 'Every feature that needs it just works']],
     mock: () => lkWin('Account connections', lkRows([['Google Business Profile', lkChip('Connected', 'ok')], ['Facebook Page', lkChip('Connected', 'ok')], ['Instagram', '<span class="lk-btn">Connect</span>']], 2)) },
 };
+// layouts, so the locked pages don't all look alike: split (words left, sample right), photo (a photo of someone at work with the
+// sample over its corner), banner (the photo across the top with the headline on it), center (headline centered, the sample wide below).
+// photo and banner need LOCKED_PHOTOS[key]; without one they fall back to split
+const LOCKED_LAYOUT = { timesheets: 'split', timeOff: 'center', expenses: 'split', reports: 'photo', taxSummary: 'center', servicePlans: 'center', gallery: 'center', jobForms: 'split', onlineBooking: 'split', accounting: 'split', emailTemplates: 'center', customRoles: 'banner', clientImport: 'split', connections: 'center' };
+const LOCKED_PHOTOS = { // key: [file in /img/upgrade, alt text, photographer] (Unsplash License)
+  reports: ['reports.jpg', 'Hands on a laptop on a workbench, with tools hanging on the wall behind it', 'Anton Savinov'],
+  customRoles: ['roles.jpg', 'A crew of seven in hard hats and safety vests talking on a job site', 'Scott Blake'],
+};
 function lockedPageHtml(path, title) {
   const info = ((company.account && company.account.lockedInfo) || {})[path] || {}; const cur = (company.account && company.account.plan && company.account.plan.name) || '';
   const F = LOCKED_FEATURES[info.key]; const name = info.label || title; const plan = info.plan || ''; const owner = memberCan('/settings/billing');
-  const price = info.monthly ? `<span class="lk-price"><b>$${info.monthly}</b>/month</span>` : '';
-  const also = info.also || []; const shown = also.slice(0, 6);
-  const alsoHtml = also.length ? `<div class="lk-also"><small>Also in ${esc(plan)}</small><div>${shown.map((l) => `<span>${svgIcon('<path d="m5 12 5 5L20 7"/>', 12)}${esc(l)}</span>`).join('')}${also.length > shown.length ? `<details><summary>and ${also.length - shown.length} more</summary><div>${also.slice(shown.length).map((l) => `<span>${svgIcon('<path d="m5 12 5 5L20 7"/>', 12)}${esc(l)}</span>`).join('')}</div></details>` : ''}</div></div>` : '';
+  const ck = svgIcon('<path d="m5 12 5 5L20 7"/>', 12); const also = info.also || []; const shown = also.slice(0, 6);
+  const alsoHtml = also.length ? `<div class="lk-also"><small>Also in ${esc(plan)}</small><div>${shown.map((l) => `<span>${ck}${esc(l)}</span>`).join('')}${also.length > shown.length ? `<details><summary>and ${also.length - shown.length} more</summary><div>${also.slice(shown.length).map((l) => `<span>${ck}${esc(l)}</span>`).join('')}</div></details>` : ''}</div></div>` : '';
   const cta = owner ? `<a class="btn lk-go" href="/settings/billing" data-link>${plan ? 'Upgrade to ' + esc(plan) : 'See plans'}</a>` : '<p class="muted" style="margin:0">Ask your account owner about upgrading.</p>';
   const badge = `<span class="lk-badge">${svgIcon(LOCK_IC, 13)}${plan ? `${esc(plan)} feature` : 'Not in your plan'}</span>`;
   if (!F) return `<section class="card mk-pitch locked-pitch">${badge}<h1>${esc(name)}</h1><p class="mk-lead">${esc(info.desc || `${title} isn’t part of your plan.`)}</p><p class="mk-note">You’re on the ${esc(cur)} plan.</p>${cta}</section>`;
-  return `<div class="lk">
-<section class="card lk-hero"><div class="lk-copy">${badge}<p class="lk-kicker">${esc(name)}</p><h1>${esc(F.h)}</h1><p class="lk-story">${esc(F.story)}</p>${owner ? `<div class="lk-hero-cta">${cta}${price}</div>` : ''}</div><div class="lk-art">${F.mock()}</div></section>
-<div class="lk-pts">${F.pts.map(([t, s]) => `<div class="card"><span class="lk-ic">${svgIcon('<path d="m5 12 5 5L20 7"/>', 16)}</span><b>${esc(t)}</b><span>${esc(s)}</span></div>`).join('')}</div>
-<div class="lk-worth"><span class="lk-ic">${svgIcon('<path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1V17h6v-.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z"/>', 18)}</span><p><b>What it can be worth.</b> ${esc(F.worth)}</p></div>
-<section class="card lk-plan"><div><h2>${plan ? `Get ${esc(name)} with ${esc(plan)}` : `Get ${esc(name)}`}</h2><p class="muted">You’re on the ${esc(cur)} plan. Upgrading keeps all your clients, jobs and settings just as they are.</p>${alsoHtml}</div><div class="lk-plan-cta">${price}${cta}</div></section>
-</div>`;
+  const ph = LOCKED_PHOTOS[info.key]; let L = LOCKED_LAYOUT[info.key] || 'split'; if (!ph && (L === 'photo' || L === 'banner')) L = 'split';
+  const img = ph ? `<img src="/img/upgrade/${ph[0]}" alt="${esc(ph[1])}" loading="lazy">` : '';
+  const credit = ph ? `<span class="lk-credit">Photo: ${esc(ph[2])} / Unsplash</span>` : '';
+  const copy = `${badge}<p class="lk-kicker">${esc(name)}</p><h1>${esc(F.h)}</h1><p class="lk-story">${esc(F.story)}</p>${owner ? `<div class="lk-hero-cta">${cta}</div>` : ''}`;
+  const pts = (cls = '') => `<div class="lk-pts ${cls}">${F.pts.map(([t, s]) => `<div class="card"><span class="lk-ic">${svgIcon('<path d="m5 12 5 5L20 7"/>', 16)}</span><b>${esc(t)}</b><span>${esc(s)}</span></div>`).join('')}</div>`;
+  const worth = `<div class="lk-worth"><span class="lk-ic">${svgIcon('<path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1V17h6v-.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z"/>', 18)}</span><p><b>What it can be worth.</b> ${esc(F.worth)}</p></div>`;
+  const planBox = `<section class="card lk-plan"><div><h2>${plan ? `Get ${esc(name)} with ${esc(plan)}` : `Get ${esc(name)}`}</h2><p class="muted">You’re on the ${esc(cur)} plan. Upgrading keeps all your clients, jobs and settings just as they are.</p>${alsoHtml}</div><div class="lk-plan-cta">${cta}</div></section>`;
+  if (L === 'banner') return `<div class="lk lk-l-banner">
+<section class="card lk-banner">${img}<div class="lk-banner-in">${copy}</div>${credit}</section>
+<div class="lk-duo"><div class="lk-art">${F.mock()}</div>${pts('lk-stack')}</div>${worth}${planBox}</div>`;
+  if (L === 'photo') return `<div class="lk lk-l-photo">
+<section class="card lk-hero lk-photo-hero"><div class="lk-pic">${img}${credit}<div class="lk-art">${F.mock()}</div></div><div class="lk-copy">${copy}</div></section>
+${pts()}${worth}${planBox}</div>`;
+  if (L === 'center') return `<div class="lk lk-l-center">
+<section class="card lk-center"><div class="lk-copy">${copy}</div><div class="lk-art">${F.mock()}</div>${pts('lk-inline')}</section>
+${worth}${planBox}</div>`;
+  return `<div class="lk lk-l-split">
+<section class="card lk-hero"><div class="lk-copy">${copy}</div><div class="lk-art">${F.mock()}</div></section>
+${pts()}${worth}${planBox}</div>`;
 }
 /* ===== top bar: feature search, help panel, your account (initials) menu ===== */
 const svgIcon = (d, size = 20) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
