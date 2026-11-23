@@ -3113,3 +3113,8 @@ body.p404-only #billingBar{display:none!important}
 }
 @media (max-width:860px){.lk-photo-hero,.lk-flip .lk-photo-hero,.lk-hero,.lk-duo{grid-template-columns:minmax(0,1fr)}}
 .lk-pic img[src$="gallery.jpg"]{object-position:50% 12%}
+/* a sample's table cells wrap when the sample is narrow (over a photo); kept on one line they ran into each other */
+.lk-rows{grid-template-columns:repeat(var(--cols),minmax(0,auto));gap:8px 12px}
+.lk-rows>span:nth-child(n){white-space:normal;overflow-wrap:anywhere}
+.lk-rows .lk-chip,.lk-rows .lk-btns,.lk-rows .lk-btn{white-space:nowrap}
+@media (min-width:861px){.lk-pic .lk-art{width:80%}}
