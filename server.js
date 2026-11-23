@@ -3369,7 +3369,10 @@ function docPdfIn(kind, d) {
     if (dd.discount > 0) row(discLabel(dd), '-' + money(dd.discount));
     if (Number(dd.taxRate)) row(`${Number(dd.taxRate) === Number(co.taxRate) && co.taxName ? co.taxName : tx('Tax')} (${dd.taxRate}%)`, money(dd.tax || 0));
     row(part.opt && parts.length > 1 ? tx('{name} total', { name: part.opt.name }) : tx('Total'), q ? rangeText(d, dd.total || 0, ' to ') : money(dd.total || 0), true);
-    if (q && !est && dd.depositFee > 0) row(`${tx('Required deposit')}${depLabel(dd)}`, money(dd.depositFee));
+    if (q && !est && dd.depositFee > 0) { // how it's worked out goes on a small line below, so a long label can't run into the amount
+      const how = depLabel(dd).trim(); row(tx('Required deposit'), money(dd.depositFee));
+      if (how) { y -= 6; y = pdf.para(tl, y + 12, how, R - 8 - tl, { size: 9, color: gray, lineHeight: 12 }) + 4; }
+    }
   }
   if (!q) {
     const paid = (d.payments || []).reduce((n, pm) => n + (Number(pm.amount) || 0), 0);
