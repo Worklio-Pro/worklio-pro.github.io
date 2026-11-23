@@ -3103,3 +3103,13 @@ body.p404-only #billingBar{display:none!important}
 .lk-flip .lk-pic .lk-art{left:auto;right:-16px}
 .lk-flip .lk-pic .lk-credit{right:auto;left:12px}
 @media (max-width:860px){.lk-flip .lk-pic{order:0}.lk-flip .lk-pic .lk-art{right:8px}}
+/* phones: the photo layouts stack. The photo is a strip with its sample below, overlapping only its bottom edge (it used to cover the photo),
+   and photoR (photo on the right) stacks too: its two-column rule above came after the phone rule and won */
+@media (max-width:860px){
+  .lk-photo-hero,.lk-flip .lk-photo-hero{grid-template-columns:1fr;gap:22px}
+  .lk-pic,.lk-flip .lk-pic{order:0;min-height:0;margin:0}
+  .lk-pic img{position:relative;display:block;height:220px}
+  .lk-pic .lk-art,.lk-flip .lk-pic .lk-art{position:relative;left:auto;right:auto;bottom:auto;width:auto;margin:-48px 12px 0}
+}
+@media (max-width:860px){.lk-photo-hero,.lk-flip .lk-photo-hero,.lk-hero,.lk-duo{grid-template-columns:minmax(0,1fr)}}
+.lk-pic img[src$="gallery.jpg"]{object-position:50% 12%}
