@@ -6627,7 +6627,7 @@ const marketingCharge = (p, interval) => stripeLib.addonCharge(marketingMonthly(
 const marketingOffered = () => tenancy.platform().plans.some((p) => !p.hidden && (p.features || []).includes('marketingSuite'));
 const featuresHas = (t, k) => tenancy.featuresOf(t).has(k);
 // the plan includes the suite (no exception for the platform's own account: it shows what its plan has, like any business)
-const marketingIncluded = (t, p = tenancy.planOf(t)) => (p.features || []).includes('marketingSuite');
+const marketingIncluded = (t, p = tenancy.planOf(t)) => !!t.marketingFree || (p.features || []).includes('marketingSuite'); // in the plan, or included free by Alpha
 const marketingBilled = (t, p) => { const a = t.addons && t.addons.marketing; return !!a && !a.endsAt && !a.trialEnds && !marketingIncluded(t, p); };
 function marketingInfo(t) {
   const plan = tenancy.planOf(t); const a = t.addons && t.addons.marketing; const today = iso(new Date());
