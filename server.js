@@ -2055,7 +2055,7 @@ app.put('/api/company', (req, res) => {
   if ((b.teamLocation === true || b.teamLocation === 'on' || b.teamLocation === 'true') && !tenancy.has('teamLocation')) return res.status(403).json({ error: 'Team location isn’t included in your plan' });
   if (b.survey && typeof b.survey === 'object') db.company.survey = cleanSurvey(b.survey); // App Settings → Site visits
   if (b.workflow && typeof b.workflow === 'object') { db.company.workflow = cleanWorkflow(b.workflow); db.company.quoteEstimateFirst = db.company.workflow.steps.estimate; delete b.quoteEstimateFirst; } // Settings → How You Work
-  for (const k of ['addressPrivate', 'showHours', 'teamLocation', 'quoteEstimateFirst']) if (k in b) db.company[k] = b[k] === true || b[k] === 'on' || b[k] === 'true';
+  for (const k of ['addressPrivate', 'showHours', 'teamLocation', 'quoteEstimateFirst', 'logoHasName']) if (k in b) db.company[k] = b[k] === true || b[k] === 'on' || b[k] === 'true';
   // App Settings → Defaults → Deposit on new quotes: $ / % / products + % of labor, and the amount (0: no deposit)
   if ('quoteDepositType' in b) db.company.quoteDepositType = DEP_TYPES.includes(b.quoteDepositType) ? b.quoteDepositType : 'flat';
   if ('quoteDepositValue' in b) db.company.quoteDepositValue = Math.max(0, Number(b.quoteDepositValue) || 0);
@@ -2870,7 +2870,7 @@ const inClientLang = (clientId, fn) => i18n.run(langFor(clientId), fn);
 // the business's emails to clients: styled like the platform's emails, with the business's logo, name and brand color (lib/emails.js)
 // US numbers as (713) 555-0100, like the phone box in Company Profile (public/app.js fmtUsPhone); other international numbers stay as typed
 const fmtUsPhone = (s) => { const t = String(s || '').trim(); let d = t.replace(/\D/g, ''); if (d.length === 11 && d[0] === '1') d = d.slice(1); else if (/^\+/.test(t)) return t; return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : t; };
-const companyBrand = (origin = baseUrl()) => ({ name: db.company.name || 'Your business', logoUrl: db.company.logo ? origin.replace(/\/+$/, '') + db.company.logo : '', color: db.company.brandColor,
+const companyBrand = (origin = baseUrl()) => ({ name: db.company.name || 'Your business', logoUrl: db.company.logo ? origin.replace(/\/+$/, '') + db.company.logo : '', logoHasName: !!db.company.logoHasName, color: db.company.brandColor,
   contact: [fmtUsPhone(db.company.phone), db.company.email, db.company.website] });
 function renderEmail(key, vars, t = emailTemplate(key), origin) { const m = emails.renderBusiness(t, { company_email: db.company.email || '', ...vars }, { ...companyBrand(origin), sentBy: tx('Powered by'), tryFree: tx('Try it free'), sentUrl: poweredBy.url('email'), lang: i18n.current() }); return { ...m, body: m.text }; }
 
@@ -4116,7 +4116,7 @@ function quoteView(q, c, { signed, depositSection, sent, preview, business, book
   const nav = [[['requests', tx('Requests')], ['estimates', tx('Estimates & quotes')], ['appointments', tx('Appointments')], ['invoices', tx('Invoices')], ...(tenancy.has('reviews') ? [['reviews', tx('Reviews')]] : [])], [['wallet', tx('Wallet')]], [['contact', tx('Contact Us')]]]
     .map((g) => g.map(([k, l]) => `<a class="qv-nav ${k === 'estimates' ? 'on' : ''}" href="${hub}#${k}">${qvIcon(k)}<span>${l}</span></a>`).join('')).join('<hr>')
     + (tenancy.has('referrals') ? `<hr><a class="qv-nav qv-refer" href="${hub}#refer">${qvIcon('refer')}<span>${tx('Refer a Friend')}</span></a>` : '');
-  const side = hub ? `<aside class="qv-side" id="qvMenu"><div class="qv-brand">${logo}</div><div class="qv-co">${esc(co.name)}</div>${business ? `<span class="qv-new" style="opacity:.5;cursor:not-allowed" title="Only your client can send a request">${qvIcon('plus', 18)} ${tx('New Request')}</span>` : `<a class="qv-new" href="${hub}#new-request">${qvIcon('plus', 18)} ${tx('New Request')}</a>`}<nav aria-label="${tx('Client hub')}">${nav}</nav></aside>` : '';
+  const side = hub ? `<aside class="qv-side" id="qvMenu"><div class="qv-brand">${logo}</div>${co.logo && co.logoHasName ? '' : `<div class="qv-co">${esc(co.name)}</div>`}${business ? `<span class="qv-new" style="opacity:.5;cursor:not-allowed" title="Only your client can send a request">${qvIcon('plus', 18)} ${tx('New Request')}</span>` : `<a class="qv-new" href="${hub}#new-request">${qvIcon('plus', 18)} ${tx('New Request')}</a>`}<nav aria-label="${tx('Client hub')}">${nav}</nav></aside>` : '';
   const top = `<header class="qv-top">${hub ? `<button type="button" class="qv-burger" aria-expanded="false" aria-controls="qvMenu" onclick="var o=document.getElementById('qvMenu').classList.toggle('open');this.setAttribute('aria-expanded',o)">${qvIcon('menu', 30)}${tx('Menu')}</button>` : '<span></span>'}${logo}</header>`;
   const est = estStage(q); // Estimate first: no signature, deposit or payment until they approve it
   const svy = svyStage(q); const word = est || svy; // Site visit: the estimate is approved and they book the visit; still an estimate until the quote is sent
@@ -4800,7 +4800,7 @@ app.get('/api/portal/:token', (req, res) => {
   res.json({
     lang, locale: i18n.locale(lang), strings: i18n.strings(lang), // the portal's words in the client's language (public/pages.js pt())
     langNames: lang === 'en' ? null : { en: 'English', [lang]: i18n.LANGUAGES[lang].native }, // the language switch at the bottom of the portal's menu
-    company: { name: db.company.name, logo: db.company.logo, email: db.company.email, phone: db.company.phone, accentColor: accentColor(), address: db.company.addressPrivate ? '' : db.company.address, website: db.company.website, hours: db.company.showHours ? db.company.hours || null : null,
+    company: { name: db.company.name, logo: db.company.logo, logoHasName: !!db.company.logoHasName, email: db.company.email, phone: db.company.phone, accentColor: accentColor(), address: db.company.addressPrivate ? '' : db.company.address, website: db.company.website, hours: db.company.showHours ? db.company.hours || null : null,
       holidays: db.company.showHours ? (db.company.holidays || []).filter((h) => h.to >= iso(new Date()) && h.from <= iso(new Date(Date.now() + 60 * 864e5))) : [] }, // holiday hours in the next 60 days
     sentWith: { url: poweredBy.url('portal'), product: poweredBy.product() }, // "Powered by …" at the bottom of the menu (lib/powered-by.js)
     client: { id: c.id, name: c.name, email: c.email, phone: c.phone, address: c.address, smsConsent: !!c.smsConsent, smsBrand: smsBrand() },
