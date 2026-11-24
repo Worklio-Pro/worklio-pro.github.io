@@ -3119,6 +3119,6 @@ body.p404-only #billingBar{display:none!important}
 .lk-rows .lk-chip,.lk-rows .lk-btns,.lk-rows .lk-btn{white-space:nowrap}
 @media (min-width:861px){.lk-pic .lk-art{width:80%}}
 /* phones, the quote page: the client and property card at the bottom, with a map button for driving directions */
-.md-place{display:flex;align-items:center;gap:12px;margin:16px 14px 20px;padding:14px 14px 14px 16px;border:1px solid var(--line);border-radius:14px;background:var(--card)}
+.md-place{display:flex;align-items:center;gap:12px;padding:18px 14px;border-bottom:8px solid var(--surface-2)}
 .md-place-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}.md-place-txt strong{font-size:17px}.md-place-txt span{color:var(--muted);font-size:15px;line-height:1.35}
 .md-place-map{flex:none;display:grid;place-items:center;width:48px;height:48px;border-radius:50%;background:var(--brand);color:#fff}
