@@ -3445,7 +3445,13 @@ ${mTap(kind, d, 'details', `<span class="md-h">${q ? 'Quote' : 'Invoice'} #${esc
 ${optSec}<section class="md-block md-totals">${totals}</section>${q ? `<section class="md-block md-est">${estCard(d, true)}</section>${verCard(d)}` : ''}${paySec}${viewSec}
 ${mTextSec(kind, d, 'message', 'Client message', d.notes, 'Add a message for the client')}
 ${mTextSec(kind, d, 'terms', 'Contract / disclaimer', d.disclaimer, 'Add a contract or disclaimer')}</div>
-<div class="md-pane" data-pane="notes" hidden>${mNotesPane(kind, d, d.internalNotes ? mTextSec(kind, d, 'notes', 'Internal notes', d.internalNotes, '') : '')}</div></div>`;
+<div class="md-pane" data-pane="notes" hidden>${mNotesPane(kind, d, d.internalNotes ? mTextSec(kind, d, 'notes', 'Internal notes', d.internalNotes, '') : '')}</div>${q ? mPlaceCard(c, d) : ''}</div>`;
+}
+// phones, the quote page: a card at the bottom with the client's name and the property address, and a map button for driving directions
+function mPlaceCard(c, d) {
+  const p = docProp(c, d); const a = p ? propAddr(p) : d.address || c.address || '';
+  if (!c.name && !a) return '';
+  return `<section class="md-place"><span class="md-place-txt"><strong>${esc(c.name || 'No client')}</strong>${a ? `<span>${esc(a)}</span>` : '<span class="muted">No property address</span>'}</span>${a ? `<a class="md-place-map" href="${esc(dirUrl(a))}" target="_blank" rel="noopener" aria-label="Driving directions to ${esc(a)}" title="Driving directions">${svgIcon('<path d="M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12z"/><circle cx="12" cy="9" r="2.5"/>', 24)}</a>` : ''}</section>`;
 }
 phoneMq.addEventListener('change', () => { if (/^\/(quotes|invoices|jobs|services|clients(\/view)?|notifications|settings\/roles)(\/|$)/.test(curPath()) && !mOpenNow()) refresh(); });
 // phones: Add client, a full-screen chooser: search, Create New Client, then clients by most recent activity (person or building
