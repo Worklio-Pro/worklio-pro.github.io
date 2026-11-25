@@ -494,3 +494,15 @@ body.hv2{background-color:var(--card);background-image:var(--hv-dust);background
 .hv2 :is(.btn,.h-menu-btn,.h-drop,.h-drop-grid a,.h-links a,.tour,.tour-win,.f-browser,.h-art,.h-art img,.f-shot,.h-cta,.h-new3 a,.v-card,.h-trades li,.h-trades li a,.tour-steps li,.tour-toast,.h-copy li i,.h-me-card img,.h-sms .h-wrap>div,.h-ticks li){border-radius:6px}
 .hv2 .f-browser img{border-radius:0}
 .hv2 .h-sms .h-wrap>div[style]{border-radius:6px!important}
+/* "Free tools" box (home, after What's new): a paper-colored strip with hand-drawn sketches of the tools; the same paper and ink in light and dark mode */
+.h-tools-wrap{padding-top:56px}
+.h-tools{display:grid;grid-template-columns:minmax(260px,1fr) 1.5fr;align-items:center;gap:20px;padding:26px 34px;border-radius:6px;background:#ebe7de;color:#1e293b;text-decoration:none;border:1px solid #d9d3c6}
+.h-tools-copy{display:flex;flex-direction:column;gap:12px}
+.h-tools-copy b{font-family:var(--hv-head);font-weight:800;font-size:30px;line-height:1}
+.h-tools-copy>span{font-size:16.5px;line-height:1.55;color:#334155;max-width:420px}
+.h-tools-copy em{font-style:normal;font-weight:800;display:inline-flex;align-items:center;gap:10px;margin-top:4px}
+.h-tools-copy em svg{transition:transform .15s}.h-tools:hover em svg{transform:translateX(4px)}.h-tools:hover b{text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:4px}
+.h-tools-art{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.h-tools-art svg{width:100%;height:auto;display:block}
+@media (max-width:860px){.h-tools{grid-template-columns:1fr;padding:22px}.h-tools-art{max-width:520px}}
+@media (max-width:480px){.h-tools-art svg:nth-child(3){display:none}.h-tools-art{grid-template-columns:1fr 1fr}}
+@media (prefers-reduced-motion:reduce){.h-tools-copy em svg{transition:none}}
