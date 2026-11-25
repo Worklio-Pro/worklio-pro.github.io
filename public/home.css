@@ -383,7 +383,7 @@ body{background-color:var(--card);background-image:var(--h-dots);background-size
 .rq-tpl{border:1px solid var(--line);border-radius:18px;background:var(--card);padding:18px;display:flex;flex-direction:column;gap:10px}
 .rq-tpl textarea{border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);font:inherit;font-size:15px;padding:10px 12px;resize:vertical}
 .rq-tpl .btn{align-self:flex-start}
-.rq-find{display:flex;gap:10px;align-items:flex-end}.rq-find .dm-f{flex:1}.rq-find .btn{flex:none;padding-top:11px;padding-bottom:11px}
+.rq-find{display:flex;gap:10px;align-items:flex-end}.rq-find .dm-f{flex:1;margin:0}.rq-find .dm-f>input{margin:0;height:46px}.rq-find .btn{flex:none;margin:0;height:46px;padding:0 18px;display:inline-flex;align-items:center;justify-content:center}
 .rq-or{color:var(--muted);font-size:13.5px;margin-top:-4px}
 .rq-results{display:flex;flex-direction:column;gap:8px}.rq-results .rq-k{margin:4px 0 0}
 .rq-res{display:flex;flex-direction:column;gap:2px;text-align:left;border:1px solid var(--line);border-radius:12px;background:var(--bg);color:var(--text);font:inherit;padding:11px 14px;cursor:pointer}
