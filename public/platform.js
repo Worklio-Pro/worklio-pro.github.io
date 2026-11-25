@@ -1977,7 +1977,7 @@ ${ig('Stock photos (Pixabay)', on(I.photos), `<p class="ig-d">Real photos of eac
 ${envForm(I, 'photos', [['PIXABAY_API_KEY', 'API key', 'Your Pixabay API key', true]])}`)}
 ${ig('Google Places', on(I.places), `<p class="ig-d">The <strong>Find my business</strong> search on the free Google review link tool (<a href="/tools/google-review-qr-code" target="_blank" rel="noopener">/tools/google-review-qr-code</a>): visitors type their business name and town, or paste a Google Maps link, and pick their business. Without a key, the tool still works: visitors paste their review link themselves.</p>
 <ol class="ig-steps"><li>In <a href="https://console.cloud.google.com/apis/library/places.googleapis.com" target="_blank" rel="noopener">Google Cloud → APIs &amp; Services → Library</a>, enable <strong>Places API (New)</strong> (the project needs billing turned on).</li><li>Go to <strong>Credentials → Create credentials → API key</strong>. Under <strong>API restrictions</strong>, restrict it to <strong>Places API (New)</strong>, then paste the key here.</li><li>Google gives 10,000 searches a month free. To stay under that, each visitor gets 15 searches an hour, everyone together 300 a day, and answers are kept for a day.</li></ol>
-${envForm(I, 'places', [['GOOGLE_PLACES_API_KEY', 'API key', 'AIza…', true]])}`)}
+${envForm(I, 'places', [['GOOGLE_PLACES_API_KEY', 'API key', 'AIza…', true]])}${I.places ? '<div class="acts" style="justify-content:flex-start"><button type="button" class="btn alt" data-act="placesTest">Test the key</button></div><p class="muted ig-p" id="placesTestOut" role="status"></p>' : ''}`)}
 ${ig('App Marketplace', on(D.settings.marketplace !== false, 'On', 'Off'), `<p class="ig-d">Settings → App Marketplace in every account: owners and admins browse apps, connect the ones that work today and vote for the rest (see Messages → App requests).</p>
 <label class="switchline"><input type="checkbox" id="mkOn" ${D.settings.marketplace !== false ? 'checked' : ''}> Show the App Marketplace in every account</label>
 <label class="switchline"><input type="checkbox" id="mkBeta" ${D.settings.marketplaceBeta ? 'checked' : ''}> Mark the App Marketplace as Beta <span class="beta-tag">Beta</span></label>
@@ -2132,6 +2132,11 @@ function envForm(I, g, fields) {
  ${secret ? `placeholder="${E.saved && E.keys[n] ? `Saved (ending ${esc(E.keys[n].replace('…', ''))}). Leave blank to keep it` : E.fromEnv && E.keys[n] ? `From .env (ending ${esc(E.keys[n].replace('…', ''))})` : esc(ph)}"` : `value="${esc(E.saved ? E.keys[n] || '' : '')}" placeholder="${E.fromEnv && E.keys[n] ? esc(E.keys[n]) + ' (from .env)' : esc(ph)}"`}></label>`).join('')}</div>
 <div class="acts" style="justify-content:flex-start"><button class="btn alt">Save</button>${E.saved ? `<button type="button" class="btn danger sm" data-act="rmEnvKeys" data-g="${g}">Remove</button>` : ''}</div></form>`;
 }
+// Google Places → Test the key: one real search from the server, with Google's own answer
+A.placesTest = async (d, b) => {
+  const out = $('#placesTestOut'); if (b) b.disabled = true; out.textContent = 'Testing…';
+  try { const r = await api('POST', '/api/platform/places-test', {}); out.textContent = (r.ok ? '✓ ' : '✗ ') + r.message; out.style.color = r.ok ? 'var(--ok-fg)' : 'var(--bad-fg)'; } catch (x) { out.textContent = x.message; } finally { if (b) b.disabled = false; }
+};
 A.rmEnvKeys = async (d) => {
   if (!confirm('Remove these keys? The .env keys are used again if there are any; otherwise this stops working for every business.')) return;
   try { await api('DELETE', '/api/platform/env-keys/' + d.g); toast('Keys removed'); integrationsCard($('#integ')); } catch (x) { toast(x.message, true); }
