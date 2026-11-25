@@ -51,7 +51,7 @@ function drawMatrix(S, amount) {
 <div class="v-scroll"><table class="v-tbl"><thead><tr><th scope="col">Feature</th>${plans.map((p) => `<th scope="col">${esc(p.name)}</th>`).join('')}</tr></thead><tbody>
 <tr><td>Team logins</td>${plans.map((p) => `<td>${p.maxUsers ? `${p.maxUsers}${p.extraUser ? `<small>then ${amount(p.extraUser)}/mo each</small>` : ''}` : 'Unlimited'}</td>`).join('')}</tr>
 <tr><td>Text messages a month</td>${plans.map((p) => `<td>${!p.features.includes('sms') ? '—' : p.smsLimit ? p.smsLimit.toLocaleString('en-US') : 'Unlimited'}</td>`).join('')}</tr>
-${groups.map((g) => `<tr class="grp"><td colspan="${plans.length + 1}">${esc(g)}</td></tr>${S.features.filter((f) => f.group === g).map((f) => `<tr><td>${esc(f.label)}${NEW.has(f.key) ? ' <span class="v-tag">New</span>' : ''}${f.beta ? ' <span class="v-tag b">Beta</span>' : ''}</td>${plans.map((p) => cell(p.features.includes(f.key))).join('')}</tr>`).join('')}`).join('')}
+${groups.map((g) => `<tr class="grp"><td colspan="${plans.length + 1}">${esc(g)}</td></tr>${S.features.filter((f) => f.group === g).map((f) => `<tr><td>${esc(f.label)}${NEW.has(f.key) ? ' <span class="v-tag">New</span>' : ''}</td>${plans.map((p) => cell(p.features.includes(f.key))).join('')}</tr>`).join('')}`).join('')}
 <tr class="grp"><td colspan="${plans.length + 1}">In every plan</td></tr>${S.alwaysIncluded.map((l) => `<tr><td>${esc(l)}</td>${plans.map(() => cell(true)).join('')}</tr>`).join('')}
 </tbody></table></div>`;
 }
