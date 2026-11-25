@@ -72,14 +72,19 @@ body{background:var(--card)}
 /* the site footer with columns (lib/site-nav.js) */
 .h-foot-big{border-top:1px solid var(--line);padding-top:44px}
 .h-foot-big .h-wrap{display:block}
-.h-foot-about{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;margin-bottom:28px}
-.h-foot-about b{color:var(--text);font-size:17px}.h-foot-about p{margin:0;line-height:1.5}
+.h-foot-main{display:grid;grid-template-columns:minmax(0,240px) minmax(0,1fr);gap:32px 48px}
+.h-foot-about{display:grid;gap:14px;align-content:start}.h-foot-about p{margin:0;line-height:1.5}
+.h-foot .h-foot-logo{display:inline-flex;align-items:center;gap:10px;color:var(--text);--logo-h:34px;justify-self:start}.h-foot-logo b{font-size:18px}.h-foot .h-foot-logo:hover{text-decoration:none}
+.h-foot-contact{display:grid;gap:8px}.h-foot-contact a{display:inline-flex;align-items:center;gap:8px;color:var(--text);font-weight:600;overflow-wrap:anywhere}.h-foot-contact svg{flex:none;color:var(--muted)}
+.h-foot-social{display:flex;flex-wrap:wrap;gap:8px}.h-foot .h-foot-social a{display:grid;place-items:center;width:38px;height:38px;border:1px solid var(--line);border-radius:6px;color:var(--text)}
+.h-foot .h-foot-social a:hover{color:var(--link);border-color:var(--link)}
 .h-foot-big a{text-decoration:none}.h-foot-big a:hover{text-decoration:underline}
 .h-foot .h-foot-cols{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:28px 24px}
 .h-foot-h{margin:0 0 12px;font-weight:800;color:var(--text);font-size:14px}
 .h-foot-cols ul{list-style:none;margin:0;padding:0;display:grid;gap:9px}.h-foot-cols li{line-height:1.35}
 .h-foot a:hover{color:var(--link)}
 .h-foot-bottom{display:flex;flex-wrap:wrap;gap:12px 24px;justify-content:space-between;align-items:center;margin-top:36px;padding-top:20px;border-top:1px solid var(--line)}
+@media (max-width:1100px){.h-foot-main{grid-template-columns:1fr}.h-foot-about p{max-width:560px}}
 @media (max-width:960px){.h-foot .h-foot-cols{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media (max-width:640px){.h-foot .h-foot-cols{grid-template-columns:repeat(2,minmax(0,1fr))}.h-foot-cols li a{display:inline-block;padding:3px 0}}
 @media (max-width:960px){
