@@ -581,3 +581,11 @@ body.hv2{background-color:var(--card);background-image:var(--hv-dust);background
   .cr-earn div,.cr-who span,.cr-ideas div,.cr-form,.cr-form input,.cr-form select,.cr-form textarea,.cr-login,.cr-login input){border-radius:6px}
 /* boxes whose corners are set right in the page's HTML (the feature page's banners, the text-message notice) */
 .hv2 main [style*="border-radius:20px"],.hv2 main [style*="border-radius:12px"],.hv2 main [style*="border-radius:14px"],.hv2 main [style*="border-radius:16px"],.hv2 main [style*="border-radius:18px"]{border-radius:6px!important}
+/* the Free tools page (lib/free-tools.js): a "Show the tools for" dropdown above the four tool cards; picking an industry points the pricing calculator,
+   invoice and estimate cards at that industry's versions */
+.ft-pick{max-width:980px;margin:0 auto}
+.ft-pick-row{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;margin:0 0 20px;font-weight:800;font-size:17px}
+.ft-pick-row select{flex:0 1 340px;font-size:16px;padding:11px 12px}
+.ft-pick-note{text-align:center;color:var(--muted);font-size:15px;margin:18px auto 0;max-width:640px}
+.ft-pick-ex{display:block;padding:7px 10px;border-radius:6px;background:var(--tint);color:var(--text);font-size:13.5px;line-height:1.4;border-left:3px solid #f59e0b}
+.ft-pick-ex[hidden]{display:none}
