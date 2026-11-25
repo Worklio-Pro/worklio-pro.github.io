@@ -476,3 +476,16 @@ body{background-color:var(--card);background-image:var(--h-dots);background-size
   .h-day::before{left:5px}.h-day li{grid-template-columns:1fr;gap:2px;padding-left:28px}.h-day li::after{left:0}.h-day time{text-align:left;font-size:18px}
   .h-me-card{flex-direction:column;text-align:center;gap:20px}.h-me-card img{width:160px;height:160px}.h-me-quote{font-size:19px}
 }
+/* home page dust: a fine film grain plus a scatter of larger specks, drawn by SVG noise (no image file) and laid over the page like dust on a print.
+   Light specks in dark mode, dark specks in light mode; clicks pass through; off when printing */
+.hv2{--hv-dust:#0f172a;--hv-dust-o:.35}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]) .hv2{--hv-dust:#fff;--hv-dust-o:.4}}
+:root[data-theme=dark] .hv2{--hv-dust:#fff;--hv-dust-o:.4}
+.hv2::before,.hv2::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:60}
+.hv2::before{background-color:var(--hv-dust);opacity:calc(var(--hv-dust-o)*.12);
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2.2 0 0 0 -.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E") 0 0/220px 220px;
+  mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2.2 0 0 0 -.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E") 0 0/220px 220px}
+.hv2::after{background-color:var(--hv-dust);opacity:var(--hv-dust-o);
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='600'%3E%3Cfilter id='d'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.35' numOctaves='1' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 24 0 0 0 -18.4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23d)'/%3E%3C/svg%3E") 0 0/600px 600px;
+  mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='600'%3E%3Cfilter id='d'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.35' numOctaves='1' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 24 0 0 0 -18.4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23d)'/%3E%3C/svg%3E") 0 0/600px 600px}
+@media print{.hv2::before,.hv2::after{display:none}}
