@@ -28,10 +28,14 @@
     const msg = $('#rq-msg'); msg.textContent = p.error || p.note || ''; msg.className = 'rq-msg' + (p.error ? ' bad' : '');
     const svg = link ? window.qrSvg(link) : '';
     if (svg) $('#rq-qr').innerHTML = svg; else if (link) $('#rq-qr').innerHTML = '<span>That link is too long for a QR code. Use the short link from your Business Profile.</span>';
-    else if ($('#rq-qr svg')) $('#rq-qr').innerHTML = '<span>Your QR code shows here once you add your link.</span>';
+    else if ($('#rq-qr svg')) $('#rq-qr').innerHTML = '<span>Your card and QR code show here once you add your link.</span>';
     $('#rq-url').hidden = !svg; $('#rq-test').href = link || '#'; $('#rq-test').textContent = link || '';
     btns.forEach((b) => { if ($(b)) $(b).disabled = !svg; }); $('#rq-text').value = svg ? message() : '';
+    // with a usable link the box shows the card itself (it has the QR code on it), redrawn once per frame while typing
+    $('#rq-qr').hidden = !!svg; $('#rq-card-prev').hidden = !svg;
+    if (svg && !pending) { pending = true; requestAnimationFrame(() => { pending = false; if (link) $('#rq-card-prev').src = card().toDataURL('image/png'); }); }
   }
+  let pending = false;
   $('#rq').addEventListener('input', (e) => { if (['rq-link', 'rq-name', 'rq-head', 'rq-color'].includes(e.target.id)) { saved[e.target.id] = e.target.value; save(); } if (e.target.id !== 'rq-q') draw(); });
 
   // ---------- Find my business ----------
