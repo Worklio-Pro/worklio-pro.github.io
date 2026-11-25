@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 360" role="img" aria-labelledby="t">
   <title id="t">Before and after photos of a lawn job</title>
   <defs><filter id="sh" x="-20%" y="-20%" width="140%" height="160%"><feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#0f1f3d" flood-opacity=".18"/></filter></defs>
-  <rect width="480" height="360" rx="28" fill="#fce7f3"/>
+  <rect width="480" height="360" rx="7" fill="#fce7f3"/>
   <circle cx="420" cy="300" r="90" fill="#fbcfe8"/>
   <!-- before -->
   <g transform="rotate(-6 140 170)" filter="url(#sh)">

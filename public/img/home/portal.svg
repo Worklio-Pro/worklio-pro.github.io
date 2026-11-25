@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 360" role="img" aria-labelledby="t">
   <title id="t">A client portal on a phone showing the next visit, a quote and an invoice, with a text message reminder</title>
   <defs><filter id="sh" x="-20%" y="-20%" width="140%" height="160%"><feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#0f1f3d" flood-opacity=".18"/></filter></defs>
-  <rect width="480" height="360" rx="28" fill="#e0f2fe"/>
+  <rect width="480" height="360" rx="7" fill="#e0f2fe"/>
   <circle cx="400" cy="70" r="80" fill="#bae6fd"/>
   <g filter="url(#sh)"><rect x="60" y="24" width="168" height="316" rx="28" fill="#0f1f3d"/></g>
   <rect x="70" y="34" width="148" height="296" rx="20" fill="#f8fafc"/>

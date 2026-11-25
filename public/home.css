@@ -489,3 +489,8 @@ body.hv2{background-color:var(--card);background-image:var(--hv-dust);background
 /* pictures get a solid backing, so no dust shows through a see-through corner */
 .hv2 main img{background-color:var(--card)}
 @media print{body.hv2,.hv2 :is(.h-trades,.f-more,#faq,.h-steps-bg){background-image:none}}
+/* one corner size for every box on the home page (6px): buttons, menu items, cards, screenshot frames, pictures, the tour, tags and tick squares.
+   Round dots stay round and the phone frames keep their phone shape */
+.hv2 :is(.btn,.h-menu-btn,.h-drop,.h-drop-grid a,.h-links a,.tour,.tour-win,.f-browser,.h-art,.h-art img,.f-shot,.h-cta,.h-new3 a,.v-card,.h-trades li,.h-trades li a,.tour-steps li,.tour-toast,.h-copy li i,.h-me-card img,.h-sms .h-wrap>div,.h-ticks li){border-radius:6px}
+.hv2 .f-browser img{border-radius:0}
+.hv2 .h-sms .h-wrap>div[style]{border-radius:6px!important}
