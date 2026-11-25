@@ -10,10 +10,12 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="stylesheet" href="/styles.css?v=54">
   <link rel="stylesheet" href="/theme.css">
-  <link rel="stylesheet" href="/home.css?v=27">
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Caveat:wght@600;700&display=swap">
+  <link rel="stylesheet" href="/home.css?v=28">
   <link rel="stylesheet" href="/trial.css?v=1">
 </head>
-<body>
+<body class="hv2">
   <header class="h-top h-has-drawer"><div class="h-wrap">
     <a class="h-brand" href="/"><span class="pname">Worklio Pro</span></a>
     <!-- on phones this slides out from the right (menu.js); on wider screens it sits inline in the header -->
@@ -29,14 +31,15 @@
   <main>
     <section class="h-hero"><div class="h-wrap">
       <div>
-        <span class="h-eyebrow">Built for field service pros — solo to full crew</span>
-        <h1>Less paperwork. <em>More jobs done.</em></h1>
-        <p class="lead"><span class="pname">Worklio Pro</span> runs your whole service business: quotes your clients sign online, a schedule your crew can see from the truck, and invoices that get paid by card before you’re back at the shop.</p>
+        <span class="h-eyebrow">for field service pros, solo to full crew</span>
+        <h1>Send the quote from the <span class="scribble">driveway</span>. <em>Get paid before you’re back in the truck.</em></h1>
+        <p class="lead"><span class="pname">Worklio Pro</span> runs the whole job: quotes your clients sign on their phone, a schedule your crew can see from the road, and invoices that get paid by card. Less paperwork at night, more time doing the work.</p>
         <div class="h-ctas"><a class="btn" href="/pricing" data-trial>Start your free 30-day trial</a><a class="btn alt" href="#features">Explore features</a></div>
         <ul class="h-ticks"><li>Free for 30 days</li><li>No credit card needed</li><li>Works on any phone</li></ul>
       </div>
       <!-- a 24-second looping tour of the real app (home.css, "hero tour"): quote approved → on the calendar → done on site → paid -->
       <div class="h-art">
+        <p class="h-note" aria-hidden="true">the real app, not a mockup <svg width="34" height="30" viewBox="0 0 34 30" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4c9 1 18 6 22 19"/><path d="M19 19l6 5 3-8"/></svg></p>
         <div class="tour" role="img" aria-label="A short tour of the app: a client approves a quote, the job goes on the calendar, the technician marks it complete on their phone, and the client pays the invoice by card">
           <div class="tour-scene s1"><div class="f-browser tour-win"><div class="f-bar"><i></i><i></i><i></i></div>
             <div class="tour-view"><img src="/img/features/approval.webp" alt="" width="1640" height="1400" fetchpriority="high"><span class="tour-tap"></span></div></div>
@@ -61,7 +64,7 @@
     </div></section>
 
     <section class="h-sec" id="features"><div class="h-wrap">
-      <div class="h-sec-head"><span class="h-kicker">Everything in one place</span><h2>From the first call to the final payment</h2><p>Stop juggling spreadsheets, paper forms and group texts. Every quote, visit, photo and payment lives with the client it belongs to.</p></div>
+      <div class="h-sec-head"><span class="h-kicker">what’s inside</span><h2>Everything you’d otherwise do on paper, in group texts and at 10pm</h2><p>Every quote, visit, photo and payment lives with the client it belongs to, so nothing gets lost in a notebook or a text thread.</p></div>
 
       <div class="h-row">
         <div class="h-art"><img src="/img/home/quotes.svg" alt="A quote with line items, a client's signature and an Approved stamp, with a deposit paid" width="480" height="360" loading="lazy"></div>
@@ -129,25 +132,25 @@
       <p class="f-all"><a class="btn" href="/pricing" data-trial>Start your free 30-day trial</a><a class="btn alt" href="/features">See all 23 features</a></p>
     </div></section>
 
-<section class="h-wrap" style="padding:28px 0 0"><a href="/pricing" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 24px;padding:22px 26px;border-radius:20px;background:var(--tint);border:1px solid var(--line);border-left:5px solid var(--brand);color:inherit;text-decoration:none"><span style="flex:1 1 420px"><span class="h-kicker">New · Marketing suite</span><b style="display:block;font-size:22px;margin:6px 0 4px">A week of social posts, written for you</b><span style="color:var(--muted)">Every Monday you get 3 to 5 posts for your trade, town and season, each with a picture in your colors. Approve them on a calendar and they post themselves.</span></span><span class="btn">See plans</span></a></section>
-
-<section class="h-wrap" style="padding:16px 0 0"><a href="/marketing" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 24px;padding:22px 26px;border-radius:20px;background:var(--tint);border:1px solid var(--line);border-left:5px solid var(--brand);color:inherit;text-decoration:none"><span style="flex:1 1 420px"><span class="h-kicker">New · Every job markets itself</span><b style="display:block;font-size:22px;margin:6px 0 4px">Finish a job, and its photos become a social post</b><span style="color:var(--muted)">A caption written for you, one tap to post to Facebook, Instagram and Google, and the booking requests each post brings in.</span></span><span class="btn">See how it works</span></a></section>
-
-    <section class="h-wrap" style="padding:16px 0 72px"><a href="/quote-from-photos" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 24px;padding:22px 26px;border-radius:20px;background:var(--tint);border:1px solid var(--line);border-left:5px solid var(--brand);color:inherit;text-decoration:none"><span style="flex:1 1 420px"><span class="h-kicker">New · Snap to quote</span><b style="display:block;font-size:22px;margin:6px 0 4px">Snap a few photos, get a quote in seconds</b><span style="color:var(--muted)">Say what the client needs, and the quote is drafted from your own price list, with Good / Better / Best options. On Unlimited.</span></span><span class="btn">See how it works</span></a></section>
-
-    <section class="h-sec f-more" id="new"><div class="h-wrap">
-      <div class="h-sec-head"><span class="h-kicker">New in <span class="pname">Worklio Pro</span></span><h2>Run repeat work and a bigger crew without the bigger bill</h2><p>Top-tier tools, without the top-tier price.</p></div>
-      <div class="h-grid">
-        <a class="h-feat" href="/features#recurring"><div class="ic c1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5M3 21v-5h5"/></svg></div><h3>Recurring jobs <span class="f-new">New</span></h3><p>Weekly or monthly repeats, scheduled ahead. In every plan.</p></a>
-        <a class="h-feat" href="/features#service-plans"><div class="ic c2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="6"/><path d="m8.5 14.5-1.5 7 5-3 5 3-1.5-7"/></svg></div><h3>Service plans &amp; memberships <span class="f-new">New</span></h3><p>Maintenance plans that bill and book visits for you.</p></a>
-        <a class="h-feat" href="/features#dispatch"><div class="ic c3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="5" r="2.5"/><path d="M8.5 19H17a3.5 3.5 0 0 0 0-7H7a3.5 3.5 0 0 1 0-7h8.5"/></svg></div><h3>Dispatch map &amp; routes <span class="f-new">New</span></h3><p>Everyone’s day on a map, in the shortest driving order.</p></a>
-        <a class="h-feat" href="/features#timesheets"><div class="ic c4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6"/></svg></div><h3>Time tracking &amp; timesheets <span class="f-new">New</span></h3><p>Clock in on the job, approve hours, export for payroll.</p></a>
-        <a class="h-feat" href="/features#checklists"><div class="ic c2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="m9 14 2 2 4-4"/></svg></div><h3>Checklists &amp; forms <span class="f-new">New</span></h3><p>Inspections, safety checks and required photos, filled in on site.</p></a>
-        <a class="h-feat" href="/features#automations"><div class="ic c5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></div><h3>Automations &amp; On My Way texts <span class="f-new">New</span></h3><p>Follow-ups, reminders and arrival texts that send themselves.</p></a>
-        <a class="h-feat" href="/features#accounting"><div class="ic c1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 6-6"/></svg></div><h3>Job profit &amp; QuickBooks <span class="f-new">New</span></h3><p>Profit on every job, synced to QuickBooks or Xero.</p></a>
-        <a class="h-feat" href="/features#languages"><div class="ic c4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg></div><h3>Your client’s language <span class="f-new">New</span></h3><p>Quotes, invoices, emails and the client portal in the language each client speaks.</p></a>
-        <a class="h-feat h-feat-all" href="/features"><div class="ic c3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 17.5h7M17.5 14v7"/></svg></div><h3>All 23 features</h3><p>Quotes to payments, and everything in between. See them all →</p></a>
+<section class="h-sec f-more" id="new"><div class="h-wrap">
+      <div class="h-sec-head"><span class="h-kicker">fresh this fall</span><h2>What’s new</h2><p>A few of the latest additions.</p></div>
+      <div class="h-new3">
+        <a href="/quote-from-photos"><b>Snap a few photos, get a quote in seconds</b><span>Say what the client needs, and the quote is drafted from your own price list, with Good / Better / Best options. On Unlimited.</span><em>See how it works →</em></a>
+        <a href="/marketing"><b>Finish a job, and its photos become a social post</b><span>A caption written for you, one tap to post to Facebook, Instagram and Google, and the booking requests each post brings in.</span><em>See how it works →</em></a>
+        <a href="/pricing"><b>A week of social posts, written for you</b><span>Every Monday, 3 to 5 posts for your trade, town and season, each with a picture in your colors. Approve them and they post themselves.</span><em>See plans →</em></a>
       </div>
+      <h3 class="h-newlist-head">Also added recently</h3>
+      <ul class="h-newlist">
+        <li><a href="/features#recurring"><b>Recurring jobs</b> weekly or monthly repeats, scheduled ahead. Every plan.</a></li>
+        <li><a href="/features#service-plans"><b>Service plans &amp; memberships</b> that bill and book visits for you</a></li>
+        <li><a href="/features#dispatch"><b>Dispatch map &amp; routes</b> everyone’s day in the shortest driving order</a></li>
+        <li><a href="/features#timesheets"><b>Timesheets</b> clock in on the job, approve hours, export for payroll</a></li>
+        <li><a href="/features#checklists"><b>Checklists &amp; forms</b> inspections and required photos, filled in on site</a></li>
+        <li><a href="/features#automations"><b>On My Way texts &amp; automations</b> follow-ups and reminders that send themselves</a></li>
+        <li><a href="/features#accounting"><b>Job profit &amp; QuickBooks</b> profit on every job, synced to QuickBooks or Xero</a></li>
+        <li><a href="/features#languages"><b>Your client’s language</b> quotes, invoices and the portal in the language they speak</a></li>
+      </ul>
+      <p class="h-newall"><a href="/features">See all 23 features →</a></p>
     </div></section>
 
     <section class="h-sec" id="value"><div class="h-wrap">
@@ -162,13 +165,15 @@
     </div></section>
 
     <section class="h-sec h-steps-bg" id="how"><div class="h-wrap">
-      <div class="h-sec-head"><span class="h-kicker">How it works</span><h2>A simple flow your whole team will follow</h2><p>The same four steps for every job.</p></div>
-      <div class="h-steps">
-        <div class="h-step"><h3>Quote</h3><p>Send a quote from your phone. The client signs and pays a deposit online.</p></div>
-        <div class="h-step"><h3>Schedule</h3><p>Put the job on the calendar, assign your crew and send the client a reminder.</p></div>
-        <div class="h-step"><h3>Do the work</h3><p>Your tech has the details on site, takes photos and gets a signature.</p></div>
-        <div class="h-step"><h3>Get paid</h3><p>Invoice in one click. The client pays by card, bank or their favorite pay app, and you see it right away.</p></div>
-      </div>
+      <div class="h-sec-head"><span class="h-kicker">how it works</span><h2>One job, start to finish</h2><p>Here’s what a typical gutter cleaning looks like.</p></div>
+      <ol class="h-day">
+        <li><time>Tue 8:52am</time><div><h3>Quote from the driveway</h3><p>You walk the property, add a few lines from your price list and text the quote before you pull out.</p></div></li>
+        <li><time>9:20am</time><div><h3>Signed, deposit paid</h3><p>The client approves on their phone and pays a $100 deposit. It’s already a job.</p></div></li>
+        <li><time>9:25am</time><div><h3>On the calendar</h3><p>You drag it to Thursday. Your tech sees it on their phone with the address and notes, but not the prices. The client gets a reminder.</p></div></li>
+        <li><time>Thu 2:40pm</time><div><h3>Done on site</h3><p>Before and after photos, and the client signs on your tech’s phone.</p></div></li>
+        <li><time>2:41pm</time><div><h3>Invoice sent</h3><p>One tap, with the deposit already taken off.</p></div></li>
+        <li><time>3:05pm</time><div><h3>Paid $562.90</h3><p>By card, straight to your own Stripe account. Zelle, Venmo, Cash App and PayPal work too.</p></div></li>
+      </ol>
     </div></section>
 
     <section class="h-sec" id="faq"><div class="h-wrap">
@@ -187,9 +192,17 @@
       </div>
     </div></section>
 
+    <!-- "Why I built this": put your photo at /img/home/founder.jpg, write the story in your own words, then remove the `hidden` attribute -->
+    <section class="h-sec h-me" id="story" hidden><div class="h-wrap"><div class="h-me-card">
+      <img src="/img/home/founder.jpg" alt="" width="220" height="220" loading="lazy">
+      <div><span class="h-kicker">why I built this</span>
+        <p class="h-me-quote">YOUR STORY HERE: two or three sentences, the way you'd say it out loud.</p>
+        <p class="h-me-sig">Your name, founder of <span class="pname">Worklio Pro</span></p></div>
+    </div></div></section>
+
     <section class="h-wrap" style="padding-bottom:20px"><div class="h-cta">
-      <h2>Ready to spend less time on paperwork?</h2>
-      <p>Set up your account in minutes and send your first quote today.</p>
+      <h2>Try it on your next job.</h2>
+      <p>Setup takes a few minutes. Send your first quote today.</p>
       <a class="btn" href="/pricing" data-trial>Start your free 30-day trial</a>
       <p class="h-cta-note">Free for 30 days · No credit card needed · <a href="/pricing">See plans &amp; pricing</a></p>
     </div></section>
