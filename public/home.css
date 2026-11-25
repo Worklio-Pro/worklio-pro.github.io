@@ -548,3 +548,24 @@ body.hv2{background-color:var(--card);background-image:var(--hv-dust);background
 .i-nophoto{display:grid;place-items:center;width:100%;aspect-ratio:4/3;background:var(--tint);color:var(--brand)}
 .h-art .i-nophoto.i-photo{border-radius:6px;box-shadow:var(--shadow-lg)}
 .i-card .i-nophoto svg{width:64px;height:64px}
+/* the home page's look on every public page (lib/site-look.js puts body.hv2 on them): the headline font on page and section headings, handwritten
+   section labels, flat heroes and the same small corners on cards, tables, forms and screenshots */
+.hv2 :is(h1,.h-sec-head h2,.f-copy h2,.v-head h2,.i-group h2,.cmp-fit h2,.calc-read>h2,.s-tier h2,.ft-card b,.i-pain h3,.h-feat h3,.h-step h3,.i-card b):not(#_):not(#_){font-family:var(--hv-head);font-weight:800;letter-spacing:0}
+.hv2 :is(.i-pain h3,.h-feat h3,.h-step h3,.i-card b):not(#_):not(#_){font-size:21px;line-height:1.1}
+.hv2 h1:not(#_):not(#_){line-height:1}
+.hv2 :is(.f-hero,.s-hero){background:transparent}
+.hv2 :is(.v-kick,.s-tag){font-family:var(--hv-hand);font-weight:400;letter-spacing:0;text-transform:none}
+.hv2 .v-kick{font-size:20px;display:inline-block;transform:rotate(-1.5deg)}
+.hv2 .s-tag{font-size:13px}
+.hv2 :is(.s-plan,.s-period,.s-period *,.v-scroll,.v-gets,.ref-banner,.v-faq details,.i-pain,.i-card,.h-feat,.h-step,.h-stat,.ft-card,.ft-ic,.cmp-wrap,.cmp-card,.cmp-fit,
+  .calc-form,.calc-out,.calc-in,.calc-trades a,.dm-form,.dm-paper-wrap,.dm-f>input,.dm-f>textarea,.dm-it>input,.rq-out,.rq-tpl,.rq-qr,.rq-help,.rq-res,.rq-picked,.s-tier,.m-ui,
+  .m-stats div,.m-step,.f-shot,.f-browser,.f-zoom img,.i-photo,.v-chip,.s-plans .btn){border-radius:6px}
+/* screenshots on the feature pages sit a little crooked with a strip of tape, like the home page's */
+.hv2 .f-row .f-shot{position:relative;transform:rotate(-.7deg)}.hv2 .f-row.flip .f-shot{transform:rotate(.7deg)}
+.hv2 .f-row .f-shot::after{content:'';position:absolute;top:-12px;left:50%;width:96px;height:26px;margin-left:-48px;background:rgba(250,204,21,.5);transform:rotate(-4deg);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+@media (max-width:640px){.hv2 .f-row .f-shot,.hv2 .f-row.flip .f-shot{transform:rotate(-.5deg)}}
+/* pricing: plan names and prices in the headline font */
+.hv2 .s-plan :is(h2,.price):not(#_):not(#_){font-family:var(--hv-head);font-weight:800;letter-spacing:0}
+.hv2 .s-plan h2:not(#_){font-size:26px}
+.hv2 .s-plan .price:not(#_){font-size:40px;line-height:1.05}
+.hv2 .s-plan .price small{font-family:var(--hv-head);font-size:18px;font-weight:700}
