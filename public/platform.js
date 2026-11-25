@@ -2431,12 +2431,12 @@ let hcTab = 'articles';
 const helpSeg = () => sideNav('Help Center', 'hcTab', [['articles', 'Articles', HC ? HC.comments.length : 0, 'What people were looking for'], ['topics', 'Topics'], ['home', 'Home page'], ['forum', 'Board', D.forumNew, 'New posts'], ...(isSupport() ? [] : [['compare', 'Comparison'], ['guides', 'Guides', GD ? GD.items.filter((g) => g.status !== 'published').length : 0, 'Waiting for review or changes']])]
   .map(([k, l, n, title]) => [k, l, n || undefined, tab === 'guides' ? k === 'guides' : tab === 'forum' ? k === (frCompare && !frSel ? 'compare' : 'forum') : hcTab === k, title]));
 A.hcTab = (d) => {
+  if (d.k === 'guides') { location.hash = 'guides'; return; }
   if (d.k === 'forum' || d.k === 'compare') { frCompare = d.k === 'compare'; frSel = ''; if (tab === 'forum') render(); else location.hash = 'forum'; return; }
   hcTab = d.k; if (tab === 'help') helpView($('#main')); else location.hash = 'help';
 };
 async function helpView(main) {
   if (!HC) { main.innerHTML = '<p class="muted">Loading…</p>'; try { await hcLoad(); } catch (x) { main.innerHTML = `<div class="card">${esc(x.message)}</div>`; return; } }
-  if (d.k === 'guides') { location.hash = 'guides'; return; }
   const all = HC.articles.map((a, i) => ({ ...a, i, ...hcStats(a.slug) }));
   const votes = all.reduce((s, a) => s + a.n, 0); const yes = all.reduce((s, a) => s + a.yes, 0);
   const q = hcQ.toLowerCase();
@@ -2623,6 +2623,7 @@ async function forumView(main) {
   D.forumNew = FR.posts.filter((p) => p.status === 'open').length;
   const p = frSel && FR.posts.find((x) => x.id === frSel); if (!p) frSel = '';
   return p ? frPost(main, p) : frCompare ? compareView(main) : frList(main);
+}
 /* ===== Help Center → Guides (lib/guides.js): the public guides at /guides, written by the weekly writer and published from the review email ===== */
 let GD = null; let gdFilter = '';
 const GD_STATUS = { draft: ['Waiting for review', 'wait'], changes: ['Changes asked', 'wait'], published: ['Live', 'ok'] };
@@ -2676,7 +2677,6 @@ A.gdEdit = (d) => {
 <div class="acts"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save</button></div></div></form>`, { wide: true });
   $('#gdf', m).addEventListener('submit', async (e) => { e.preventDefault(); try { GD = await api('PUT', `/api/platform/guides/${g.id}`, Object.fromEntries(new FormData(e.target))); closeModal(); toast('Saved'); gdRedraw(); } catch (x) { toast(x.message, true); } });
 };
-}
 function frList(main) {
   const v = frView; const K = FR.kinds; const S = FR.statuses; const s = FR.settings; const q = v.q.trim().toLowerCase();
   const list = FR.posts.filter((p) => (v.kind === 'all' || p.kind === v.kind) && (!v.category || p.category === v.category) && (!v.status || p.status === v.status)
