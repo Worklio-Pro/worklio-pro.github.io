@@ -58,7 +58,7 @@
   window.cookieChoicesLink = function () {
     if (gpc || document.querySelector('.cookie-choices')) return;
     var foot = document.querySelector('footer'); if (!foot) return;
-    var nav = foot.querySelector('nav'); var a = document.createElement('a'); a.href = '#cookie-choices'; a.className = 'cookie-choices'; a.textContent = 'Cookie choices';
+    var nav = foot.querySelector('.h-foot-legal') || foot.querySelector('nav'); // the public footer: next to Terms and Privacy var a = document.createElement('a'); a.href = '#cookie-choices'; a.className = 'cookie-choices'; a.textContent = 'Cookie choices';
     a.onclick = function (e) { e.preventDefault(); show(); };
     if (nav) nav.appendChild(a); else if (foot.textContent.trim()) { foot.appendChild(document.createTextNode(' · ')); foot.appendChild(a); }
   };
