@@ -80,19 +80,40 @@
   // ---------- Download card: 3.5 × 2 in at 300 dpi ----------
   function wrap(g, text, max) { const words = text.split(/\s+/); const out = []; let line = '';
     words.forEach((w) => { const t = line ? line + ' ' + w : w; if (g.measureText(t).width > max && line) { out.push(line); line = w; } else line = t; }); if (line) out.push(line); return out; }
-  $('#rq-card').addEventListener('click', () => {
-    const W = 1050; const H = 600; const c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d');
+  // the four review colors (not Google's logo or wordmark, which a free tool can't hand out) plus the color picked on the page
+  const FOUR = ['#4285F4', '#EA4335', '#FBBC05', '#34A853'];
+  function rounded(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+  function card() {
+    const W = 1050; const H = 600; const STRIPE = 18; const c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d');
     const font = (w, px) => `${w} ${px}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
-    g.fillStyle = '#fff'; g.fillRect(0, 0, W, H); g.fillStyle = color(); g.fillRect(0, 0, 24, H);
-    const m = window.qrMatrix(link); const q = 440; const k = q / (m.length + 4); const qx = W - q - 50; const qy = (H - q) / 2;
-    g.fillStyle = '#000'; m.forEach((row, y) => row.forEach((dark, x) => { if (dark) g.fillRect(qx + (x + 2) * k, qy + (y + 2) * k, Math.ceil(k), Math.ceil(k)); }));
-    const left = 80; const max = qx - left - 40; let y = 130;
-    if (name()) { g.fillStyle = '#111'; g.font = font(800, 46); wrap(g, name(), max).slice(0, 2).forEach((l) => { g.fillText(l, left, y); y += 56; }); y += 10; }
-    g.fillStyle = '#f5b301'; g.font = font(400, 52); g.fillText('★★★★★', left, y + 20); y += 96;
-    g.fillStyle = color(); g.font = font(800, 40); wrap(g, head(), max).slice(0, 3).forEach((l) => { g.fillText(l, left, y); y += 50; });
-    g.fillStyle = '#555'; g.font = font(500, 26); g.fillText('Scan with your phone’s camera', left, Math.max(y + 24, H - 70));
-    download(c.toDataURL('image/png'), fileName('review card'));
-  });
+    g.fillStyle = '#fff'; g.fillRect(0, 0, W, H);
+    // right: the picked color behind a white box with the QR code, whole pixels per square so it prints crisp
+    const px = 640; g.fillStyle = color(); g.fillRect(px, 0, W - px, H - STRIPE);
+    const box = 340; const bx = px + (W - px - box) / 2; const by = 70; g.fillStyle = '#fff'; rounded(g, bx, by, box, box, 26); g.fill();
+    const m = window.qrMatrix(link); const k = Math.floor((box - 44) / m.length); const off = Math.round((box - k * m.length) / 2);
+    g.fillStyle = '#000'; m.forEach((row, y) => row.forEach((dark, x) => { if (dark) g.fillRect(bx + off + x * k, by + off + y * k, k, k); }));
+    const rgb = (color().match(/^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i) || [0, 'ff', 'ff', 'ff']).slice(1).map((h) => parseInt(h, 16));
+    const light = rgb[0] * 0.299 + rgb[1] * 0.587 + rgb[2] * 0.114 > 170; g.fillStyle = light ? '#1f1f1f' : '#fff'; // dark words on a light color
+    g.font = font(800, 34); g.textAlign = 'center'; g.fillText('Scan me', bx + box / 2, by + box + 62);
+    g.font = font(500, 22); g.globalAlpha = 0.9; g.fillText('with your phone’s camera', bx + box / 2, by + box + 94); g.globalAlpha = 1; g.textAlign = 'left';
+    // bottom: the four-color stripe
+    FOUR.forEach((col, n) => { g.fillStyle = col; g.fillRect(n * W / 4, H - STRIPE, W / 4 + 1, STRIPE); });
+    // left: name, stars, headline and a thank-you line, centered top to bottom
+    const left = 70; const max = px - left - 50; const parts = [];
+    g.font = font(800, 44); if (name()) wrap(g, name(), max).slice(0, 2).forEach((l) => parts.push({ t: l, f: font(800, 44), c: '#1f1f1f', h: 54 }));
+    if (name()) parts.push({ bar: true, h: 40 });
+    parts.push({ t: '★★★★★', f: font(400, 56), c: '#FBBC05', h: 78 });
+    g.font = font(800, 46); wrap(g, head(), max).slice(0, 3).forEach((l) => parts.push({ t: l, f: font(800, 46), c: light ? '#1f1f1f' : color(), h: 56 }));
+    g.font = font(500, 25); parts.push({ h: 14 }); wrap(g, 'It only takes a minute, and it means a lot to our small business.', max).slice(0, 2).forEach((l) => parts.push({ t: l, f: font(500, 25), c: '#5f6368', h: 34 }));
+    let y = Math.max(60, (H - STRIPE - parts.reduce((s, p) => s + p.h, 0)) / 2);
+    parts.forEach((p) => {
+      if (p.bar) FOUR.forEach((col, n) => { g.fillStyle = col; g.fillRect(left + n * 30, y + 6, 26, 6); });
+      else if (p.t) { g.fillStyle = p.c; g.font = p.f; g.fillText(p.t, left, y + p.h * 0.78); }
+      y += p.h;
+    });
+    return c;
+  }
+  $('#rq-card').addEventListener('click', () => download(card().toDataURL('image/png'), fileName('review card')));
 
   // ---------- printing ----------
   const stars = '<span class="rp-stars" aria-hidden="true">★★★★★</span>';
