@@ -201,7 +201,7 @@ ${D.maintenance && D.maintenance.on ? `<div class="mt-bar" role="status"><strong
 <main class="pf-main" id="main"></main>
 ${phoneBar(secs, cur, badge)}`;
   $('#main').dataset.tab = tab; // box title bands are styled per tab (platform.html)
-  ({ accounts: accountsView, plans: plansView, discounts: promoView, messages: messagesView, forum: forumView, help: helpView, social: socialView, settings: settingsView })[tab]($('#main'));
+  ({ accounts: accountsView, plans: plansView, discounts: promoView, messages: messagesView, forum: forumView, help: helpView, guides: guidesView, social: socialView, settings: settingsView })[tab]($('#main'));
 }
 // the top bar: one link per section, opening its first page. Pricing (Plans & features, Promotions) and Help Center (articles, Board)
 // hold more than one page, switched by the tabs under their title. Integrations is part of Settings.
@@ -209,7 +209,7 @@ const NAV = [
   { k: 'accounts', l: 'Accounts', pages: ['accounts'] },
   { k: 'pricing', l: 'Pricing', pages: ['plans', 'discounts'], phone: 'discounts' },
   { k: 'messages', l: 'Messages', pages: ['messages'] },
-  { k: 'help', l: 'Help Center', short: 'Help', pages: ['help', 'forum'] },
+  { k: 'help', l: 'Help Center', short: 'Help', pages: ['help', 'forum', 'guides'] },
   { k: 'social', l: 'Social', pages: ['social'] },
   { k: 'settings', l: 'Settings', pages: ['settings'] },
 ];
@@ -2428,14 +2428,15 @@ const hcSlugify = (s) => String(s || '').toLowerCase().replace(/\{product\}/g, '
 // one part at a time: Articles (with what readers were looking for), Topics, Home page
 let hcTab = 'articles';
 // Help Center's tabs: the articles' three parts (#help) and the Board (#forum)
-const helpSeg = () => sideNav('Help Center', 'hcTab', [['articles', 'Articles', HC ? HC.comments.length : 0, 'What people were looking for'], ['topics', 'Topics'], ['home', 'Home page'], ['forum', 'Board', D.forumNew, 'New posts'], ...(isSupport() ? [] : [['compare', 'Comparison']])]
-  .map(([k, l, n, title]) => [k, l, n || undefined, tab === 'forum' ? k === (frCompare && !frSel ? 'compare' : 'forum') : hcTab === k, title]));
+const helpSeg = () => sideNav('Help Center', 'hcTab', [['articles', 'Articles', HC ? HC.comments.length : 0, 'What people were looking for'], ['topics', 'Topics'], ['home', 'Home page'], ['forum', 'Board', D.forumNew, 'New posts'], ...(isSupport() ? [] : [['compare', 'Comparison'], ['guides', 'Guides', GD ? GD.items.filter((g) => g.status !== 'published').length : 0, 'Waiting for review or changes']])]
+  .map(([k, l, n, title]) => [k, l, n || undefined, tab === 'guides' ? k === 'guides' : tab === 'forum' ? k === (frCompare && !frSel ? 'compare' : 'forum') : hcTab === k, title]));
 A.hcTab = (d) => {
   if (d.k === 'forum' || d.k === 'compare') { frCompare = d.k === 'compare'; frSel = ''; if (tab === 'forum') render(); else location.hash = 'forum'; return; }
   hcTab = d.k; if (tab === 'help') helpView($('#main')); else location.hash = 'help';
 };
 async function helpView(main) {
   if (!HC) { main.innerHTML = '<p class="muted">Loading…</p>'; try { await hcLoad(); } catch (x) { main.innerHTML = `<div class="card">${esc(x.message)}</div>`; return; } }
+  if (d.k === 'guides') { location.hash = 'guides'; return; }
   const all = HC.articles.map((a, i) => ({ ...a, i, ...hcStats(a.slug) }));
   const votes = all.reduce((s, a) => s + a.n, 0); const yes = all.reduce((s, a) => s + a.yes, 0);
   const q = hcQ.toLowerCase();
@@ -2622,6 +2623,54 @@ async function forumView(main) {
   D.forumNew = FR.posts.filter((p) => p.status === 'open').length;
   const p = frSel && FR.posts.find((x) => x.id === frSel); if (!p) frSel = '';
   return p ? frPost(main, p) : frCompare ? compareView(main) : frList(main);
+/* ===== Help Center → Guides (lib/guides.js): the public guides at /guides, written by the weekly writer and published from the review email ===== */
+let GD = null; let gdFilter = '';
+const GD_STATUS = { draft: ['Waiting for review', 'wait'], changes: ['Changes asked', 'wait'], published: ['Live', 'ok'] };
+const gdInd = (s) => (s ? indName(s) || s : 'Every trade');
+async function guidesView(main) {
+  if (!GD) { main.innerHTML = `<div class="head"><h1>Guides</h1></div>${helpSeg()}<p class="muted">Loading…</p>`; sideLayout(main); try { GD = await api('GET', '/api/platform/guides'); } catch (x) { toast(x.message, true); return; } }
+  const n = (s) => GD.items.filter((g) => g.status === s).length;
+  const rows = GD.items.filter((g) => !gdFilter || g.status === gdFilter);
+  main.innerHTML = `<div class="head"><div><h1>Guides</h1><p class="sub" style="margin:4px 0 0">Articles for service businesses at <a href="/guides" target="_blank" rel="noopener">/guides</a>. The weekly writer drafts one each Monday and emails it to ${esc(GD.reviewer)} to publish or send back.</p></div></div>
+${helpSeg()}
+<div class="stats"><div class="card"><div class="l">Live</div><div class="v">${n('published')}</div></div><div class="card"><div class="l">Waiting for review</div><div class="v">${n('draft')}</div></div><div class="card"><div class="l">Changes asked</div><div class="v">${n('changes')}</div></div></div>
+<div class="card"><h2>All guides</h2><div class="hc-tools"><select id="gdFilter" aria-label="Show"><option value="">All (${GD.items.length})</option>${Object.entries(GD_STATUS).map(([k, [l]]) => `<option value="${k}" ${gdFilter === k ? 'selected' : ''}>${l} (${n(k)})</option>`).join('')}</select></div>
+<div class="tablewrap"><table class="acc"><thead><tr><th>Guide</th><th>For</th><th>Status</th><th></th></tr></thead><tbody>
+${rows.map((g) => `<tr><td><button type="button" class="hc-link" data-act="gdEdit" data-id="${g.id}">${esc(g.title)}</button><div class="sm">/guides/${esc(g.slug)} · ${g.words.toLocaleString()} words · ${g.status === 'published' ? `live since ${fmtDate(g.publishedAt)}` : `drafted ${fmtDate(g.createdAt)}`}</div>${g.notes.filter((x) => !x.done).map((x) => `<div class="sm" style="margin-top:4px">You asked: <em>${esc(x.text)}</em></div>`).join('')}</td>
+<td class="sm">${esc(gdInd(g.industry))}</td><td><span class="pf-chip ${GD_STATUS[g.status][1]}">${GD_STATUS[g.status][0]}</span></td>
+<td><div class="acts"><a class="btn alt sm" href="${g.status === 'published' ? `/guides/${esc(g.slug)}` : `/guides/review/${esc(g.token)}`}" target="_blank" rel="noopener">${g.status === 'published' ? 'View' : 'Review'}</a>${g.status === 'published' ? `<button type="button" class="btn alt sm" data-act="gdUnpublish" data-id="${g.id}">Unpublish</button>` : `<button type="button" class="btn sm" data-act="gdPublish" data-id="${g.id}">Publish</button>`}</div></td></tr>`).join('') || `<tr><td colspan="4" class="muted">${GD.items.length ? 'None with that status.' : 'No guides yet. The first ones arrive as drafts.'}</td></tr>`}
+</tbody></table></div></div>
+<div class="card" style="max-width:860px"><h2>Review emails</h2><form id="gdSet" class="pr-pair" style="align-items:flex-end"><label>Send new and revised guides to<input name="reviewer" type="email" required value="${esc(GD.reviewer)}"></label><div><button class="btn">Save</button></div></form>
+<h2 style="margin-top:22px">Writer key</h2><p class="muted" style="font-size:13px;margin-top:-6px">The weekly writer (a scheduled Claude routine) uses this key to read the guide list and send drafts. It can’t publish anything. ${GD.customKey ? 'You made your own key.' : 'The writer uses the key it was set up with.'} A new key stops the old one, so the routine needs the new one.</p>
+<button type="button" class="btn alt sm" data-act="gdKey">Make a new writer key</button></div>`;
+  sideLayout(main);
+  $('#gdFilter', main).addEventListener('change', (e) => { gdFilter = e.target.value; guidesView(main); });
+  $('#gdSet', main).addEventListener('submit', async (e) => { e.preventDefault(); try { GD = await api('PUT', '/api/platform/guides/settings', Object.fromEntries(new FormData(e.target))); toast('Saved'); guidesView(main); } catch (x) { toast(x.message, true); } });
+}
+const gdRedraw = () => { if (tab === 'guides') guidesView($('#main')); };
+A.gdPublish = async (d) => { GD = await api('POST', `/api/platform/guides/${d.id}/publish`); toast('Published. It’s live at /guides'); closeModal(); gdRedraw(); };
+A.gdUnpublish = async (d) => { if (!confirm('Take this guide off the site? It goes back to a draft.')) return; GD = await api('POST', `/api/platform/guides/${d.id}/unpublish`); toast('Unpublished'); closeModal(); gdRedraw(); };
+A.gdSend = async (d) => { const r = await api('POST', `/api/platform/guides/${d.id}/send`); GD = r; toast(r.emailed ? `Emailed to ${r.emailed}` : `Not emailed: ${r.emailError}`, !r.emailed); };
+A.gdDelete = async (d) => { if (!confirm('Delete this guide for good?')) return; GD = await api('DELETE', `/api/platform/guides/${d.id}`); closeModal(); toast('Deleted'); gdRedraw(); };
+A.gdKey = async () => {
+  if (!confirm('Make a new writer key? The old one stops working right away, so the weekly writer needs the new one.')) return;
+  const r = await api('POST', '/api/platform/guides/key'); GD = r;
+  modal('New writer key', `<p class="muted" style="margin-top:0">Copy it now: it isn’t shown again. Give it to Claude to update the weekly writer routine.</p><input readonly value="${esc(r.key)}" onclick="this.select()" style="font-family:ui-monospace,monospace"><div class="foot"><button type="button" class="btn" data-act="closeModal">Done</button></div>`, { sticky: true });
+};
+A.gdEdit = (d) => {
+  const g = GD.items.find((x) => x.id === d.id); if (!g) return;
+  const m = modal('Edit guide', `<form id="gdf">
+<label>Title<input name="title" required maxlength="140" value="${esc(g.title)}"></label>
+<div class="pr-pair"><label>For<select name="industry"><option value="">Every trade</option>${D.industries.filter((i) => i.slug !== 'other').map((i) => `<option value="${esc(i.slug)}" ${i.slug === g.industry ? 'selected' : ''}>${esc(i.name)}</option>`).join('')}</select></label>
+<label>Category<select name="category">${GD.categories.map(([k, l]) => `<option value="${k}" ${k === g.category ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label></div>
+<label>Web address<div class="hc-addr"><span>/guides/</span><input name="slug" required maxlength="90" value="${esc(g.slug)}" spellcheck="false"></div></label>
+<label>Summary <span class="sm">(under the title, and Google’s description)</span><textarea name="summary" rows="2" maxlength="320" required>${esc(g.summary)}</textarea></label>
+<label>Search keywords<input name="keywords" maxlength="300" value="${esc(g.keywords || '')}"></label>
+<label>Guide <span class="sm">(HTML: &lt;h2&gt;, &lt;p&gt;, lists, tables, &lt;div class="example"&gt;, &lt;div class="tip"&gt;, &lt;div class="note"&gt;)</span><textarea name="body" class="hc-body" rows="16" spellcheck="false">${esc(g.body)}</textarea></label>
+<div class="foot" style="justify-content:space-between;flex-wrap:wrap;gap:8px"><div class="acts"><button type="button" class="btn alt sm" data-act="gdDelete" data-id="${g.id}">Delete</button>${g.status === 'published' ? '' : `<button type="button" class="btn alt sm" data-act="gdSend" data-id="${g.id}">Email for review</button>`}<a class="btn alt sm" href="${g.status === 'published' ? `/guides/${esc(g.slug)}` : `/guides/review/${esc(g.token)}`}" target="_blank" rel="noopener">${g.status === 'published' ? 'View' : 'Preview'}</a></div>
+<div class="acts"><button type="button" class="btn alt" data-act="closeModal">Cancel</button><button class="btn">Save</button></div></div></form>`, { wide: true });
+  $('#gdf', m).addEventListener('submit', async (e) => { e.preventDefault(); try { GD = await api('PUT', `/api/platform/guides/${g.id}`, Object.fromEntries(new FormData(e.target))); closeModal(); toast('Saved'); gdRedraw(); } catch (x) { toast(x.message, true); } });
+};
 }
 function frList(main) {
   const v = frView; const K = FR.kinds; const S = FR.statuses; const s = FR.settings; const q = v.q.trim().toLowerCase();
