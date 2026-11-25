@@ -658,3 +658,15 @@ body.hv2{background-color:var(--card);background-image:var(--hv-dust);background
   .h-links .h-drop-cols .r-group>a:not(.r-head){align-items:center;padding:7px 12px}
   .h-links .h-drop-cols a .r-ic{width:30px;height:30px}.r-tx small{display:none}
 }
+/* "Start free trial" email box (trial.js opens the sign-up pop-up with the email filled in): an email field and button joined in one box,
+   in the heroes (.h-ctas) and the closing band (.h-cta) of the public pages */
+.tq{display:flex;align-items:stretch;gap:4px;width:100%;max-width:480px;margin:0;padding:4px;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 6px 18px -10px rgba(15,23,42,.35);color-scheme:light}
+.tq:focus-within{border-color:var(--brand);box-shadow:0 0 0 3px var(--tint)}
+.tq input:not(#_){flex:1 1 auto;width:auto;min-width:0;height:48px;margin:0;padding:0 12px;border:0;background:transparent;box-shadow:none;outline:0;font-size:16px;color:#0f172a}.tq input::placeholder{color:#64748b}
+.tq .btn:not(#_){flex:none;display:inline-flex;align-items:center;justify-content:center;height:48px;min-height:0;margin:0;padding:0 20px;line-height:1;font-size:16px;font-weight:800;white-space:nowrap}
+.h-ctas .tq{flex:1 1 100%}
+.tq-alt{flex-basis:100%;font-size:15px;font-weight:600}.tq-alt::after{content:' ↓'}
+.f-hero .tq-alt{text-align:center}
+.h-cta .tq{margin:0 auto;position:relative}
+.h-cta .tq .btn:not(#_){background:var(--hv-marker,#f59e0b);color:#1c1204}
+@media (max-width:380px){.tq{flex-direction:column}.tq .btn:not(#_){width:100%}}

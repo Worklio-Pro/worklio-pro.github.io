@@ -59,7 +59,7 @@
       <span class="h-eyebrow">New · Snap to quote</span>
       <h1>Snap a few photos. <em>Get a quote in seconds.</em></h1>
       <p class="lead">Take photos of the job and say what the client needs. <span class="pname">Worklio Pro</span> drafts the whole quote from your own price list, with Good / Better / Best options when the job has choices. Check it and send it before you leave the driveway.</p>
-      <div class="h-ctas"><a class="btn" href="/pricing" data-trial>Start your free 30-day trial</a><a class="btn alt" href="#how">See how it works</a></div>
+      <div class="h-ctas"><form class="tq" action="/pricing" data-trial-email><input type="email" name="email" required maxlength="200" autocomplete="email" placeholder="Enter your email" aria-label="Email address"><button class="btn">Start free trial</button></form><a class="tq-alt" href="#how">See how it works</a></div>
 
       <div class="qp-art" aria-label="Photos and a spoken note on a phone, and the quote drafted from them">
         <div class="qp-phone"><div class="qp-screen">
@@ -155,7 +155,7 @@
     <section class="h-wrap" style="padding-bottom:20px"><div class="h-cta">
       <h2>Quote it before you leave the driveway</h2>
       <p>Start a free trial, import your price list, and draft your next quote from a few photos.</p>
-      <a class="btn" href="/pricing" data-trial>Start your free 30-day trial</a>
+      <form class="tq" action="/pricing" data-trial-email><input type="email" name="email" required maxlength="200" autocomplete="email" placeholder="Enter your email" aria-label="Email address"><button class="btn">Start free trial</button></form>
       <p class="h-cta-note">Free for 30 days · No credit card needed · <a href="/pricing">See plans &amp; pricing</a></p>
     </div></section>
   </main>
@@ -175,7 +175,7 @@
     }).catch(() => {});
   </script>
   <script src="/oauth-buttons.js?v=1"></script>
-  <script src="/trial.js?v=8"></script>
+  <script src="/trial.js?v=9"></script>
   <script src="/phone.js?v=2" defer></script>
   <script src="/chat.js?v=10" data-where="site" defer></script>
 </body>

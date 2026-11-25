@@ -65,6 +65,7 @@ ${plans.map((p) => { const c = per(p); return `<label><input type="radio" name="
       if (oa.name) $('[name=name]', f1).value = oa.name;
       const pw = $('.tr-pw', f2); pw.hidden = true; $('input', pw).disabled = true; f2.insertAdjacentHTML('afterbegin', '<input type="hidden" name="oauth" value="1">');
     } else if (window.oauthButtons) oaBox.innerHTML = oauthButtons(S.providers, (p) => `/sign-in/${p}`, 'or enter your details');
+    if (oa.prefill && !oa.email) $('[name=email]', f1).value = oa.prefill; // typed into a "Start free trial" email box on the page
     if (oa.company) $('[name=company]', f1).value = oa.company; if (oa.phone) phone.value = oa.phone;
     if (oa.country && [...country.options].some((x) => x.value === oa.country)) country.value = oa.country;
     if (oa.error) err(f1, esc(oa.error));
@@ -112,7 +113,10 @@ ${plans.map((p) => { const c = per(p); return `<label><input type="radio" name="
       btn.disabled = !agree.checked; btn.textContent = 'Start my 30-day free trial';
     });
   }
-  document.addEventListener('click', (e) => { if (e.target.closest('[data-trial]')) { e.preventDefault(); open(); } }); // also the pricing page's button, which site.js turns on
+  document.addEventListener('click', (e) => { if (e.target.closest('[data-trial]')) { e.preventDefault(); open(); } });
+  // the email box and "Start free trial" button in the heroes and closing bands (home.css, .tq): opens the pop-up with the email filled in.
+  // Without this script (or with sign-ups off) the form goes to the pricing page instead
+  document.addEventListener('submit', (e) => { const f = e.target.closest('form[data-trial-email]'); if (!f) return; e.preventDefault(); open({ prefill: f.email.value.trim() }); }); // also the pricing page's button, which site.js turns on
   if (location.hash === '#trial') {
     const qs = new URLSearchParams(location.search); const oa = {};
     if (qs.get('oauth_error')) oa.error = qs.get('oauth_error');

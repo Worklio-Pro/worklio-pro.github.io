@@ -74,7 +74,7 @@
       <span class="h-eyebrow">New · Good / Better / Best quotes</span>
       <h1>Stop sending one price. <em>Let clients choose more.</em></h1>
       <p class="lead">Put repair, replace and premium on one quote. Your client compares them side by side on their phone, taps the one they want, signs and pays the deposit. Many pick the middle or top option when they can see them together, so the same visit turns into a bigger job.</p>
-      <div class="h-ctas"><a class="btn" href="/pricing" data-trial>Start your free 30-day trial</a><a class="btn alt" href="#video">Watch the 2-minute video</a></div>
+      <div class="h-ctas"><form class="tq" action="/pricing" data-trial-email><input type="email" name="email" required maxlength="200" autocomplete="email" placeholder="Enter your email" aria-label="Email address"><button class="btn">Start free trial</button></form><a class="tq-alt" href="#video">Watch the 2-minute video</a></div>
 
       <div class="gb-art" aria-label="A quote with three options on the client's phone, and the business told which one they approved">
         <div class="gb-phone"><div class="gb-screen">
@@ -188,7 +188,7 @@
     <section class="h-wrap" style="padding-bottom:20px"><div class="h-cta">
       <h2>Make your next quote worth more</h2>
       <p>Start a free trial, add your price list, and send your first Good / Better / Best quote today.</p>
-      <a class="btn" href="/pricing" data-trial>Start your free 30-day trial</a>
+      <form class="tq" action="/pricing" data-trial-email><input type="email" name="email" required maxlength="200" autocomplete="email" placeholder="Enter your email" aria-label="Email address"><button class="btn">Start free trial</button></form>
       <p class="h-cta-note">Free for 30 days · No credit card needed · <a href="/pricing">See plans &amp; pricing</a></p>
     </div></section>
   </main>
@@ -209,7 +209,7 @@
     }).catch(() => {});
   </script>
   <script src="/oauth-buttons.js?v=1"></script>
-  <script src="/trial.js?v=8"></script>
+  <script src="/trial.js?v=9"></script>
   <script src="/phone.js?v=2" defer></script>
   <script src="/chat.js?v=10" data-where="site" defer></script>
 </body>

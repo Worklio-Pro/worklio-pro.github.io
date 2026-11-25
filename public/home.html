@@ -34,7 +34,7 @@
         <span class="h-eyebrow">for field service pros, solo to full crew</span>
         <h1>Send the quote from the <span class="scribble">driveway</span>. <em>Get paid before you’re back in the truck.</em></h1>
         <p class="lead"><span class="pname">Worklio Pro</span> runs the whole job: quotes your clients sign on their phone, a schedule your crew can see from the road, and invoices that get paid by card. Less paperwork at night, more time doing the work.</p>
-        <div class="h-ctas"><a class="btn" href="/pricing" data-trial>Start your free 30-day trial</a><a class="btn alt" href="#features">Explore features</a></div>
+        <div class="h-ctas"><form class="tq" action="/pricing" data-trial-email><input type="email" name="email" required maxlength="200" autocomplete="email" placeholder="Enter your email" aria-label="Email address"><button class="btn">Start free trial</button></form><a class="tq-alt" href="#features">Explore features</a></div>
         <ul class="h-ticks"><li>Free for 30 days</li><li>No credit card needed</li><li>Works on any phone</li></ul>
       </div>
       <!-- a 24-second looping tour of the real app (home.css, "hero tour"): quote approved → on the calendar → done on site → paid -->
@@ -213,7 +213,7 @@
     <section class="h-wrap" style="padding-bottom:20px"><div class="h-cta">
       <h2>Try it on your next job.</h2>
       <p>Setup takes a few minutes. Send your first quote today.</p>
-      <a class="btn" href="/pricing" data-trial>Start your free 30-day trial</a>
+      <form class="tq" action="/pricing" data-trial-email><input type="email" name="email" required maxlength="200" autocomplete="email" placeholder="Enter your email" aria-label="Email address"><button class="btn">Start free trial</button></form>
       <p class="h-cta-note">Free for 30 days · No credit card needed · <a href="/pricing">See plans &amp; pricing</a></p>
     </div></section>
 
@@ -249,7 +249,7 @@
     }).catch(() => {});
   </script>
   <script src="/oauth-buttons.js?v=1"></script>
-  <script src="/trial.js?v=8"></script>
+  <script src="/trial.js?v=9"></script>
   <script src="/phone.js?v=2" defer></script>
   <script src="/chat.js?v=10" data-where="site" defer></script>
 </body>
