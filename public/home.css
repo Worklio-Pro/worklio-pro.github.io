@@ -413,21 +413,21 @@ body{background-color:var(--card);background-image:var(--h-dots);background-size
 .ft-trade b{font-size:15.5px}.ft-trade span{display:flex;gap:6px 14px;flex-wrap:wrap;font-size:14px}.ft-trade a{color:var(--link);text-decoration:none}.ft-trade a:hover{text-decoration:underline}
 @media (max-width:760px){.ft-cards,.ft-trades{grid-template-columns:1fr}.ft-card{padding:20px}}
 
-/* home page, less "template": flat backgrounds (no glows or dot texture), smaller corners, a condensed sign-painter headline font, handwritten labels and notes,
+/* home page, less "template": flat backgrounds (no glows or dot texture), smaller corners, a bold signage headline font (Big Shoulders Display), Permanent Marker for the handwritten bits, handwritten labels and notes,
    a marker underline, screenshots taped on slightly crooked, one "What's new" section and a one-job timeline. Only on the home page (body.hv2).
    The headline font here wins over the headings font set in Alpha → Settings → Website style (theme.css uses :not(#_), so this does too) */
-.hv2{--hv-head:"Barlow Condensed",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;--hv-hand:"Caveat","Segoe Print","Bradley Hand",cursive;--hv-marker:#f59e0b;
+.hv2{--hv-head:"Big Shoulders Display",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;--hv-hand:"Permanent Marker","Segoe Print","Bradley Hand",cursive;--hv-marker:#f59e0b;
   --h-dots:none;--h-glow:none;--h-glow2:none;--h-banddots:none;--h-rowglow:transparent;--h-rowglow2:transparent}
-.hv2 :is(.h-hero h1,.h-sec-head h2,.h-copy h3,.h-cta h2,.h-day h3,.h-new3 b,.h-newlist-head):not(#_):not(#_){font-family:var(--hv-head);font-weight:700;letter-spacing:0}
+.hv2 :is(.h-hero h1,.h-sec-head h2,.h-copy h3,.h-cta h2,.h-day h3,.h-new3 b,.h-newlist-head):not(#_):not(#_){font-family:var(--hv-head);font-weight:800;letter-spacing:0}
 .hv2 .h-hero{background:var(--card);border-bottom:1px solid var(--line)}
 .hv2 .h-hero h1{font-size:clamp(42px,5vw,62px);line-height:.98;margin:10px 0 20px}
 .hv2 .scribble{position:relative;white-space:nowrap}
 .hv2 .scribble::after{content:'';position:absolute;left:-2%;right:-3%;bottom:-.12em;height:.32em;pointer-events:none;
   background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 20' preserveAspectRatio='none'%3E%3Cpath d='M3 13c40-7 95-9 194-5M8 17c50-5 110-6 170-3' fill='none' stroke='%23f59e0b' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat center/100% 100%}
-.hv2 :is(.h-eyebrow,.h-kicker,.h-note,.h-day time){font-family:var(--hv-hand);text-transform:none;letter-spacing:0;font-weight:700}
-.hv2 .h-eyebrow{display:inline-block;background:none;border:0;padding:0;border-radius:0;font-size:26px;color:var(--brand);transform:rotate(-2deg);transform-origin:left}
-.hv2 .h-kicker{font-size:26px;line-height:1;display:inline-block;transform:rotate(-1.5deg)}
-.hv2 .h-note{margin:0 8% 2px 0;text-align:right;font-size:23px;color:var(--muted);transform:rotate(-3deg)}
+.hv2 :is(.h-eyebrow,.h-kicker,.h-note,.h-day time){font-family:var(--hv-hand);text-transform:none;letter-spacing:0;font-weight:400}
+.hv2 .h-eyebrow{display:inline-block;background:none;border:0;padding:0;border-radius:0;font-size:21px;color:var(--brand);transform:rotate(-2deg);transform-origin:left}
+.hv2 .h-kicker{font-size:20px;line-height:1;display:inline-block;transform:rotate(-1.5deg)}
+.hv2 .h-note{margin:0 8% 2px 0;text-align:right;font-size:18px;color:var(--muted);transform:rotate(-3deg)}
 .hv2 .h-note svg{vertical-align:-14px}
 .hv2 .h-ctas .btn,.hv2 .f-all .btn{border-radius:6px}
 .hv2 .tour{border-radius:8px;background:var(--tint);border:1px solid var(--line)}
@@ -459,20 +459,20 @@ body{background-color:var(--card);background-image:var(--h-dots);background-size
 .h-day li{display:grid;grid-template-columns:118px 1fr;gap:30px;padding:0 0 26px;position:relative}
 .h-day li::after{content:'';position:absolute;left:126px;top:10px;width:12px;height:12px;border-radius:50%;background:var(--hv-marker)}
 .h-day li:last-child{padding-bottom:0}.h-day li:last-child::after{background:#22c55e}
-.h-day time{text-align:right;font-size:25px;line-height:1.1;color:#fde68a}
+.h-day time{text-align:right;font-size:19px;line-height:1.1;color:#fde68a}
 .h-day h3{margin:0 0 4px;font-size:24px;color:#fff;line-height:1.15}.h-day p{margin:0;color:#cbd5e1;font-size:16px;line-height:1.55}
 /* "Why I built this" */
 .h-me-card{display:flex;gap:36px;align-items:center;max-width:860px;margin:0 auto}
 .h-me-card img{flex:none;width:200px;height:200px;object-fit:cover;border-radius:6px;transform:rotate(-2deg);border:8px solid #fff;box-shadow:0 6px 20px rgba(15,23,42,.18)}
 .h-me-quote{font-size:22px;line-height:1.5;margin:12px 0 14px}
-.h-me-sig{margin:0;font-family:var(--hv-hand);font-size:28px;color:var(--brand)}
+.h-me-sig{margin:0;font-family:var(--hv-hand);font-size:22px;color:var(--brand)}
 /* closing call to action: flat, no bubbles */
 .hv2 .h-cta{border-radius:8px}.hv2 .h-cta::before,.hv2 .h-cta::after{display:none}.hv2 .h-cta .btn{border-radius:6px}
 .hv2 .h-cta h2{font-size:clamp(32px,4.2vw,48px)}
 @media (max-width:960px){.h-new3{grid-template-columns:1fr}.h-newlist{grid-template-columns:1fr}}
 @media (max-width:640px){
-  .hv2 .h-hero h1{font-size:clamp(38px,11vw,48px)}.hv2 .h-note{font-size:20px}
+  .hv2 .h-hero h1{font-size:clamp(38px,11vw,48px)}.hv2 .h-note{font-size:16px}
   .hv2 .h-row .h-art,.hv2 .h-row.flip .h-art{transform:rotate(-.6deg)}
-  .h-day::before{left:5px}.h-day li{grid-template-columns:1fr;gap:2px;padding-left:28px}.h-day li::after{left:0}.h-day time{text-align:left;font-size:22px}
+  .h-day::before{left:5px}.h-day li{grid-template-columns:1fr;gap:2px;padding-left:28px}.h-day li::after{left:0}.h-day time{text-align:left;font-size:18px}
   .h-me-card{flex-direction:column;text-align:center;gap:20px}.h-me-card img{width:160px;height:160px}.h-me-quote{font-size:19px}
 }
