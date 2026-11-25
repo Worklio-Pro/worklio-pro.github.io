@@ -528,14 +528,16 @@ body.hv2{background-color:var(--card);background-image:var(--hv-dust);background
 /* the trades strip gets stronger dust (40% and a few more specks, instead of 10%) */
 .hv2 .h-trades:not(#_){--hv-dust-strip:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='900' height='900'%3E%3Cfilter id='d' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.35' seed='7'/%3E%3CfeColorMatrix values='1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 0 1' result='a'/%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.005' seed='3'/%3E%3CfeColorMatrix values='1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 0 1' result='b'/%3E%3CfeComposite in='a' in2='b' operator='arithmetic' k2='1' k3='.4' k4='-.2'/%3E%3CfeColorMatrix values='0 0 0 0 0.06 0 0 0 0 0.09 0 0 0 0 0.16 10.4 0 0 0 -8'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23d)'/%3E%3C/svg%3E"),url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='700' height='700'%3E%3Cfilter id='f11' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.07 .55' seed='11'/%3E%3CfeColorMatrix values='0 0 0 0 0.06 0 0 0 0 0.09 0 0 0 0 0.16 12 0 0 0 -9.28'/%3E%3C/filter%3E%3Cfilter id='f23' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.07 .55' seed='23'/%3E%3CfeColorMatrix values='0 0 0 0 0.06 0 0 0 0 0.09 0 0 0 0 0.16 12 0 0 0 -9.28'/%3E%3C/filter%3E%3Cg transform='rotate(-28 350 350)'%3E%3Crect x='-300' y='-300' width='1300' height='1300' filter='url(%23f11)'/%3E%3C/g%3E%3Cg transform='rotate(52 350 350)'%3E%3Crect x='-300' y='-300' width='1300' height='1300' filter='url(%23f23)'/%3E%3C/g%3E%3C/svg%3E");background-image:var(--hv-dust-strip)}
 /* the Industries page (/industries, lib/industries.js): a "Find your industry" box in the hero, then every industry grouped under six headings in compact cards
-   (three columns, two on tablets, one on phones), so the page is about two screens instead of a long wall of photo cards */
+   (a grid: three across, two on tablets, one on phones; the cards in a row are the same height), so the page is about two screens instead of a long wall of photo cards */
 .i-index-hero .h-wrap{padding-bottom:30px}
 .i-find{display:flex;align-items:center;gap:10px;max-width:460px;margin:26px auto 0;padding:0 16px;border:1.5px solid var(--border);border-radius:6px;background:var(--card);color:var(--muted)}
 .i-find:focus-within{border-color:var(--brand);box-shadow:0 0 0 3px var(--tint-strong)}
 .i-find input{flex:1;min-width:0;border:0;background:none;font:inherit;font-size:17px;padding:13px 0;color:var(--text);outline:none}
 .i-groups-sec{padding-top:36px}
-.i-groups{columns:3 300px;column-gap:20px}
-.i-group{break-inside:avoid;margin:0 0 20px;padding:20px 22px 16px;border:1px solid var(--line);border-radius:6px;background:var(--card)}
+.i-groups{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;align-items:stretch}
+@media (max-width:960px){.i-groups{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:640px){.i-groups{grid-template-columns:1fr}}
+.i-group{margin:0;padding:20px 22px 16px;border:1px solid var(--line);border-radius:6px;background:var(--card)}
 .i-group h2{margin:0 0 8px;font-size:19px;line-height:1.2}
 .i-group ul{list-style:none;margin:0;padding:0;display:grid;gap:1px}
 .i-group a{display:flex;align-items:center;gap:10px;padding:7px 8px;margin:0 -8px;border-radius:6px;color:var(--text);text-decoration:none;font-size:15.5px}
