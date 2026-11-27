@@ -337,7 +337,7 @@ const quoteTerms = (q) => JSON.stringify(QUOTE_TERMS.map((k) => (typeof q[k] ===
 // payments are recorded, paid online and refunded through their own endpoints; a quote or invoice edit can never change one
 const PAYMENT_FIELDS = { quotes: ['depositPaidAt', 'depositPaidAmount', 'depositMethod', 'depositReference', 'depositStatus', 'depositRefunds', 'depositPayment'],
   invoices: ['payments', 'paidAt', 'paidAmount', 'paidByDeposit', 'paymentMethod', 'stripeSessionId', 'stripePaymentIntent'] };
-const money = (n) => (Number(n) < 0 ? '-$' : '$') + Math.abs(Number(n)).toFixed(2); // a credit reads -$150.00, not $-150.00
+const money = (n) => (Number(n) < 0 ? '-$' : '$') + Math.abs(Number(n)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); // a credit reads -$150.00, not $-150.00
 // " (25%)" or " (products + 50% of labor)" after "Deposit", in the client's language
 const depLabel = (d) => (d.depositBasis === 'products' ? ` (${tx('products + {pct}% of labor', { pct: d.depositPct })})` : d.depositPct ? ` (${d.depositPct}%)` : '');
 const findClient = (id) => db.clients.find((c) => c.id === id);
