@@ -2142,7 +2142,8 @@ app.post('/api/account/domains/:host/check', async (req, res) => {
     }
     if (cloudflare.live(s)) { markLive(t, d); return res.json({ ok: true, account: accountInfo() }); }
     if (d.verified && d.https !== false) { d.https = false; tenancy.savePlatform(); } // stopped working: links go back to the business's own address
-    return res.json({ ok: false, pending: true, detail: cloudflare.pendingText(s, cloudflare.target(tenancy.hostOnly(tenancy.ROOT_DOMAIN))), account: accountInfo() });
+    const cname = cloudflare.target(tenancy.hostOnly(tenancy.ROOT_DOMAIN)); // stage dns: the CNAME isn't there yet; ssl: it is, and the certificate is on its way
+    return res.json({ ok: false, pending: true, stage: s.status !== 'active' ? 'dns' : 'ssl', name: d.host.split('.')[0], target: cname, detail: cloudflare.pendingText(s, cname), account: accountInfo() });
   }
   const r = await tenancy.checkDns(d.host, t);
   if (r.ok && !d.verified) { d.verified = true; d.verifiedAt = new Date().toISOString(); if (!t.domains.some((x) => x.primary)) d.primary = true; tenancy.savePlatform(); }

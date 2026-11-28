@@ -3951,9 +3951,19 @@ function wireAccountCards(main) {
     try { const acc = await api('POST', '/api/account/domains', { host }); toast(acc.cnameTarget ? 'Domain added. Now add its CNAME record.' : 'Domain added. Now set up its DNS record. We’ve been told too, and we’ll activate it on our end.'); refresh(); } catch (err) { toast(err.message, true); }
   });
 }
+// Check now on a domain that isn't working yet: what to do next, in a popup that stays until OK (no ×, outside click or Esc)
+function domainPopup(host, r) {
+  const body = r.stage === 'dns' ? `<p style="margin-top:0"><strong>${esc(host)}</strong> doesn’t point here yet. At your domain provider (GoDaddy, Namecheap, Cloudflare…), add this DNS record:</p>
+<div class="dns-help"><table class="domains"><tr><th>Type</th><th>Name</th><th>Value</th></tr><tr><td><strong>CNAME</strong></td><td><code>${esc(r.name)}</code></td><td><code>${esc(r.target)}</code></td></tr></table></div>
+<p class="muted">DNS changes can take up to a few hours. You don’t need to come back: we check it every few minutes and email you when ${esc(host)} is ready.</p>`
+    : r.stage === 'ssl' ? `<p style="margin-top:0"><strong>${esc(host)}</strong> points here. Its secure connection (SSL certificate) is being set up, which usually takes a few minutes.</p><p class="muted">We’ll email you when it’s ready.</p>`
+    : `<p style="margin-top:0">${esc(r.detail || 'This domain isn’t connected yet.')}</p>`;
+  const b = modal(r.stage === 'ssl' ? 'Almost there' : 'Not connected yet', body + '<div class="actions"><button type="button" class="btn" data-act="closeModal" data-ok-only data-sticky>OK</button></div>');
+  const x = b.parentElement.querySelector('.mh .x'); if (x) x.remove();
+}
 A.checkDomain = async (d, el) => {
   el.disabled = true; el.textContent = 'Checking…';
-  try { const r = await api('POST', `/api/account/domains/${encodeURIComponent(d.host)}/check`, {}); toast(r.ok && r.https !== false ? `${d.host} is connected` : r.detail, !r.ok && !r.pending); if (r.pending) refresh(); if (r.ok) refresh(); }
+  try { const r = await api('POST', `/api/account/domains/${encodeURIComponent(d.host)}/check`, {}); if (r.ok && r.https !== false) { toast(`${d.host} is connected`); refresh(); } else { if (r.ok || r.pending) refresh(); domainPopup(d.host, r); } }
   finally { el.disabled = false; el.textContent = 'Check now'; }
 };
 A.primaryDomain = async (d) => { await api('POST', `/api/account/domains/${encodeURIComponent(d.host)}/primary`, {}); toast(`Links now use ${d.host}`); refresh(); };

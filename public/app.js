@@ -786,7 +786,7 @@ document.addEventListener('click', (e) => {
   const fn = A[el.dataset.act];
   if (fn) Promise.resolve(fn(el.dataset, el)).catch((err) => toast(err.message, true));
 });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#overlay [data-ok-only]')) closeModal(); }); // [data-ok-only]: a message that stays until OK is clicked
 /* ===== Big calendar for every date field (add data-nativecal to keep the browser's own): on computers, clicking the field opens a larger month calendar than the
    browser's own (whose size can't be changed). Typing in the field still works. Phones and tablets keep their full-screen picker. The week
    starts on the business's first day (App Settings → Regional settings). Arrow keys move, Enter picks, Escape closes. ===== */
