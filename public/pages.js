@@ -109,13 +109,50 @@ A.homeGo = (d) => {
   if (d.k === 'quote') { quoteView = { ...quoteView, status: d.s, date: 'all' }; return navigate('/quotes'); }
   navigate(d.s);
 };
+// Home subtitle: a different line each visit (never the same one twice in a row).
+const HOME_QUIPS = [
+  'The customer is always right, until they ask for it done by Friday for half the price.',
+  'Measure twice, invoice once.',
+  'A quote sent today beats a perfect quote sent next week.',
+  'Cash flow is like a garden hose. Works better when nobody’s standing on it.',
+  'Unpaid invoices don’t age like wine.',
+  '“Running a business is easy,” said no business owner ever.',
+  'Coffee in one hand, next job in the other.',
+  'Every “quick question” is a 40-minute phone call in disguise.',
+  'The best marketing is a job done so well the neighbors ask who did it.',
+  'Profit isn’t a dirty word. It’s what pays for the new truck.',
+  'If it isn’t on the schedule, it’s just a rumor.',
+  'Behind every great crew is someone who remembered to order the parts.',
+  '“Can you just squeeze me in?” has entered the chat.',
+  'Today’s forecast: 100% chance of phone calls.',
+  'Small business: where you’re the CEO, the CFO and the one who unclogs the shop sink.',
+  'Get paid first, celebrate second.',
+  'Good work talks. Good invoices collect.',
+  'Under-promise, over-deliver, invoice the same day.',
+  'The early bird gets the worm. The organized bird gets paid.',
+  'Your future self says thanks for sending that reminder now.',
+  'There’s no “off” switch, but there is a coffee pot.',
+  'Paperwork: the one job nobody ever bids on.',
+  'Happy customers leave reviews. Very happy customers send their friends.',
+  'Overhead: the uninvited guest at every job.',
+  'A job isn’t done until it’s paid.',
+  'You didn’t start a business to do data entry. Let’s keep it that way.',
+  'Nobody ever regretted following up on a quote.',
+];
+function homeQuip() {
+  let last = -1; try { last = Number(localStorage.getItem('wp.homeQuip')); } catch (e) {}
+  let i = Math.floor(Math.random() * HOME_QUIPS.length);
+  if (i === last) i = (i + 1) % HOME_QUIPS.length;
+  try { localStorage.setItem('wp.homeQuip', String(i)); } catch (e) {}
+  return HOME_QUIPS[i];
+}
 PAGES['/business-overview'] = {
   title: 'Home',
   async render(main) {
     const o = await api('GET', '/api/overview'); const labels = o.months.map(monthLabel);
     const last = o.revenue.length - 1;
     const hour = new Date().getHours(); const first = ((me && me.name) || '').split(' ')[0];
-    main.innerHTML = `<div class="head"><div><h1>Good ${hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening'}${first ? ', ' + esc(first) : ''}</h1><p class="sub">Here’s what’s happening today and what needs your attention.</p></div>
+    main.innerHTML = `<div class="head"><div><h1>Good ${hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening'}${first ? ', ' + esc(first) : ''}</h1><p class="sub">${esc(homeQuip())}</p></div>
 <div class="actions home-acts"><button class="btn alt" data-act="newQuote">+ Quote</button><button class="btn alt" data-act="newJob">+ Job</button><button class="btn" data-act="newInvoice">+ Invoice</button></div></div>
 ${homeNoticeHtml(o.notice)}${homeSetupHtml(o.setup)}
 <div class="grid g2 hm-top">${homeTodayHtml()}${homeAttentionHtml()}</div>
