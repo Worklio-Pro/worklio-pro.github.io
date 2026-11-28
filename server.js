@@ -12,6 +12,7 @@ const PORT = process.env.PORT || 3000;
 const BASE_URL = process.env.BASE_URL || `https://workliopro.com/public`;
 // many companies (accounts) on one server: see lib/tenancy.js. `db` below is the data of the account the current request is for.
 const tenancy = require('./lib/tenancy');
+const cloudflare = require('./lib/cloudflare'); // businesses' own domains through Cloudflare for SaaS, and the visitor's IP behind Cloudflare
 const emails = require('./lib/emails');
 const i18n = require('./lib/i18n'); const { tx } = i18n; // what clients see, in each client's language
 const poweredBy = require('./lib/powered-by'); // "Powered by Worklio Pro · Try it free" on what businesses send their clients
@@ -1976,7 +1977,8 @@ function accountInfo() {
   return {
     slug: t.slug, plan: { id: plan.id, name: plan.name }, features: [...tenancy.featuresOf(t)], lockedPages: tenancy.lockedPages(t), lockedInfo: tenancy.lockedInfo(t), betaPages: tenancy.betaPages(), siteUrl: tenancy.platformUrl(), maxUsers: plan.maxUsers || 0, extraUser: plan.maxUsers > 0 && plan.extraUser ? plan.extraUser : null,
     url: tenancy.tenantUrl(t), subdomainUrl: tenancy.subdomainUrl(t), rootDomain: tenancy.ROOT_DOMAIN, serverIp: process.env.SERVER_IP || '',
-    domains: (t.domains || []).map(({ host, verified, primary, addedAt, verifiedAt, https }) => ({ host, verified: !!verified, primary: !!primary, https: https !== false, addedAt, verifiedAt: verifiedAt || null })),
+    domains: (t.domains || []).map(({ host, verified, primary, addedAt, verifiedAt, https, cf }) => ({ host, verified: !!verified, primary: !!primary, https: https !== false, auto: !!cf, addedAt, verifiedAt: verifiedAt || null })),
+    cnameTarget: cfDomains() ? cloudflare.target(tenancy.hostOnly(tenancy.ROOT_DOMAIN)) : '', // set up through Cloudflare: one CNAME to this name
     marketplace: marketplace.isOn(tenancy.platform()), // Alpha → Settings → App Marketplace
     aiDescriptions: tenancy.aiOn('aiDescriptions'), aiRewrite: tenancy.aiOn('aiRewrite'), // Alpha → Settings → Integrations → AI
     navIcons: iconsLib.navIcons(), navOrder: iconsLib.order(), // the menu's icons, order and sections (Alpha → Settings → Menu)
@@ -2110,19 +2112,38 @@ app.get('/api/notifications', (req, res) => res.json(db.notifications));
 // a domain waiting on our side opens with a secure connection now (the 30-minute check): tell the owner
 const domainLive = (t, d) => { tenancy.run(t, () => { const o = db.users.find((u) => u.role === 'owner'); if (o && o.email) sendTemplate('accountActivity', o.email, { title: `${d.host} is ready`, message: `We’ve finished setting up ${d.host} on our end. Your team and clients can use it now${d.primary ? ', and links in emails and texts use it from now on' : ''}.`, link: `${tenancy.tenantUrl(t)}/settings#branding` }, { server: true }).catch(() => {}); }); };
 const accountDomain = (req) => { const t = tenancy.current(); const host = tenancy.hostOnly(String(req.params.host || '').trim()); return { t, host, d: (t.domains || []).find((x) => x.host === host) }; };
-app.post('/api/account/domains', (req, res) => {
+// Cloudflare sets new domains up on its own (CF_API_TOKEN and CF_ZONE_ID in .env); not while developing, where there's no platform domain
+const cfDomains = () => cloudflare.enabled() && !tenancy.devMode;
+// a domain set up through Cloudflare is working: verified, secure, and the main address if there's none yet
+const markLive = (t, d) => { const was = d.verified && d.https !== false; if (!d.verified) { d.verified = true; d.verifiedAt = new Date().toISOString(); } d.https = true; if (!t.domains.some((x) => x.primary && x.verified)) { t.domains.forEach((x) => { x.primary = x === d; }); } tenancy.savePlatform(); return !was; };
+app.post('/api/account/domains', async (req, res) => {
   const t = tenancy.current(); const host = tenancy.hostOnly(String((req.body && req.body.host) || '').trim().replace(/^https?:\/\//, '').replace(/\/.*$/, ''));
   const bad = tenancy.domainProblem(host, t); if (bad) return res.status(400).json({ error: bad });
   t.domains = t.domains || [];
   if (t.domains.some((d) => d.host === host)) return res.status(400).json({ error: 'You already added that domain' });
   if (t.domains.length >= 5) return res.status(400).json({ error: 'You can add up to 5 domains' });
-  t.domains.push({ host, verified: false, primary: false, addedAt: new Date().toISOString() }); tenancy.savePlatform();
+  const d = { host, verified: false, primary: false, addedAt: new Date().toISOString() };
+  if (cfDomains()) {
+    if (host.split('.').length < 3) return res.status(400).json({ error: `Use a subdomain, such as app.${host}. A domain on its own (${host}) can’t point here with a CNAME record.` });
+    try { d.cf = { id: (await cloudflare.add(host)).id }; } catch (e) { console.error(`custom domain ${host}: Cloudflare: ${e.message}`); return res.status(502).json({ error: 'That domain couldn’t be set up right now. Try again in a few minutes.' }); }
+    t.domains.push(d); tenancy.savePlatform(); return res.status(201).json(accountInfo());
+  }
+  t.domains.push(d); tenancy.savePlatform();
   // the host only answers for domains it knows, so each new domain is activated by hand (SiteGround: Parked Domains + SSL Manager); the platform is told
   tellPlatform(`${t.name} added the domain ${host}`, `${t.name} (${tenancy.subdomainUrl(t).replace(/^https?:\/\//, '')}) added ${host} as their own domain. To activate it, in SiteGround Site Tools add ${host} under Domain → Parked Domains, then issue a Let’s Encrypt certificate for it in Security → SSL Manager. Until then the domain shows SiteGround’s default page. Once it opens with a secure connection, ${t.name} is emailed that it’s ready (checked every 30 minutes).`);
   res.status(201).json(accountInfo());
 });
 app.post('/api/account/domains/:host/check', async (req, res) => {
   const { t, d } = accountDomain(req); if (!d) return res.status(404).json({ error: 'Domain not found' });
+  if (d.cf) { // set up through Cloudflare: its status says whether the CNAME is in place and the certificate is out
+    let s; try { s = await cloudflare.get(d.cf.id); } catch (e) {
+      if (e.status !== 404) { console.error(`custom domain ${d.host}: Cloudflare: ${e.message}`); return res.status(502).json({ error: 'Couldn’t check the domain right now. Try again in a few minutes.' }); }
+      try { s = await cloudflare.add(d.host); d.cf.id = s.id; tenancy.savePlatform(); } catch (e2) { return res.status(502).json({ error: 'Couldn’t check the domain right now. Try again in a few minutes.' }); } // removed in Cloudflare: added again
+    }
+    if (cloudflare.live(s)) { markLive(t, d); return res.json({ ok: true, account: accountInfo() }); }
+    if (d.verified && d.https !== false) { d.https = false; tenancy.savePlatform(); } // stopped working: links go back to the business's own address
+    return res.json({ ok: false, pending: true, detail: cloudflare.pendingText(s, cloudflare.target(tenancy.hostOnly(tenancy.ROOT_DOMAIN))), account: accountInfo() });
+  }
   const r = await tenancy.checkDns(d.host, t);
   if (r.ok && !d.verified) { d.verified = true; d.verifiedAt = new Date().toISOString(); if (!t.domains.some((x) => x.primary)) d.primary = true; tenancy.savePlatform(); }
   if (r.ok) { d.https = await tenancy.httpsWorks(d.host); tenancy.savePlatform();
@@ -2136,6 +2157,7 @@ app.post('/api/account/domains/:host/primary', (req, res) => {
 });
 app.delete('/api/account/domains/:host', (req, res) => {
   const { t, d } = accountDomain(req); if (!d) return res.status(404).json({ error: 'Domain not found' });
+  if (d.cf) cloudflare.remove(d.cf.id).catch((e) => console.error(`custom domain ${d.host}: Cloudflare remove: ${e.message}`));
   t.domains = t.domains.filter((x) => x !== d);
   if (d.primary) { const next = t.domains.find((x) => x.verified); if (next) next.primary = true; }
   tenancy.savePlatform(); res.json(accountInfo());
@@ -7171,12 +7193,17 @@ function clientIp(req) {
   const direct = req.socket.remoteAddress || '';
   if (!PRIVATE_IP.test(direct)) return direct;
   const fwd = String(req.headers['x-forwarded-for'] || '').split(',').map((s) => s.trim()).filter(Boolean);
-  return fwd[fwd.length - 1] || String(req.headers['x-real-ip'] || '').trim() || direct;
+  const ip = fwd[fwd.length - 1] || String(req.headers['x-real-ip'] || '').trim() || direct;
+  // the site is behind Cloudflare: the proxy saw Cloudflare's address, and Cloudflare names the visitor in CF-Connecting-IP (trusted only from Cloudflare's addresses)
+  const cf = String(req.headers['cf-connecting-ip'] || '').trim();
+  return cf && cloudflare.isCloudflareIp(ip) ? cf : ip;
 }
 // which app answers: the platform's (its own domain, or /alpha… while developing) or an account's
 const PLATFORM_PATHS = /^\/(alpha(\/.*)?|platform(\/.*)?|stripe\/go\/[a-z]+|oauth\/(google|meta|tiktok|linkedin|pinterest|threads|quickbooks|xero|slack)\/callback|home|features(\/[a-z-]+)?|marketing|partners(\/[a-f0-9]+)?|go\/[A-Za-z0-9_-]+|from\/[a-z0-9-]+|quote-from-photos|good-better-best|pricing|signup|sign-in(\/(google|apple)(\/callback)?)?|supporters|guides(\/[a-z0-9-]+|\/review\/[A-Za-z0-9_-]+|\/img\/[A-Za-z0-9_.-]+)?|industries(\/[a-z-]+)?|compare(\/[a-z-]+)?|tools(\/(pricing-calculator|invoice-generator|estimate-template)(\/[a-z-]+)?|\/google-review-qr-code)?|checkout\/.*|checkout\.(js|html)|api\/platform\/.*|api\/site(\/.*)?)$/;
 function dispatch(req, res) {
-  req.ip = clientIp(req); // who's asking (login limits, spam checks)
+  // a business's own domain, through the edge Worker (cloudflare/edge-worker.js): from here on the request is for the domain the visitor typed
+  const edge = cloudflare.fromEdge(req); if (edge) req.headers.host = edge.host;
+  req.ip = (edge && edge.ip) || clientIp(req); // who's asking (login limits, spam checks)
   // browser safety on every reply: files are only treated as the type we say (an upload can't pass itself off as a script),
   // other websites can't show our pages in a hidden frame to trick clicks (except the booking form, which business websites embed),
   // and links out don't carry full addresses (which can hold client tokens)
@@ -7262,6 +7289,14 @@ const jobPostsMonthly = () => { for (const t of tenancy.platform().tenants) if (
 let planBusy = false;
 const planTick = async () => { if (planBusy) return; planBusy = true; try { for (const t of tenancy.platform().tenants) if (t.status === 'active') await tenancy.run(t, async () => { try { await mkPlan.tick(); } catch (e) { console.error('marketing plan:', e.message); } }); } finally { planBusy = false; } };
 setTimeout(planTick, 60e3); setInterval(planTick, 60e3);
+// domains set up through Cloudflare: every 5 minutes, any not working yet is checked, and the owner is emailed once it is (no need to press Check)
+async function syncCfDomains() {
+  if (!cfDomains()) return;
+  for (const t of tenancy.platform().tenants) for (const d of (t.domains || []).filter((x) => x.cf && !(x.verified && x.https !== false))) {
+    try { if (cloudflare.live(await cloudflare.get(d.cf.id)) && markLive(t, d)) domainLive(t, d); } catch (e) { /* tried again next time */ }
+  }
+}
+setTimeout(() => syncCfDomains().catch(() => {}), 20e3); setInterval(() => syncCfDomains().catch(() => {}), 5 * 60e3);
 setTimeout(() => tenancy.checkHttpsAll(domainLive).catch(() => {}), 5e3); setInterval(() => tenancy.checkHttpsAll(domainLive).catch(() => {}), 30 * 60e3); // custom domains: links use one only while its HTTPS works
 setTimeout(jobPostsMonthly, 40e3); setInterval(jobPostsMonthly, 3600e3); // Every job markets itself: last month's results on the 1st
 setTimeout(marketingTrials, 45e3); setInterval(marketingTrials, 3600e3); // Marketing suite add-on: billing starts when its free trial ends

@@ -3702,7 +3702,7 @@ function upgradePanel(a, not, beta, contact) {
 function webAddressCard(a) {
   if (!a) return '';
   const own = planHas('customDomain'); const dBeta = (a.featureList || []).some((f) => f.key === 'customDomain' && f.beta); // marked Beta in Alpha
-  const target = `${a.slug}.${a.rootDomain.replace(/:\d+$/, '')}`;
+  const target = a.cnameTarget || `${a.slug}.${a.rootDomain.replace(/:\d+$/, '')}`; // set up through Cloudflare: every domain points at the same name
   return `<div class="card"><h2>Web address${dBeta ? '<span class="beta-tag" title="This feature is in beta testing">Beta</span>' : ''}</h2><p style="margin-top:0">Your team logs in and clients open their links at <a href="${esc(a.url)}" target="_blank" rel="noopener"><strong>${esc(a.url.replace(/^https?:\/\//, ''))}</strong></a>.</p>
 ${a.url !== a.subdomainUrl ? `<p class="muted">Your ${esc(a.productName)} address <a href="${esc(a.subdomainUrl)}" target="_blank" rel="noopener">${esc(a.subdomainUrl.replace(/^https?:\/\//, ''))}</a> keeps working too.</p>` : ''}
 ${own ? `<h3>Your own domain</h3>${a.domains.length ? `<div class="tablewrap"><table class="domains"><tr><th>Domain</th><th>Status</th><th></th></tr>${a.domains.map((d) => `<tr><td><strong>${esc(d.host)}</strong>${d.primary ? ' <span class="cstatus active">Main address</span>' : ''}</td>
@@ -3711,9 +3711,9 @@ ${own ? `<h3>Your own domain</h3>${a.domains.length ? `<div class="tablewrap"><t
 <form id="domainForm" class="sms-test"><label>Add a domain<input name="host" placeholder="app.yourbusiness.com" autocomplete="off"></label><button class="btn alt">Add domain</button></form>
 <div class="dns-help"><strong>Connect it at your domain provider</strong> (GoDaddy, Namecheap, Cloudflare…):<ol>
 <li>Add a <strong>CNAME</strong> record. Name: the part before your domain (e.g. <code>app</code>). Value: <code>${esc(target)}</code></li>
-${a.serverIp ? `<li>For a domain without a prefix (yourbusiness.com), add an <strong>A</strong> record pointing to <code>${esc(a.serverIp)}</code> instead.</li>` : ''}
+${a.serverIp && !a.cnameTarget ? `<li>For a domain without a prefix (yourbusiness.com), add an <strong>A</strong> record pointing to <code>${esc(a.serverIp)}</code> instead.</li>` : ''}
 <li>Come back and press <strong>Check now</strong>. DNS changes can take up to a few hours.</li></ol>
-<p style="margin:8px 0 0">We also activate each new domain on our end (adding it to our servers with its secure connection). We’re told as soon as you add one, and we’ll email you when it’s ready.</p></div>`
+<p style="margin:8px 0 0">${a.cnameTarget ? 'Use a subdomain, such as app.yourbusiness.com. Once the record is in place, its secure connection is set up for you, usually within minutes, and we’ll email you when it’s ready.' : 'We also activate each new domain on our end (adding it to our servers with its secure connection). We’re told as soon as you add one, and we’ll email you when it’s ready.'}</p></div>`
     : `<p class="muted">Want to use your own domain, like app.yourbusiness.com? Custom domains are included on other plans. ${role() === 'owner' ? '<a href="/settings/billing?upgrade=1" data-link>Upgrade your plan</a>' : 'Ask the account owner to upgrade your plan.'}</p>`}</div>`;
 }
 /* ===== /settings/connections: Account Connections ===== */
@@ -3948,12 +3948,12 @@ function wireAccountCards(main) {
   const df = $('#domainForm', main);
   if (df) df.addEventListener('submit', async (e) => {
     e.preventDefault(); const host = new FormData(df).get('host').trim(); if (!host) return toast('Enter a domain', true);
-    try { await api('POST', '/api/account/domains', { host }); toast('Domain added. Now set up its DNS record. We’ve been told too, and we’ll activate it on our end.'); refresh(); } catch (err) { toast(err.message, true); }
+    try { const acc = await api('POST', '/api/account/domains', { host }); toast(acc.cnameTarget ? 'Domain added. Now add its CNAME record.' : 'Domain added. Now set up its DNS record. We’ve been told too, and we’ll activate it on our end.'); refresh(); } catch (err) { toast(err.message, true); }
   });
 }
 A.checkDomain = async (d, el) => {
   el.disabled = true; el.textContent = 'Checking…';
-  try { const r = await api('POST', `/api/account/domains/${encodeURIComponent(d.host)}/check`, {}); toast(r.ok && r.https !== false ? `${d.host} is connected` : r.detail, !r.ok); if (r.ok) refresh(); }
+  try { const r = await api('POST', `/api/account/domains/${encodeURIComponent(d.host)}/check`, {}); toast(r.ok && r.https !== false ? `${d.host} is connected` : r.detail, !r.ok && !r.pending); if (r.pending) refresh(); if (r.ok) refresh(); }
   finally { el.disabled = false; el.textContent = 'Check now'; }
 };
 A.primaryDomain = async (d) => { await api('POST', `/api/account/domains/${encodeURIComponent(d.host)}/primary`, {}); toast(`Links now use ${d.host}`); refresh(); };
