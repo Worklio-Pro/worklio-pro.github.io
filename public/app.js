@@ -314,7 +314,7 @@ function fillSide(path) {
   const btn = $('#sideMiniBtn'); btn.hidden = !!$('.side-settings', side); const mini = side.classList.contains('mini');
   const l = mini ? 'Expand menu' : 'Collapse menu'; btn.setAttribute('aria-label', l); btn.title = l;
   if (mini) {
-    if (sideMini) $$('a.nav-link, .side-set-btn', side).forEach((a) => { a.title = $('.nav-l', a).textContent; }); // names on hover; before the badges are added
+    if (sideMini) $$('a.nav-link, .side-set-btn', side).forEach((a) => { a.dataset.tip = $('.nav-l', a).textContent; }); // names on hover (sideTip); before the badges are added
   }
   timeOffBadge();
 }
@@ -869,6 +869,16 @@ A.sideBack = () => sideSwitch('main', '.side-set-btn');
 // Settings menu → Desktop View (phones): this page again in a new window, laid out as on a computer (index.html widens that window's viewport).
 // The size asks for a window; phone browsers that only have tabs open it as a tab.
 A.desktopView = () => { const u = new URL(location.href); u.searchParams.set('desktop', '1'); window.open(u.href, 'desktopView', 'popup,width=1280,height=800'); };
+// collapsed menu: hovering (or tabbing to) an icon shows its name in a bubble to the right, pointing at the icon
+const sideTip = document.createElement('div'); sideTip.className = 'side-tip'; sideTip.setAttribute('role', 'tooltip'); sideTip.hidden = true; document.body.appendChild(sideTip);
+const showSideTip = (e) => {
+  const a = e.target.closest && e.target.closest('#side.mini [data-tip]'); if (!a) { sideTip.hidden = true; return; }
+  const r = a.getBoundingClientRect(); sideTip.textContent = a.dataset.tip; sideTip.hidden = false;
+  sideTip.style.top = (r.top + r.height / 2) + 'px'; sideTip.style.left = (r.right + 12) + 'px';
+};
+$('#side').addEventListener('mouseover', showSideTip); $('#side').addEventListener('focusin', showSideTip);
+$('#side').addEventListener('mouseleave', () => { sideTip.hidden = true; }); $('#side').addEventListener('focusout', () => { sideTip.hidden = true; });
+$('#side').addEventListener('scroll', () => { sideTip.hidden = true; }); $('#side').addEventListener('click', () => { sideTip.hidden = true; });
 A.sideMini = () => { sideMini = !sideMini; try { localStorage.setItem('sideMini', sideMini ? '1' : '0'); } catch (e) { /* this visit only */ } fillSide(curPath()); };
 // the QR code drawn the way Settings → Business Page → QR code appearance sets it (plain until it loads, or if it can't)
 let qrLook = null;
