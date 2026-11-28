@@ -878,7 +878,11 @@ const showSideTip = (e) => {
 };
 $('#side').addEventListener('mouseover', showSideTip); $('#side').addEventListener('focusin', showSideTip);
 $('#side').addEventListener('mouseleave', () => { sideTip.hidden = true; }); $('#side').addEventListener('focusout', () => { sideTip.hidden = true; });
-$('#side').addEventListener('scroll', () => { sideTip.hidden = true; }); $('#side').addEventListener('click', () => { sideTip.hidden = true; });
+$('#side').addEventListener('scroll', () => { sideTip.hidden = true; }); $('#side').addEventListener('click', (e) => {
+  sideTip.hidden = true;
+  // collapsed: a click on the menu's blank space (not an icon, the logo or the search box) expands it, like the round button
+  if (e.currentTarget.classList.contains('mini') && !e.target.closest('a, button, input, .side-search')) A.sideMini();
+});
 A.sideMini = () => { sideMini = !sideMini; try { localStorage.setItem('sideMini', sideMini ? '1' : '0'); } catch (e) { /* this visit only */ } fillSide(curPath()); };
 // the QR code drawn the way Settings → Business Page → QR code appearance sets it (plain until it loads, or if it can't)
 let qrLook = null;
